@@ -10,10 +10,10 @@
       2,
       416
     ],
-    "live_issue_states_verified": "Named updates only; no fresh global issue-state census. Dataset issue rows remain acceptance-gated where stated in the latest named checkpoint.",
+    "live_issue_states_verified": "Named issue updates only through 2026-10-22; no fresh global issue-state census. Dataset issues remain open and acceptance-gated where stated in named checkpoints.",
     "pr_search": "Historical 2026-10-20 search snapshot only; do not report its 114 records or old issue association counts as current.",
     "durable_local_runtime_evidence": "Some older local evidence packets may be unavailable after cloud replacement; fresh named verification evidence, including the recovered #86 source and lifecycle checks, currently exists in retained local work. The older replacement note is not a claim that current named evidence is absent. Local verification does not imply source, rights, contract or release acceptance.",
-    "issue_states": "All 415 inventory issue records remain in the ledger; live states were individually verified on 2026-10-20, with named issues refreshed in the 2026-10-21 and 2026-10-22 checkpoints. No global 415-issue refresh is claimed for this checkpoint.",
+    "issue_states": "All 415 inventory issue rows remain in the ledger. Only named issues were refreshed in this checkpoint; no global 415-issue refresh is claimed.",
     "prs_returned": "114 historical PR search records; not current open count",
     "issue_fetches": 415,
     "prs_with_high_confidence_issue_association": 78,
@@ -23,7 +23,7 @@
       "no_open_pr_in_recovered_catalog": "Historical 2026-10-20 snapshot only; do not present as current.",
       "classification": "Historical 2026-10-20 PR association snapshot; superseded for current open-PR mapping by fresh_open_pr_census. A missing current open PR is not evidence of source infeasibility."
     },
-    "snapshot_note": "Historical issue/PR census records remain snapshots. Latest named current-main checkpoint is 0435135912f3b4001b5527bae2566bc91bd14a61 with 103 configured STOPPED schedules; this is not a fresh 415-row or open-PR census.",
+    "snapshot_note": "Named current main checkpoint is c4c0986826f5ce9a665935fb97f0c2db172ec509 with 112 candidate schedules reported STOPPED. No fresh 415-row issue, feasibility or open-PR census; schedule counts are not accepted-dataset counts.",
     "ledger_based_progress_counts": {
       "inventory_issues": 415,
       "external_decision_or_source_evidence_blocker_label": 13,
@@ -278,8 +278,8 @@
       "association_scope": "Mapping establishes branch association only, not code quality, feasibility, implementation, review, run success, source acceptance, or release readiness.",
       "multiple_open_pr_issue_count": 0
     },
-    "main_registered_schedule_count": 103,
-    "main_registered_schedule_issue_count": 85,
+    "main_registered_schedule_count": 112,
+    "main_registered_schedule_issue_count": 94,
     "main_registered_schedule_mapping_issues": [
       2,
       3,
@@ -333,13 +333,22 @@
       86,
       87,
       88,
+      89,
       91,
       92,
       93,
       94,
       95,
       96,
+      107,
+      108,
       110,
+      113,
+      116,
+      125,
+      126,
+      127,
+      128,
       181,
       253,
       257,
@@ -367,7 +376,7 @@
       363,
       369
     ],
-    "main_registered_schedule_default_configuration": "Root-verified named current main 0435135912f3b4001b5527bae2566bc91bd14a61: 103 unique registered schedules, all configured STOPPED. This is code registration only, not live scheduler state, acceptance or release capacity.",
+    "main_registered_schedule_default_configuration": "Public current main c4c0986826f5ce9a665935fb97f0c2db172ec509: 112 candidate schedule registrations reported STOPPED in PR #678 and named integration readbacks; no live scheduler-instance status was queried. This is code registration only, not source acceptance, feasibility or release capacity.",
     "main_registration_audit_source": "Root checkpoint for current main 0435135912f3b4001b5527bae2566bc91bd14a61 (tree 1303c6370ab3f00e000b15d462520d00022ee18a); named integration facts only, no 415-issue network census.",
     "ledger_status_counts_recorded_at": "2026-10-21T20:01:31Z",
     "current_ledger_checkpoint": "Current named main 0435135912f3b4001b5527bae2566bc91bd14a61: 103 registered schedules configured STOPPED; 78 candidate pipelines merged this stretch (starting at 25). All 415 issue rows remain preserved; no fresh issue or open-PR census. Source acceptance and release gates remain separate."
@@ -5662,33 +5671,57 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": 446,
-      "reviewed_head": "18a988450ca876ea869f192437de94c392a298c1",
+      "reviewed_head": "600ce155669359750b07c9c6a59316a5a995a82a",
       "evidence_refs": [
-        "Public PR #446 review comment 6329288471 records the cache-integrity finding on the reviewed head."
+        "Public PR #446 review comment 6329288471 records the cache-integrity finding on the reviewed head.",
+        "Public integration PR #676 merged at 63b00c746ce482506c93724aa054ccb2369b34e8; issue comment 6330291212 records draft-code integration with acceptance pending."
       ],
-      "blocker_type": "source_cache_integrity_review_finding",
-      "live_issue_updated_at": "2026-10-19T17:53:35Z",
+      "blocker_type": "source_contract_rights_baseline_release_acceptance_pending",
+      "live_issue_updated_at": "2026-10-22T01:16:07Z",
       "live_issue_created_at": "2026-10-19T02:01:17Z",
-      "live_issue_comment_count": 10,
+      "live_issue_comment_count": 18,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 446,
-          "title": "Draft NCFO ferry terminals reconstruction with preserved source identities",
-          "state": "open",
-          "head_branch": "codex/cloud-dataset-89",
-          "head_sha": "e6022b492333b7eaa677911f1925292b22ecd403",
-          "base_branch": "codex/cloud-verification-417",
-          "draft": true,
-          "association_method": "exact_dataset_issue_branch"
-        }
-      ],
-      "status": "open_draft_pr_with_public_cache_review_finding",
+      "observed_open_prs": [],
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
         446
       ],
-      "status_note": "Draft PR #446 remains open at 18a988450ca876ea869f192437de94c392a298c1. Its public review comment 6329288471 records a cache-sidecar validation finding; the public record does not establish that a follow-up fix has been merged. Source and release acceptance remain pending."
+      "status_note": "Candidate code for issue #89 is integrated through PR #676; the source PR is #446. Public issue comment 6330291212 records the integration. The issue remains open; source, baseline/compatibility, rights, contract and release decisions remain pending. No production publication is claimed.",
+      "current_head": "600ce155669359750b07c9c6a59316a5a995a82a",
+      "current_activity": "Candidate pipeline code integrated through PR #676; acceptance decisions remain open.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 676,
+        "source_pr": 446,
+        "head": "600ce155669359750b07c9c6a59316a5a995a82a",
+        "integration_merge": "63b00c746ce482506c93724aa054ccb2369b34e8",
+        "notes": "Public integration for Ferry Terminals; issue comment 6330291212. Issue remains open and acceptance-gated."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 446,
+          "head": "600ce155669359750b07c9c6a59316a5a995a82a",
+          "state": "closed_merged",
+          "merged_via": "PR #676 ancestry",
+          "merge_commit": "63b00c746ce482506c93724aa054ccb2369b34e8"
+        },
+        "integration_pr": {
+          "pr": 676,
+          "state": "closed_merged",
+          "merge_commit": "63b00c746ce482506c93724aa054ccb2369b34e8"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "schedule_ref": "bts_ferry_terminals_draft_refresh_schedule",
+        "job_ref": "bts_ferry_terminals_draft_refresh_job",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Integrated draft registration per public PR #676; no acceptance implied."
+      }
     },
     {
       "issue": 90,
@@ -6085,18 +6118,19 @@
       "current_pr": null,
       "reviewed_head": null,
       "evidence_refs": [
-        "Public issue comment 6329490016 records the current source/work decision."
+        "Public issue comment 6329490016 records the current source/work decision.",
+        "Public issue comment 6329490016 records an incomplete attempt and actionable backlog status, not an external source blocker."
       ],
       "blocker_type": "not_started",
-      "live_issue_updated_at": "2026-10-19T02:02:21Z",
+      "live_issue_updated_at": "2026-10-22T00:38:59Z",
       "live_issue_created_at": "2026-10-19T02:02:21Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 4,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
       "status": "actionable_backlog_no_current_pr",
-      "status_note": "Public issue comment 6329490016 identifies this as actionable backlog work, not an external source blocker. No linked implementation PR or source/release acceptance is recorded.",
-      "current_activity": "Issue is actionable in Backlog; no public implementation PR or external blocker is recorded."
+      "status_note": "Public issue comment 6329490016 classifies #102 as actionable backlog after an incomplete implementation attempt; no external source blocker or saved public implementation PR is recorded. No source acceptance is claimed.",
+      "current_activity": "Actionable backlog; no current public implementation PR."
     },
     {
       "issue": 103,
@@ -6220,21 +6254,58 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
+      "current_pr": 672,
+      "reviewed_head": "9c216be1a3b1108936d801c3494a10942c21a2b8",
       "evidence_refs": [
-        "Public issue comment 6329203432 records the current source/work decision."
+        "Public issue comment 6329203432 records the current source/work decision.",
+        "Public integration PR #676 merged at 63b00c746ce482506c93724aa054ccb2369b34e8; issue comment 6330293773 records draft-code integration with acceptance pending."
       ],
-      "blocker_type": "source_contract_release_acceptance_pending",
-      "live_issue_updated_at": "2026-10-19T02:02:38Z",
+      "blocker_type": "source_contract_rights_baseline_release_acceptance_pending",
+      "live_issue_updated_at": "2026-10-22T01:16:33Z",
       "live_issue_created_at": "2026-10-19T02:02:38Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 6,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "selected_source_candidate_pending_validation_and_acceptance",
-      "current_activity": "Public issue update records a source candidate selected for further work; source and release decisions remain open.",
-      "status_note": "Public selection comment 6329203432 records a current-main source candidate with 93 source features. This is a bounded source observation, not a completeness, schema, rights or release acceptance. No public implementation PR is recorded."
+      "status": "code_merged_issue_open_acceptance_gated",
+      "current_activity": "Candidate pipeline code integrated through PR #676; acceptance decisions remain open.",
+      "status_note": "Candidate code for issue #107 is integrated through PR #676; the source PR is #672. Public issue comment 6330293773 records the integration. The issue remains open; source, baseline/compatibility, rights, contract and release decisions remain pending. No production publication is claimed.",
+      "current_pr_candidates": [
+        672
+      ],
+      "current_head": "9c216be1a3b1108936d801c3494a10942c21a2b8",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 676,
+        "source_pr": 672,
+        "head": "9c216be1a3b1108936d801c3494a10942c21a2b8",
+        "integration_merge": "63b00c746ce482506c93724aa054ccb2369b34e8",
+        "notes": "Public integration for Harbor Facility Areas (USACE IENC); issue comment 6330293773. Issue remains open and acceptance-gated."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 672,
+          "head": "9c216be1a3b1108936d801c3494a10942c21a2b8",
+          "state": "closed_merged",
+          "merged_via": "PR #676 ancestry",
+          "merge_commit": "63b00c746ce482506c93724aa054ccb2369b34e8"
+        },
+        "integration_pr": {
+          "pr": 676,
+          "state": "closed_merged",
+          "merge_commit": "63b00c746ce482506c93724aa054ccb2369b34e8"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "schedule_ref": "hf_areas_usace_ienc_draft_refresh_schedule",
+        "job_ref": "hf_areas_usace_ienc_draft_job",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Integrated draft registration per public PR #676; no acceptance implied."
+      }
     },
     {
       "issue": 108,
@@ -6244,21 +6315,58 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
+      "current_pr": 671,
+      "reviewed_head": "819f6e1f15c821a6112b5e388dd00b6767b04b4c",
       "evidence_refs": [
-        "Public issue comment 6329203866 records the current source/work decision."
+        "Public issue comment 6329203866 records the current source/work decision.",
+        "Public integration PR #675 merged at 0a61630f1e1d7d45ab52a493e562b0e630b58ef2; issue comment 6329957907 records draft-code integration with acceptance pending."
       ],
-      "blocker_type": "source_contract_release_acceptance_pending",
-      "live_issue_updated_at": "2026-10-19T02:02:44Z",
+      "blocker_type": "source_contract_rights_baseline_release_acceptance_pending",
+      "live_issue_updated_at": "2026-10-22T00:50:29Z",
       "live_issue_created_at": "2026-10-19T02:02:44Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 5,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "selected_source_candidate_pending_validation_and_acceptance",
-      "current_activity": "Public issue update records a source candidate selected for further work; source and release decisions remain open.",
-      "status_note": "Public selection comment 6329203866 records a current-main source candidate with 556 source features. This is a bounded source observation, not a completeness, schema, rights or release acceptance. No public implementation PR is recorded."
+      "status": "code_merged_issue_open_acceptance_gated",
+      "current_activity": "Candidate pipeline code integrated through PR #675; acceptance decisions remain open.",
+      "status_note": "Candidate code for issue #108 is integrated through PR #675; the source PR is #671. Public issue comment 6329957907 records the integration. The issue remains open; source, baseline/compatibility, rights, contract and release decisions remain pending. No production publication is claimed.",
+      "current_pr_candidates": [
+        671
+      ],
+      "current_head": "819f6e1f15c821a6112b5e388dd00b6767b04b4c",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 675,
+        "source_pr": 671,
+        "head": "819f6e1f15c821a6112b5e388dd00b6767b04b4c",
+        "integration_merge": "0a61630f1e1d7d45ab52a493e562b0e630b58ef2",
+        "notes": "Public integration for Harbor Facility Locations (USACE IENC); issue comment 6329957907. Issue remains open and acceptance-gated."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 671,
+          "head": "819f6e1f15c821a6112b5e388dd00b6767b04b4c",
+          "state": "closed_merged",
+          "merged_via": "PR #675 ancestry",
+          "merge_commit": "0a61630f1e1d7d45ab52a493e562b0e630b58ef2"
+        },
+        "integration_pr": {
+          "pr": 675,
+          "state": "closed_merged",
+          "merge_commit": "0a61630f1e1d7d45ab52a493e562b0e630b58ef2"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "schedule_ref": "harbor_facility_locations_usace_ienc_draft_refresh_schedule",
+        "job_ref": "harbor_facility_locations_usace_ienc_draft_job",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Integrated draft registration per public PR #675; no acceptance implied."
+      }
     },
     {
       "issue": 109,
@@ -6405,12 +6513,13 @@
       "current_pr": 448,
       "reviewed_head": null,
       "evidence_refs": [
-        "Public PR #448 head is 4b16abe8431c61f922f9abfbcade58b4d7078512; source and release acceptance remain pending."
+        "Public PR #448 head is 4b16abe8431c61f922f9abfbcade58b4d7078512; source and release acceptance remain pending.",
+        "Public integration PR #673 merged at cf4b3734426a4337f5bf61f4e0dfcd472f9314f0; issue comment 6329807560 records draft-code integration with acceptance pending."
       ],
-      "blocker_type": "source_baseline_rights_release_acceptance_pending",
-      "live_issue_updated_at": "2026-10-19T17:56:05Z",
+      "blocker_type": "source_contract_rights_baseline_release_acceptance_pending",
+      "live_issue_updated_at": "2026-10-22T00:39:26Z",
       "live_issue_created_at": "2026-10-19T02:03:09Z",
-      "live_issue_comment_count": 11,
+      "live_issue_comment_count": 12,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [
@@ -6425,11 +6534,44 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "open_draft_pr_pipeline_verified_pending_integration_and_acceptance",
-      "status_note": "Public draft PR #448 was fast-forwarded to 4b16abe8431c61f922f9abfbcade58b4d7078512. Its source pipeline remains pending integration; source identity/baseline, rights, contract and release acceptance remain unapproved.",
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Candidate code for issue #113 is integrated through PR #673; the source PR is #448. Public issue comment 6329807560 records the integration. The issue remains open; source, baseline/compatibility, rights, contract and release decisions remain pending. No production publication is claimed.",
       "current_pr_candidates": [
         448
-      ]
+      ],
+      "current_head": "4b16abe8431c61f922f9abfbcade58b4d7078512",
+      "current_activity": "Candidate pipeline code integrated through PR #673; acceptance decisions remain open.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 673,
+        "source_pr": 448,
+        "head": "4b16abe8431c61f922f9abfbcade58b4d7078512",
+        "integration_merge": "cf4b3734426a4337f5bf61f4e0dfcd472f9314f0",
+        "notes": "Public integration for Historical Tsunami Event Locations; issue comment 6329807560. Issue remains open and acceptance-gated."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 448,
+          "head": "4b16abe8431c61f922f9abfbcade58b4d7078512",
+          "state": "open_draft"
+        },
+        "integration_pr": {
+          "pr": 673,
+          "head": "77cd69510d5cb9c24c2876a9126aaa8bceafd5ba",
+          "state": "closed_merged",
+          "merge_commit": "cf4b3734426a4337f5bf61f4e0dfcd472f9314f0"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "schedule_ref": "tsunami_events_draft_weekly",
+        "job_ref": "tsunami_events_draft_job",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Integrated draft registration per public PR #673; no acceptance implied."
+      }
     },
     {
       "issue": 114,
@@ -6498,17 +6640,57 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T02:03:18Z",
+      "current_pr": 674,
+      "reviewed_head": "32db095824c5235dd05c0735983606e08401e791",
+      "evidence_refs": [
+        "Public integration PR #675 merged at 0a61630f1e1d7d45ab52a493e562b0e630b58ef2; issue comment 6329959336 records draft-code integration with acceptance pending."
+      ],
+      "blocker_type": "source_contract_rights_baseline_release_acceptance_pending",
+      "live_issue_updated_at": "2026-10-22T00:50:51Z",
       "live_issue_created_at": "2026-10-19T02:03:18Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 2,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "code_merged_issue_open_acceptance_gated",
+      "current_pr_candidates": [
+        674
+      ],
+      "current_head": "32db095824c5235dd05c0735983606e08401e791",
+      "status_note": "Candidate code for issue #116 is integrated through PR #675; the source PR is #674. Public issue comment 6329959336 records the integration. The issue remains open; source, baseline/compatibility, rights, contract and release decisions remain pending. No production publication is claimed.",
+      "current_activity": "Candidate pipeline code integrated through PR #675; acceptance decisions remain open.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 675,
+        "source_pr": 674,
+        "head": "32db095824c5235dd05c0735983606e08401e791",
+        "integration_merge": "0a61630f1e1d7d45ab52a493e562b0e630b58ef2",
+        "notes": "Public integration for Hulke Areas (USACE IENC); issue comment 6329959336. Issue remains open and acceptance-gated."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 674,
+          "head": "32db095824c5235dd05c0735983606e08401e791",
+          "state": "closed_merged",
+          "merged_via": "PR #675 ancestry",
+          "merge_commit": "0a61630f1e1d7d45ab52a493e562b0e630b58ef2"
+        },
+        "integration_pr": {
+          "pr": 675,
+          "state": "closed_merged",
+          "merge_commit": "0a61630f1e1d7d45ab52a493e562b0e630b58ef2"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "schedule_ref": "usace_hulke_areas_draft_refresh_schedule",
+        "job_ref": "usace_hulke_areas_draft_job",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Integrated draft registration per public PR #675; no acceptance implied."
+      }
     },
     {
       "issue": 117,
@@ -6520,15 +6702,19 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T02:03:22Z",
+      "evidence_refs": [
+        "Public issue comment 6329806998 records the EIA access/fallback decision blocker and rejects unrelated pipeline substitutes."
+      ],
+      "blocker_type": "official_source_access_and_fallback_decision",
+      "live_issue_updated_at": "2026-10-22T00:45:29Z",
       "live_issue_created_at": "2026-10-19T02:03:22Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 1,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "blocked_pending_authoritative_source_or_fallback_decision",
+      "status_note": "Public issue comment 6329806998 identifies EIA as the exact source authority, but the official Atlas/API delivery is inaccessible in the recorded check. An accessible community cache is not an EIA/delegated feed, and its rights, coverage and release are unresolved. Needs decision: provide an accessible exact producer source or approve a verified fallback; no substitute or source acceptance is claimed.",
+      "current_activity": "Open issue; exact producer source or an approved, provenance-supported fallback is required."
     },
     {
       "issue": 118,
@@ -6575,11 +6761,15 @@
       "live_issue_state": "open",
       "current_pr": 495,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T21:12:02Z",
+      "evidence_refs": [
+        "Public PR #495 and branch metadata report current head 80a7d38176e1f7d87ef82c45d6c602886dade7e1.",
+        "Public issue comment 6330647870 reports the schedule op-name fix and focused regression; follow-up review remains distinct.",
+        "Verification follow-up remains pending, including durable retained evidence and the populated three-object gate proof; no acceptance is claimed."
+      ],
+      "blocker_type": "independent_followup_review_and_acceptance_pending",
+      "live_issue_updated_at": "2026-10-22T01:43:26Z",
       "live_issue_created_at": "2026-10-19T02:03:30Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 6,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [
@@ -6588,16 +6778,29 @@
           "title": "Draft: reconstruct native ICIS wastewater NAICS codes with guarded refresh",
           "state": "open",
           "head_branch": "codex/cloud-dataset-119",
-          "head_sha": "3ab754dd5b478d98cb37c321c8e0db2754bb8931",
+          "head_sha": "80a7d38176e1f7d87ef82c45d6c602886dade7e1",
           "base_branch": "codex/cloud-dataset-71",
           "draft": true,
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "open_draft_review_followup_pending",
       "current_pr_candidates": [
         495
-      ]
+      ],
+      "current_head": "80a7d38176e1f7d87ef82c45d6c602886dade7e1",
+      "status_note": "Public PR #495 is open at exact public head 80a7d38176e1f7d87ef82c45d6c602886dade7e1. Public issue comment 6330647870 reports the review-requested schedule op-name fix and a focused regression; the PR body reports this fix on the current public head. Follow-up review and source/baseline/rights/contract/release acceptance remain pending. Public head 03156b354c59a507a84b6eb8e087892182f1ba96 was an earlier review-status request, not the current pushed head.",
+      "current_activity": "Current public PR head 80a7d38176e1f7d87ef82c45d6c602886dade7e1 carries the reported schedule-config fix; independent follow-up review remains pending.",
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 495,
+          "head": "80a7d38176e1f7d87ef82c45d6c602886dade7e1",
+          "state": "open_draft",
+          "base": "codex/cloud-dataset-71"
+        },
+        "issue_state": "open"
+      }
     },
     {
       "issue": 120,
@@ -6641,17 +6844,46 @@
       "inventory_source_status": "unverified",
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
-      "current_pr": null,
+      "current_pr": 677,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T02:03:38Z",
+      "evidence_refs": [
+        "Public issue comment 6330543659 records the incomplete verification, distinct source profiles and Needs decision requirement.",
+        "Public draft PR #677 is open at 94ab0a1dbd4a785559330427b3520f1ca2a24d00."
+      ],
+      "blocker_type": "durable_verification_capacity_and_source_profile_decision",
+      "live_issue_updated_at": "2026-10-22T01:35:33Z",
       "live_issue_created_at": "2026-10-19T02:03:38Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 3,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "observed_open_prs": [
+        {
+          "pr": 677,
+          "title": "Draft pipeline: Incorporated Places (Census TIGER 2024 substate GDB) (#121)",
+          "state": "open",
+          "head_branch": "codex/incorporated-places-121",
+          "head_sha": "94ab0a1dbd4a785559330427b3520f1ca2a24d00",
+          "base_branch": "main",
+          "draft": true,
+          "association_method": "explicit_issue_reference_and_branch"
+        }
+      ],
+      "status": "open_draft_verification_blocked_decision_pending",
+      "current_pr_candidates": [
+        677
+      ],
+      "current_head": "94ab0a1dbd4a785559330427b3520f1ca2a24d00",
+      "status_note": "Public issue comment 6330543659 says draft PR #677 is not a completed pipeline: the reported Census GDB profile (19,728 EPSG:4269 features) differs from the earlier TIGERweb profile (19,729 EPSG:3857 features), with no equivalence established. The raw archive/receipt bundle and persistent Dagster evidence are not retained in the verification workspace; registered false-quality and populated three-object proofs remain unfinished. Needs decision is pending on durable verification storage or the #417 artifact-retention blocker. Source and release acceptance remain false/pending.",
+      "current_activity": "Open draft PR #677; verification is blocked pending adequate durable evidence retention and a source-profile decision.",
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 677,
+          "head": "94ab0a1dbd4a785559330427b3520f1ca2a24d00",
+          "state": "open_draft"
+        },
+        "issue_state": "open"
+      }
     },
     {
       "issue": 122,
@@ -6757,31 +6989,56 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": 508,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T22:50:52Z",
+      "reviewed_head": "87f8c4d5aab8aec5e3e3849369df027df0431e56",
+      "evidence_refs": [
+        "Public integration PR #508 merged at 88938687246aadd7d92b0923bfba2ed871b988d7; issue comment 6330124177 records draft-code integration with acceptance pending."
+      ],
+      "blocker_type": "source_contract_rights_baseline_release_acceptance_pending",
+      "live_issue_updated_at": "2026-10-22T01:03:43Z",
       "live_issue_created_at": "2026-10-19T02:04:00Z",
-      "live_issue_comment_count": 2,
+      "live_issue_comment_count": 3,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 508,
-          "title": "Draft: reconstruct native USACE IRM property points",
-          "state": "open",
-          "head_branch": "codex/cloud-dataset-125",
-          "head_sha": "7ecdc7b6c2c5fca6ca2f4656a93822ba7c539391",
-          "base_branch": "codex/cloud-dataset-69",
-          "draft": true,
-          "association_method": "exact_dataset_issue_branch"
-        }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation",
-      "status_note": " Fresh open-PR census found an exact issue-branch association; inspect current PR and preserve any prior evidence.",
+      "observed_open_prs": [],
+      "status": "code_merged_issue_open_acceptance_gated",
+      "status_note": "Candidate code for issue #125 is integrated through PR #508; the source PR is #508. Public issue comment 6330124177 records the integration. The issue remains open; source, baseline/compatibility, rights, contract and release decisions remain pending. No production publication is claimed.",
       "current_pr_candidates": [
         508
-      ]
+      ],
+      "current_head": "87f8c4d5aab8aec5e3e3849369df027df0431e56",
+      "current_activity": "Candidate pipeline code integrated through PR #508; acceptance decisions remain open.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 508,
+        "source_pr": 508,
+        "head": "87f8c4d5aab8aec5e3e3849369df027df0431e56",
+        "integration_merge": "88938687246aadd7d92b0923bfba2ed871b988d7",
+        "notes": "Public integration for Interim Risk Management (IRM) Property Point; issue comment 6330124177. Issue remains open and acceptance-gated."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 508,
+          "head": "87f8c4d5aab8aec5e3e3849369df027df0431e56",
+          "state": "closed_merged",
+          "merged_via": "PR #508 ancestry",
+          "merge_commit": "88938687246aadd7d92b0923bfba2ed871b988d7"
+        },
+        "integration_pr": {
+          "pr": 508,
+          "state": "closed_merged",
+          "merge_commit": "88938687246aadd7d92b0923bfba2ed871b988d7"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "schedule_ref": "fuds_irm_property_point_draft_refresh_schedule",
+        "job_ref": "fuds_irm_property_point_draft_job",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Integrated draft registration per public PR #508; no acceptance implied."
+      }
     },
     {
       "issue": 126,
@@ -6792,30 +7049,56 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": 494,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T21:13:43Z",
+      "reviewed_head": "b25449615b306f8fc814f2608d46fc4baca7b4d8",
+      "evidence_refs": [
+        "Public integration PR #678 merged at c4c0986826f5ce9a665935fb97f0c2db172ec509; issue comment 6330534529 records draft-code integration with acceptance pending."
+      ],
+      "blocker_type": "source_contract_rights_baseline_release_acceptance_pending",
+      "live_issue_updated_at": "2026-10-22T01:34:50Z",
       "live_issue_created_at": "2026-10-19T02:04:03Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 1,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 494,
-          "title": "Draft: reconstruct native BTS air-to-truck freight facilities",
-          "state": "open",
-          "head_branch": "codex/cloud-dataset-126",
-          "head_sha": "f7625b459b17d4ab04a5f2a8935c5e72cf1d6940",
-          "base_branch": "codex/cloud-dataset-69",
-          "draft": true,
-          "association_method": "exact_dataset_issue_branch"
-        }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "observed_open_prs": [],
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
         494
-      ]
+      ],
+      "current_head": "b25449615b306f8fc814f2608d46fc4baca7b4d8",
+      "status_note": "Candidate code for issue #126 is integrated through PR #678; the source PR is #494. Public issue comment 6330534529 records the integration. The issue remains open; source, baseline/compatibility, rights, contract and release decisions remain pending. No production publication is claimed.",
+      "current_activity": "Candidate pipeline code integrated through PR #678; acceptance decisions remain open.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 678,
+        "source_pr": 494,
+        "head": "b25449615b306f8fc814f2608d46fc4baca7b4d8",
+        "integration_merge": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "notes": "Public integration for Intermodal Freight Facilities Air-to-Truck; issue comment 6330534529. Issue remains open and acceptance-gated."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 494,
+          "head": "b25449615b306f8fc814f2608d46fc4baca7b4d8",
+          "state": "closed_merged",
+          "merged_via": "PR #678 ancestry",
+          "merge_commit": "c4c0986826f5ce9a665935fb97f0c2db172ec509"
+        },
+        "integration_pr": {
+          "pr": 678,
+          "state": "closed_merged",
+          "merge_commit": "c4c0986826f5ce9a665935fb97f0c2db172ec509"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "schedule_ref": "bts_air_truck_draft_refresh_schedule",
+        "job_ref": "bts_air_truck_draft_job",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Integrated draft registration per public PR #678; no acceptance implied."
+      }
     },
     {
       "issue": 127,
@@ -6826,30 +7109,56 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": 499,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T22:20:34Z",
+      "reviewed_head": "85c2d5fb60fd195eec4cfb2629975d386a639901",
+      "evidence_refs": [
+        "Public integration PR #499 merged at bbc93ee168540a94f660b412c148e7fa44f66eea; issue comment 6330334352 records draft-code integration with acceptance pending."
+      ],
+      "blocker_type": "source_contract_rights_baseline_release_acceptance_pending",
+      "live_issue_updated_at": "2026-10-22T01:19:19Z",
       "live_issue_created_at": "2026-10-19T02:04:05Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 1,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 499,
-          "title": "BTS Marine Roll-on/Roll-off native draft pipeline",
-          "state": "open",
-          "head_branch": "codex/cloud-dataset-127",
-          "head_sha": "a2334bd9a5a4f364aeb06d248c16174cf00cc800",
-          "base_branch": "codex/cloud-dataset-69",
-          "draft": true,
-          "association_method": "exact_dataset_issue_branch"
-        }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "observed_open_prs": [],
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
         499
-      ]
+      ],
+      "current_head": "85c2d5fb60fd195eec4cfb2629975d386a639901",
+      "status_note": "Candidate code for issue #127 is integrated through PR #499; the source PR is #499. Public issue comment 6330334352 records the integration. The issue remains open; source, baseline/compatibility, rights, contract and release decisions remain pending. No production publication is claimed.",
+      "current_activity": "Candidate pipeline code integrated through PR #499; acceptance decisions remain open.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 499,
+        "source_pr": 499,
+        "head": "85c2d5fb60fd195eec4cfb2629975d386a639901",
+        "integration_merge": "bbc93ee168540a94f660b412c148e7fa44f66eea",
+        "notes": "Public integration for Intermodal Freight Facilities Marine Roll-on/Roll-off; issue comment 6330334352. Issue remains open and acceptance-gated."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 499,
+          "head": "85c2d5fb60fd195eec4cfb2629975d386a639901",
+          "state": "closed_merged",
+          "merged_via": "PR #499 ancestry",
+          "merge_commit": "bbc93ee168540a94f660b412c148e7fa44f66eea"
+        },
+        "integration_pr": {
+          "pr": 499,
+          "state": "closed_merged",
+          "merge_commit": "bbc93ee168540a94f660b412c148e7fa44f66eea"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "schedule_ref": "bts_marine_roro_draft_refresh_schedule",
+        "job_ref": "bts_marine_roro_draft_job",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Integrated draft registration per public PR #499; no acceptance implied."
+      }
     },
     {
       "issue": 128,
@@ -6860,30 +7169,56 @@
       "inventory_implementation_status": "needs_source_verification",
       "live_issue_state": "open",
       "current_pr": 504,
-      "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T22:41:24Z",
+      "reviewed_head": "537868d5860b7006df700bc5a46bfb515f5821f8",
+      "evidence_refs": [
+        "Public integration PR #678 merged at c4c0986826f5ce9a665935fb97f0c2db172ec509; issue comment 6330536476 records draft-code integration with acceptance pending."
+      ],
+      "blocker_type": "source_contract_rights_baseline_release_acceptance_pending",
+      "live_issue_updated_at": "2026-10-22T01:35:12Z",
       "live_issue_created_at": "2026-10-19T02:04:08Z",
-      "live_issue_comment_count": 2,
+      "live_issue_comment_count": 3,
       "live_labels": [],
       "live_assignees": [],
-      "observed_open_prs": [
-        {
-          "pr": 504,
-          "title": "Draft: reconstruct BTS rail TOFC/COFC freight facilities",
-          "state": "open",
-          "head_branch": "codex/cloud-dataset-128",
-          "head_sha": "93cadfe9aaf376619c930b1d00e91373c7ee1ca9",
-          "base_branch": "codex/cloud-dataset-69",
-          "draft": true,
-          "association_method": "exact_dataset_issue_branch"
-        }
-      ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "observed_open_prs": [],
+      "status": "code_merged_issue_open_acceptance_gated",
       "current_pr_candidates": [
         504
-      ]
+      ],
+      "current_head": "537868d5860b7006df700bc5a46bfb515f5821f8",
+      "status_note": "Candidate code for issue #128 is integrated through PR #678; the source PR is #504. Public issue comment 6330536476 records the integration. The issue remains open; source, baseline/compatibility, rights, contract and release decisions remain pending. No production publication is claimed.",
+      "current_activity": "Candidate pipeline code integrated through PR #678; acceptance decisions remain open.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "code_merged_issue_open_acceptance_gated",
+        "pr": 678,
+        "source_pr": 504,
+        "head": "537868d5860b7006df700bc5a46bfb515f5821f8",
+        "integration_merge": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "notes": "Public integration for Intermodal Freight Facilities Rail TOFC/COFC; issue comment 6330536476. Issue remains open and acceptance-gated."
+      },
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 504,
+          "head": "537868d5860b7006df700bc5a46bfb515f5821f8",
+          "state": "closed_merged",
+          "merged_via": "PR #678 ancestry",
+          "merge_commit": "c4c0986826f5ce9a665935fb97f0c2db172ec509"
+        },
+        "integration_pr": {
+          "pr": 678,
+          "state": "closed_merged",
+          "merge_commit": "c4c0986826f5ce9a665935fb97f0c2db172ec509"
+        },
+        "issue_state": "open"
+      },
+      "main_registration": {
+        "snapshot_main_sha": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "schedule_ref": "bts_rail_tofc_cofc_draft_refresh_schedule",
+        "job_ref": "bts_rail_tofc_cofc_draft_job",
+        "default_status_in_code": "STOPPED",
+        "mapping_basis": "Integrated draft registration per public PR #678; no acceptance implied."
+      }
     },
     {
       "issue": 129,
@@ -6930,11 +7265,13 @@
       "live_issue_state": "open",
       "current_pr": 517,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-20T00:05:23Z",
+      "evidence_refs": [
+        "Public issue comment 6330196988 records the current catalog identity/delegation blocker; exact layer reachability is not source-chain acceptance."
+      ],
+      "blocker_type": "catalog_identity_and_delegation_decision",
+      "live_issue_updated_at": "2026-10-22T01:09:07Z",
       "live_issue_created_at": "2026-10-19T02:04:16Z",
-      "live_issue_comment_count": 4,
+      "live_issue_comment_count": 5,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [
@@ -6949,10 +7286,21 @@
           "association_method": "exact_dataset_issue_branch"
         }
       ],
-      "status": "prior_pr_evidence_needs_reconciliation",
+      "status": "open_draft_catalog_identity_decision_pending",
       "current_pr_candidates": [
         517
-      ]
+      ],
+      "status_note": "Public issue comment 6330196988 reports that the pinned BTS catalog item no longer permits anonymous lookup, while the exact USACE layer remains reachable. A public item for the layer exists, but formal delegation and a verified replacement for the pinned source chain are unresolved. No new capture or materialization is claimed; source, baseline and release acceptance remain pending.",
+      "current_activity": "PR #517 remains an open draft; current verification is blocked on catalog identity/delegation or an approved source-chain change.",
+      "latest_known_pr_states": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "canonical_pr": {
+          "pr": 517,
+          "head": "429f422c00d7c74b77282cab427ab091c8d3270f",
+          "state": "open_draft"
+        },
+        "issue_state": "open"
+      }
     },
     {
       "issue": 131,
@@ -7044,15 +7392,25 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T02:04:36Z",
+      "evidence_refs": [
+        "Public issue comment 6330717087 records the coding-only scope and unfinished actual-source verification."
+      ],
+      "blocker_type": "actual_source_verification_pending",
+      "live_issue_updated_at": "2026-10-22T01:48:44Z",
       "live_issue_created_at": "2026-10-19T02:04:36Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 1,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "draft_coding_synthetic_only_actual_source_followup_pending",
+      "status_note": "Public issue comment 6330717087 authorizes bounded draft coding and synthetic tests only. The official IENC MapServer layer 66 preflight reports 175 polygons, OBJECTIDs 1–175 and EPSG:4326, but full native bytes/rows have not been captured. Actual-source verification remains unfinished and assigned to native follow-up; no PR or acceptance is recorded.",
+      "current_activity": "Public supervisor comment permits bounded draft code and synthetic tests only; actual-source verification remains unfinished.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "draft_coding_synthetic_only_actual_source_followup_pending",
+        "comment": 6330717087,
+        "notes": "Public issue comment 6330717087 authorizes bounded draft coding and synthetic tests only. The official IENC MapServer layer 66 preflight reports 175 polygons, OBJECTIDs 1–175 and EPSG:4326, but full native bytes/rows have not been captured. Actual-source verification remains unfinished and assigned to native follow-up; no PR or acceptance is recorded."
+      }
     },
     {
       "issue": 136,
@@ -7144,15 +7502,25 @@
       "live_issue_state": "open",
       "current_pr": null,
       "reviewed_head": null,
-      "evidence_refs": [],
-      "blocker_type": "missing_or_unrecovered_evidence",
-      "live_issue_updated_at": "2026-10-19T02:04:54Z",
+      "evidence_refs": [
+        "Public issue comment 6330755986 records the coding-only scope and unfinished actual-source verification."
+      ],
+      "blocker_type": "actual_source_verification_pending",
+      "live_issue_updated_at": "2026-10-22T01:51:50Z",
       "live_issue_created_at": "2026-10-19T02:04:54Z",
-      "live_issue_comment_count": 0,
+      "live_issue_comment_count": 1,
       "live_labels": [],
       "live_assignees": [],
       "observed_open_prs": [],
-      "status": "needs_triage_no_recovered_pipeline_pr"
+      "status": "draft_coding_synthetic_only_actual_source_followup_pending",
+      "status_note": "Public issue comment 6330755986 authorizes bounded draft coding and synthetic tests only. The official IENC MapServer layer 14 metadata reports 3,406 EPSG:4326 points and 14 nongeometry attributes including OBJECTID; full IDs/rows/bytes have not been captured. Actual-source verification remains unfinished and assigned to native follow-up; no PR or acceptance is recorded.",
+      "current_activity": "Public supervisor comment permits bounded draft code and synthetic tests only; actual-source verification remains unfinished.",
+      "latest_work_update": {
+        "recorded_at": "2026-10-22T01:52:45Z",
+        "state": "draft_coding_synthetic_only_actual_source_followup_pending",
+        "comment": 6330755986,
+        "notes": "Public issue comment 6330755986 authorizes bounded draft coding and synthetic tests only. The official IENC MapServer layer 14 metadata reports 3,406 EPSG:4326 points and 14 nongeometry attributes including OBJECTID; full IDs/rows/bytes have not been captured. Actual-source verification remains unfinished and assigned to native follow-up; no PR or acceptance is recorded."
+      }
     },
     {
       "issue": 141,
@@ -15025,234 +15393,187 @@
     "note": "This previous checkpoint is historical. Its paid-job admissions do not describe current queue activity."
   },
   "latest_verified_checkpoint": {
-    "recorded_at": "2026-10-22T00:30:00Z",
-    "source": "Named root integration checkpoints and published issue/PR facts; no new global issue or open-PR census.",
-    "main_latest": "0435135912f3b4001b5527bae2566bc91bd14a61",
-    "main_tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
-    "candidate_pipelines_merged_this_stretch": 78,
-    "initial_candidate_pipelines_merged_this_stretch": 25,
-    "registered_schedules": 103,
+    "recorded_at": "2026-10-22T01:52:45Z",
+    "source": "Named GitHub PR/issue readbacks and current-main integration facts only; no fresh global issue, feasibility or open-PR census.",
+    "main_latest": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+    "main_tree": "d6bcb4ebbea74cefd5dba77bcf59c25906042c3b",
+    "registered_schedules": 112,
     "all_stopped": true,
+    "schedule_count_note": "112 candidate schedule registrations are reported STOPPED; schedule counts are not accepted datasets, a feasibility census, or live scheduler status.",
     "integrations": [
       {
-        "pr": 661,
+        "pr": 673,
         "source_issues": [
-          82,
-          84,
-          85
+          113
         ],
-        "merge": "89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57",
-        "schedules_after_merge": 93,
+        "merge": "cf4b3734426a4337f5bf61f4e0dfcd472f9314f0",
+        "schedules_after_merge": 104,
         "all_stopped": true,
         "issue_comments": [
-          6328387678,
-          6328388359,
-          6328389019
+          6329807560
         ]
       },
       {
-        "pr": 663,
+        "pr": 675,
         "source_issues": [
-          87,
-          95,
-          96
+          108,
+          116
         ],
-        "merge": "19296429e1c29f5ad1d6b7384e66dfce6add7ca0",
-        "schedules_after_merge": 96,
+        "merge": "0a61630f1e1d7d45ab52a493e562b0e630b58ef2",
+        "schedules_after_merge": 106,
         "all_stopped": true,
         "issue_comments": [
-          6328788040,
-          6328788681,
-          6328789373
+          6329957907,
+          6329959336
         ]
       },
       {
-        "pr": 664,
+        "pr": 508,
         "source_issues": [
-          86,
-          88
+          125
         ],
-        "merge": "11d796bb8bcc90d9504c4d971c0c8a78e703791d",
-        "schedules_after_merge": 98,
+        "merge": "88938687246aadd7d92b0923bfba2ed871b988d7",
+        "schedules_after_merge": 107,
         "all_stopped": true,
         "issue_comments": [
-          6328978081,
-          6328978571
+          6330124177
         ]
       },
       {
-        "pr": 665,
+        "pr": 676,
         "source_issues": [
-          92,
-          93
+          89,
+          107
         ],
-        "merge": "c951561345efbf8857620c9dcc336ab6b9558f2e",
-        "schedules_after_merge": 100,
+        "merge": "63b00c746ce482506c93724aa054ccb2369b34e8",
+        "schedules_after_merge": 109,
         "all_stopped": true,
         "issue_comments": [
-          6329165183,
-          6329165655
+          6330291212,
+          6330293773
         ]
       },
       {
-        "pr": 670,
+        "pr": 499,
         "source_issues": [
-          91,
-          94,
-          110
+          127
         ],
-        "merge": "0435135912f3b4001b5527bae2566bc91bd14a61",
-        "tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
-        "schedules_after_merge": 103,
+        "merge": "bbc93ee168540a94f660b412c148e7fa44f66eea",
+        "schedules_after_merge": 110,
         "all_stopped": true,
-        "reviewed_tree_equal": true,
         "issue_comments": [
-          6329449205,
-          6329449751,
-          6329450265
+          6330334352
+        ]
+      },
+      {
+        "pr": 678,
+        "source_issues": [
+          126,
+          128
+        ],
+        "merge": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "tree": "d6bcb4ebbea74cefd5dba77bcf59c25906042c3b",
+        "schedules_after_merge": 112,
+        "all_stopped": true,
+        "issue_comments": [
+          6330534529,
+          6330536476
         ]
       }
     ],
-    "native_or_followup_work": {
-      "80": "Draft code integrated through PR #656; source PR #469 remains distinct; acceptance decisions pending.",
-      "86": "PR #660 current head 0a332d2e400a94ce8ab7b0c370f69de232c77248; exact historical official USGS archive and FGDC source metadata verified. Former access blocker resolved per public comment 6328978081. Code integrated through PR #664; source/baseline/mapping/schema/rights/contract/release acceptance remains pending.",
-      "87": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
-      "88": "Draft pipeline integrated through PR #664; source and release decisions remain pending.",
-      "91": "Draft source code head 066f3dff4c50fbe0037f493c83864b7ae41cb0c5 integrated through PR #670; source/release acceptance remains pending.",
-      "92": "Draft pipeline integrated through PR #665; source/release decisions remain pending.",
-      "93": "Draft pipeline integrated through PR #665; source/release decisions remain pending.",
-      "94": "Draft source code head 3f13d2e5c2c0c0fa5660fd8275bc824b5af5375c integrated through PR #670; scope/CRS/source/rights/release decisions remain pending.",
-      "95": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
-      "96": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
-      "102": "Public comment 6329490016 classifies as actionable backlog with no external blocker; no public implementation PR is recorded.",
-      "105": "Public comment 6329113505 records source access or verified successor decision required.",
-      "106": "Public comment 6329310133 records unresolved exact historical scope; bounded current source option is not approved.",
-      "107": "Public selection comment 6329203432 records 93 source features; completeness and acceptance remain open.",
-      "108": "Public selection comment 6329203866 records 556 source features; completeness and acceptance remain open.",
-      "109": "Public comment 6329371101 records storage-capacity and producer-CRS decision blockers.",
-      "110": "Draft source code head c3063f805ba5eda97dd825808a978299cf61c830 integrated through PR #670; source/release decisions remain pending.",
-      "112": "Local exact code head 0b5fa8d26e4e8eb89b20b6fa76689bfed147a0a6 passed independent review. Auto-review blocked public push pending specific user approval; public PR #466 remains at a07432e176856636ea632d3c0bf5f53d56110cde.",
-      "113": "Public draft PR #448 is at 4b16abe8431c61f922f9abfbcade58b4d7078512; pipeline integration and source/baseline/rights/release acceptance remain pending.",
-      "115": "Public comment 6329490936 records the authoritative source/archive access blocker."
+    "named_public_updates": {
+      "102": "Public comment 6329490016: actionable backlog after incomplete attempt; no external blocker or current public implementation PR.",
+      "108": "PR #671 was integrated through PR #675; issue comment 6329957907 records open acceptance decisions.",
+      "113": "PR #448 remains an open source-branch association; the candidate pipeline is integrated through PR #673 at current main. Issue comment 6329807560 records pending human source/baseline/release decisions.",
+      "116": "PR #674 was integrated through PR #675; issue comment 6329959336 records open acceptance decisions.",
+      "117": "Public comment 6329806998: exact EIA source delivery is inaccessible in the recorded check; community cache is not an accepted delegated substitute; source/fallback decision pending.",
+      "119": "PR #495 currently exposes public head 80a7d38176e1f7d87ef82c45d6c602886dade7e1. Public comment 6330647870 reports the schedule op-name fix; review follow-up and durable verification evidence, including populated three-object gates, remain pending. No acceptance is claimed.",
+      "121": "PR #677 remains open, but public comment 6330543659 records that retained source bytes/Dagster evidence and required gates are incomplete; Census source profiles differ and need a human decision/durable verification storage.",
+      "125": "PR #508 merged; issue comment 6330124177 records open source/baseline/rights/release decisions.",
+      "126": "PR #494 integrated through PR #678; issue comment 6330534529 records open acceptance decisions.",
+      "127": "PR #499 merged; issue comment 6330334352 records open acceptance decisions.",
+      "128": "PR #504 integrated through PR #678; issue comment 6330536476 records open acceptance decisions.",
+      "130": "Public comment 6330196988: pinned BTS catalog item identity is no longer anonymously verifiable; alternate item delegation/source-chain decision pending.",
+      "135": "Public comment 6330717087 authorizes draft coding/synthetic tests only; actual-source verification is unfinished.",
+      "140": "Public comment 6330755986 authorizes draft coding/synthetic tests only; actual-source verification is unfinished."
     },
-    "public_pr_updates": [
-      {
-        "issue": 89,
-        "pr": 446,
-        "head": "18a988450ca876ea869f192437de94c392a298c1",
-        "public_review_comment": 6329288471,
-        "state": "open draft; cache validation finding remains in public review record"
-      },
-      {
-        "issue": 104,
-        "pr": 666,
-        "head": "f233b59350412f304c89dfee49638656ba282c44",
-        "state": "open draft; source/release acceptance remains pending"
-      }
-    ],
     "issue_comments": [
       {
-        "issue": 82,
-        "comment": 6328387678
+        "issue": 113,
+        "comment": 6329807560
       },
       {
-        "issue": 84,
-        "comment": 6328388359
+        "issue": 108,
+        "comment": 6329957907
       },
       {
-        "issue": 85,
-        "comment": 6328389019
+        "issue": 116,
+        "comment": 6329959336
       },
       {
-        "issue": 86,
-        "comment": 6328978081
+        "issue": 125,
+        "comment": 6330124177
       },
       {
-        "issue": 87,
-        "comment": 6328788040
+        "issue": 89,
+        "comment": 6330291212
       },
       {
-        "issue": 88,
-        "comment": 6328978571
+        "issue": 107,
+        "comment": 6330293773
       },
       {
-        "issue": 91,
-        "comment": 6329449205
+        "issue": 127,
+        "comment": 6330334352
       },
       {
-        "issue": 92,
-        "comment": 6329165183
+        "issue": 126,
+        "comment": 6330534529
       },
       {
-        "issue": 93,
-        "comment": 6329165655
-      },
-      {
-        "issue": 94,
-        "comment": 6329449751
-      },
-      {
-        "issue": 95,
-        "comment": 6328788681
-      },
-      {
-        "issue": 96,
-        "comment": 6328789373
+        "issue": 128,
+        "comment": 6330536476
       },
       {
         "issue": 102,
         "comment": 6329490016
       },
       {
-        "issue": 105,
-        "comment": 6329113505
+        "issue": 117,
+        "comment": 6329806998
       },
       {
-        "issue": 106,
-        "comment": 6329310133
+        "issue": 119,
+        "comment": 6330647870
       },
       {
-        "issue": 107,
-        "comment": 6329203432
+        "issue": 121,
+        "comment": 6330543659
       },
       {
-        "issue": 108,
-        "comment": 6329203866
+        "issue": 130,
+        "comment": 6330196988
       },
       {
-        "issue": 109,
-        "comment": 6329371101
+        "issue": 135,
+        "comment": 6330717087
       },
       {
-        "issue": 110,
-        "comment": 6329450265
-      },
-      {
-        "issue": 115,
-        "comment": 6329490936
+        "issue": 140,
+        "comment": 6330755986
       }
     ],
-    "source_acceptance_release_acceptance_issue_closure": "No source/rights/contract/release acceptance or issue closure is claimed. Newly integrated source pipelines remain decision-gated.",
-    "production_publication": "No production publication claimed.",
     "inventory_rows_preserved": 415,
     "unique_inventory_issue_rows": 415,
     "fresh_415_census": false,
     "open_pr_census": null,
-    "pending_integrations": [
-      {
-        "issue": 112,
-        "pr": 466,
-        "public_head": "a07432e176856636ea632d3c0bf5f53d56110cde",
-        "local_reviewed_head": "0b5fa8d26e4e8eb89b20b6fa76689bfed147a0a6",
-        "publication": "blocked_pending_specific_user_approval"
-      },
-      {
-        "issue": 113,
-        "pr": 448,
-        "public_head": "4b16abe8431c61f922f9abfbcade58b4d7078512",
-        "integration": "pending"
-      }
-    ]
+    "acceptance": "No source, baseline, rights, schema/ID, mapping, freshness or release acceptance is claimed; all named dataset issues remain open unless later public evidence updates them.",
+    "production_publication": false,
+    "shared_gate_pr": {
+      "pr": 679,
+      "head": "e467f34e8db3db4d71f769b3e686e8c56daf33e1",
+      "status": "pending CI; candidate schedule count unchanged"
+    }
   },
   "pr_search_snapshot_records": [
     {
@@ -16695,234 +17016,187 @@
     "multiple_open_pr_issue_count": 0
   },
   "latest_evidence_update": {
-    "recorded_at": "2026-10-22T00:30:00Z",
-    "source": "Named root integration checkpoints and published issue/PR facts; no new global issue or open-PR census.",
-    "main_latest": "0435135912f3b4001b5527bae2566bc91bd14a61",
-    "main_tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
-    "candidate_pipelines_merged_this_stretch": 78,
-    "initial_candidate_pipelines_merged_this_stretch": 25,
-    "registered_schedules": 103,
+    "recorded_at": "2026-10-22T01:52:45Z",
+    "source": "Named GitHub PR/issue readbacks and current-main integration facts only; no fresh global issue, feasibility or open-PR census.",
+    "main_latest": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+    "main_tree": "d6bcb4ebbea74cefd5dba77bcf59c25906042c3b",
+    "registered_schedules": 112,
     "all_stopped": true,
+    "schedule_count_note": "112 candidate schedule registrations are reported STOPPED; schedule counts are not accepted datasets, a feasibility census, or live scheduler status.",
     "integrations": [
       {
-        "pr": 661,
+        "pr": 673,
         "source_issues": [
-          82,
-          84,
-          85
+          113
         ],
-        "merge": "89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57",
-        "schedules_after_merge": 93,
+        "merge": "cf4b3734426a4337f5bf61f4e0dfcd472f9314f0",
+        "schedules_after_merge": 104,
         "all_stopped": true,
         "issue_comments": [
-          6328387678,
-          6328388359,
-          6328389019
+          6329807560
         ]
       },
       {
-        "pr": 663,
+        "pr": 675,
         "source_issues": [
-          87,
-          95,
-          96
+          108,
+          116
         ],
-        "merge": "19296429e1c29f5ad1d6b7384e66dfce6add7ca0",
-        "schedules_after_merge": 96,
+        "merge": "0a61630f1e1d7d45ab52a493e562b0e630b58ef2",
+        "schedules_after_merge": 106,
         "all_stopped": true,
         "issue_comments": [
-          6328788040,
-          6328788681,
-          6328789373
+          6329957907,
+          6329959336
         ]
       },
       {
-        "pr": 664,
+        "pr": 508,
         "source_issues": [
-          86,
-          88
+          125
         ],
-        "merge": "11d796bb8bcc90d9504c4d971c0c8a78e703791d",
-        "schedules_after_merge": 98,
+        "merge": "88938687246aadd7d92b0923bfba2ed871b988d7",
+        "schedules_after_merge": 107,
         "all_stopped": true,
         "issue_comments": [
-          6328978081,
-          6328978571
+          6330124177
         ]
       },
       {
-        "pr": 665,
+        "pr": 676,
         "source_issues": [
-          92,
-          93
+          89,
+          107
         ],
-        "merge": "c951561345efbf8857620c9dcc336ab6b9558f2e",
-        "schedules_after_merge": 100,
+        "merge": "63b00c746ce482506c93724aa054ccb2369b34e8",
+        "schedules_after_merge": 109,
         "all_stopped": true,
         "issue_comments": [
-          6329165183,
-          6329165655
+          6330291212,
+          6330293773
         ]
       },
       {
-        "pr": 670,
+        "pr": 499,
         "source_issues": [
-          91,
-          94,
-          110
+          127
         ],
-        "merge": "0435135912f3b4001b5527bae2566bc91bd14a61",
-        "tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
-        "schedules_after_merge": 103,
+        "merge": "bbc93ee168540a94f660b412c148e7fa44f66eea",
+        "schedules_after_merge": 110,
         "all_stopped": true,
-        "reviewed_tree_equal": true,
         "issue_comments": [
-          6329449205,
-          6329449751,
-          6329450265
+          6330334352
+        ]
+      },
+      {
+        "pr": 678,
+        "source_issues": [
+          126,
+          128
+        ],
+        "merge": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+        "tree": "d6bcb4ebbea74cefd5dba77bcf59c25906042c3b",
+        "schedules_after_merge": 112,
+        "all_stopped": true,
+        "issue_comments": [
+          6330534529,
+          6330536476
         ]
       }
     ],
-    "native_or_followup_work": {
-      "80": "Draft code integrated through PR #656; source PR #469 remains distinct; acceptance decisions pending.",
-      "86": "PR #660 current head 0a332d2e400a94ce8ab7b0c370f69de232c77248; exact historical official USGS archive and FGDC source metadata verified. Former access blocker resolved per public comment 6328978081. Code integrated through PR #664; source/baseline/mapping/schema/rights/contract/release acceptance remains pending.",
-      "87": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
-      "88": "Draft pipeline integrated through PR #664; source and release decisions remain pending.",
-      "91": "Draft source code head 066f3dff4c50fbe0037f493c83864b7ae41cb0c5 integrated through PR #670; source/release acceptance remains pending.",
-      "92": "Draft pipeline integrated through PR #665; source/release decisions remain pending.",
-      "93": "Draft pipeline integrated through PR #665; source/release decisions remain pending.",
-      "94": "Draft source code head 3f13d2e5c2c0c0fa5660fd8275bc824b5af5375c integrated through PR #670; scope/CRS/source/rights/release decisions remain pending.",
-      "95": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
-      "96": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
-      "102": "Public comment 6329490016 classifies as actionable backlog with no external blocker; no public implementation PR is recorded.",
-      "105": "Public comment 6329113505 records source access or verified successor decision required.",
-      "106": "Public comment 6329310133 records unresolved exact historical scope; bounded current source option is not approved.",
-      "107": "Public selection comment 6329203432 records 93 source features; completeness and acceptance remain open.",
-      "108": "Public selection comment 6329203866 records 556 source features; completeness and acceptance remain open.",
-      "109": "Public comment 6329371101 records storage-capacity and producer-CRS decision blockers.",
-      "110": "Draft source code head c3063f805ba5eda97dd825808a978299cf61c830 integrated through PR #670; source/release decisions remain pending.",
-      "112": "Local exact code head 0b5fa8d26e4e8eb89b20b6fa76689bfed147a0a6 passed independent review. Auto-review blocked public push pending specific user approval; public PR #466 remains at a07432e176856636ea632d3c0bf5f53d56110cde.",
-      "113": "Public draft PR #448 is at 4b16abe8431c61f922f9abfbcade58b4d7078512; pipeline integration and source/baseline/rights/release acceptance remain pending.",
-      "115": "Public comment 6329490936 records the authoritative source/archive access blocker."
+    "named_public_updates": {
+      "102": "Public comment 6329490016: actionable backlog after incomplete attempt; no external blocker or current public implementation PR.",
+      "108": "PR #671 was integrated through PR #675; issue comment 6329957907 records open acceptance decisions.",
+      "113": "PR #448 remains an open source-branch association; the candidate pipeline is integrated through PR #673 at current main. Issue comment 6329807560 records pending human source/baseline/release decisions.",
+      "116": "PR #674 was integrated through PR #675; issue comment 6329959336 records open acceptance decisions.",
+      "117": "Public comment 6329806998: exact EIA source delivery is inaccessible in the recorded check; community cache is not an accepted delegated substitute; source/fallback decision pending.",
+      "119": "PR #495 currently exposes public head 80a7d38176e1f7d87ef82c45d6c602886dade7e1. Public comment 6330647870 reports the schedule op-name fix; review follow-up and durable verification evidence, including populated three-object gates, remain pending. No acceptance is claimed.",
+      "121": "PR #677 remains open, but public comment 6330543659 records that retained source bytes/Dagster evidence and required gates are incomplete; Census source profiles differ and need a human decision/durable verification storage.",
+      "125": "PR #508 merged; issue comment 6330124177 records open source/baseline/rights/release decisions.",
+      "126": "PR #494 integrated through PR #678; issue comment 6330534529 records open acceptance decisions.",
+      "127": "PR #499 merged; issue comment 6330334352 records open acceptance decisions.",
+      "128": "PR #504 integrated through PR #678; issue comment 6330536476 records open acceptance decisions.",
+      "130": "Public comment 6330196988: pinned BTS catalog item identity is no longer anonymously verifiable; alternate item delegation/source-chain decision pending.",
+      "135": "Public comment 6330717087 authorizes draft coding/synthetic tests only; actual-source verification is unfinished.",
+      "140": "Public comment 6330755986 authorizes draft coding/synthetic tests only; actual-source verification is unfinished."
     },
-    "public_pr_updates": [
-      {
-        "issue": 89,
-        "pr": 446,
-        "head": "18a988450ca876ea869f192437de94c392a298c1",
-        "public_review_comment": 6329288471,
-        "state": "open draft; cache validation finding remains in public review record"
-      },
-      {
-        "issue": 104,
-        "pr": 666,
-        "head": "f233b59350412f304c89dfee49638656ba282c44",
-        "state": "open draft; source/release acceptance remains pending"
-      }
-    ],
     "issue_comments": [
       {
-        "issue": 82,
-        "comment": 6328387678
+        "issue": 113,
+        "comment": 6329807560
       },
       {
-        "issue": 84,
-        "comment": 6328388359
+        "issue": 108,
+        "comment": 6329957907
       },
       {
-        "issue": 85,
-        "comment": 6328389019
+        "issue": 116,
+        "comment": 6329959336
       },
       {
-        "issue": 86,
-        "comment": 6328978081
+        "issue": 125,
+        "comment": 6330124177
       },
       {
-        "issue": 87,
-        "comment": 6328788040
+        "issue": 89,
+        "comment": 6330291212
       },
       {
-        "issue": 88,
-        "comment": 6328978571
+        "issue": 107,
+        "comment": 6330293773
       },
       {
-        "issue": 91,
-        "comment": 6329449205
+        "issue": 127,
+        "comment": 6330334352
       },
       {
-        "issue": 92,
-        "comment": 6329165183
+        "issue": 126,
+        "comment": 6330534529
       },
       {
-        "issue": 93,
-        "comment": 6329165655
-      },
-      {
-        "issue": 94,
-        "comment": 6329449751
-      },
-      {
-        "issue": 95,
-        "comment": 6328788681
-      },
-      {
-        "issue": 96,
-        "comment": 6328789373
+        "issue": 128,
+        "comment": 6330536476
       },
       {
         "issue": 102,
         "comment": 6329490016
       },
       {
-        "issue": 105,
-        "comment": 6329113505
+        "issue": 117,
+        "comment": 6329806998
       },
       {
-        "issue": 106,
-        "comment": 6329310133
+        "issue": 119,
+        "comment": 6330647870
       },
       {
-        "issue": 107,
-        "comment": 6329203432
+        "issue": 121,
+        "comment": 6330543659
       },
       {
-        "issue": 108,
-        "comment": 6329203866
+        "issue": 130,
+        "comment": 6330196988
       },
       {
-        "issue": 109,
-        "comment": 6329371101
+        "issue": 135,
+        "comment": 6330717087
       },
       {
-        "issue": 110,
-        "comment": 6329450265
-      },
-      {
-        "issue": 115,
-        "comment": 6329490936
+        "issue": 140,
+        "comment": 6330755986
       }
     ],
-    "source_acceptance_release_acceptance_issue_closure": "No source/rights/contract/release acceptance or issue closure is claimed. Newly integrated source pipelines remain decision-gated.",
-    "production_publication": "No production publication claimed.",
     "inventory_rows_preserved": 415,
     "unique_inventory_issue_rows": 415,
     "fresh_415_census": false,
     "open_pr_census": null,
-    "pending_integrations": [
-      {
-        "issue": 112,
-        "pr": 466,
-        "public_head": "a07432e176856636ea632d3c0bf5f53d56110cde",
-        "local_reviewed_head": "0b5fa8d26e4e8eb89b20b6fa76689bfed147a0a6",
-        "publication": "blocked_pending_specific_user_approval"
-      },
-      {
-        "issue": 113,
-        "pr": 448,
-        "public_head": "4b16abe8431c61f922f9abfbcade58b4d7078512",
-        "integration": "pending"
-      }
-    ]
+    "acceptance": "No source, baseline, rights, schema/ID, mapping, freshness or release acceptance is claimed; all named dataset issues remain open unless later public evidence updates them.",
+    "production_publication": false,
+    "shared_gate_pr": {
+      "pr": 679,
+      "head": "e467f34e8db3db4d71f769b3e686e8c56daf33e1",
+      "status": "pending CI; candidate schedule count unchanged"
+    }
   },
   "previous_verified_checkpoint_2026_10_21T1455Z": {
     "recorded_at": "2026-10-21T14:55:39Z",
@@ -17967,8 +18241,8 @@
     }
   },
   "ledger_status_counts_recorded_at": "2026-10-21T21:38:51Z",
-  "main_registered_schedule_count": 103,
-  "main_registered_schedule_issue_count": 85,
+  "main_registered_schedule_count": 112,
+  "main_registered_schedule_issue_count": 94,
   "main_registered_schedule_mapping_issues": [
     2,
     3,
@@ -18022,13 +18296,22 @@
     86,
     87,
     88,
+    89,
     91,
     92,
     93,
     94,
     95,
     96,
+    107,
+    108,
     110,
+    113,
+    116,
+    125,
+    126,
+    127,
+    128,
     181,
     253,
     257,
@@ -18058,14 +18341,14 @@
   ],
   "main_registered_schedule_default_configuration": "All 103 unique dataset schedules on named main 0435135912f3b4001b5527bae2566bc91bd14a61 are reported STOPPED; this is code registration state, not live scheduler state, acceptance or release capacity.",
   "main_registration_snapshot": {
-    "main_sha": "0435135912f3b4001b5527bae2566bc91bd14a61",
-    "main": "0435135912f3b4001b5527bae2566bc91bd14a61",
-    "tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
+    "main_sha": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+    "main": "c4c0986826f5ce9a665935fb97f0c2db172ec509",
+    "tree": "d6bcb4ebbea74cefd5dba77bcf59c25906042c3b",
     "definitions_file": "src/dagster_hifld/definitions.py",
-    "configured_schedule_count": 103,
-    "registered_schedule_count": 103,
-    "mapped_inventory_issue_count": 85,
-    "registered_schedule_issue_count": 85,
+    "configured_schedule_count": 112,
+    "registered_schedule_count": 112,
+    "mapped_inventory_issue_count": 94,
+    "registered_schedule_issue_count": 94,
     "mapped_issue_ids": [
       2,
       3,
@@ -18119,13 +18402,22 @@
       86,
       87,
       88,
+      89,
       91,
       92,
       93,
       94,
       95,
       96,
+      107,
+      108,
       110,
+      113,
+      116,
+      125,
+      126,
+      127,
+      128,
       181,
       253,
       257,
@@ -18157,20 +18449,19 @@
     "all_default_stopped": true,
     "live_scheduler_status_queried": false,
     "new_schedule_mappings": {
-      "86": "ferrous_metal_mines_draft_schedule",
-      "87": "ferrous_metal_processing_plants_draft_schedule",
-      "88": "ferry_routes_source_integrity_schedule",
-      "91": "usgs_ems_stations_draft_refresh_schedule",
-      "92": "usace_floating_docks_draft_schedule",
-      "93": "floodwalls_usace_ienc_draft_schedule",
-      "94": "fuds_district_boundaries_draft_schedule",
-      "95": "fuds_division_draft_schedule",
-      "96": "fuds_projects_points_draft_schedule",
-      "110": "holocene_source_integrity_schedule"
+      "89": "bts_ferry_terminals_draft_refresh_schedule",
+      "107": "hf_areas_usace_ienc_draft_refresh_schedule",
+      "108": "harbor_facility_locations_usace_ienc_draft_refresh_schedule",
+      "113": "tsunami_events_draft_weekly",
+      "116": "usace_hulke_areas_draft_refresh_schedule",
+      "125": "fuds_irm_property_point_draft_refresh_schedule",
+      "126": "bts_air_truck_draft_refresh_schedule",
+      "127": "bts_marine_roro_draft_refresh_schedule",
+      "128": "bts_rail_tofc_cofc_draft_refresh_schedule"
     },
-    "method": "Named root-verified current main checkpoint 0435135912f3b4001b5527bae2566bc91bd14a61; configured schedule status inspected in integration checkpoint. Not a live scheduler query and not an acceptance count."
+    "method": "Current main SHA is verified by GitHub; PR #678 and named merged PR/issue records report 112 candidate schedules all STOPPED. Registration status is not live scheduler status, source feasibility or acceptance."
   },
-  "current_count_status": "No fresh global 415-row or open-PR census. Named current main 0435135912f3b4001b5527bae2566bc91bd14a61: 103 unique registered schedules configured STOPPED; 78 candidate pipelines merged this stretch (starting from 25). Schedule counts are not source, feasibility, rights or release acceptance.",
+  "current_count_status": "No fresh global 415-row or open-PR census. Named current main c4c0986826f5ce9a665935fb97f0c2db172ec509: 112 candidate schedules reported STOPPED. This registration count is separate from acceptance, feasibility, source readiness and release status.",
   "previous_verified_checkpoint_2026_10_21T1717Z": {
     "recorded_at": "2026-10-21T17:17:54Z",
     "source": "GitHub PR/issue readbacks, parent-verified review and run evidence, and a read-only audit of current-main Definitions/jobs/asset refs. Named rows only; no 415-issue census or new source/gate reruns.",
@@ -21838,5 +22129,466 @@
       "110": "holocene_source_integrity_schedule"
     },
     "method": "Named root-verified current main checkpoint 0435135912f3b4001b5527bae2566bc91bd14a61; configured schedule status inspected in integration checkpoint. Not a live scheduler query and not an acceptance count."
-  }
+  },
+  "previous_latest_verified_checkpoint_2026_10_22T0030Z": {
+    "recorded_at": "2026-10-22T00:30:00Z",
+    "source": "Named root integration checkpoints and published issue/PR facts; no new global issue or open-PR census.",
+    "main_latest": "0435135912f3b4001b5527bae2566bc91bd14a61",
+    "main_tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
+    "candidate_pipelines_merged_this_stretch": 78,
+    "initial_candidate_pipelines_merged_this_stretch": 25,
+    "registered_schedules": 103,
+    "all_stopped": true,
+    "integrations": [
+      {
+        "pr": 661,
+        "source_issues": [
+          82,
+          84,
+          85
+        ],
+        "merge": "89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57",
+        "schedules_after_merge": 93,
+        "all_stopped": true,
+        "issue_comments": [
+          6328387678,
+          6328388359,
+          6328389019
+        ]
+      },
+      {
+        "pr": 663,
+        "source_issues": [
+          87,
+          95,
+          96
+        ],
+        "merge": "19296429e1c29f5ad1d6b7384e66dfce6add7ca0",
+        "schedules_after_merge": 96,
+        "all_stopped": true,
+        "issue_comments": [
+          6328788040,
+          6328788681,
+          6328789373
+        ]
+      },
+      {
+        "pr": 664,
+        "source_issues": [
+          86,
+          88
+        ],
+        "merge": "11d796bb8bcc90d9504c4d971c0c8a78e703791d",
+        "schedules_after_merge": 98,
+        "all_stopped": true,
+        "issue_comments": [
+          6328978081,
+          6328978571
+        ]
+      },
+      {
+        "pr": 665,
+        "source_issues": [
+          92,
+          93
+        ],
+        "merge": "c951561345efbf8857620c9dcc336ab6b9558f2e",
+        "schedules_after_merge": 100,
+        "all_stopped": true,
+        "issue_comments": [
+          6329165183,
+          6329165655
+        ]
+      },
+      {
+        "pr": 670,
+        "source_issues": [
+          91,
+          94,
+          110
+        ],
+        "merge": "0435135912f3b4001b5527bae2566bc91bd14a61",
+        "tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
+        "schedules_after_merge": 103,
+        "all_stopped": true,
+        "reviewed_tree_equal": true,
+        "issue_comments": [
+          6329449205,
+          6329449751,
+          6329450265
+        ]
+      }
+    ],
+    "native_or_followup_work": {
+      "80": "Draft code integrated through PR #656; source PR #469 remains distinct; acceptance decisions pending.",
+      "86": "PR #660 current head 0a332d2e400a94ce8ab7b0c370f69de232c77248; exact historical official USGS archive and FGDC source metadata verified. Former access blocker resolved per public comment 6328978081. Code integrated through PR #664; source/baseline/mapping/schema/rights/contract/release acceptance remains pending.",
+      "87": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
+      "88": "Draft pipeline integrated through PR #664; source and release decisions remain pending.",
+      "91": "Draft source code head 066f3dff4c50fbe0037f493c83864b7ae41cb0c5 integrated through PR #670; source/release acceptance remains pending.",
+      "92": "Draft pipeline integrated through PR #665; source/release decisions remain pending.",
+      "93": "Draft pipeline integrated through PR #665; source/release decisions remain pending.",
+      "94": "Draft source code head 3f13d2e5c2c0c0fa5660fd8275bc824b5af5375c integrated through PR #670; scope/CRS/source/rights/release decisions remain pending.",
+      "95": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
+      "96": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
+      "102": "Public comment 6329490016 classifies as actionable backlog with no external blocker; no public implementation PR is recorded.",
+      "105": "Public comment 6329113505 records source access or verified successor decision required.",
+      "106": "Public comment 6329310133 records unresolved exact historical scope; bounded current source option is not approved.",
+      "107": "Public selection comment 6329203432 records 93 source features; completeness and acceptance remain open.",
+      "108": "Public selection comment 6329203866 records 556 source features; completeness and acceptance remain open.",
+      "109": "Public comment 6329371101 records storage-capacity and producer-CRS decision blockers.",
+      "110": "Draft source code head c3063f805ba5eda97dd825808a978299cf61c830 integrated through PR #670; source/release decisions remain pending.",
+      "112": "Local exact code head 0b5fa8d26e4e8eb89b20b6fa76689bfed147a0a6 passed independent review. Auto-review blocked public push pending specific user approval; public PR #466 remains at a07432e176856636ea632d3c0bf5f53d56110cde.",
+      "113": "Public draft PR #448 is at 4b16abe8431c61f922f9abfbcade58b4d7078512; pipeline integration and source/baseline/rights/release acceptance remain pending.",
+      "115": "Public comment 6329490936 records the authoritative source/archive access blocker."
+    },
+    "public_pr_updates": [
+      {
+        "issue": 89,
+        "pr": 446,
+        "head": "18a988450ca876ea869f192437de94c392a298c1",
+        "public_review_comment": 6329288471,
+        "state": "open draft; cache validation finding remains in public review record"
+      },
+      {
+        "issue": 104,
+        "pr": 666,
+        "head": "f233b59350412f304c89dfee49638656ba282c44",
+        "state": "open draft; source/release acceptance remains pending"
+      }
+    ],
+    "issue_comments": [
+      {
+        "issue": 82,
+        "comment": 6328387678
+      },
+      {
+        "issue": 84,
+        "comment": 6328388359
+      },
+      {
+        "issue": 85,
+        "comment": 6328389019
+      },
+      {
+        "issue": 86,
+        "comment": 6328978081
+      },
+      {
+        "issue": 87,
+        "comment": 6328788040
+      },
+      {
+        "issue": 88,
+        "comment": 6328978571
+      },
+      {
+        "issue": 91,
+        "comment": 6329449205
+      },
+      {
+        "issue": 92,
+        "comment": 6329165183
+      },
+      {
+        "issue": 93,
+        "comment": 6329165655
+      },
+      {
+        "issue": 94,
+        "comment": 6329449751
+      },
+      {
+        "issue": 95,
+        "comment": 6328788681
+      },
+      {
+        "issue": 96,
+        "comment": 6328789373
+      },
+      {
+        "issue": 102,
+        "comment": 6329490016
+      },
+      {
+        "issue": 105,
+        "comment": 6329113505
+      },
+      {
+        "issue": 106,
+        "comment": 6329310133
+      },
+      {
+        "issue": 107,
+        "comment": 6329203432
+      },
+      {
+        "issue": 108,
+        "comment": 6329203866
+      },
+      {
+        "issue": 109,
+        "comment": 6329371101
+      },
+      {
+        "issue": 110,
+        "comment": 6329450265
+      },
+      {
+        "issue": 115,
+        "comment": 6329490936
+      }
+    ],
+    "source_acceptance_release_acceptance_issue_closure": "No source/rights/contract/release acceptance or issue closure is claimed. Newly integrated source pipelines remain decision-gated.",
+    "production_publication": "No production publication claimed.",
+    "inventory_rows_preserved": 415,
+    "unique_inventory_issue_rows": 415,
+    "fresh_415_census": false,
+    "open_pr_census": null,
+    "pending_integrations": [
+      {
+        "issue": 112,
+        "pr": 466,
+        "public_head": "a07432e176856636ea632d3c0bf5f53d56110cde",
+        "local_reviewed_head": "0b5fa8d26e4e8eb89b20b6fa76689bfed147a0a6",
+        "publication": "blocked_pending_specific_user_approval"
+      },
+      {
+        "issue": 113,
+        "pr": 448,
+        "public_head": "4b16abe8431c61f922f9abfbcade58b4d7078512",
+        "integration": "pending"
+      }
+    ]
+  },
+  "previous_evidence_update_2026_10_22T0030Z": {
+    "recorded_at": "2026-10-22T00:30:00Z",
+    "source": "Named root integration checkpoints and published issue/PR facts; no new global issue or open-PR census.",
+    "main_latest": "0435135912f3b4001b5527bae2566bc91bd14a61",
+    "main_tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
+    "candidate_pipelines_merged_this_stretch": 78,
+    "initial_candidate_pipelines_merged_this_stretch": 25,
+    "registered_schedules": 103,
+    "all_stopped": true,
+    "integrations": [
+      {
+        "pr": 661,
+        "source_issues": [
+          82,
+          84,
+          85
+        ],
+        "merge": "89d71a05f1d2ca8aa1bab9d75c962cfa6a067b57",
+        "schedules_after_merge": 93,
+        "all_stopped": true,
+        "issue_comments": [
+          6328387678,
+          6328388359,
+          6328389019
+        ]
+      },
+      {
+        "pr": 663,
+        "source_issues": [
+          87,
+          95,
+          96
+        ],
+        "merge": "19296429e1c29f5ad1d6b7384e66dfce6add7ca0",
+        "schedules_after_merge": 96,
+        "all_stopped": true,
+        "issue_comments": [
+          6328788040,
+          6328788681,
+          6328789373
+        ]
+      },
+      {
+        "pr": 664,
+        "source_issues": [
+          86,
+          88
+        ],
+        "merge": "11d796bb8bcc90d9504c4d971c0c8a78e703791d",
+        "schedules_after_merge": 98,
+        "all_stopped": true,
+        "issue_comments": [
+          6328978081,
+          6328978571
+        ]
+      },
+      {
+        "pr": 665,
+        "source_issues": [
+          92,
+          93
+        ],
+        "merge": "c951561345efbf8857620c9dcc336ab6b9558f2e",
+        "schedules_after_merge": 100,
+        "all_stopped": true,
+        "issue_comments": [
+          6329165183,
+          6329165655
+        ]
+      },
+      {
+        "pr": 670,
+        "source_issues": [
+          91,
+          94,
+          110
+        ],
+        "merge": "0435135912f3b4001b5527bae2566bc91bd14a61",
+        "tree": "1303c6370ab3f00e000b15d462520d00022ee18a",
+        "schedules_after_merge": 103,
+        "all_stopped": true,
+        "reviewed_tree_equal": true,
+        "issue_comments": [
+          6329449205,
+          6329449751,
+          6329450265
+        ]
+      }
+    ],
+    "native_or_followup_work": {
+      "80": "Draft code integrated through PR #656; source PR #469 remains distinct; acceptance decisions pending.",
+      "86": "PR #660 current head 0a332d2e400a94ce8ab7b0c370f69de232c77248; exact historical official USGS archive and FGDC source metadata verified. Former access blocker resolved per public comment 6328978081. Code integrated through PR #664; source/baseline/mapping/schema/rights/contract/release acceptance remains pending.",
+      "87": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
+      "88": "Draft pipeline integrated through PR #664; source and release decisions remain pending.",
+      "91": "Draft source code head 066f3dff4c50fbe0037f493c83864b7ae41cb0c5 integrated through PR #670; source/release acceptance remains pending.",
+      "92": "Draft pipeline integrated through PR #665; source/release decisions remain pending.",
+      "93": "Draft pipeline integrated through PR #665; source/release decisions remain pending.",
+      "94": "Draft source code head 3f13d2e5c2c0c0fa5660fd8275bc824b5af5375c integrated through PR #670; scope/CRS/source/rights/release decisions remain pending.",
+      "95": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
+      "96": "Draft pipeline integrated through PR #663; source continuity, contract, rights and release decisions remain pending.",
+      "102": "Public comment 6329490016 classifies as actionable backlog with no external blocker; no public implementation PR is recorded.",
+      "105": "Public comment 6329113505 records source access or verified successor decision required.",
+      "106": "Public comment 6329310133 records unresolved exact historical scope; bounded current source option is not approved.",
+      "107": "Public selection comment 6329203432 records 93 source features; completeness and acceptance remain open.",
+      "108": "Public selection comment 6329203866 records 556 source features; completeness and acceptance remain open.",
+      "109": "Public comment 6329371101 records storage-capacity and producer-CRS decision blockers.",
+      "110": "Draft source code head c3063f805ba5eda97dd825808a978299cf61c830 integrated through PR #670; source/release decisions remain pending.",
+      "112": "Local exact code head 0b5fa8d26e4e8eb89b20b6fa76689bfed147a0a6 passed independent review. Auto-review blocked public push pending specific user approval; public PR #466 remains at a07432e176856636ea632d3c0bf5f53d56110cde.",
+      "113": "Public draft PR #448 is at 4b16abe8431c61f922f9abfbcade58b4d7078512; pipeline integration and source/baseline/rights/release acceptance remain pending.",
+      "115": "Public comment 6329490936 records the authoritative source/archive access blocker."
+    },
+    "public_pr_updates": [
+      {
+        "issue": 89,
+        "pr": 446,
+        "head": "18a988450ca876ea869f192437de94c392a298c1",
+        "public_review_comment": 6329288471,
+        "state": "open draft; cache validation finding remains in public review record"
+      },
+      {
+        "issue": 104,
+        "pr": 666,
+        "head": "f233b59350412f304c89dfee49638656ba282c44",
+        "state": "open draft; source/release acceptance remains pending"
+      }
+    ],
+    "issue_comments": [
+      {
+        "issue": 82,
+        "comment": 6328387678
+      },
+      {
+        "issue": 84,
+        "comment": 6328388359
+      },
+      {
+        "issue": 85,
+        "comment": 6328389019
+      },
+      {
+        "issue": 86,
+        "comment": 6328978081
+      },
+      {
+        "issue": 87,
+        "comment": 6328788040
+      },
+      {
+        "issue": 88,
+        "comment": 6328978571
+      },
+      {
+        "issue": 91,
+        "comment": 6329449205
+      },
+      {
+        "issue": 92,
+        "comment": 6329165183
+      },
+      {
+        "issue": 93,
+        "comment": 6329165655
+      },
+      {
+        "issue": 94,
+        "comment": 6329449751
+      },
+      {
+        "issue": 95,
+        "comment": 6328788681
+      },
+      {
+        "issue": 96,
+        "comment": 6328789373
+      },
+      {
+        "issue": 102,
+        "comment": 6329490016
+      },
+      {
+        "issue": 105,
+        "comment": 6329113505
+      },
+      {
+        "issue": 106,
+        "comment": 6329310133
+      },
+      {
+        "issue": 107,
+        "comment": 6329203432
+      },
+      {
+        "issue": 108,
+        "comment": 6329203866
+      },
+      {
+        "issue": 109,
+        "comment": 6329371101
+      },
+      {
+        "issue": 110,
+        "comment": 6329450265
+      },
+      {
+        "issue": 115,
+        "comment": 6329490936
+      }
+    ],
+    "source_acceptance_release_acceptance_issue_closure": "No source/rights/contract/release acceptance or issue closure is claimed. Newly integrated source pipelines remain decision-gated.",
+    "production_publication": "No production publication claimed.",
+    "inventory_rows_preserved": 415,
+    "unique_inventory_issue_rows": 415,
+    "fresh_415_census": false,
+    "open_pr_census": null,
+    "pending_integrations": [
+      {
+        "issue": 112,
+        "pr": 466,
+        "public_head": "a07432e176856636ea632d3c0bf5f53d56110cde",
+        "local_reviewed_head": "0b5fa8d26e4e8eb89b20b6fa76689bfed147a0a6",
+        "publication": "blocked_pending_specific_user_approval"
+      },
+      {
+        "issue": 113,
+        "pr": 448,
+        "public_head": "4b16abe8431c61f922f9abfbcade58b4d7078512",
+        "integration": "pending"
+      }
+    ]
+  },
+  "main_registration_audit_source": "Named public current-main readbacks through c4c0986826f5ce9a665935fb97f0c2db172ec509 (tree d6bcb4ebbea74cefd5dba77bcf59c25906042c3b); no 415-issue network census."
 }
