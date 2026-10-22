@@ -1,14 +1,14 @@
 """Draft native capture for the EPA FRS SIC code table.
 
-The HIFLD "FRS SIC" entry points at the EPA OEI FRS_INTERESTS service's
-``FRS_SIC`` table. The producer serves the same table from both EPA-operated
-endpoints: the native ArcGIS Server at geodata.epa.gov (``OEI/FRS_INTERESTS``
-MapServer table 25, the URL referenced by the historical HIFLD item) and the
-EPA_GEO-hosted FeatureServer on ArcGIS Online (table 2), which carries a stable
-portal item identity. This capture reads the EPA_GEO FeatureServer table and
-records the native server endpoint as the equivalent producer source. All
-producer responses are retained verbatim; the Parquet candidate is an unapproved
-preservation candidate pending contract review.
+The HIFLD "FRS SIC" entry points at the EPA OEI ``FRS_INTERESTS`` service's
+``FRS_SIC`` table. The producer's native ArcGIS Server
+(``https://geodata.epa.gov/arcgis/rest/services/OEI/FRS_INTERESTS/MapServer``,
+table 25) serves the complete table including an untruncated ObjectID roster;
+the EPA_GEO-hosted ArcGIS Online FeatureServer (table 2, item
+``cdff193a3e3743a5bc770e2743f215b3``) carries the same table but caps
+``returnIdsOnly`` responses at 1,000,000 IDs, so the native server is the
+capture source. All producer responses are retained verbatim; the Parquet
+candidate is an unapproved preservation candidate pending contract review.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
@@ -30,50 +30,41 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_arcgis_table import ArcGISTableProfile, capture_table
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 
-ITEM_ID = "cdff193a3e3743a5bc770e2743f215b3"
-SERVICE_URL = "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_INTERESTS/FeatureServer"
-TABLE_ID = 2
+SERVICE_URL = "https://geodata.epa.gov/arcgis/rest/services/OEI/FRS_INTERESTS/MapServer"
+TABLE_ID = 25
 TABLE_NAME = "FRS_SIC"
 TABLE_URL = f"{SERVICE_URL}/{TABLE_ID}"
-NATIVE_SERVER_TABLE_URL = "https://geodata.epa.gov/arcgis/rest/services/OEI/FRS_INTERESTS/MapServer/25"
+AGOL_SERVICE_URL = "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_INTERESTS/FeatureServer"
+AGOL_ITEM_ID = "cdff193a3e3743a5bc770e2743f215b3"
+AGOL_TABLE_URL = f"{AGOL_SERVICE_URL}/2"
 DATASET_SLUG = "epa-frs-sic-codes"
 FILE_SLUG = DATASET_SLUG
 NATIVE_PATH = f"geoparquet/{FILE_SLUG}.parquet"
-PUBLISHER = "U.S. Environmental Protection Agency, Facility Registry Service (EPA_GEO hosted FeatureServer)"
+PUBLISHER = "U.S. Environmental Protection Agency, Facility Registry Service (OEI native ArcGIS Server)"
 EPA_FRS_URL = "https://www.epa.gov/frs"
 GEOSPATIAL_DOWNLOAD_URL = "https://www.epa.gov/frs/geospatial-data-download-service"
-PAGE_SIZE = 2000
+PAGE_SIZE = 5000
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 EXPECTED_ROWS = 2_056_054
-EXPECTED_FIELD_NAMES = (
-    "OBJECTID", "PGM_SYS_ACRNM", "PGM_SYS_ID", "SIC_CODE", "PRIMARY_INDICATOR", "KEY_FIELD",
+FIELDS = (
+    ("OBJECTID", "esriFieldTypeOID", False, None),
+    ("PGM_SYS_ACRNM", "esriFieldTypeString", False, 20),
+    ("PGM_SYS_ID", "esriFieldTypeString", False, 30),
+    ("SIC_CODE", "esriFieldTypeString", False, 4),
+    ("PRIMARY_INDICATOR", "esriFieldTypeString", False, 10),
+    ("KEY_FIELD", "esriFieldTypeString", True, 50),
 )
-PORTAL_ITEM_TITLE = "Facility Registry Service (FRS) Interests"
+FIELD_NAMES = tuple(field[0] for field in FIELDS)
 
-PROFILE = ArcGISTableProfile(
-    service_url=SERVICE_URL, table_id=TABLE_ID, table_name=TABLE_NAME,
-    fields=(
-        ("OBJECTID", "esriFieldTypeOID", False, None),
-        ("PGM_SYS_ACRNM", "esriFieldTypeString", False, 20),
-        ("PGM_SYS_ID", "esriFieldTypeString", False, 30),
-        ("SIC_CODE", "esriFieldTypeString", False, 4),
-        ("PRIMARY_INDICATOR", "esriFieldTypeString", False, 10),
-        ("KEY_FIELD", "esriFieldTypeString", True, 50),
-    ),
-    relationship_name=None, related_table_id=None, relationship_key=None,
-    relationship_cardinality=None,
-    source_vintage=None, expected_rows=EXPECTED_ROWS,
-    portal_item_id=ITEM_ID, portal_item_owner="EPA_GEO",
-    portal_item_title=PORTAL_ITEM_TITLE,
-    page_size=PAGE_SIZE, max_response_bytes=MAX_RESPONSE_BYTES,
-)
+
+class EpaFrsSicCaptureError(ValueError):
+    """The source table is incomplete, malformed, or has drifted."""
 
 
 def _canonical(value: object) -> bytes:
@@ -83,6 +74,10 @@ def _canonical(value: object) -> bytes:
 
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _plain_field(field: Mapping[str, object]) -> tuple:
+    return (field.get("name"), field.get("type"), field.get("nullable"), field.get("length"))
 
 
 def _typed_parquet(rows: list[dict], fields: list[dict]) -> bytes:
@@ -96,7 +91,7 @@ def _typed_parquet(rows: list[dict], fields: list[dict]) -> bytes:
         b"hifld:source_url": TABLE_URL.encode(), b"hifld:source_table": TABLE_NAME.encode(),
         b"hifld:geometry": b"absent",
     })
-    table = pa.Table.from_pydict({name: [row[name] for row in rows] for name in PROFILE.field_names},
+    table = pa.Table.from_pydict({name: [row[name] for row in rows] for name in FIELD_NAMES},
                                  schema=schema)
     out = pa.BufferOutputStream()
     pq.write_table(table, out, compression="zstd", version="2.6")
@@ -106,6 +101,112 @@ def _typed_parquet(rows: list[dict], fields: list[dict]) -> bytes:
 def _row_count_from_candidate(storage: StagingStorageResource, prefix: str) -> int:
     parquet = storage.read_key(f"{prefix}/{NATIVE_PATH}")
     return pq.read_table(pa.BufferReader(parquet), columns=["OBJECTID"]).num_rows
+
+
+def _capture_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict], dict,
+        dict[str, tuple[bytes, dict]]]:
+    """Fetch and retain exact GET responses, bracketing all rows with count/ID reads."""
+    captures: dict[str, tuple[bytes, dict]] = {}
+
+    def request(name: str, url: str, params: Mapping[str, object]) -> dict:
+        request_url = url + "?" + urlencode(params)
+        body, receipt = capture_get(client, request_url, capture_root, name,
+                                    max_bytes=MAX_RESPONSE_BYTES)
+        try:
+            payload = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise EpaFrsSicCaptureError("source_response_is_not_valid_json") from exc
+        if not isinstance(payload, dict) or "error" in payload:
+            raise EpaFrsSicCaptureError("source_response_has_arcgis_error")
+        captures[name] = (body, receipt)
+        return payload
+
+    service = request("service", SERVICE_URL, {"f": "json"})
+    if not isinstance(service.get("tables"), list) or not any(
+            isinstance(item, dict) and item.get("id") == TABLE_ID and item.get("name") == TABLE_NAME
+            for item in service["tables"]):
+        raise EpaFrsSicCaptureError("source_service_table_identity_changed")
+    table_before = request("table_before", TABLE_URL, {"f": "json"})
+    if (table_before.get("name") != TABLE_NAME or table_before.get("type") != "Table"
+            or table_before.get("geometryType") is not None):
+        raise EpaFrsSicCaptureError("source_table_identity_or_geometry_changed")
+    fields = table_before.get("fields")
+    if not isinstance(fields, list) or tuple(_plain_field(f) for f in fields) != FIELDS:
+        raise EpaFrsSicCaptureError("source_table_schema_changed")
+    max_record_count = table_before.get("maxRecordCount")
+    if not isinstance(max_record_count, int) or max_record_count < PAGE_SIZE:
+        raise EpaFrsSicCaptureError("source_page_size_not_supported")
+    count_query = {"where": "1=1", "returnCountOnly": "true", "f": "json"}
+    ids_query = {"where": "1=1", "returnIdsOnly": "true", "f": "json"}
+    count_before = request("count_before", TABLE_URL + "/query", count_query).get("count")
+    ids_before = request("ids_before", TABLE_URL + "/query", ids_query).get("objectIds")
+    if (count_before != EXPECTED_ROWS or not isinstance(ids_before, list)
+            or len(ids_before) != count_before):
+        raise EpaFrsSicCaptureError("source_count_and_id_roster_disagree_before_capture")
+    if any(type(value) is not int for value in ids_before) or len(set(ids_before)) != count_before:
+        raise EpaFrsSicCaptureError("source_object_id_roster_is_invalid")
+
+    rows: list[dict] = []
+    for page_number, offset in enumerate(range(0, count_before, PAGE_SIZE)):
+        page = request(
+            f"page_{page_number:03d}", TABLE_URL + "/query",
+            {"where": "1=1", "outFields": ",".join(FIELD_NAMES), "returnGeometry": "false",
+             "orderByFields": "OBJECTID ASC", "resultOffset": offset,
+             "resultRecordCount": PAGE_SIZE, "f": "json"},
+        )
+        features = page.get("features")
+        wanted = min(PAGE_SIZE, count_before - offset)
+        if not isinstance(features, list) or len(features) != wanted:
+            raise EpaFrsSicCaptureError("source_page_row_count_incomplete")
+        if page.get("exceededTransferLimit") is True and wanted < PAGE_SIZE:
+            raise EpaFrsSicCaptureError("source_final_page_exceeded_transfer_limit")
+        for feature in features:
+            if not isinstance(feature, dict) or feature.get("geometry") is not None:
+                raise EpaFrsSicCaptureError("source_table_returned_unexpected_geometry")
+            attrs = feature.get("attributes")
+            if not isinstance(attrs, dict) or tuple(attrs.keys()) != FIELD_NAMES:
+                raise EpaFrsSicCaptureError("source_record_fields_changed")
+            if type(attrs["OBJECTID"]) is not int:
+                raise EpaFrsSicCaptureError("source_object_id_type_changed")
+            for name, _esri_type, nullable, _length in FIELDS:
+                value = attrs[name]
+                if value is None and not nullable:
+                    raise EpaFrsSicCaptureError("source_nonnullable_value_is_null")
+                if name != "OBJECTID" and value is not None and not isinstance(value, str):
+                    raise EpaFrsSicCaptureError("source_native_string_type_changed")
+            rows.append(attrs)
+
+    table_after = request("table_after", TABLE_URL, {"f": "json"})
+    service_after = request("service_after", SERVICE_URL, {"f": "json"})
+    after_count = request("count_after", TABLE_URL + "/query", count_query).get("count")
+    ids_after = request("ids_after", TABLE_URL + "/query", ids_query).get("objectIds")
+    captured_ids = [row["OBJECTID"] for row in rows]
+    before_ids = sorted(ids_before)
+    if (tuple(_plain_field(f) for f in table_after.get("fields", [])) != FIELDS
+            or table_after.get("relationships") != table_before.get("relationships")
+            or service_after.get("description") != service.get("description")
+            or service_after.get("tables") != service.get("tables")
+            or after_count != count_before or not isinstance(ids_after, list)
+            or sorted(ids_after) != before_ids or len(ids_after) != count_before
+            or sorted(captured_ids) != before_ids or len(set(captured_ids)) != count_before):
+        raise EpaFrsSicCaptureError("source_capture_incomplete_or_changed_during_read")
+    manifest = {
+        "source_url": TABLE_URL, "service_url": SERVICE_URL, "source_table": TABLE_NAME,
+        "service_description": service.get("description"),
+        "equivalent_official_distribution": {
+            "service_url": AGOL_SERVICE_URL, "table_url": AGOL_TABLE_URL,
+            "portal_item_id": AGOL_ITEM_ID, "portal_owner": "EPA_GEO",
+            "ids_roster_limit": "returnIdsOnly capped at 1,000,000 IDs (exceededTransferLimit)",
+        },
+        "count_before": count_before, "count_after": after_count,
+        "id_count_before": len(ids_before), "id_count_after": len(ids_after),
+        "page_size": PAGE_SIZE, "page_count": len(range(0, count_before, PAGE_SIZE)),
+        "rows_captured": len(rows), "all_ids_captured_once": True,
+        "source_ids_equal_before_after": True,
+        "fields": list(fields),
+        "response_receipts": {name: receipt for name, (_body, receipt) in captures.items()},
+    }
+    return rows, manifest, captures
 
 
 def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
@@ -158,15 +259,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/epa-frs-sic-draft"}) as client:
-            probe_body, probe_receipt = capture_get(client, current_capture_url, capture_root,
-                                                    "count_probe", max_bytes=MAX_RESPONSE_BYTES)
-            probe_count = json.loads(probe_body).get("count")
-            if probe_count != EXPECTED_ROWS:
-                raise ValueError("source_count_drift_before_capture")
-            captures["count_probe"] = (probe_body, probe_receipt)
-            pre_captures = dict(captures)
-            rows, capture_manifest, table_captures = capture_table(client, PROFILE, capture_root)
-            captures = {**pre_captures, **table_captures}
+            rows, capture_manifest, captures = _capture_table(client, capture_root)
     except Exception as exc:
         receipts = {}
         for path in sorted(capture_root.glob("*.receipt.json")):
@@ -180,7 +273,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
             wire = wire_path.read_bytes() if wire_path.exists() else b""
             receipt = receipts.get(name)
             if not isinstance(receipt, dict):
-                receipt = {"method": "GET", "url": current_capture_url if name == "count_probe" else None,
+                receipt = {"method": "GET", "url": current_capture_url,
                            "final_url": None, "observed_at": datetime.now(timezone.utc).isoformat(),
                            "status": None, "complete_body": False, "wire_bytes": len(wire),
                            "wire_sha256": _sha(wire), "bytes": len(body), "sha256": _sha(body),
@@ -212,15 +305,15 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
          "license": "https://www.usa.gov/publicdomain/label/1.0/",
          "attribution": "EPA FRS; producer metadata states U.S. public domain; rights review remains pending.",
          "release_date": None,
-         "release_date_unknown_reason": "ArcGIS modified timestamps are not source release dates."}
+         "release_date_unknown_reason": "ArcGIS service metadata carries no source release date."}
         for name, (_body, receipt) in sorted(captures.items())]
     release_manifest = {
         "schema_version": 1, "approved": False,
         "title": "EPA Facility Registry Service - SIC Codes",
-        "description": ("EPA FRS_INTERESTS FeatureServer table 2 FRS_SIC: the standard industrial "
+        "description": ("EPA OEI FRS_INTERESTS MapServer table 25 FRS_SIC: the standard industrial "
                         "classification codes attached to FRS program-system interests across the full "
-                        "universe of FRS regulated facilities. The historical HIFLD Open item referenced "
-                        "the equivalent producer table at " + NATIVE_SERVER_TABLE_URL + "."),
+                        "universe of FRS regulated facilities. This is the producer table referenced by "
+                        "the historical HIFLD Open 'FRS SIC' item."),
         "publisher": PUBLISHER, "agency": "Environmental Protection Agency", "source_url": TABLE_URL,
         "license": "https://www.usa.gov/publicdomain/label/1.0/", "source_modified": None,
         "date_issued": None, "date_modified": None, "processor": "HIFLD Next",
@@ -231,14 +324,15 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
                                             "source_ids": "OBJECTID preserved unchanged",
                                             "geometry": "source is a nonspatial ArcGIS table; no geometry is invented",
                                             "candidate_status": "unapproved; production publication prohibited pending source freshness, schema/ID contract, rights and mapping acceptance"}}],
-        "lineage": ["EPA OEI FRS_INTERESTS FeatureServer table 2: FRS_SIC",
-                    "Equivalent native producer table: " + NATIVE_SERVER_TABLE_URL,
+        "lineage": ["EPA OEI FRS_INTERESTS native ArcGIS Server table 25: FRS_SIC",
+                    "Equivalent EPA_GEO ArcGIS Online distribution: " + AGOL_TABLE_URL
+                    + " (item " + AGOL_ITEM_ID + "); its returnIdsOnly roster is capped at 1,000,000 IDs",
                     "EPA FRS geospatial data download service also publishes SIC classifications: "
                     + GEOSPATIAL_DOWNLOAD_URL,
-                    "Portal item " + ITEM_ID + " is maintained by EPA (owner EPA_GEO); see " + EPA_FRS_URL],
+                    "Facility Registry Service: " + EPA_FRS_URL],
         "prebuilt_output_policy": {"schema_version": 1,
                                    "formats": {"geoparquet": {"reason": "Native Esri fields, IDs and declared types retained; no geometry source exists and none is invented; approvals pending.",
-                                                           "objects": [{"path": NATIVE_PATH, **source_objects[NATIVE_PATH]}]}}},
+                                                              "objects": [{"path": NATIVE_PATH, **source_objects[NATIVE_PATH]}]}}},
         "unsupported_output_formats": {"geopackage": "No approved source-to-public schema mapping.",
                                        "pmtiles": "No geometry source is available."},
     }
@@ -249,8 +343,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
              "source_record_sha256": record_sha, "source_schema_sha256": schema_sha,
              "source_ids_sha256": ids_sha, "source_triplets_sha256": triplets_sha,
              "row_count": len(rows), "source_population_complete": True,
-             "native_producer_server_table_url": NATIVE_SERVER_TABLE_URL,
-             "arcgis_item_id": ITEM_ID, "publisher": PUBLISHER,
+             "arcgis_item_id": AGOL_ITEM_ID, "publisher": PUBLISHER,
              "native_geometry": "absent", "source_relationship": "FRS-maintained EPA SIC code table",
              "refresh_status": "STOPPED",
              "publication_approval": "not_established_by_source_capture",

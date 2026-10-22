@@ -1,7 +1,6 @@
 import json
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
@@ -15,9 +14,11 @@ from dagster_hifld.sources.epa_frs_common import candidate_prefix
 
 class EpaFrsSicCodesSourceTests(unittest.TestCase):
     def _fields(self):
-        return [{"name": name, "type": kind, "alias": name, "length": length,
-                 "nullable": nullable}
-                for name, kind, nullable, length in sic.PROFILE.fields]
+        fields = []
+        for name, kind, nullable, length in sic.FIELDS:
+            fields.append({"name": name, "type": kind, "alias": name,
+                           "length": length, "nullable": nullable})
+        return fields
 
     def _features(self):
         rows = []
@@ -29,18 +30,14 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
             rows.append({"attributes": attrs, "geometry": None})
         return rows
 
-    def _small_profile(self):
-        return replace(sic.PROFILE, expected_rows=2)
-
     def _docs(self, fields, features):
         ids = [row["attributes"]["OBJECTID"] for row in features]
-        table = {"name": sic.TABLE_NAME, "fields": fields, "relationships": []}
+        table = {"name": sic.TABLE_NAME, "type": "Table", "fields": fields,
+                 "relationships": [], "maxRecordCount": 5000}
         service = {"tables": [{"id": sic.TABLE_ID, "name": sic.TABLE_NAME}],
-                   "description": "FRS interest service"}
-        portal = {"id": sic.ITEM_ID, "owner": "EPA_GEO", "title": sic.PORTAL_ITEM_TITLE,
-                  "type": "Feature Service", "url": sic.SERVICE_URL, "access": "public"}
+                   "description": "FRS interest map service"}
         return {
-            "service": service, "service_after": service, "portal_item": portal,
+            "service": service, "service_after": service,
             "table_before": table, "table_after": table,
             "count": {"count": len(ids)},
             "ids": {"objectIds": ids},
@@ -50,8 +47,6 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
     def _url_body(self, url, docs):
         path, _, raw_query = url.partition("?")
         params = dict(pair.split("=", 1) for pair in raw_query.split("&")) if raw_query else {}
-        if "/content/items/" in path:
-            return json.dumps(docs["portal_item"]).encode()
         if path == sic.SERVICE_URL:
             return json.dumps(docs["service"]).encode()
         if path == sic.TABLE_URL:
@@ -81,11 +76,8 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
         return fake_get
 
     def _run_capture(self, tmp, docs, get=None):
-        fake = get or self._fake_get(docs)
         with patch.object(sic, "EXPECTED_ROWS", len(docs["pages"])), \
-                patch.object(sic, "PROFILE", self._small_profile()), \
-                patch.object(sic, "capture_get", side_effect=fake), \
-                patch("dagster_hifld.sources.epa_frs_arcgis_table.capture_get", side_effect=fake):
+                patch.object(sic, "capture_get", side_effect=get or self._fake_get(docs)):
             storage = sic.StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
             return sic.capture_epa_frs_sic(storage, version="fixture-v1", capture_directory=tmp)
 
@@ -98,7 +90,7 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
             self.assertFalse(result["release_accepted"])
             prefix = candidate_prefix(sic.DATASET_SLUG, sic.FILE_SLUG, result["version"])
             table = pq.read_table(Path(tmp) / f"{prefix}/{sic.NATIVE_PATH}")
-            self.assertEqual(table.schema.names, list(sic.EXPECTED_FIELD_NAMES))
+            self.assertEqual(table.schema.names, list(sic.FIELD_NAMES))
             self.assertEqual(table.column("SIC_CODE").to_pylist(), ["4213", "1521"])
             self.assertEqual(table.column("KEY_FIELD").to_pylist(), ["ICIS46748", "NPDESGAR372473"])
             self.assertEqual(table.schema.field("OBJECTID").type, pa.int64())
@@ -109,10 +101,11 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
             self.assertTrue(audit["source_population_complete"])
             self.assertFalse(audit["release_accepted"])
             self.assertFalse(audit["freshness_accepted"])
-            self.assertEqual(audit["native_producer_server_table_url"],
-                             "https://geodata.epa.gov/arcgis/rest/services/OEI/FRS_INTERESTS/MapServer/25")
+            self.assertEqual(audit["source_url"], sic.TABLE_URL)
+            self.assertEqual(audit["equivalent_official_distribution"]["portal_item_id"],
+                             sic.AGOL_ITEM_ID)
 
-    def test_rejects_source_count_drift(self):
+    def test_rejects_id_roster_drift(self):
         docs = self._docs(self._fields(), self._features())
         docs["ids"] = {"objectIds": [7, 11, 13]}
         with tempfile.TemporaryDirectory() as tmp, \
@@ -150,7 +143,7 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
             quarantined = list((Path(tmp) / "_quarantine" / sic.DATASET_SLUG).iterdir())
             self.assertEqual(len(quarantined), 1)
             failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
-            self.assertEqual(failure["reason_code"], "ArcGISTableCaptureError")
+            self.assertEqual(failure["reason_code"], "EpaFrsSicCaptureError")
             self.assertTrue((quarantined[0] / "raw" / "page_000.body").exists())
 
     def test_second_identical_capture_reuses_sealed_candidate(self):
@@ -161,7 +154,6 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
             self.assertTrue(second["reused"])
             self.assertEqual(first["version"], second["version"])
             self.assertEqual(first["source_record_sha256"], second["source_record_sha256"])
-            prefix = candidate_prefix(sic.DATASET_SLUG, sic.FILE_SLUG, first["version"])
             state_key = f"_construction-state/{sic.DATASET_SLUG}/{first['version']}.json"
             bundle = json.loads(sic.load_first_construction(_storage(tmp), state_key,
                 first["version"], sic._sha(sic._canonical(
