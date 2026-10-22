@@ -129,6 +129,25 @@ class NativeNidTests(unittest.TestCase):
         self.assertEqual(audit["geometry_z_max"], 5.75)
         self.assertEqual(audit["geometry_z_zero_count"], 1)
 
+    def test_candidate_bbox_uses_and_checks_exact_native_coordinate_bounds(self):
+        reader, _info, _layer, _wkb = self._arrow_fixture()
+        actual = (-120.2, 39.2, -120.1, 39.3)
+        candidate, audit = native._parquet_from_native_batches(
+            reader, [101, 102], dict(zip(("xmin", "ymin", "xmax", "ymax"), actual)),
+            expected_geometry_bounds=actual,
+        )
+        geo = json.loads(pq.read_table(pa.BufferReader(candidate)).schema.metadata[b"geo"])
+        self.assertEqual(geo["columns"]["geometry"]["bbox"], list(actual))
+        self.assertEqual(audit["candidate_geometry_bbox"], list(actual))
+
+        reader, _info, _layer, _wkb = self._arrow_fixture()
+        wrong = (-120.2, 39.2, -120.0, 39.3)
+        with self.assertRaisesRegex(ValueError, "geometry_bounds_drift"):
+            native._parquet_from_native_batches(
+                reader, [101, 102], dict(zip(("xmin", "ymin", "xmax", "ymax"), wrong)),
+                expected_geometry_bounds=wrong,
+            )
+
     def test_capability_and_before_after_oid_roster_allow_sync_disabled(self):
         source_fields = [
             {"name": name, "type": kind, "length": length}

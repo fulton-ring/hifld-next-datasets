@@ -360,7 +360,8 @@ def _candidate_schema(source_schema: pa.Schema, extent: Mapping[str, object]) ->
     return pa.schema(output_fields, metadata={b"geo": _canonical(geo)})
 
 
-def _parquet_from_native_batches(reader, expected_ids: list[int], extent: Mapping[str, object]) -> tuple[bytes, dict[str, object]]:
+def _parquet_from_native_batches(reader, expected_ids: list[int], extent: Mapping[str, object], *,
+                                expected_geometry_bounds: tuple[float, float, float, float] | None = None) -> tuple[bytes, dict[str, object]]:
     schema = reader.schema
     output_schema = _candidate_schema(schema, extent)
     expected = set(expected_ids)
@@ -370,6 +371,7 @@ def _parquet_from_native_batches(reader, expected_ids: list[int], extent: Mappin
     z_min: float | None = None
     z_max: float | None = None
     z_zero_count = 0
+    actual_bounds: list[float | None] = [None, None, None, None]
     sink = pa.BufferOutputStream()
     writer = pq.ParquetWriter(sink, output_schema, compression="zstd", version="2.6")
     try:
@@ -402,6 +404,11 @@ def _parquet_from_native_batches(reader, expected_ids: list[int], extent: Mappin
                     z_min = z if z_min is None else min(z_min, z)
                     z_max = z if z_max is None else max(z_max, z)
                     z_zero_count += z == 0.0
+                if math.isfinite(x) and math.isfinite(y):
+                    actual_bounds[0] = x if actual_bounds[0] is None else min(actual_bounds[0], x)
+                    actual_bounds[1] = y if actual_bounds[1] is None else min(actual_bounds[1], y)
+                    actual_bounds[2] = x if actual_bounds[2] is None else max(actual_bounds[2], x)
+                    actual_bounds[3] = y if actual_bounds[3] is None else max(actual_bounds[3], y)
                 if not all(math.isfinite(v) for v in (x, y, z)):
                     invalid_count += 1
                 elif not (-180 <= x <= 180 and -90 <= y <= 90):
@@ -422,6 +429,8 @@ def _parquet_from_native_batches(reader, expected_ids: list[int], extent: Mappin
     candidate = sink.getvalue().to_pybytes()
     if count != len(expected_ids) or seen != expected:
         raise ValueError("usace_nid_native_filegdb_oid_roster_mismatch")
+    if expected_geometry_bounds is not None and tuple(actual_bounds) != expected_geometry_bounds:
+        raise ValueError("usace_nid_native_geometry_bounds_drift")
     if len(candidate) > MAX_NATIVE_CANDIDATE_BYTES:
         raise ValueError("usace_nid_native_candidate_size_exceeded")
     return candidate, {
@@ -439,6 +448,7 @@ def _parquet_from_native_batches(reader, expected_ids: list[int], extent: Mappin
         "geometry_z_min": z_min,
         "geometry_z_max": z_max,
         "geometry_z_zero_count": z_zero_count,
+        "candidate_geometry_bbox": actual_bounds,
         "native_fid_name": NATIVE_FID_NAME,
     }
 
@@ -509,7 +519,13 @@ def _inspect_archive(archive_path: Path, expected_count: int, expected_ids: list
                                 batch_size=MAX_NATIVE_BATCH_ROWS, use_pyarrow=True,
                                 force_2d=False, datetime_as_string=False) as (meta, reader):
             _validate_native_reader(info, reader.schema, layer, expected_count)
-            candidate, audit = _parquet_from_native_batches(reader, expected_ids, layer["extent"])
+        native_bounds = tuple(float(value) for value in info["total_bounds"])
+        if len(native_bounds) != 4 or not all(math.isfinite(value) for value in native_bounds):
+            raise ValueError("usace_nid_native_geometry_bounds_unavailable")
+        candidate_extent = dict(zip(("xmin", "ymin", "xmax", "ymax"), native_bounds))
+        candidate, audit = _parquet_from_native_batches(
+            reader, expected_ids, candidate_extent, expected_geometry_bounds=native_bounds,
+        )
     audit.update({
         "source_extent": layer["extent"],
         "archive_bytes": archive_path.stat().st_size,
