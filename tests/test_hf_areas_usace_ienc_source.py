@@ -471,5 +471,29 @@ class ParquetCandidateContract(unittest.TestCase):
         self.assertIn("Category_of_Harbour_Facility", names)
 
 
+class RegisteredDraftRefresh(unittest.TestCase):
+    def test_candidate_is_in_ingest_registry_and_registered_job(self):
+        from dagster import AssetKey, DefaultScheduleStatus
+        from dagster_hifld.assets.hf_areas_usace_ienc import (
+            hf_areas_usace_ienc_candidate,
+            hf_areas_usace_ienc_draft_schedule,
+        )
+        from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
+        from dagster_hifld.definitions import defs
+
+        self.assertIn(hf_areas_usace_ienc_candidate, hifld_ingest_assets)
+        repository = defs.get_repository_def()
+        candidate_key = AssetKey(["ingest", DATASET_SLUG, FILE_SLUG])
+        self.assertIn(candidate_key, repository.asset_graph.get_all_asset_keys())
+
+        job = repository.get_job("hf_areas_usace_ienc_draft_refresh")
+        self.assertEqual(set(job.asset_layer.executable_asset_keys), {candidate_key})
+        self.assertEqual(
+            repository.get_schedule_def(hf_areas_usace_ienc_draft_schedule.name)
+            .default_status,
+            DefaultScheduleStatus.STOPPED,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
