@@ -144,4 +144,23 @@ class HoloceneCompleteSourceTests(unittest.TestCase):
             cached=json.loads((candidate/'metadata'/'holocene_source_audit.json').read_text(encoding='utf-8'))
             self.assertEqual(cached['all_original_feature_ids'],f.inspect_captures({n:((captured/(n+'.body')).read_bytes(),f.strict_json((captured/(n+'.receipt.json')).read_bytes()))for n in f.URLS})[1]['all_original_feature_ids'])
 
+            changed= root/'changed-population';shutil.copytree(variant,changed)
+            volcano_number=str(table:=f.inspect_captures({n:((captured/(n+'.body')).read_bytes(),f.strict_json((captured/(n+'.receipt.json')).read_bytes()))for n in f.URLS})[0]['Volcano_Number'][0].as_py())
+            pattern=re.compile(rb'("Volcano_Number"\s*:\s*'+volcano_number.encode()+rb'.*?"Region"\s*:\s*)"(?:\\.|[^"\\])*"',re.S)
+            for name in ('wfs_all','wfs_all_after'):
+                body_path=changed/(name+'.body');body=body_path.read_bytes()
+                body,count=pattern.subn(lambda match:match.group(1)+b'"synthetic genuine attribute drift"',body,count=1)
+                self.assertEqual(count,1)
+                body_path.write_bytes(body)
+                receipt_path=changed/(name+'.receipt.json');receipt=json.loads(receipt_path.read_text(encoding='utf-8'))
+                receipt['sha256']=f.digest(body);receipt['bytes']=len(body)
+                receipt_path.write_text(json.dumps(receipt,sort_keys=True,separators=(',',':'))+'\n',encoding='utf-8')
+            with self.assertRaisesRegex(ValueError,'observed_original_trust_loss'):
+                f.stage_holocene(storage,capture_dir=changed)
+            self.assertFalse(candidate.exists())
+            quarantined=list((Path(storage.local_dir)/'_quarantine'/f.SLUG).glob('observed-loss-*'))
+            self.assertEqual(len(quarantined),1)
+            preserved={str(p.relative_to(quarantined[0])):f.sha256_file(p)for p in quarantined[0].rglob('*')if p.is_file()}
+            self.assertEqual(before,preserved)
+
 if __name__=='__main__':unittest.main()
