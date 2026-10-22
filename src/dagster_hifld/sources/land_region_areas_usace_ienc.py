@@ -210,6 +210,8 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
         "error_code": result.error_code if result is not None else ("transport_error" if transport_error else "capture_result_missing"),
         "error_type": result.error_type if result is not None else transport_error}
     (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+    if result is not None and result.error_code in {"wire_limit_exceeded", "decoded_limit_exceeded"}:
+        raise ValueError("source_response_limit_exceeded:" + result.error_code)
     if transport_error:
         raise httpx.TransportError("capture_transport_error:" + transport_error)
     if result is None:

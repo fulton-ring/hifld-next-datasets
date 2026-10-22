@@ -140,6 +140,43 @@ def _captures() -> dict[str, tuple[bytes, dict]]:
     }
 
 
+class CaptureResponseBudget(unittest.TestCase):
+    def test_response_limit_failure_is_not_retried(self):
+        class Client:
+            calls = 0
+
+            def stream(self, method, url, **kwargs):
+                self.calls += 1
+                request = httpx.Request(method, url)
+                response = httpx.Response(200, stream=httpx.ByteStream(b"payload"), request=request)
+
+                class StreamContext:
+                    def __enter__(self):
+                        return response
+
+                    def __exit__(self, *exc):
+                        response.close()
+
+                return StreamContext()
+
+        client = Client()
+        limited = SimpleNamespace(
+            complete=False,
+            status_code=200,
+            content_encoding="identity",
+            content_length=7,
+            error_code="wire_limit_exceeded",
+            error_type=None,
+        )
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            source, "capture_http_response", return_value=limited
+        ), patch.object(source.time, "sleep", return_value=None):
+            with self.assertRaisesRegex(ValueError, "source_response_limit_exceeded:wire_limit_exceeded"):
+                source._fetch_retry(client, "https://example.test/layer", Path(directory), "page", [0],
+                                    schedule=(0.0, 0.0, 0.0))
+        self.assertEqual(client.calls, 1)
+
+
 class ValidateCompleteCapture(unittest.TestCase):
     def test_complete_capture_passes(self):
         fields, features, audit = _validate(_captures())
