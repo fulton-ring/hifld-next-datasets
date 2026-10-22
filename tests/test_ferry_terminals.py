@@ -13,6 +13,8 @@ from dagster._core.instance import DagsterInstance
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals_draft_refresh_schedule
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
+from dagster_hifld.catalog import summarize_staged_catalog,write_catalog_metadata
+from dagster_hifld.source_manifest import load_resolved_source_manifest,snapshot_source_metadata
 from dagster_hifld.sources import ferry_terminals as s
 
 _CAPTURE_DIR_ENV='HIFLD_FERRY_TERMINALS_CAPTURE_DIR'
@@ -85,6 +87,25 @@ class FerryTerminalsTests(TestCase):
             with self.subTest(label=label):
                 if label=='report':self.cache_mutation(lambda root:(root/'metadata/source-fidelity/baseline_comparison.md').write_text('invented PASS'),'source_fidelity_evidence_differs')
                 else:self.cache_mutation(lambda root:(root/'candidate/invented-id.json').write_text('{}'),'unrostered')
+    def test_cataloged_cache_canonical_metadata_is_recomputed_and_quarantined(self):
+        def catalog(root,out):
+            snapshot_source_metadata(self.storage,s.SLUG,s.SLUG,out['version'])
+            resolved=load_resolved_source_manifest(self.storage,s.SLUG,s.SLUG,out['version'])
+            summary=summarize_staged_catalog(self.storage,s.SLUG,s.SLUG,out['version'],s.SLUG,source_metadata=resolved.metadata)
+            write_catalog_metadata(self.storage,s.SLUG,s.SLUG,out['version'],summary.quality_manifest,summary.data_dictionary)
+        cases=(
+            ('quality',lambda root,out:write_catalog_metadata(self.storage,s.SLUG,s.SLUG,out['version'],{'quality_check_passed':True,'feature_count':1},json.loads((root/'metadata/data_dictionary.json').read_bytes())),'cached_catalog_metadata_drift:quality'),
+            ('dictionary',lambda root,out:write_catalog_metadata(self.storage,s.SLUG,s.SLUG,out['version'],json.loads((root/'metadata/quality_manifest.json').read_bytes()),{'name':s.SLUG,'columns':[]}),'cached_catalog_metadata_drift:dictionary'),
+            ('missing_provenance',lambda root,out:(root/'metadata/resolved_provenance.json').unlink(),'cached_catalog_metadata_drift:provenance'),
+            ('tampered_snapshot',lambda root,out:(root/'metadata/source/quality_manifest.json').write_bytes(b'{}'),'cached_catalog_source_snapshot_differs'),
+        )
+        for label,mutate,reason in cases:
+            with self.subTest(label):
+                out=self.stage();root=self.root(out);catalog(root,out);mutate(root,out)
+                with self.assertRaisesRegex(s.FerryQuarantineError,reason):self.stage()
+                self.assertFalse(root.exists())
+                self.assertTrue(self.stage()['version']==out['version'])
+
     def test_missing_ready_moves_whole_cache_and_restores_original_newer_receipts(self):
         out=self.stage();root=self.root(out);before=self.snap(root);new=Path(self.tmp.name)/'newer';new.mkdir()
         for n in s.URLS:

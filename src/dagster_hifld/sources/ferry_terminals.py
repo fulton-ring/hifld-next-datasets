@@ -37,6 +37,9 @@ import shapely
 from shapely.geometry import mapping, shape
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.catalog import summarize_staged_catalog
+from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
@@ -486,7 +489,62 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         if any((root/name).read_bytes()!=body for name,body in expected.items()):
             raise FerryQuarantineError('cached_source_fidelity_evidence_differs')
 
-
+    # A pre-catalog source candidate is valid. Once any downstream catalog
+    # derivative exists, require a complete canonical catalog and verify the
+    # bytes against a fresh summary of the sealed native candidate.
+    catalog_paths = {
+        'quality': root/'metadata/quality_manifest.json',
+        'dictionary': root/'metadata/data_dictionary.json',
+        'provenance': root/'metadata/resolved_provenance.json',
+    }
+    snapshot_paths = {
+        'source_manifest': root/'metadata/source/source_manifest.json',
+        'authored_manifest': root/authored_snapshot,
+        'source_dictionary': root/'metadata/source/data_dictionary.json',
+        'source_quality': root/'metadata/source/quality_manifest.json',
+    }
+    cataloged = any(path.exists() for path in (*catalog_paths.values(), *snapshot_paths.values()))
+    if cataloged:
+        if not catalog_paths['quality'].is_file() or not catalog_paths['dictionary'].is_file():
+            raise FerryQuarantineError('cached_catalog_metadata_incomplete')
+        try:
+            resolved = load_resolved_source_manifest(storage, SLUG, SLUG, ready['version'])
+            summary = summarize_staged_catalog(storage, SLUG, SLUG, ready['version'], SLUG,
+                                               source_metadata=resolved.metadata)
+            canonical = {
+                'quality': json.dumps(summary.quality_manifest, sort_keys=True, indent=2).encode('utf-8'),
+                'dictionary': json.dumps(summary.data_dictionary, sort_keys=True, indent=2).encode('utf-8'),
+            }
+            expected_provenance = provenance_projection(summary.data_dictionary)
+            if expected_provenance is not None:
+                canonical['provenance'] = json.dumps(expected_provenance, sort_keys=True, indent=2).encode('utf-8')
+        except (ValueError, TypeError, KeyError, OSError, RuntimeError) as exc:
+            raise FerryQuarantineError('cached_catalog_recompute_failed') from exc
+        for name in ('quality', 'dictionary'):
+            if catalog_paths[name].read_bytes() != canonical[name]:
+                raise FerryQuarantineError(f'cached_catalog_metadata_drift:{name}')
+        if 'provenance' in canonical:
+            if not catalog_paths['provenance'].is_file() or catalog_paths['provenance'].read_bytes() != canonical['provenance']:
+                raise FerryQuarantineError('cached_catalog_metadata_drift:provenance')
+        elif catalog_paths['provenance'].exists():
+            raise FerryQuarantineError('cached_catalog_metadata_unexpected:provenance')
+        # The authored source-manifest snapshots are always created by the
+        # canonical catalog step for this versioned source manifest.
+        if not snapshot_paths['source_manifest'].is_file() or not snapshot_paths['authored_manifest'].is_file():
+            raise FerryQuarantineError('cached_catalog_source_snapshot_missing')
+        if (snapshot_paths['source_manifest'].read_bytes() != manifest_body
+                or snapshot_paths['authored_manifest'].read_bytes() != manifest_body):
+            raise FerryQuarantineError('cached_catalog_source_snapshot_differs')
+        # Optional pre-catalog source metadata snapshots are all-or-none and
+        # must agree with the canonical catalog values when present.
+        has_source_dictionary = snapshot_paths['source_dictionary'].exists()
+        has_source_quality = snapshot_paths['source_quality'].exists()
+        if has_source_dictionary != has_source_quality:
+            raise FerryQuarantineError('cached_catalog_source_snapshot_incomplete')
+        if has_source_dictionary:
+            if (snapshot_paths['source_dictionary'].read_bytes() != canonical['dictionary']
+                    or snapshot_paths['source_quality'].read_bytes() != canonical['quality']):
+                raise FerryQuarantineError('cached_catalog_source_snapshot_differs')
 
 
 @contextmanager
