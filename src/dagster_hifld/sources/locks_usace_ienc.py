@@ -696,7 +696,11 @@ def _write_outputs(storage: StagingStorageResource, prefix: str, outputs: dict[s
 
 def capture_locks_usace_ienc(storage: StagingStorageResource, *,
                              capture_directory: str | None = None) -> dict[str,object]:
-    """Create/replay a bounded complete unapproved NDC/LPMS Locks candidate."""
+    """Create/replay a bounded complete unapproved NDC/LPMS Locks candidate.
+
+    An explicit empty capture directory starts a live capture. A populated explicit
+    directory is offline-only and must contain a valid sealed capture manifest.
+    """
     storage_root=_local_storage_root(storage)
     if shutil.disk_usage(storage_root).free < MIN_FREE_BYTES:
         raise LocksQuarantineError("storage_floor_before_candidate_write")

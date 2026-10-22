@@ -156,3 +156,31 @@ class LocksUsaceIencTests(unittest.TestCase):
                     source.capture_locks_usace_ienc(storage, capture_directory=str(capture))
             live.assert_called_once_with(capture)
             self.assertEqual(len(list((root / "stage" / "_quarantine").rglob("failure.json"))), 1)
+
+    def test_explicit_capture_directory_dispatches_live_or_sealed_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root / "stage"), prefix="")
+            sealed = root / "sealed"
+            sealed.mkdir()
+            (sealed / "capture_manifest.json").write_text("{}")
+            with patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=500_000_000)), \
+                 patch.object(source, "_capture_manifest", return_value={"sealed": True}) as validate_manifest, \
+                 patch.object(source, "_load_capture", return_value=({}, {"sealed": True})) as load_capture, \
+                 patch.object(source, "_capture_live") as live, \
+                 patch.object(source, "_validate_service_bundle", side_effect=source.LocksQuarantineError("fixture-stop")), \
+                 patch.object(source, "_preserve_failed_capture"):
+                with self.assertRaisesRegex(source.LocksQuarantineError, "fixture-stop"):
+                    source.capture_locks_usace_ienc(storage, capture_directory=str(sealed))
+            validate_manifest.assert_called_once_with(sealed)
+            load_capture.assert_called_once_with(sealed)
+            live.assert_not_called()
+
+            unsealed = root / "unsealed"
+            unsealed.mkdir()
+            (unsealed / "stray.json").write_text("{}")
+            with patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=500_000_000)), \
+                 patch.object(source, "_capture_live") as live:
+                with self.assertRaisesRegex(source.LocksQuarantineError, "explicit_offline_capture_must_be_sealed"):
+                    source.capture_locks_usace_ienc(storage, capture_directory=str(unsealed))
+            live.assert_not_called()
