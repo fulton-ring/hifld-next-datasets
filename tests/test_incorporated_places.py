@@ -12,6 +12,7 @@ import fcntl
 import httpx
 import pyarrow as pa
 import shapely
+from dagster import DefaultScheduleStatus
 from dagster_hifld.sources import incorporated_places as c
 from dagster_hifld.resources import StagingStorageResource, PublishedStorageResource
 
@@ -108,5 +109,20 @@ class IncorporatedPlacesTests(unittest.TestCase):
         if not path:self.skipTest('set INCORPORATED_PLACES_TEST_ARCHIVE to retained complete original ZIP')
         table,audit=c.inspect_archive(Path(path));self.assertEqual(table.num_rows,19728);self.assertEqual(audit['invalid_geometries'],0)
         self.assertEqual(set(table['CLASSFP'].to_pylist()),{'C1','C2','C5','C6','C7','C8','C9'})
+
+class RegistrationTests(unittest.TestCase):
+    def test_explicit_ingest_and_stopped_schedule(self):
+        with patch.dict(os.environ,{'HIFLD_SHADOW_MANUAL_ONLY':'1'}):
+            from dagster_hifld.definitions import defs
+            from dagster_hifld.assets.census_designated_places import cdp_source_integrity_schedule
+            from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
+            slug='incorporated-places'
+            graph=defs.resolve_asset_graph()
+            keys={tuple(k.path) for k in graph.get_all_asset_keys()}
+            self.assertIn(('ingest',slug,slug),keys)
+            self.assertEqual(sum(any(tuple(k.path)==('ingest',slug,slug) for k in asset.keys) for asset in hifld_ingest_assets),1)
+            self.assertIsNotNone(defs.resolve_job_def('incorporated_places_source_integrity'))
+            from dagster_hifld.assets.incorporated_places import incorporated_places_source_integrity_schedule
+            self.assertEqual(incorporated_places_source_integrity_schedule.default_status,DefaultScheduleStatus.STOPPED)
 
 if __name__=='__main__':unittest.main()
