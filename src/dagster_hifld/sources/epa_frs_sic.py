@@ -350,6 +350,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
              "release_accepted": False, "source_release_accepted": False,
              "freshness_accepted": False, "schema_contract_accepted": False,
              "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False}
+    version = content_derived_version(record_sha, "", schema_sha, identity)
     ready = {"approved": False, "version": version, "source_record_sha256": record_sha,
              "source_schema_sha256": schema_sha, "objects": source_objects,
              "refresh_status": "STOPPED", "release_accepted": False}
@@ -367,7 +368,6 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
                "source_schema_sha256": schema_sha,
                "capture_receipts": {name: receipt for name, (_body, receipt) in captures.items()},
                "objects": descriptors}
-    version = content_derived_version(record_sha, "", schema_sha, identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     if storage.object_snapshot(state_key) is not None:
