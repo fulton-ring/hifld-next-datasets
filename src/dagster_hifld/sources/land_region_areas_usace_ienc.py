@@ -737,7 +737,7 @@ def capture_land_region_areas_usace_ienc(storage: StagingStorageResource, *, ver
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = requested / (version + "-" + uuid4().hex)
     else:
-        root = Path("/workspace/work/135-evidence/captures") / (version + "-" + uuid4().hex)
+        root = Path("/tmp/hifld-native-reconstruction/135/captures") / (version + "-" + uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)
