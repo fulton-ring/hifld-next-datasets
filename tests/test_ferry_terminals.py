@@ -101,9 +101,11 @@ class FerryTerminalsTests(TestCase):
         )
         for label,mutate,reason in cases:
             with self.subTest(label):
-                out=self.stage();root=self.root(out);catalog(root,out);mutate(root,out)
+                out=self.stage();root=self.root(out);catalog(root,out);mutate(root,out);before=self.snap(root)
                 with self.assertRaisesRegex(s.FerryQuarantineError,reason):self.stage()
                 self.assertFalse(root.exists())
+                quarantined=(Path(self.tmp.name)/'_quarantine'/s.SLUG).glob('invalid-cache-*/candidate')
+                self.assertTrue(any(self.snap(path)==before for path in quarantined))
                 self.assertTrue(self.stage()['version']==out['version'])
 
     def test_missing_ready_moves_whole_cache_and_restores_original_newer_receipts(self):
