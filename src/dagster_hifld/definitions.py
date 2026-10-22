@@ -164,6 +164,11 @@ from dagster_hifld.assets.noaa import (
     noaa_territorial_draft_weekly_schedule,
 )
 
+from dagster_hifld.assets.ems_stations import (
+    usgs_ems_stations_draft_refresh_job,
+    usgs_ems_stations_draft_refresh_schedule,
+)
+
 from dagster_hifld.assets.noaa_current_dart import (
     noaa_dart_draft_refresh_job,
     noaa_dart_draft_refresh_schedule,
@@ -1017,6 +1022,7 @@ defs = Definitions(
         noaa_territorial_draft_refresh_job,
         noaa_contiguous_draft_refresh_job,
         noaa_dart_draft_refresh_job,
+        usgs_ems_stations_draft_refresh_job,
         usace_pylon_areas_draft_job,
         pylon_locations_draft_refresh_job,
         distance_marks_draft_refresh_job,
@@ -1115,6 +1121,7 @@ defs = Definitions(
         noaa_territorial_draft_weekly_schedule,
         noaa_contiguous_draft_refresh_schedule,
         noaa_dart_draft_refresh_schedule,
+        usgs_ems_stations_draft_refresh_schedule,
         pylon_locations_draft_refresh_schedule,
         distance_marks_draft_refresh_schedule,
         recommended_tracks_draft_schedule,
