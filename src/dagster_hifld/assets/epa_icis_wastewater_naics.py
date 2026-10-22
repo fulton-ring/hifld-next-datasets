@@ -362,5 +362,4 @@ epa_icis_wastewater_naics_draft_job = define_asset_job("epa_icis_wastewater_naic
     selection=AssetSelection.assets(epa_icis_wastewater_naics_codes))
 epa_icis_wastewater_naics_draft_schedule = ScheduleDefinition(name="epa_icis_wastewater_naics_draft_refresh_schedule",
     job=epa_icis_wastewater_naics_draft_job, cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
-    default_status=DefaultScheduleStatus.STOPPED,
-    run_config={"ops": {"epa_icis_wastewater_naics_codes": {"config": {"offline_replay_version": ""}}}})
+    default_status=DefaultScheduleStatus.STOPPED)
