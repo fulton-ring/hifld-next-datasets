@@ -40,8 +40,11 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
-    validate_staged_release_derivatives)
+from dagster_hifld.sources.epa_frs_common import (
+    STAGED_RELEASE_DERIVATIVE_NAMES,
+    _validate_cached_catalog_sidecars,
+    validate_staged_release_derivatives,
+)
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "harbor-facility-areas-usace-ienc"
@@ -657,6 +660,9 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
             "metadata/source/source_manifest.json",
             f"metadata/source/version_{manifest_descriptor['sha256']}_source_manifest.json",
         }
+        found_snapshots = {f"{prefix}/{name}" for name in snapshot_names} & actual_keys
+        if found_snapshots and len(found_snapshots) != len(snapshot_names):
+            raise ValueError("cached_catalog_source_snapshot_incomplete")
     allowed_keys = expected_keys | {f"{prefix}/{name}" for name in derived_names | snapshot_names | STAGED_RELEASE_DERIVATIVE_NAMES}
     if not expected_keys <= actual_keys or actual_keys - allowed_keys:
         raise ValueError("cached_candidate_storage_roster_changed")
@@ -670,6 +676,7 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
                 "bytes": snapshot.size, "sha256": storage.sha256_key(key)}
                 or storage.object_snapshot(key) != snapshot):
             raise ValueError("cached_catalog_source_snapshot_changed:" + name)
+    _validate_cached_catalog_sidecars(storage, prefix, actual_keys)
     for name, descriptor in expected_objects.items():
         key = f"{prefix}/{name}"
         snapshot = storage.object_snapshot(key)

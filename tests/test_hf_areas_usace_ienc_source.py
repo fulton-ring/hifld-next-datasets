@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import pyarrow.parquet as pq
 import shapely
+import httpx
 
 from dagster_hifld.sources.hf_areas_usace_ienc import (
     BTS_ITEM_ID,
@@ -34,6 +35,9 @@ from dagster_hifld.sources.hf_areas_usace_ienc import (
 from dagster_hifld.assets.publish import _copy_version_files
 from dagster_hifld.release_approval import ReleaseApprovalError
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
+from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
+from dagster_hifld.sources import hf_areas_usace_ienc as source
 
 
 def _ring(x: float, y: float, size: float = 0.001) -> list[list[float]]:
@@ -493,6 +497,97 @@ class RegisteredDraftRefresh(unittest.TestCase):
             .default_status,
             DefaultScheduleStatus.STOPPED,
         )
+
+
+class CachedCatalogSidecarValidation(unittest.TestCase):
+    def test_offline_cache_replay_rejects_catalog_tamper_and_missing_manifest_snapshot(self):
+        with tempfile.TemporaryDirectory(prefix="hf-areas-cache-") as temporary:
+            root = Path(temporary)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root), prefix="")
+            docs = _docs()
+            responses = [docs["ids_seed"]] + [
+                docs[name] for name, _ in source._capture_roster(EXPECTED_IDS)
+            ]
+            response_index = 0
+
+            def handler(request):
+                nonlocal response_index
+                body = responses[response_index]
+                response_index += 1
+                return httpx.Response(
+                    200,
+                    stream=httpx.ByteStream(json.dumps(body).encode("utf-8")),
+                    request=request,
+                    headers={"content-type": "application/json"},
+                )
+
+            transport = httpx.MockTransport(
+                handler
+            )
+            real_client = httpx.Client
+
+            def fixture_client(**kwargs):
+                kwargs.pop("follow_redirects", None)
+                kwargs.pop("timeout", None)
+                kwargs.pop("headers", None)
+                return real_client(transport=transport, **kwargs)
+
+            capture_root = root / "capture"
+            with patch.object(source.httpx, "Client", fixture_client), patch.object(
+                source.time, "sleep", return_value=None
+            ):
+                first = source.capture_hf_areas_usace_ienc(
+                    storage, version="fixture-source", capture_directory=str(capture_root)
+                )
+            prefix = f"{first['dataset_slug']}/{first['file_slug']}/{first['version']}"
+            snapshot_source_metadata(storage, first["dataset_slug"], first["file_slug"], first["version"])
+            resolved = load_resolved_source_manifest(
+                storage, first["dataset_slug"], first["file_slug"], first["version"]
+            )
+            summary = summarize_staged_catalog(
+                storage, first["dataset_slug"], first["file_slug"], first["version"],
+                first["dataset_slug"], source_metadata=resolved.metadata,
+            )
+            write_catalog_metadata(
+                storage, first["dataset_slug"], first["file_slug"], first["version"],
+                summary.quality_manifest, summary.data_dictionary,
+            )
+
+            def replay():
+                with patch.object(source.httpx, "Client", side_effect=AssertionError("offline replay attempted HTTP")):
+                    return source.capture_hf_areas_usace_ienc(
+                        storage, version="offline-replay", capture_directory=str(first["capture_directory"])
+                    )
+
+            self.assertTrue(replay()["reused"])
+
+            for name, field in (
+                ("quality_manifest.json", "feature_count"),
+                ("data_dictionary.json", "title"),
+            ):
+                key = f"{prefix}/metadata/{name}"
+                original = storage.read_key(key)
+                changed = json.loads(original)
+                changed[field] = "tampered" if field == "title" else changed[field] + 1
+                storage.write_key(key, json.dumps(changed).encode("utf-8"))
+                with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
+                    replay()
+                storage.write_key(key, original)
+
+            provenance_key = f"{prefix}/metadata/resolved_provenance.json"
+            original_provenance = storage.read_key(provenance_key)
+            storage.write_key(provenance_key, b"{}")
+            with self.assertRaisesRegex(ValueError, "cached_catalog_resolved_provenance_mismatch"):
+                replay()
+            storage.write_key(provenance_key, original_provenance)
+
+            snapshot_key = f"{prefix}/metadata/source/source_manifest.json"
+            snapshot_path = Path(storage.local_dir) / snapshot_key
+            original_snapshot = snapshot_path.read_bytes()
+            snapshot_path.unlink()
+            with self.assertRaisesRegex(ValueError, "cached_catalog_source_snapshot_incomplete"):
+                replay()
+            snapshot_path.write_bytes(original_snapshot)
 
 
 if __name__ == "__main__":
