@@ -158,6 +158,28 @@ class CapturePreflight(unittest.TestCase):
                         storage, version="disk-floor", capture_directory=str(Path(temporary) / "capture")
                     )
 
+    def test_operator_capture_limit_stops_before_http(self):
+        with tempfile.TemporaryDirectory(prefix="lock-basins-capture-limit-") as temporary:
+            storage = StagingStorageResource(use_local=True, local_dir=temporary, prefix="")
+            capture = Path(temporary) / "capture"
+            (capture / "prior").mkdir(parents=True)
+            (capture / "prior" / "old.body").write_bytes(b"12345")
+            with patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=MIN_FREE_BYTES)), \
+                    patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP must not start")):
+                with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded_before_request"):
+                    source.capture_lock_basins_usace_ienc(
+                        storage, version="lower-limit", capture_directory=str(capture),
+                        max_capture_bytes=4,
+                    )
+
+    def test_operator_capture_limit_cannot_exceed_profile_ceiling(self):
+        with tempfile.TemporaryDirectory(prefix="lock-basins-invalid-limit-") as temporary:
+            storage = StagingStorageResource(use_local=True, local_dir=temporary, prefix="")
+            with self.assertRaisesRegex(ValueError, "invalid_capture_byte_limit"):
+                source.capture_lock_basins_usace_ienc(
+                    storage, version="invalid-limit", max_capture_bytes=source.MAX_CAPTURE_BYTES + 1,
+                )
+
 
 class CaptureResponseBudget(unittest.TestCase):
     def test_response_limit_failure_is_not_retried(self):
@@ -194,6 +216,63 @@ class CaptureResponseBudget(unittest.TestCase):
                 source._fetch_retry(client, "https://example.test/layer", Path(directory), "page", [0],
                                     schedule=(0.0, 0.0, 0.0))
         self.assertEqual(client.calls, 1)
+
+    def test_actual_oversized_wire_block_is_rejected_before_persistence(self):
+        payload = b"x" * (2_000_001)
+        request = httpx.Request("GET", "https://example.test/layer")
+        response = httpx.Response(200, stream=httpx.ByteStream(payload), request=request)
+
+        class Client:
+            def stream(self, method, url, **kwargs):
+                class StreamContext:
+                    def __enter__(self):
+                        return response
+
+                    def __exit__(self, *exc):
+                        response.close()
+
+                return StreamContext()
+
+        with tempfile.TemporaryDirectory(prefix="lock-basins-wire-oversize-") as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
+                source._fetch(Client(), "https://example.test/layer", root, "page", [0],
+                              max_capture_bytes=2_000_000)
+            self.assertFalse((root / "page.wire").exists())
+            self.assertFalse((root / "page.body").exists())
+            self.assertTrue((root / "page.receipt.json").is_file())
+
+    def test_sealed_replay_rejects_oversized_artifact_before_opening_it(self):
+        with tempfile.TemporaryDirectory(prefix="lock-basins-replay-size-") as temporary:
+            storage = StagingStorageResource(use_local=True, local_dir=temporary, prefix="")
+            capture = Path(temporary) / "capture"
+            capture.mkdir()
+            (capture / "ids_seed.body").write_bytes(b"123456")
+            (capture / "ids_seed.wire").write_bytes(b"x")
+            (capture / "ids_seed.receipt.json").write_bytes(b"{}")
+            roster = {
+                "ids_seed.body": {"bytes": 6, "sha256": "0" * 64},
+                "ids_seed.wire": {"bytes": 1, "sha256": "0" * 64},
+                "ids_seed.receipt.json": {"bytes": 2, "sha256": "0" * 64},
+            }
+            (capture / "capture_manifest.json").write_bytes(json.dumps({
+                "complete": True, "receipts": {}, "attempts": {}, "artifact_roster": roster,
+            }).encode())
+            opened = []
+            real_open = source.os.open
+
+            def tracked_open(path, *args, **kwargs):
+                opened.append(Path(path).name)
+                return real_open(path, *args, **kwargs)
+
+            with patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=MIN_FREE_BYTES)), \
+                    patch.object(source, "MAX_BODY_BYTES", 5), patch.object(source.os, "open", side_effect=tracked_open):
+                with self.assertRaisesRegex(ValueError, "retained_capture_artifact_too_large"):
+                    source.capture_lock_basins_usace_ienc(
+                        storage, version="oversized-replay", capture_directory=str(capture),
+                        max_capture_bytes=100,
+                    )
+            self.assertEqual(opened, ["capture_manifest.json"])
 
 
 class ValidateCompleteCapture(unittest.TestCase):

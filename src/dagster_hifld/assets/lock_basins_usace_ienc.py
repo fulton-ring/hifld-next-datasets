@@ -18,12 +18,14 @@ from dagster_hifld.sources.lock_basins_usace_ienc import (
     DATASET_SLUG,
     EXPECTED_COUNT,
     FILE_SLUG,
+    MAX_CAPTURE_BYTES,
     capture_lock_basins_usace_ienc,
 )
 
 
 class LockBasinsUsaceIencConfig(Config):
     capture_directory: str = ""
+    max_capture_bytes: int = MAX_CAPTURE_BYTES
 
 
 @asset(
@@ -47,6 +49,7 @@ def lock_basins_usace_ienc_candidate(
         staging_storage,
         version=context.run_id,
         capture_directory=config.capture_directory or None,
+        max_capture_bytes=config.max_capture_bytes,
     )
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,

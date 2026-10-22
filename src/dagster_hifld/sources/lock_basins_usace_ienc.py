@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import platform
 import shutil
 import stat
@@ -62,6 +63,9 @@ EXPECTED_ID_SHA256 = "0cf671f214459975e17fcdd41bcc2f42b4fe07060f864c73745e50e9c7
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 12_000_000
 MAX_CAPTURE_BYTES = 16_000_000
+MAX_MANIFEST_BYTES = 1_000_000
+MAX_RECEIPT_BYTES = 64_000
+MAX_CAPTURE_FILES = 128
 MIN_FREE_BYTES = 400_000_000
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"),
@@ -133,6 +137,91 @@ def _sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
+class _CaptureBudgetExceeded(Exception):
+    pass
+
+
+def _bounded_read(path: Path, limit: int, code: str) -> bytes:
+    """Read one regular file without following links or allocating beyond its bound."""
+    try:
+        before = path.lstat()
+    except OSError as exc:
+        raise ValueError(code) from exc
+    if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+        raise ValueError(code)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as exc:
+        raise ValueError(code) from exc
+    try:
+        opened = os.fstat(fd)
+        if (not stat.S_ISREG(opened.st_mode) or opened.st_dev != before.st_dev
+                or opened.st_ino != before.st_ino or opened.st_size != before.st_size
+                or opened.st_size > limit):
+            raise ValueError(code)
+        chunks = []
+        remaining = limit + 1
+        while remaining:
+            block = os.read(fd, min(64 * 1024, remaining))
+            if not block:
+                break
+            chunks.append(block)
+            remaining -= len(block)
+        result = b"".join(chunks)
+        after = os.fstat(fd)
+        if (len(result) != before.st_size or len(result) > limit
+                or after.st_dev != opened.st_dev or after.st_ino != opened.st_ino
+                or after.st_size != opened.st_size):
+            raise ValueError(code)
+        return result
+    finally:
+        os.close(fd)
+
+
+def _validate_replay_sizes(root: Path, roster: dict, attempts: dict, max_capture_bytes: int) -> None:
+    """Validate every replay path and aggregate payload size before digest reads."""
+    expected = set(roster) | {"capture_manifest.json"}
+    attempt_names = set()
+    for attempt in attempts:
+        if not isinstance(attempt, str) or Path(attempt).name != attempt or "/" in attempt or "\\" in attempt:
+            raise ValueError("retained_capture_attempt_name_invalid")
+        attempt_names.update({f"{attempt}.body", f"{attempt}.wire"})
+    expected |= attempt_names
+    if any(not isinstance(name, str) or Path(name).name != name or name in {".", ".."} for name in expected):
+        raise ValueError("capture_roster_manifest_invalid")
+    if len(expected) > MAX_CAPTURE_FILES:
+        raise ValueError("capture_roster_too_many_artifacts")
+    actual = set()
+    for entry in root.iterdir():
+        if len(actual) >= MAX_CAPTURE_FILES or entry.name not in expected:
+            raise ValueError("capture_roster_mismatch")
+        actual.add(entry.name)
+    if actual != expected:
+        raise ValueError("capture_roster_mismatch")
+    payload_total = 0
+    for name in sorted(actual):
+        entry = root / name
+        try:
+            info = entry.lstat()
+        except OSError as exc:
+            raise ValueError("retained_capture_artifact_unreadable") from exc
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("capture_roster_nonregular_path:" + entry.name)
+        if entry.name == "capture_manifest.json":
+            limit, code = MAX_MANIFEST_BYTES, "retained_capture_manifest_too_large"
+        elif entry.name.endswith(".receipt.json"):
+            limit, code = MAX_RECEIPT_BYTES, "retained_capture_receipt_too_large"
+        elif entry.name.endswith((".body", ".wire")):
+            limit, code = MAX_BODY_BYTES, "retained_capture_artifact_too_large"
+            payload_total += info.st_size
+        else:
+            raise ValueError("capture_roster_unexpected_artifact")
+        if info.st_size > limit:
+            raise ValueError(code)
+    if payload_total > max_capture_bytes:
+        raise ValueError("retained_capture_payload_budget_exceeded")
+
+
 def _validate_capture_roster(root: Path, expected: set[str] | dict[str, dict[str, object]]) -> None:
     """Require an exact flat roster of regular, non-symlink capture files."""
     if not isinstance(root, Path) or not root.is_dir() or root.is_symlink():
@@ -155,7 +244,8 @@ def _validate_capture_roster(root: Path, expected: set[str] | dict[str, dict[str
             if (not isinstance(descriptor, dict) or not isinstance(descriptor.get("bytes"), int)
                     or not isinstance(descriptor.get("sha256"), str)):
                 raise ValueError("capture_roster_manifest_invalid")
-            body = (root / name).read_bytes()
+            limit = MAX_BODY_BYTES if name.endswith((".body", ".wire")) else MAX_RECEIPT_BYTES
+            body = _bounded_read(root / name, limit, "capture_roster_artifact_too_large")
             if len(body) != descriptor["bytes"] or hashlib.sha256(body).hexdigest() != descriptor["sha256"]:
                 raise ValueError("capture_roster_artifact_mismatch:" + name)
 
@@ -170,12 +260,14 @@ def _capture_roster_digests(root: Path, *, exclude: set[str] = frozenset()) -> d
             continue
         if entry.is_symlink() or not stat.S_ISREG(entry.lstat().st_mode):
             raise ValueError("capture_roster_nonregular_path:" + entry.name)
-        body = entry.read_bytes()
+        limit = MAX_BODY_BYTES if entry.name.endswith((".body", ".wire")) else MAX_RECEIPT_BYTES
+        body = _bounded_read(entry, limit, "capture_roster_artifact_too_large")
         result[entry.name] = {"bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
     return result
 
 
-def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
+def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
+           *, max_capture_bytes: int = MAX_CAPTURE_BYTES):
     root.mkdir(parents=True, exist_ok=True)
     body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
     for path in (body_path, wire_path):
@@ -187,6 +279,11 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
 
     def retain(path, kind):
         def write(chunk):
+            limit = MAX_BODY_BYTES
+            if (not isinstance(chunk, bytes) or len(chunk) > limit
+                    or sizes[kind] + len(chunk) > limit
+                    or budget_start + sizes["wire"] + sizes["body"] + len(chunk) > max_capture_bytes):
+                raise _CaptureBudgetExceeded()
             with path.open("ab") as stream:
                 stream.write(chunk)
             hashes[kind].update(chunk)
@@ -195,8 +292,8 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
         return write
 
     def reserve(progress):
-        if budget_start + progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
+        if budget_start + progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > max_capture_bytes:
+            raise _CaptureBudgetExceeded()
 
     response = None
     result = None
@@ -222,6 +319,8 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
     (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
     if result is not None and result.error_code in {"wire_limit_exceeded", "decoded_limit_exceeded"}:
         raise ValueError("source_response_limit_exceeded:" + result.error_code)
+    if result is not None and result.error_type == "_CaptureBudgetExceeded":
+        raise ValueError("source_capture_budget_exceeded")
     if transport_error:
         raise httpx.TransportError("capture_transport_error:" + transport_error)
     if result is None:
@@ -235,7 +334,8 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
-                 *, schedule: tuple[float, ...] = (0.0, 2.0, 8.0)):
+                 *, schedule: tuple[float, ...] = (0.0, 2.0, 8.0),
+                 max_capture_bytes: int = MAX_CAPTURE_BYTES):
     """Retry transient transport/incomplete reads with backoff, retaining every attempt."""
     last = None
     for attempt, wait in enumerate(schedule):
@@ -243,7 +343,8 @@ def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: 
             time.sleep(wait)
         attempt_name = f"{name}.attempt{attempt + 1}"
         try:
-            body, receipt = _fetch(client, url, root, attempt_name, budget)
+            body, receipt = _fetch(client, url, root, attempt_name, budget,
+                                   max_capture_bytes=max_capture_bytes)
             for suffix in ("body", "wire", "receipt.json"):
                 (root / f"{attempt_name}.{suffix}").replace(root / f"{name}.{suffix}")
             return body, receipt
@@ -376,9 +477,9 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
     paths = [root / f"{name}.body", root / f"{name}.wire", root / f"{name}.receipt.json"]
     if any(path.is_symlink() for path in paths):
         raise ValueError("retained_capture_symlink_rejected")
-    body = paths[0].read_bytes()
-    wire = paths[1].read_bytes()
-    receipt = json.loads(paths[2].read_bytes())
+    body = _bounded_read(paths[0], MAX_BODY_BYTES, "retained_capture_artifact_too_large")
+    wire = _bounded_read(paths[1], MAX_BODY_BYTES, "retained_capture_artifact_too_large")
+    receipt = json.loads(_bounded_read(paths[2], MAX_RECEIPT_BYTES, "retained_capture_receipt_too_large"))
     if (receipt.get("complete_body") is not True or receipt.get("status") != 200
             or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
             or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
@@ -728,8 +829,11 @@ def _write_outputs(storage, prefix: str, outputs: dict[str, bytes]) -> dict[str,
 
 
 def capture_lock_basins_usace_ienc(storage: StagingStorageResource, *, version: str,
-                                capture_directory: str | None = None) -> dict[str, object]:
+                                capture_directory: str | None = None,
+                                max_capture_bytes: int = MAX_CAPTURE_BYTES) -> dict[str, object]:
     """Acquire a complete bounded source snapshot, or replay an explicit capture directory."""
+    if type(max_capture_bytes) is not int or not 1 <= max_capture_bytes <= MAX_CAPTURE_BYTES:
+        raise ValueError("invalid_capture_byte_limit")
     if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
         raise ValueError("explicit_local_staging_resource_required")
@@ -756,12 +860,17 @@ def capture_lock_basins_usace_ienc(storage: StagingStorageResource, *, version: 
     captures = {}
     try:
         if replay:
-            retained_manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            retained_manifest = json.loads(_bounded_read(
+                root / "capture_manifest.json", MAX_MANIFEST_BYTES, "retained_capture_manifest_too_large"))
             if retained_manifest.get("complete") is not True or not isinstance(retained_manifest.get("receipts"), dict):
                 raise ValueError("retained_capture_manifest_invalid")
             roster = retained_manifest.get("artifact_roster")
             if not isinstance(roster, dict):
                 raise ValueError("retained_capture_roster_manifest_missing")
+            attempt_map = retained_manifest.get("attempts", {})
+            if not isinstance(attempt_map, dict):
+                raise ValueError("retained_capture_attempt_manifest_invalid")
+            _validate_replay_sizes(root, roster, attempt_map, max_capture_bytes)
             _validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
             if roster != _capture_roster_digests(root, exclude={"capture_manifest.json"}):
                 raise ValueError("retained_capture_artifact_digest_mismatch")
@@ -781,16 +890,12 @@ def capture_lock_basins_usace_ienc(storage: StagingStorageResource, *, version: 
                 if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
                         or receipt.get("final_url") != expected_urls[name]):
                     raise ValueError("retained_capture_request_identity_mismatch:" + name)
-            attempt_map = retained_manifest.get("attempts", {})
-            if not isinstance(attempt_map, dict):
-                raise ValueError("retained_capture_attempt_manifest_invalid")
             for name, receipt in attempt_map.items():
-                if not isinstance(name, str) or Path(name).name != name or "/" in name or "\\" in name:
-                    raise ValueError("retained_capture_attempt_name_invalid")
                 attempt_paths = [root / f"{name}.body", root / f"{name}.wire"]
-                if any(path.is_symlink() for path in attempt_paths):
-                    raise ValueError("retained_capture_attempt_symlink_rejected")
-                attempt_body, attempt_wire = attempt_paths[0].read_bytes(), attempt_paths[1].read_bytes()
+                attempt_body = _bounded_read(attempt_paths[0], MAX_BODY_BYTES,
+                                             "retained_capture_attempt_artifact_too_large")
+                attempt_wire = _bounded_read(attempt_paths[1], MAX_BODY_BYTES,
+                                             "retained_capture_attempt_artifact_too_large")
                 if (receipt.get("bytes") != len(attempt_body) or receipt.get("sha256") != _sha(attempt_body)
                         or receipt.get("wire_bytes") != len(attempt_wire)
                         or receipt.get("wire_sha256") != _sha(attempt_wire)):
@@ -800,20 +905,21 @@ def capture_lock_basins_usace_ienc(storage: StagingStorageResource, *, version: 
             existing_bytes = sum(p.stat().st_size for p in budget_root.rglob("*")
                                  if p.is_file() and p.suffix in {".body", ".wire"})
             capture_budget = [existing_bytes]
-            if existing_bytes > MAX_CAPTURE_BYTES:
+            if existing_bytes > max_capture_bytes:
                 raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
                 seed_body, seed_receipt = _fetch_retry(
                     client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                    root, "ids_seed", capture_budget)
+                    root, "ids_seed", capture_budget, max_capture_bytes=max_capture_bytes)
                 ids = json.loads(seed_body).get("objectIds")
                 if ids != EXPECTED_IDS or _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
                     raise ValueError("source_seed_id_count_or_roster_drift")
                 captures["ids_seed"] = (seed_body, seed_receipt)
                 for name, url in _capture_roster(ids):
                     time.sleep(0.5)
-                    captures[name] = _fetch_retry(client, url, root, name, capture_budget)
+                    captures[name] = _fetch_retry(client, url, root, name, capture_budget,
+                                                  max_capture_bytes=max_capture_bytes)
         fields, features, audit = _validate(captures)
     except Exception as exc:
         retained = {}
@@ -891,7 +997,8 @@ def capture_lock_basins_usace_ienc(storage: StagingStorageResource, *, version: 
     attempts = {}
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try:
-            attempts[receipt_path.name.removesuffix(".receipt.json")] = json.loads(receipt_path.read_bytes())
+            attempts[receipt_path.name.removesuffix(".receipt.json")] = json.loads(
+                _bounded_read(receipt_path, MAX_RECEIPT_BYTES, "capture_attempt_receipt_too_large"))
         except (OSError, ValueError):
             attempts[receipt_path.name] = {"receipt_readback_failed": True}
     if not replay:
@@ -909,7 +1016,8 @@ def capture_lock_basins_usace_ienc(storage: StagingStorageResource, *, version: 
         "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in captures.items():
         outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (root / f"{name}.wire").read_bytes()
+        outputs[f"raw/{name}.wire"] = _bounded_read(root / f"{name}.wire", MAX_BODY_BYTES,
+                                                     "captured_source_wire_too_large")
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
         "objects": {"geoparquet/lock-basins-usace-ienc.parquet": {"bytes": len(parquet), "sha256": _sha(parquet)}},
