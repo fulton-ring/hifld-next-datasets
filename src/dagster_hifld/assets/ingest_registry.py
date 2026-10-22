@@ -59,6 +59,7 @@ from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pi
 from dagster_hifld.assets.usace_overhead_cables import usace_overhead_cables_usace_ienc
 from dagster_hifld.assets.usace_dam_lines import usace_dam_lines_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
+from dagster_hifld.assets.usace_mooring_facility_lines import usace_mooring_facility_lines_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
 from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
@@ -187,6 +188,7 @@ hifld_ingest_assets = [
     usace_overhead_cables_usace_ienc,
     usace_dam_lines_usace_ienc,
     usace_obstruction_lines_usace_ienc,
+    usace_mooring_facility_lines_usace_ienc,
     census_secondary_school_districts,
     principal_ports_usace,
     census_unified_school_districts,
