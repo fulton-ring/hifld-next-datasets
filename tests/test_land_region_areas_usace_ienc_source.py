@@ -581,9 +581,12 @@ class CachedCatalogSidecarValidation(unittest.TestCase):
 
             def replay():
                 with patch.object(source.httpx, "Client", side_effect=AssertionError("offline replay attempted HTTP")):
-                    return source.capture_land_region_areas_usace_ienc(
-                        storage, version="offline-replay", capture_directory=str(first["capture_directory"])
-                    )
+                    with patch.object(
+                        source.shutil, "disk_usage", return_value=SimpleNamespace(free=400_000_000)
+                    ):
+                        return source.capture_land_region_areas_usace_ienc(
+                            storage, version="offline-replay", capture_directory=str(first["capture_directory"])
+                        )
 
             self.assertTrue(replay()["reused"])
 
