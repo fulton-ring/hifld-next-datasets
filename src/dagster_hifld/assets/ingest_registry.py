@@ -81,6 +81,7 @@ from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_
 from dagster_hifld.assets.gcca_warehouse_directory import gcca_warehouses_current
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
+from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
 from dagster_hifld.assets.usace_airport_area import usace_airport_area_ienc
 from dagster_hifld.assets.campus_preservation import ornl_campus_historical_preservation
 
@@ -215,6 +216,7 @@ hifld_ingest_assets = [
     gcca_warehouses_current,
     coastlines_usace_ienc,
     locks_usace_ienc,
+    lock_basins_usace_ienc_candidate,
     usace_airport_area_ienc,
     ibc_canada_us_border,
     fws_cbrs_buffer_zone,
