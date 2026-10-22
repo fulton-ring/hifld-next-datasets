@@ -317,6 +317,12 @@ from dagster_hifld.assets.usace_obstruction_lines import (
     usace_obstruction_lines_draft_schedule,
 )
 
+from dagster_hifld.assets.usace_mooring_facility_lines import (
+    usace_mooring_facility_lines_complete,
+    usace_mooring_facility_lines_draft_job,
+    usace_mooring_facility_lines_draft_schedule,
+)
+
 from dagster_hifld.assets.floodwalls_usace_ienc import (
     floodwalls_usace_ienc_complete,
     floodwalls_usace_ienc_draft_job,
@@ -512,6 +518,11 @@ from dagster_hifld.assets.campus_preservation import (
 from dagster_hifld.assets.combined_statistical_areas import (
     csa_source_integrity_job,
     csa_source_integrity_schedule,
+)
+from dagster_hifld.assets.epa_icis_wastewater import (
+    epa_icis_wastewater_capture_complete,
+    epa_icis_wastewater_draft_job,
+    epa_icis_wastewater_draft_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -981,6 +992,7 @@ defs = Definitions(
         arc_regions_full_quality,
         eia_power_plants_complete,
         epa_frs_eia_860_power_generation_complete,
+        epa_icis_wastewater_capture_complete,
         fuds_irm_property_point_complete,
         fuds_irm_property_point_geometry_quality,
         bts_intermodal_freight_marine_roll_on_roll_off_complete,
@@ -1000,6 +1012,7 @@ defs = Definitions(
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
+        usace_mooring_facility_lines_complete,
         floodwalls_usace_ienc_complete,
         harbor_facility_locations_usace_ienc_complete,
         usace_administrative_areas_complete,
@@ -1099,6 +1112,7 @@ defs = Definitions(
         usace_overhead_cables_draft_job,
         usace_dam_lines_draft_job,
         usace_obstruction_lines_draft_job,
+        usace_mooring_facility_lines_draft_job,
         floodwalls_usace_ienc_draft_job,
         harbor_facility_locations_usace_ienc_draft_job,
         usace_administrative_areas_draft_job,
@@ -1112,6 +1126,7 @@ defs = Definitions(
         plate_boundaries_draft_job,
         eia_power_plants_draft_job,
         epa_power_generation_draft_job,
+        epa_icis_wastewater_draft_job,
         epa_frs_naics_draft_job,
         gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
@@ -1207,6 +1222,7 @@ defs = Definitions(
         usace_overhead_cables_draft_schedule,
         usace_dam_lines_draft_schedule,
         usace_obstruction_lines_draft_schedule,
+        usace_mooring_facility_lines_draft_schedule,
         floodwalls_usace_ienc_draft_schedule,
         harbor_facility_locations_usace_ienc_draft_schedule,
         usace_administrative_areas_draft_schedule,
@@ -1225,6 +1241,7 @@ defs = Definitions(
         plate_boundaries_draft_schedule,
         eia_power_plants_draft_schedule,
         epa_power_generation_draft_schedule,
+        epa_icis_wastewater_draft_schedule,
         fuds_projects_points_draft_schedule,
         epa_frs_naics_draft_schedule,
         gcca_warehouses_draft_schedule,

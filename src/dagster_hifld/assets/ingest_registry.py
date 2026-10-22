@@ -9,6 +9,7 @@ from dagster_hifld.assets.usgs import usgs_aquifers
 from dagster_hifld.assets.ems_stations import usgs_ems_stations
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
+from dagster_hifld.assets.epa_icis_wastewater import epa_icis_wastewater_treatment_plants
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
 from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
 from dagster_hifld.assets.fuds_district_boundaries import usace_fuds_program_district_boundaries
@@ -58,6 +59,7 @@ from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pi
 from dagster_hifld.assets.usace_overhead_cables import usace_overhead_cables_usace_ienc
 from dagster_hifld.assets.usace_dam_lines import usace_dam_lines_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
+from dagster_hifld.assets.usace_mooring_facility_lines import usace_mooring_facility_lines_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
 from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
@@ -187,6 +189,7 @@ hifld_ingest_assets = [
     usace_overhead_cables_usace_ienc,
     usace_dam_lines_usace_ienc,
     usace_obstruction_lines_usace_ienc,
+    usace_mooring_facility_lines_usace_ienc,
     census_secondary_school_districts,
     principal_ports_usace,
     census_unified_school_districts,
@@ -201,6 +204,7 @@ hifld_ingest_assets = [
     plate_boundaries_usgs,
     eia_power_plants_historical,
     epa_frs_eia_860_power_generation_facilities_by_source,
+    epa_icis_wastewater_treatment_plants,
     fuds_irm_property_point_ingest,
     usace_fuds_projects_points,
     usace_fuds_program_district_boundaries,
