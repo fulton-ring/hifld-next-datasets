@@ -15,9 +15,11 @@ import os
 import shutil
 import stat
 import struct
+import tempfile
 import time
 import zipfile
 import zlib
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Mapping
@@ -441,6 +443,15 @@ def _parquet_from_native_batches(reader, expected_ids: list[int], extent: Mappin
     }
 
 
+@contextmanager
+def _gdal_zip_path(archive_path: Path, gdb_name: str):
+    """Give GDAL's /vsizip handler a .zip alias without copying the archive."""
+    with tempfile.TemporaryDirectory(prefix="nid-vsizip-") as temporary:
+        alias = Path(temporary) / "native-export.zip"
+        alias.symlink_to(archive_path.resolve())
+        yield f"/vsizip/{alias}/{gdb_name}"
+
+
 def _inspect_archive(archive_path: Path, expected_count: int, expected_ids: list[int],
                      layer: Mapping[str, object]) -> tuple[bytes, dict[str, object]]:
     if archive_path.stat().st_size > MAX_NATIVE_RESPONSE_BYTES:
@@ -491,14 +502,14 @@ def _inspect_archive(archive_path: Path, expected_count: int, expected_ids: list
             gdb_name = next(iter(roots))
     except zipfile.BadZipFile as exc:
         raise ValueError("usace_nid_native_archive_invalid_zip") from exc
-    vsi_path = f"/vsizip/{archive_path.absolute()}/{gdb_name}"
-    info = pyogrio.read_info(vsi_path, layer=NATIVE_LAYER_NAME,
-                             force_feature_count=False, force_total_bounds=False)
-    with pyogrio.open_arrow(vsi_path, layer=NATIVE_LAYER_NAME, return_fids=True,
-                            batch_size=MAX_NATIVE_BATCH_ROWS, use_pyarrow=True,
-                            force_2d=False, datetime_as_string=False) as (meta, reader):
-        _validate_native_reader(info, reader.schema, layer, expected_count)
-        candidate, audit = _parquet_from_native_batches(reader, expected_ids, layer["extent"])
+    with _gdal_zip_path(archive_path, gdb_name) as vsi_path:
+        info = pyogrio.read_info(vsi_path, layer=NATIVE_LAYER_NAME,
+                                 force_feature_count=False, force_total_bounds=False)
+        with pyogrio.open_arrow(vsi_path, layer=NATIVE_LAYER_NAME, return_fids=True,
+                                batch_size=MAX_NATIVE_BATCH_ROWS, use_pyarrow=True,
+                                force_2d=False, datetime_as_string=False) as (meta, reader):
+            _validate_native_reader(info, reader.schema, layer, expected_count)
+            candidate, audit = _parquet_from_native_batches(reader, expected_ids, layer["extent"])
     audit.update({
         "source_extent": layer["extent"],
         "archive_bytes": archive_path.stat().st_size,

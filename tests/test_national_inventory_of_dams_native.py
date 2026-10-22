@@ -20,6 +20,20 @@ from dagster_hifld.sources import national_inventory_of_dams_native as native
 
 
 class NativeNidTests(unittest.TestCase):
+    def test_gdal_zip_alias_preserves_archive_bytes_and_cleans_up(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "native_archive.body"
+            archive.write_bytes(b"immutable archive bytes")
+            with native._gdal_zip_path(archive, "data.gdb") as vsi_path:
+                alias = Path(vsi_path.split("/vsizip/", 1)[1].split("/data.gdb", 1)[0])
+                self.assertEqual(alias.suffix, ".zip")
+                self.assertTrue(alias.is_symlink())
+                self.assertEqual(alias.resolve(), archive.resolve())
+                self.assertEqual(alias.stat().st_ino, archive.stat().st_ino)
+            self.assertFalse(alias.exists())
+            self.assertEqual(archive.read_bytes(), b"immutable archive bytes")
+
     def _arrow_fixture(self):
         fields = [pa.field("OBJECTID", pa.int64(), nullable=False)]
         arrays = [pa.array([101, 102], type=pa.int64())]
