@@ -361,6 +361,18 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *,
                     resumed_pages: int, first_captured_at: str, last_captured_at: str) -> dict[str, object]:
     identity = _code_identity()
+    version = content_derived_version(extracted["record_sha"], extracted["geometry_sha"],
+                                      extracted["schema_sha"], identity)
+    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+    if storage.object_snapshot(state_key) is not None:
+        parquet_body = Path(extracted["parquet_path"]).read_bytes()
+        return _verify_sealed_candidate(
+            storage, prefix, state_key, version, identity,
+            {"source_record_sha256": extracted["record_sha"],
+             "source_schema_sha256": extracted["schema_sha"],
+             "source_geometry_sha256": extracted["geometry_sha"]},
+            parquet_body)
     audit = {
         "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"], "source_geometry_sha256": extracted["geometry_sha"],
@@ -431,16 +443,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     }
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
-    version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
-                                      audit["source_schema_sha256"], identity)
-    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     ready = {"approved": False, "version": version, "objects": source_objects,
              "source_record_sha256": audit["source_record_sha256"], "freshness_accepted": False,
              "schema_contract_accepted": False, "id_contract_accepted": False,
              "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
-    if storage.object_snapshot(state_key) is not None:
-        return _verify_sealed_candidate(storage, prefix, state_key, version, identity, audit, ready, parquet_body)
 
     outputs: dict[str, bytes] = {
         parquet_name: parquet_body,
@@ -475,7 +481,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
 
 def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
                              version: str, identity: Mapping[str, object], audit: Mapping[str, object],
-                             ready: Mapping[str, object], current_parquet: bytes) -> dict[str, object]:
+                             current_parquet: bytes) -> dict[str, object]:
     fingerprint = _sha(_canonical(identity))
     bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
     payload = bundle.get("payload")
