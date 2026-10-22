@@ -22,6 +22,11 @@ from dagster_hifld.assets.historical_tsunami_events import (
     tsunami_events_draft_schedule,
 )
 from dagster_hifld.assets.bts_ferry_routes import ferry_routes_source_integrity_job, ferry_routes_source_integrity_schedule
+from dagster_hifld.assets.bts_air_truck import (
+    bts_air_truck_draft_job,
+    bts_air_truck_draft_schedule,
+    bts_intermodal_freight_air_to_truck_complete,
+)
 from dagster_hifld.assets.epa_regions import epa_regions_draft_job, epa_regions_draft_schedule
 from dagster_hifld.assets.epa_large_scale import (
     epa_large_scale_source_integrity_job,
@@ -1044,6 +1049,7 @@ defs = Definitions(
         fema_regions_full_quality,
         ferc_historical_full_quality,
         fuds_program_division_boundaries_complete,
+        bts_intermodal_freight_air_to_truck_complete,
     ],
     jobs=[
         bts_ferry_terminals_draft_refresh_job,
@@ -1059,6 +1065,7 @@ defs = Definitions(
         colleges_source_integrity_job,
         usgs_aquifers_draft_refresh_job,
         tsunami_events_draft_job,
+        bts_air_truck_draft_job,
         census_tracts_draft_job,
         quaternary_fault_lines_draft_job,
         courthouses_draft_job,
@@ -1259,6 +1266,7 @@ defs = Definitions(
         fuds_division_draft_schedule,
         fuds_district_boundaries_draft_schedule,
         tsunami_events_draft_schedule,
+        bts_air_truck_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

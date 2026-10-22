@@ -120,6 +120,7 @@ from dagster_hifld.assets.electric_retail_service_territories import electric_re
 from dagster_hifld.assets.epa_eez import epa_eez
 from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
+from dagster_hifld.assets.bts_air_truck import bts_intermodal_freight_air_to_truck
 
 from dagster_hifld.assets.epa_sems import epa_sems_interests
 from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
@@ -239,4 +240,5 @@ hifld_ingest_assets = [
     epa_facilities_labels,
     epa_frs_toxic_release_inventory,
     epa_frs_toxic_substances_control_act_tsca,
+    bts_intermodal_freight_air_to_truck,
 ]
