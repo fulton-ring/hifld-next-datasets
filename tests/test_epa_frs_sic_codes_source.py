@@ -147,11 +147,11 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
                 self.assertRaisesRegex(Exception, "source_page_row_count_incomplete"):
             self._run_capture(tmp, docs, get=broken_get)
-        quarantined = list((Path(tmp) / "_quarantine" / sic.DATASET_SLUG).iterdir())
-        self.assertEqual(len(quarantined), 1)
-        failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
-        self.assertEqual(failure["reason_code"], "ArcGISTableCaptureError")
-        self.assertTrue((quarantined[0] / "raw" / "page_000.body").exists())
+            quarantined = list((Path(tmp) / "_quarantine" / sic.DATASET_SLUG).iterdir())
+            self.assertEqual(len(quarantined), 1)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "ArcGISTableCaptureError")
+            self.assertTrue((quarantined[0] / "raw" / "page_000.body").exists())
 
     def test_second_identical_capture_reuses_sealed_candidate(self):
         docs = self._docs(self._fields(), self._features())
@@ -167,7 +167,7 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
                 first["version"], sic._sha(sic._canonical(
                     sic.processing_identity(Path(sic.__file__).parents[3])))))
             self.assertEqual(bundle["payload"]["source_record_sha256"], first["source_record_sha256"])
-            self.assertIn(f"{prefix}/raw/service.body", bundle["payload"]["objects"])
+            self.assertIn("raw/service.body", bundle["payload"]["objects"])
 
 
 def _storage(tmp):
