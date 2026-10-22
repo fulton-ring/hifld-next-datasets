@@ -14,6 +14,7 @@ from dagster_hifld.sources.locks_usace_ienc import (
 
 class LocksUsaceIencConfig(Config):
     capture_directory: str = ""
+    resume_completed_replica_from: str = ""
 
 
 @asset(
@@ -32,6 +33,7 @@ def locks_usace_ienc(context, config: LocksUsaceIencConfig,
     result = capture_locks_usace_ienc(
         staging_storage,
         capture_directory=config.capture_directory or None,
+        resume_completed_replica_from=config.resume_completed_replica_from or None,
     )
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,
