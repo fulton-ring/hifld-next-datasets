@@ -1,0 +1,93 @@
+{
+  "inventory_id": "primary-roads-2",
+  "title": "Primary Roads",
+  "research_status": "official_candidate_source_verified_contract_pending",
+  "researched_at": "2026-10-20",
+  "source": {
+    "producer": "U.S. Census Bureau, Geography Division",
+    "producer_landing_page": "https://www.census.gov/cgi-bin/geo/shapefiles/index.php?layergroup=Roads&year=2025",
+    "official_download_url": "https://www2.census.gov/geo/tiger/TIGER2025/PRIMARYROADS/tl_2025_us_primaryroads.zip",
+    "format": "ZIP containing a national ESRI Shapefile and its metadata/sidecars",
+    "vintage": "2025",
+    "last_modified_header": "2025-09-23",
+    "last_modified_note": "This is the file-server Last-Modified value, not a claim about when source observations were collected.",
+    "official_definition": "Census 2025 TIGER/Line technical documentation defines Primary Roads as the national file containing MAF/TIGER street features with MTFCC S1100.",
+    "technical_documentation": "https://www2.census.gov/geo/pdfs/maps-data/data/tiger/tgrshp2025/TGRSHP2025_TechDoc.pdf",
+    "license": "U.S. government work; maintainers must confirm downstream publication rights and any attribution obligations before release."
+  },
+  "crosswalk_and_lineage": {
+    "dhs_crosswalk": "https://doi.org/10.3886/E241367V1",
+    "exact_crosswalk_row": "unresolved",
+    "reason": "The crosswalk's DataLumos landing endpoint presented a Cloudflare challenge (HTTP 403) in this environment; the exact row and hyperlink targets have not been inspected. The official Census product is independently verified and maps directly to the inventory concept, but this does not establish it as the exact DHS-designated continuation.",
+    "historical_archive": "https://www.datalumos.org/datalumos/project/240532/version/V1/view",
+    "archive_access": "The DataLumos archive endpoint presented a Cloudflare challenge (HTTP 403); no bytes or schema from the archived HIFLD file were compared.",
+    "relationship_decision": "The 2025 Census Primary Roads product is a verified authoritative candidate and directly matches the HIFLD title/definition concept (S1100). Exact field/value equivalence, HIFLD lineage, and historical continuity remain unproven pending archive and crosswalk access.",
+    "third_party_copies": "No third-party copy is used as the pipeline input."
+  },
+  "extraction_evidence": {
+    "captured_at_utc": "2026-10-20T03:29:44.987256+00:00",
+    "method": "GET",
+    "status": 200,
+    "final_url": "https://www2.census.gov/geo/tiger/TIGER2025/PRIMARYROADS/tl_2025_us_primaryroads.zip",
+    "content_type": "application/zip",
+    "archive_bytes": 38379400,
+    "archive_sha256": "400453e97b9e6693dfecb7362ce7a6cf260d27050f7d84d2a024ba0710b94c07",
+    "retained_capture": "/workspace/work/275/runtime/capture-2026-10-20/tl_2025_us_primaryroads.zip",
+    "file_roster": [
+      "tl_2025_us_primaryroads.cpg",
+      "tl_2025_us_primaryroads.dbf",
+      "tl_2025_us_primaryroads.prj",
+      "tl_2025_us_primaryroads.shp",
+      "tl_2025_us_primaryroads.shp.ea.iso.xml",
+      "tl_2025_us_primaryroads.shp.iso.xml",
+      "tl_2025_us_primaryroads.shx"
+    ],
+    "data_profile": {
+      "feature_count": 17500,
+      "source_id": "LINEARID",
+      "unique_source_id_count": 17500,
+      "source_id_roster_sha256": "b44e03d24e431bcd5ee419e426c74b77c73a81b78cc76f11e9255d4dcf03f3d8",
+      "source_schema_sha256": "e4224cca2c9cab38cf6550bb9d936b1e2e43642c78f03125f8e61e5ffa41e419",
+      "source_attribute_fields": ["LINEARID", "FULLNAME", "RTTYP", "MTFCC"],
+      "source_attribute_physical_types": ["String", "String", "String", "String"],
+      "source_attribute_widths": [22, 100, 1, 5],
+      "observed_attribute_null_counts": {"LINEARID": 0, "FULLNAME": 0, "RTTYP": 0, "MTFCC": 0},
+      "mtfcc_values": ["S1100"],
+      "geometry_type": "LineString",
+      "crs": "EPSG:4269",
+      "null_geometry_count": 0,
+      "empty_geometry_count": 0,
+      "invalid_geometry_count": 0,
+      "bounds": [-158.104182, 17.974171, -65.648659, 61.571228]
+    },
+    "evidence_file": "/workspace/work/275/runtime/capture-2026-10-20/receipt.json"
+  },
+  "proposed_schema_contract": {
+    "status": "proposed_not_approved",
+    "preserve_all_source_fields_without_renaming": true,
+    "id_field": "LINEARID",
+    "id_type": "string",
+    "attributes": [
+      {"name": "LINEARID", "type": "string", "width": 22, "source_declares_nullable": null, "observed_null_count": 0},
+      {"name": "FULLNAME", "type": "string", "width": 100, "source_declares_nullable": null, "observed_null_count": 0},
+      {"name": "RTTYP", "type": "string", "width": 1, "source_declares_nullable": null, "observed_null_count": 0},
+      {"name": "MTFCC", "type": "string", "width": 5, "source_declares_nullable": null, "observed_null_count": 0}
+    ],
+    "geometry": {"type": "LineString", "crs": "EPSG:4269"},
+    "compatibility_notes": "The archive schema, published field mapping, and any HIFLD identifiers remain unknown. Do not represent this proposed source-native shape as a maintainer-approved contract or infer a crosswalk match."
+  },
+  "implementation_and_release_gate": {
+    "pipeline": "Stopped draft ingest captures the official fixed 2025 Census ZIP exactly, verifies archive identity/member roster/schema/population/IDs/geometry/extent, and stages the unchanged ZIP for the existing catalog/publish flow.",
+    "refresh": "Annual September draft schedule, disabled by default. A new vintage requires explicit code/source pin review; same-version refreshes are immutable and verified.",
+    "release_accepted": false,
+    "source_freshness_accepted": false,
+    "crosswalk_lineage_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "baseline_comparison_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "next_evidence_needed": "Retrieve the original DHS crosswalk and HIFLD archive, retain their hashes, match the exact row, compare complete field roster/types/nullability/IDs/geometry/coverage to the Census candidate, and obtain maintainer approval of the raw and published schema/ID contract."
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "extent": {
+    "spatialReference": {
+      "latestWkid": 3857,
+      "wkid": 102100
+    }
+  },
+  "fields": [
+    {
+      "actualType": "int",
+      "alias": "FID",
+      "defaultValue": null,
+      "domain": null,
+      "editable": false,
+      "name": "FID",
+      "nullable": false,
+      "sqlType": "sqlTypeInteger",
+      "type": "esriFieldTypeOID"
+    },
+    {
+      "actualType": "int",
+      "alias": "OBJECTID",
+      "defaultValue": null,
+      "domain": null,
+      "editable": true,
+      "name": "OBJECTID",
+      "nullable": true,
+      "sqlType": "sqlTypeInteger",
+      "type": "esriFieldTypeInteger"
+    },
+    {
+      "actualType": "nvarchar",
+      "alias": "EPAREGION",
+      "defaultValue": null,
+      "domain": null,
+      "editable": true,
+      "length": 50,
+      "name": "EPAREGION",
+      "nullable": true,
+      "sqlType": "sqlTypeNVarchar",
+      "type": "esriFieldTypeString"
+    },
+    {
+      "actualType": "float",
+      "alias": "Shape_Leng",
+      "defaultValue": null,
+      "domain": null,
+      "editable": true,
+      "name": "Shape_Leng",
+      "nullable": true,
+      "sqlType": "sqlTypeFloat",
+      "type": "esriFieldTypeDouble"
+    },
+    {
+      "actualType": "float",
+      "alias": "Shape_Le_1",
+      "defaultValue": null,
+      "domain": null,
+      "editable": true,
+      "name": "Shape_Le_1",
+      "nullable": true,
+      "sqlType": "sqlTypeFloat",
+      "type": "esriFieldTypeDouble"
+    },
+    {
+      "actualType": "float",
+      "alias": "Shape_Area",
+      "defaultValue": null,
+      "domain": null,
+      "editable": true,
+      "name": "Shape_Area",
+      "nullable": true,
+      "sqlType": "sqlTypeFloat",
+      "type": "esriFieldTypeDouble"
+    }
+  ],
+  "fixture_scope": "Derived structural schema subset only; not a complete source metadata capture.",
+  "geometryType": "esriGeometryPolygon",
+  "hasM": false,
+  "hasZ": false,
+  "id": 0,
+  "maxRecordCount": 2000,
+  "name": "EPA_Region",
+  "objectIdField": "FID"
+}
