@@ -32,9 +32,9 @@ class UsaceLakesConfig(Config):
     group_name="usace",
     compute_kind="http",
     description=(
-        "Official USDOT BTS-linked USACE IENC LAKE_AREA MapServer layer 76 "
-        "(4,940 source features observed). Complete observed inland-chart feature class; "
-        "unapproved faithful candidate. Historical HIFLD continuity, source vintage, "
+        "Official USDOT BTS-linked USACE IENC LAKE_AREA MapServer layer 76; "
+        "layer metadata reports 4,940 object IDs. Feature extraction remains unverified. "
+        "Any candidate is limited to inland-chart coverage. Historical HIFLD continuity, source vintage, "
         "national lakes coverage, rights and schema contract remain pending."
     ),
 )
