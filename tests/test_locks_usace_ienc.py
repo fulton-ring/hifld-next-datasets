@@ -279,6 +279,9 @@ class LocksUsaceIencTests(unittest.TestCase):
                     "bytes": len(raw), "sha256": source.digest(raw), "wire_bytes": len(wire),
                     "wire_sha256": source.digest(wire), "response_headers":
                     {"content-length": "370"} if name == "result_head" else {}}
+                if name == "create_replica":
+                    receipt.update({"request_body_bytes": len(request_body),
+                                    "request_body_sha256": source.digest(request_body)})
                 (root / f"{name}.body").write_bytes(raw)
                 (root / f"{name}.wire").write_bytes(wire)
                 (root / f"{name}.receipt.json").write_bytes(source.canonical(receipt))

@@ -515,13 +515,17 @@ def _write_artifact(path: Path, body: bytes) -> None:
 
 
 def _official_download_target(current_url: str, location: str) -> str:
-    target=urljoin(current_url,location)
-    parsed=urlsplit(target)
+    if not isinstance(current_url,str) or not isinstance(location,str) or not location:
+        raise LocksQuarantineError("replica_download_redirect_location_invalid")
+    try:
+        target=urljoin(current_url,location);parsed=urlsplit(target);port=parsed.port
+    except ValueError as exc:
+        raise LocksQuarantineError("replica_download_redirect_location_invalid") from exc
     host=(parsed.hostname or "").lower()
     allowed=any(host==domain or host.endswith("."+domain) for domain in OFFICIAL_DOWNLOAD_HOSTS)
     if (parsed.scheme!="https" or not allowed or parsed.username is not None
-            or parsed.password is not None or parsed.port not in (None,443)
-            or not parsed.path.startswith("/")):
+            or parsed.password is not None or port not in (None,443)
+            or not parsed.path.startswith("/") or parsed.fragment):
         raise LocksQuarantineError("replica_download_redirect_target_not_official_https")
     return target
 
@@ -551,8 +555,10 @@ def _perform(client: httpx.Client, method: str, url: str, root: Path, name: str,
     try:
         for hop in range(MAX_DOWNLOAD_REDIRECTS+1):
             client.cookies.clear()
+            hop_headers=req_headers if hop==0 else {
+                "Accept-Encoding":"identity","User-Agent":"fulton-ring/hifld-next-datasets/151-draft"}
             with client.stream(method,current_url,content=content if hop==0 else None,
-                               headers=req_headers,follow_redirects=False) as response:
+                               headers=hop_headers,auth=None,follow_redirects=False) as response:
                 status=response.status_code;headers={k.lower():v for k,v in response.headers.items()
                     if k.lower() in {"content-type","content-length","last-modified","etag","content-disposition","content-encoding","location"}}
                 if status in {301,302,303,307,308} and allow_official_redirects:
@@ -667,11 +673,26 @@ def _load_partial_completed_replica(root: Path) -> tuple[dict[str,tuple[bytes,di
             or not params["replicaName"].startswith("hifld_locks_151_")):
         raise LocksQuarantineError("resume_replica_request_parameters_invalid")
     request_info={"parameters":params,"bytes":len(request_raw),"sha256":digest(request_raw)}
+    if (receipts["metadata_before"][1].get("method")!="GET"
+            or receipts["metadata_before"][1].get("url")!=LAYER_URL+"?f=json"
+            or receipts["count_before"][1].get("method")!="GET"
+            or receipts["count_before"][1].get("url")!=LAYER_URL+"/query?"+urlencode(
+                {"where":"1=1","returnCountOnly":"true","f":"json"})
+            or receipts["ids_before"][1].get("method")!="GET"
+            or receipts["ids_before"][1].get("url")!=LAYER_URL+"/query?"+urlencode(
+                {"where":"1=1","returnIdsOnly":"true","f":"json"})
+            or receipts["create_replica"][1].get("method")!="POST"
+            or receipts["create_replica"][1].get("url")!=CREATE_REPLICA_URL
+            or receipts["create_replica"][1].get("request_body_bytes")!=len(request_raw)
+            or receipts["create_replica"][1].get("request_body_sha256")!=digest(request_raw)):
+        raise LocksQuarantineError("resume_replica_request_receipt_identity_drift")
     metadata=_strict_json(receipts["metadata_before"][0],"metadata_before")
     schema=_validate_layer_metadata(metadata)
     ids=_validate_count_ids(_strict_json(receipts["count_before"][0],"count_before"),
         _strict_json(receipts["ids_before"][0],"ids_before"),"before")
     create=_strict_json(receipts["create_replica"][0],"create_replica")
+    if create.get("replicaName")!=params["replicaName"]:
+        raise LocksQuarantineError("resume_replica_name_drift")
     status_url=_validate_url(create.get("statusUrl"),path_prefix="/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/Locks/FeatureServer/jobs/")
     job=None
     for index,name in enumerate(polls):
@@ -679,10 +700,14 @@ def _load_partial_completed_replica(root: Path) -> tuple[dict[str,tuple[bytes,di
         if receipt.get("url")!=status_url+"?f=json" or receipt.get("method")!="GET":
             raise LocksQuarantineError("resume_replica_poll_request_identity_drift")
         job=_strict_json(receipts[name][0],name)
+        if job.get("status") in {"Failed","Cancelled","TimedOut","esriJobFailed","esriJobCancelled","esriJobTimedOut"}:
+            raise LocksQuarantineError("resume_replica_job_failed")
         if job.get("status")=="Completed" and index!=len(polls)-1:
             raise LocksQuarantineError("resume_replica_poll_after_completion")
     if not isinstance(job,dict) or job.get("status")!="Completed" or job.get("recordCount")!=EXPECTED_COUNT:
         raise LocksQuarantineError("resume_replica_not_completed_or_count_drift")
+    if job.get("replicaName")!=params["replicaName"]:
+        raise LocksQuarantineError("resume_replica_name_drift")
     result_url=_validate_url(job.get("resultUrl"),path_prefix="/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/Locks/FeatureServer/replicafilescache/")
     head= _strict_json((root/"result_head.receipt.json").read_bytes(),"result_head_receipt")
     if (head.get("method")!="HEAD" or head.get("url")!=result_url
