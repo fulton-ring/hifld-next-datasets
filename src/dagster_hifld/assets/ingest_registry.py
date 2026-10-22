@@ -59,6 +59,7 @@ from dagster_hifld.assets.secondary_school_districts import census_secondary_sch
 from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
 from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
+from dagster_hifld.assets.usace_hulke_areas import usace_hulke_areas_usace_ienc
 from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 from dagster_hifld.assets.nces_public_schools import nces_public_schools
@@ -92,6 +93,9 @@ from dagster_hifld.assets.census_county_subdivisions import census_county_subdiv
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 from dagster_hifld.assets.usace_floating_docks import usace_floating_docks_usace_ienc
 from dagster_hifld.assets.floodwalls_usace_ienc import floodwalls_usace_ienc
+from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
+    harbor_facility_locations_usace_ienc,
+)
 from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_usgs,
 )
@@ -141,6 +145,7 @@ hifld_ingest_assets = [
     census_bureau_block_groups,
     census_bureau_tracts,
     usace_pontoon_areas_usace_ienc,
+    usace_hulke_areas_usace_ienc,
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
     noaa_24nm_contiguous_zone,
@@ -209,6 +214,7 @@ hifld_ingest_assets = [
     usace_crane_locations_ienc,
     usace_floating_docks_usace_ienc,
     floodwalls_usace_ienc,
+    harbor_facility_locations_usace_ienc,
     ferrous_metal_processing_plants_usgs,
     ferrous_metal_mines_candidate,
     courthouses_usgs,

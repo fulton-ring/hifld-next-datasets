@@ -287,6 +287,12 @@ from dagster_hifld.assets.floodwalls_usace_ienc import (
     floodwalls_usace_ienc_draft_schedule,
 )
 
+from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
+    harbor_facility_locations_usace_ienc_complete,
+    harbor_facility_locations_usace_ienc_draft_job,
+    harbor_facility_locations_usace_ienc_draft_schedule,
+)
+
 from dagster_hifld.assets.usace_data_coverage_areas import (
     usace_data_coverage_areas_complete,
     usace_data_coverage_areas_draft_job,
@@ -412,6 +418,11 @@ from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_complete,
     usace_pontoon_areas_draft_job,
     usace_pontoon_areas_draft_schedule,
+)
+from dagster_hifld.assets.usace_hulke_areas import (
+    usace_hulke_areas_complete,
+    usace_hulke_areas_draft_job,
+    usace_hulke_areas_draft_schedule,
 )
 
 from dagster_hifld.assets.usace_airport_area import (
@@ -949,6 +960,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
         floodwalls_usace_ienc_complete,
+        harbor_facility_locations_usace_ienc_complete,
         usace_administrative_areas_complete,
         usace_navigation_marks_areas_complete,
         puerto_rico_subbarrios_source_complete,
@@ -961,6 +973,7 @@ defs = Definitions(
         us_county_boundaries_source_complete,
         us_state_boundaries_source_complete,
         usace_pontoon_areas_complete,
+        usace_hulke_areas_complete,
         plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
         proposed_critical_habitat_complete,
@@ -1040,11 +1053,13 @@ defs = Definitions(
         usace_dam_lines_draft_job,
         usace_obstruction_lines_draft_job,
         floodwalls_usace_ienc_draft_job,
+        harbor_facility_locations_usace_ienc_draft_job,
         usace_administrative_areas_draft_job,
         usace_navigation_marks_areas_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
         usace_pontoon_areas_draft_job,
+        usace_hulke_areas_draft_job,
         puerto_rico_subbarrios_draft_job,
         usace_caution_areas_draft_job,
         plate_boundaries_draft_job,
@@ -1139,6 +1154,7 @@ defs = Definitions(
         usace_dam_lines_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         floodwalls_usace_ienc_draft_schedule,
+        harbor_facility_locations_usace_ienc_draft_schedule,
         usace_administrative_areas_draft_schedule,
         usace_navigation_marks_areas_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
@@ -1149,6 +1165,7 @@ defs = Definitions(
         us_state_boundaries_draft_schedule,
         unified_school_districts_draft_refresh_schedule,
         usace_pontoon_areas_draft_schedule,
+        usace_hulke_areas_draft_schedule,
         puerto_rico_subbarrios_draft_schedule,
         usace_caution_areas_draft_schedule,
         plate_boundaries_draft_schedule,
