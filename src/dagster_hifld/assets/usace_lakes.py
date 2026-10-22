@@ -25,6 +25,7 @@ from dagster_hifld.sources.usace_lakes import (
 
 class UsaceLakesConfig(Config):
     capture_directory: str = ""
+    max_capture_bytes: int = 8_000_000
 
 
 @asset(
@@ -47,6 +48,7 @@ def usace_lakes_usace_ienc(
         staging_storage,
         version=build_version_id(context),
         capture_directory=config.capture_directory or None,
+        max_capture_bytes=config.max_capture_bytes,
     )
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,

@@ -49,6 +49,8 @@ EXPECTED_ID_SHA256 = "fb91a645d4baaa152f5a47e77505a91a1b521b82a72e42696228d7c49f
 PAGE_SIZE = 500
 MAX_BODY_BYTES = 3_500_000
 MAX_CAPTURE_BYTES = 8_000_000
+MIN_CONFIGURED_CAPTURE_BYTES = 1_000_000
+MAX_CONFIGURED_CAPTURE_BYTES = 96_000_000
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"), ("SHAPE", "esriFieldTypeGeometry"),
     ("Object_Name", "esriFieldTypeString"), ("Information", "esriFieldTypeString"),
@@ -106,7 +108,14 @@ def _sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
-def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
+def _configured_capture_budget(value: object) -> int:
+    if type(value) is not int or not MIN_CONFIGURED_CAPTURE_BYTES <= value <= MAX_CONFIGURED_CAPTURE_BYTES:
+        raise ValueError("capture_budget_out_of_bounds")
+    return value
+
+
+def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
+           max_capture_bytes: int = MAX_CAPTURE_BYTES):
     root.mkdir(parents=True, exist_ok=True)
     body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
     for path in (body_path, wire_path):
@@ -123,7 +132,7 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
             budget[0]=budget_start+sizes["wire"]+sizes["body"]
         return write
     def reserve(progress):
-        if budget_start+progress.wire_bytes_retained+progress.decoded_bytes_retained+progress.reserve_bytes>MAX_CAPTURE_BYTES:
+        if budget_start+progress.wire_bytes_retained+progress.decoded_bytes_retained+progress.reserve_bytes>max_capture_bytes:
             raise ValueError("source_capture_budget_exceeded")
     response = None
     result = None
@@ -161,13 +170,14 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
     return body, receipt
 
 
-def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
+def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
+                 max_capture_bytes: int = MAX_CAPTURE_BYTES):
     """Retry one transient transport/incomplete read, retaining every attempt."""
     last = None
     for attempt in range(2):
         attempt_name=f"{name}.attempt{attempt+1}"
         try:
-            body,receipt=_fetch(client,url,root,attempt_name,budget)
+            body,receipt=_fetch(client,url,root,attempt_name,budget,max_capture_bytes)
             for suffix in ("body","wire","receipt.json"):
                 (root/f"{attempt_name}.{suffix}").replace(root/f"{name}.{suffix}")
             return body,receipt
@@ -442,8 +452,10 @@ def _write_outputs(storage, prefix: str, outputs: dict[str,bytes]) -> dict[str,d
 
 
 def capture_usace_lakes(storage: StagingStorageResource, *, version: str,
-                                 capture_directory: str | None = None) -> dict[str, object]:
+                        capture_directory: str | None = None,
+                        max_capture_bytes: int = MAX_CAPTURE_BYTES) -> dict[str, object]:
     """Acquire a complete bounded source snapshot, or replay an explicit capture directory."""
+    max_capture_bytes = _configured_capture_budget(max_capture_bytes)
     if not isinstance(storage,StagingStorageResource) or isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ValueError("explicit_local_staging_resource_required")
     base=Path(storage.local_dir).absolute()
@@ -470,6 +482,9 @@ def capture_usace_lakes(storage: StagingStorageResource, *, version: str,
             retained_manifest=json.loads((root/"capture_manifest.json").read_bytes())
             if retained_manifest.get("complete") is not True or not isinstance(retained_manifest.get("receipts"),dict):
                 raise ValueError("retained_capture_manifest_invalid")
+            retained_budget=_configured_capture_budget(retained_manifest.get("capture_budget_bytes"))
+            if retained_budget != max_capture_bytes:
+                raise ValueError("retained_capture_budget_config_mismatch")
             roster=retained_manifest.get("artifact_roster")
             if not isinstance(roster,dict): raise ValueError("retained_capture_roster_manifest_missing")
             validate_capture_roster(root,set(roster)|{"capture_manifest.json"})
@@ -505,14 +520,14 @@ def capture_usace_lakes(storage: StagingStorageResource, *, version: str,
             budget_root=requested if requested else root.parent
             existing_bytes=sum(p.stat().st_size for p in budget_root.rglob("*") if p.is_file() and p.suffix in {".body",".wire"})
             capture_budget=[existing_bytes]
-            if existing_bytes>MAX_CAPTURE_BYTES: raise ValueError("source_capture_budget_exceeded_before_request")
+            if existing_bytes>max_capture_bytes: raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
-                seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
+                seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget,max_capture_bytes)
                 ids=json.loads(seed_body).get("objectIds")
                 if ids != EXPECTED_IDS or _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
                     raise ValueError("source_seed_id_count_or_roster_drift")
                 captures["ids_seed"]=(seed_body,seed_receipt)
-                for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name,capture_budget)
+                for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name,capture_budget,max_capture_bytes)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         retained={}
@@ -522,7 +537,7 @@ def capture_usace_lakes(storage: StagingStorageResource, *, version: str,
         # An explicit replay is read-only evidence. A failed validation must not
         # rewrite a previously complete capture as a fresh, incomplete attempt.
         if not replay:
-            (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__,"receipts":retained})+b"\n")
+            (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"capture_budget_bytes":max_capture_bytes,"error_code":type(exc).__name__,"receipts":retained})+b"\n")
             if captures: quarantine_incomplete_capture(storage,root,DATASET_SLUG,version,captures,type(exc).__name__)
         raise
 
@@ -557,13 +572,13 @@ def capture_usace_lakes(storage: StagingStorageResource, *, version: str,
             for name,(_body,receipt) in sorted(captures.items())]
     manifest={"schema_version":1,"approved":False,"title":"Lakes (USACE IENC)","description":"Complete observed official USACE IENC LAKE_AREA feature class; unapproved faithful candidate. Inland-chart coverage only; historical HIFLD equivalence and nationwide lakes completeness are not asserted.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers, Army Geospatial Center","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and nullable/duplicate-capable Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; BTS catalog-item succession, source release, historical baseline, ID/schema/coverage and rights decisions remain pending"}}],"lineage":f"Current public USDOT BTS IENC PDF item {BTS_ITEM_ID} links the official IENC Feature Classes service and master geodatabase. This candidate is the exact published LAKE_AREA layer; its relationship to any historical HIFLD release is unestablished.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified polygon rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/lakes-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No approved schema/compatibility contract.","pmtiles":"No display transformation approved."}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
-    audit.update({"source_fields":fields,"official_layer_name":"LAKE_AREA","official_source_item":"USDOT_BTS " + BTS_ITEM_ID,"prior_source_item":None,"source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
+    audit.update({"capture_budget_bytes":max_capture_bytes,"source_fields":fields,"official_layer_name":"LAKE_AREA","official_source_item":"USDOT_BTS " + BTS_ITEM_ID,"prior_source_item":None,"source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
     attempts={}
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
     if not replay:
-        (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+        (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"capture_budget_bytes":max_capture_bytes,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/lakes-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"

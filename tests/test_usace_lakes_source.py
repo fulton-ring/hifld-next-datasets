@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pyarrow.parquet as pq
@@ -17,6 +18,8 @@ from dagster_hifld.sources.usace_lakes import (
     _arrow_type,
     _parquet_bytes,
     _fetch_retry,
+    _fetch,
+    _configured_capture_budget,
     _sha,
     _canonical,
 )
@@ -54,3 +57,31 @@ class UsaceLakesSourceTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
                 _fetch_retry(None, "https://example.invalid", __import__("pathlib").Path("/tmp"), "page_000", [0])
         fetch.assert_called_once()
+
+    def test_configured_capture_budget_is_bounded_and_enforced(self) -> None:
+        self.assertEqual(_configured_capture_budget(12_000_000), 12_000_000)
+        for invalid in (True, 999_999, 96_000_001):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "capture_budget_out_of_bounds"):
+                _configured_capture_budget(invalid)
+
+        class Response:
+            url = "https://example.invalid/page"
+            status_code = 200
+            def __enter__(self): return self
+            def __exit__(self, *_args): return False
+        class Client:
+            def stream(self, *_args, **_kwargs): return Response()
+        progress = SimpleNamespace(wire_bytes_retained=6, decoded_bytes_retained=5, reserve_bytes=1)
+        def over_budget(_response, **kwargs):
+            kwargs["retain_wire"](b"123456")
+            kwargs["retain_decoded"](b"12345")
+            try:
+                kwargs["reserve"](progress)
+            except ValueError:
+                return SimpleNamespace(error_code="reserve_error", error_type="ValueError", status_code=200, complete=False,
+                                       content_encoding=None, content_length=None)
+            return SimpleNamespace(error_code=None, error_type=None, status_code=200, complete=True,
+                                   content_encoding=None, content_length=None)
+        with patch("dagster_hifld.sources.usace_lakes.capture_http_response", side_effect=over_budget):
+            with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
+                _fetch(Client(), "https://example.invalid/page", __import__("pathlib").Path("/tmp"), "configured-cap-test", [0], 11)
