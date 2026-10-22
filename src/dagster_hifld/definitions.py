@@ -524,6 +524,11 @@ from dagster_hifld.assets.epa_icis_wastewater import (
     epa_icis_wastewater_draft_job,
     epa_icis_wastewater_draft_schedule,
 )
+from dagster_hifld.assets.fema_nss_shelter_locations import (
+    fema_nss_shelter_locations_capture_complete,
+    fema_nss_shelter_locations_draft_job,
+    fema_nss_shelter_locations_draft_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -993,6 +998,7 @@ defs = Definitions(
         eia_power_plants_complete,
         epa_frs_eia_860_power_generation_complete,
         epa_icis_wastewater_capture_complete,
+        fema_nss_shelter_locations_capture_complete,
         fuds_irm_property_point_complete,
         fuds_irm_property_point_geometry_quality,
         bts_intermodal_freight_marine_roll_on_roll_off_complete,
@@ -1127,6 +1133,7 @@ defs = Definitions(
         eia_power_plants_draft_job,
         epa_power_generation_draft_job,
         epa_icis_wastewater_draft_job,
+        fema_nss_shelter_locations_draft_job,
         epa_frs_naics_draft_job,
         gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
@@ -1242,6 +1249,7 @@ defs = Definitions(
         eia_power_plants_draft_schedule,
         epa_power_generation_draft_schedule,
         epa_icis_wastewater_draft_schedule,
+        fema_nss_shelter_locations_draft_schedule,
         fuds_projects_points_draft_schedule,
         epa_frs_naics_draft_schedule,
         gcca_warehouses_draft_schedule,
