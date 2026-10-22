@@ -127,7 +127,7 @@ class NationalTransitMapRoutesTests(unittest.TestCase):
             patch.object(source, "EXPECTED_SOURCE_ID_SHA256", ids_sha),
             patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: factory()),
         )
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(dir="/workspace/work/board-supervisor") as tmp:
             for p in patchers:
                 p.start()
             self.addCleanup(lambda: [p.stop() for p in reversed(patchers)])
