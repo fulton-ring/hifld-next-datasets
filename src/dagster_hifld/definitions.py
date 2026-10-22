@@ -538,6 +538,11 @@ from dagster_hifld.assets.epa_tsca import (
     epa_tsca_draft_job,
     epa_tsca_draft_schedule,
 )
+from dagster_hifld.assets.epa_frs_interests import (
+    epa_frs_interests_complete,
+    epa_frs_interests_draft_job,
+    epa_frs_interests_draft_schedule,
+)
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
 logger = logging.getLogger(__name__)
@@ -988,6 +993,7 @@ defs = Definitions(
         epa_regions_with_eez_full_quality,
         epa_frs_toxic_release_inventory_complete,
         epa_frs_tsca_complete,
+        epa_frs_interests_complete,
         fdic_locations_full_quality,
         fema_regions_full_quality,
         ferc_historical_full_quality,
@@ -1084,6 +1090,7 @@ defs = Definitions(
         epa_regions_with_eez_draft_job,
         epa_frs_tri_draft_job,
         epa_tsca_draft_job,
+        epa_frs_interests_draft_job,
         fdic_locations_draft_job,
         fema_regions_draft_job,
         ferc_historical_reconstruction_job,
@@ -1185,6 +1192,7 @@ defs = Definitions(
         epa_regions_with_eez_draft_schedule,
         epa_frs_tri_draft_schedule,
         epa_tsca_draft_schedule,
+        epa_frs_interests_draft_schedule,
         fdic_locations_draft_schedule,
         fema_regions_draft_schedule,
         ferc_historical_integrity_schedule,

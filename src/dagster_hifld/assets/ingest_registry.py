@@ -104,6 +104,7 @@ from dagster_hifld.assets.epa_facilities import epa_facilities
 from dagster_hifld.assets.epa_facilities_labels import epa_facilities_labels
 from dagster_hifld.assets.epa_frs_tri import epa_frs_toxic_release_inventory
 from dagster_hifld.assets.epa_tsca import epa_frs_toxic_substances_control_act_tsca
+from dagster_hifld.assets.epa_frs_interests import epa_frs_interests
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 from dagster_hifld.assets.electric_retail_service_territories import electric_retail_service_territories_preservation_candidate
 from dagster_hifld.assets.epa_eez import epa_eez
@@ -215,4 +216,5 @@ hifld_ingest_assets = [
     epa_facilities_labels,
     epa_frs_toxic_release_inventory,
     epa_frs_toxic_substances_control_act_tsca,
+    epa_frs_interests,
 ]
