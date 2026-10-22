@@ -415,9 +415,12 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
                               + progress.decoded_bytes_retained + progress.reserve_bytes)
             if reserved_total > MAX_CAPTURE_TOTAL_BYTES:
                 raise ValueError("source_capture_exceeds_scratch_budget")
-            for root in (base, capture_root):
-                if shutil.disk_usage(root).free - progress.reserve_bytes < DISK_FLOOR_BYTES:
-                    raise ValueError("disk_floor_during_acquisition")
+            if shutil.disk_usage(capture_root).free - progress.reserve_bytes < DISK_FLOOR_BYTES:
+                raise ValueError("capture_disk_floor_during_acquisition")
+            # Source raw evidence is also copied into immutable staging. Reserve
+            # that second copy before accepting another response block.
+            if (shutil.disk_usage(base).free - reserved_total < DISK_FLOOR_BYTES):
+                raise ValueError("staging_disk_floor_during_acquisition")
 
         body, receipt = capture_get(client, url, capture_root, name,
                                     max_bytes=MAX_BODY_BYTES, reserve=reserve)
@@ -523,6 +526,8 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
         "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
         "baseline_accepted":False,"archive_equivalence_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     outputs["metadata/candidate_ready.json"] = _canonical(ready)+b"\n"
+    if shutil.disk_usage(base).free - sum(len(body) for body in outputs.values()) < DISK_FLOOR_BYTES:
+        raise ValueError("staging_disk_floor_before_candidate_write")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
