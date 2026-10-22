@@ -704,10 +704,19 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
         root=Path(capture_directory).absolute()
         if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
             raise LocksQuarantineError("unsafe_capture_directory")
-        if not (root/"capture_manifest.json").exists():
-            raise LocksQuarantineError("explicit_offline_capture_must_be_sealed")
-        _capture_manifest(root)
-        captures,cap_manifest=_load_capture(root)
+        if root.exists() and (root.is_symlink() or not root.is_dir()):
+            raise LocksQuarantineError("unsafe_capture_directory")
+        if root.exists() and any(root.iterdir()):
+            if not (root/"capture_manifest.json").is_file():
+                raise LocksQuarantineError("explicit_offline_capture_must_be_sealed")
+            _capture_manifest(root)
+            captures,cap_manifest=_load_capture(root)
+        else:
+            try:
+                captures,cap_manifest=_capture_live(root)
+            except Exception as exc:
+                _preserve_failed_capture(storage,root,exc)
+                raise
     else:
         root=CAPTURE_ROOT/(datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")+"-"+uuid4().hex)
         try:

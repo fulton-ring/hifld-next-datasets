@@ -1,7 +1,11 @@
 import json
 import io
+import tempfile
 import unittest
 import zipfile
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -12,6 +16,7 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.locks_usace_ienc import (
     locks_usace_ienc, locks_usace_ienc_complete, locks_usace_ienc_draft_schedule,
 )
+from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import locks_usace_ienc as source
 
 
@@ -139,3 +144,15 @@ class LocksUsaceIencTests(unittest.TestCase):
         broken["ids_after"] = (source.canonical({"objectIds": source.EXPECTED_OIDS[:-1]}), captures["ids_after"][1])
         with self.assertRaisesRegex(source.LocksQuarantineError, "source_count_or_id_roster_drift:after"):
             source._validate_service_bundle(broken)
+
+    def test_empty_explicit_capture_directory_starts_one_live_capture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = root / "capture"
+            storage = StagingStorageResource(use_local=True, local_dir=str(root / "stage"), prefix="")
+            with patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=500_000_000)), \
+                 patch.object(source, "_capture_live", side_effect=RuntimeError("network path stubbed")) as live:
+                with self.assertRaisesRegex(RuntimeError, "network path stubbed"):
+                    source.capture_locks_usace_ienc(storage, capture_directory=str(capture))
+            live.assert_called_once_with(capture)
+            self.assertEqual(len(list((root / "stage" / "_quarantine").rglob("failure.json"))), 1)
