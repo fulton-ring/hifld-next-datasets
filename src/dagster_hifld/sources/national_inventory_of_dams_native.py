@@ -519,13 +519,13 @@ def _inspect_archive(archive_path: Path, expected_count: int, expected_ids: list
                                 batch_size=MAX_NATIVE_BATCH_ROWS, use_pyarrow=True,
                                 force_2d=False, datetime_as_string=False) as (meta, reader):
             _validate_native_reader(info, reader.schema, layer, expected_count)
-        native_bounds = tuple(float(value) for value in info["total_bounds"])
-        if len(native_bounds) != 4 or not all(math.isfinite(value) for value in native_bounds):
-            raise ValueError("usace_nid_native_geometry_bounds_unavailable")
-        candidate_extent = dict(zip(("xmin", "ymin", "xmax", "ymax"), native_bounds))
-        candidate, audit = _parquet_from_native_batches(
-            reader, expected_ids, candidate_extent, expected_geometry_bounds=native_bounds,
-        )
+            native_bounds = tuple(float(value) for value in info["total_bounds"])
+            if len(native_bounds) != 4 or not all(math.isfinite(value) for value in native_bounds):
+                raise ValueError("usace_nid_native_geometry_bounds_unavailable")
+            candidate_extent = dict(zip(("xmin", "ymin", "xmax", "ymax"), native_bounds))
+            candidate, audit = _parquet_from_native_batches(
+                reader, expected_ids, candidate_extent, expected_geometry_bounds=native_bounds,
+            )
     audit.update({
         "source_extent": layer["extent"],
         "archive_bytes": archive_path.stat().st_size,
