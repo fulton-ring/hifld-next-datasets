@@ -133,6 +133,11 @@ from dagster_hifld.assets.fuds_district_boundaries import (
     fuds_district_boundaries_draft_schedule,
     usace_fuds_program_district_boundaries_complete,
 )
+from dagster_hifld.assets.fuds_irm_property_point import (
+    fuds_irm_property_point_complete,
+    fuds_irm_property_point_draft_schedule,
+    fuds_irm_property_point_geometry_quality,
+)
 from dagster_hifld.assets.epa_small_scale import (
     epa_small_scale_source_integrity_job,
     epa_small_scale_source_integrity_schedule,
@@ -945,6 +950,8 @@ defs = Definitions(
         arc_regions_full_quality,
         eia_power_plants_complete,
         epa_frs_eia_860_power_generation_complete,
+        fuds_irm_property_point_complete,
+        fuds_irm_property_point_geometry_quality,
         usace_fuds_projects_points_complete,
         epa_frs_naics_complete,
         epa_frs_naics_published_membership_compatible,
@@ -1125,6 +1132,7 @@ defs = Definitions(
         holocene_source_integrity_schedule,
         ferry_routes_source_integrity_schedule,
         epa_large_scale_source_integrity_schedule,
+        fuds_irm_property_point_draft_schedule,
         epa_regions_draft_schedule,
         epa_small_scale_source_integrity_schedule,
         fema_offices_draft_schedule,
