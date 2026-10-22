@@ -47,7 +47,6 @@ EXPECTED_COUNT = 4940
 EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
 EXPECTED_ID_SHA256 = "fb91a645d4baaa152f5a47e77505a91a1b521b82a72e42696228d7c49f163794"
 PAGE_SIZE = 500
-MAX_BODY_BYTES = 3_500_000
 MAX_CAPTURE_BYTES = 8_000_000
 MIN_CONFIGURED_CAPTURE_BYTES = 1_000_000
 MAX_CONFIGURED_CAPTURE_BYTES = 96_000_000
@@ -141,8 +140,8 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
     try:
         with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
             final_url = str(response.url)
-            result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
-                max_decoded_bytes=MAX_BODY_BYTES, reserve=reserve,
+            result = capture_http_response(response, max_wire_bytes=max_capture_bytes,
+                max_decoded_bytes=max_capture_bytes, reserve=reserve,
                 retain_wire=retain(wire_path, "wire"), retain_decoded=retain(body_path, "body"))
     except Exception as exc:
         transport_error = type(exc).__name__
