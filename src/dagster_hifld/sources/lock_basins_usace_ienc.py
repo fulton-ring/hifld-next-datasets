@@ -923,14 +923,15 @@ def capture_lock_basins_usace_ienc(storage: StagingStorageResource, *, version: 
         fields, features, audit = _validate(captures)
     except Exception as exc:
         retained = {}
-        for receipt_path in sorted(root.glob("*.receipt.json")):
-            try:
-                retained[receipt_path.name.removesuffix(".receipt.json")] = json.loads(receipt_path.read_bytes())
-            except (OSError, ValueError):
-                retained[receipt_path.name] = {"receipt_readback_failed": True}
         # An explicit replay is read-only evidence. A failed validation must not
         # rewrite a previously complete capture as a fresh, incomplete attempt.
         if not replay:
+            for receipt_path in sorted(root.glob("*.receipt.json")):
+                try:
+                    retained[receipt_path.name.removesuffix(".receipt.json")] = json.loads(
+                        _bounded_read(receipt_path, MAX_RECEIPT_BYTES, "capture_failure_receipt_too_large"))
+                except (OSError, ValueError):
+                    retained[receipt_path.name] = {"receipt_readback_failed": True}
             (root / "capture_manifest.json").write_bytes(_canonical({
                 "captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                 "error_code": type(exc).__name__, "receipts": retained}) + b"\n")
