@@ -594,6 +594,20 @@ def _replica_params() -> dict[str, object]:
     }
 
 
+def _validate_replica_request_body(body: bytes, params: Mapping[str, object]) -> None:
+    expected = {
+        str(key): json.dumps(value, separators=(",", ":"))
+        if isinstance(value, (dict, list)) else str(value)
+        for key, value in params.items()
+    }
+    try:
+        pairs = parse_qsl(body.decode("ascii"), keep_blank_values=True, strict_parsing=True)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ValueError("usace_nid_native_replica_request_body_malformed") from exc
+    if len(pairs) != len(expected) or len({key for key, _ in pairs}) != len(pairs) or dict(pairs) != expected:
+        raise ValueError("usace_nid_native_replica_request_body_mismatch")
+
+
 def _replica_status_action(status: object) -> str:
     if not isinstance(status, str):
         raise ValueError("usace_nid_native_replica_status_unrecognized")
@@ -773,11 +787,10 @@ def _validate_native_capture(root: Path, bodies: Mapping[str, bytes],
             or request_doc.get("body_sha256") != _sha(_read_bounded(
                 root / "replica_create.request.body", MAX_NATIVE_RECEIPT_BYTES))):
         raise ValueError("usace_nid_native_replica_request_identity_invalid")
-    expected_encoded = urlencode({k: json.dumps(v, separators=(",", ":"))
-                                  if isinstance(v, (dict, list)) else v
-                                  for k, v in create_params.items()}).encode()
-    if _read_bounded(root / "replica_create.request.body", MAX_NATIVE_RECEIPT_BYTES) != expected_encoded:
-        raise ValueError("usace_nid_native_replica_request_body_mismatch")
+    create_request_body = _read_bounded(root / "replica_create.request.body", MAX_NATIVE_RECEIPT_BYTES)
+    if request_doc.get("body_bytes") != len(create_request_body):
+        raise ValueError("usace_nid_native_replica_request_body_size_mismatch")
+    _validate_replica_request_body(create_request_body, create_params)
     expected_urls = {
         "service_before": SERVICE_URL + "?f=json", "layer_before": LAYER_URL + "?f=json",
         "count_before": _count_url(), "ids_before": _ids_url(),

@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 import zipfile
+from urllib.parse import urlencode
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -134,6 +135,18 @@ class NativeNidTests(unittest.TestCase):
             native._replica_status_action("Failed")
         with self.assertRaisesRegex(ValueError, "status_unrecognized"):
             native._replica_status_action(["Pending"])
+
+    def test_replica_form_validation_ignores_key_order_but_rejects_duplicates(self):
+        original_order = {
+            "f": "json", "replicaName": "hifld-nid-native-example",
+            "layerQueries": '{"0":{"where":"1=1","outFields":"*"}}',
+        }
+        body = urlencode(original_order).encode("ascii")
+        canonical_order = json.loads(json.dumps(original_order, sort_keys=True))
+        native._validate_replica_request_body(body, canonical_order)
+        duplicate = body + b"&f=json"
+        with self.assertRaisesRegex(ValueError, "request_body_mismatch"):
+            native._validate_replica_request_body(duplicate, canonical_order)
 
     def test_actual_block_budget_refuses_before_any_sink_write(self):
         with tempfile.TemporaryDirectory() as tmp:
