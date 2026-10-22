@@ -401,6 +401,6 @@ def stage_holocene(storage,*,capture_dir=None):
                 pq.write_table(parquet_table(table),path,compression='zstd');validate_output(temp,table)
             for n,b in source_payloads(captures,identity,audit,manifest).items():write_private(temp,n,b)
             ready={'approved':False,'version':version,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};write_private(temp,READY,encode(ready));validate_candidate(temp,table,identity,captures,audit,manifest,version)
-            captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest,create=True)
+            captures,manifest,table,audit=original_context(storage,version,fingerprint,captures,identity,manifest,create=True)
             validate_candidate(temp,table,identity,captures,audit,manifest,version);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
     return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
