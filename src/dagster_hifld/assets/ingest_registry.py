@@ -85,6 +85,7 @@ from dagster_hifld.assets.fws_map_panels import fws_cbrs_map_panels
 from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
 from dagster_hifld.assets.fws_units import fws_cbrs_units
 from dagster_hifld.assets.census_designated_places import census_designated_places
+from dagster_hifld.assets.incorporated_places import incorporated_places
 from dagster_hifld.assets.state_capitols import state_capitols_usgs
 from dagster_hifld.assets.colleges_universities import nces_colleges_universities
 from dagster_hifld.assets.combined_statistical_areas import census_combined_statistical_areas
@@ -211,6 +212,7 @@ hifld_ingest_assets = [
     fws_cbrs_prohibitions,
     fws_cbrs_units,
     census_designated_places,
+    incorporated_places,
     state_capitols_usgs,
     ornl_campus_historical_preservation,
     census_combined_statistical_areas,

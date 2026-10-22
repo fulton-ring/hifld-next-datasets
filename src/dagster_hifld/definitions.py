@@ -478,6 +478,11 @@ from dagster_hifld.assets.census_designated_places import (
     cdp_source_integrity_schedule,
 )
 
+from dagster_hifld.assets.incorporated_places import (
+    incorporated_places_source_integrity_job,
+    incorporated_places_source_integrity_schedule,
+)
+
 from dagster_hifld.assets.state_capitols import (
     state_capitols_draft_job,
     state_capitols_draft_schedule,
@@ -1113,6 +1118,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_job,
         fws_cbrs_units_draft_refresh_job,
         cdp_source_integrity_job,
+        incorporated_places_source_integrity_job,
         state_capitols_draft_job,
         ornl_campus_historical_reconstruction_job,
         csa_source_integrity_job,
@@ -1223,6 +1229,7 @@ defs = Definitions(
         fws_cbrs_prohibitions_draft_refresh_schedule,
         fws_cbrs_units_draft_refresh_schedule,
         cdp_source_integrity_schedule,
+        incorporated_places_source_integrity_schedule,
         state_capitols_draft_schedule,
         csa_source_integrity_schedule,
         concity_source_integrity_schedule,
