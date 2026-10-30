@@ -531,6 +531,7 @@ from dagster_hifld.partitions import (
     PUBLISH_PARTITIONS,
     SEMVER_VERSION_RE,
     build_publish_partition_key,
+    parse_staging_collections,
 )
 from dagster_hifld.resources import (
     PublishedStorageResource,
@@ -947,21 +948,66 @@ def _iter_staged_version_paths_for_gcs_tick(
 @sensor(name="version_discovery_sensor", minimum_interval_seconds=300)
 def version_discovery_sensor(context):
     staging_storage = StagingStorageResource.from_env()
-    if not staging_storage.use_local and staging_storage.bucket:
-        staged_versions, next_cursor = _iter_staged_version_paths_for_gcs_tick(
-            staging_storage,
-            context.cursor,
-        )
+    configured = os.environ.get("HIFLD_STAGING_COLLECTIONS")
+    if configured:
+        collections = list(parse_staging_collections(configured))
     else:
-        staged_versions = list(_iter_staged_version_paths(staging_storage) or [])
-        next_cursor = context.cursor
+        collections = [None]
+    staged_versions: list[tuple[str, str, str, str | None]] = []
+    next_cursor = context.cursor
+    if len(collections) > 1 and not staging_storage.use_local and staging_storage.bucket:
+        cursor_parts = (context.cursor or "").split(":")
+        if len(cursor_parts) == 3 and cursor_parts[0] == "collections":
+            try:
+                collection_index = int(cursor_parts[1])
+                dataset_offset = int(cursor_parts[2])
+                if collection_index < 0 or dataset_offset < 0:
+                    raise ValueError("Negative collection cursor")
+                dataset_cursor = str(dataset_offset)
+            except ValueError:
+                collection_index, dataset_cursor = 0, "0"
+        else:
+            collection_index, dataset_cursor = 0, "0"
+        if collection_index >= len(collections):
+            collection_index, dataset_cursor = 0, "0"
+        collection = collections[collection_index]
+        scoped_storage = staging_storage.model_copy(update={"prefix": collection})
+        versions, next_dataset_cursor = _iter_staged_version_paths_for_gcs_tick(
+            scoped_storage, dataset_cursor
+        )
+        staged_versions.extend((*version, collection) for version in versions)
+        next_collection_index = (
+            (collection_index + 1) % len(collections)
+            if next_dataset_cursor == "0"
+            else collection_index
+        )
+        next_cursor = f"collections:{next_collection_index}:{next_dataset_cursor}"
+        collections = []
+    for collection in collections:
+        scoped_storage = (
+            staging_storage.model_copy(update={"prefix": collection})
+            if collection is not None
+            else staging_storage
+        )
+        if not scoped_storage.use_local and scoped_storage.bucket:
+            scan_cursor = context.cursor
+            if scan_cursor is not None and not scan_cursor.isdigit():
+                scan_cursor = "0"
+            versions, next_cursor = _iter_staged_version_paths_for_gcs_tick(
+                scoped_storage, scan_cursor
+            )
+        else:
+            versions = list(_iter_staged_version_paths(scoped_storage) or [])
+        staged_versions.extend((*version, collection) for version in versions)
 
     existing_partition_keys = set(
         context.instance.get_dynamic_partitions(PUBLISH_PARTITION_NAME)
     )
     partition_keys_to_add: list[str] = []
-    for dataset_slug, file_slug, version in staged_versions:
-        partition_key = build_publish_partition_key(dataset_slug, file_slug, version)
+    for dataset_slug, file_slug, version, collection in staged_versions:
+        partition_key = build_publish_partition_key(
+            dataset_slug, file_slug, version, collection=collection
+        )
         if partition_key not in existing_partition_keys:
             partition_keys_to_add.append(partition_key)
 

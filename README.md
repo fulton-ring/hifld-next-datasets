@@ -52,7 +52,13 @@ separately approved immutable catalog plan. Existing historical releases are
 not renamed. Version selection is explicit; no heuristic automatically decides
 compatibility or grants publication acceptance.
 
-**Partitions** — Each `(dataset_slug, file_slug)` pair has its own `DynamicPartitionsDefinition`. Partition keys are version strings. The `version_discovery_sensor` scans staging for versions that have geodata but lack `metadata/quality_manifest.json`, registers the partition, and requests a catalog materialization (for pairs known to the code).
+**Partitions** — The shared publish partition registry uses `dataset_slug/file_slug/version` keys for the configured default collection. Other collections use `collection_slug/dataset_slug/file_slug/version`, so identical dataset and file slugs cannot collide. Existing unqualified keys retain their configured storage prefixes.
+
+Set `HIFLD_STAGING_COLLECTIONS=hifld,openfema` to opt into discovery across those collection prefixes. Without it, discovery continues to use `HIFLD_STAGING_PREFIX` as before. Discovery registers eligible staged partitions; conversion, review, release approval and catalog publication remain separate steps. Qualified partitions scope catalog, format, quality-check and release operations to their own collection. The HIFLD archive license flag does not apply to another collection.
+
+**Published file inventory** — Publication indexes version-level raw files and supporting metadata as well as geospatial outputs. STAC assets and SQLite `asset_objects` retain full version-relative paths, media types, sizes, checksums and storage generations. The webapp can list and download these indexed objects without enumerating the bucket. Internal, hidden, temporary and approval files are excluded, and release/provenance approval checks still apply. Generic files do not become map or query sources merely by being indexed.
+
+Collection- and dataset-level metadata inventory, and mapping a shared multi-layer source into independently cataloged logical files, remain separate preparation work. This does not create a recurring OpenFEMA ingestion asset or automatically publish the preserved NFIP archive.
 
 **Configuration** — `StagingStorageResource` / `PublishedStorageResource` read:
 

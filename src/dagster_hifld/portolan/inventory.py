@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import mimetypes
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
@@ -22,6 +23,7 @@ from .catalog import (
     HIFLD_ARCHIVE_PUBLIC_DOMAIN_MARK,
     AssetRecord,
     CatalogRecord,
+    is_publication_path,
 )
 from .workflow import columns_from_dictionary, manifest_tags, normalize_stac_datetime
 
@@ -150,7 +152,8 @@ def build_catalog_from_inventories(
     source_by_name = {item.name: item for item in source}
     if isinstance(source_metadata, GenerationPinnedMetadataLoader):
         source_metadata.prefetch(
-            tuple(item for item in source if item.name.endswith(".json"))
+            tuple(item for item in source if item.name.endswith(tuple("/" + name for name in _METADATA_FILENAMES))
+                  and is_publication_path(item.name))
         )
     records: list[CatalogRecord] = []
     multipart_geoparquet = 0
@@ -160,7 +163,8 @@ def build_catalog_from_inventories(
         source_assets = tuple(
             item
             for item in source
-            if item.name.startswith(prefix) and not "/metadata/" in item.name
+            if item.name.startswith(prefix) and is_publication_path(item.name.removeprefix(prefix))
+            and item.name.removeprefix(prefix) not in {"collection.json", "catalog.json", "AGENTS.md", "README.md", "LICENSE.md"}
         )
         if not source_assets:
             continue
@@ -444,7 +448,8 @@ def _asset_record(
     item: InventoryObject, published_root: str, published_prefix: str
 ) -> AssetRecord:
     parts = item.name.split("/")
-    format_key = parts[3]
+    relative_path = "/".join(parts[3:])
+    format_key = parts[3] if len(parts) > 4 else Path(item.name).suffix.lstrip(".") or "source"
     suffix = Path(item.name).suffix.lower()
     return AssetRecord(
         key=f"{format_key}-{hashlib.sha256(item.name.encode()).hexdigest()[:12]}",
@@ -452,7 +457,7 @@ def _asset_record(
         title=Path(item.name).name,
         href=f"{published_root.rstrip('/')}/{published_prefix.strip('/')}/{item.name}",
         media_type=_MEDIA_TYPES.get(
-            suffix, item.content_type or "application/octet-stream"
+            suffix, item.content_type or mimetypes.guess_type(item.name)[0] or "application/octet-stream"
         ),
         size_bytes=item.size,
         sha256=None,
@@ -460,6 +465,8 @@ def _asset_record(
         storage_slug="gcp-portolan-published",
         storage_revision=item.generation,
         object_key=f"{published_prefix.strip('/')}/{item.name}",
+        relative_path=relative_path,
+        roles=("metadata", "source") if format_key == "metadata" else ("data",),
     )
 
 

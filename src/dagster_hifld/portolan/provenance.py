@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 from dagster_hifld.provenance import provenance_projection, validate_provenance, validate_provenance_url
 from dagster_hifld.resources import PublishedStorageResource
 
-from .catalog import AssetRecord, CatalogRecord
+from .catalog import AssetRecord, CatalogRecord, is_publication_path
 
 _REQUIRED = {"source_manifest.json", "resolved_provenance.json", "data_dictionary.json", "quality_manifest.json"}
 
@@ -101,7 +102,9 @@ def verify_sqlite_asset_projection(root: Path) -> None:
             if (location["href"] != asset["href"] or location["is_canonical"] != 1
                     or obj["asset_location_path"] != location["asset_location_path"]
                     or obj["object_key"] != asset.get("hifld:object_key", asset["href"])
-                    or obj["relative_path"] != obj["object_key"].rsplit("/", 1)[-1]
+                    or obj["relative_path"] != asset.get("hifld:relative_path", obj["object_key"].rsplit("/", 1)[-1])
+                    or not is_publication_path(obj["relative_path"])
+                    or not obj["object_key"].endswith("/" + obj["relative_path"])
                     or obj["size_bytes"] != asset["file:size"] or object_checksum != asset["file:checksum"]):
                 raise ValueError("Prepared SQLite asset object fields differ from rendered STAC")
             native_bbox = json.loads(obj["native_bbox_json"]) if obj["native_bbox_json"] is not None else None
@@ -153,6 +156,8 @@ def attach_published_provenance(record: CatalogRecord, published: PublishedStora
     for key in published.list_prefix(f"{version_prefix}/metadata"):
         relative = key.removeprefix(published.prefix.rstrip("/") + "/") if published.prefix else key
         logical = Path(relative).relative_to(version_prefix).as_posix()
+        if not is_publication_path(logical):
+            continue
         snapshot = published.object_snapshot(key)
         if snapshot is None:
             raise ValueError("Published metadata disappeared")
@@ -162,9 +167,9 @@ def attach_published_provenance(record: CatalogRecord, published: PublishedStora
         names.add(logical.removeprefix("metadata/"))
         assets.append(AssetRecord(key="metadata-" + logical.replace("/", "--"), format_key="metadata",
                                   title=logical, href=f"{public_root.rstrip('/')}/{published._ensure_prefixed(relative)}",
-                                  media_type="application/json" if logical.endswith(".json") else "application/x-ndjson" if logical.endswith(".jsonl") else "text/markdown" if logical.endswith(".md") else "application/octet-stream",
+                                  media_type="application/json" if logical.endswith(".json") else "application/x-ndjson" if logical.endswith(".jsonl") else "text/markdown" if logical.endswith(".md") else mimetypes.guess_type(logical)[0] or "application/octet-stream",
                                   size_bytes=snapshot.size, sha256=digest, roles=("metadata",),
-                                  storage_revision=snapshot.generation, object_key=published._ensure_prefixed(relative)))
+                                  storage_revision=snapshot.generation, object_key=published._ensure_prefixed(relative), relative_path=logical))
     if not _REQUIRED.issubset(names):
         raise ValueError("Required published provenance metadata is not downloadable")
     return replace(record, source_provenance=resolved, metadata_assets=tuple(assets))
@@ -200,13 +205,6 @@ def verify_prepared_metadata_dependencies(root: Path, published: PublishedStorag
                     if not published.object_exists(resolved_key):
                         raise ValueError("Published source is missing complete input provenance")
                     expected_native_metadata.append(json.loads(published.read_key(resolved_key)))
-        if provenance is None:
-            if expected_native_metadata or any("metadata" in asset.get("roles", []) for asset in document.get("assets", {}).values()):
-                raise ValueError("Modern published source cannot lose its input provenance")
-            continue
-        if any(value != provenance for value in expected_native_metadata):
-            raise ValueError("Published source does not match prepared complete input provenance")
-        validate_provenance(provenance)
         canonical = {}
         for asset in document.get("assets", {}).values():
             if "metadata" not in asset.get("roles", []):
@@ -216,8 +214,17 @@ def verify_prepared_metadata_dependencies(root: Path, published: PublishedStorag
             if key in derived and derived[key] != dependency:
                 raise ValueError("Conflicting prepared metadata dependencies")
             derived[key] = dependency
-            if asset.get("title") in {"metadata/resolved_provenance.json", "metadata/data_dictionary.json"}:
-                canonical[asset["title"]] = json.loads(published.read_key(key))
+            for relative in ("metadata/source_manifest.json", "metadata/resolved_provenance.json", "metadata/data_dictionary.json"):
+                if key.endswith("/" + relative):
+                    canonical[relative] = json.loads(published.read_key(key))
+        if provenance is None:
+            if (expected_native_metadata or "metadata/resolved_provenance.json" in canonical
+                    or any(provenance_projection(value) is not None for value in canonical.values())):
+                raise ValueError("Modern published source cannot lose its input provenance")
+            continue
+        if any(value != provenance for value in expected_native_metadata):
+            raise ValueError("Published source does not match prepared complete input provenance")
+        validate_provenance(provenance)
         if (canonical.get("metadata/resolved_provenance.json") != provenance
                 or provenance_projection(canonical.get("metadata/data_dictionary.json", {})) != provenance):
             raise ValueError("Published metadata does not match prepared complete input provenance")

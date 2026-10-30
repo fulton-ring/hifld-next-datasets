@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mimetypes
 import os
 import sqlite3
 import tempfile
@@ -28,7 +29,6 @@ from dagster_hifld.resources import (
     StagingStorageResource,
     StorageObjectSnapshot,
 )
-from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
 from dagster_hifld.source_manifest import inventory_source_publisher, load_resolved_source_manifest
 from dagster_hifld.provenance import provenance_projection
 
@@ -39,6 +39,7 @@ from .catalog import (
     CatalogRecord,
     ColumnRecord,
     build_catalog_sqlite,
+    is_publication_path,
     render_portolan_tree,
     update_catalog_sqlite,
     version_sort_key,
@@ -424,9 +425,9 @@ _MEDIA_TYPES = {
     ".gpkg": "application/geopackage+sqlite3",
     ".zip": "application/zip",
     ".json": "application/json",
+    ".jsonl": "application/x-ndjson",
+    ".geojson": "application/geo+json",
 }
-_PUBLISHED_DATA_FORMATS = CANONICAL_SOURCE_FORMAT_DIRS | {"geoparquet", "pmtiles"}
-_PUBLISHED_ASSET_FORMATS = _PUBLISHED_DATA_FORMATS | {"styles", "thumbnail"}
 _STYLE_MEDIA_TYPE = "application/vnd.mapbox.style+json"
 
 
@@ -436,11 +437,14 @@ def _record_assets(
     logical_prefix = f"{request.dataset_slug}/{request.file_slug}/{request.version}"
     assets: list[AssetRecord] = []
     for key in published.list_prefix(logical_prefix):
-        if "/metadata/" in key:
-            continue
         relative = key.removeprefix(published.prefix.rstrip("/") + "/") if published.prefix else key
-        asset_parts = Path(relative).relative_to(logical_prefix).parts
-        if len(asset_parts) < 2 or asset_parts[0] not in _PUBLISHED_ASSET_FORMATS:
+        if not relative.startswith(logical_prefix + "/"):
+            continue
+        version_relative = relative.removeprefix(logical_prefix + "/")
+        if not is_publication_path(version_relative):
+            continue
+        asset_parts = version_relative.split("/")
+        if version_relative in {"collection.json", "catalog.json", "AGENTS.md", "README.md", "LICENSE.md"}:
             continue
         snapshot = published.object_snapshot(key)
         if snapshot is None:
@@ -457,7 +461,7 @@ def _record_assets(
                 raise RuntimeError(
                     f"Published object changed during SHA-256 scan: {key}"
                 )
-        format_key = asset_parts[0]
+        format_key = asset_parts[0] if len(asset_parts) > 1 else Path(version_relative).suffix.lstrip(".") or "source"
         pmtiles_layers: tuple[str, ...] = ()
         if format_key == "pmtiles":
 
@@ -492,7 +496,7 @@ def _record_assets(
                     _STYLE_MEDIA_TYPE
                     if format_key == "styles"
                     else _MEDIA_TYPES.get(
-                        Path(key).suffix.lower(), "application/octet-stream"
+                        Path(key).suffix.lower(), mimetypes.guess_type(key)[0] or "application/octet-stream"
                     )
                 ),
                 size_bytes=snapshot.size,
@@ -500,11 +504,14 @@ def _record_assets(
                 storage_slug=request.storage_slug,
                 storage_revision=snapshot.generation,
                 object_key=key,
+                relative_path=version_relative,
                 pmtiles_layers=pmtiles_layers,
                 roles=("style", "default")
                 if format_key == "styles"
                 else ("thumbnail",)
                 if format_key == "thumbnail"
+                else ("metadata", "source")
+                if format_key == "metadata"
                 else ("data",),
             )
         )
@@ -631,9 +638,13 @@ def _promote_staged_data(
     logical_prefix = f"{request.dataset_slug}/{request.file_slug}/{request.version}"
     pairs: list[tuple[str, str]] = []
     for key in staging.list_prefix(logical_prefix):
-        relative = key.removeprefix(f"{request.collection_slug}/")
-        parts = Path(relative).relative_to(logical_prefix).parts
-        if len(parts) >= 2 and parts[0] in _PUBLISHED_DATA_FORMATS:
+        relative = key.removeprefix(staging.prefix.rstrip("/") + "/") if staging.prefix else key
+        if not relative.startswith(logical_prefix + "/"):
+            continue
+        version_relative = relative.removeprefix(logical_prefix + "/")
+        # Styles and thumbnails are generated separately, rather than promoted as raw inputs.
+        if (is_publication_path(version_relative) and not version_relative.startswith(("metadata/", "styles/", "thumbnail/"))
+                and version_relative not in {"collection.json", "catalog.json", "AGENTS.md", "README.md", "LICENSE.md"}):
             pairs.append((relative, relative))
     promote_immutable_objects(staging, published, pairs, version_prefix=logical_prefix)
 

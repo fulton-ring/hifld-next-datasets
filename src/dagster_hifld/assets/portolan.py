@@ -6,7 +6,11 @@ from pathlib import Path
 
 from dagster import AssetKey, Field, Output, asset
 
-from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
+from dagster_hifld.partitions import (
+    PUBLISH_PARTITIONS,
+    default_publish_collection,
+    resolve_publish_partition,
+)
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.portolan.release import read_staged_release
 from dagster_hifld.release_approval import require_generated_object_approval
@@ -23,9 +27,12 @@ from dagster_hifld.release_approval import require_generated_object_approval
 def prepare_release_metadata(context, staging_storage: StagingStorageResource,
                              published_storage: PublishedStorageResource) -> Output[dict]:
     from dagster_hifld.portolan.workflow import PortolanPublishRequest, prepare_staged_release, DEFAULT_PUBLIC_ROOT
-    dataset, file, candidate = parse_publish_partition_key(context.partition_key)
+    identity, staging_storage, published_storage = resolve_publish_partition(
+        context.partition_key, staging_storage, published_storage
+    )
+    dataset, file, candidate = identity.dataset_slug, identity.file_slug, identity.version
     request = PortolanPublishRequest(
-        os.environ.get("HIFLD_PORTOLAN_COLLECTION", "hifld"), dataset, file,
+        identity.collection, dataset, file,
         context.op_config["version"], "", "", "",
         public_root=os.environ.get("HIFLD_PORTOLAN_PUBLIC_ROOT") or
                     (f"https://storage.googleapis.com/{published_storage.bucket}" if published_storage.bucket and published_storage.backend == "gcs" else DEFAULT_PUBLIC_ROOT),
@@ -58,10 +65,13 @@ def publish_portolan_catalog(
         prepare_promoted_portolan_catalog,
     )
 
-    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    identity, staging_storage, published_storage = resolve_publish_partition(
+        context.partition_key, staging_storage, published_storage
+    )
+    dataset_slug, file_slug, version = identity.dataset_slug, identity.file_slug, identity.version
     prefix = f"{dataset_slug}/{file_slug}/{version}"
     document, destination_prefix = read_staged_release(staging_storage, prefix)
-    if document["id"].split("/")[0] != os.environ.get("HIFLD_PORTOLAN_COLLECTION", "hifld"):
+    if document["id"].split("/")[0] != identity.collection:
         raise ValueError("Staged STAC collection differs from configured catalog")
     contents = staging_storage.read_key(f"{prefix}/collection.json")
     if published_storage.read_key(f"{destination_prefix}/collection.json") != contents:
@@ -76,7 +86,7 @@ def publish_portolan_catalog(
         published_storage.backend, published_storage.bucket
     )
     request = PortolanPublishRequest(
-        collection_slug=os.environ.get("HIFLD_PORTOLAN_COLLECTION", "hifld"),
+        collection_slug=identity.collection,
         dataset_slug=dataset_slug,
         file_slug=file_slug,
         version=destination_prefix.rsplit("/", 1)[1],
@@ -85,9 +95,14 @@ def publish_portolan_catalog(
         provider="",
         public_root=public_root.rstrip("/"),
         storage_slug=storage_slug,
-        collection_title=os.environ.get("HIFLD_PORTOLAN_COLLECTION_TITLE"),
+        collection_title=(
+            os.environ.get("HIFLD_PORTOLAN_COLLECTION_TITLE")
+            if identity.collection == default_publish_collection()
+            else None
+        ),
         archive_public_domain=(
-            os.environ.get("HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN", "0") == "1"
+            identity.collection == "hifld"
+            and os.environ.get("HIFLD_PORTOLAN_ARCHIVE_PUBLIC_DOMAIN", "0") == "1"
         ),
     )
     mode = context.op_config.get("mode", "unconfigured")

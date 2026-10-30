@@ -12,10 +12,10 @@ import pandas as pd
 
 from dagster_hifld.catalog import generate_data_dictionary, write_catalog_metadata
 from dagster_hifld.assets.publish import _copy_version_files
-from dagster_hifld.portolan.catalog import CatalogRecord, render_portolan_tree
-from dagster_hifld.portolan.provenance import attach_published_provenance
+from dagster_hifld.portolan.catalog import CatalogRecord, build_catalog_sqlite, render_portolan_tree
+from dagster_hifld.portolan.provenance import attach_published_provenance, prepared_asset_dependencies, verify_prepared_metadata_dependencies, verify_sqlite_asset_projection
 from dagster_hifld.portolan.validation import PortolanValidationError, normalize_candidate_tree, validate_candidate_tree
-from dagster_hifld.portolan.workflow import PortolanPublishRequest, prepare_portolan_release_bundle
+from dagster_hifld.portolan.workflow import PortolanPublishRequest, _record_assets, prepare_portolan_release_bundle
 from dagster_hifld.release_approval import ReleaseApprovalError
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
@@ -24,6 +24,23 @@ from test_provenance import provenance_fixture
 
 
 class PublishedProvenanceTests(unittest.TestCase):
+    def test_legacy_support_metadata_is_pinned_without_claiming_modern_provenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            published = PublishedStorageResource(local_dir=str(root / "published"), use_local=True)
+            published.write("dataset", "file", "v1", "metadata/source_manifest.json", b'{"title":"Archived source"}')
+            request = PortolanPublishRequest("hifld", "dataset", "file", "v1", "", "", "https://example.test")
+            record = CatalogRecord("hifld", "dataset", "file", "v1", "Title", "Description", "non_spatial_source", 0, _record_assets(published, request), crs84_bbox=(-180, -90, 180, 90))
+            tree = root / "tree"
+            render_portolan_tree(tree, (record,), public_root=request.public_root)
+            build_catalog_sqlite(tree / "_catalog/catalog.sqlite", (record,))
+            verify_sqlite_asset_projection(tree)
+            dependencies = prepared_asset_dependencies(tree, published, request.public_root)
+            verify_prepared_metadata_dependencies(tree, published, dependencies)
+            published.write("dataset", "file", "v1", "metadata/source_manifest.json", json.dumps(provenance_fixture()).encode())
+            with self.assertRaisesRegex(ValueError, "provenance"):
+                verify_prepared_metadata_dependencies(tree, published, dependencies)
+
     def test_remote_dependency_guard_fails_before_any_cloud_operation(self):
         storage = PublishedStorageResource(use_local=False, bucket="synthetic-never-contacted")
         with self.assertRaisesRegex(RuntimeError, "local-only"):
@@ -73,6 +90,11 @@ class PublishedProvenanceTests(unittest.TestCase):
             self.assertEqual(captured["manifest_layers"][0]["transformations"], parent["transformations"])
             for layer in captured["manifest_layers"]:
                 self.assertEqual(storage.sha256_key("dataset/file/v1.0.0/" + layer["snapshot"]), layer["sha256"])
+            storage.write_key("dataset/file/v1.0.0/metadata/source/readme.txt", b"Source documentation")
+            record = CatalogRecord("hifld", "dataset", "file", "v1.0.0", "Title", "Description", "non_spatial_source", 0, ())
+            attached = attach_published_provenance(record, storage, "dataset/file/v1.0.0", "https://example.test")
+            readme = next(asset for asset in attached.metadata_assets if asset.relative_path == "metadata/source/readme.txt")
+            self.assertEqual(readme.media_type, "text/plain")
 
     def test_repinned_dictionary_input_loss_cannot_promote(self):
         with tempfile.TemporaryDirectory() as d:

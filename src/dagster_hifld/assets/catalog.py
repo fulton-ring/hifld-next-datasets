@@ -9,7 +9,7 @@ from dagster_hifld.catalog import (
     write_catalog_metadata,
 )
 from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILES
-from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
+from dagster_hifld.partitions import PUBLISH_PARTITIONS, resolve_publish_partition
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import (
     load_resolved_source_manifest,
@@ -60,7 +60,10 @@ _SUPPORTED_BY_PAIR = {
     description="Generate quality and data dictionary metadata for any staged dataset version.",
 )
 def publish_catalog(context, staging_storage: StagingStorageResource) -> Output[dict]:
-    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    identity, staging_storage, _ = resolve_publish_partition(
+        context.partition_key, staging_storage
+    )
+    dataset_slug, file_slug, version = identity.dataset_slug, identity.file_slug, identity.version
     snapshot_source_metadata(staging_storage, dataset_slug, file_slug, version)
     spec = _SUPPORTED_BY_PAIR.get((dataset_slug, file_slug))
     description = (

@@ -18,6 +18,19 @@ from dagster_hifld.portolan.validation import normalize_candidate_tree, validate
 
 
 class PortolanCatalogTests(unittest.TestCase):
+    def test_sqlite_keeps_full_version_relative_object_paths(self):
+        assets = tuple(AssetRecord(path, "raw", "data.json", "https://example.test/hifld/dataset/file/v1/" + path,
+                                   "application/json", 2, "a" * 64,
+                                   object_key="hifld/dataset/file/v1/" + path)
+                       for path in ("raw/a/data.json", "raw/b/data.json"))
+        record = CatalogRecord("hifld", "dataset", "file", "v1", "Title", "Description", "non_spatial_source", 0, assets)
+        with tempfile.TemporaryDirectory() as temporary:
+            database = Path(temporary) / "catalog.sqlite"
+            build_catalog_sqlite(database, (record,))
+            with sqlite3.connect(database) as connection:
+                self.assertEqual(connection.execute("SELECT relative_path FROM asset_objects ORDER BY relative_path").fetchall(),
+                                 [("raw/a/data.json",), ("raw/b/data.json",)])
+
     def test_rendered_collection_uses_world_extent_when_derived_bbox_is_invalid(self):
         record = CatalogRecord(
             "hifld",

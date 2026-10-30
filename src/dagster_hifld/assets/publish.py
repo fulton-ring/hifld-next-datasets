@@ -39,7 +39,7 @@ from dagster_hifld.conversion import (
     write_geopackage_chunked,
     write_shapefile_zip,
 )
-from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
+from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_identity, resolve_publish_partition
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
 from dagster_hifld.release_approval import require_release_approval, _registry as load_release_approvals
 from dagster_hifld.sources.usace_pylon_locations import (
@@ -1368,7 +1368,8 @@ def _output_for_partition(
     outputs: list[PublishedFormatOutput],
     format_name: str,
 ) -> Output[dict]:
-    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    identity = parse_publish_partition_identity(context.partition_key)
+    dataset_slug, file_slug, version = identity.dataset_slug, identity.file_slug, identity.version
     files = [output.path for output in outputs if output.path]
     skip_reasons = [
         output.source_metadata.get("skip_reason")
@@ -1412,8 +1413,11 @@ def verify_release(
     staging_storage: StagingStorageResource,
     published_storage: PublishedStorageResource,
 ) -> Output[dict]:
+    identity, staging_storage, published_storage = resolve_publish_partition(
+        context.partition_key, staging_storage, published_storage
+    )
     load_release_approvals(staging_storage, published_storage)
-    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    dataset_slug, file_slug, version = identity.dataset_slug, identity.file_slug, identity.version
     prefix = f"{dataset_slug}/{file_slug}/{version}"
     _, destination_prefix = read_staged_release(staging_storage, prefix)
     pairs = [(key, f"{destination_prefix}/{relative}")
@@ -1443,7 +1447,10 @@ def publish_version(
     staging_storage: StagingStorageResource,
     published_storage: PublishedStorageResource,
 ) -> Output[dict]:
-    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    identity, staging_storage, published_storage = resolve_publish_partition(
+        context.partition_key, staging_storage, published_storage
+    )
+    dataset_slug, file_slug, version = identity.dataset_slug, identity.file_slug, identity.version
     copied = _copy_version_files(
         staging_storage,
         published_storage,
@@ -1475,7 +1482,8 @@ def publish_geopackage(
     context,
     staging_storage: StagingStorageResource,
 ) -> Output[dict]:
-    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    identity, staging_storage, _ = resolve_publish_partition(context.partition_key, staging_storage)
+    dataset_slug, file_slug, version = identity.dataset_slug, identity.file_slug, identity.version
     outputs = _copy_or_generate_geopackage(
         staging_storage,
         dataset_slug,
@@ -1496,7 +1504,8 @@ def publish_geoparquet(
     context,
     staging_storage: StagingStorageResource,
 ) -> Output[dict]:
-    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    identity, staging_storage, _ = resolve_publish_partition(context.partition_key, staging_storage)
+    dataset_slug, file_slug, version = identity.dataset_slug, identity.file_slug, identity.version
     outputs = _write_and_publish_geoparquet(
         staging_storage,
         dataset_slug,
@@ -1521,7 +1530,8 @@ def publish_pmtiles(
     context,
     staging_storage: StagingStorageResource,
 ) -> Output[dict]:
-    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    identity, staging_storage, _ = resolve_publish_partition(context.partition_key, staging_storage)
+    dataset_slug, file_slug, version = identity.dataset_slug, identity.file_slug, identity.version
     outputs = _write_and_publish_pmtiles(
         staging_storage,
         dataset_slug,
@@ -1542,7 +1552,8 @@ def publish_shapefile_zip(
     context,
     staging_storage: StagingStorageResource,
 ) -> Output[dict]:
-    dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
+    identity, staging_storage, _ = resolve_publish_partition(context.partition_key, staging_storage)
+    dataset_slug, file_slug, version = identity.dataset_slug, identity.file_slug, identity.version
     outputs = _write_and_publish_shapefile_zip(
         staging_storage,
         dataset_slug,

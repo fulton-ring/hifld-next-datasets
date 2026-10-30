@@ -7,7 +7,7 @@ from dagster_hifld.release_approval import (
     require_generated_object_approval,
     require_release_approval,
 )
-from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
+from dagster_hifld.portolan.catalog import is_publication_path
 
 
 def promote_immutable_objects(
@@ -27,10 +27,20 @@ def promote_immutable_objects(
     if version_prefix is not None:
         prefix = destination._ensure_prefixed(version_prefix).rstrip("/") + "/"
         selected = {destination._ensure_prefixed(key) for _, key in pairs}
-        formats = CANONICAL_SOURCE_FORMAT_DIRS | {"geoparquet", "pmtiles"}
         for key in destination.list_prefix(version_prefix):
+            relative = key.removeprefix(prefix)
             if (
-                key.removeprefix(prefix).split("/", 1)[0] in formats
+                is_publication_path(relative)
+                and not relative.startswith("metadata/")
+                and not relative.startswith(("styles/", "thumbnail/"))
+                and relative
+                not in {
+                    "collection.json",
+                    "catalog.json",
+                    "AGENTS.md",
+                    "README.md",
+                    "LICENSE.md",
+                }
                 and key not in selected
             ):
                 raise ValueError(

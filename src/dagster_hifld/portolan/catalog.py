@@ -89,6 +89,37 @@ class AssetRecord:
     storage_revision: str | None = None
     object_key: str | None = None
     pmtiles_layers: tuple[str, ...] = ()
+    relative_path: str | None = None
+
+
+def is_publication_path(value: str) -> bool:
+    """Exclude unsafe paths and private pipeline artifacts from public inventory."""
+    parts = value.split("/")
+    private = {"temporary", "rollback", "scratch", "control", "approval", "approvals", "secret", "secrets", "credentials", "token"}
+    return bool(value) and not any(char in value for char in "\\?#%:\x00") and all(
+        part and not part.startswith((".", "_"))
+        and not private.intersection(part.lower().replace("-", "_").replace(".", "_").split("_"))
+        and Path(part).suffix.lower() not in {".pem", ".key"}
+        and not any(ord(char) < 32 for char in part)
+        for part in parts
+    )
+
+
+def asset_relative_path(record: CatalogRecord, asset: AssetRecord) -> str:
+    """Keep the complete physical path below this version, including subfolders."""
+    relative = asset.relative_path
+    if relative is None:
+        key = asset.object_key or urlparse(asset.href).path
+        version = f"{record.dataset_slug}/{record.file_slug}/{record.version_label}/"
+        relative = key.split(version, 1)[1] if version in key else key.rsplit("/", 1)[-1]
+    if not is_publication_path(relative):
+        raise ValueError(f"Unsafe public asset relative path: {relative}")
+    return relative
+
+
+def record_assets(record: CatalogRecord) -> tuple[AssetRecord, ...]:
+    """Prefer verified provenance metadata when both scans name the same object."""
+    return tuple({asset.object_key or asset.href: asset for asset in (*record.assets, *record.metadata_assets)}.values())
 
 
 @dataclass(frozen=True)
@@ -454,7 +485,7 @@ def _insert_record(connection: sqlite3.Connection, record: CatalogRecord) -> Non
         "UPDATE files SET latest_version = ? WHERE file_path = ?",
         (record.version_label, record.file_path),
     )
-    for asset in (*record.assets, *record.metadata_assets):
+    for asset in record_assets(record):
         format_key, media_type, is_spatial = _format_definition(asset)
         connection.execute(
             "INSERT OR IGNORE INTO formats VALUES (?, ?, ?, ?)",
@@ -493,7 +524,7 @@ def _insert_record(connection: sqlite3.Connection, record: CatalogRecord) -> Non
                 asset_path,
                 location_path,
                 object_key,
-                object_key.rsplit("/", 1)[-1],
+                asset_relative_path(record, asset),
                 asset.size_bytes,
                 asset.sha256,
                 asset.checksum_multihash,
@@ -948,6 +979,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
             "roles": list(asset.roles),
             "hifld:format_key": asset.format_key,
             "file:size": asset.size_bytes,
+            "hifld:relative_path": asset_relative_path(record, asset),
             **({"hifld:object_key": asset.object_key} if asset.object_key else {}),
             **(
                 {"file:checksum": asset.checksum_multihash}
@@ -959,7 +991,7 @@ def _render_record(root: Path, record: CatalogRecord) -> None:
                 )
             ),
         }
-        for asset in (*record.assets, *record.metadata_assets)
+        for asset in record_assets(record)
     }
     links: list[dict[str, object]] = [
         {

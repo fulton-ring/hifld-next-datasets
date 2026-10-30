@@ -62,6 +62,25 @@ def _pmtiles_archive(layer_id: str = "roads") -> bytes:
 
 
 class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
+    def test_indexes_nested_raw_and_metadata_without_internal_objects(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            published = PublishedStorageResource(local_dir=temporary, use_local=True, prefix="hifld")
+            request = PortolanPublishRequest("hifld", "dataset", "file", "v1.0.0", "", "", "https://example.test")
+            expected = {"raw/a/data.json", "raw/b/data.json", "metadata/source_manifest.json", "metadata/source/readme.txt"}
+            excluded = {"_temporary/raw.json", "raw/.env", "rollback/secret.json", "metadata/approval.json", "metadata/release_approval.json", "metadata/_control/secret.json"}
+            for relative in expected | excluded:
+                published.write("dataset", "file", "v1.0.0", relative, b"{}")
+            assets = _record_assets(published, request)
+            self.assertEqual({asset.relative_path for asset in assets}, expected)
+            self.assertEqual(len({asset.key for asset in assets}), len(expected))
+            for asset in assets:
+                self.assertEqual(asset.object_key, "hifld/dataset/file/v1.0.0/" + asset.relative_path)
+                self.assertIsNotNone(asset.sha256)
+                self.assertIsNotNone(asset.storage_revision)
+                self.assertEqual(asset.size_bytes, 2)
+                self.assertEqual(asset.roles, ("metadata", "source") if asset.relative_path.startswith("metadata/") else ("data",))
+            self.assertEqual(next(asset.media_type for asset in assets if asset.relative_path.endswith("readme.txt")), "text/plain")
+
     @staticmethod
     def _schema_facts(*columns: ColumnRecord) -> GeoParquetFacts:
         return GeoParquetFacts(
@@ -1250,15 +1269,20 @@ class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
             )
             expected = {
                 "geopackage/file.gpkg": b"original-gpkg",
+                "raw/nested/original.json": b"original-json",
                 "geoparquet/file.parquet": b"original-parquet",
                 "pmtiles/file.pmtiles": b"original-pmtiles",
                 "shapefile/file.zip": b"original-shapefile",
             }
             for relative_path, contents in expected.items():
                 staging.write("dataset", "file", "v1.1.0", relative_path, contents)
+            staging.write("dataset", "file", "v1.1.0", "styles/custom.json", b"{}")
+            staging.write("dataset", "file", "v1.1.0", "thumbnail/preview.png", b"preview")
 
             _promote_staged_data(staging, published, request)
 
+            self.assertFalse(published.object_exists("dataset/file/v1.1.0/styles/custom.json"))
+            self.assertFalse(published.object_exists("dataset/file/v1.1.0/thumbnail/preview.png"))
             for relative_path, contents in expected.items():
                 self.assertEqual(
                     published.read_bytes("dataset", "file", "v1.1.0", relative_path),
