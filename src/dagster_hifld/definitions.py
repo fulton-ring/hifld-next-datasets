@@ -108,6 +108,11 @@ from dagster_hifld.assets.bts import (
     amtrak_draft_refresh_job,
     amtrak_draft_refresh_schedule,
 )
+from dagster_hifld.assets.national_transit_map_stops import (
+    national_transit_map_stops_draft_job,
+    national_transit_map_stops_draft_schedule,
+    national_transit_map_stops_source_complete,
+)
 
 from dagster_hifld.assets.quaternary_fault_lines import (
     quaternary_fault_lines_draft_job,
@@ -996,6 +1001,7 @@ defs = Definitions(
         fuds_irm_property_point_complete,
         fuds_irm_property_point_geometry_quality,
         bts_intermodal_freight_marine_roll_on_roll_off_complete,
+        national_transit_map_stops_source_complete,
         bts_intermodal_freight_rail_tofc_cofc_complete,
         usace_fuds_projects_points_complete,
         epa_frs_naics_complete,
@@ -1093,6 +1099,7 @@ defs = Definitions(
         usgs_aquifers_draft_refresh_job,
         tsunami_events_draft_job,
         bts_air_truck_draft_job,
+        national_transit_map_stops_draft_job,
         census_tracts_draft_job,
         quaternary_fault_lines_draft_job,
         courthouses_draft_job,
@@ -1302,6 +1309,7 @@ defs = Definitions(
         fuds_district_boundaries_draft_schedule,
         tsunami_events_draft_schedule,
         bts_air_truck_draft_schedule,
+        national_transit_map_stops_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
