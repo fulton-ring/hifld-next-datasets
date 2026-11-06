@@ -178,6 +178,31 @@ class BoardDispatchTests(unittest.TestCase):
         self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW, dry_run=True)), 1)
         self.assertEqual(api.posts, [])
 
+    def test_four_today_attempts_hold_cards_without_burning_identity(self):
+        api = FakeAPI([dict(run(n, issue=900+n), created_at='2026-10-21T00:01:00Z') for n in range(4)])
+        today = dispatch.datetime.fromtimestamp(NOW, dispatch.timezone.utc).date().isoformat()
+        for entry in api.runs:
+            entry['created_at'] = today + 'T00:01:00Z'
+        self.assertEqual(dispatch.dispatch_cards([card()], api, now=NOW), [])
+        self.assertEqual(api.posts, [])
+        for entry in api.runs:
+            entry['created_at'] = '2000-01-01T00:01:00Z'
+        self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW)), 1)
+
+    def test_daily_cap_includes_local_reservations_once(self):
+        class MixedAPI(FakeAPI):
+            def __call__(self, kind, path, data=None):
+                result = super().__call__(kind, path, data)
+                if kind == 'board':
+                    number = result['data']['node']['content']['number']
+                    result['data']['node']['status']['name'] = 'Review' if number < 100 else 'Ready'
+                return result
+        today = dispatch.datetime.fromtimestamp(NOW, dispatch.timezone.utc).date().isoformat()
+        api = MixedAPI([dict(run(n, issue=900+n), created_at=today+'T00:00:00Z') for n in range(3)])
+        selected = dispatch.dispatch_cards([card(1), card(100, 'Ready')], api, now=NOW)
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(len(api.posts), 1)
+
     def test_completed_attempts_do_not_consume_concurrency(self):
         api = FakeAPI([run(n, issue=900+n) for n in range(99)])
         self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW)), 1)
