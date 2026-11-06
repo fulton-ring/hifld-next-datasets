@@ -141,8 +141,8 @@ class BoardDispatchTests(unittest.TestCase):
 
     def test_review_reservations_bound_delayed_github_ledger(self):
         api = FakeAPI()
-        self.assertEqual(len(dispatch.dispatch_cards([card(x) for x in range(1, 100)], api, now=NOW)), 2)
-        self.assertEqual(len(api.posts), 2)
+        self.assertEqual(len(dispatch.dispatch_cards([card(x) for x in range(1, 100)], api, now=NOW)), 1)
+        self.assertEqual(len(api.posts), 1)
 
     def test_one_sweep_fills_both_role_pools_without_an_actions_backlog(self):
         class MixedAPI(FakeAPI):
@@ -155,9 +155,9 @@ class BoardDispatchTests(unittest.TestCase):
         api = MixedAPI()
         board = [card(n) for n in range(1, 4)] + [card(n, 'Ready') for n in range(100, 110)]
         selected = dispatch.dispatch_cards(board, api, now=NOW)
-        self.assertEqual(sum(t['role'] == 'review' for t in selected), 2)
-        self.assertEqual(sum(t['role'] == 'implementation' for t in selected), 6)
-        self.assertEqual(len(api.posts), 8)
+        self.assertEqual(sum(t['role'] == 'review' for t in selected), 1)
+        self.assertEqual(sum(t['role'] == 'implementation' for t in selected), 1)
+        self.assertEqual(len(api.posts), 2)
 
     def test_acknowledged_reservations_survive_placeholder_run_titles(self):
         class PlaceholderAPI(FakeAPI):
@@ -168,7 +168,7 @@ class BoardDispatchTests(unittest.TestCase):
                 return result
         api = PlaceholderAPI()
         selected = dispatch.dispatch_cards([card(n) for n in range(1, 4)], api, now=NOW)
-        self.assertEqual(len(selected), 2)
+        self.assertEqual(len(selected), 1)
 
     def test_lane_change_before_dispatch_and_dry_run_never_post(self):
         api = FakeAPI()
@@ -182,11 +182,11 @@ class BoardDispatchTests(unittest.TestCase):
         api = FakeAPI([run(n, issue=900+n) for n in range(99)])
         self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW)), 1)
 
-    def test_six_implementation_reservations_bound_delayed_ledger(self):
+    def test_one_implementation_reservation_bound_delayed_ledger(self):
         api = FakeAPI(pr=False)
         api.current_status = 'Ready'
         selected = dispatch.dispatch_cards([card(n, 'Ready') for n in range(1, 20)], api, now=NOW)
-        self.assertEqual(len(selected), 6)
+        self.assertEqual(len(selected), 1)
         self.assertTrue(all(x['role'] == 'implementation' for x in selected))
 
     def test_worker_slots_remain_full_when_both_review_slots_are_free(self):

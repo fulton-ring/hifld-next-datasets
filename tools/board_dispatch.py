@@ -27,7 +27,7 @@ CURRENT = '''query($item:ID!){node(id:$item){... on ProjectV2Item{
  }}}'''
 
 
-ROLE_LIMITS = {'implementation': 6, 'review': 2}
+ROLE_LIMITS = {'implementation': 1, 'review': 1}
 
 
 def capacity(runs, role):

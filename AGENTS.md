@@ -114,9 +114,9 @@ When repository variable `AGENT_DISPATCH_ENABLED=true`, **Ready** queues
 implementation and **Review** queues an independent review of the exact current
 PR head. The supervisor chooses work by moving selected Backlog cards to Ready.
 Backlog, Needs decision, In progress and Done do not dispatch. The board remains
-the queue: each sweep fills available slots in the private trusted-main
-`fulton-ring/hifld-next-iac` workflow, respecting six active/queued implementation
-jobs and two active/queued reviews independently. Completed attempts do not
+the queue: each sweep fills available slots through the private trusted-main
+`fulton-ring/hifld-next-iac` workflow and its private factory bridge, respecting one active/queued implementation
+job and one active/queued review independently (two total). Completed attempts do not
 consume slots; there is no daily attempt-count limit. Its inference-budget preflight still runs
 before GKE allocation. Exhausted capacity leaves cards waiting; there is no
 automatic retry of a previously attempted issue/head/role. Failed reviews require
