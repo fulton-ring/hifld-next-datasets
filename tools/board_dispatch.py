@@ -27,7 +27,8 @@ CURRENT = '''query($item:ID!){node(id:$item){... on ProjectV2Item{
  }}}'''
 
 
-ROLE_LIMITS = {'implementation': 6, 'review': 2}
+ROLE_LIMITS = {'implementation': 1, 'review': 1}
+DAILY_DISPATCH_LIMIT = 4
 
 
 def capacity(runs, role):
@@ -154,9 +155,17 @@ def dispatch_cards(board, api, dry_run=False, now=None):
         acknowledged = {r['id']: r for r in reservations}
         # The run can appear before GitHub publishes its input-derived title.
         # Our dispatch acknowledgment already binds this ID to the exact task.
-        runs = [dict(r, display_title=acknowledged[r['id']]['display_title'])
+        runs = [dict(r, display_title=acknowledged[r['id']]['display_title'],
+                     created_at=r.get('created_at') or acknowledged[r['id']]['created_at'])
                 if r['id'] in acknowledged else r for r in runs]
         runs += [r for r in reservations if r['id'] not in known]
+        day = datetime.fromtimestamp(current_time(), timezone.utc).date().isoformat()
+        # Count acknowledged reservations once alongside all attempts today, even
+        # failed/completed ones. Leave eligible cards queued before burning identity.
+        daily = {r['id'] for r in runs if (r.get('created_at') or '')[:10] == day}
+        if len(daily) >= DAILY_DISPATCH_LIMIT:
+            print('Dispatch held: four daily UTC attempts reserved; cards remain queued.')
+            break
         role = 'review' if card['status'] == 'Review' else 'implementation'
         if not capacity(runs, role):
             print(f'Dispatch held: {role} concurrency limit is full or an active run is unidentified.')
@@ -204,6 +213,7 @@ def dispatch_cards(board, api, dry_run=False, now=None):
                 raise ValueError('Dispatch acknowledgment is missing its run ID')
             print(f'Dispatched {title}; run {run_id}')
         reservations.append(dict(id=run_id, display_title=title, status='queued', run_attempt=1,
+                                 created_at=datetime.fromtimestamp(current_time(), timezone.utc).isoformat(),
                                  updated_at=datetime.fromtimestamp(current_time(), timezone.utc).isoformat()))
         selected.append(task)
         if len(selected) == sum(ROLE_LIMITS.values()):
