@@ -17,6 +17,10 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import usace_data_coverage_areas as source
 
 
+@unittest.skipUnless(
+    os.environ.get("HIFLD_DATA_COVERAGE_AREAS_CAPTURE_DIR"),
+    "Set HIFLD_DATA_COVERAGE_AREAS_CAPTURE_DIR to the retained original USACE capture",
+)
 class UsaceDataCoverageAreasTests(unittest.TestCase):
     def setUp(self):
         self.capture = Path(os.environ["HIFLD_DATA_COVERAGE_AREAS_CAPTURE_DIR"])
