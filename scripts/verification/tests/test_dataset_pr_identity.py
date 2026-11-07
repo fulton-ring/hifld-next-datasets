@@ -32,10 +32,19 @@ class DatasetPRIdentityTests(unittest.TestCase):
                 "repo": {"full_name": "fulton-ring/hifld-next-datasets"},
             },
         }
+        self.target_ref = {
+            "ref": "refs/heads/main",
+            "object": {"sha": "b" * 40, "type": "commit"},
+        }
 
     def check(self):
         return self.module.validate(
-            self.pr, "fulton-ring/hifld-next-datasets", "698", "a" * 40, "b" * 40
+            self.pr,
+            "fulton-ring/hifld-next-datasets",
+            "698",
+            "a" * 40,
+            "b" * 40,
+            self.target_ref,
         )
 
     def test_accepts_exact_open_same_repository_pair(self):
@@ -44,14 +53,32 @@ class DatasetPRIdentityTests(unittest.TestCase):
             {"pr_number": "698", "head_sha": "a" * 40, "base_sha": "b" * 40},
         )
 
-    def test_rejects_stale_head_or_base(self):
-        for side in ("head", "base"):
-            with self.subTest(side=side):
-                original = self.pr[side]["sha"]
-                self.pr[side]["sha"] = "c" * 40
+    def test_accepts_old_pr_base_snapshot_when_current_main_matches_requested_base(
+        self,
+    ):
+        # PR #698 retained its old base SHA after main advanced in real API responses.
+        self.pr["base"]["sha"] = "d" * 40
+        self.assertEqual(self.check()["base_sha"], "b" * 40)
+
+    def test_rejects_stale_head_or_live_target_ref(self):
+        for data in (self.pr["head"], self.target_ref["object"]):
+            with self.subTest(data=data):
+                original = data["sha"]
+                data["sha"] = "c" * 40
                 with self.assertRaises(ValueError):
                     self.check()
-                self.pr[side]["sha"] = original
+                data["sha"] = original
+
+    def test_rejects_wrong_target_ref_or_noncommit_target(self):
+        for data, key, value in (
+            (self.target_ref, "ref", "refs/heads/other"),
+            (self.target_ref["object"], "type", "tag"),
+        ):
+            with self.subTest(key=key):
+                data[key] = value
+                with self.assertRaises(ValueError):
+                    self.check()
+                data[key] = "refs/heads/main" if key == "ref" else "commit"
 
     def test_rejects_fork_closed_wrong_base_and_wrong_number(self):
         for section, key, value in (
@@ -78,7 +105,12 @@ class DatasetPRIdentityTests(unittest.TestCase):
                 self.assertRaises(ValueError),
             ):
                 self.module.validate(
-                    self.pr, "fulton-ring/hifld-next-datasets", number, head, base
+                    self.pr,
+                    "fulton-ring/hifld-next-datasets",
+                    number,
+                    head,
+                    base,
+                    self.target_ref,
                 )
 
     def test_cli_refuses_workflow_revision_different_from_base_before_api_call(self):
@@ -113,11 +145,14 @@ class DatasetPRIdentityTests(unittest.TestCase):
                 "GH_TOKEN": "test-only-placeholder",
                 "GITHUB_OUTPUT": str(output),
             }
-            response = io.BytesIO(json.dumps(self.pr).encode())
+            responses = [
+                io.BytesIO(json.dumps(doc).encode())
+                for doc in (self.pr, self.target_ref)
+            ]
             stdout = io.StringIO()
             with (
                 patch.dict(os.environ, environment, clear=True),
-                patch.object(self.module, "urlopen", return_value=response) as api,
+                patch.object(self.module, "urlopen", side_effect=responses) as api,
                 patch("sys.stdout", stdout),
             ):
                 self.module.main()
@@ -126,8 +161,10 @@ class DatasetPRIdentityTests(unittest.TestCase):
                 "pr_number=698\nhead_sha=" + "a" * 40 + "\nbase_sha=" + "b" * 40 + "\n",
             )
             self.assertNotIn(environment["GH_TOKEN"], stdout.getvalue())
-            request = api.call_args.args[0]
             self.assertEqual(
-                request.full_url,
-                "https://api.github.com/repos/fulton-ring/hifld-next-datasets/pulls/698",
+                [call.args[0].full_url for call in api.call_args_list],
+                [
+                    "https://api.github.com/repos/fulton-ring/hifld-next-datasets/pulls/698",
+                    "https://api.github.com/repos/fulton-ring/hifld-next-datasets/git/ref/heads/main",
+                ],
             )

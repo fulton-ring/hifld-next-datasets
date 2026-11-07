@@ -9,7 +9,9 @@ import re
 from urllib.request import Request, urlopen
 
 
-def validate(pr: dict, repository: str, number: str, head: str, base: str) -> dict:
+def validate(
+    pr: dict, repository: str, number: str, head: str, base: str, target_ref: dict
+) -> dict:
     """Reject stale heads/bases, forks, closed PRs and noncanonical inputs."""
     if not re.fullmatch(r"[1-9][0-9]*", number):
         raise ValueError("invalid PR number")
@@ -17,15 +19,23 @@ def validate(pr: dict, repository: str, number: str, head: str, base: str) -> di
         raise ValueError("expected exact lowercase commit SHAs")
     if pr.get("number") != int(number) or pr.get("state") != "open":
         raise ValueError("PR identity/state changed")
-    for side, sha in (("head", head), ("base", base)):
+    for side in ("head", "base"):
         data = pr.get(side) or {}
-        if (
-            data.get("sha") != sha
-            or (data.get("repo") or {}).get("full_name") != repository
-        ):
-            raise ValueError(f"PR {side} SHA/repository changed")
+        if (data.get("repo") or {}).get("full_name") != repository:
+            raise ValueError(f"PR {side} repository changed")
+    if pr["head"].get("sha") != head:
+        raise ValueError("PR head SHA changed")
     if pr["base"].get("ref") != "main":
         raise ValueError("only main-targeted PRs are eligible")
+    # PR.base.sha can lag after main advances; only the live Git ref identifies
+    # the current target snapshot used by this trusted workflow.
+    target = target_ref.get("object") or {}
+    if (
+        target_ref.get("ref") != "refs/heads/main"
+        or target.get("type") != "commit"
+        or target.get("sha") != base
+    ):
+        raise ValueError("current target main SHA changed")
     return {"pr_number": number, "head_sha": head, "base_sha": base}
 
 
@@ -41,16 +51,19 @@ def main() -> None:
         raise ValueError("invalid repository")
     if not re.fullmatch(r"[1-9][0-9]*", number):
         raise ValueError("invalid PR number")
-    request = Request(
-        f"https://api.github.com/repos/{repository}/pulls/{number}",
-        headers={
-            "Authorization": "Bearer " + os.environ["GH_TOKEN"],
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-    with urlopen(request, timeout=30) as response:
-        values = validate(json.load(response), repository, number, head, base)
+    headers = {
+        "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    snapshots = []
+    for endpoint in (f"pulls/{number}", "git/ref/heads/main"):
+        request = Request(
+            f"https://api.github.com/repos/{repository}/{endpoint}", headers=headers
+        )
+        with urlopen(request, timeout=30) as response:
+            snapshots.append(json.load(response))
+    values = validate(snapshots[0], repository, number, head, base, snapshots[1])
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         for key, value in values.items():
             print(f"{key}={value}", file=output)
