@@ -65,6 +65,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.resolve.outputs.head_sha }}
+          fetch-depth: 0 # Provenance regressions validate historical Git blobs.
           persist-credentials: false
       - name: Checkout trusted baseline tests
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -80,6 +81,10 @@ jobs:
           rm -rf trusted-baseline
       - name: Configure isolated local directories
         run: |
+          # Several existing draft transports check this worker-layout filesystem.
+          sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /workspace
+          python3 -c 'import shutil; assert shutil.disk_usage("/workspace").free >= 2_000_000_000, "insufficient test disk reserve"'
+
           echo "HIFLD_STAGING_DIR=$RUNNER_TEMP/dataset-staging" >> "$GITHUB_ENV"
           echo "HIFLD_DATASETS_DIR=$RUNNER_TEMP/dataset-published" >> "$GITHUB_ENV"
           echo "DAGSTER_HOME=$RUNNER_TEMP/dagster" >> "$GITHUB_ENV"
@@ -90,6 +95,16 @@ jobs:
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
         with:
           enable-cache: false
+      - name: Install pinned PMTiles compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libsqlite3-dev zlib1g-dev
+          git init "$RUNNER_TEMP/tippecanoe"
+          git -C "$RUNNER_TEMP/tippecanoe" fetch --depth=1 https://github.com/felt/tippecanoe.git 2d548bed0623005ab1ae619595ef4cfe1c745d3e
+          git -C "$RUNNER_TEMP/tippecanoe" checkout --detach FETCH_HEAD
+          make -C "$RUNNER_TEMP/tippecanoe" -j2
+          sudo install "$RUNNER_TEMP/tippecanoe/tippecanoe" "$RUNNER_TEMP/tippecanoe/tippecanoe-decode" /usr/local/bin/
+          tippecanoe --version
       - name: Install locked dependencies
         run: |
           mkdir -p "$DAGSTER_HOME" "$HIFLD_STAGING_DIR" "$HIFLD_DATASETS_DIR"

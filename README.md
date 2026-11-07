@@ -71,6 +71,19 @@ Use a persistent `DAGSTER_HOME` if you want runs and partitions to survive resta
 
 **Tests** — `uv run python -m unittest discover tests`
 
+Trusted PR verification runs on Python 3.12 with full Git history and the pinned
+Tippecanoe 2.78.0 compiler/decoder. Some existing draft transports check free space
+at `/workspace`; CI provides that writable worker directory with a 2 GB reserve.
+That path assumption remains a portability limitation in those transports.
+
+Retained USACE integration captures are opt-in through
+`HIFLD_DATA_COVERAGE_AREAS_CAPTURE_DIR` and `HIFLD_DRY_DOCKS_CAPTURE_DIR`. Missing
+configuration skips those external-input tests; a configured missing or invalid
+capture fails. The external IaC integration uses `HIFLD_IAC_CHECKOUT` or an
+existing sibling `hifld-next-iac` checkout. Default synthetic tests and passing
+code checks do not approve real data or authorize publication.
+
+
 **Agent-oriented detail** — Design choices, multi-file datasets (e.g. 2020 census blocks), sensor behavior, and pitfalls live in [AGENTS.md](AGENTS.md) under the Dagster subsection.
 
 ### GeoParquet Hive partitions
