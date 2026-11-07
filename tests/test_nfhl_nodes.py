@@ -173,7 +173,7 @@ class NfhlNodesTests(unittest.TestCase):
                 source._validate_captures(captures)
 
     def test_observed_coverage_drift_is_detected(self):
-        _, _, captures, schema, geom = _fixture()
+        _, features, captures, schema, geom = _fixture()
         pins = _pins(features, schema, geom)
         pins["EXPECTED_OBSERVED_BOUNDS"] = {"xmin": -86.41, "ymin": 34.14, "xmax": -86.41, "ymax": 34.15}
         with patch.multiple(source, **pins):
