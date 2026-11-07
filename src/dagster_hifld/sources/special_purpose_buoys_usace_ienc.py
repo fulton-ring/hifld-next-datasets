@@ -58,6 +58,12 @@ EXPECTED_FIELD_DECLARATIONS = [
         ("Source_Dataset", "esriFieldTypeString"), ("Feature_ID", "esriFieldTypeString")]]]
 EXPECTED_EXTENT = {"xmin": -93.27713929999999, "ymin": 30.75551930000006,
                    "xmax": -79.52056579999999, "ymax": 45.01854170000007}
+# Explicit tolerance, in EPSG:4326 degrees, for comparing the observed feature
+# envelope with the declared/pinned layer extent (~0.11 m; absorbs serialization
+# noise only, so real coverage displacement or loss is still rejected).
+EXTENT_TOLERANCE_DEGREES = 1e-6
+LEGAL_X_RANGE = (-180.0, 180.0)
+LEGAL_Y_RANGE = (-90.0, 90.0)
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
 CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before",
                  "ids_before", "layer_after", "count_after", "ids_after", "service_after",
@@ -196,6 +202,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             if not isinstance(geometry,dict) or set(geometry)-{"x","y","spatialReference"} or type(geometry.get("x")) not in (float,int) or type(geometry.get("y")) not in (float,int):
                 raise ValueError("source_point_geometry_structure_drift")
             if not math.isfinite(geometry["x"]) or not math.isfinite(geometry["y"]): raise ValueError("source_xy_ordinate_contract_drift")
+            if not (LEGAL_X_RANGE[0] <= geometry["x"] <= LEGAL_X_RANGE[1]
+                    and LEGAL_Y_RANGE[0] <= geometry["y"] <= LEGAL_Y_RANGE[1]): raise ValueError("source_xy_legal_ordinate_range_drift")
             if geometry.get("spatialReference") is not None: _validate_spatial_reference(geometry["spatialReference"],"source_"+name+"_feature")
             oid=attrs.get("OBJECTID")
             if type(oid) is not int or oid not in page_ids: raise ValueError("source_feature_id_roster_drift")
@@ -208,14 +216,18 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     features.sort(key=lambda r:r["attributes"]["OBJECTID"])
     coordinates=[[r["attributes"]["OBJECTID"],r["geometry"]["x"],r["geometry"]["y"]] for r in features]
     bounds=[min(p[1] for p in coordinates),min(p[2] for p in coordinates),max(p[1] for p in coordinates),max(p[2] for p in coordinates)]
+    if any(abs(observed-EXPECTED_EXTENT[key])>EXTENT_TOLERANCE_DEGREES
+           for observed,key in zip(bounds,("xmin","ymin","xmax","ymax"))):
+        raise ValueError("source_observed_coverage_extent_drift")
     audit={"source_feature_count":len(features),"source_id_sha256":_sha(_canonical(ids)),"source_id_min":min(ids),"source_id_max":max(ids),
       "source_schema_sha256":_sha(_canonical(layer["fields"])),"source_record_sha256":_sha(_canonical([r["attributes"] for r in features])),
       "source_geometry_sha256":_sha(_canonical(coordinates)),"source_geometry_type":"esriGeometryPoint","source_wkid":4326,
       "source_vertex_count":len(features),"geometry_valid_count":geometry_valid,"geometry_empty_count":geometry_empty,"geometry_invalid_count":0,
       "geometry_bounds":bounds,"source_extent":layer["extent"],
+      "source_extent_tolerance_degrees":EXTENT_TOLERANCE_DEGREES,
       "source_coverage_scope":"Complete current BUOY_SPECIAL_PURPOSE_POINT layer from USACE IENC chart coverage; its inland-chart extent is regional and is not nationwide buoy coverage.",
       "source_dimension_evidence":{"layer_hasZ":layer.get("hasZ"),"layer_hasM":layer.get("hasM"),"page_requests_returnZ":True,"page_requests_returnM":True,"observed_feature_geometry_keys":sorted(set().union(*(set(r["geometry"]) for r in features)))},
-      "drift_guard":"BTS item delegation, exact service directory/service/layer roster, full ArcGIS field declarations/types, layer/page/feature SRs, count and before/after ID roster, per-page native XY and attribute checks, and explicit returnZ/returnM request with observed feature dimensions."}
+      "drift_guard":"BTS item delegation, exact service directory/service/layer roster, full ArcGIS field declarations/types, layer/page/feature SRs, count and before/after ID roster, per-page native XY and attribute checks with legal EPSG:4326 ordinate ranges and observed-coverage agreement with the declared extent, and explicit returnZ/returnM request with observed feature dimensions."}
     return layer["fields"],features,audit
 
 

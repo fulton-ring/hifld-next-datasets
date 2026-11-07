@@ -46,8 +46,10 @@ def _capture_docs(count=source.EXPECTED_COUNT):
                 "Scale_Minimum": 60000, "Source_Date": "20140805",
                 "Source_Indication": "US,U3,SURVY", "Source_Dataset": "U37AG001.000",
                 "Feature_ID": f"spbuoy-{oid}"})
+            fraction = (oid - 1) / (count - 1)
             rows.append({"attributes": attrs,
-                "geometry": {"x": -90.0 + oid / 10000, "y": 38.0 + oid / 10000,
+                "geometry": {"x": source.EXPECTED_EXTENT["xmin"] + (source.EXPECTED_EXTENT["xmax"] - source.EXPECTED_EXTENT["xmin"]) * fraction,
+                             "y": source.EXPECTED_EXTENT["ymin"] + (source.EXPECTED_EXTENT["ymax"] - source.EXPECTED_EXTENT["ymin"]) * fraction,
                              "spatialReference": {"wkid": 4326, "latestWkid": 4326}}})
         docs[f"page_{page_idx:03d}"] = {"features": rows, "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
     return {name: (json.dumps(doc).encode(), {}) for name, doc in docs.items()}
@@ -116,6 +118,40 @@ class SpecialPurposeBuoysTests(unittest.TestCase):
         captures["page_000"] = (json.dumps(page).encode(), {})
         with self.assertRaisesRegex(ValueError, "source_point_geometry_structure_drift"):
             source._validate(captures)
+
+    def test_rejects_illegal_xy_outside_legal_epsg4326_ordinate_ranges(self):
+        captures = _capture_docs()
+        page = json.loads(captures["page_000"][0])
+        for feature in page["features"]:
+            feature["geometry"]["x"] = 500
+            feature["geometry"]["y"] = 100
+        captures["page_000"] = (json.dumps(page).encode(), {})
+        with self.assertRaisesRegex(ValueError, "source_xy_legal_ordinate_range_drift"):
+            source._validate(captures)
+
+    def test_rejects_displaced_coverage_inconsistent_with_declared_extent(self):
+        captures = _capture_docs()
+        page = json.loads(captures["page_000"][0])
+        for feature in page["features"]:
+            feature["geometry"]["x"] = 0
+            feature["geometry"]["y"] = 0
+        captures["page_000"] = (json.dumps(page).encode(), {})
+        with self.assertRaisesRegex(ValueError, "source_observed_coverage_extent_drift"):
+            source._validate(captures)
+
+    def test_rejects_single_feature_displacement_outside_declared_extent(self):
+        captures = _capture_docs()
+        page = json.loads(captures["page_000"][0])
+        page["features"][0]["geometry"]["x"] = source.EXPECTED_EXTENT["xmax"] + 1.0
+        captures["page_000"] = (json.dumps(page).encode(), {})
+        with self.assertRaisesRegex(ValueError, "source_observed_coverage_extent_drift"):
+            source._validate(captures)
+        fields, features, audit = source._validate(_capture_docs())
+        for observed, key in zip(audit["geometry_bounds"], ("xmin", "ymin", "xmax", "ymax")):
+            self.assertLessEqual(abs(observed - source.EXPECTED_EXTENT[key]), source.EXTENT_TOLERANCE_DEGREES)
+        self.assertEqual(audit["geometry_invalid_count"], 0)
+        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["source_extent_tolerance_degrees"], source.EXTENT_TOLERANCE_DEGREES)
 
     def test_point_queries_request_z_and_m_and_reject_returned_dimensions(self):
         pages = [(name, url) for name, url in source._capture_roster(source.EXPECTED_IDS)
