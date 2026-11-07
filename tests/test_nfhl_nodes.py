@@ -184,6 +184,33 @@ class NfhlNodesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
                 source._validate_captures(captures)
 
+    def test_missing_approval_preserves_populated_accepted_inventory(self):
+        import os
+        import tempfile
+
+        from dagster_hifld.assets.publish import _copy_version_files
+        from dagster_hifld.release_approval import ReleaseApprovalError
+        from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+            staging.write(source.DATASET_SLUG, source.FILE_SLUG, "candidate-v1",
+                          "geoparquet/nfhl-nodes.parquet", b"candidate")
+            accepted_key = published.write(source.DATASET_SLUG, source.FILE_SLUG, "accepted-v1",
+                                           "geoparquet/nfhl-nodes.parquet", b"accepted")
+            before = {key: (published.object_snapshot(key), published.read_key(key))
+                      for key in published.list_prefix()}
+            self.assertEqual(set(before), {accepted_key})
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": ""}):
+                with self.assertRaisesRegex(ReleaseApprovalError,
+                                            "missing_independent_release_approval_registry"):
+                    _copy_version_files(staging, published, source.DATASET_SLUG,
+                                        source.FILE_SLUG, "candidate-v1")
+            after = {key: (published.object_snapshot(key), published.read_key(key))
+                     for key in published.list_prefix()}
+            self.assertEqual(after, before)
+
     def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
         import tempfile
         from pathlib import Path
