@@ -137,14 +137,16 @@ def task_for(card, api):
                 pull_request_number=str(pr['number']) if pr else '0')
 
 
-def dispatch_cards(board, api, dry_run=False, now=None):
+def dispatch_cards(board, api, dry_run=False, now=None, auto_backlog=False, daily_limit=DAILY_DISPATCH_LIMIT):
+    if type(daily_limit) is not int or not 1 <= daily_limit <= 12:
+        raise ValueError('Daily attempt allowance must be an integer from 1 to 12')
     current_time = time.time if now is None else lambda: now
     selected, reservations = [], []
     # Rotate bounded windows independently: stale reviews cannot starve Ready,
     # and an attempted prefix cannot permanently hide later cards. No stored
     # cursor, issue churn or extra private polling workflow is needed.
     window = []
-    for lane in ('Review', 'Ready'):
+    for lane in ('Review', 'Ready') + (('Backlog',) if auto_backlog else ()):
         group = sorted((c for c in board if c['status'] == lane), key=lambda c: c['number'])
         if group:
             start = (int(current_time()) // 300 * 10) % len(group)
@@ -163,8 +165,8 @@ def dispatch_cards(board, api, dry_run=False, now=None):
         # Count acknowledged reservations once alongside all attempts today, even
         # failed/completed ones. Leave eligible cards queued before burning identity.
         daily = {r['id'] for r in runs if (r.get('created_at') or '')[:10] == day}
-        if len(daily) >= DAILY_DISPATCH_LIMIT:
-            print('Dispatch held: four daily UTC attempts reserved; cards remain queued.')
+        if len(daily) >= daily_limit:
+            print(f'Dispatch held: {daily_limit} daily UTC attempts reserved; cards remain queued.')
             break
         role = 'review' if card['status'] == 'Review' else 'implementation'
         if not capacity(runs, role):
@@ -201,6 +203,12 @@ def dispatch_cards(board, api, dry_run=False, now=None):
                             'deliberately authorizing more work. No acceptance or merge is implied.'})
                 api('repo', f"repos/{REPO}/issues/{task['issue']}/labels", {'labels': ['move:needs-decision']})
             continue
+        if card['status'] == 'Backlog':
+            print(f"{'Would request' if dry_run else 'Request'} Ready for backlog #{card['number']}; next board sync owns admission.")
+            if not dry_run:
+                api('repo', f"repos/{REPO}/issues/{task['issue']}/labels", {'labels': ['move:ready']})
+            # One promotion per sweep, only after capacity/dedup/head checks.
+            break
         title = f"{task['role']} issue #{task['issue']} @ {task['dispatch_head_sha']}"
         if dry_run:
             run_id = -len(selected) - 1
@@ -236,7 +244,9 @@ def main():
         return request(tokens[kind], path, data)
 
     api_cards = cards(api)
-    dispatch_cards(api_cards, api, options.dry_run)
+    dispatch_cards(api_cards, api, options.dry_run,
+                   auto_backlog=os.environ.get('BACKLOG_ENABLED') == 'true',
+                   daily_limit=int(os.environ.get('DAILY_ATTEMPT_LIMIT', '4')))
 
 
 if __name__ == '__main__':
