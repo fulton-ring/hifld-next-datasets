@@ -135,6 +135,10 @@ from dagster_hifld.assets.fuds_projects_points import (
     fuds_projects_points_draft_schedule,
     usace_fuds_projects_points_complete,
 )
+from dagster_hifld.assets.nfhl_nodes import (
+    nfhl_nodes_draft_schedule,
+    fema_nfhl_nodes_complete,
+)
 from dagster_hifld.assets.fuds_district_boundaries import (
     fuds_district_boundaries_draft_schedule,
     usace_fuds_program_district_boundaries_complete,
@@ -1077,6 +1081,7 @@ defs = Definitions(
         ferc_historical_full_quality,
         fuds_program_division_boundaries_complete,
         bts_intermodal_freight_air_to_truck_complete,
+        fema_nfhl_nodes_complete,
     ],
     jobs=[
         bts_ferry_terminals_draft_refresh_job,
@@ -1243,6 +1248,7 @@ defs = Definitions(
         epa_power_generation_draft_schedule,
         epa_icis_wastewater_draft_schedule,
         fuds_projects_points_draft_schedule,
+        nfhl_nodes_draft_schedule,
         epa_frs_naics_draft_schedule,
         gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
