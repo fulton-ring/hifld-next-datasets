@@ -52,11 +52,14 @@ MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MIN_FREE_BYTES = 1_500_000_000
 # Pins below are the observed 2026-11-07 complete-layer population contract.
 EXPECTED_COUNT = 379653
-EXPECTED_ID_SHA256 = "0" * 64
-EXPECTED_RECORD_SHA256 = "0" * 64
-EXPECTED_GEOMETRY_SHA256 = "0" * 64
-EXPECTED_SCHEMA_SHA256 = "0" * 64
-EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = None
+EXPECTED_ID_SHA256 = "77f5f3d53c921e5a70260f1d8191d0a331d774ffe819e9f085a58f324cf2fd94"
+EXPECTED_RECORD_SHA256 = "4deaf06292c5bd001698b5637538ef274d587540889b3984bec26dcfbfa41ba6"
+EXPECTED_GEOMETRY_SHA256 = "09aec31d6695f22ef6c16a2aea29509056ea463eb243f8d0ef25770d23059b5a"
+EXPECTED_SCHEMA_SHA256 = "88241dd0fb877c4029cf3ae30493eafc8cef3c216ef1df75c55a1965f354408d"
+EXPECTED_NULL_GEOMETRY_COUNT = 1
+EXPECTED_NAN_GEOMETRY_COUNT = 8
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -159.6655269033425, "ymin": 21.272407815676047,
+                           "xmax": -66.98810790110986, "ymax": 64.84163586737333}
 EXPECTED_LAYER_EXTENT = {"xmin": -159.6655269033425, "ymin": 21.272407815676047,
                          "xmax": -66.98810786443903, "ymax": 64.84163586737333}
 EXPECTED_SERVICE_LAYER_ROSTER = [
@@ -212,6 +215,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         features.extend(rows)
     attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
     null_geometry = 0
+    nan_geometry = 0
     geometry_records = []
     observed_bounds: list[float] = []
     for feature in features:
@@ -222,6 +226,13 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         if geom is None:
             null_geometry += 1
             geometry_records.append([attrs["OBJECTID"], None, None])
+        elif isinstance(geom, dict) and set(geom) == {"x", "y"} \
+                and all(isinstance(geom[k], str) and geom[k] == "NaN" for k in ("x", "y")):
+            # FEMA publishes eight node rows with Esri string-"NaN" ordinates; the
+            # values are retained verbatim in the record/raw evidence and gated as
+            # unusable geometry here, never silently coerced to a location.
+            nan_geometry += 1
+            geometry_records.append([attrs["OBJECTID"], geom["x"], geom["y"]])
         elif isinstance(geom, dict) and set(geom) == {"x", "y"} \
                 and all(type(geom[k]) in (int, float) for k in ("x", "y")):
             x, y = geom["x"], geom["y"]
@@ -248,6 +259,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
              "source_schema_sha256": schema_sha, "source_crs_epsg": SOURCE_CRS_WKID,
              "geometry_type": "Point", "null_geometry_count": null_geometry,
+             "nan_string_geometry_count": nan_geometry,
              "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
              "unique_source_id_count": len(ids),
              "source_release_date": None,
@@ -263,6 +275,10 @@ def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
             "esriFieldTypeString": pa.string()}[str(field["type"])]
 
 
+def _usable_point(geom: object) -> bool:
+    return isinstance(geom, dict) and type(geom.get("x")) in (int, float) and type(geom.get("y")) in (int, float)
+
+
 def _parquet_bytes(fields: list[dict[str, object]], features: list[dict[str, object]]) -> bytes:
     columns = {}
     schema_fields = []
@@ -270,8 +286,8 @@ def _parquet_bytes(fields: list[dict[str, object]], features: list[dict[str, obj
         name = field["name"]
         typ = pa.binary() if name == "SHAPE" else _arrow_type(field)
         if name == "SHAPE":
-            values = [None if row.get("geometry") is None else Point(row["geometry"]["x"], row["geometry"]["y"]).wkb
-                      for row in features]
+            values = [Point(row["geometry"]["x"], row["geometry"]["y"]).wkb if _usable_point(row.get("geometry"))
+                      else None for row in features]
             schema_fields.append(pa.field(name, typ, nullable=True))
         else:
             values = [row["attributes"].get(name) for row in features]
@@ -385,7 +401,9 @@ def capture_nfhl_nodes(storage: StagingStorageResource, *, version: str,
                                                           "values unchanged; no substitute IDs, casts, trimming, or "
                                                           "joins",
                                             "geometry": "Source NAD83 (EPSG:4269) point x/y retained as WKB without "
-                                                        "projection; null source geometry retained as null",
+                                                        "projection; null source geometry retained as null; the "
+                                                        "eight producer string-'NaN' ordinate rows are retained as "
+                                                        "records with null candidate geometry, raw evidence intact",
                                             "candidate_status": "unapproved; publication blocked pending freshness, "
                                                                 "schema/ID contract, attribution and release "
                                                                 "acceptance"}}],
@@ -446,6 +464,7 @@ def capture_nfhl_nodes(storage: StagingStorageResource, *, version: str,
                                 payload.get("capture_receipts", {}))
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
                 "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
+                "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_release_accepted": False, "source_freshness_accepted": False,
                 "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
@@ -468,6 +487,7 @@ def capture_nfhl_nodes(storage: StagingStorageResource, *, version: str,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
+                "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False,

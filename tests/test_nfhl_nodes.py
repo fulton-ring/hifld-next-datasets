@@ -50,11 +50,11 @@ def _fixture():
     features = [
         {"attributes": attrs(10, "01009C_1"), "geometry": {"x": -86.41197568433415, "y": 34.148463868949534}},
         {"attributes": attrs(11, "01009C_2"), "geometry": None},
-        {"attributes": attrs(12, "01009C_3"), "geometry": {"x": -86.41722287087322, "y": 34.156060535508914}},
+        {"attributes": attrs(12, "01009C_3"), "geometry": {"x": "NaN", "y": "NaN"}},
     ]
     ids = [10, 11, 12]
     schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f} for f in fields]
-    geom = [[10, -86.41197568433415, 34.148463868949534], [11, None, None], [12, -86.41722287087322, 34.156060535508914]]
+    geom = [[10, -86.41197568433415, 34.148463868949534], [11, None, None], [12, "NaN", "NaN"]]
     crs = {"wkid": 4269, "latestWkid": 4269}
     page0 = {"features": features[:2], "spatialReference": crs, "exceededTransferLimit": True}
     page1 = {"features": features[2:], "spatialReference": crs}
@@ -71,7 +71,7 @@ def _fixture():
 
 
 def _pins(features, schema, geom):
-    return dict(EXPECTED_COUNT=3, PAGE_SIZE=2,
+    return dict(EXPECTED_COUNT=3, PAGE_SIZE=2, EXPECTED_NULL_GEOMETRY_COUNT=1, EXPECTED_NAN_GEOMETRY_COUNT=1,
                 EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12])).hexdigest(),
                 EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(features)).hexdigest(),
                 EXPECTED_GEOMETRY_SHA256=hashlib.sha256(_canonical(geom)).hexdigest(),
@@ -96,6 +96,7 @@ class NfhlNodesTests(unittest.TestCase):
             _, _, extracted = source._validate_captures(captures)
         self.assertEqual(extracted["ids"], [10, 11, 12])
         self.assertEqual(extracted["audit"]["null_geometry_count"], 1)
+        self.assertEqual(extracted["audit"]["nan_string_geometry_count"], 1)
 
     def test_missing_service_documentation_link_is_rejected(self):
         _, _, captures, schema, geom = _fixture()
@@ -129,7 +130,8 @@ class NfhlNodesTests(unittest.TestCase):
         self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12])
         self.assertEqual(table.column("NODE_ID").to_pylist(), ["01009C_1", "01009C_2", "01009C_3"])
         self.assertEqual(table.column("GlobalID").type.__str__(), "string")
-        self.assertEqual(table.column("SHAPE").null_count, 1)
+        self.assertEqual(table.column("SHAPE").null_count, 2)
+        self.assertEqual(table.column("NODE_ID").to_pylist()[2], "01009C_3")
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"]["code"], 4269)
 
@@ -176,6 +178,8 @@ class NfhlNodesTests(unittest.TestCase):
         _, features, captures, schema, geom = _fixture()
         pins = _pins(features, schema, geom)
         pins["EXPECTED_OBSERVED_BOUNDS"] = {"xmin": -86.41, "ymin": 34.14, "xmax": -86.41, "ymax": 34.15}
+        pins["EXPECTED_NULL_GEOMETRY_COUNT"] = 1
+        pins["EXPECTED_NAN_GEOMETRY_COUNT"] = 1
         with patch.multiple(source, **pins):
             with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
                 source._validate_captures(captures)
@@ -220,6 +224,7 @@ class NfhlNodesTests(unittest.TestCase):
                                                       capture_directory=str(root / "captures"))
                 self.assertEqual(candidate["feature_count"], 3)
                 self.assertEqual(candidate["source_null_geometry_count"], 1)
+                self.assertEqual(candidate["source_nan_string_geometry_count"], 1)
                 prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
                 state_key = f"_construction-state/{source.DATASET_SLUG}/{candidate['version']}.json"
                 self.assertTrue(storage.object_snapshot(state_key))
