@@ -212,6 +212,38 @@ class LateralBeaconsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_point_geometry_structure_drift"):
             source._validate(captures)
 
+    def test_rejects_out_of_range_and_coverage_drift_coordinates(self):
+        captures = _capture_docs()
+        page = json.loads(captures["page_000"][0])
+        page["features"][0]["geometry"]["x"] = 1000.0
+        captures["page_000"] = (json.dumps(page).encode(), {})
+        with self.assertRaisesRegex(ValueError, "source_xy_geographic_range_drift:page_000"):
+            source._validate(captures)
+        captures = _capture_docs()
+        page = json.loads(captures["page_000"][0])
+        page["features"][0]["geometry"]["y"] = -90.5
+        captures["page_000"] = (json.dumps(page).encode(), {})
+        with self.assertRaisesRegex(ValueError, "source_xy_geographic_range_drift:page_000"):
+            source._validate(captures)
+        for index, key, value in ((0, "x", -100.0), (3, "y", 46.0), (0, "x", -96.5), (3, "y", 45.1)):
+            captures = _capture_docs()
+            page = json.loads(captures["page_000"][0])
+            page["features"][index]["geometry"][key] = value
+            captures["page_000"] = (json.dumps(page).encode(), {})
+            with self.assertRaisesRegex(ValueError, "source_feature_coverage_drift:page_000"):
+                source._validate(captures)
+        captures = _capture_docs()
+        page = json.loads(captures["page_000"][0])
+        page["features"][0]["geometry"] = {"x": source.EXPECTED_EXTENT["xmin"], "y": source.EXPECTED_EXTENT["ymax"]}
+        captures["page_000"] = (json.dumps(page).encode(), {})
+        fields, features, audit = source._validate(captures)
+        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["geometry_invalid_count"], 0)
+        self.assertEqual(audit["geometry_empty_count"], 0)
+        xmin, ymin, xmax, ymax = source.EXPECTED_EXTENT["xmin"], source.EXPECTED_EXTENT["ymin"], source.EXPECTED_EXTENT["xmax"], source.EXPECTED_EXTENT["ymax"]
+        self.assertTrue(xmin <= audit["geometry_bounds"][0] and audit["geometry_bounds"][2] <= xmax)
+        self.assertTrue(ymin <= audit["geometry_bounds"][1] and audit["geometry_bounds"][3] <= ymax)
+
     def test_point_queries_request_z_and_m_and_reject_returned_dimensions(self):
         pages = [(name, url) for name, url in source._capture_roster(source.EXPECTED_IDS)
                  if name.startswith("page_")]

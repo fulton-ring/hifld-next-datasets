@@ -275,6 +275,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             if not isinstance(geometry,dict) or set(geometry)-{"x","y","spatialReference"} or type(geometry.get("x")) not in (float,int) or type(geometry.get("y")) not in (float,int):
                 raise ValueError("source_point_geometry_structure_drift")
             if not math.isfinite(geometry["x"]) or not math.isfinite(geometry["y"]): raise ValueError("source_xy_ordinate_contract_drift")
+            if not -180 <= geometry["x"] <= 180 or not -90 <= geometry["y"] <= 90: raise ValueError("source_xy_geographic_range_drift:"+name)
+            if not (EXPECTED_EXTENT["xmin"] <= geometry["x"] <= EXPECTED_EXTENT["xmax"]
+                    and EXPECTED_EXTENT["ymin"] <= geometry["y"] <= EXPECTED_EXTENT["ymax"]):
+                raise ValueError("source_feature_coverage_drift:"+name)
             if geometry.get("spatialReference") is not None: _validate_spatial_reference(geometry["spatialReference"],"source_"+name+"_feature")
             oid=attrs.get("OBJECTID")
             if type(oid) is not int or oid not in page_ids: raise ValueError("source_feature_id_roster_drift")
@@ -287,14 +291,17 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     features.sort(key=lambda r:r["attributes"]["OBJECTID"])
     coordinates=[[r["attributes"]["OBJECTID"],r["geometry"]["x"],r["geometry"]["y"]] for r in features]
     bounds=[min(p[1] for p in coordinates),min(p[2] for p in coordinates),max(p[1] for p in coordinates),max(p[2] for p in coordinates)]
+    if not (EXPECTED_EXTENT["xmin"] <= bounds[0] and bounds[2] <= EXPECTED_EXTENT["xmax"]
+            and EXPECTED_EXTENT["ymin"] <= bounds[1] and bounds[3] <= EXPECTED_EXTENT["ymax"]):
+        raise ValueError("source_feature_coverage_drift:observed_bounds")
     audit={"source_feature_count":len(features),"source_id_sha256":_sha(_canonical(ids)),"source_id_min":min(ids),"source_id_max":max(ids),
       "source_schema_sha256":_sha(_canonical(layer["fields"])),"source_record_sha256":_sha(_canonical([r["attributes"] for r in features])),
       "source_geometry_sha256":_sha(_canonical(coordinates)),"source_geometry_type":"esriGeometryPoint","source_wkid":4326,"source_spatial_reference":layer.get("sourceSpatialReference"),
-      "source_vertex_count":len(features),"geometry_valid_count":geometry_valid,"geometry_empty_count":geometry_empty,"geometry_invalid_count":0,
+      "source_vertex_count":len(features),"geometry_valid_count":geometry_valid,"geometry_empty_count":geometry_empty,"geometry_invalid_count":len(features)-geometry_valid-geometry_empty,
       "geometry_bounds":bounds,"source_extent":layer["extent"],
       "source_coverage_scope":"Complete current LATERAL_BEACON_POINT layer from USACE IENC inland chart coverage; observed extent is regional, not nationwide coverage.",
       "source_dimension_evidence":{"layer_hasZ":layer.get("hasZ"),"layer_hasM":layer.get("hasM"),"page_requests_returnZ":True,"page_requests_returnM":True,"observed_feature_geometry_keys":sorted(set().union(*(set(r["geometry"]) for r in features)))},
-      "drift_guard":"BTS item delegation, exact service directory/service/layer roster, full ArcGIS field declarations/types, layer/page/feature SRs, count and before/after ID roster, per-page native XY and attribute checks, and explicit returnZ/returnM request with observed feature dimensions."}
+      "drift_guard":"BTS item delegation, exact service directory/service/layer roster, full ArcGIS field declarations/types, layer/page/feature SRs, count and before/after ID roster, per-page native XY and attribute checks, per-feature EPSG:4326 geographic range and pinned layer-extent coverage containment with observed-bounds containment, and explicit returnZ/returnM request with observed feature dimensions."}
     return layer["fields"],features,audit
 
 
