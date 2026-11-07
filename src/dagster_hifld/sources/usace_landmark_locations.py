@@ -57,6 +57,7 @@ EXPECTED_FIELD_DECLARATIONS = [
         ("Source_Dataset", "esriFieldTypeString"), ("Feature_ID", "esriFieldTypeString")]]]
 EXPECTED_EXTENT = {"xmin": -96.50583329999995, "ymin": 29.686194400000034,
                    "xmax": -79.69972219999994, "ymax": 44.96136110000003}
+EXTENT_TOLERANCE = 1e-6
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
 CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before",
                  "ids_before", "layer_after", "count_after", "ids_after", "service_after",
@@ -196,6 +197,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             if not isinstance(geometry,dict) or set(geometry)-{"x","y","spatialReference"} or type(geometry.get("x")) not in (float,int) or type(geometry.get("y")) not in (float,int):
                 raise ValueError("source_point_geometry_structure_drift")
             if not math.isfinite(geometry["x"]) or not math.isfinite(geometry["y"]): raise ValueError("source_xy_ordinate_contract_drift")
+            if not (-180 <= geometry["x"] <= 180 and -90 <= geometry["y"] <= 90): raise ValueError("source_coordinate_range_drift")
+            if not (EXPECTED_EXTENT["xmin"] - EXTENT_TOLERANCE <= geometry["x"] <= EXPECTED_EXTENT["xmax"] + EXTENT_TOLERANCE
+                    and EXPECTED_EXTENT["ymin"] - EXTENT_TOLERANCE <= geometry["y"] <= EXPECTED_EXTENT["ymax"] + EXTENT_TOLERANCE):
+                raise ValueError("source_feature_outside_coverage_extent")
             if geometry.get("spatialReference") is not None: _validate_spatial_reference(geometry["spatialReference"],"source_"+name+"_feature")
             oid=attrs.get("OBJECTID")
             if type(oid) is not int or oid not in page_ids: raise ValueError("source_feature_id_roster_drift")
@@ -208,6 +213,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     features.sort(key=lambda r:r["attributes"]["OBJECTID"])
     coordinates=[[r["attributes"]["OBJECTID"],r["geometry"]["x"],r["geometry"]["y"]] for r in features]
     bounds=[min(p[1] for p in coordinates),min(p[2] for p in coordinates),max(p[1] for p in coordinates),max(p[2] for p in coordinates)]
+    if not (EXPECTED_EXTENT["xmin"] - EXTENT_TOLERANCE <= bounds[0] and bounds[2] <= EXPECTED_EXTENT["xmax"] + EXTENT_TOLERANCE
+            and EXPECTED_EXTENT["ymin"] - EXTENT_TOLERANCE <= bounds[1] and bounds[3] <= EXPECTED_EXTENT["ymax"] + EXTENT_TOLERANCE):
+        raise ValueError("source_geometry_coverage_extent_drift")
     audit={"source_feature_count":len(features),"source_id_sha256":_sha(_canonical(ids)),"source_id_min":min(ids),"source_id_max":max(ids),
       "source_schema_sha256":_sha(_canonical(layer["fields"])),"source_record_sha256":_sha(_canonical([r["attributes"] for r in features])),
       "source_geometry_sha256":_sha(_canonical(coordinates)),"source_geometry_type":"esriGeometryPoint","source_wkid":4326,
@@ -215,7 +223,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
       "geometry_bounds":bounds,"source_extent":layer["extent"],
       "source_coverage_scope":"Complete current LANDMARK_POINT layer from USACE IENC chart coverage; its inland-chart extent is regional and is not nationwide landmark coverage.",
       "source_dimension_evidence":{"layer_hasZ":layer.get("hasZ"),"layer_hasM":layer.get("hasM"),"page_requests_returnZ":True,"page_requests_returnM":True,"observed_feature_geometry_keys":sorted(set().union(*(set(r["geometry"]) for r in features)))},
-      "drift_guard":"BTS item delegation, exact service directory/service/layer roster, full ArcGIS field declarations/types, layer/page/feature SRs, count and before/after ID roster, per-page native XY and attribute checks, and explicit returnZ/returnM request with observed feature dimensions."}
+      "drift_guard":"BTS item delegation, exact service directory/service/layer roster, full ArcGIS field declarations/types, layer/page/feature SRs, count and before/after ID roster, per-page native XY and attribute checks, explicit returnZ/returnM request with observed feature dimensions, EPSG:4326 geographic coordinate ranges, and the pinned regional extent envelope (explicit tolerance) enforced per feature and on observed bounds."}
     return layer["fields"],features,audit
 
 

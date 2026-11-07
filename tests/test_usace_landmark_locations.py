@@ -116,6 +116,22 @@ class LandmarkLocationsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_point_geometry_structure_drift"):
             source._validate(captures)
 
+    def test_rejects_out_of_range_or_outside_coverage_coordinates(self):
+        captures = _capture_docs()
+        page = json.loads(captures["page_000"][0])
+        page["features"][0]["geometry"]["x"] = -90
+        page["features"][0]["geometry"]["y"] = 1000
+        captures["page_000"] = (json.dumps(page).encode(), {})
+        with self.assertRaisesRegex(ValueError, "source_coordinate_range_drift"):
+            source._validate(captures)
+        captures = _capture_docs()
+        page = json.loads(captures["page_000"][0])
+        page["features"][0]["geometry"]["x"] = 0
+        page["features"][0]["geometry"]["y"] = 0
+        captures["page_000"] = (json.dumps(page).encode(), {})
+        with self.assertRaisesRegex(ValueError, "source_feature_outside_coverage_extent"):
+            source._validate(captures)
+
     def test_point_queries_request_z_and_m_and_reject_returned_dimensions(self):
         pages = [(name, url) for name, url in source._capture_roster(source.EXPECTED_IDS)
                  if name.startswith("page_")]
