@@ -74,6 +74,8 @@ jobs:
         env:
           GH_CONTROL_TOKEN: ${{ secrets.AGENT_CONTROLLER_TOKEN }}
           DISPATCH_ENABLED: ${{ vars.AGENT_DISPATCH_ENABLED }}
+          BACKLOG_ENABLED: ${{ vars.AGENT_BACKLOG_ENABLED }}
+          DAILY_ATTEMPT_LIMIT: ${{ vars.AGENT_DAILY_ATTEMPT_LIMIT || '4' }}
         shell: bash
         run: |
           set -euo pipefail

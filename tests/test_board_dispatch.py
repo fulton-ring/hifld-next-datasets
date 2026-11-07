@@ -60,6 +60,56 @@ class FakeAPI:
 
 
 class BoardDispatchTests(unittest.TestCase):
+    def test_daily_attempt_configuration_has_a_twelve_attempt_ceiling(self):
+        today = dispatch.datetime.fromtimestamp(NOW, dispatch.timezone.utc).date().isoformat()
+        api = FakeAPI([dict(run(n, issue=900+n), created_at=today+'T00:00:00Z') for n in range(4)])
+        self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW, daily_limit=12)), 1)
+        for value in (0, 13, True, '12'):
+            with self.assertRaises(ValueError):
+                dispatch.dispatch_cards([card()], FakeAPI(), now=NOW, daily_limit=value)
+
+    def test_backlog_intake_is_opt_in_and_only_requests_one_ready_move(self):
+        class BacklogAPI(FakeAPI):
+            def __init__(self, runs=None):
+                super().__init__(runs, pr=False)
+                self.current_status = 'Backlog'
+                self.moves = []
+            def __call__(self, kind, path, data=None):
+                if kind == 'repo' and path.endswith('/labels'):
+                    self.moves.append((path, data))
+                    return []
+                return super().__call__(kind, path, data)
+        api = BacklogAPI()
+        board = [card(12, 'Backlog'), card(13, 'Backlog'), card(14, 'Needs decision')]
+        self.assertEqual(dispatch.dispatch_cards(board, api, now=NOW), [])
+        self.assertEqual(api.moves, [])
+        self.assertEqual(dispatch.dispatch_cards(board, api, now=NOW, auto_backlog=True), [])
+        self.assertEqual(len(api.moves), 1)
+        self.assertEqual(api.moves[0][1], {'labels': ['move:ready']})
+        self.assertEqual(api.posts, [])
+
+    def test_backlog_dry_run_and_existing_attempts_never_mutate(self):
+        api = FakeAPI([run(role='implementation', issue=12)], pr=False)
+        api.current_status = 'Backlog'
+        self.assertEqual(dispatch.dispatch_cards([card(12, 'Backlog')], api, now=NOW, auto_backlog=True), [])
+        self.assertEqual(api.posts, [])
+
+    def test_backlog_respects_daily_capacity_pending_moves_and_parked_lanes(self):
+        today = dispatch.datetime.fromtimestamp(NOW, dispatch.timezone.utc).date().isoformat()
+        for runs in ([dict(run(n, issue=900+n), created_at=today+'T00:00:00Z') for n in range(4)],
+                     [run(role='implementation', issue=999, status='in_progress')]):
+            api = FakeAPI(runs, pr=False)
+            api.current_status = 'Backlog'
+            self.assertEqual(dispatch.dispatch_cards([card(12, 'Backlog')], api, now=NOW, auto_backlog=True), [])
+            self.assertEqual(api.posts, [])
+        api = FakeAPI(pr=False)
+        self.assertEqual(dispatch.dispatch_cards([card(12, 'Needs decision')], api, now=NOW, auto_backlog=True), [])
+
+        api = FakeAPI(pr=False)
+        api.current_status = 'Backlog'
+        self.assertEqual(dispatch.dispatch_cards([card(12, 'Backlog')], api, now=NOW, auto_backlog=True, dry_run=True), [])
+        self.assertEqual(api.posts, [])
+
     def test_two_reviews_pause_further_automatic_cycles_for_supervisor(self):
         class StopAPI(FakeAPI):
             def __init__(self):
