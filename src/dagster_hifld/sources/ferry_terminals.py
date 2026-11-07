@@ -36,6 +36,7 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.catalog import summarize_staged_catalog
 from dagster_hifld.source_manifest import load_resolved_source_manifest
@@ -333,9 +334,10 @@ def expected_fidelity_payloads(rows: list[dict], directory: Path) -> dict[str,by
 
 def write_canonical_geopackage(destination: Path, rows: list[dict]) -> None:
     """Deterministic native container; no coordinate, ID, field or type changes."""
-    with fiona.open(destination, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4326',
-                    schema={'properties': SCHEMA, 'geometry': 'Point'}) as stream:
-        stream.writerecords(rows)
+    with with_geopackage_creation_time('2000-01-01T00:00:00.000Z'):
+        with fiona.open(destination, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4326',
+                        schema={'properties': SCHEMA, 'geometry': 'Point'}) as stream:
+            stream.writerecords(rows)
     with sqlite3.connect(destination) as db:
         db.execute("UPDATE gpkg_contents SET last_change='2000-01-01T00:00:00.000Z'")
 
