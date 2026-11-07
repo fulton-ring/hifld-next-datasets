@@ -21,6 +21,7 @@ from dagster_hifld.sources.usace_landmark_areas import (
     EXPECTED_ID_SHA256,
     EXPECTED_LAYER_EXTENT,
     _capture_roster,
+    _esri_polygon,
     _parquet_bytes,
     _validate,
     PAGE_SIZE,
@@ -297,6 +298,62 @@ class UsaceLandmarkAreasSourceTest(unittest.TestCase):
         ]
         with self.assertRaisesRegex(ValueError, "source_polygon_zm_flags_do_not_match_coordinates"):
             _validate(_captures(docs))
+
+    def test_correctly_flagged_z_m_and_zm_drift_fail_closed_at_every_boundary(self) -> None:
+        cases = (({"hasZ": True}, (17.0,)), ({"hasM": True}, (29.0,)),
+                 ({"hasZ": True, "hasM": True}, (17.0, 29.0)))
+        for flags, extra in cases:
+            with self.subTest(flags=sorted(flags), boundary="layer"):
+                docs = _docs()
+                for name in ("layer_before", "layer_after", "page_000"):
+                    docs[name] = {**docs[name], **flags}
+                for feature in docs["page_000"]["features"]:
+                    feature["geometry"] = {**feature["geometry"], **flags}
+                    feature["geometry"]["rings"] = [
+                        [point + list(extra) for point in ring]
+                        for ring in feature["geometry"]["rings"]
+                    ]
+                with self.assertRaisesRegex(ValueError, "source_layer_dimensional_drift"):
+                    _validate(_captures(docs))
+            with self.subTest(flags=sorted(flags), boundary="page"):
+                docs = _docs()
+                docs["page_000"] = {**docs["page_000"], **flags}
+                with self.assertRaisesRegex(ValueError, "source_page_dimensional_drift"):
+                    _validate(_captures(docs))
+            with self.subTest(flags=sorted(flags), boundary="geometry_flagged_with_coordinates"):
+                docs = _docs()
+                for feature in docs["page_000"]["features"]:
+                    feature["geometry"] = {**feature["geometry"], **flags}
+                    feature["geometry"]["rings"] = [
+                        [point + list(extra) for point in ring]
+                        for ring in feature["geometry"]["rings"]
+                    ]
+                with self.assertRaisesRegex(ValueError, "source_geometry_dimensional_drift"):
+                    _validate(_captures(docs))
+            with self.subTest(flags=sorted(flags), boundary="geometry_flagged_without_coordinates"):
+                docs = _docs()
+                for feature in docs["page_000"]["features"]:
+                    feature["geometry"] = {**feature["geometry"], **flags}
+                with self.assertRaisesRegex(ValueError, "source_geometry_dimensional_drift"):
+                    _validate(_captures(docs))
+
+    def test_esri_polygon_rejects_flagged_dimensions_and_non_xy_rings_directly(self) -> None:
+        ring = [[-88, 37], [-88, 38], [-87, 38], [-87, 37], [-88, 37]]
+        cases = (({"hasZ": True}, (17.0,)), ({"hasM": True}, (29.0,)),
+                 ({"hasZ": True, "hasM": True}, (17.0, 29.0)))
+        for flags, extra in cases:
+            with self.subTest(flags=sorted(flags), dimensional=True):
+                with self.assertRaisesRegex(ValueError, "source_polygon_dimensional_flags_rejected"):
+                    _esri_polygon({"rings": [[point + list(extra) for point in ring]], **flags})
+            with self.subTest(flags=sorted(flags), dimensional=False):
+                with self.assertRaisesRegex(ValueError, "source_polygon_dimensional_flags_rejected"):
+                    _esri_polygon({"rings": [ring], **flags})
+        with self.assertRaisesRegex(ValueError, "source_polygon_zm_flags_do_not_match_coordinates"):
+            _esri_polygon({"rings": [[point + [17.0] for point in ring]]})
+        self.assertEqual(
+            shapely.from_wkb(_esri_polygon({"rings": [ring]})).wkb_hex[:10],
+            "0103000000",
+        )
 
 
 if __name__ == "__main__":

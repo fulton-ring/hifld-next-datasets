@@ -185,8 +185,11 @@ def _esri_polygon(geometry: dict):
     has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
     if type(has_z) is not bool or type(has_m) is not bool:
         raise ValueError("source_ordinate_flags_invalid")
+    if has_z or has_m:
+        # The pinned layer contract is XY-only; correctly flagged dimensional
+        # geometry is source drift and must fail closed, never be sealed.
+        raise ValueError("source_polygon_dimensional_flags_rejected")
     shells, holes = [], []
-    dimension = None
     for coords in rings:
         if not isinstance(coords, list) or len(coords) < 4:
             raise ValueError("source_polygon_ring_invalid")
@@ -197,14 +200,9 @@ def _esri_polygon(geometry: dict):
         dims={len(point) for point in coords}
         if len(dims)!=1:
             raise ValueError("source_polygon_ordinate_count_drift")
-        point_dims=next(iter(dims))
-        if dimension is None: dimension=point_dims
-        if dimension!=point_dims: raise ValueError("source_polygon_ordinate_count_drift")
-        expected_dims=2+int(has_z)+int(has_m)
-        if point_dims!=expected_dims:
+        if next(iter(dims))!=2:
             raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        xy=[point[:2] for point in coords]
-        ring = LinearRing(xy)
+        ring = LinearRing(coords)
         (holes if ring.is_ccw else shells).append([list(point) for point in coords])
     # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
     # Reject non-standard winding rather than repairing or guessing.
@@ -218,17 +216,16 @@ def _esri_polygon(geometry: dict):
         assignments[owners[0]].append(ring)
     if not shells:
         raise ValueError("source_polygon_shell_missing")
-    dim_code={2:0,3:(1000 if has_z else 2000),4:3000}[dimension]
     def polygon_wkb(shell, hole_rings):
-        out=bytearray(struct.pack("<BI",1,dim_code+3))
+        out=bytearray(struct.pack("<BI",1,3))
         out.extend(struct.pack("<I",1+len(hole_rings)))
         for ring in [shell,*hole_rings]:
             out.extend(struct.pack("<I",len(ring)))
-            for point in ring: out.extend(struct.pack("<"+"d"*dimension,*point))
+            for point in ring: out.extend(struct.pack("<dd",*point))
         return bytes(out)
     polygons=[polygon_wkb(shell,assignments[i]) for i,shell in enumerate(shells)]
     if len(polygons)==1: return polygons[0]
-    multi=bytearray(struct.pack("<BI",1,dim_code+6));multi.extend(struct.pack("<I",len(polygons)))
+    multi=bytearray(struct.pack("<BI",1,6));multi.extend(struct.pack("<I",len(polygons)))
     for polygon in polygons: multi.extend(polygon)
     return bytes(multi)
 
@@ -337,6 +334,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     if (layer.get("spatialReference",{}).get("latestWkid") != 4326
             or layer.get("maxRecordCount") != 2000):
         raise ValueError("source_spatial_reference_or_page_limit_drift")
+    if layer.get("hasZ") or layer.get("hasM"):
+        raise ValueError("source_layer_dimensional_drift")
     if {key: layer.get("extent", {}).get(key) for key in EXPECTED_LAYER_EXTENT} != EXPECTED_LAYER_EXTENT:
         raise ValueError("source_coverage_extent_drift")
     _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
@@ -358,6 +357,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         page=docs[name]
         if "error" in page or page.get("exceededTransferLimit") is True:
             raise ValueError("source_page_error_or_truncation")
+        if page.get("hasZ") or page.get("hasM"):
+            raise ValueError("source_page_dimensional_drift")
         _validate_spatial_reference(page.get("spatialReference"), "source_page")
         rows=page.get("features")
         if not isinstance(rows,list): raise ValueError("source_page_features_missing")
@@ -373,6 +374,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
             raise ValueError("source_record_schema_or_geometry_drift")
         if set(geom)-{"rings","hasZ","hasM","spatialReference"}:
             raise ValueError("unexpected_source_geometry_ordinates")
+        if geom.get("hasZ") or geom.get("hasM"):
+            raise ValueError("source_geometry_dimensional_drift")
         geometry_reference=geom.get("spatialReference")
         if geometry_reference is not None:
             _validate_spatial_reference(geometry_reference, "source_feature")
