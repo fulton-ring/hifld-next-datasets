@@ -42,9 +42,13 @@ def _documents():
                                       60000 if field["name"] == "Scale_Minimum" else
                                       "" if field["name"] == "Category_of_Land_Region" else f"{field['name']}-{oid}")
                       for field in source.ATTRIBUTE_FIELDS}
-            rows.append({"attributes": values,
-                        "geometry": {"x": source.EXPECTED_EXTENT["xmin"] + (oid % 100) / 100,
-                                     "y": source.EXPECTED_EXTENT["ymin"] + oid / 250}})
+            x = source.EXPECTED_EXTENT["xmin"] + (oid % 100) / 100
+            y = source.EXPECTED_EXTENT["ymin"] + oid / 250
+            if oid == 1:
+                x, y = source.EXPECTED_EXTENT["xmin"], source.EXPECTED_EXTENT["ymin"]
+            if oid == 2:
+                x, y = source.EXPECTED_EXTENT["xmax"], source.EXPECTED_EXTENT["ymax"]
+            rows.append({"attributes": values, "geometry": {"x": x, "y": y}})
         docs[f"page_{page_index:03d}"] = {"spatialReference": {"wkid": 4326, "latestWkid": 4326}, "features": rows}
     return docs
 
@@ -81,7 +85,8 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
         self.assertEqual(audit["feature_id_null_count"], 0)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "Feature_ID-1")
         self.assertEqual(features[0]["attributes"]["Category_of_Land_Region"], "")
-        self.assertEqual(features[0]["geometry"]["x"], source.EXPECTED_EXTENT["xmin"] + 0.01)
+        self.assertEqual(features[0]["geometry"]["x"], source.EXPECTED_EXTENT["xmin"])
+        self.assertEqual(audit["source_vertex_bounds"], source.EXPECTED_VERTEX_BOUNDS)
 
     def test_rejects_schema_id_and_page_population_drift(self):
         docs = _documents(); docs = json.loads(json.dumps(docs))
@@ -137,6 +142,30 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
             docs["page_015"]["features"][0]["geometry"] = mutation
             with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, error):
                 source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
+
+    def test_rejects_feature_id_null_duplicate_and_observed_coverage_contraction(self):
+        docs = json.loads(json.dumps(_documents()))
+        docs["page_000"]["features"][0]["attributes"]["Feature_ID"] = None
+        with self.assertRaisesRegex(ValueError, "source_feature_id_null_drift"):
+            source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
+        docs = json.loads(json.dumps(_documents()))
+        docs["page_000"]["features"][1]["attributes"]["Feature_ID"] = \
+            docs["page_000"]["features"][0]["attributes"]["Feature_ID"]
+        with self.assertRaisesRegex(ValueError, "source_feature_id_duplicate_drift"):
+            source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
+        docs = json.loads(json.dumps(_documents()))
+        for page_index in range(source.PAGE_COUNT):
+            for row in docs[f"page_{page_index:03d}"]["features"]:
+                row["geometry"] = {"x": -90.0, "y": 35.0}
+        with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
+            source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
+        docs = json.loads(json.dumps(_documents()))
+        for page_index in range(source.PAGE_COUNT):
+            for row in docs[f"page_{page_index:03d}"]["features"]:
+                if row["attributes"]["OBJECTID"] == 2:
+                    row["geometry"] = {"x": -90.0, "y": 35.0}
+        with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
+            source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
 
     def test_layer_page_and_point_crs_reject_contradictory_representations(self):
         mutations = [

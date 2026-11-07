@@ -46,6 +46,16 @@ PAGE_MAX_BYTES = 8_000_000
 CAPTURE_MAX_BYTES = 192_000_000
 EXPECTED_EXTENT = {"xmin": -93.76136799999995, "ymin": 29.703279000000066,
                    "xmax": -79.48334619999997, "ymax": 45.116077500000074}
+# Verified snapshot coverage: the observed vertex bounds of the 2026-11-07 complete
+# extraction equal the declared layer extent. Any contraction or expansion of the
+# observed bounds is coverage drift and must not become a ready candidate.
+EXPECTED_VERTEX_BOUNDS = [EXPECTED_EXTENT["xmin"], EXPECTED_EXTENT["ymin"],
+                          EXPECTED_EXTENT["xmax"], EXPECTED_EXTENT["ymax"]]
+# Verified snapshot ID contract: Feature_ID is non-null and distinct in all 3,816
+# rows of the 2026-11-07 extraction. Null or duplicate Feature_ID values fail
+# readiness and quarantine the raw capture until a versioned contract permits them.
+EXPECTED_FEATURE_ID_NULL_COUNT = 0
+EXPECTED_FEATURE_ID_DUPLICATE_COUNT = 0
 CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before",
                  "ids_before", "layer_after", "count_after", "ids_after", "service_after",
                  *{f"page_{index:03d}" for index in range(PAGE_COUNT)}}
@@ -306,11 +316,17 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             raise ValueError("source_page_id_population_drift:" + name)
     if len(features) != EXPECTED_COUNT or sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT:
         raise ValueError("source_feature_population_incomplete")
+    if feature_id_null_count != EXPECTED_FEATURE_ID_NULL_COUNT:
+        raise ValueError("source_feature_id_null_drift")
+    if len(feature_ids) - len(set(feature_ids)) != EXPECTED_FEATURE_ID_DUPLICATE_COUNT:
+        raise ValueError("source_feature_id_duplicate_drift")
     features.sort(key=lambda feature: feature["attributes"]["OBJECTID"])
     bounds = [min(feature["geometry"]["x"] for feature in features),
               min(feature["geometry"]["y"] for feature in features),
               max(feature["geometry"]["x"] for feature in features),
               max(feature["geometry"]["y"] for feature in features)]
+    if bounds != EXPECTED_VERTEX_BOUNDS:
+        raise ValueError("source_observed_coverage_drift")
     audit = {
         "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(sorted(ids))),
         "source_id_min": min(ids), "source_id_max": max(ids),
@@ -331,9 +347,12 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "drift_guard": "Exact BTS item/service link, advertised service/layer identity, declared field "
                        "roster/types, every present layer/page/feature wkid, latestWkid and WKT/WKT2 CRS "
                        "representation, count, before/after ID rosters, per-page populations, complete "
-                       "returned attributes and XY ordinates, geographic coordinate ranges, and every "
-                       "observed point against the declared layer coverage extent are checked; null or "
-                       "duplicate Feature_ID values would be preserved, not repaired.",
+                       "returned attributes and XY ordinates, geographic coordinate ranges, every "
+                       "observed point against the declared layer coverage extent, the observed vertex "
+                       "bounds pinned to the verified snapshot coverage, and the pinned non-null "
+                       "distinct Feature_ID contract are checked; a null or duplicate Feature_ID or an "
+                       "observed-bounds change fails readiness and quarantines the raw capture unchanged "
+                       "pending an explicit versioned contract.",
     }
     return fields, features, audit
 
@@ -491,7 +510,7 @@ def capture_land_region_locations_usace_ienc(storage: StagingStorageResource, *,
                 "code_commit": identity["code_commit"], "inputs": inputs,
                 "transformations": [{"operation": "Esri JSON Point to GeoParquet WKB candidate; source XY ordinates preserved",
                                      "parameters": {"feature_count": EXPECTED_COUNT, "source_fields": "all declared non-geometry fields retained in source order and declared types",
-                                                    "source_ids": "OBJECTID and Feature_ID preserved unchanged, including native nulls, empty strings and duplicates",
+                                                     "source_ids": "OBJECTID and Feature_ID preserved unchanged, including empty strings; the verified snapshot pins Feature_ID non-null and distinct, and any null or duplicate now fails readiness and quarantines the raw capture pending an explicit versioned contract",
                                                     "source_crs": "EPSG:4326", "source_geometry": "2D point ordinates exactly as captured; no projection or coordinate repair",
                                                     "raw_evidence": "complete decoded response and wire bytes retained with checksummed receipts",
                                                     "candidate_status": "unapproved; source release, historical baseline, ID/schema/coverage and rights decisions remain pending"}}],
