@@ -102,6 +102,10 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
         docs = _documents(); docs = json.loads(json.dumps(docs))
         docs["page_007"]["features"][0]["attributes"]["OBJECTID"] = source.EXPECTED_IDS[0]
+        with self.assertRaisesRegex(ValueError, "source_oid_roster_drift:page_007"):
+            source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
+        docs = _documents(); docs = json.loads(json.dumps(docs))
+        docs["page_007"]["features"][0]["attributes"]["OBJECTID"] = docs["page_007"]["features"][1]["attributes"]["OBJECTID"]
         with self.assertRaisesRegex(ValueError, "source_page_id_population_drift:page_007"):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
 
@@ -124,10 +128,11 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
 
     def test_rejects_geometry_ordinate_and_coverage_drift(self):
-        for mutation, error in (({"x": "-90"}, "source_xy_ordinate_contract_drift"),
+        for mutation, error in (({"x": "-90", "y": 40.0}, "source_xy_ordinate_contract_drift"),
                                 ({"x": 10000.0, "y": 10000.0}, "source_coordinate_range_drift"),
                                 ({"x": 0.0, "y": 0.0}, "source_feature_outside_coverage_extent"),
-                                ({"x": 20.0, "y": 40.0, "z": 5.0}, "source_point_geometry_structure_drift")):
+                                ({"x": 20.0, "y": 40.0, "z": 5.0}, "source_point_geometry_structure_drift"),
+                                ({"x": -90.0}, "source_point_coordinates_missing")):
             docs = json.loads(json.dumps(_documents()))
             docs["page_015"]["features"][0]["geometry"] = mutation
             with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, error):
