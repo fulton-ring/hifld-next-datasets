@@ -383,6 +383,11 @@ from dagster_hifld.assets.usace_daymark_locations import (
     usace_daymark_locations_draft_job,
     usace_daymark_locations_draft_schedule,
 )
+from dagster_hifld.assets.usace_lateral_beacons import (
+    usace_lateral_beacons_complete,
+    usace_lateral_beacons_draft_job,
+    usace_lateral_beacons_draft_schedule,
+)
 
 from dagster_hifld.assets.usace_dynamic_buoys import (
     usace_dynamic_buoys_complete,
@@ -1033,6 +1038,7 @@ defs = Definitions(
         proposed_critical_habitat_complete,
         usace_pile_locations_complete,
         usace_daymark_locations_complete,
+        usace_lateral_beacons_complete,
         usace_dynamic_buoys_complete,
         usace_pipeline_areas_complete,
         usace_data_quality_areas_complete,
@@ -1133,6 +1139,7 @@ defs = Definitions(
         proposed_critical_habitat_draft_job,
         usace_pile_locations_draft_job,
         usace_daymark_locations_draft_job,
+        usace_lateral_beacons_draft_job,
         usace_dynamic_buoys_draft_job,
         usace_pipeline_areas_draft_job,
         usace_data_quality_areas_draft_job,
@@ -1249,6 +1256,7 @@ defs = Definitions(
         proposed_critical_habitat_draft_schedule,
         usace_pile_locations_draft_schedule,
         usace_daymark_locations_draft_schedule,
+        usace_lateral_beacons_draft_schedule,
         usace_dynamic_buoys_draft_schedule,
         usace_pipeline_areas_draft_schedule,
         usace_data_quality_areas_draft_schedule,
