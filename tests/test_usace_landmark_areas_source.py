@@ -291,7 +291,10 @@ class UsaceLandmarkAreasSourceTest(unittest.TestCase):
             self.assertEqual(query["returnZ"], ["true"])
             self.assertEqual(query["returnM"], ["true"])
         docs = _docs()
-        docs["page_000"]["features"][0]["geometry"]["rings"][0][0] = [-88, 37, 17.0]
+        ring = docs["page_000"]["features"][0]["geometry"]["rings"][0]
+        docs["page_000"]["features"][0]["geometry"]["rings"][0] = [
+            [x, y, 17.0] for x, y in ring
+        ]
         with self.assertRaisesRegex(ValueError, "source_polygon_zm_flags_do_not_match_coordinates"):
             _validate(_captures(docs))
 
