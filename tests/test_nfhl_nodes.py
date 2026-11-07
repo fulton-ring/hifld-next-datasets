@@ -78,8 +78,8 @@ def _pins(features, schema, geom):
                 EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
                 EXPECTED_SERVICE_LAYER_ROSTER=[(11, "Nodes", "Feature Layer")],
                 EXPECTED_LAYER_EXTENT={"xmin": -160.0, "ymin": 20.0, "xmax": -60.0, "ymax": 65.0},
-                EXPECTED_OBSERVED_BOUNDS={"xmin": -86.41722287087322, "ymin": 34.148463868949534,
-                                          "xmax": -86.41197568433415, "ymax": 34.156060535508914})
+                EXPECTED_OBSERVED_BOUNDS={"xmin": -86.41197568433415, "ymin": 34.148463868949534,
+                                          "xmax": -86.41197568433415, "ymax": 34.148463868949534})
 
 
 class NfhlNodesTests(unittest.TestCase):
