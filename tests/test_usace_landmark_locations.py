@@ -204,8 +204,9 @@ class LandmarkLocationsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            real_client = httpx.Client
             with patch.object(source.httpx, "Client",
-                              side_effect=lambda *args, **kwargs: httpx.Client(
+                              side_effect=lambda *args, **kwargs: real_client(
                                   transport=httpx.MockTransport(handler), **kwargs)):
                 with self.assertRaisesRegex(ValueError, "source_feature_id_null_drift"):
                     source.capture_usace_landmark_locations(
