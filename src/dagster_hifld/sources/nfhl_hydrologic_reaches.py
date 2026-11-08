@@ -84,6 +84,12 @@ SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 EXPECTED_COUNT = 293019
 EXPECTED_ID_SHA256 = "4a053a3d32cbf4b98255fb6ace93ad5e612d6dbf039e2ef46336995548861bcc"
 EXPECTED_SCHEMA_SHA256 = "04b0c3da86c7ecae0921cc572a1406a16ef2f6e3bbdde38c0b5f84806ec7ad8e"
+EXPECTED_RECORD_SHA256 = "a546080bb763bb9abf4a5ce776fa59bd5376c4f8caf1f678653c1875b430e957"
+EXPECTED_GEOMETRY_SHA256 = "13b55274eb1bb91f234c4e842f0374af3294ffed9065a8496615f075fd5c0c97"
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -158.1862432804823, "ymin": 21.272407815676047,
+                            "xmax": -66.98810256681173, "ymax": 60.69250684750517}
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_NAN_GEOMETRY_COUNT = 0
 EXPECTED_LAYER_EXTENT = {"xmin": -158.1862432804823, "ymin": 21.272407815676047,
                          "xmax": -66.98810256681173, "ymax": 60.69250684750517}
 EXPECTED_SERVICE_LAYER_ROSTER = [
@@ -104,13 +110,8 @@ EXPECTED_SERVICE_LAYER_ROSTER = [
     (13, "Station Start Points", "Feature Layer"), (26, "Hydrologic Reaches", "Feature Layer"),
     (30, "Alluvial Fans", "Feature Layer"), (31, "Subbasins", "Feature Layer"),
 ]
-# Complete-population pins below are established by one dated complete capture;
-# None marks a not-yet-pinned contract element that must never silently pass.
-EXPECTED_RECORD_SHA256 = None
-EXPECTED_GEOMETRY_SHA256 = None
-EXPECTED_OBSERVED_BOUNDS = None
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_NAN_GEOMETRY_COUNT = None
+# Complete-population pins above are established by one dated complete capture;
+# the module docstring records the adaptive segment plan that served it.
 
 
 def _canonical(value: object) -> bytes:
@@ -215,7 +216,7 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
     null_geometry = 0
     nan_geometry = 0
     geometry_records = []
-    observed_bounds: list[float] = []
+    xmin = ymin = xmax = ymax = None
     for feature in features:
         attrs = feature.get("attributes")
         if not isinstance(attrs, dict) or list(attrs) != attr_names:
@@ -229,7 +230,7 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
                 or not geom["paths"]:
             raise ValueError("source_line_geometry_invalid")
         nan_paths = False
-        vertices: list[float] = []
+        feature_xmin = feature_ymin = feature_xmax = feature_ymax = None
         for path in geom["paths"]:
             if not isinstance(path, list) or len(path) < 2:
                 raise ValueError("source_line_geometry_invalid")
@@ -240,7 +241,14 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
                 if type(x) in (int, float) and type(y) in (int, float):
                     if not (-180 <= x <= 180 and -90 <= y <= 90):
                         raise ValueError("source_coordinate_range_drift")
-                    vertices.extend((x, y))
+                    if feature_xmin is None or x < feature_xmin:
+                        feature_xmin = x
+                    if feature_xmax is None or x > feature_xmax:
+                        feature_xmax = x
+                    if feature_ymin is None or y < feature_ymin:
+                        feature_ymin = y
+                    if feature_ymax is None or y > feature_ymax:
+                        feature_ymax = y
                 elif x == "NaN" and y == "NaN":
                     # FEMA's sibling NFHL point layer publishes string-"NaN"
                     # ordinates; such vertices are retained verbatim in the
@@ -252,8 +260,16 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
         geometry_records.append([attrs["OBJECTID"], geom["paths"]])
         if nan_paths:
             nan_geometry += 1
-        else:
-            observed_bounds.extend(vertices)
+        elif feature_xmin is not None:
+            if xmin is None or feature_xmin < xmin:
+                xmin = feature_xmin
+            if ymin is None or feature_ymin < ymin:
+                ymin = feature_ymin
+            if xmax is None or feature_xmax > xmax:
+                xmax = feature_xmax
+            if ymax is None or feature_ymax > ymax:
+                ymax = feature_ymax
+    observed_bounds = None if xmin is None else {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
     return geometry_records, null_geometry, nan_geometry, observed_bounds
 
 
@@ -333,7 +349,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     for (offset, count), name in zip(segments, page_names):
         _collect_segment(offset, count, json.loads(captures[name][0]), ids, features)
     attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
-    geometry_records, null_geometry, nan_geometry, observed_bounds = _classify_geometries(features, attr_names)
+    geometry_records, null_geometry, nan_geometry, bounds = _classify_geometries(features, attr_names)
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     record_sha = _list_sha(features)
     geometry_sha = _list_sha(geometry_records)
@@ -341,10 +357,6 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_record_value_drift")
     if geometry_sha != EXPECTED_GEOMETRY_SHA256:
         raise ValueError("source_geometry_or_coverage_drift")
-    bounds = None
-    if observed_bounds:
-        bounds = {"xmin": min(observed_bounds[0::2]), "ymin": min(observed_bounds[1::2]),
-                  "xmax": max(observed_bounds[0::2]), "ymax": max(observed_bounds[1::2])}
     if EXPECTED_OBSERVED_BOUNDS is not None and bounds != EXPECTED_OBSERVED_BOUNDS:
         raise ValueError("source_observed_coverage_drift")
     audit = {"source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids)),

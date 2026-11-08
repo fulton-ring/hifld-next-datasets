@@ -63,9 +63,7 @@ def _fixture():
     ids = [10, 11, 12, 13]
     schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f} for f in fields]
     attr_names = [f["name"] for f in fields if f["name"] != "SHAPE"]
-    geometry_records, null_count, nan_count, observed_bounds = source._classify_geometries(features, attr_names)
-    bounds = {"xmin": min(observed_bounds[0::2]), "ymin": min(observed_bounds[1::2]),
-              "xmax": max(observed_bounds[0::2]), "ymax": max(observed_bounds[1::2])}
+    geometry_records, null_count, nan_count, bounds = source._classify_geometries(features, attr_names)
     crs = {"wkid": 4269, "latestWkid": 4269}
     page0 = {"features": features[:2], "spatialReference": crs, "exceededTransferLimit": True}
     page1 = {"features": features[2:], "spatialReference": crs}
