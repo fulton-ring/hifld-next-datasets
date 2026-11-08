@@ -8,13 +8,26 @@ Reaches" as the producer's own publication of this HIFLD inventory dataset
 for identification only). The layer is continuously updated and publishes no
 per-snapshot release date; source freshness, rights, and public-schema
 compatibility are not accepted by this draft.
+
+This layer's serialized feature density varies from a few hundred bytes to
+over a megabyte per record, and the producer's REST query refuses with a
+complete HTTP 200 Esri error document whenever one response approaches roughly
+36 MB (dated 2026-11-08 probes: 35.1 MB pages succeed, ~36.4 MB pages fail, and
+a 25-record slice alone reached 27.9 MB). Fixed pagination therefore cannot
+serve the complete layer, so it is captured as adaptively bisected segments of
+the sorted OBJECTID roster: each accepted segment must return exactly its
+expected id slice, the accepted segments must tile the complete roster without
+gaps or overlaps, and the before/after count/id/metadata brackets plus
+full-record digests prove that nothing was skipped, duplicated, or reordered.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -48,23 +61,25 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "Hydrologic Reaches"
 PUBLISHER = "Federal Emergency Management Agency (FEMA)"
 SOURCE_CRS_WKID = 4269
-# The producer's REST query refuses ("Error performing query operation", HTTP 200
-# Esri error code 500) whenever a page's serialized response reaches roughly 36
-# MB: dated 2026-11-08 probes show 35.1 MB pages succeeding and ~36.4 MB pages
-# failing, and this layer's dense reaches exceed that well before maxRecordCount
-# (2000) records. 100-record pages stayed at or below ~26 MB across the whole
-# layer, so pages are sized far below both producer limits.
-PAGE_SIZE = 100
+# Initial segment width, capped by the producer's maxRecordCount (2000). Any
+# segment whose response would approach the producer's ~36 MB transfer cap is
+# bisected until the producer serves it; see the module docstring.
+SEGMENT_START_RECORDS = 2000
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MIN_FREE_BYTES = 12_000_000_000
 # The producer's MapServer also intermittently answers valid requests with
 # complete HTTP 200 Esri error documents (observed 2026-11-08 while paging this
-# layer; the identical request succeeds moments later). Page captures retry a
+# layer; the identical request succeeds moments later). Every request retries a
 # bounded number of times for that transient mode; a retry re-issues the exact
 # same request, and completeness is still enforced by the pinned before/after
-# id rosters, counts, and full-record digests, so retries can never mask drift.
-MAX_CAPTURE_ATTEMPTS = 4
-RETRY_BASE_DELAY_SECONDS = 10.0
+# id rosters, counts, exact segment tiling, and full-record digests, so retries
+# can never mask drift. Segments wider than one record that keep failing are
+# bisected (the producer's transfer cap); a single-record segment that keeps
+# failing fails the capture explicitly.
+DOC_CAPTURE_ATTEMPTS = 4
+DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
+SEGMENT_PROBE_ATTEMPTS = 2
+SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-08 complete-layer population contract.
 EXPECTED_COUNT = 293019
 EXPECTED_ID_SHA256 = "4a053a3d32cbf4b98255fb6ace93ad5e612d6dbf039e2ef46336995548861bcc"
@@ -131,26 +146,43 @@ def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
 
-def _feature_urls(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [
+def _segment_name(offset: int, count: int) -> str:
+    return f"page_{offset:06d}_{count:05d}"
+
+
+_SEGMENT_NAME_PATTERN = re.compile(r"page_([0-9]{6})_([0-9]{5})$")
+
+
+def _parse_segment_name(name: str) -> tuple[int, int]:
+    match = _SEGMENT_NAME_PATTERN.fullmatch(name)
+    if match is None:
+        raise ValueError("source_capture_roster_incomplete_or_unexpected")
+    return int(match.group(1)), int(match.group(2))
+
+
+def _segment_query(offset: int, count: int) -> str:
+    return _query({"where": "1=1", "outFields": "*", "returnGeometry": "true",
+                   "orderByFields": "OBJECTID ASC", "resultOffset": offset,
+                   "resultRecordCount": count, "f": "json"})
+
+
+def _doc_urls() -> list[tuple[str, str]]:
+    return [
         ("service_doc", SERVICE_DOC_URL),
         ("service_before", SERVICE_URL + "?f=pjson"),
         ("layer_before", LAYER_URL + "?f=pjson"),
         ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
         ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
     ]
-    for offset in range(0, len(ids), PAGE_SIZE):
-        params = {"where": "1=1", "outFields": "*", "returnGeometry": "true",
-                  "orderByFields": "OBJECTID ASC", "resultOffset": offset,
-                  "resultRecordCount": PAGE_SIZE, "f": "json"}
-        urls.append((f"page_{offset // PAGE_SIZE:03d}", _query(params)))
-    urls.extend([
+
+
+def _after_doc_urls() -> list[tuple[str, str]]:
+    return [
         ("layer_after", LAYER_URL + "?f=pjson"),
         ("service_after", SERVICE_URL + "?f=pjson"),
         ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
         ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-    ])
-    return urls
+    ]
 
 
 def _validate_spatial_reference(value: object, label: str) -> None:
@@ -162,21 +194,19 @@ def _validate_spatial_reference(value: object, label: str) -> None:
             raise ValueError(label + "_crs_drift")
 
 
-def _collect_page(page_idx: int, page: object, ids: list[int], features: list[dict[str, object]]) -> None:
+def _collect_segment(offset: int, count: int, page: object, ids: list[int],
+                     features: list[dict[str, object]]) -> None:
     if not isinstance(page, dict) or "error" in page:
         raise ValueError("source_page_error")
-    _validate_spatial_reference(page.get("spatialReference"), f"source_page_{page_idx:03d}")
-    offset = page_idx * PAGE_SIZE
+    _validate_spatial_reference(page.get("spatialReference"), f"source_page_{offset:06d}")
     rows = page.get("features")
     if not isinstance(rows, list):
         raise ValueError("source_page_missing_features")
-    expected = ids[offset:offset + PAGE_SIZE]
+    expected = ids[offset:offset + count]
     actual = [r.get("attributes", {}).get("OBJECTID") for r in rows if isinstance(r, dict)]
-    full_nonfinal = len(expected) == PAGE_SIZE and offset + PAGE_SIZE < EXPECTED_COUNT
-    exceeded = page.get("exceededTransferLimit") is True
     if actual != expected or len(rows) != len(expected):
         raise ValueError("source_page_id_slice_incomplete_or_reordered")
-    if exceeded and not full_nonfinal:
+    if page.get("exceededTransferLimit") is True and offset + count >= EXPECTED_COUNT:
         raise ValueError("source_page_unexpected_exceeded_transfer_limit")
     features.extend(rows)
 
@@ -230,11 +260,16 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     docs = {name: json.loads(body) for name, (body, _) in captures.items()
             if name != "service_doc" and not name.startswith("page_")}
-    page_count = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
-    expected_names = {"service_doc", "service_before", "layer_before", "count_before", "ids_before", "ids_seed",
-                      "layer_after", "service_after", "count_after", "ids_after",
-                      *(f"page_{i:03d}" for i in range(page_count))}
-    if set(captures) != expected_names:
+    page_names = sorted(name for name in captures if name.startswith("page_"))
+    segments = [_parse_segment_name(name) for name in page_names]
+    position = 0
+    for offset, count in segments:
+        if offset != position:
+            raise ValueError("source_page_tiling_incomplete_or_overlapped")
+        position += count
+    if position != EXPECTED_COUNT:
+        raise ValueError("source_page_tiling_incomplete_or_overlapped")
+    if set(captures) != set(docs) | {"service_doc", *page_names}:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
     if SERVICE_URL.encode("utf-8") not in captures["service_doc"][0]:
         raise ValueError("fema_service_documentation_link_drift")
@@ -295,8 +330,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_count_changed_during_capture")
 
     features: list[dict[str, object]] = []
-    for page_idx in range(page_count):
-        _collect_page(page_idx, json.loads(captures[f"page_{page_idx:03d}"][0]), ids, features)
+    for (offset, count), name in zip(segments, page_names):
+        _collect_segment(offset, count, json.loads(captures[name][0]), ids, features)
     attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
     geometry_records, null_geometry, nan_geometry, observed_bounds = _classify_geometries(features, attr_names)
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
@@ -318,7 +353,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "geometry_type": "Polyline", "null_geometry_count": null_geometry,
              "nan_string_geometry_count": nan_geometry,
              "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
-             "unique_source_id_count": len(ids),
+             "unique_source_id_count": len(ids), "source_segment_count": len(segments),
              "source_release_date": None,
              "source_release_date_unknown_reason":
                  "FEMA updates the NFHL continuously and publishes no release date for this layer; "
@@ -402,33 +437,64 @@ def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> Non
 
 
 def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int) -> tuple[bytes, dict[str, object]]:
+                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
     """Capture one producer request, retrying bounded times on transient failures.
 
     Retries cover the producer's transient complete-200 Esri error documents and
     incomplete transport captures; failed attempts are preserved on disk under
     ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
     final attempt's body is always returned as captured, so a persistent
-    producer failure surfaces to validation and quarantine unchanged.
+    producer failure surfaces to the caller unchanged.
     """
-    delay = RETRY_BASE_DELAY_SECONDS
-    for attempt in range(1, MAX_CAPTURE_ATTEMPTS + 1):
+    for attempt in range(1, attempts + 1):
         try:
             body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
         except ValueError as exc:
-            if attempt >= MAX_CAPTURE_ATTEMPTS or not str(exc).startswith("incomplete_source_capture:"):
+            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
                 raise
             _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(delay)
-            delay *= 3
+            time.sleep(base_delay * (3 ** (attempt - 1)))
             continue
-        if _producer_error_doc(body) and attempt < MAX_CAPTURE_ATTEMPTS:
+        if _producer_error_doc(body) and attempt < attempts:
             _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(delay)
-            delay *= 3
+            time.sleep(base_delay * (3 ** (attempt - 1)))
             continue
         return body, receipt
     raise AssertionError("unreachable_retry_state")
+
+
+def _capture_segments(client: httpx.Client, capture_root: Path,
+                      total: int) -> dict[str, tuple[bytes, dict[str, object]]]:
+    """Capture the complete layer as adaptively bisected roster segments.
+
+    Segments start at SEGMENT_START_RECORDS. A segment the producer keeps
+    refusing with an error document (its response would exceed the producer's
+    transfer cap) is bisected until the producer serves both halves; the refused
+    segment's final body and receipts stay on disk as evidence under its own
+    name. A single-record segment that still fails ends the capture explicitly.
+    """
+    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    segments: deque[tuple[int, int]] = deque(
+        (offset, min(SEGMENT_START_RECORDS, total - offset))
+        for offset in range(0, total, SEGMENT_START_RECORDS)
+    )
+    while segments:
+        offset, count = segments.popleft()
+        name = _segment_name(offset, count)
+        body, receipt = _capture_with_retry(
+            client, _segment_query(offset, count), capture_root, name,
+            max_bytes=MAX_CAPTURE_BYTES,
+            attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
+            base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
+        if _producer_error_doc(body):
+            if count == 1:
+                raise ValueError("source_single_feature_unservable")
+            middle = count // 2
+            segments.appendleft((offset + middle, count - middle))
+            segments.appendleft((offset, middle))
+            continue
+        captures[name] = (body, receipt)
+    return captures
 
 
 def capture_nfhl_hydrologic_reaches(storage: StagingStorageResource, *, version: str,
@@ -452,18 +518,27 @@ def capture_nfhl_hydrologic_reaches(storage: StagingStorageResource, *, version:
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
     try:
-        with httpx.Client(follow_redirects=False, timeout=120,
+        with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-hydrologic-reaches-draft"}) as client:
             seed_body, seed_receipt = _capture_with_retry(
                 client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES)
+                capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
+                attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
             seed = json.loads(seed_body).get("objectIds")
             if (not isinstance(seed, list) or len(seed) != EXPECTED_COUNT
                     or any(type(value) is not int for value in seed) or len(set(seed)) != EXPECTED_COUNT):
                 raise ValueError("source_seed_id_population_drift")
             captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _feature_urls(sorted(seed)):
-                body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES)
+            for name, url in _doc_urls():
+                body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
+                                                    attempts=DOC_CAPTURE_ATTEMPTS,
+                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                captures[name] = (body, receipt)
+            captures.update(_capture_segments(client, capture_root, EXPECTED_COUNT))
+            for name, url in _after_doc_urls():
+                body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
+                                                    attempts=DOC_CAPTURE_ATTEMPTS,
+                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 captures[name] = (body, receipt)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:

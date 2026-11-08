@@ -74,7 +74,7 @@ def _fixture():
             "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_seed": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
-            "page_000": page0, "page_001": page1}
+            "page_000000_00002": page0, "page_000002_00002": page1}
     captures = {name: (json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode(), {"status": 200})
                 for name, doc in docs.items()}
     captures["service_doc"] = (SERVICE_DOC_BODY, {"status": 200})
@@ -85,7 +85,7 @@ def _fixture():
 
 def _pins(features, schema, geom, counts, bounds):
     null_count, nan_count = counts
-    return dict(EXPECTED_COUNT=4, PAGE_SIZE=2, EXPECTED_NULL_GEOMETRY_COUNT=null_count,
+    return dict(EXPECTED_COUNT=4, SEGMENT_START_RECORDS=2, EXPECTED_NULL_GEOMETRY_COUNT=null_count,
                 EXPECTED_NAN_GEOMETRY_COUNT=nan_count,
                 EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13])).hexdigest(),
                 EXPECTED_RECORD_SHA256=source._list_sha(sorted(features, key=lambda row: row["attributes"]["OBJECTID"])),
@@ -97,7 +97,8 @@ def _pins(features, schema, geom, counts, bounds):
 
 
 def _page_features(captures):
-    rows = [row for i in range(2) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+    rows = [row for name in sorted(captures) if name.startswith("page_")
+            for row in json.loads(captures[name][0])["features"]]
     return rows
 
 
@@ -130,12 +131,12 @@ class NfhlHydrologicReachesTests(unittest.TestCase):
 
     def test_crs_drift_is_rejected(self):
         _, _, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000"][0])
+        page = json.loads(captures["page_000000_00002"][0])
         page["spatialReference"] = {"wkid": 4326, "latestWkid": 4326}
-        captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_page_000_crs_drift"):
+            with self.assertRaisesRegex(ValueError, "source_page_000000_crs_drift"):
                 source._validate_captures(captures)
 
     def test_native_nad83_fields_and_null_geometry_preserved_in_parquet(self):
@@ -170,9 +171,9 @@ class NfhlHydrologicReachesTests(unittest.TestCase):
 
     def test_curve_paths_geometry_is_rejected(self):
         _, _, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000"][0])
+        page = json.loads(captures["page_000000_00002"][0])
         page["features"][0]["geometry"] = {"curvePaths": [[[-81.0, 38.0], [-81.1, 38.1]]]}
-        captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
             with self.assertRaisesRegex(ValueError, "source_line_geometry_invalid"):
@@ -180,9 +181,9 @@ class NfhlHydrologicReachesTests(unittest.TestCase):
 
     def test_degenerate_line_geometry_is_rejected(self):
         _, _, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_001"][0])
+        page = json.loads(captures["page_000002_00002"][0])
         page["features"][1]["geometry"] = {"paths": [[[-83.0, 37.0]]]}
-        captures["page_001"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        captures["page_000002_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
             with self.assertRaisesRegex(ValueError, "source_line_geometry_invalid"):
@@ -190,9 +191,9 @@ class NfhlHydrologicReachesTests(unittest.TestCase):
 
     def test_final_page_cannot_claim_transfer_truncation(self):
         _, _, captures, schema, geom, counts, bounds = _fixture()
-        final = json.loads(captures["page_001"][0])
+        final = json.loads(captures["page_000002_00002"][0])
         final["exceededTransferLimit"] = True
-        captures["page_001"] = (json.dumps(final, separators=(",", ":")).encode(), {"status": 200})
+        captures["page_000002_00002"] = (json.dumps(final, separators=(",", ":")).encode(), {"status": 200})
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
             with self.assertRaisesRegex(ValueError, "source_page_unexpected_exceeded_transfer_limit"):
@@ -210,9 +211,9 @@ class NfhlHydrologicReachesTests(unittest.TestCase):
 
     def test_missing_page_id_is_not_accepted(self):
         _, _, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000"][0])
+        page = json.loads(captures["page_000000_00002"][0])
         page["features"] = page["features"][:1]
-        captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
             with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_reordered"):
@@ -220,9 +221,9 @@ class NfhlHydrologicReachesTests(unittest.TestCase):
 
     def test_record_value_change_is_detected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000"][0])
+        page = json.loads(captures["page_000000_00002"][0])
         page["features"][0]["attributes"]["ROUTE_METH"] = "Changed"
-        captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
             with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
                 source._validate_captures(captures)
@@ -287,7 +288,9 @@ class NfhlHydrologicReachesTests(unittest.TestCase):
             with patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep") as sleep_mock:
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
-                                                            root, "probe", max_bytes=1024)
+                                                            root, "probe", max_bytes=1024,
+                                                            attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
             self.assertEqual(body, ok_body)
             self.assertEqual(calls, ["probe", "probe"])
             self.assertEqual((root / "probe.body").read_bytes(), ok_body)
@@ -316,10 +319,12 @@ class NfhlHydrologicReachesTests(unittest.TestCase):
             with patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
-                                                           root, "probe", max_bytes=1024)
+                                                            root, "probe", max_bytes=1024,
+                                                            attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
             self.assertEqual(body, error_body)
-            self.assertEqual(len(calls), source.MAX_CAPTURE_ATTEMPTS)
-            for attempt in range(1, source.MAX_CAPTURE_ATTEMPTS):
+            self.assertEqual(len(calls), source.DOC_CAPTURE_ATTEMPTS)
+            for attempt in range(1, source.DOC_CAPTURE_ATTEMPTS):
                 self.assertEqual((root / f"probe.attempt-{attempt:02d}.body").read_bytes(), error_body)
 
     def test_incomplete_transport_capture_is_retried_once_bounded(self):
@@ -351,14 +356,94 @@ class NfhlHydrologicReachesTests(unittest.TestCase):
             with patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
-                                                           root, "probe", max_bytes=1024)
+                                                            root, "probe", max_bytes=1024,
+                                                            attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
                 with self.assertRaisesRegex(ValueError, "unrelated_source_capture_failure"):
                     source._capture_with_retry(None, "https://producer.invalid/other",
-                                               root, "probe2", max_bytes=1024)
+                                               root, "probe2", max_bytes=1024,
+                                               attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                               base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
             self.assertEqual(body, ok_body)
             self.assertEqual(calls.count("probe"), 2)
             self.assertEqual(len(calls), 3)
             self.assertEqual((root / "probe.attempt-01.receipt.json").read_bytes(), b'{"status": null}\n')
+
+    def test_page_tiling_gap_is_rejected(self):
+        _, _, captures, schema, geom, counts, bounds = _fixture()
+        del captures["page_000002_00002"]
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_page_tiling_incomplete_or_overlapped"):
+                source._validate_captures(captures)
+
+    def test_malformed_segment_name_is_rejected(self):
+        _, _, captures, schema, geom, counts, bounds = _fixture()
+        captures["page_xxxxx_00002"] = captures.pop("page_000002_00002")
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_capture_roster_incomplete_or_unexpected"):
+                source._validate_captures(captures)
+
+    def test_adaptive_bisection_splits_producer_cap_failures(self):
+        import tempfile
+        from pathlib import Path
+
+        _, features, fixture_captures, _, _, _, _ = _fixture()
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            body = error_body if name == "page_000000_00004" else bodies[name]
+            digest = hashlib.sha256(body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "observed_at":
+                       "2026-11-08T00:00:00+00:00", "status": 200, "complete_body": True,
+                       "wire_bytes": len(body), "wire_sha256": digest, "bytes": len(body),
+                       "sha256": digest, "content_encoding": None, "content_length": str(len(body)),
+                       "error_code": None}
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            root.mkdir()
+            with patch.multiple(source, SEGMENT_START_RECORDS=4,
+                                SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
+                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                segments = source._capture_segments(None, root, 4)
+            self.assertEqual(sorted(segments), ["page_000000_00002", "page_000002_00002"])
+            self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
+            self.assertEqual(calls.count("page_000000_00004"), 1)
+
+    def test_unservable_single_feature_fails_explicitly(self):
+        import tempfile
+        from pathlib import Path
+
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            digest = hashlib.sha256(error_body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                       "complete_body": True, "bytes": len(error_body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(error_body)
+            (capture_root / f"{name}.wire").write_bytes(error_body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return error_body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            root.mkdir()
+            with patch.multiple(source, SEGMENT_START_RECORDS=4,
+                                SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
+                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
+                    source._capture_segments(None, root, 4)
 
     def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
         import tempfile
