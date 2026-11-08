@@ -15,7 +15,9 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.sources.epa_rmp_facilities import (
     _canonical,
     _parquet_bytes,
+    DATASET_SLUG,
     EPA_FRS_DATA_SOURCES_URL,
+    SOURCE_COUNT,
     capture_epa_rmp_facilities,
     validate_source_captures,
 )
@@ -137,6 +139,77 @@ class EpaRmpSourceTests(unittest.TestCase):
         captures["ids_after"] = (_canonical(ids), {})
         with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
             validate_source_captures(captures, expected_count=2, expected_field_count=3, expected_schema_sha256=None)
+
+    def test_pinned_count_snapshot_drift_fails_closed(self):
+        captures, _, _ = _capture_fixture()
+        captures["count_before"] = (_canonical({"count": 3}), {})
+        with self.assertRaisesRegex(ValueError, "source_count_drift:count_before"):
+            validate_source_captures(captures, expected_count=2, expected_field_count=3,
+                                     expected_schema_sha256=None)
+        captures, _, _ = _capture_fixture()
+        captures["count_after"] = (_canonical({"count": 3}), {})
+        with self.assertRaisesRegex(ValueError, "source_count_drift:count_after"):
+            validate_source_captures(captures, expected_count=2, expected_field_count=3,
+                                     expected_schema_sha256=None)
+
+    def test_objectid_registry_reassignment_under_constant_roster_changes_record_digest(self):
+        captures, _, _ = _capture_fixture(expected_count=3)
+        before = validate_source_captures(captures, expected_count=3, expected_field_count=3,
+                                          expected_schema_sha256=None)
+        page = json.loads(captures["features_000"][0])
+        first_id = page["features"][0]["attributes"]["REGISTRY_ID"]
+        last_id = page["features"][2]["attributes"]["REGISTRY_ID"]
+        page["features"][0]["attributes"]["REGISTRY_ID"] = last_id
+        page["features"][2]["attributes"]["REGISTRY_ID"] = first_id
+        captures["features_000"] = (json.dumps(page, separators=(",", ":")).encode(), {})
+        after = validate_source_captures(captures, expected_count=3, expected_field_count=3,
+                                         expected_schema_sha256=None)
+        self.assertEqual(after["audit"]["source_feature_count"], before["audit"]["source_feature_count"])
+        self.assertEqual(after["audit"]["source_id_sha256"], before["audit"]["source_id_sha256"])
+        self.assertEqual(after["audit"]["source_registry_id_sha256"], before["audit"]["source_registry_id_sha256"])
+        self.assertEqual(after["audit"]["source_geometry_sha256"], before["audit"]["source_geometry_sha256"])
+        self.assertNotEqual(after["audit"]["source_record_sha256"], before["audit"]["source_record_sha256"])
+        self.assertEqual(after["audit"]["duplicate_registry_id_count"], 0)
+
+    def test_blocking_check_refuses_current_live_population_shape(self):
+        drifted = {"feature_count": 21855, "source_null_geometry_count": 0,
+                   "source_invalid_geometry_count": 0, "unique_object_id_count": 21855,
+                   "null_registry_id_count": 0}
+        result = epa_emergency_response_rmp_facilities_complete(drifted)
+        self.assertFalse(result.passed)
+        self.assertEqual(result.metadata["expected_source_population"].value, 21853)
+
+    def test_seed_count_drift_refuses_rebaseline_and_quarantines_partial_capture(self):
+        seed = (_canonical({"objectIds": [1, 2, 3]}), {})
+
+        def drifted_seed_get(_client, url, capture_root, name, *, max_bytes):
+            body = seed[0]
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            receipt = {"method": "GET", "url": url, "final_url": url,
+                       "observed_at": "2026-11-08T00:00:00Z", "status": 200, "complete_body": True,
+                       "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(),
+                       "wire_bytes": len(body), "wire_sha256": hashlib.sha256(body).hexdigest(),
+                       "content_encoding": "identity", "content_length": len(body), "error_code": None}
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return body, receipt
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"), use_local=True, backend="local")
+            with (patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_COUNT", 2),
+                  patch("dagster_hifld.sources.epa_rmp_facilities.capture_get", side_effect=drifted_seed_get)):
+                with self.assertRaisesRegex(ValueError, "source_seed_id_count_drift"):
+                    capture_epa_rmp_facilities(storage, version="synthetic-seed-drift",
+                                               capture_directory=str(Path(tmp) / "captures"))
+            quarantine_keys = storage.list_prefix("_quarantine/" + DATASET_SLUG)
+            self.assertTrue(any(key.endswith("/raw/ids_seed.body") for key in quarantine_keys))
+            self.assertTrue(any(key.endswith("/metadata/failure.json") for key in quarantine_keys))
+            failure_key = next(key for key in quarantine_keys if key.endswith("/metadata/failure.json"))
+            failure = json.loads(storage.read_key(failure_key))
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"], ["ids_seed"])
+            self.assertEqual(storage.list_prefix(DATASET_SLUG), [])
+            self.assertEqual(SOURCE_COUNT, 21853)
 
     def test_complete_synthetic_capture_manifest_candidate_and_cache_reuse(self):
         captures, fields, _ = _capture_fixture()
