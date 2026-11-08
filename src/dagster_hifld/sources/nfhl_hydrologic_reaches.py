@@ -47,7 +47,13 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "Hydrologic Reaches"
 PUBLISHER = "Federal Emergency Management Agency (FEMA)"
 SOURCE_CRS_WKID = 4269
-PAGE_SIZE = 2000
+# The producer's REST query refuses ("Error performing query operation", HTTP 200
+# Esri error code 500) whenever a page's serialized response reaches roughly 36
+# MB: dated 2026-11-08 probes show 35.1 MB pages succeeding and ~36.4 MB pages
+# failing, and this layer's dense reaches exceed that well before maxRecordCount
+# (2000) records. 100-record pages stayed at or below ~26 MB across the whole
+# layer, so pages are sized far below both producer limits.
+PAGE_SIZE = 100
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MIN_FREE_BYTES = 12_000_000_000
 # Pins below are the observed 2026-11-08 complete-layer population contract.
