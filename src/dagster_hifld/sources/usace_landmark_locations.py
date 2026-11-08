@@ -210,20 +210,25 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if sorted(observed)!=page_ids or len(set(observed))!=len(observed): raise ValueError("source_page_id_population_drift:"+name)
     ids=[r["attributes"]["OBJECTID"] for r in features]
     if sorted(ids)!=EXPECTED_IDS or len(ids)!=EXPECTED_COUNT or len(set(ids))!=EXPECTED_COUNT: raise ValueError("source_feature_id_population_drift")
+    feature_ids=[r["attributes"]["Feature_ID"] for r in features]
+    if any(value is None for value in feature_ids): raise ValueError("source_feature_id_null_drift")
+    if len(set(feature_ids))!=EXPECTED_COUNT: raise ValueError("source_feature_id_duplicate_drift")
     features.sort(key=lambda r:r["attributes"]["OBJECTID"])
     coordinates=[[r["attributes"]["OBJECTID"],r["geometry"]["x"],r["geometry"]["y"]] for r in features]
     bounds=[min(p[1] for p in coordinates),min(p[2] for p in coordinates),max(p[1] for p in coordinates),max(p[2] for p in coordinates)]
-    if not (EXPECTED_EXTENT["xmin"] - EXTENT_TOLERANCE <= bounds[0] and bounds[2] <= EXPECTED_EXTENT["xmax"] + EXTENT_TOLERANCE
-            and EXPECTED_EXTENT["ymin"] - EXTENT_TOLERANCE <= bounds[1] and bounds[3] <= EXPECTED_EXTENT["ymax"] + EXTENT_TOLERANCE):
-        raise ValueError("source_geometry_coverage_extent_drift")
+    if any(abs(observed-EXPECTED_EXTENT[key])>EXTENT_TOLERANCE
+           for observed,key in zip(bounds,("xmin","ymin","xmax","ymax"))):
+        raise ValueError("source_observed_coverage_extent_drift")
     audit={"source_feature_count":len(features),"source_id_sha256":_sha(_canonical(ids)),"source_id_min":min(ids),"source_id_max":max(ids),
       "source_schema_sha256":_sha(_canonical(layer["fields"])),"source_record_sha256":_sha(_canonical([r["attributes"] for r in features])),
       "source_geometry_sha256":_sha(_canonical(coordinates)),"source_geometry_type":"esriGeometryPoint","source_wkid":4326,
       "source_vertex_count":len(features),"geometry_valid_count":geometry_valid,"geometry_empty_count":geometry_empty,"geometry_invalid_count":0,
       "geometry_bounds":bounds,"source_extent":layer["extent"],
+      "source_extent_tolerance_degrees":EXTENT_TOLERANCE,
+      "source_feature_id_null_count":0,"source_feature_id_distinct_count":len(set(feature_ids)),
       "source_coverage_scope":"Complete current LANDMARK_POINT layer from USACE IENC chart coverage; its inland-chart extent is regional and is not nationwide landmark coverage.",
       "source_dimension_evidence":{"layer_hasZ":layer.get("hasZ"),"layer_hasM":layer.get("hasM"),"page_requests_returnZ":True,"page_requests_returnM":True,"observed_feature_geometry_keys":sorted(set().union(*(set(r["geometry"]) for r in features)))},
-      "drift_guard":"BTS item delegation, exact service directory/service/layer roster, full ArcGIS field declarations/types, layer/page/feature SRs, count and before/after ID roster, per-page native XY and attribute checks, explicit returnZ/returnM request with observed feature dimensions, EPSG:4326 geographic coordinate ranges, and the pinned regional extent envelope (explicit tolerance) enforced per feature and on observed bounds."}
+      "drift_guard":"BTS item delegation, exact service directory/service/layer roster, full ArcGIS field declarations/types, layer/page/feature SRs, count and before/after ID roster, per-page native XY and attribute checks with the observed null-free unique Feature_ID contract, explicit returnZ/returnM request with observed feature dimensions, EPSG:4326 geographic coordinate ranges, the pinned regional extent envelope (explicit tolerance) enforced per feature, and observed-bounds agreement with the declared extent (explicit drift tolerance)."}
     return layer["fields"],features,audit
 
 
@@ -360,7 +365,7 @@ def capture_usace_landmark_locations(storage: StagingStorageResource, *, version
         "bts_item_succession_accepted": False, "inputs": inputs,
         "transformations": [{"operation": "Esri native point XY to GeoParquet WKB candidate", "parameters": {
             "source_fields": "all declared attributes retained in source order and declared types",
-            "source_ids": "OBJECTID and Feature_ID retained unchanged, including nulls", "source_crs": "EPSG:4326",
+            "source_ids": "OBJECTID and Feature_ID retained unchanged; the observed population's null-free unique Feature_ID contract is enforced before sealing and violating raw captures are quarantined", "source_crs": "EPSG:4326",
             "dimensions": "all page queries request returnZ=true and returnM=true; layer declarations are absent; observed feature geometries contain XY only",
             "geometry": "native XY coordinates preserved; no reprojection, repair, or simplification",
             "raw_evidence": "complete decoded response and wire bodies retained with checksummed receipts",
