@@ -22,6 +22,7 @@ from dagster_hifld.assets.epa_icis_wastewater_naics import (
 )
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 
 TINY_ROWS = [
     {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "NAICS_CODE": "004112",
@@ -126,8 +127,12 @@ class EPAICISWastewaterNAICSTests(unittest.TestCase):
                     patch.object(worker, "PROFILE", replace(PROFILE, expected_rows=2)), \
                     patch.object(worker, "EXPECTED_ROWS", 2):
                 captured = worker.capture_epa_icis_wastewater_naics(storage, client=client)
+                snapshot_source_metadata(storage, DATASET_SLUG, DATASET_SLUG, captured["version"])
+                resolved = load_resolved_source_manifest(
+                    storage, DATASET_SLUG, DATASET_SLUG, captured["version"])
                 summary = summarize_staged_catalog(
                     storage, DATASET_SLUG, DATASET_SLUG, captured["version"], DATASET_SLUG,
+                    source_metadata=resolved.metadata,
                 )
                 write_catalog_metadata(storage, dataset_slug=DATASET_SLUG, file_slug=DATASET_SLUG,
                                        version=captured["version"], quality_dict=summary.quality_manifest,
