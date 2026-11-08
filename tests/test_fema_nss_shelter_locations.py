@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 import pyarrow.parquet as pq
 from dagster import DefaultScheduleStatus
@@ -21,6 +22,139 @@ from dagster_hifld.sources import fema_nss_shelter_locations as source
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
                       allow_nan=False).encode()
+
+
+def body_bytes(value):
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def synthetic_layer(**overrides):
+    layer = {
+        "name": source.LAYER_NAME,
+        "description": source.LAYER_DESCRIPTION,
+        "geometryType": "esriGeometryPoint",
+        "definitionExpression": None,
+        "advancedQueryCapabilities": {"supportsPagination": True, "supportsOrderBy": True},
+        "extent": {"spatialReference": {"wkid": 4326, "latestWkid": 4326}},
+        "fields": [dict(f) for f in source.FIELD_DECLARATIONS],
+    }
+    layer.update(overrides)
+    return layer
+
+
+def data_elements_body(entry_layer_id=source.LAYER_ID, nested_layer_id=16, has_z=False,
+                       has_m=False, shape_type="esriGeometryPoint", data_element=None):
+    element = {"layerId": nested_layer_id, "hasZ": has_z, "hasM": has_m,
+               "shapeType": shape_type, "featureType": "esriFTSimple", "dsId": 28}
+    if data_element is not None:
+        element = data_element
+    return {"layerDataElements": [{"layerId": entry_layer_id, "dataElement": element}]}
+
+
+def synthetic_features(geometries):
+    attrs = [f for f in source.FIELD_DECLARATIONS if f["type"] != "esriFieldTypeGeometry"]
+    features = []
+    for oid, geometry in zip((101, 102), geometries):
+        row = {f["name"]: None for f in attrs}
+        row.update({"objectid": oid, "shelter_id": 9001, "shelter_status_code": "TEST",
+                    "status": "SYN", "shelter_open_date": 1767225600000})
+        features.append({"attributes": row, "geometry": geometry})
+    return features
+
+
+def full_capture_bodies(layer, dimensions, dimensions_after=None, features=None):
+    features = features if features is not None else synthetic_features(
+        [{"x": -77.04, "y": 38.90}, {"x": -122.33, "y": 47.61}])
+    service = {"description": source.SERVICE_DESCRIPTION}
+    portal = {"id": source.ITEM_ID, "owner": "FEMA_MAC",
+              "title": "National Shelter System Facilities", "type": "Feature Service",
+              "url": source.PORTAL_LAYER_URL,
+              "access": "public", "modified": 1756399172000}
+    ids = {"objectIdFieldName": "objectid", "objectIds": [101, 102]}
+    count = len(features)
+    page_params = {
+        "objectIds": ",".join(str(oid) for oid in sorted(row["attributes"]["objectid"] for row in features)),
+        "outFields": "*", "returnGeometry": "true", "returnZ": "true",
+        "returnM": "true", "outSR": "4326", "resultRecordCount": source.PAGE_SIZE,
+        "f": "json"}
+    page = {"spatialReference": {"wkid": 4326, "latestWkid": 4326},
+            "exceededTransferLimit": False, "features": features}
+    dimensions_after = dimensions if dimensions_after is None else dimensions_after
+    return {
+        "portal_item": (source.PORTAL_ITEM_URL, None, portal),
+        "service_before": (source.SERVICE_URL, {"f": "pjson"}, service),
+        "service_after": (source.SERVICE_URL, {"f": "pjson"}, service),
+        "layer_before": (source.LAYER_URL, {"f": "pjson"}, layer),
+        "layer_after": (source.LAYER_URL, {"f": "pjson"}, layer),
+        "data_elements_before": (source.QUERY_DATA_ELEMENTS_URL,
+                                  {"f": "pjson", "layers": f"[{source.LAYER_ID}]"}, dimensions),
+        "data_elements_after": (source.QUERY_DATA_ELEMENTS_URL,
+                                 {"f": "pjson", "layers": f"[{source.LAYER_ID}]"}, dimensions_after),
+        "count_before": (source.LAYER_URL + "/query",
+                         {"where": "1=1", "returnCountOnly": "true", "f": "json"}, {"count": count}),
+        "count_after": (source.LAYER_URL + "/query",
+                        {"where": "1=1", "returnCountOnly": "true", "f": "json"}, {"count": count}),
+        "ids_before": (source.LAYER_URL + "/query",
+                       {"where": "1=1", "returnIdsOnly": "true", "f": "json"}, ids),
+        "ids_after": (source.LAYER_URL + "/query",
+                      {"where": "1=1", "returnIdsOnly": "true", "f": "json"}, ids),
+        "page_000": (source.LAYER_URL + "/query", page_params, page),
+    }
+
+
+def build_retained_capture(root, bodies):
+    root.mkdir(parents=True, exist_ok=True)
+    captures = {}
+    for name, (url, params, obj) in bodies.items():
+        body = body_bytes(obj)
+        target = url + ("?" + urlencode(params) if params else "")
+        receipt = {"method": "GET", "url": target, "final_url": target,
+                   "observed_at": "2026-11-08T00:00:00+00:00", "status": 200,
+                   "complete_body": True, "bytes": len(body), "sha256": sha256(body),
+                   "wire_bytes": len(body), "wire_sha256": sha256(body),
+                   "content_encoding": None, "content_length": None,
+                   "error_code": None, "error_type": None}
+        (root / f"{name}.wire").write_bytes(body)
+        (root / f"{name}.body").write_bytes(body)
+        (root / f"{name}.receipt.json").write_bytes(canonical(receipt) + b"\n")
+        captures[name] = (body, receipt)
+    retained = sum(len(body) + len(body) for body, _ in captures.values())
+    _, manifest_sha = source._write_capture_manifest(
+        root, captures, retained, source.MAX_CAPTURE_BYTES, source.MAX_RESPONSE_BYTES)
+    return manifest_sha
+
+
+def replay_retained_capture(tmp, bodies, **overrides):
+    storage = StagingStorageResource(local_dir=str(tmp / "staging"), use_local=True,
+                                    backend="local")
+    manifest_sha = build_retained_capture(tmp / "retained", bodies)
+    with patch.object(source, "_require_disk_space"), \
+         patch.object(source, "processing_identity", return_value={
+             "code_identity_scheme": "test", "working_tree_status": "unknown",
+             "code_commit": "test", "files": {},
+         }), \
+         patch.object(source, "validate_construction_code_identity"):
+        return source.capture_fema_nss_shelter_locations(
+            storage, version=vsynthetic_version(), **overrides,
+            retained_capture_directory=str(tmp / "retained"),
+            retained_capture_manifest_sha256=manifest_sha), storage
+
+
+def vsynthetic_version():
+    return "vsynthetic"
+
+
+def quarantine_raw_bodies(tmp):
+    root = tmp / "staging" / "_quarantine" / source.DATASET_SLUG
+    bodies = {}
+    for failure in root.glob("*/metadata/failure.json"):
+        for raw in (failure.parent.parent / "raw").glob("*.body"):
+            bodies[raw.name] = raw.read_bytes()
+    return bodies
 
 
 class FemaNssShelterLocationsTests(unittest.TestCase):
@@ -44,6 +178,7 @@ class FemaNssShelterLocationsTests(unittest.TestCase):
                   "url": source.PORTAL_LAYER_URL,
                   "access": "public", "modified": 1756399172000}
         ids = {"objectIdFieldName": "objectid", "objectIds": [101, 102]}
+        dimensions = data_elements_body()
         features = []
         for oid, x, y in ((101, -77.04, 38.90), (102, -122.33, 47.61)):
             row = {f["name"]: None for f in attrs}
@@ -57,6 +192,8 @@ class FemaNssShelterLocationsTests(unittest.TestCase):
             "service_after": service,
             "layer_before": layer,
             "layer_after": layer,
+            "data_elements_before": dimensions,
+            "data_elements_after": dimensions,
             "count_before": {"count": 2},
             "count_after": {"count": 2},
             "ids_before": ids,
@@ -122,6 +259,134 @@ class FemaNssShelterLocationsTests(unittest.TestCase):
                              {"authority": "EPSG", "code": 4326})
             self.assertIn("ids_before", observed)
             self.assertEqual(source.DATASET_SLUG, "national-shelter-system-facilities")
+
+    def test_retained_replay_of_live_catalog_shape_with_explicit_declaration_captures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            result, storage = replay_retained_capture(
+                tmp, full_capture_bodies(synthetic_layer(), data_elements_body()))
+            self.assertEqual(result["feature_count"], 2)
+            audit = json.loads(storage.read_key(
+                result["candidate_ready"].replace("metadata/candidate_ready.json",
+                                                 "metadata/source_audit.json")))
+            self.assertEqual(audit["source_geometry_dimensions"],
+                             {"hasZ": False, "hasM": False,
+                              "declared_by": "same-service MapServer queryDataElements dataset declaration for the requested layer",
+                              "layer_catalog_declared_hasZ": False,
+                              "layer_catalog_declared_hasM": False})
+            manifest = json.loads(storage.read_key(
+                result["candidate_ready"].replace("metadata/candidate_ready.json",
+                                                 "metadata/source_manifest.json")))
+            pages = [i for i in manifest["inputs"] if i["input_id"].startswith("page_")]
+            self.assertTrue(pages)
+            for page in pages:
+                self.assertIn("returnZ=true", page["retrieval_url"])
+                self.assertIn("returnM=true", page["retrieval_url"])
+            declaration = [i for i in manifest["inputs"]
+                           if i["input_id"] == "data_elements_before"]
+            self.assertEqual(declaration[0]["retrieval_url"],
+                             source.QUERY_DATA_ELEMENTS_URL + "?f=pjson&layers=%5B5%5D")
+
+    def test_retained_replay_nested_data_element_layer_id_is_not_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            result, _ = replay_retained_capture(
+                tmp, full_capture_bodies(synthetic_layer(),
+                                         data_elements_body(nested_layer_id=17)))
+            self.assertEqual(result["feature_count"], 2)
+
+    def test_retained_replay_rejects_missing_or_malformed_dimension_declarations(self):
+        for dimensions in ({"layerDataElements": []},
+                           {},
+                           {"layerDataElements": [5]},
+                           data_elements_body(data_element={"layerId": 16, "hasZ": False,
+                                                             "shapeType": "esriGeometryPoint"}),
+                           {"error": {"code": 400, "message": "synthetic"}}):
+            with self.subTest(dimensions=dimensions), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                bodies = full_capture_bodies(synthetic_layer(), dimensions)
+                with self.assertRaises(ValueError) as raised:
+                    replay_retained_capture(tmp, bodies)
+                self.assertIn(str(raised.exception),
+                              ("source_data_elements_invalid",
+                               "source_data_element_dimensions_unpinned",
+                               "source_response_error:data_elements_before"))
+
+    def test_retained_replay_rejects_changed_outer_layer_id(self):
+        for entry_layer_id in (4, 6, "5", None):
+            with self.subTest(entry_layer_id=entry_layer_id), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                bodies = full_capture_bodies(synthetic_layer(),
+                                             data_elements_body(entry_layer_id=entry_layer_id))
+                with self.assertRaisesRegex(ValueError, "source_data_element_layer_id_drift"):
+                    replay_retained_capture(tmp, bodies)
+
+    def test_retained_replay_rejects_non_boolean_dimension_declarations(self):
+        for has_z, has_m in (("false", False), (0, False), (None, False),
+                             (False, "true"), (False, 1), (False, None)):
+            with self.subTest(has_z=has_z, has_m=has_m), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                bodies = full_capture_bodies(synthetic_layer(),
+                                             data_elements_body(has_z=has_z, has_m=has_m))
+                with self.assertRaisesRegex(ValueError, "source_data_element_dimensions_unpinned"):
+                    replay_retained_capture(tmp, bodies)
+
+    def test_retained_replay_rejects_conflicting_or_unsupported_dimensions(self):
+        cases = [
+            (synthetic_layer(hasZ=True, hasM=False), data_elements_body(),
+             "source_geometry_dimensions_conflict"),
+            (synthetic_layer(hasZ="maybe", hasM=False), data_elements_body(),
+             "source_geometry_dimensions_unpinned"),
+            (synthetic_layer(hasZ=None, hasM=False), data_elements_body(),
+             "source_geometry_dimensions_unpinned"),
+            (synthetic_layer(hasZ=False, hasM=False), data_elements_body(has_m=True),
+             "source_geometry_dimensions_conflict"),
+            (synthetic_layer(hasZ=False, hasM="no"), data_elements_body(),
+             "source_geometry_dimensions_unpinned"),
+            (synthetic_layer(), data_elements_body(shape_type="esriGeometryPolyline"),
+             "source_geometry_dimensions_conflict"),
+            (synthetic_layer(), data_elements_body(has_z=True), "source_geometry_dimensions_unsupported"),
+        ]
+        for layer, dimensions, expected in cases:
+            with self.subTest(layer=layer.get("hasZ", "absent"), dimensions=dimensions), \
+                    tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                with self.assertRaisesRegex(ValueError, expected):
+                    replay_retained_capture(tmp, full_capture_bodies(layer, dimensions))
+
+    def test_retained_replay_rejects_declaration_changed_during_capture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            changed = data_elements_body(nested_layer_id=16, has_z=True)
+            bodies = full_capture_bodies(synthetic_layer(), data_elements_body(),
+                                         dimensions_after=changed)
+            with self.assertRaisesRegex(ValueError, "source_changed_during_capture"):
+                replay_retained_capture(tmp, bodies)
+
+    def test_retained_replay_aborts_on_unexpected_z_or_m_ordinates_without_dropping(self):
+        for extra, ordinate in (({"z": 12.5}, b'"z":12.5'), ({"m": 99.5}, b'"m":99.5'),
+                                ({"z": 12.5, "m": 99.5}, b'"z":12.5')):
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                features = synthetic_features([{"x": -77.04, "y": 38.90} | extra,
+                                               {"x": -122.33, "y": 47.61}])
+                bodies = full_capture_bodies(synthetic_layer(), data_elements_body(),
+                                             features=features)
+                with self.assertRaisesRegex(ValueError, "source_geometry_dimensions_drift"):
+                    replay_retained_capture(tmp, bodies)
+                quarantined = quarantine_raw_bodies(tmp)
+                self.assertIn(ordinate, quarantined["page_000.body"])
+                staged = sorted(p.name for p in (tmp / "staging").iterdir())
+                self.assertEqual(staged, ["_quarantine"])
+
+    def test_retained_replay_missing_declaration_receipt_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            bodies = full_capture_bodies(synthetic_layer(), data_elements_body())
+            del bodies["data_elements_before"]
+            with self.assertRaisesRegex(
+                    ValueError, "retained_capture_request_mismatch:data_elements_before"):
+                replay_retained_capture(tmp, bodies)
 
     def test_schema_contract_uses_the_declared_oid_and_all_72_attributes(self):
         metadata = {"fields": source.FIELD_DECLARATIONS}

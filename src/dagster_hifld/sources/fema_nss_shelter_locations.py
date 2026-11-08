@@ -36,6 +36,7 @@ SERVICE_URL = "https://gis.fema.gov/arcgis/rest/services/NSS/FEMA_NSS/MapServer"
 PORTAL_LAYER_URL = "https://gis.fema.gov/arcgis/rest/services/NSS/FEMA_NSS/FeatureServer/5"
 LAYER_ID = 5
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
+QUERY_DATA_ELEMENTS_URL = f"{SERVICE_URL}/queryDataElements"
 LAYER_NAME = "Shelter Locations"
 SERVICE_DESCRIPTION = "FEMA ESF#6 Shelter System (Formerly known as the FEMA National Shelter System)"
 LAYER_DESCRIPTION = "This map layer turns on all shelter status types at the same time."
@@ -405,6 +406,36 @@ def _field_contract(layer: dict) -> list[dict]:
     return attributes
 
 
+def _declared_dimensions(layer: dict, dimensions: dict) -> tuple[bool, bool]:
+    """Fail closed unless the same service's dataset declaration pins this layer's dimensions.
+
+    Identity binding is only the requested layer echo (outer ``layerId == LAYER_ID`` on the
+    same MapServer); the nested dataElement's internal ``layerId`` is never identity, and
+    absent layer-catalog ``hasZ``/``hasM`` keys are never treated as an implicit false.
+    """
+    entries = dimensions.get("layerDataElements")
+    if (not isinstance(entries, list) or len(entries) != 1
+            or any(not isinstance(entry, dict) for entry in entries)):
+        raise ValueError("source_data_elements_invalid")
+    if type(entries[0].get("layerId")) is not int or entries[0]["layerId"] != LAYER_ID:
+        raise ValueError("source_data_element_layer_id_drift")
+    element = entries[0].get("dataElement")
+    if not isinstance(element, dict):
+        raise ValueError("source_data_elements_invalid")
+    has_z, has_m = element.get("hasZ"), element.get("hasM")
+    if type(has_z) is not bool or type(has_m) is not bool:
+        raise ValueError("source_data_element_dimensions_unpinned")
+    if element.get("shapeType") != layer.get("geometryType"):
+        raise ValueError("source_geometry_dimensions_conflict")
+    if "hasZ" in layer or "hasM" in layer:
+        catalog_z, catalog_m = layer.get("hasZ"), layer.get("hasM")
+        if type(catalog_z) is not bool or type(catalog_m) is not bool:
+            raise ValueError("source_geometry_dimensions_unpinned")
+        if catalog_z != has_z or catalog_m != has_m:
+            raise ValueError("source_geometry_dimensions_conflict")
+    return has_z, has_m
+
+
 def _arrow_type(field: dict) -> pa.DataType:
     kind = field["type"]
     return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
@@ -539,9 +570,9 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
                     or service.get("description") != SERVICE_DESCRIPTION):
                 raise ValueError("source_layer_identity_drift")
             fields = _field_contract(layer)
-            has_z, has_m = layer.get("hasZ"), layer.get("hasM")
-            if type(has_z) is not bool or type(has_m) is not bool:
-                raise ValueError("source_geometry_dimensions_unpinned")
+            dimensions = get(client, "data_elements_before", QUERY_DATA_ELEMENTS_URL,
+                              {"f": "pjson", "layers": f"[{LAYER_ID}]"})
+            has_z, has_m = _declared_dimensions(layer, dimensions)
             if has_z or has_m:
                 raise ValueError("source_geometry_dimensions_unsupported")
             sr = layer.get("extent", {}).get("spatialReference", {})
@@ -551,15 +582,15 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
             oid_name = next(f["name"] for f in layer["fields"] if f.get("type") == "esriFieldTypeOID")
             ids = ids_response.get("objectIds")
             if ids_response.get("objectIdFieldName") != oid_name or type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count: raise ValueError("source_initial_id_roster_invalid")
-            if 10 + math.ceil(count / PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
+            if 12 + math.ceil(count / PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
                 raise ValueError("source_capture_request_count_exceeded")
             seed = sorted(ids); features=[]
             for page_no, offset in enumerate(range(0,count,PAGE_SIZE)):
                 expected_ids = seed[offset:offset + PAGE_SIZE]
                 page = get(client, f"page_{page_no:03d}", LAYER_URL+"/query", {
                     "objectIds": ",".join(str(value) for value in expected_ids),
-                    "outFields":"*", "returnGeometry":"true", "returnZ":"false",
-                    "returnM":"false", "outSR":"4326", "resultRecordCount":PAGE_SIZE,
+                    "outFields":"*", "returnGeometry":"true", "returnZ":"true",
+                    "returnM":"true", "outSR":"4326", "resultRecordCount":PAGE_SIZE,
                     "f":"json"})
                 rows=page.get("features")
                 if not isinstance(rows,list) or len(rows)!=len(expected_ids):
@@ -577,12 +608,16 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
             service_after=get(client,"service_after",SERVICE_URL,{"f":"pjson"})
             count_after=get(client,"count_after",LAYER_URL+"/query",{"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
             ids_after_response=get(client,"ids_after",LAYER_URL+"/query",{"where":"1=1","returnIdsOnly":"true","f":"json"})
+            dimensions_after=get(client,"data_elements_after",QUERY_DATA_ELEMENTS_URL,
+                                 {"f":"pjson","layers":f"[{LAYER_ID}]"})
             ids_after=ids_after_response.get("objectIds")
             if (ids_after_response.get("objectIdFieldName") != oid_name or not isinstance(ids_after, list)
                     or len(ids_after) != count or any(type(i) is not int for i in ids_after)
                     or len(set(ids_after)) != count):
                 raise ValueError("source_oid_property_drift")
-        if layer_after != layer or service_after != service or count_after != count or sorted(ids_after or []) != seed: raise ValueError("source_changed_during_capture")
+        if (layer_after != layer or service_after != service or dimensions_after != dimensions
+                or count_after != count or sorted(ids_after or []) != seed):
+            raise ValueError("source_changed_during_capture")
         names=[f["name"] for f in fields]; got=[]; expected_geometry_keys={"x","y"} | ({"z"} if has_z else set()) | ({"m"} if has_m else set())
         for item in features:
             a=item.get("attributes"); g=item.get("geometry")
@@ -612,7 +647,7 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
     native=_native_parquet(fields,features); version=content_derived_version(record_sha,geom_sha,schema_sha,identity); prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     null_geometry_count=sum(x["geometry"] is None for x in features)
     native_name=f"geoparquet/{DATASET_SLUG}.parquet"
-    audit={"feature_count":count,"source_id_sha256":_sha(_canonical(seed)),"source_record_sha256":record_sha,"source_geometry_sha256":geom_sha,"source_schema_sha256":schema_sha,"source_crs_epsg":4326,"geometry_type":"Point","null_geometry_count":null_geometry_count,"all_ids_captured_once":True,"ids_equal_before_after":True,"portal_item_id":ITEM_ID,"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_vintage":None,"source_vintage_note":"FEMA exposes no source data release timestamp; portal item modified time is not a row vintage."}
+    audit={"feature_count":count,"source_id_sha256":_sha(_canonical(seed)),"source_record_sha256":record_sha,"source_geometry_sha256":geom_sha,"source_schema_sha256":schema_sha,"source_crs_epsg":4326,"geometry_type":"Point","null_geometry_count":null_geometry_count,"all_ids_captured_once":True,"ids_equal_before_after":True,"portal_item_id":ITEM_ID,"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_geometry_dimensions":{"hasZ":has_z,"hasM":has_m,"declared_by":"same-service MapServer queryDataElements dataset declaration for the requested layer","layer_catalog_declared_hasZ":("hasZ" in layer),"layer_catalog_declared_hasM":("hasM" in layer)},"source_vintage":None,"source_vintage_note":"FEMA exposes no source data release timestamp; portal item modified time is not a row vintage."}
     manifest={"schema_version":1,"approved":False,"title":LAYER_NAME,"publisher":PUBLISHER,"agency":"Federal Emergency Management Agency","source_url":LAYER_URL,"source_release_date":None,"source_modified":None,"portal_item_modified_epoch_ms":portal_item["modified"],"portal_item_modified_is_source_release_date":False,"data_vintage_unknown":True,"contact_data_review_pending":True,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"source_item_id":ITEM_ID,"source_vintage":None,"source_scope":"Current official FEMA MapServer layer 5 Shelter Locations (all shelter status types); not an asserted reconstruction of historical NSS/HIFLD coverage.","source_geographic_coverage_note":"The FEMA item description says continental United States and some territories; the service extent and observed count do not establish territory completeness.","operational_use_warning":"FEMA states not to use this layer to determine facility operational status during an active emergency.","archive_baseline_accepted":False,"historical_equivalence_accepted":False,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"related_layer_observation":{"layer_id":1,"name":"Closed Shelters","definition_expression":None,"observed_feature_count":71897,"observed_at_utc":"2026-10-22T04:31:32.641139+00:00","comparison_note":"Layer 1 is a distinct closed-shelters view and is not a partition or substitute. Its observed count differs from layer 5 count 71875; the relationship remains unresolved. Counts must not be summed."},"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":PORTAL_ITEM_URL.split("?",1)[0] if n=="portal_item" else SERVICE_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"wire_bytes":r["wire_bytes"],"wire_sha256":r["wire_sha256"],"license":"Unreviewed; no license claim made.","attribution":"FEMA MAC ArcGIS item attribution has not been reviewed.","release_date":None,"release_date_unknown_reason":"The service and item metadata do not establish a FEMA producer release date."} for n,(_,r) in sorted(captures.items())],"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"layer_id":LAYER_ID,"fields":"all 72 non-geometry source fields retained in source order and declared physical types","geometry":"native point coordinates retained as WKB in EPSG:4326","capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"historical_equivalence_accepted":False,"archive_baseline_accepted":False,"mapping_approved":False,"release_accepted":False}}],"prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri attributes, source IDs, and point coordinates are preserved without public mapping; approval gates remain open.","objects":[{"path":native_name,"bytes":len(native),"sha256":_sha(native)}]}}},"unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No approved display transformation."}}
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
