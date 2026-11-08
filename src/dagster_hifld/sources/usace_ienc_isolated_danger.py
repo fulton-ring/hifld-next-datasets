@@ -42,7 +42,8 @@ from dagster_hifld.sources.epa_frs_common import (
 
 DATASET_SLUG = "isolated-danger-buoy-point-usace-ienc"
 FILE_SLUG = DATASET_SLUG
-BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
+PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 BTS_ITEM_LANDING_URL = f"https://www.arcgis.com/home/item.html?id={BTS_ITEM_ID}"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 SERVICE_FOLDER_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"
@@ -242,6 +243,9 @@ def _validate_captures(
         "source_extent_epsg4326":coverage,
         "unique_objectid_count": len(set(object_ids)), "unique_feature_id_count": len(feature_ids),
         "official_bts_item_id": BTS_ITEM_ID, "official_distribution_link_verified": True,
+        "prior_bts_item_id": PRIOR_BTS_ITEM_ID,
+        "prior_bts_item_status": "earlier pinned BTS map-service item returned anonymous-access denial (HTTP 200 carrying ArcGIS 403 GWM_0003) during 2026-10-22 verification; retained as prior evidence only and not fetched or validated",
+        "bts_item_succession_claimed": False,
         "source_release_date": None,
         "source_release_date_unknown_reason": "The official BTS item describes a bi-monthly delivery cadence but the observed feature Source_Date is a feature survey date, not a release date; no dated producer extraction was exposed by the feature service.",
         "feature_source_dates": sorted({str(f["attributes"].get("Source_Date")) for f in features if f["attributes"].get("Source_Date") is not None}),
@@ -431,6 +435,8 @@ def capture_usace_ienc_isolated_danger(
                 **({} if name.startswith("bts_item") else {"delegation_evidence":{
                     "official_bts_item_url":BTS_ITEM_LANDING_URL,
                     "bts_item_id":BTS_ITEM_ID,
+                    "prior_bts_item_id":PRIOR_BTS_ITEM_ID,
+                    "prior_bts_item_status":"anonymous-access denial observed 2026-10-22; prior evidence only, no succession or equivalence claimed",
                     "distribution_description":"The official USDOT/BTS NTAD IENC item links this USACE chart-server web map service and the USACE master geodatabase.",
                     "master_geodatabase_url":MASTER_GEODATABASE_URL,
                 }}),
@@ -449,7 +455,7 @@ def capture_usace_ienc_isolated_danger(
                 "candidate_status":"Unapproved; publication requires separate source, freshness, rights, baseline, field mapping, ID, and release acceptance.",
             },
         }],
-        "lineage":"The official USDOT/BTS NTAD item 3607d485a9854d6fa458bf507058ceae states USACE/AGC updates IENC charts bi-monthly, links this chart-server service folder and the USACE master geodatabase, and describes BTS as distributor. This capture uses only the exact isolated danger buoy point MapServer layer. The item metadata and feature-level Source_Date are not treated as the producer release date.",
+        "lineage":"The official USDOT/BTS NTAD item 7ec34864c8804468a9cf52d437fe4b6c states USACE/AGC updates IENC charts bi-monthly, links this chart-server service folder and the USACE master geodatabase, and describes BTS as distributor. The earlier pinned BTS map-service item 3607d485a9854d6fa458bf507058ceae returned anonymous-access denial (HTTP 200 carrying ArcGIS 403 GWM_0003) during 2026-10-22 verification; it is retained as prior evidence only, is not fetched or validated, and no succession or equivalence between the two items is claimed. This capture uses only the exact isolated danger buoy point MapServer layer. The item metadata and feature-level Source_Date are not treated as the producer release date.",
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Only native attribute names, source physical values and source XY point geometry are retained; no public schema mapping or ID migration is approved.","objects":[{"path":parquet_name, **parquet_descriptor}]}}},
         "unsupported_output_formats":{
             "shapefile_zip":"No reviewed mapping or complete S-57/GDB source packaging contract is approved for a derived ZIP.",

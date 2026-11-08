@@ -27,6 +27,7 @@ from dagster_hifld.sources.usace_ienc_isolated_danger import (
     EXPECTED_FEATURE_IDS,
     LAYER_ID,
     MASTER_GEODATABASE_URL,
+    PRIOR_BTS_ITEM_ID,
     SERVICE_FOLDER_URL,
     SERVICE_NAME,
     _LAYER_FIELDS,
@@ -190,6 +191,73 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
         captures["page_000"] = (json.dumps(page).encode(), {"status":200})
         with self.assertRaisesRegex(ValueError, "page_feature_count"):
             _validate_captures(captures)
+
+    def test_current_bts_item_identity_fail_closed(self):
+        def with_item(mutate):
+            captures = _captures()
+            item = json.loads(captures["bts_item_before"][0])
+            mutate(item)
+            body = json.dumps(item).encode()
+            captures["bts_item_before"] = (body, {"status":200})
+            captures["bts_item_after"] = (body, {"status":200})
+            return captures
+
+        cases = {
+            "wrong_owner": lambda item: item.update(owner="usace_agc_dkd"),
+            "wrong_item_id": lambda item: item.update(id=PRIOR_BTS_ITEM_ID),
+            "missing_org": lambda item: item.pop("orgId"),
+            "wrong_title": lambda item: item.update(title="Some Other Chart Product"),
+            "missing_cadence": lambda item: item.update(description=item["description"].replace("updated bi-monthly", "updated occasionally")),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(case=label), self.assertRaisesRegex(ValueError, "bts_distribution_link_or_cadence_drift"):
+                _validate_captures(with_item(mutate))
+
+    def test_bts_item_service_link_and_delegation_fail_closed(self):
+        def with_description(transform):
+            captures = _captures()
+            item = json.loads(captures["bts_item_before"][0])
+            item["description"] = transform(item["description"])
+            body = json.dumps(item).encode()
+            captures["bts_item_before"] = (body, {"status":200})
+            captures["bts_item_after"] = (body, {"status":200})
+            return captures
+
+        cases = {
+            "missing_service_folder_link": lambda text: text.replace(SERVICE_FOLDER_URL, "https://example.invalid/services"),
+            "missing_master_geodatabase_link": lambda text: text.replace(MASTER_GEODATABASE_URL, "https://example.invalid/gdb.zip"),
+            "missing_chart_server_attribution": lambda text: text.replace("Only charts downloaded from the USACE chart server", "Charts are available"),
+            "missing_all_delegation": lambda text: "No distribution links are provided.",
+        }
+        for label, transform in cases.items():
+            with self.subTest(case=label), self.assertRaisesRegex(ValueError, "bts_distribution_link_or_cadence_drift"):
+                _validate_captures(with_description(transform))
+
+    def test_denied_prior_item_error_body_fails_closed(self):
+        # Live failure mode observed for the earlier pinned BTS item: HTTP 200
+        # transport carrying an ArcGIS permission-error body (403 GWM_0003),
+        # documented in issue #130 comment 6330196988. Reproduced here with a
+        # synthetic body; the denied item itself is never requested.
+        denial = {"error":{"code":403, "messageCode":"GWM_0003",
+                           "message":"Item does not exist or is inaccessible.", "details":[]}}
+        for label, body in (
+            ("arcgis_error_json", json.dumps(denial).encode()),
+            ("empty_object", b"{}"),
+        ):
+            captures = _captures()
+            captures["bts_item_before"] = (body, {"status":200})
+            captures["bts_item_after"] = (body, {"status":200})
+            with self.subTest(case=label), self.assertRaisesRegex(ValueError, "bts_distribution_link_or_cadence_drift"):
+                _validate_captures(captures)
+
+    def test_audit_records_prior_item_without_succession_claim(self):
+        _fields, audit, _features = _validate_captures(_captures())
+        self.assertEqual(audit["official_bts_item_id"], BTS_ITEM_ID)
+        self.assertEqual(audit["prior_bts_item_id"], PRIOR_BTS_ITEM_ID)
+        self.assertIn("anonymous-access denial", audit["prior_bts_item_status"])
+        self.assertFalse(audit["bts_item_succession_claimed"])
+        self.assertFalse(audit["source_release_accepted"])
+        self.assertFalse(audit["release_accepted"])
 
     def test_retained_candidate_replay_keeps_original_receipts_and_rejects_rogue_objects(self):
         fields, audit, features = _validate_captures(_captures())
