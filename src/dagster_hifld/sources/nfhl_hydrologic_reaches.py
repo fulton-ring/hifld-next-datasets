@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -56,6 +57,14 @@ SOURCE_CRS_WKID = 4269
 PAGE_SIZE = 100
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MIN_FREE_BYTES = 12_000_000_000
+# The producer's MapServer also intermittently answers valid requests with
+# complete HTTP 200 Esri error documents (observed 2026-11-08 while paging this
+# layer; the identical request succeeds moments later). Page captures retry a
+# bounded number of times for that transient mode; a retry re-issues the exact
+# same request, and completeness is still enforced by the pinned before/after
+# id rosters, counts, and full-record digests, so retries can never mask drift.
+MAX_CAPTURE_ATTEMPTS = 4
+RETRY_BASE_DELAY_SECONDS = 10.0
 # Pins below are the observed 2026-11-08 complete-layer population contract.
 EXPECTED_COUNT = 293019
 EXPECTED_ID_SHA256 = "4a053a3d32cbf4b98255fb6ace93ad5e612d6dbf039e2ef46336995548861bcc"
@@ -375,6 +384,53 @@ def _code_identity() -> dict[str, object]:
     return identity
 
 
+def _producer_error_doc(body: bytes) -> bool:
+    if not body.lstrip().startswith(b"{") or len(body) > 65536:
+        return False
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        return False
+    return isinstance(doc, dict) and "error" in doc
+
+
+def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
+    for suffix in (".body", ".wire", ".receipt.json"):
+        path = capture_root / f"{name}{suffix}"
+        if path.exists():
+            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
+
+
+def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
+                        max_bytes: int) -> tuple[bytes, dict[str, object]]:
+    """Capture one producer request, retrying bounded times on transient failures.
+
+    Retries cover the producer's transient complete-200 Esri error documents and
+    incomplete transport captures; failed attempts are preserved on disk under
+    ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
+    final attempt's body is always returned as captured, so a persistent
+    producer failure surfaces to validation and quarantine unchanged.
+    """
+    delay = RETRY_BASE_DELAY_SECONDS
+    for attempt in range(1, MAX_CAPTURE_ATTEMPTS + 1):
+        try:
+            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
+        except ValueError as exc:
+            if attempt >= MAX_CAPTURE_ATTEMPTS or not str(exc).startswith("incomplete_source_capture:"):
+                raise
+            _preserve_failed_attempt(capture_root, name, attempt)
+            time.sleep(delay)
+            delay *= 3
+            continue
+        if _producer_error_doc(body) and attempt < MAX_CAPTURE_ATTEMPTS:
+            _preserve_failed_attempt(capture_root, name, attempt)
+            time.sleep(delay)
+            delay *= 3
+            continue
+        return body, receipt
+    raise AssertionError("unreachable_retry_state")
+
+
 def capture_nfhl_hydrologic_reaches(storage: StagingStorageResource, *, version: str,
                                     capture_directory: str | None = None) -> dict[str, object]:
     """Capture, verify, and stage a complete unapproved NFHL Hydrologic Reaches candidate."""
@@ -398,16 +454,16 @@ def capture_nfhl_hydrologic_reaches(storage: StagingStorageResource, *, version:
     try:
         with httpx.Client(follow_redirects=False, timeout=120,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-hydrologic-reaches-draft"}) as client:
-            seed_body, seed_receipt = capture_get(client, _query({"where": "1=1", "returnIdsOnly": "true",
-                                                                  "f": "json"}),
-                                                   capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES)
+            seed_body, seed_receipt = _capture_with_retry(
+                client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
+                capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES)
             seed = json.loads(seed_body).get("objectIds")
             if (not isinstance(seed, list) or len(seed) != EXPECTED_COUNT
                     or any(type(value) is not int for value in seed) or len(set(seed)) != EXPECTED_COUNT):
                 raise ValueError("source_seed_id_population_drift")
             captures["ids_seed"] = (seed_body, seed_receipt)
             for name, url in _feature_urls(sorted(seed)):
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES)
+                body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES)
                 captures[name] = (body, receipt)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:

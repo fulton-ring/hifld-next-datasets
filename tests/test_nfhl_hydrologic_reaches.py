@@ -262,6 +262,104 @@ class NfhlHydrologicReachesTests(unittest.TestCase):
                      for key in published.list_prefix()}
             self.assertEqual(after, before)
 
+    def test_transient_producer_error_doc_is_retried_with_evidence(self):
+        import tempfile
+        from pathlib import Path
+
+        ok_body = b'{"objectIds": []}'
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            body = error_body if len(calls) == 1 else ok_body
+            digest = hashlib.sha256(body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                        "complete_body": True, "wire_bytes": len(body), "wire_sha256": digest,
+                        "bytes": len(body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep") as sleep_mock:
+                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+                                                            root, "probe", max_bytes=1024)
+            self.assertEqual(body, ok_body)
+            self.assertEqual(calls, ["probe", "probe"])
+            self.assertEqual((root / "probe.body").read_bytes(), ok_body)
+            self.assertEqual((root / "probe.attempt-01.body").read_bytes(), error_body)
+            self.assertTrue(sleep_mock.called)
+
+    def test_persistent_producer_error_doc_exhausts_retries(self):
+        import tempfile
+        from pathlib import Path
+
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            digest = hashlib.sha256(error_body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                       "complete_body": True, "bytes": len(error_body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(error_body)
+            (capture_root / f"{name}.wire").write_bytes(error_body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return error_body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+                                                           root, "probe", max_bytes=1024)
+            self.assertEqual(body, error_body)
+            self.assertEqual(len(calls), source.MAX_CAPTURE_ATTEMPTS)
+            for attempt in range(1, source.MAX_CAPTURE_ATTEMPTS):
+                self.assertEqual((root / f"probe.attempt-{attempt:02d}.body").read_bytes(), error_body)
+
+    def test_incomplete_transport_capture_is_retried_once_bounded(self):
+        import tempfile
+        from pathlib import Path
+
+        ok_body = b'{"objectIds": []}'
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            if name == "probe2":
+                raise ValueError("unrelated_source_capture_failure")
+            if len(calls) == 1:
+                (capture_root / f"{name}.body").write_bytes(b"")
+                (capture_root / f"{name}.wire").write_bytes(b"")
+                (capture_root / f"{name}.receipt.json").write_bytes(b'{"status": null}\n')
+                raise ValueError(f"incomplete_source_capture:{name}")
+            digest = hashlib.sha256(ok_body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                       "complete_body": True, "bytes": len(ok_body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(ok_body)
+            (capture_root / f"{name}.wire").write_bytes(ok_body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return ok_body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+                                                           root, "probe", max_bytes=1024)
+                with self.assertRaisesRegex(ValueError, "unrelated_source_capture_failure"):
+                    source._capture_with_retry(None, "https://producer.invalid/other",
+                                               root, "probe2", max_bytes=1024)
+            self.assertEqual(body, ok_body)
+            self.assertEqual(calls.count("probe"), 2)
+            self.assertEqual(len(calls), 3)
+            self.assertEqual((root / "probe.attempt-01.receipt.json").read_bytes(), b'{"status": null}\n')
+
     def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
         import tempfile
         from pathlib import Path
