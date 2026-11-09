@@ -683,31 +683,34 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
             client = httpx.Client(follow_redirects=False, timeout=180,
                                   headers={"User-Agent": "hifld-next-datasets/epa-frs-naics"})
             try:
-                page_body, _ = _capture_range_get(
+                def get(name: str, **kwargs) -> bytes:
+                    body, receipt = _capture_range_get(client, NATIONAL_COMBINED_ZIP_URL,
+                                                       capture_root, name, retained_bytes=capture_budget,
+                                                       **kwargs)
+                    captures[name] = (body, receipt)
+                    return body
+
+                page_body, page_receipt = _capture_range_get(
                     client, AUTHORITY_PAGE_URL, capture_root, "authority_page",
                     retained_bytes=capture_budget)
+                captures["authority_page"] = (page_body, page_receipt)
                 if AUTHORITY_LINK_MARKER not in page_body or AUTHORITY_TEXT_MARKER not in page_body:
                     raise EPAFRSNationalNAICSError("authority_page_link_or_text_drift")
-                _capture_range_get(client, NATIONAL_COMBINED_ZIP_URL, capture_root, "zip_probe",
-                                   start=0, end=0, retained_bytes=capture_budget)
+                get("zip_probe", start=0, end=0)
                 eocd_tail = min(EOCD_TAIL_BYTES, EXPECTED_ZIP_TOTAL_BYTES)
-                tail_body, _ = _capture_range_get(
-                    client, NATIONAL_COMBINED_ZIP_URL, capture_root, "zip_eocd",
-                    start=EXPECTED_ZIP_TOTAL_BYTES - eocd_tail,
-                    end=EXPECTED_ZIP_TOTAL_BYTES - 1, retained_bytes=capture_budget)
+                tail_body = get("zip_eocd",
+                                start=EXPECTED_ZIP_TOTAL_BYTES - eocd_tail,
+                                end=EXPECTED_ZIP_TOTAL_BYTES - 1)
                 _, cd_size, cd_offset = _parse_eocd(tail_body, EXPECTED_ZIP_TOTAL_BYTES)
-                cd_body, _ = _capture_range_get(
-                    client, NATIONAL_COMBINED_ZIP_URL, capture_root, "zip_central_directory",
-                    start=cd_offset, end=cd_offset + cd_size - 1, retained_bytes=capture_budget)
+                cd_body = get("zip_central_directory",
+                              start=cd_offset, end=cd_offset + cd_size - 1)
                 members = _parse_central_directory(cd_body)
                 member = members[MEMBER_NAME]
                 header_probe = min(LOCAL_HEADER_PROBE_BYTES,
                                    EXPECTED_ZIP_TOTAL_BYTES - member["local_header_offset"])
-                header_body, _ = _capture_range_get(
-                    client, NATIONAL_COMBINED_ZIP_URL, capture_root, "member_local_header",
-                    start=member["local_header_offset"],
-                    end=member["local_header_offset"] + header_probe - 1,
-                    retained_bytes=capture_budget)
+                header_body = get("member_local_header",
+                                  start=member["local_header_offset"],
+                                  end=member["local_header_offset"] + header_probe - 1)
                 data_offset = _parse_local_header(header_body, members)
                 if data_offset + member["compressed"] > cd_offset:
                     raise EPAFRSNationalNAICSError("zip_member_range_overlaps_directory")
@@ -717,11 +720,8 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
                 while chunk_start < data_offset + member["compressed"]:
                     chunk_end = min(chunk_start + MEMBER_CHUNK_BYTES - 1,
                                     data_offset + member["compressed"] - 1)
-                    chunk_body, _ = _capture_range_get(
-                        client, NATIONAL_COMBINED_ZIP_URL, capture_root,
-                        f"member_chunk_{chunk_index:03d}", start=chunk_start, end=chunk_end,
-                        retained_bytes=capture_budget)
-                    chunks.append(chunk_body)
+                    chunks.append(get(f"member_chunk_{chunk_index:03d}",
+                                     start=chunk_start, end=chunk_end))
                     chunk_start = chunk_end + 1
                     chunk_index += 1
                 if sum(len(chunk) for chunk in chunks) > MAX_MEMBER_BYTES_IN_MEMORY:
