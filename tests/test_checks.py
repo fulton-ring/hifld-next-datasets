@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -118,6 +119,11 @@ class CheckTests(unittest.TestCase):
             )
             self.assertFalse(result.passed)
             self.assertEqual(result.metadata["reason"].value, "missing_full_data_comparison")
+            blocked = Path(tmpdir) / "foo" / "bar" / "v999" / "metadata" / "baseline_comparison.json"
+            evidence = json.loads(blocked.read_text())
+            self.assertEqual(evidence["status"], "blocked")
+            self.assertEqual(evidence["reason_codes"], ["missing_comparison_configuration"])
+            self.assertEqual(evidence["acceptance"], "not_established_by_comparison")
 
     def test_equal_sampled_manifests_do_not_establish_full_data_acceptance(self):
         with tempfile.TemporaryDirectory() as tmpdir:
