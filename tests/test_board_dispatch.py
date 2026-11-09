@@ -60,6 +60,56 @@ class FakeAPI:
 
 
 class BoardDispatchTests(unittest.TestCase):
+    def test_daily_attempt_configuration_has_a_twelve_attempt_ceiling(self):
+        today = dispatch.datetime.fromtimestamp(NOW, dispatch.timezone.utc).date().isoformat()
+        api = FakeAPI([dict(run(n, issue=900+n), created_at=today+'T00:00:00Z') for n in range(4)])
+        self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW, daily_limit=12)), 1)
+        for value in (0, 13, True, '12'):
+            with self.assertRaises(ValueError):
+                dispatch.dispatch_cards([card()], FakeAPI(), now=NOW, daily_limit=value)
+
+    def test_backlog_intake_is_opt_in_and_only_requests_one_ready_move(self):
+        class BacklogAPI(FakeAPI):
+            def __init__(self, runs=None):
+                super().__init__(runs, pr=False)
+                self.current_status = 'Backlog'
+                self.moves = []
+            def __call__(self, kind, path, data=None):
+                if kind == 'repo' and path.endswith('/labels'):
+                    self.moves.append((path, data))
+                    return []
+                return super().__call__(kind, path, data)
+        api = BacklogAPI()
+        board = [card(12, 'Backlog'), card(13, 'Backlog'), card(14, 'Needs decision')]
+        self.assertEqual(dispatch.dispatch_cards(board, api, now=NOW), [])
+        self.assertEqual(api.moves, [])
+        self.assertEqual(dispatch.dispatch_cards(board, api, now=NOW, auto_backlog=True), [])
+        self.assertEqual(len(api.moves), 1)
+        self.assertEqual(api.moves[0][1], {'labels': ['move:ready']})
+        self.assertEqual(api.posts, [])
+
+    def test_backlog_dry_run_and_existing_attempts_never_mutate(self):
+        api = FakeAPI([run(role='implementation', issue=12)], pr=False)
+        api.current_status = 'Backlog'
+        self.assertEqual(dispatch.dispatch_cards([card(12, 'Backlog')], api, now=NOW, auto_backlog=True), [])
+        self.assertEqual(api.posts, [])
+
+    def test_backlog_respects_daily_capacity_pending_moves_and_parked_lanes(self):
+        today = dispatch.datetime.fromtimestamp(NOW, dispatch.timezone.utc).date().isoformat()
+        for runs in ([dict(run(n, issue=900+n), created_at=today+'T00:00:00Z') for n in range(4)],
+                     [run(role='implementation', issue=999, status='in_progress')]):
+            api = FakeAPI(runs, pr=False)
+            api.current_status = 'Backlog'
+            self.assertEqual(dispatch.dispatch_cards([card(12, 'Backlog')], api, now=NOW, auto_backlog=True), [])
+            self.assertEqual(api.posts, [])
+        api = FakeAPI(pr=False)
+        self.assertEqual(dispatch.dispatch_cards([card(12, 'Needs decision')], api, now=NOW, auto_backlog=True), [])
+
+        api = FakeAPI(pr=False)
+        api.current_status = 'Backlog'
+        self.assertEqual(dispatch.dispatch_cards([card(12, 'Backlog')], api, now=NOW, auto_backlog=True, dry_run=True), [])
+        self.assertEqual(api.posts, [])
+
     def test_two_reviews_pause_further_automatic_cycles_for_supervisor(self):
         class StopAPI(FakeAPI):
             def __init__(self):
@@ -141,8 +191,8 @@ class BoardDispatchTests(unittest.TestCase):
 
     def test_review_reservations_bound_delayed_github_ledger(self):
         api = FakeAPI()
-        self.assertEqual(len(dispatch.dispatch_cards([card(x) for x in range(1, 100)], api, now=NOW)), 2)
-        self.assertEqual(len(api.posts), 2)
+        self.assertEqual(len(dispatch.dispatch_cards([card(x) for x in range(1, 100)], api, now=NOW)), 1)
+        self.assertEqual(len(api.posts), 1)
 
     def test_one_sweep_fills_both_role_pools_without_an_actions_backlog(self):
         class MixedAPI(FakeAPI):
@@ -155,9 +205,9 @@ class BoardDispatchTests(unittest.TestCase):
         api = MixedAPI()
         board = [card(n) for n in range(1, 4)] + [card(n, 'Ready') for n in range(100, 110)]
         selected = dispatch.dispatch_cards(board, api, now=NOW)
-        self.assertEqual(sum(t['role'] == 'review' for t in selected), 2)
-        self.assertEqual(sum(t['role'] == 'implementation' for t in selected), 6)
-        self.assertEqual(len(api.posts), 8)
+        self.assertEqual(sum(t['role'] == 'review' for t in selected), 1)
+        self.assertEqual(sum(t['role'] == 'implementation' for t in selected), 1)
+        self.assertEqual(len(api.posts), 2)
 
     def test_acknowledged_reservations_survive_placeholder_run_titles(self):
         class PlaceholderAPI(FakeAPI):
@@ -168,7 +218,7 @@ class BoardDispatchTests(unittest.TestCase):
                 return result
         api = PlaceholderAPI()
         selected = dispatch.dispatch_cards([card(n) for n in range(1, 4)], api, now=NOW)
-        self.assertEqual(len(selected), 2)
+        self.assertEqual(len(selected), 1)
 
     def test_lane_change_before_dispatch_and_dry_run_never_post(self):
         api = FakeAPI()
@@ -178,15 +228,40 @@ class BoardDispatchTests(unittest.TestCase):
         self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW, dry_run=True)), 1)
         self.assertEqual(api.posts, [])
 
+    def test_four_today_attempts_hold_cards_without_burning_identity(self):
+        api = FakeAPI([dict(run(n, issue=900+n), created_at='2026-10-21T00:01:00Z') for n in range(4)])
+        today = dispatch.datetime.fromtimestamp(NOW, dispatch.timezone.utc).date().isoformat()
+        for entry in api.runs:
+            entry['created_at'] = today + 'T00:01:00Z'
+        self.assertEqual(dispatch.dispatch_cards([card()], api, now=NOW), [])
+        self.assertEqual(api.posts, [])
+        for entry in api.runs:
+            entry['created_at'] = '2000-01-01T00:01:00Z'
+        self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW)), 1)
+
+    def test_daily_cap_includes_local_reservations_once(self):
+        class MixedAPI(FakeAPI):
+            def __call__(self, kind, path, data=None):
+                result = super().__call__(kind, path, data)
+                if kind == 'board':
+                    number = result['data']['node']['content']['number']
+                    result['data']['node']['status']['name'] = 'Review' if number < 100 else 'Ready'
+                return result
+        today = dispatch.datetime.fromtimestamp(NOW, dispatch.timezone.utc).date().isoformat()
+        api = MixedAPI([dict(run(n, issue=900+n), created_at=today+'T00:00:00Z') for n in range(3)])
+        selected = dispatch.dispatch_cards([card(1), card(100, 'Ready')], api, now=NOW)
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(len(api.posts), 1)
+
     def test_completed_attempts_do_not_consume_concurrency(self):
         api = FakeAPI([run(n, issue=900+n) for n in range(99)])
         self.assertEqual(len(dispatch.dispatch_cards([card()], api, now=NOW)), 1)
 
-    def test_six_implementation_reservations_bound_delayed_ledger(self):
+    def test_one_implementation_reservation_bound_delayed_ledger(self):
         api = FakeAPI(pr=False)
         api.current_status = 'Ready'
         selected = dispatch.dispatch_cards([card(n, 'Ready') for n in range(1, 20)], api, now=NOW)
-        self.assertEqual(len(selected), 6)
+        self.assertEqual(len(selected), 1)
         self.assertTrue(all(x['role'] == 'implementation' for x in selected))
 
     def test_worker_slots_remain_full_when_both_review_slots_are_free(self):

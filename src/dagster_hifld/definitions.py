@@ -135,6 +135,14 @@ from dagster_hifld.assets.fuds_projects_points import (
     fuds_projects_points_draft_schedule,
     usace_fuds_projects_points_complete,
 )
+from dagster_hifld.assets.nfhl_nodes import (
+    nfhl_nodes_draft_schedule,
+    fema_nfhl_nodes_complete,
+)
+from dagster_hifld.assets.nfhl_hydrologic_reaches import (
+    nfhl_hydrologic_reaches_draft_schedule,
+    fema_nfhl_hydrologic_reaches_complete,
+)
 from dagster_hifld.assets.fuds_district_boundaries import (
     fuds_district_boundaries_draft_schedule,
     usace_fuds_program_district_boundaries_complete,
@@ -207,6 +215,11 @@ from dagster_hifld.assets.hf_areas_usace_ienc import (
     hf_areas_usace_ienc_draft_schedule,
     hf_areas_usace_ienc_complete,
     hf_areas_usace_ienc_draft_job,
+)
+from dagster_hifld.assets.land_region_areas_usace_ienc import (
+    land_region_areas_usace_ienc_draft_schedule,
+    land_region_areas_usace_ienc_complete,
+    land_region_areas_usace_ienc_draft_job,
 )
 
 from dagster_hifld.assets.principal_ports import (
@@ -1015,6 +1028,7 @@ defs = Definitions(
         courthouses_population_complete,
         usace_pylon_areas_complete,
         hf_areas_usace_ienc_complete,
+        land_region_areas_usace_ienc_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
@@ -1084,6 +1098,8 @@ defs = Definitions(
         ferc_historical_full_quality,
         fuds_program_division_boundaries_complete,
         bts_intermodal_freight_air_to_truck_complete,
+        fema_nfhl_nodes_complete,
+        fema_nfhl_hydrologic_reaches_complete,
     ],
     jobs=[
         bts_ferry_terminals_draft_refresh_job,
@@ -1111,6 +1127,7 @@ defs = Definitions(
         usgs_ems_stations_draft_refresh_job,
         usace_pylon_areas_draft_job,
         hf_areas_usace_ienc_draft_job,
+        land_region_areas_usace_ienc_draft_job,
         pylon_locations_draft_refresh_job,
         distance_marks_draft_refresh_job,
         recommended_tracks_draft_job,
@@ -1216,6 +1233,7 @@ defs = Definitions(
         census_tracts_draft_schedule,
         usace_pylon_areas_draft_schedule,
         hf_areas_usace_ienc_draft_schedule,
+        land_region_areas_usace_ienc_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
         noaa_territorial_draft_weekly_schedule,
@@ -1252,6 +1270,8 @@ defs = Definitions(
         epa_power_generation_draft_schedule,
         epa_icis_wastewater_draft_schedule,
         fuds_projects_points_draft_schedule,
+        nfhl_nodes_draft_schedule,
+        nfhl_hydrologic_reaches_draft_schedule,
         epa_frs_naics_draft_schedule,
         gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,

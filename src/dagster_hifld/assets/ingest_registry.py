@@ -8,6 +8,8 @@ from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volca
 from dagster_hifld.assets.usgs import usgs_aquifers
 from dagster_hifld.assets.ems_stations import usgs_ems_stations
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
+from dagster_hifld.assets.nfhl_nodes import fema_nfhl_nodes
+from dagster_hifld.assets.nfhl_hydrologic_reaches import fema_nfhl_hydrologic_reaches
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.epa_icis_wastewater import epa_icis_wastewater_treatment_plants
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
@@ -107,6 +109,9 @@ from dagster_hifld.assets.mooring_facility_locations_usace_ienc import (
     mooring_facility_locations_usace_ienc,
 )
 from dagster_hifld.assets.hf_areas_usace_ienc import hf_areas_usace_ienc_candidate
+from dagster_hifld.assets.land_region_areas_usace_ienc import (
+    land_region_areas_usace_ienc_candidate,
+)
 from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_usgs,
 )
@@ -237,6 +242,7 @@ hifld_ingest_assets = [
     floodwalls_usace_ienc,
     harbor_facility_locations_usace_ienc,
     mooring_facility_locations_usace_ienc,
+    land_region_areas_usace_ienc_candidate,
     hf_areas_usace_ienc_candidate,
     ferrous_metal_processing_plants_usgs,
     ferrous_metal_mines_candidate,
@@ -253,4 +259,6 @@ hifld_ingest_assets = [
     epa_frs_toxic_release_inventory,
     epa_frs_toxic_substances_control_act_tsca,
     bts_intermodal_freight_air_to_truck,
+    fema_nfhl_nodes,
+    fema_nfhl_hydrologic_reaches,
 ]
