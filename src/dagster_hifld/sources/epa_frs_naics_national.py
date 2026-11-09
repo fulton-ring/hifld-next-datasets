@@ -609,7 +609,17 @@ def _verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, s
         "metadata/resolved_provenance.json", "metadata/source/quality_manifest.json",
         "metadata/source/data_dictionary.json",
     }
-    allowed_keys = expected_keys | {f"{prefix}/{name}" for name in derived_names}
+    snapshot_names: set[str] = set()
+    manifest_descriptor = expected_objects.get("metadata/source_manifest.json")
+    if isinstance(manifest_descriptor, dict):
+        snapshot_names = {
+            "metadata/source/source_manifest.json",
+            f"metadata/source/version_{manifest_descriptor.get('sha256')}_source_manifest.json",
+        }
+    found_snapshots = {f"{prefix}/{name}" for name in snapshot_names} & actual_keys
+    if found_snapshots and len(found_snapshots) != len(snapshot_names):
+        raise EPAFRSNationalNAICSError("cached_catalog_source_snapshot_incomplete")
+    allowed_keys = expected_keys | {f"{prefix}/{name}" for name in derived_names | snapshot_names}
     if not expected_keys <= actual_keys or actual_keys - allowed_keys:
         raise EPAFRSNationalNAICSError("cached_candidate_storage_roster_changed")
     for name, descriptor in expected_objects.items():
@@ -618,6 +628,15 @@ def _verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, s
         if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
                 or storage.object_snapshot(key) != snapshot):
             raise EPAFRSNationalNAICSError("cached_candidate_object_integrity_failed:" + name)
+    for name in snapshot_names:
+        key = f"{prefix}/{name}"
+        if key not in actual_keys:
+            continue
+        snapshot = storage.object_snapshot(key)
+        if (snapshot is None or manifest_descriptor != {
+                "bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+                or storage.object_snapshot(key) != snapshot):
+            raise EPAFRSNationalNAICSError("cached_catalog_source_snapshot_changed:" + name)
     for name, receipt in capture_receipts.items():
         body = storage.read_key(f"{prefix}/raw/{name}.body")
         wire = storage.read_key(f"{prefix}/raw/{name}.wire")
@@ -674,7 +693,7 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
     try:
         if retained_capture_directory:
             capture_mode = "offline_retained_source_replay"
-            _, offline_receipts, offline_manifest_sha = _load_retained_capture(capture_root)
+            offline_manifest, offline_receipts, offline_manifest_sha = _load_retained_capture(capture_root)
             if offline_manifest_sha != retained_capture_manifest_sha256:
                 raise EPAFRSNationalNAICSError("retained_capture_manifest_digest_mismatch")
             captures = dict(offline_receipts)
@@ -758,8 +777,11 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
         version = content_derived_version(csv_sha, "", schema_sha, identity)
         prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
         state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-        capture_manifest, capture_manifest_sha = _write_capture_manifest(
-            capture_root, captures, sum(capture_budget))
+        if retained_capture_directory:
+            capture_manifest, capture_manifest_sha = offline_manifest, offline_manifest_sha
+        else:
+            capture_manifest, capture_manifest_sha = _write_capture_manifest(
+                capture_root, captures, sum(capture_budget))
         expected_output_names = {f"raw/{name}.{suffix}"
                                  for name in captures for suffix in ("body", "wire", "receipt.json")}
         expected_output_names |= {
