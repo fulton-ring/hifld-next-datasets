@@ -489,6 +489,12 @@ from dagster_hifld.assets.fws import (
     fws_cbrs_buffer_draft_refresh_schedule,
 )
 
+from dagster_hifld.assets.fws_cmt_locations import (
+    fws_cmt_locations_complete,
+    fws_cmt_locations_draft_refresh_job,
+    fws_cmt_locations_draft_refresh_schedule,
+)
+
 from dagster_hifld.assets.fws_map_panels import (
     fws_cbrs_map_panels_draft_refresh_job,
     fws_cbrs_map_panels_draft_refresh_schedule,
@@ -1036,6 +1042,7 @@ defs = Definitions(
         bsee_ocs_platforms_complete,
         proposed_critical_habitat_complete,
         usace_pile_locations_complete,
+        fws_cmt_locations_complete,
         usace_daymark_locations_complete,
         usace_dynamic_buoys_complete,
         usace_pipeline_areas_complete,
@@ -1157,6 +1164,7 @@ defs = Definitions(
         faa_aviation_draft_refresh_job,
         ibc_boundary_draft_refresh_job,
         fws_cbrs_buffer_draft_refresh_job,
+        fws_cmt_locations_draft_refresh_job,
         fws_cbrs_map_panels_draft_refresh_job,
         fws_cbrs_prohibitions_draft_refresh_job,
         fws_cbrs_units_draft_refresh_job,
@@ -1273,6 +1281,7 @@ defs = Definitions(
         faa_aviation_draft_refresh_schedule,
         ibc_boundary_draft_refresh_schedule,
         fws_cbrs_buffer_draft_refresh_schedule,
+        fws_cmt_locations_draft_refresh_schedule,
         fws_cbrs_map_panels_draft_refresh_schedule,
         fws_cbrs_prohibitions_draft_refresh_schedule,
         fws_cbrs_units_draft_refresh_schedule,

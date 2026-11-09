@@ -87,6 +87,7 @@ from dagster_hifld.assets.campus_preservation import ornl_campus_historical_pres
 
 from dagster_hifld.assets.ibc import ibc_canada_us_border
 from dagster_hifld.assets.fws import fws_cbrs_buffer_zone
+from dagster_hifld.assets.fws_cmt_locations import fws_cmt_locations
 from dagster_hifld.assets.fws_map_panels import fws_cbrs_map_panels
 from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
 from dagster_hifld.assets.fws_units import fws_cbrs_units
@@ -219,6 +220,7 @@ hifld_ingest_assets = [
     usace_airport_area_ienc,
     ibc_canada_us_border,
     fws_cbrs_buffer_zone,
+    fws_cmt_locations,
     fws_cbrs_map_panels,
     fws_cbrs_prohibitions,
     fws_cbrs_units,
