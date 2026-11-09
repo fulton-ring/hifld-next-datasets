@@ -57,20 +57,30 @@ class Fixture:
         ).encode("utf-8")
         self.member_names = frozenset({"NATIONAL_NAICS_FILE.CSV", "NATIONAL_FACILITY_FILE.CSV"})
 
+    @staticmethod
+    def _stream(body: bytes):
+        def generate():
+            for offset in range(0, len(body), 8192):
+                yield body[offset:offset + 8192]
+        return generate()
+
     def handler(self, request: httpx.Request) -> httpx.Response:
         if str(request.url) == source.AUTHORITY_PAGE_URL:
-            return httpx.Response(200, content=self.page_bytes, request=request,
-                                 headers={"Accept-Ranges": "bytes"})
+            return httpx.Response(200, content=self._stream(self.page_bytes), request=request,
+                                 headers={"Accept-Ranges": "bytes",
+                                          "Content-Length": str(len(self.page_bytes))})
         if str(request.url) == source.NATIONAL_COMBINED_ZIP_URL:
             start_end = request.headers.get("Range")
             if not start_end:
-                return httpx.Response(200, content=self.zip_bytes, request=request)
+                return httpx.Response(200, content=self._stream(self.zip_bytes), request=request)
             start, end = (int(part) for part in start_end.removeprefix("bytes=").split("-"))
+            body = self.zip_bytes[start:end + 1]
             return httpx.Response(
-                206, content=self.zip_bytes[start:end + 1], request=request,
+                206, content=self._stream(body), request=request,
                 headers={
                     "Accept-Ranges": "bytes",
                     "Content-Range": f"bytes {start}-{end}/{len(self.zip_bytes)}",
+                    "Content-Length": str(len(body)),
                     "ETag": '"fixture-etag"',
                     "Last-Modified": "Mon, 09 Nov 2026 00:00:00 GMT",
                 },
