@@ -29,7 +29,7 @@ def building_locations_population_complete(candidate: dict) -> AssetCheckResult:
     return AssetCheckResult(passed=(candidate.get("feature_count") == 892
                                     and candidate.get("source_population_complete") is True), metadata={
         "feature_count": candidate.get("feature_count", 0),
-        "native_id_sha256": candidate.get("native_id_sha256", "missing"),
+        "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
     })
 

@@ -33,7 +33,8 @@ SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC?f=pjson"
 BTS_FEATURE_CLASSES_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"
 LAYER_ID = 5
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
+PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PUBLISHER = "U.S. Army Corps of Engineers, Inland Electronic Navigational Charts Program"
 EXPECTED_COUNT = 892
@@ -134,7 +135,7 @@ def _validate(captures: dict[str,tuple[bytes,dict]]):
         raise ValueError("source_id_roster_drift")
     if docs["count_before"].get("count")!=EXPECTED_COUNT or docs["count_after"].get("count")!=EXPECTED_COUNT:
         raise ValueError("source_count_drift")
-    if docs["bts_item"].get("id")!=BTS_ITEM_ID or docs["bts_item"].get("owner")!="USDOT_BTS": raise ValueError("bts_item_identity_drift")
+    if docs["bts_item"].get("id")!=BTS_ITEM_ID or docs["bts_item"].get("owner")!="USDOT_BTS" or docs["bts_item"].get("type")!="PDF": raise ValueError("bts_item_identity_drift")
     bts_description=" ".join(str(docs["bts_item"].get(k,"")) for k in ("title","description"))
     if ("Inland Electronic Navigational Charts" not in bts_description or "updated bi-monthly" not in bts_description
         or BTS_FEATURE_CLASSES_URL not in bts_description or "USACE_IENC_Master_Service_gdb.zip" not in bts_description):
@@ -191,6 +192,9 @@ def _validate(captures: dict[str,tuple[bytes,dict]]):
         "source_geometry_sha256":_sha(_canonical([[f["attributes"]["OBJECTID"],f["geometry"]] for f in features])),
         "source_extent":extent,"source_bounds":bounds,"source_geometry_type":"esriGeometryPoint","source_wkid":4326,
         "source_coverage_scope":"Complete current USACE IENC BUILDING_SINGLE_POINT layer, inland chart coverage only; not nationwide building coverage.",
+        "bts_catalog_item_id":BTS_ITEM_ID,"prior_bts_catalog_item_id":PRIOR_BTS_ITEM_ID,
+        "bts_catalog_item_successor_review_pending":True,
+        "drift_guard":f"Current BTS PDF item {BTS_ITEM_ID} distribution/delegation markers, official service-directory membership, exact service/layer identity, schema, CRS, extent, count and before/after ID roster are checked; prior BTS item {PRIOR_BTS_ITEM_ID} is retained as a separate historical record with unaccepted succession.",
         "source_population_complete":True}
     return layer["fields"],features,audit
 
@@ -285,7 +289,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
     audit.update({"source_capture_evidence_sha256":capture_hash,"source_capture_evidence":capture_identity,
         "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
         "baseline_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
-    inputs=[{"input_id":n,"producer":"USDOT Bureau of Transportation Statistics" if n=="bts_item" else PUBLISHER,
+    inputs=[{"input_id":n,"producer":"USDOT BTS IENC NTAD item" if n=="bts_item" else PUBLISHER,
         "host":urlsplit(r["url"]).hostname,"role":"official_distributor" if n=="bts_item" else "producer_publication",
         "canonical_url":BTS_ITEM_URL if n=="bts_item" else LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],
         "retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],
@@ -293,9 +297,10 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
         "release_date_unknown_reason":"The service and official distribution item do not publish a release date for the captured layer.",
         "license":"Rights review pending.","attribution":"USACE IENC; final attribution review pending.",
         **({"distributor":"USDOT Bureau of Transportation Statistics (BTS)","delegation_evidence":{
-            "bts_item_url":BTS_ITEM_URL,"bts_item_owner":"USDOT_BTS","item_linked_feature_classes_service":BTS_FEATURE_CLASSES_URL,
+            "bts_item_url":BTS_ITEM_URL,"bts_item_id":BTS_ITEM_ID,"bts_item_owner":"USDOT_BTS","bts_item_type":"PDF",
+            "item_linked_feature_classes_service":BTS_FEATURE_CLASSES_URL,
             "item_linked_master_geodatabase":"https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip",
-            "official_master_service_directory":SERVICE_DIRECTORY_URL,
+            "official_master_service_directory":SERVICE_DIRECTORY_URL,"prior_bts_item_id":PRIOR_BTS_ITEM_ID,
             "relationship_note":"BTS lists the Feature_Classes endpoint and master GDB; the exact MapServer route captured here is separately listed in USACE's ArcGIS directory, but direct link equivalence is unverified."}}
             if n=="bts_item" else {})} for n,r in sorted(receipts.items())]
     manifest={"schema_version":1,"approved":False,"title":"Building Locations (USACE IENC)",
@@ -304,7 +309,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
         "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"inputs":inputs,
         "transformations":[{"operation":"Native ESRI Point to typed GeoParquet","parameters":{"fields":"all declared attributes and values preserved","id":"OBJECTID and Feature_ID preserved unchanged",
             "crs":"EPSG:4326","xy":"native X/Y retained with no reprojection or geometry repair","candidate_status":"unapproved; archive equivalence, source edition, contract, rights, baseline and release decisions pending"}}],
-        "lineage":"USDOT BTS ArcGIS item 3607d485a9854d6fa458bf507058ceae describes bi-monthly USACE/AGC IENC updates and links the IENC_Feature_Classes service and master file geodatabase. The captured layer is in the separately listed USACE_IENC_Master_Service service directory; exact deployment equivalence to the BTS linked layer/GDB and HIFLD archive remains unverified. This is an inland chart class, not a nationwide buildings inventory.",
+        "lineage":"Current public USDOT BTS IENC NTAD PDF item 7ec34864c8804468a9cf52d437fe4b6c (owner USDOT_BTS) describes bi-monthly USACE/AGC IENC updates and links the IENC_Feature_Classes service and master file geodatabase. The prior BTS map-service item 3607d485a9854d6fa458bf507058ceae returned an anonymous-access denial; item succession and archive equivalence remain unverified and unaccepted. The captured layer is in the separately listed USACE_IENC_Master_Service service directory; exact deployment equivalence to the BTS linked layer/GDB and HIFLD archive remains unverified. This is an inland chart class, not a nationwide buildings inventory.",
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native point coordinates and all attributes retained without reprojection.","objects":[{"path":output_path,"bytes":len(parquet),"sha256":_sha(parquet)}]}}},
         "unsupported_output_formats":{"geopackage":"No mapping approved.","pmtiles":"No display policy approved."}}
     validate_release_provenance(manifest);validate_output_policy(manifest);provenance_projection(manifest)

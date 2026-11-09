@@ -29,7 +29,7 @@ class BuildingLocationsSourceTests(unittest.TestCase):
                 "Source_Dataset":"IENC","Feature_ID":f"USACE-{oid}"}
             attrs.append(row);features.append({"attributes":row,"geometry":{"x":x,"y":y,"spatialReference":{"wkid":4326}}})
         service={"mapName":"USACE_IENC_Master_Service","layers":[{"id":5,"name":"BUILDING_SINGLE_POINT"}]}
-        docs={"bts_item":{"id":source.BTS_ITEM_ID,"owner":"USDOT_BTS","title":"Inland Electronic Navigational Charts",
+        docs={"bts_item":{"id":source.BTS_ITEM_ID,"owner":"USDOT_BTS","type":"PDF","title":"Inland Electronic Navigational Charts",
                 "description":f"updated bi-monthly {source.BTS_FEATURE_CLASSES_URL} USACE_IENC_Master_Service_gdb.zip"},
             "directory":{"services":[{"name":"IENC/USACE_IENC_Master_Service","type":"MapServer"}]},
             "service_before":service,"service_after":service,"layer_before":layer,"layer_after":layer,
@@ -63,6 +63,19 @@ class BuildingLocationsSourceTests(unittest.TestCase):
         docs=self.fixture();docs["layer_before"]["fields"]=docs["layer_before"]["fields"][:-1];docs["layer_after"]=docs["layer_before"]
         with self.assertRaisesRegex(ValueError,"source_schema_drift"):
             self.validate(docs)
+
+    def test_prior_bts_item_and_missing_pdf_type_fail_closed(self):
+        self.assertEqual(source.PRIOR_BTS_ITEM_ID,"3607d485a9854d6fa458bf507058ceae")
+        docs=self.fixture();docs["bts_item"]["id"]=source.PRIOR_BTS_ITEM_ID
+        with self.assertRaisesRegex(ValueError,"bts_item_identity_drift"):
+            self.validate(docs)
+        docs=self.fixture();docs["bts_item"].pop("type")
+        with self.assertRaisesRegex(ValueError,"bts_item_identity_drift"):
+            self.validate(docs)
+        fields,features,audit=self.validate(self.fixture())
+        self.assertEqual(audit["bts_catalog_item_id"],source.BTS_ITEM_ID)
+        self.assertEqual(audit["prior_bts_catalog_item_id"],source.PRIOR_BTS_ITEM_ID)
+        self.assertTrue(audit["bts_catalog_item_successor_review_pending"])
 
     def test_conflicting_crs_declarations_and_layer_drift_fail_closed(self):
         for target,label in (("layer_before","source_layer_crs_drift"),("page_000","page_000_response_crs_drift")):

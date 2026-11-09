@@ -15,14 +15,18 @@
     "release_date_status": "No edition or release date present in source metadata; fetch date is not release date"
   },
   "related_distribution_evidence": {
-    "item_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+    "current_item_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
+    "current_item_id": "7ec34864c8804468a9cf52d437fe4b6c",
     "owner": "USDOT_BTS",
+    "type": "PDF",
     "title": "Inland Electronic Navigational Charts",
-    "update_statement": "Bi-monthly updates",
+    "update_statement": "Bi-monthly updates (USACE/Army Geospatial Center)",
     "linked_services": [
       "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"
     ],
-    "assessment": "Related BTS distribution evidence exists, but metadata does not establish that the linked service is this exact USACE_IENC_Master_Service MapServer route. No exact delegation assertion is made."
+    "prior_item_id": "3607d485a9854d6fa458bf507058ceae",
+    "prior_item_status": "Anonymous-access denial (GWM_0003) observed since 2026-10-21; retained as a separate historical record with item succession unaccepted",
+    "assessment": "Current public BTS NTAD PDF item links the IENC feature-class service and master geodatabase, but its metadata does not establish that the linked endpoint is this exact USACE_IENC_Master_Service MapServer route. No exact delegation assertion is made."
   },
   "historical_inventory": {
     "archive_url": "https://www.datalumos.org/datalumos/project/238828/version/V1/view",
