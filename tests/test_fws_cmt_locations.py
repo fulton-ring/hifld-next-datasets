@@ -18,7 +18,7 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.sources import fws_cmt_locations as source
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.fws_cmt_locations import (
-    fws_cmt_locations_complete, fws_cmt_locations_draft_schedule, fws_cmt_locations,
+    fws_cmt_locations_complete, fws_cmt_locations_draft_refresh_schedule, fws_cmt_locations,
 )
 
 R = source.SPHERE_RADIUS_M
@@ -130,7 +130,7 @@ def _edit(docs: dict, name: str) -> dict:
 class FwsCmtLocationsTests(unittest.TestCase):
     def test_registered_stopped_draft_and_unapproved_release_gate(self):
         self.assertIn(fws_cmt_locations, hifld_ingest_assets)
-        self.assertEqual(fws_cmt_locations_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
+        self.assertEqual(fws_cmt_locations_draft_refresh_schedule.default_status, DefaultScheduleStatus.STOPPED)
         candidate = {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True,
                      "null_coordinate_count": source.EXPECTED_NULL_COORDINATE_COUNT,
                      "geometry_attribute_disagreement_count":

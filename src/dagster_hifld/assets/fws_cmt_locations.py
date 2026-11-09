@@ -68,13 +68,13 @@ def fws_cmt_locations_complete(candidate: dict) -> AssetCheckResult:
     })
 
 
-fws_cmt_locations_draft_job = define_asset_job(
+fws_cmt_locations_draft_refresh_job = define_asset_job(
     "fws_cmt_locations_draft_refresh",
     selection=AssetSelection.assets(fws_cmt_locations),
 )
-fws_cmt_locations_draft_schedule = ScheduleDefinition(
+fws_cmt_locations_draft_refresh_schedule = ScheduleDefinition(
     name="fws_cmt_locations_draft_refresh_schedule",
-    job=fws_cmt_locations_draft_job,
+    job=fws_cmt_locations_draft_refresh_job,
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
