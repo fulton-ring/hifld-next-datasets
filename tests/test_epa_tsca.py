@@ -1,4 +1,5 @@
 from urllib.parse import parse_qs, urlsplit
+import json
 import unittest
 import hashlib
 import tempfile
@@ -9,24 +10,31 @@ import pyarrow as pa
 
 from dagster_hifld.assets.epa_tsca import (
     epa_frs_toxic_substances_control_act_tsca,
+    epa_frs_tsca_complete,
     epa_tsca_draft_schedule,
 )
 from dagster_hifld.definitions import defs
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import epa_tsca
 from dagster_hifld.sources.epa_tsca import (
     DATASET_SLUG,
     EXPECTED_COUNT,
     ITEM_ID,
     LAYER_ID,
+    LAYER_NAME,
     LAYER_URL,
     LICENSE_URL,
     PROPOSED_PHYSICAL_TYPE_MAPPING,
     PAGE_SIZE,
+    SERVICE_URL,
+    _canonical,
     _item_provenance,
     _arrow_type,
     _feature_urls,
     _finalize_epa_tsca,
+    _validate_captures,
+    capture_epa_tsca,
 )
-from dagster_hifld.resources import StagingStorageResource
 
 
 class EpaTscaDraftTests(unittest.TestCase):
@@ -112,6 +120,223 @@ class EpaTscaDraftTests(unittest.TestCase):
                     {"portal_item":(raw, receipt)}, fields, extracted, provenance)
             self.assertEqual(first["version"], second["version"])
             self.assertTrue(second.get("reused"))
+
+
+# Plain field profile of the pinned EPA_GEO TSCA layer (captured 2026-11-09 from
+# FeatureServer/0 layer metadata; recomputes by the module's own _profile_schema to
+# the pinned schema sha256 f0f50c2204dfd72bcc5df3b2faae12f45b9b9c0f02c059078a1bfc2d2054184c).
+_LIVE_FIELD_PROFILE = [
+    {'name': 'OBJECTID', 'type': 'esriFieldTypeOID', 'alias': 'Object ID', 'nullable': False, 'domain': None},
+    {'name': 'REGISTRY_ID', 'type': 'esriFieldTypeString', 'alias': 'Registry ID', 'length': 12, 'nullable': False, 'domain': None},
+    {'name': 'PRIMARY_NAME', 'type': 'esriFieldTypeString', 'alias': 'Facility Site Name', 'length': 150, 'nullable': True, 'domain': None},
+    {'name': 'LOCATION_ADDRESS', 'type': 'esriFieldTypeString', 'alias': 'Location Address', 'length': 100, 'nullable': True, 'domain': None},
+    {'name': 'CITY_NAME', 'type': 'esriFieldTypeString', 'alias': 'City Name', 'length': 60, 'nullable': True, 'domain': None},
+    {'name': 'COUNTY_NAME', 'type': 'esriFieldTypeString', 'alias': 'County Name', 'length': 35, 'nullable': True, 'domain': None},
+    {'name': 'FIPS_CODE', 'type': 'esriFieldTypeString', 'alias': 'County and State FIPS Code ', 'length': 5, 'nullable': True, 'domain': None},
+    {'name': 'STATE_CODE', 'type': 'esriFieldTypeString', 'alias': 'State USPS Code', 'length': 5, 'nullable': True, 'domain': None},
+    {'name': 'POSTAL_CODE', 'type': 'esriFieldTypeString', 'alias': 'Location Zip Code', 'length': 14, 'nullable': True, 'domain': None},
+    {'name': 'LATITUDE83', 'type': 'esriFieldTypeDouble', 'alias': 'Latitude Measure (NAD83)', 'nullable': True, 'domain': None},
+    {'name': 'LONGITUDE83', 'type': 'esriFieldTypeDouble', 'alias': 'Longitude Measure (NAD83)', 'nullable': True, 'domain': None},
+    {'name': 'HUC8_CODE', 'type': 'esriFieldTypeString', 'alias': 'Hydrologic Unit Code (HUC) 8-digit ', 'length': 8, 'nullable': True, 'domain': None},
+    {'name': 'ACCURACY_VALUE', 'type': 'esriFieldTypeInteger', 'alias': 'Location Accuracy', 'nullable': True, 'domain': None},
+    {'name': 'COLLECT_MTH_DESC', 'type': 'esriFieldTypeString', 'alias': 'Location Collection Method Description', 'length': 250, 'nullable': True, 'domain': None},
+    {'name': 'REF_POINT_DESC', 'type': 'esriFieldTypeString', 'alias': 'Reference Point Description', 'length': 250, 'nullable': True, 'domain': None},
+    {'name': 'CREATE_DATE', 'type': 'esriFieldTypeDate', 'alias': 'Record Creation Date', 'length': 8, 'nullable': False, 'domain': None},
+    {'name': 'UPDATE_DATE', 'type': 'esriFieldTypeDate', 'alias': 'Record Update Date', 'length': 8, 'nullable': True, 'domain': None},
+    {'name': 'LAST_REPORTED_DATE', 'type': 'esriFieldTypeDate', 'alias': 'Last Reported Date', 'length': 8, 'nullable': True, 'domain': None},
+    {'name': 'FAC_URL', 'type': 'esriFieldTypeString', 'alias': 'Facility URL', 'length': 100, 'nullable': True, 'domain': None},
+    {'name': 'PGM_SYS_ID', 'type': 'esriFieldTypeString', 'alias': 'Program System ID', 'length': 30, 'nullable': False, 'domain': None},
+    {'name': 'PGM_SYS_ACRNM', 'type': 'esriFieldTypeString', 'alias': 'Program System Acronym', 'length': 20, 'nullable': False, 'domain': None},
+    {'name': 'INTEREST_TYPE', 'type': 'esriFieldTypeString', 'alias': 'Environmental Interest Type', 'length': 60, 'nullable': False, 'domain': None},
+    {'name': 'PROGRAM_URL', 'type': 'esriFieldTypeString', 'alias': 'Program URL', 'length': 100, 'nullable': True, 'domain': None},
+    {'name': 'PGM_REPORT_URL', 'type': 'esriFieldTypeString', 'alias': 'Program Report URL', 'length': 11, 'nullable': True, 'domain': None},
+    {'name': 'PUBLIC_IND', 'type': 'esriFieldTypeString', 'alias': 'Public Indicator', 'length': 1, 'nullable': True, 'domain': None},
+    {'name': 'ACTIVE_STATUS', 'type': 'esriFieldTypeString', 'alias': 'Active Status', 'length': 50, 'nullable': True, 'domain': None},
+    {'name': 'FEDERAL_AGENCY_NAME', 'type': 'esriFieldTypeString', 'alias': 'Federal Agency Name', 'length': 100, 'nullable': True, 'domain': None},
+    {'name': 'HUC_12', 'type': 'esriFieldTypeString', 'alias': 'Hydrologic Unit Code (HUC) 12-digit', 'length': 12, 'nullable': True, 'domain': None},
+    {'name': 'FEDERAL_LAND_IND', 'type': 'esriFieldTypeString', 'alias': 'Federal Land Indicator', 'length': 1, 'nullable': True, 'domain': None},
+    {'name': 'FED_FACILITY_CODE', 'type': 'esriFieldTypeString', 'alias': 'Federal Facility Code', 'length': 1, 'nullable': True, 'domain': None},
+    {'name': 'EPA_REGION_CODE', 'type': 'esriFieldTypeString', 'alias': 'EPA Region Code', 'length': 2, 'nullable': True, 'domain': None},
+    {'name': 'KEY_FIELD', 'type': 'esriFieldTypeString', 'alias': 'Key Field', 'length': 50, 'nullable': True, 'domain': None},
+]
+
+
+
+def _page_body(page):
+    return json.dumps(page, separators=(",", ":")).encode()
+
+
+def _drift_metadata_docs():
+    portal_item = {
+        "id": ITEM_ID, "owner": "EPA_GEO", "access": "public", "url": SERVICE_URL,
+        "title": "EPA Facility Registry Service - Toxic Substances Control Act (TSCA)",
+        "licenseInfo": ("Unless otherwise specified, EPA data are in the public domain under "
+                        "17 U.S.C. \u00a7 105. See <a href=\"" + LICENSE_URL + "\">license</a>."),
+        "accessInformation": "This EPA Geospatial dataset is generated by the EPA FRS Support team for TSCA.",
+    }
+    service = {"serviceItemId": ITEM_ID, "layers": [{"id": LAYER_ID, "name": LAYER_NAME}]}
+    layer = {"name": LAYER_NAME, "geometryType": "esriGeometryPoint",
+             "extent": {"spatialReference": {"latestWkid": 4269}}, "fields": _LIVE_FIELD_PROFILE}
+    return {"portal_item": portal_item, "service_before": service,
+            "service_after": json.loads(json.dumps(service)),
+            "layer_before": layer, "layer_after": json.loads(json.dumps(layer))}
+
+
+def _sample_attributes(oid):
+    attributes = {}
+    for field in _LIVE_FIELD_PROFILE:
+        name, kind = field["name"], field["type"]
+        if name == "OBJECTID":
+            value = oid
+        elif name == "REGISTRY_ID":
+            value = f"{oid:012d}"
+        elif kind == "esriFieldTypeDate":
+            value = 1756252800000 + oid
+        elif kind == "esriFieldTypeInteger":
+            value = oid * 10
+        elif kind == "esriFieldTypeDouble":
+            value = 38.0 + oid / 10
+        else:
+            value = f"{name}-{oid}"
+        attributes[name] = value
+    return attributes
+
+
+def _validated_packet(oids):
+    features = [{"attributes": _sample_attributes(oid),
+                 "geometry": {"x": -77.0 + oid, "y": 38.0 + oid}} for oid in oids]
+    docs = {
+        **_drift_metadata_docs(),
+        "count_before": {"count": len(oids)}, "count_after": {"count": len(oids)},
+        "ids_before": {"objectIds": list(oids[::-1])},
+        "ids_after": {"objectIds": list(oids[::-1])},
+        "ids_seed": {"objectIds": list(oids)},
+    }
+    captures = {"epa_data_sources_page": (b"FRS data sources", {})}
+    captures.update({name: (_canonical(value), {}) for name, value in docs.items()})
+    captures["page_000"] = (_page_body({"features": features, "spatialReference": {"latestWkid": 4269}}), {})
+    return captures
+
+
+def _drifted_live_packet(live_count):
+    """Observed drifted population shape: live counts and contiguous rosters."""
+    ids = list(range(1, live_count + 1))
+    docs = {
+        **_drift_metadata_docs(),
+        "count_before": {"count": live_count}, "count_after": {"count": live_count},
+        "ids_before": {"objectIds": ids}, "ids_after": {"objectIds": ids},
+        "ids_seed": {"objectIds": ids},
+        **{f"page_{i:03d}": {"features": [], "spatialReference": {"latestWkid": 4269}}
+           for i in range((26454 + PAGE_SIZE - 1) // PAGE_SIZE)},
+    }
+    captures = {"epa_data_sources_page": (b"FRS data sources", {})}
+    captures.update({name: (_canonical(value), {}) for name, value in docs.items()})
+    return captures
+
+
+class EpaTscaSourceDriftTests(unittest.TestCase):
+    """Fail-closed regressions for the observed 2026-11 TSCA population drift.
+
+    The live EPA layer reported 26,466 records on 2026-11-08 and 26,482 on
+    2026-11-09 against the pinned 26,454; the producer documents OBJECTIDs as
+    temporary per refresh, so counts and ID rosters never imply entity-level
+    additions or removals. These tests pin the refusal behavior, not the drift.
+    """
+
+    def test_live_count_drift_fails_closed_at_production_pin(self):
+        for live_count in (26466, 26482):
+            with self.assertRaisesRegex(ValueError, "source_count_drift"):
+                _validate_captures(_drifted_live_packet(live_count))
+        self.assertEqual(EXPECTED_COUNT, 26454)
+
+    def test_id_roster_gates_fail_closed_and_a_filled_roster_pin_enforces(self):
+        with patch.object(epa_tsca, "EXPECTED_COUNT", 3):
+            _, _, baseline = _validate_captures(_validated_packet((1, 2, 3)))
+            self.assertEqual(baseline["audit"]["source_feature_count"], 3)
+            roster_sha = baseline["audit"]["source_id_sha256"]
+
+            drifted = _validated_packet((1, 2, 3))
+            ids = json.loads(drifted["ids_after"][0])
+            ids["objectIds"].append(4)
+            drifted["ids_after"] = (_canonical(ids), {})
+            with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+                _validate_captures(drifted)
+
+            drifted = _validated_packet((1, 2, 3))
+            drifted["ids_seed"] = (_canonical({"objectIds": [1, 2, 4]}), {})
+            with self.assertRaisesRegex(ValueError, "source_id_population_changed_before_capture"):
+                _validate_captures(drifted)
+
+            with patch.object(epa_tsca, "EXPECTED_ID_SHA256", roster_sha):
+                with self.assertRaisesRegex(ValueError, "source_id_roster_drift"):
+                    _validate_captures(_validated_packet((1, 2, 5)))
+
+    def test_record_digest_isolates_value_reassignment_under_constant_roster(self):
+        with patch.object(epa_tsca, "EXPECTED_COUNT", 3):
+            _, _, before = _validate_captures(_validated_packet((1, 2, 3)))
+            reassigned = _validated_packet((1, 2, 3))
+            page = json.loads(reassigned["page_000"][0])
+            first, third = page["features"][0], page["features"][2]
+            first["attributes"]["REGISTRY_ID"], third["attributes"]["REGISTRY_ID"] = (
+                third["attributes"]["REGISTRY_ID"], first["attributes"]["REGISTRY_ID"])
+            reassigned["page_000"] = (_page_body(page), {})
+            _, _, after = _validate_captures(reassigned)
+            self.assertEqual(after["audit"]["source_feature_count"], before["audit"]["source_feature_count"])
+            self.assertEqual(after["audit"]["source_id_sha256"], before["audit"]["source_id_sha256"])
+            self.assertEqual(after["audit"]["source_geometry_sha256"], before["audit"]["source_geometry_sha256"])
+            self.assertNotEqual(after["audit"]["source_record_sha256"], before["audit"]["source_record_sha256"])
+
+            with patch.object(epa_tsca, "EXPECTED_RECORD_SHA256", before["audit"]["source_record_sha256"]):
+                with self.assertRaisesRegex(ValueError, "source_value_or_geometry_baseline_drift"):
+                    _validate_captures(reassigned)
+
+            moved = _validated_packet((1, 2, 3))
+            page = json.loads(moved["page_000"][0])
+            page["features"][1]["geometry"]["y"] += 1.25
+            moved["page_000"] = (_page_body(page), {})
+            with patch.object(epa_tsca, "EXPECTED_GEOMETRY_SHA256", before["audit"]["source_geometry_sha256"]):
+                with self.assertRaisesRegex(ValueError, "source_geometry_or_coverage_drift"):
+                    _validate_captures(moved)
+
+    def test_seed_count_drift_quarantines_partial_capture_and_keeps_pin(self):
+        seed = _canonical({"objectIds": [1, 2, 3]})
+
+        def drifted_seed_get(_client, url, capture_root, name, *, max_bytes):
+            (capture_root / f"{name}.body").write_bytes(seed)
+            (capture_root / f"{name}.wire").write_bytes(seed)
+            receipt = {"method": "GET", "url": url, "final_url": url,
+                       "observed_at": "2026-11-09T00:00:00Z", "status": 200, "complete_body": True,
+                       "bytes": len(seed), "sha256": hashlib.sha256(seed).hexdigest(),
+                       "wire_bytes": len(seed), "wire_sha256": hashlib.sha256(seed).hexdigest(),
+                       "content_encoding": "identity", "content_length": len(seed), "error_code": None}
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return seed, receipt
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"), use_local=True, backend="local")
+            with patch.object(epa_tsca, "EXPECTED_COUNT", 2), \
+                 patch.object(epa_tsca, "capture_get", side_effect=drifted_seed_get):
+                with self.assertRaisesRegex(ValueError, "source_seed_id_count_drift"):
+                    capture_epa_tsca(storage, version="synthetic-seed-drift",
+                                     capture_directory=str(Path(tmp) / "captures"))
+            quarantine = storage.list_prefix("_quarantine/" + DATASET_SLUG)
+            self.assertTrue(any(key.endswith("/raw/ids_seed.body") for key in quarantine))
+            self.assertTrue(any(key.endswith("/raw/ids_seed.wire") for key in quarantine))
+            self.assertTrue(any(key.endswith("/raw/ids_seed.receipt.json") for key in quarantine))
+            failure_key = next(key for key in quarantine if key.endswith("/metadata/failure.json"))
+            failure = json.loads(storage.read_key(failure_key))
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"], ["ids_seed"])
+            self.assertEqual(storage.list_prefix(DATASET_SLUG), [])
+        self.assertEqual(epa_tsca.EXPECTED_COUNT, 26454)
+
+    def test_blocking_check_refuses_observed_live_population_shapes(self):
+        for live_count in (26466, 26482):
+            result = epa_frs_tsca_complete({"feature_count": live_count, "source_null_geometry_count": 0})
+            self.assertFalse(result.passed)
+            self.assertEqual(result.metadata["complete_source_population"].value, live_count)
+        pinned = epa_frs_tsca_complete({"feature_count": 26454, "source_null_geometry_count": 0})
+        self.assertTrue(pinned.passed)
 
 
 if __name__ == "__main__":
