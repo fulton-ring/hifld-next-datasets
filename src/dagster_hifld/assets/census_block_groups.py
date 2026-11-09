@@ -1,6 +1,6 @@
 """Registered, stopped local refresh for the exact Census 2024 Block_Group source."""
 from dagster import (
-    AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, EnvVar,
+    AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
@@ -77,8 +77,8 @@ census_block_groups_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
     run_config={"ops": {"ingest__census_block_groups_3__census_block_groups_3": {
         "config": {
-            "archive_path": EnvVar("CENSUS_BLOCK_GROUPS_ARCHIVE_PATH"),
-            "receipt_path": EnvVar("CENSUS_BLOCK_GROUPS_RECEIPT_PATH"),
+            "archive_path": {"env": "CENSUS_BLOCK_GROUPS_ARCHIVE_PATH"},
+            "receipt_path": {"env": "CENSUS_BLOCK_GROUPS_RECEIPT_PATH"},
         },
     }}},
 )

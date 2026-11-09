@@ -1,5 +1,22 @@
 ## Agent development practices for `hifld-next-datasets`
 
+### Scope: HIFLD Next vs civicdata
+
+- **HIFLD Next** holds the state of the world: reference features, usually with geometry — jurisdiction boundaries
+  (states, counties, county subdivisions, places, districts), infrastructure (power plants, substations, towers,
+  pipelines, dams), facilities and service territories. Public, versioned releases.
+- **civicdata** (`fulton-ring/bigass-data-masheen`) holds dated records of actions — filings, applications, permits,
+  violations, interconnection requests, contracts, incentives, notices, meeting records and their documents — and
+  joins to HIFLD Next by identifiers (GEOID, OCD ID, feature IDs). It serves no geometry; it reads HIFLD Next's
+  published GeoParquet at a pinned release.
+- The test: is it a *feature* (it exists now) or an *event* (it was filed or decided at a time)? A substation belongs
+  here; a proposed substation in an interconnection request belongs in civicdata.
+- Keep published releases stable and addressable (`{dataset}/{file}/{version}/geoparquet/{file}.parquet`): civicdata
+  depends on them by version. Layers are published in different CRSs (e.g. counties EPSG:4269, county subdivisions
+  and places EPSG:3857); consumers must read the CRS from the file.
+- Open decision: whether a registry of governing bodies (Census of Governments) belongs here as non-spatial
+  reference data.
+
 ### Environments & dependencies
 
 - This project is bootstrapped with `uv`, which manages the vendored `.venv` and lockfile. Run `uv run <script>` so dependencies (polars, Agno, ddgs, fastapi, openai, python-dotenv, etc.) load from the managed environment.
@@ -114,14 +131,18 @@ When repository variable `AGENT_DISPATCH_ENABLED=true`, **Ready** queues
 implementation and **Review** queues an independent review of the exact current
 PR head. The supervisor chooses work by moving selected Backlog cards to Ready.
 Backlog, Needs decision, In progress and Done do not dispatch. The board remains
-the queue: each sweep fills available slots in the private trusted-main
-`fulton-ring/hifld-next-iac` workflow, respecting six active/queued implementation
-jobs and two active/queued reviews independently. Completed attempts do not
-consume slots; there is no daily attempt-count limit. Its inference-budget preflight still runs
+the queue: each sweep fills available slots through the private trusted-main
+`fulton-ring/hifld-next-iac` workflow and its private factory bridge, respecting one active/queued implementation
+job and one active/queued review independently (two total). Completed attempts do not
+consume concurrent slots. A conservative cap of four dispatched attempts per UTC
+day includes completed/failed attempts and local acknowledgments; excess cards
+remain queued without consuming their exact-head identity. The factory independently
+permits at most four daily admissions. Its inference-budget preflight still runs
 before GKE allocation. Exhausted capacity leaves cards waiting; there is no
 automatic retry of a previously attempted issue/head/role. Failed reviews require
-supervisor inspection. Existing PRs retain their actual branch and dependency;
-new implementations start from `codex/cloud-verification-417`. Fork PRs are never
+supervisor inspection. Existing PRs retain their actual branch, head and base;
+new unassociated implementations resolve the current `main` SHA and use `main` as
+their PR base. Fork PRs are never
 review candidates. Shared verifier #417 may receive an exact-head independent
 review from Review; its implementation and acceptance remain separately supervised.
 
