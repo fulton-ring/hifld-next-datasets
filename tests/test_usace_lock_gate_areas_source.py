@@ -96,8 +96,13 @@ def _docs() -> dict[str, dict]:
     }
 
 
+def _body(doc: dict) -> bytes:
+    """Encode a capture body the way the service emits it: natural key order."""
+    return json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
 def _captures(docs: dict[str, dict]) -> dict[str, tuple[bytes, dict]]:
-    return {name: (_canonical(doc), {"complete_body": True, "status": 200})
+    return {name: (_body(doc), {"complete_body": True, "status": 200})
             for name, doc in docs.items()}
 
 
@@ -119,7 +124,7 @@ def _sealed_capture_directory(root: Path, docs: dict[str, dict]) -> None:
     expected_urls = dict(source._capture_urls(source.EXPECTED_IDS))
     receipts = {}
     for name, url in expected_urls.items():
-        body = _canonical(docs[name])
+        body = _body(docs[name])
         (root / f"{name}.body").write_bytes(body)
         (root / f"{name}.wire").write_bytes(body)
         receipt = {"method": "GET", "url": url, "final_url": url,
@@ -458,7 +463,7 @@ class CaptureFunctionTests(unittest.TestCase):
     def test_count_drift_quarantines_evidence_with_incomplete_manifest(self):
         docs = _docs()
         docs["count_after"]["count"] = source.EXPECTED_COUNT - 1
-        bodies = {url: _canonical(docs[name])
+        bodies = {url: _body(docs[name])
                   for name, url in source._capture_urls(source.EXPECTED_IDS)}
         with tempfile.TemporaryDirectory() as tmp:
             capture_root = Path(tmp) / "captures"
@@ -485,7 +490,7 @@ class CaptureFunctionTests(unittest.TestCase):
             self.assertEqual(sorted(failure["captured_names"]),
                              sorted(source.EXPECTED_CAPTURE_NAMES))
             for name in source.EXPECTED_CAPTURE_NAMES:
-                self.assertEqual(storage.read_key(f"{base}raw/{name}.body"), _canonical(docs[name]))
+                self.assertEqual(storage.read_key(f"{base}raw/{name}.body"), _body(docs[name]))
             for key in quarantined:
                 self.assertFalse(key.startswith(f"{source.DATASET_SLUG}/"))
 
