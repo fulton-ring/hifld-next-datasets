@@ -835,7 +835,6 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
             ),
             "publisher": PUBLISHER, "agency": "Environmental Protection Agency",
             "source_url": AUTHORITY_PAGE_URL,
-            "documentation_url": AUTHORITY_PAGE_URL,
             "license": (
                 "Unresolved: EPA's combined CSV download page and archive provide no explicit "
                 "reuse license; EPA disclaimers apply and rights review remains required."
