@@ -528,6 +528,12 @@ from dagster_hifld.assets.campus_preservation import (
     ornl_campus_historical_integrity_schedule,
     ornl_campus_historical_reconstruction_job,
 )
+from dagster_hifld.assets.epa_frs_naics_national import (
+    epa_frs_national_naics_capture_complete,
+    epa_frs_national_naics_draft_job,
+    epa_frs_national_naics_draft_schedule,
+    epa_frs_national_naics_membership_compatible,
+)
 from dagster_hifld.assets.combined_statistical_areas import (
     csa_source_integrity_job,
     csa_source_integrity_schedule,
@@ -1006,6 +1012,8 @@ defs = Definitions(
         eia_power_plants_complete,
         epa_frs_eia_860_power_generation_complete,
         epa_icis_wastewater_capture_complete,
+        epa_frs_national_naics_capture_complete,
+        epa_frs_national_naics_membership_compatible,
         fuds_irm_property_point_complete,
         fuds_irm_property_point_geometry_quality,
         bts_intermodal_freight_marine_roll_on_roll_off_complete,
@@ -1144,6 +1152,7 @@ defs = Definitions(
         eia_power_plants_draft_job,
         epa_power_generation_draft_job,
         epa_icis_wastewater_draft_job,
+        epa_frs_national_naics_draft_job,
         epa_frs_naics_draft_job,
         gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
@@ -1260,6 +1269,7 @@ defs = Definitions(
         eia_power_plants_draft_schedule,
         epa_power_generation_draft_schedule,
         epa_icis_wastewater_draft_schedule,
+        epa_frs_national_naics_draft_schedule,
         fuds_projects_points_draft_schedule,
         nfhl_nodes_draft_schedule,
         nfhl_hydrologic_reaches_draft_schedule,

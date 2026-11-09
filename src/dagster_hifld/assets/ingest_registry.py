@@ -131,6 +131,7 @@ from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 from dagster_hifld.assets.bts_air_truck import bts_intermodal_freight_air_to_truck
 
+from dagster_hifld.assets.epa_frs_naics_national import epa_frs_national_naics
 from dagster_hifld.assets.epa_sems import epa_sems_interests
 from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
@@ -254,6 +255,7 @@ hifld_ingest_assets = [
     epa_facilities_labels,
     epa_frs_toxic_release_inventory,
     epa_frs_toxic_substances_control_act_tsca,
+    epa_frs_national_naics,
     bts_intermodal_freight_air_to_truck,
     fema_nfhl_nodes,
     fema_nfhl_hydrologic_reaches,
