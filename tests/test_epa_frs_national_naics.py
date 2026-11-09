@@ -31,6 +31,7 @@ CSV_ROWS = [
     '"110000491735","NPDES","AKR06AE60","STORM WATER INDUSTRIAL","424710","SECONDARY","PETROLEUM BULK STATIONS AND TERMINALS."',
     '"110000491744","AIR","AK0000370","AIR MAJOR","424720","UNKNOWN","PETROLEUM AND PETROLEUM PRODUCTS MERCHANT WHOLESALERS."',
 ]
+_REAL_HTTP_CLIENT = httpx.Client
 
 
 class Fixture:
@@ -104,7 +105,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
 
     def mock_client(self, fixture=None):
         transport = httpx.MockTransport((fixture or self.fixture).handler)
-        return lambda **kwargs: httpx.Client(transport=transport)
+        return lambda **kwargs: _REAL_HTTP_CLIENT(transport=transport)
 
     def run_capture(self, storage, version, capture_directory, **pin_overrides):
         with ExitStack() as stack:
