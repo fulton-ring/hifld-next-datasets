@@ -9,14 +9,62 @@ or one bounded decoded block so evidence is never silently clipped.
 from __future__ import annotations
 
 import hashlib
+import stat
 import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import httpx
 
 
 DECODE_BLOCK_BYTES = 1024 * 1024
+
+
+def validate_capture_roster(root: Path, expected: set[str] | dict[str, dict[str, object]]) -> None:
+    """Require an exact flat roster of regular, non-symlink capture files.
+
+    ``expected`` is the complete set of direct-child file names derived from a
+    sealed capture manifest. This rejects unbound additions as well as missing
+    files and unsafe file types before any replay bytes are consumed.
+    """
+    if not isinstance(root, Path) or not root.is_dir() or root.is_symlink():
+        raise ValueError("capture_roster_root_invalid")
+    expected_names = set(expected) if isinstance(expected, dict) else expected
+    if not isinstance(expected_names, set) or any(
+        not isinstance(name, str) or not name or Path(name).name != name or name in {".", ".."}
+        for name in expected_names
+    ):
+        raise ValueError("capture_roster_manifest_invalid")
+    actual = set()
+    for entry in root.iterdir():
+        actual.add(entry.name)
+        if entry.is_symlink() or not stat.S_ISREG(entry.lstat().st_mode):
+            raise ValueError("capture_roster_nonregular_path:" + entry.name)
+    if actual != expected_names:
+        raise ValueError("capture_roster_mismatch")
+    if isinstance(expected, dict):
+        for name, descriptor in expected.items():
+            if not isinstance(descriptor, dict) or not isinstance(descriptor.get("bytes"), int) or not isinstance(descriptor.get("sha256"), str):
+                raise ValueError("capture_roster_manifest_invalid")
+            body = (root / name).read_bytes()
+            if len(body) != descriptor["bytes"] or hashlib.sha256(body).hexdigest() != descriptor["sha256"]:
+                raise ValueError("capture_roster_artifact_mismatch:" + name)
+
+
+def capture_roster_digests(root: Path, *, exclude: set[str] = frozenset()) -> dict[str, dict[str, object]]:
+    """Return byte count and SHA-256 for every regular direct-child file."""
+    if not isinstance(root, Path) or not root.is_dir() or root.is_symlink():
+        raise ValueError("capture_roster_root_invalid")
+    result = {}
+    for entry in sorted(root.iterdir(), key=lambda path: path.name):
+        if entry.name in exclude:
+            continue
+        if entry.is_symlink() or not stat.S_ISREG(entry.lstat().st_mode):
+            raise ValueError("capture_roster_nonregular_path:" + entry.name)
+        body = entry.read_bytes()
+        result[entry.name] = {"bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
+    return result
 
 
 @dataclass(frozen=True)

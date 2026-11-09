@@ -106,7 +106,7 @@ def _record_errors(record: dict, contract: dict) -> list[str]:
                 geom = shape(geometry)
                 if geom.is_empty or not geom.is_valid:
                     errors.append("empty_or_invalid_geometry")
-                if CRS.from_user_input(contract["crs"]).equals(CRS.from_epsg(4326)):
+                if _is_longitude_latitude_crs(contract["crs"]):
                     xmin, ymin, xmax, ymax = geom.bounds
                     if xmin < -180 or xmax > 180 or ymin < -90 or ymax > 90:
                         errors.append("coordinates_outside_declared_crs_domain")
@@ -115,6 +115,14 @@ def _record_errors(record: dict, contract: dict) -> list[str]:
     elif geometry is not None:
         errors.append("unexpected_geometry")
     return errors
+
+
+def _is_longitude_latitude_crs(value: str) -> bool:
+    """Recognize geographic lon/lat CRSs without relying on axis ordering."""
+    crs = CRS.from_user_input(value)
+    return crs.is_geographic and (
+        crs.to_epsg(min_confidence=70) == 4326 or crs.to_authority() == ("OGC", "CRS84")
+    )
 
 
 def _validate_geometry(geometry: dict) -> None:
