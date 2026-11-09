@@ -5,6 +5,7 @@ values are embedded here. The pinned baseline counts mirror the verified
 2026-11-08 snapshot contract (1,816 rows; 4 null geometry/coordinate rows; 140
 geometry-vs-attribute disagreements).
 """
+import copy
 import io
 import json
 import math
@@ -93,11 +94,11 @@ def _capture_docs_plain() -> dict:
         "owner": {"username": source.OWNER_ACCOUNT, "fullName": "US Fish and Wildlife Service",
                   "description": "US Fish and Wildlife Service - Information Resources and Technology "
                                   "Management - Branch of Geospatial Data Services."},
-        "service_before": service, "service_after": service,
-        "layer_before": layer, "layer_after": layer,
+        "service_before": copy.deepcopy(service), "service_after": copy.deepcopy(service),
+        "layer_before": copy.deepcopy(layer), "layer_after": copy.deepcopy(layer),
         "count_before": {"count": source.EXPECTED_COUNT},
         "count_after": {"count": source.EXPECTED_COUNT},
-        "ids_before": {"objectIds": IDS}, "ids_after": {"objectIds": IDS},
+        "ids_before": {"objectIds": list(IDS)}, "ids_after": {"objectIds": list(IDS)},
     }
     for index in range(source.PAGE_COUNT):
         start = index * source.PAGE_SIZE
