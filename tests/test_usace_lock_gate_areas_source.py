@@ -356,7 +356,11 @@ class DriftRefusalTests(unittest.TestCase):
             moved = [ring[0][0] - 10.0, ring[0][1]]
             ring[0] = moved
             ring[-1] = moved
-        self.assertEqual(self._drift(move_vertex), "source_geometry_coverage_extent_drift")
+        docs = _docs()
+        move_vertex(docs)
+        with patch.multiple(source, **_fixture_pins(docs)):
+            with self.assertRaisesRegex(ValueError, "source_geometry_coverage_extent_drift"):
+                source._validate(_captures(docs))
 
     def test_snapshot_drift_against_live_pins_fails_closed(self):
         docs = _docs()
