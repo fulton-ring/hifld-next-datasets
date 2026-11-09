@@ -32,6 +32,7 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
@@ -394,9 +395,10 @@ def derive_native_parquet_bytes(rows: list[dict], audit: dict) -> bytes:
     return output.getvalue().to_pybytes()
 
 def write_geopackage(path: Path, rows: list[dict]) -> None:
-    with fiona.open(path,'w',driver='GPKG',layer=SLUG,crs='EPSG:4269',
-                    schema={'properties':SCHEMA,'geometry':'Unknown'}) as stream:
-        stream.writerecords(rows)
+    with with_geopackage_creation_time('2024-12-19T00:00:00.000Z'):
+        with fiona.open(path,'w',driver='GPKG',layer=SLUG,crs='EPSG:4269',
+                        schema={'properties':SCHEMA,'geometry':'Unknown'}) as stream:
+            stream.writerecords(rows)
     with sqlite3.connect(path) as db:
         db.execute("UPDATE gpkg_contents SET last_change='2024-12-19T00:00:00.000Z'")
 
