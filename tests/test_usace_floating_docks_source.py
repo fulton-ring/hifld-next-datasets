@@ -352,7 +352,7 @@ class UsaceFloatingDocksCacheIntegrityTest(unittest.TestCase):
             quality["invalid_geometry_count"] = 999
 
         self._edit_document(version, "metadata/quality_manifest.json", corrupt)
-        with self.assertRaisesRegex(ValueError, "cached_catalog_quality_manifest_drift"):
+        with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
             self._stage()
 
     def test_emptied_data_dictionary_blocks_reuse(self) -> None:
@@ -363,7 +363,7 @@ class UsaceFloatingDocksCacheIntegrityTest(unittest.TestCase):
             dictionary["columns"] = []
 
         self._edit_document(version, "metadata/data_dictionary.json", corrupt)
-        with self.assertRaisesRegex(ValueError, "cached_catalog_data_dictionary_drift"):
+        with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
             self._stage()
 
     def test_deleted_catalog_provenance_blocks_reuse(self) -> None:
@@ -373,7 +373,7 @@ class UsaceFloatingDocksCacheIntegrityTest(unittest.TestCase):
         for relative in ("metadata/resolved_provenance.json", "metadata/source/source_manifest.json",
                          f"metadata/source/version_{digest}_source_manifest.json"):
             (self._root(version) / relative).unlink()
-        with self.assertRaisesRegex(ValueError, "cached_catalog_provenance_missing"):
+        with self.assertRaisesRegex(ValueError, "cached_catalog_resolved_provenance_mismatch"):
             self._stage()
 
     def test_rewritten_source_manifest_snapshot_blocks_reuse(self) -> None:

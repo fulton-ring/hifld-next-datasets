@@ -31,6 +31,7 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import ConstructionCodeIdentityError, validate_construction_code_identity
 from dagster_hifld.construction_state import (ConstructionStateError, canonical_construction_bundle, load_first_construction, seal_first_construction)
 from dagster_hifld.http_capture import capture_http_response
@@ -404,9 +405,10 @@ def gpkg_metadata(path: Path) -> dict:
 
 def write_geopackage(path: Path, rows: list[dict]) -> None:
     """The original native data writer, including its fixed publication timestamp."""
-    with fiona.open(path,'w',driver='GPKG',layer=SLUG,crs='EPSG:4269',
-                    schema={'properties':SCHEMA,'geometry':'Unknown'}) as destination:
-        destination.writerecords(rows)
+    with with_geopackage_creation_time('2024-12-19T00:00:00.000Z'):
+        with fiona.open(path,'w',driver='GPKG',layer=SLUG,crs='EPSG:4269',
+                        schema={'properties':SCHEMA,'geometry':'Unknown'}) as destination:
+            destination.writerecords(rows)
     with sqlite3.connect(path) as db:
         db.execute("UPDATE gpkg_contents SET last_change='2024-12-19T00:00:00.000Z'")
 
