@@ -24,6 +24,7 @@ from dagster_hifld.assets.epa_frs_naics_national import (
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import epa_frs_naics_national as source
+from dagster_hifld.assets import epa_frs_naics_national as assets_module
 
 CSV_HEADER = '"REGISTRY_ID","PGM_SYS_ACRNM","PGM_SYS_ID","INTEREST_TYPE","NAICS_CODE","PRIMARY_INDICATOR","CODE_DESCRIPTION"'
 CSV_ROWS = [
@@ -111,7 +112,12 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
             "PRIOR_CANDIDATE_ROWS": self.fixture.csv_rows,
         }
         values.update(overrides)
-        return [patch.object(source, name, value) for name, value in values.items()]
+        patchers = [patch.object(source, name, value) for name, value in values.items()]
+        # The Dagster asset/check bindings were imported separately.
+        for module in (source, assets_module):
+            patchers.append(patch.object(module, "EXPECTED_SOURCE_ROWS", values["EXPECTED_SOURCE_ROWS"]))
+            patchers.append(patch.object(module, "EXPECTED_CSV_SHA256", values["EXPECTED_CSV_SHA256"]))
+        return patchers
 
     def mock_client(self, fixture=None):
         transport = httpx.MockTransport((fixture or self.fixture).handler)
@@ -129,7 +135,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
             captures = Path(tmp) / "captures" / "vfixture"
-            result = self.run_capture(storage, "vfixture", str(captures))
+            result = self.run_capture(storage, "vfixture", str(captures.parent))
             self.assertFalse(result["reused"])
             self.assertEqual(result["row_count"], self.fixture.csv_rows)
             self.assertEqual(result["source_csv_sha256"], self.fixture.csv_sha256)
@@ -163,7 +169,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
             captures = Path(tmp) / "captures" / "vfixture"
-            result = self.run_capture(storage, "vfixture", str(captures))
+            result = self.run_capture(storage, "vfixture", str(captures.parent))
             with ExitStack() as stack:
                 for patcher in self.pins():
                     stack.enter_context(patcher)
@@ -181,7 +187,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
             captures = Path(tmp) / "captures" / "vfixture"
-            result = self.run_capture(storage, "vfixture", str(captures))
+            result = self.run_capture(storage, "vfixture", str(captures.parent))
             with ExitStack() as stack:
                 for patcher in self.pins():
                     stack.enter_context(patcher)
@@ -198,7 +204,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
             captures = Path(tmp) / "captures" / "vfixture"
-            result = self.run_capture(storage, "vfixture", str(captures))
+            result = self.run_capture(storage, "vfixture", str(captures.parent))
             member_chunk = captures / "member_chunk_000.body"
             original = member_chunk.read_bytes()
             member_chunk.write_bytes(original[:-1] + bytes([original[-1] ^ 0xFF]))
@@ -218,7 +224,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
             captures = Path(tmp) / "captures" / "vfixture"
             with self.assertRaisesRegex(ValueError, "complete_source_snapshot_drift"):
-                self.run_capture(storage, "vfixture", str(captures),
+                self.run_capture(storage, "vfixture", str(captures.parent),
                                  EXPECTED_CSV_SHA256="0" * 64)
             quarantined = [key for key in storage.list_prefix(f"_quarantine/{source.DATASET_SLUG}")
                            if storage.object_exists(key)]
@@ -231,7 +237,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
             captures = Path(tmp) / "captures" / "vfixture"
             with self.assertRaisesRegex(ValueError, "complete_source_row_count_drift"):
-                self.run_capture(storage, "vfixture", str(captures),
+                self.run_capture(storage, "vfixture", str(captures.parent),
                                  EXPECTED_SOURCE_ROWS=self.fixture.csv_rows + 1)
             quarantined = [key for key in storage.list_prefix(f"_quarantine/{source.DATASET_SLUG}")
                            if storage.object_exists(key)]
@@ -242,7 +248,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
             captures = Path(tmp) / "captures" / "vfixture"
             with self.assertRaisesRegex(ValueError, "zip_naics_member_declaration_drift"):
-                self.run_capture(storage, "vfixture", str(captures),
+                self.run_capture(storage, "vfixture", str(captures.parent),
                                  EXPECTED_MEMBER_CRC32="deadbeef")
             quarantined = [key for key in storage.list_prefix(f"_quarantine/{source.DATASET_SLUG}")
                            if storage.object_exists(key)]
@@ -260,7 +266,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
                 stack.enter_context(patch.object(source.httpx, "Client", self.mock_client(broken)))
                 with self.assertRaisesRegex(ValueError, "authority_page_link_or_text_drift"):
                     source.capture_epa_frs_national_naics(
-                        storage, version="vfixture", capture_directory=str(captures))
+                        storage, version="vfixture", capture_directory=str(captures.parent))
 
     def test_dagster_ingest_and_catalog_materialize_with_cached_reuse(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -302,7 +308,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
                     self.assertFalse(audit["release_accepted"])
                     cached = source.capture_epa_frs_national_naics(
                         storage, version="vrefresh",
-                        capture_directory=str(Path(tmp) / "captures" / "vrefresh"))
+                        capture_directory=str(Path(tmp) / "captures"))
                     self.assertTrue(cached["reused"])
                     self.assertEqual(cached["version"], version)
 
