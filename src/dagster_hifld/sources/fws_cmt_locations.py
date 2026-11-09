@@ -59,10 +59,13 @@ PUBLISHER = ("US Fish and Wildlife Service, Information Resources and Technology
              "Branch of Geospatial Data Services (FWSGIS); official FWS ArcGIS Online organization")
 AUTHORITY_URL = "https://www.fws.gov/policy-library/260fw14"
 
-# Snapshot-verified baseline (2026-11-08 bounded capture, independently recomputed
+# Snapshot-verified counts (2026-11-08 bounded capture, independently recomputed
 # 2026-11-09 from the hash-verified preserved pages): 1,816 rows; 4 rows null on
 # BOTH geometry and latitude/longitude; 140 of the 1,812 comparable rows disagree
 # by more than 1e-6 degrees between native geometry and attribute coordinates.
+# These are DRAFT drift-guard pins: any change raises fail-closed for maintainer
+# re-inspection. Baseline acceptance itself, and any published-geometry contract,
+# remain open maintainer decisions (all approval flags stay false).
 EXPECTED_COUNT = 1816
 EXPECTED_NULL_COORDINATE_COUNT = 4
 EXPECTED_GEOMETRY_ATTRIBUTE_DISAGREEMENT_COUNT = 140
@@ -265,7 +268,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
     if (item.get("id") != ITEM_ID or item.get("owner") != OWNER_ACCOUNT
             or item.get("type") != "Feature Service" or item.get("access") != "public"
             or item.get("title") != ITEM_TITLE or item.get("url") != SERVICE_URL
-            or "US Fish & Wildlife Service" not in str(item.get("accessInformation", ""))
+            or "Branch of Geospatial Data Services" not in str(item.get("accessInformation", ""))
             or "FWSGIS@fws.gov" not in str(item.get("accessInformation", ""))):
         raise ValueError("source_item_identity_drift")
     owner = docs["owner"]
@@ -418,8 +421,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                              "layer/service identity, before/after count and ObjectId roster, "
                              "per-page native XY in EPSG:3857, orgCode string identifiers with "
                              "null/duplicate and leading-zero preservation, null-coordinate "
-                             "pairing, and pinned baseline counts (features 1816, nulls 4, "
-                             "geometry-vs-attribute disagreements 140).")}
+                             "pairing, and draft drift-guard pins (features 1816, nulls 4, "
+                             "geometry-vs-attribute disagreements 140) that raise on change; "
+                             "baseline acceptance is pending, not a published-geometry contract.")}
     return features, audit
 
 
