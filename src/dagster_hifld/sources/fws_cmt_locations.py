@@ -273,7 +273,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         raise ValueError("source_item_identity_drift")
     owner = docs["owner"]
     if (owner.get("username") != OWNER_ACCOUNT
-            or owner.get("fullName") != "US Fish and Wildlife Service"
+            or owner.get("fullName") != "US Fish & Wildlife Service"
             or "Information Resources and Technology Management" not in str(owner.get("description", ""))):
         raise ValueError("source_publisher_account_identity_drift")
     service = docs["service_before"]

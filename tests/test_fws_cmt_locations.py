@@ -91,7 +91,7 @@ def _capture_docs_plain() -> dict:
                  "accessInformation": ("FWS GIS (US Fish & Wildlife Service - Information Resources "
                                         "and Technology Management - Branch of Geospatial Data Services)  "
                                         "E-Mail: FWSGIS@fws.gov")},
-        "owner": {"username": source.OWNER_ACCOUNT, "fullName": "US Fish and Wildlife Service",
+        "owner": {"username": source.OWNER_ACCOUNT, "fullName": "US Fish & Wildlife Service",
                   "description": "US Fish and Wildlife Service - Information Resources and Technology "
                                   "Management - Branch of Geospatial Data Services."},
         "service_before": copy.deepcopy(service), "service_after": copy.deepcopy(service),
