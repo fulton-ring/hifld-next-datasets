@@ -690,9 +690,10 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
                     raise EPAFRSNationalNAICSError("authority_page_link_or_text_drift")
                 _capture_range_get(client, NATIONAL_COMBINED_ZIP_URL, capture_root, "zip_probe",
                                    start=0, end=0, retained_bytes=capture_budget)
+                eocd_tail = min(EOCD_TAIL_BYTES, EXPECTED_ZIP_TOTAL_BYTES)
                 tail_body, _ = _capture_range_get(
                     client, NATIONAL_COMBINED_ZIP_URL, capture_root, "zip_eocd",
-                    start=EXPECTED_ZIP_TOTAL_BYTES - EOCD_TAIL_BYTES,
+                    start=EXPECTED_ZIP_TOTAL_BYTES - eocd_tail,
                     end=EXPECTED_ZIP_TOTAL_BYTES - 1, retained_bytes=capture_budget)
                 _, cd_size, cd_offset = _parse_eocd(tail_body, EXPECTED_ZIP_TOTAL_BYTES)
                 cd_body, _ = _capture_range_get(
@@ -700,10 +701,12 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
                     start=cd_offset, end=cd_offset + cd_size - 1, retained_bytes=capture_budget)
                 members = _parse_central_directory(cd_body)
                 member = members[MEMBER_NAME]
+                header_probe = min(LOCAL_HEADER_PROBE_BYTES,
+                                   EXPECTED_ZIP_TOTAL_BYTES - member["local_header_offset"])
                 header_body, _ = _capture_range_get(
                     client, NATIONAL_COMBINED_ZIP_URL, capture_root, "member_local_header",
                     start=member["local_header_offset"],
-                    end=member["local_header_offset"] + LOCAL_HEADER_PROBE_BYTES - 1,
+                    end=member["local_header_offset"] + header_probe - 1,
                     retained_bytes=capture_budget)
                 data_offset = _parse_local_header(header_body, members)
                 if data_offset + member["compressed"] > cd_offset:
