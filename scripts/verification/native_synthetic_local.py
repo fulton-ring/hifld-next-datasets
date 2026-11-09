@@ -226,6 +226,13 @@ def run(work, *, prebuilt_date32=False, native_only=False):
         state["reference"] = reference
         result = compare_native_inputs(state["baseline"], state["candidate"], policy, version_root / "metadata", baseline_reference=reference)
         assert result["status"] == "pass", result
+        from dagster_hifld.portolan.workflow import PortolanPublishRequest, prepare_staged_release
+        prepare_staged_release(
+            PortolanPublishRequest("synthetic", "synthetic-native", "typed", "v0.0.0-fixture",
+                                   "Synthetic", "Fixture only", "Synthetic fixture",
+                                   public_root="https://example.invalid/published"),
+            staging, published, staged_version="v0.0.0-fixture",
+        )
         objects = {key: staging.sha256_key(key) for key in staging.list_prefix(prefix)}
         native = result["native_inputs"]["candidate"]["receipt"]
         entry = {"destination": _storage_identity(published), "staged_version_prefix": prefix,

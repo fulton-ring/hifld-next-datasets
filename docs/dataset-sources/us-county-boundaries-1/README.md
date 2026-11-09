@@ -1,0 +1,11 @@
+# US County Boundaries (Census TIGER/Line)
+
+This draft acquires the official U.S. Census Bureau Geography Division 2023 TIGER/Line `COUNTY` ZIP and preserves its body, wire response, and receipt under the candidate's `raw/` prefix. The registered native-output route writes a GeoParquet candidate at EPSG:4269. The retained archive was observed at the official Census URL, is 83,451,409 bytes, and matches SHA-256 `692e12c30c83adcaabdbac0d3954fafa55e1c89a24b36d95e72e02dff938652e`.
+
+The isolated archive inspection found 3,235 county and county-equivalent features, 18 declared attributes, GEOID values retained as five-character strings, EPSG:4269, and no null, empty, or invalid geometries. Full-population readback compared every typed attribute value, GEOID in source order, and each feature's WKB against the source Shapefile; 3,182 geometries are Polygon and 53 are MultiPolygon. The source extent is recorded as observed. This is source integrity evidence; it does not establish compatibility with a historical HIFLD/FEMA baseline, a published schema or ID contract, or accepted coverage.
+
+The precise producer release date was not established. The 2023 TIGER/Line vintage is pinned; the capture packet records the exact request and complete wire/body receipts. The archived HIFLD copy was not used. Source release/currentness, schema and ID contracts, coverage, rights, mapping, and release acceptance remain false. The refresh schedule is STOPPED.
+
+Retained local evidence is under `/workspace/work/363-clean-evidence/`, including the raw body and wire response, request receipt, and archive inspection report. These local evidence files are not committed as data assets.
+
+An isolated packaged-runtime lifecycle also ran with no `.git` directory and no `git` executable: registered source and catalog materializations passed, native GeoParquet discovery selected the full population, and the resolved provenance retained the packaged identity. A false-quality candidate stopped before verify/promote, and an empty approval registry stopped at verify without changing the populated synthetic published fixture. The exact run IDs, package identity, output hash, and full parity report are recorded in `local-materialization.json`; raw capture and Dagster run database remain in the local evidence packet.
