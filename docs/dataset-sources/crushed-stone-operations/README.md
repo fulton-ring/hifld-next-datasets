@@ -1,5 +1,13 @@
 # Crushed-stone historical candidate (draft)
 
+## Source repair — USGS original-distribution research (dated probes 2026-11-09)
+
+- Producer lineage verified in USGS-served FGDC metadata: `https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/crstonx020.xml` (HTTP 200, sha256 `0dbf1190282e425aa0b72179e5d163a716126e19daa50c6795378e784864ac24`): Minerals Information Team, U.S. Geological Survey; National Atlas of the United States, publication 200506; 2,324 points; NAD83; AMIS lineage.
+- Original direct download `http://dds.cr.usgs.gov/pub/data/nationalatlas/crstonx020_nt00109.tar.gz` returns HTTP 404 (HTTP and HTTPS, 2026-11-09); all `dds.cr.usgs.gov/pub/data/nationalatlas/` paths return 404.
+- Current USGS official historical-release channel: USGS EROS Archive "Digital Maps — National Atlas" (624 datasets) distributed via EarthExplorer under "Digital Maps"; USGS FAQ states download requires free registration. Anonymous EarthExplorer exposes no Digital Maps dataset tree, and the download endpoint redirects anonymous requests to login (dated probe 2026-11-09). The dead DDS file name `crstonx020_nt00109.tar.gz` matches the EROS EDC file-name convention for National Atlas entity NT00109. No anonymous USGS channel serves the exact layer bytes: TNM small-scale staged data covers boundaries/contours/hydrography/transportation only; MRDATA hosts the different 2003 all-commodity mineplant family; ScienceBase has no matching record.
+- The Stanford `cs268nn2622` package remains a third-party preservation input, not an accepted agency delivery (operator reassessment 2026-11-08). The published 766-record MINOP2X020 construction-minerals baseline identity mismatch is retained; no CRSTON↔MINOP join is proposed.
+- Switching the pipeline input to the USGS historical release is blocked on registered EarthExplorer/M2M credentials (human action); no mirror exception is requested.
+
 Explicit input: Stanford `cs268nn2622` preservation-as-provided package; USGS historical `crstonx020.xml` identifies the active-2002 dataset family.
 Package ID: `stanford-cs268nn2622-preservation-as-provided-v1`; no default fetch or archive polling.
 The 2,324-row native NAD83 candidate preserves all 11 DBF fields, IDs, exact Decimal128 values and Point WKB in GeoParquet.
