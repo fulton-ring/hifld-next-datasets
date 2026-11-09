@@ -52,9 +52,22 @@ PYTHONPATH=src python scripts/verify_campus_preservation.py --runtime-dir /absol
 
 The runner creates isolated DAGSTER_HOME, staging and local output directories; records actual run IDs, selections, checks and errors immediately after each run; registers the dynamic publish partition; exercises source staging/reuse, full-population failed quality, two normal catalog/format cycles, missing approval, observed trust-loss retries and explicit restoration. Its prior accepted-output fixture is synthetic and establishes preservation behavior only. Read the committed execution receipt for the actual completed scope, not this description of intended checks.
 
+## First-party source recovery probes (2026-11-09)
+
+Per the operator reassessment, the PASDA mirror inputs cannot satisfy the original-agency source policy. Bounded dated probes (2026-11-09, TLS-verified from the worker pod) found **no accessible first-party ORNL/DOE/DHS or delegated official distribution of the campus polygons**:
+
+- **EPA OEI `ORNL_Education` MapServer** (`geodata.epa.gov/arcgis/rest/services/OEI/ORNL_Education/MapServer`), the delegated official distribution of the ORNL education family, exposes only point layers: Colleges and Universities (7,735), Supplemental Colleges (1,221), Private Schools (26,983), Public Schools (103,481), Day Care Centers (115,036), plus five label layers — all `esriGeometryPoint`, EPSG:4326. **No campus polygon layer.** Its EDG metadata redirects to the data.gov record "Educational Institutions US 2015 - ORNL SEGS" (2015 edition), and the record's own package payload is no longer resolvable.
+- **data.gov harvest record** `MGMT-GMO-HIFLD-290527` (fetched 2026-11-09): publisher HIFLD (DHS), modified 2022-10-24, distribution list empty, no machine payload.
+- **DHS channels**: `gii.dhs.gov` remains credential-gated HIFLD Secure (GII account + DUA); the `hifld-geoplatform.hub.arcgis.com` API returns `CONT_0001: Item does not exist or is inaccessible` and search returns HTTP 400 — no campus service.
+- **ArcGIS Online search** for campus polygon feature services found only personal/community/state re-uploads (e.g. item `43eb0e53b9e343b49bfe74e342ca57e6` → `services5.arcgis.com/HDRa0B57OVrv2E1q/.../Colleges_and_Universities_Campuses/FeatureServer`, 29 fields, verbatim HIFLD description, no agency identity). No official agency owner.
+- **OSTI records API**: no campus-dataset match. DOE Data Explorer: no match (per the verified 2026-11-08 sibling #38 research; the ORNL program page lists HIFLD education layers but publishes no downloads; `data.ornl.gov` 301-redirects, `gis.ornl.gov` DNS fails).
+- **DataLumos 238998** (the issue's own archive link): HTTP 403 anonymous; a third-party rescue archive in any case.
+
+These probes are bounded, not exhaustive absence proof. The EPA delegated distribution covers only the **2015 point edition** — a different product grain that cannot substitute campus polygons without an explicit changed-scope decision (points, buffers or hulls do not replace campus polygons). The input therefore cannot yet be replaced with a first-party source; the required decision is DHS HIFLD Secure (GII+DUA) access, an ORNL/DOE direct release with checksums, or an explicit scope decision.
+
 ## Decisions still required
 
-1. Verify the exact ORNL/HIFLD release/delegation or explicitly permit this named historical-mirror preservation scope. No current-source replacement is inferred.
+1. Verify the exact ORNL/HIFLD release/delegation or explicitly permit this named historical-mirror preservation scope (see the 2026-11-09 first-party probes above; no accessible first-party campus distribution was found). No current-source replacement is inferred.
 2. Approve a baseline and contract covering original/published IDs (including duplicate published IDs), physical types, native geometry and historical precision differences. All destructive mappings and migrations remain quarantined proposals.
 3. Resolve the fifteen original invalid geometries without silently repairing them or accepting an exception. Full-population quality remains blocking.
 4. Approve rights/attribution and the exact independently reviewed release before promotion. No source/baseline/contract approval, merge, closure or production publication is performed here.
