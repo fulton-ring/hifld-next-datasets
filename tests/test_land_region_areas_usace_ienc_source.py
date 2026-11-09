@@ -49,6 +49,22 @@ def _ring(x: float, y: float, size: float = 0.001) -> list[list[float]]:
     ]
 
 
+def _crossing_hole_rings() -> list[list[list[float]]]:
+    """Rings whose CCW hole crosses the shell while its representative point stays inside.
+
+    This is the exact invalid-topology shape from independent review f377449a:
+    hole ownership resolves to the single shell, yet the hole boundary crosses
+    the shell boundary, so the assembled polygon is invalid OGC topology.
+    """
+    x0, y0 = EXPECTED_LAYER_EXTENT["xmin"], EXPECTED_LAYER_EXTENT["ymin"]
+    shell = _ring(x0, y0)
+    hx, hy, size = x0 + 0.0005, y0 + 0.0005, 0.0009
+    hole = [
+        [hx, hy], [hx + size, hy], [hx + size, hy + size], [hx, hy + size], [hx, hy],
+    ]
+    return [shell, hole]
+
+
 def _features(ids: list[int]) -> list[dict]:
     features = []
     for index, oid in enumerate(ids):
@@ -471,6 +487,21 @@ class ValidateDriftRejections(unittest.TestCase):
         code = self._mutate("page_000", mutate)
         self.assertEqual(str(code), "source_polygon_zm_flags_do_not_match_coordinates")
 
+    def test_crossing_hole_topology_rejected(self):
+        # Review f377449a repro: invalid topology must be rejected before any
+        # READY seal instead of being counted and staged.
+        def mutate(docs):
+            docs["page_000"]["features"][0]["geometry"]["rings"] = _crossing_hole_rings()
+        code = self._mutate("page_000", mutate)
+        self.assertEqual(str(code), "source_polygon_topology_invalid:1")
+
+    def test_degenerate_ring_topology_rejected(self):
+        def mutate(docs):
+            x0, y0 = EXPECTED_LAYER_EXTENT["xmin"], EXPECTED_LAYER_EXTENT["ymin"]
+            docs["page_000"]["features"][0]["geometry"]["rings"] = [[[x0, y0]] * 5]
+        code = self._mutate("page_000", mutate)
+        self.assertEqual(str(code), "source_polygon_topology_invalid:1")
+
 
 class ParquetCandidateContract(unittest.TestCase):
     def _sample(self):
@@ -534,6 +565,126 @@ class ParquetCandidateContract(unittest.TestCase):
         self.assertIn("Scale_Minimum", names)
         self.assertIn("Feature_ID", names)
         self.assertIn("Category_of_Land_Region", names)
+
+
+class InvalidTopologyNeverSealsCandidate(unittest.TestCase):
+    """Real acquisition regression for review f377449a.
+
+    A crossing-hole feature page must fail the capture closed: no READY
+    candidate, no sealed construction state, no staged version, no
+    destructive publication, while the failed evidence is quarantined.
+    """
+
+    def test_crossing_hole_capture_fails_closed_without_seal_or_publication(self):
+        with tempfile.TemporaryDirectory(prefix="hf-areas-invalid-") as temporary:
+            root = Path(temporary)
+            staging = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            published = PublishedStorageResource(use_local=True, local_dir=str(root / "published"))
+            accepted_key = published.write(
+                DATASET_SLUG, FILE_SLUG, "accepted-v1",
+                "geoparquet/land-region-areas-usace-ienc.parquet", b"accepted")
+            published_before = {key: published.read_key(key) for key in published.list_prefix()}
+            self.assertEqual(set(published_before), {accepted_key})
+
+            docs = _docs()
+            docs["page_000"]["features"][0]["geometry"]["rings"] = _crossing_hole_rings()
+            responses = [docs["ids_seed"]] + [
+                docs[name] for name, _ in source._capture_roster(EXPECTED_IDS)
+            ]
+            response_index = 0
+
+            def handler(request):
+                nonlocal response_index
+                body = responses[response_index]
+                response_index += 1
+                return httpx.Response(
+                    200,
+                    stream=httpx.ByteStream(json.dumps(body).encode("utf-8")),
+                    request=request,
+                    headers={"content-type": "application/json"},
+                )
+
+            transport = httpx.MockTransport(handler)
+            real_client = httpx.Client
+
+            def fixture_client(**kwargs):
+                kwargs.pop("follow_redirects", None)
+                kwargs.pop("timeout", None)
+                kwargs.pop("headers", None)
+                return real_client(transport=transport, **kwargs)
+
+            capture_root = root / "capture"
+            with patch.object(source.httpx, "Client", fixture_client), patch.object(
+                source.time, "sleep", return_value=None
+            ), patch.object(
+                source.shutil, "disk_usage", return_value=SimpleNamespace(free=400_000_000)
+            ):
+                with self.assertRaisesRegex(ValueError, "source_polygon_topology_invalid:1"):
+                    source.capture_land_region_areas_usace_ienc(
+                        staging, version="invalid-topology", capture_directory=str(capture_root)
+                    )
+
+            keys = list(staging.list_prefix())
+            self.assertTrue(keys)
+            self.assertFalse(any("candidate_ready" in key for key in keys))
+            self.assertFalse(any(key.startswith("_construction-state/") for key in keys))
+            self.assertFalse(any(key.startswith(f"{DATASET_SLUG}/") for key in keys))
+            self.assertTrue(any(key.startswith("_quarantine/") for key in keys))
+            manifests = list(capture_root.glob("*/capture_manifest.json"))
+            self.assertEqual(len(manifests), 1)
+            manifest = json.loads(manifests[0].read_bytes())
+            self.assertIs(manifest["complete"], False)
+            self.assertEqual(manifest["error_code"], "ValueError")
+            published_after = {key: published.read_key(key) for key in published.list_prefix()}
+            self.assertEqual(published_after, published_before)
+
+
+class BlockingCompletenessCheck(unittest.TestCase):
+    """The blocking asset check must also fail closed for bad metrics."""
+
+    def _candidate(self) -> dict:
+        return {
+            "feature_count": EXPECTED_COUNT,
+            "source_population_complete": True,
+            "source_id_sha256": "0" * 64,
+            "source_schema_sha256": "1" * 64,
+            "source_coverage_scope": "scope",
+            "drift_guard": "guard",
+            "geometry_valid_count": EXPECTED_COUNT,
+            "geometry_invalid_count": 0,
+            "geometry_empty_count": 0,
+        }
+
+    def test_complete_valid_metrics_pass(self):
+        from dagster_hifld.assets.land_region_areas_usace_ienc import (
+            land_region_areas_usace_ienc_complete,
+        )
+        result = land_region_areas_usace_ienc_complete(self._candidate())
+        self.assertTrue(result.passed)
+        self.assertEqual(result.metadata["geometry_invalid_count"].value, 0)
+        self.assertEqual(result.metadata["geometry_valid_count"].value, EXPECTED_COUNT)
+
+    def test_bad_or_missing_geometry_metrics_fail_closed(self):
+        from dagster_hifld.assets.land_region_areas_usace_ienc import (
+            land_region_areas_usace_ienc_complete,
+        )
+        candidate = self._candidate()
+        check = land_region_areas_usace_ienc_complete
+        self.assertFalse(check(dict(candidate, geometry_valid_count=EXPECTED_COUNT - 1)).passed)
+        self.assertFalse(check(dict(candidate, geometry_invalid_count=1)).passed)
+        self.assertFalse(check(dict(candidate, geometry_empty_count=1)).passed)
+        incomplete = {key: value for key, value in candidate.items()
+                      if key != "geometry_invalid_count"}
+        self.assertFalse(check(incomplete).passed)
+
+    def test_population_failures_still_fail_closed(self):
+        from dagster_hifld.assets.land_region_areas_usace_ienc import (
+            land_region_areas_usace_ienc_complete,
+        )
+        candidate = self._candidate()
+        check = land_region_areas_usace_ienc_complete
+        self.assertFalse(check(dict(candidate, feature_count=EXPECTED_COUNT - 1)).passed)
+        self.assertFalse(check(dict(candidate, source_population_complete=False)).passed)
 
 
 class RegisteredDraftRefresh(unittest.TestCase):
@@ -602,6 +753,10 @@ class CachedCatalogSidecarValidation(unittest.TestCase):
                 first = source.capture_land_region_areas_usace_ienc(
                     storage, version="fixture-source", capture_directory=str(capture_root)
                 )
+            self.assertEqual(first["feature_count"], EXPECTED_COUNT)
+            self.assertEqual(first["geometry_valid_count"], EXPECTED_COUNT)
+            self.assertEqual(first["geometry_invalid_count"], 0)
+            self.assertEqual(first["geometry_empty_count"], 0)
             prefix = f"{first['dataset_slug']}/{first['file_slug']}/{first['version']}"
             snapshot_source_metadata(storage, first["dataset_slug"], first["file_slug"], first["version"])
             resolved = load_resolved_source_manifest(
@@ -625,7 +780,10 @@ class CachedCatalogSidecarValidation(unittest.TestCase):
                             storage, version="offline-replay", capture_directory=str(first["capture_directory"])
                         )
 
-            self.assertTrue(replay()["reused"])
+            replayed = replay()
+            self.assertTrue(replayed["reused"])
+            self.assertEqual(replayed["geometry_valid_count"], EXPECTED_COUNT)
+            self.assertEqual(replayed["geometry_invalid_count"], 0)
 
             for name, field in (
                 ("quality_manifest.json", "feature_count"),

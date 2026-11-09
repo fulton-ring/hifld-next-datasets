@@ -61,11 +61,17 @@ def land_region_areas_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
     passed = (
         candidate.get("feature_count") == EXPECTED_COUNT
         and candidate.get("source_population_complete") is True
+        and candidate.get("geometry_valid_count") == EXPECTED_COUNT
+        and candidate.get("geometry_invalid_count") == 0
+        and candidate.get("geometry_empty_count") == 0
     )
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "geometry_valid_count": candidate.get("geometry_valid_count", "missing"),
+            "geometry_invalid_count": candidate.get("geometry_invalid_count", "missing"),
+            "geometry_empty_count": candidate.get("geometry_empty_count", "missing"),
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
             "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_coverage_scope": candidate.get("source_coverage_scope", "missing"),

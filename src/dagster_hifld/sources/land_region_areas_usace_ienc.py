@@ -491,8 +491,13 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
                     raise ValueError("source_geometry_outside_declared_coverage")
                 vertices += 1
         geometry = shapely.from_wkb(_esri_polygon(geom))
-        geometry_empty += int(geometry.is_empty)
-        geometry_valid += int(geometry.is_valid and not geometry.is_empty)
+        # Reject invalid or empty topology before anything is staged or sealed.
+        # The captured geometry is preserved verbatim; it is never repaired.
+        if geometry.is_empty:
+            raise ValueError(f"source_polygon_topology_empty:{oid}")
+        if not geometry.is_valid:
+            raise ValueError(f"source_polygon_topology_invalid:{oid}")
+        geometry_valid += 1
     if len(features) != EXPECTED_COUNT or sorted(got) != sorted(before) or len(set(got)) != EXPECTED_COUNT:
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f: f["attributes"]["OBJECTID"])
@@ -512,7 +517,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "geometry_empty_count": geometry_empty,
         "geometry_invalid_count": len(features) - geometry_valid - geometry_empty,
         "source_coverage_scope": "Complete current official IENC LAND_REGION_AREA feature class; inland chart coverage only, not a claim of all land region areas nationwide.",
-        "drift_guard": "BTS " + BTS_ITEM_ID + " distribution/delegation link (the prior BTS item " + PRIOR_BTS_ITEM_ID + " returned anonymous-access denial during 2026-10-21 extraction and is recorded in docs, not validated here), official service-directory membership, service/layer identity, field names/types, CRS, pinned layer extent, page errors, and before/after exact ID roster are checked; duplicate Feature_ID values are preserved."}
+        "drift_guard": "BTS " + BTS_ITEM_ID + " distribution/delegation link (the prior BTS item " + PRIOR_BTS_ITEM_ID + " returned anonymous-access denial during 2026-10-21 extraction and is recorded in docs, not validated here), official service-directory membership, service/layer identity, field names/types, CRS, pinned layer extent, valid non-empty polygon topology (invalid or empty geometry is rejected, never repaired), page errors, and before/after exact ID roster are checked; duplicate Feature_ID values are preserved."}
 
 
 def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
@@ -933,6 +938,9 @@ def capture_land_region_areas_usace_ienc(storage: StagingStorageResource, *, ver
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
             "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],
+            "geometry_valid_count": audit["geometry_valid_count"],
+            "geometry_invalid_count": audit["geometry_invalid_count"],
+            "geometry_empty_count": audit["geometry_empty_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_release_accepted": False, "source_freshness_accepted": False,
             "schema_contract_accepted": False, "id_contract_accepted": False,
@@ -950,6 +958,9 @@ def capture_land_region_areas_usace_ienc(storage: StagingStorageResource, *, ver
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
         "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],
+        "geometry_valid_count": audit["geometry_valid_count"],
+        "geometry_invalid_count": audit["geometry_invalid_count"],
+        "geometry_empty_count": audit["geometry_empty_count"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json",
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
