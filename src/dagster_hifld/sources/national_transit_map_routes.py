@@ -1,8 +1,11 @@
 """Bounded native capture for the current BTS NTAD National Transit Map Routes layer.
 
-The source is a current BTS publication. DataLumos V1 is a distinct 2024 vintage;
-archive equivalence, baseline, rights, field mapping, and release acceptance are
-intentionally unresolved. No source data are captured by importing this module.
+The hosted layer declares hasZ=true, so page queries send returnZ=true and the
+native Z coordinate is validated, digested and published (WKB 'MultiLineString
+Z'); it is never silently dropped. The source is a current BTS publication.
+DataLumos V1 is a distinct 2024 vintage; archive equivalence, baseline, rights,
+field mapping, and release acceptance are intentionally unresolved. No source
+data are captured by importing this module.
 """
 from __future__ import annotations
 
@@ -46,17 +49,30 @@ FILE_SLUG = DATASET_SLUG
 PUBLISHER = "U.S. Department of Transportation, Bureau of Transportation Statistics (USDOT_BTS)"
 LICENSE = "https://creativecommons.org/licenses/by/3.0/us/"
 PAGE_SIZE = 1000
-MAX_BODY_BYTES = 12_000_000
-MAX_CAPTURE_TOTAL_BYTES = 1_000_000_000
+# 2026-11-09 live measurement: a full 1000-row returnZ=true page body is
+# 21,510,735 B; the previous 12,000,000 cap rejected every real page. 64 MiB is
+# ~3x the largest measured page, so a modest producer-side growth still fails
+# closed instead of silently truncating the population.
+MAX_BODY_BYTES = 64_000_000
+# 2026-11-09 forecast from measured pages: 77 pages x ~21.5 MiB body + ~21.5 MiB
+# wire at Accept-Encoding identity ~= 3.32 GiB, plus small metadata documents.
+# 6 GiB gives bounded headroom over that forecast while still refusing an
+# unbounded or runaway feed; the previous 1 GiB cap could never hold one capture.
+MAX_CAPTURE_TOTAL_BYTES = 6_000_000_000
 MAX_FAILURE_RECEIPT_BYTES = 64_000
 MAX_FAILURE_RECEIPTS_TOTAL_BYTES = 1_000_000
 MAX_CAPTURE_PAGES = 1_024
 MAX_CAPTURE_RESPONSES = MAX_CAPTURE_PAGES + 11
-DISK_FLOOR_BYTES = 400_000_000
+# The complete candidate keeps a second raw copy in staging (bodies + wire,
+# ~3.4 GiB forecast) plus the parquet candidate; keep 2 GiB free after writing.
+DISK_FLOOR_BYTES = 2_000_000_000
 MAX_OBJECT_ID_URL_LENGTH = 1800
-EXPECTED_SOURCE_SCHEMA_SHA256 = "59c183811e400be119ebda8b0be44d72d2d334f20ffd27489e2e1e843b8423d8"
-EXPECTED_SOURCE_ID_SHA256 = "f2510402c124e443921e3e51c4cda87e07017daabb66bd529352ef7c195c22d3"
-EXPECTED_SOURCE_COUNT = 76_699
+# Dated 2026-11-09 anonymous probes of the live producer (see PR #694):
+# count 76,687; sorted-ID-roster and canonical-schema digests recomputed from
+# FeatureServer/0 metadata; the item was republished 2026-11-02T15:21:08Z.
+EXPECTED_SOURCE_SCHEMA_SHA256 = "86e2861b4da8fce1f1b837afe74382b27992ff7956ec06eec641b5ffe81a689b"
+EXPECTED_SOURCE_ID_SHA256 = "b22ed62787e1a89324226b0957339ed34bcaba3ff4413b22e9fbcd7e88d2a250"
+EXPECTED_SOURCE_COUNT = 76_687
 EXPECTED_FIELD_NAMES = ["OBJECTID", "ntd_id", "feed_id", "shape_id", "route_id", "agency_id",
     "route_short_name", "route_long_name", "route_desc", "route_type", "route_type_text",
     "route_url", "route_color", "route_text_color", "download_date", "Shape__Length"]
@@ -126,7 +142,8 @@ def _object_id_chunks(ids: list[int]) -> list[list[int]]:
     for object_id in ids:
         candidate = [*current, object_id]
         params = {"objectIds": ",".join(map(str, candidate)), "outFields": "*",
-            "returnGeometry": "true", "orderByFields": "OBJECTID ASC", "f": "json"}
+            "returnGeometry": "true", "returnZ": "true",
+            "orderByFields": "OBJECTID ASC", "f": "json"}
         if len(_query_url(**params)) >= MAX_OBJECT_ID_URL_LENGTH:
             if not current:
                 raise ValueError("single_object_id_exceeds_get_url_limit")
@@ -148,7 +165,7 @@ def _page_plan(ids: list[int], layer: Mapping[str, object]) -> tuple[str, list[t
         for offset in range(0, len(ordered_ids), PAGE_SIZE):
             page_ids = ordered_ids[offset:offset + PAGE_SIZE]
             url = _query_url(where="1=1", outFields="*", returnGeometry="true",
-                orderByFields="OBJECTID ASC",
+                returnZ="true", orderByFields="OBJECTID ASC",
                 resultOffset=offset, resultRecordCount=PAGE_SIZE, f="json")
             if len(url) >= MAX_OBJECT_ID_URL_LENGTH:
                 raise ValueError("pagination_get_url_exceeds_safe_limit")
@@ -157,7 +174,8 @@ def _page_plan(ids: list[int], layer: Mapping[str, object]) -> tuple[str, list[t
         mode = "bounded_object_ids"
         for page_ids in _object_id_chunks(ordered_ids):
             params = {"objectIds": ",".join(map(str, page_ids)), "outFields": "*",
-                      "returnGeometry": "true", "orderByFields": "OBJECTID ASC", "f": "json"}
+                      "returnGeometry": "true", "returnZ": "true",
+                      "orderByFields": "OBJECTID ASC", "f": "json"}
             url = _query_url(**params)
             if len(url) >= MAX_OBJECT_ID_URL_LENGTH:
                 raise ValueError("object_id_get_url_exceeds_safe_limit")
@@ -169,9 +187,18 @@ def _page_plan(ids: list[int], layer: Mapping[str, object]) -> tuple[str, list[t
     return mode, pages
 
 
-def _validate_before_page_requests(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[list[int], dict]:
+def _read_capture_body(capture_root: Path, name: str) -> bytes:
+    """Read one retained capture body below the per-response bound."""
+    body = (capture_root / f"{name}.body").read_bytes()
+    if len(body) > MAX_BODY_BYTES:
+        raise ValueError("capture_artifact_type_or_size_limit")
+    return body
+
+
+def _validate_before_page_requests(capture_root: Path,
+                                   receipts: dict[str, dict[str, object]]) -> tuple[list[int], dict]:
     """Validate all source pins available before requesting any feature page."""
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = {name: json.loads(_read_capture_body(capture_root, name)) for name in receipts}
     seed_doc = docs["ids_seed"]
     seed = seed_doc.get("objectIds")
     if (seed_doc.get("objectIdFieldName") != "OBJECTID" or not isinstance(seed, list)
@@ -216,7 +243,7 @@ def _validate_before_page_requests(captures: dict[str, tuple[bytes, dict[str, ob
             or not any(isinstance(x, dict) and x.get("id") == LAYER_ID and x.get("name") == LAYER_NAME
                        for x in service.get("layers", []))
             or layer.get("name") != LAYER_NAME or layer.get("geometryType") != "esriGeometryPolyline"
-            or layer.get("objectIdField") != "OBJECTID" or layer.get("hasZ") is not False
+            or layer.get("objectIdField") != "OBJECTID" or layer.get("hasZ") is not True
             or layer.get("hasM") is not False
             or layer.get("extent", {}).get("spatialReference", {}).get("latestWkid") != 4326):
         raise ValueError("source_layer_identity_or_crs_drift")
@@ -238,6 +265,31 @@ def _validate_page_ids(body: bytes, expected_ids: list[int]) -> None:
         page_ids.append(attrs["OBJECTID"])
     if page_ids != expected_ids:
         raise ValueError("source_page_ids_do_not_match_requested_slice")
+
+
+class _StreamingCanonicalListDigest:
+    """Incrementally digest json.dumps(list, ...) without materializing the list.
+
+    Produces exactly sha256(_canonical(elements)) for any element sequence: the
+    list serialization is '[' + ','.join(element serializations) + ']', and
+    json.dumps applies the same options recursively when dumping the whole list.
+    """
+
+    def __init__(self) -> None:
+        self._hash = hashlib.sha256()
+        self._hash.update(b"[")
+        self._count = 0
+
+    def add(self, element: object) -> None:
+        if self._count:
+            self._hash.update(b",")
+        self._hash.update(_canonical(element))
+        self._count += 1
+
+    def hexdigest(self) -> str:
+        closing = self._hash.copy()
+        closing.update(b"]")
+        return closing.hexdigest()
 
 
 def _bounded_regular_file(path: Path, limit: int, *, dir_fd: int | None = None) -> bytes:
@@ -263,7 +315,7 @@ def _bounded_regular_file(path: Path, limit: int, *, dir_fd: int | None = None) 
         os.close(fd)
 
 
-def _bounded_failure_evidence(capture_root: Path, captures: dict[str, tuple[bytes, dict]],
+def _bounded_failure_evidence(capture_root: Path, captured_names: set[str],
                               error_code: str) -> tuple[dict[str, tuple[bytes, bytes, dict]], list[str]]:
     """Collect bounded partial artifacts; malformed/oversized files are named, not read."""
     by_name: dict[str, set[str]] = {}
@@ -297,7 +349,7 @@ def _bounded_failure_evidence(capture_root: Path, captures: dict[str, tuple[byte
     omitted: list[str] = []
     total_body_wire = 0
     total_receipts = 0
-    for name in sorted(set(by_name) | set(captures)):
+    for name in sorted(set(by_name) | set(captured_names)):
         if len(result) >= MAX_CAPTURE_RESPONSES:
             omitted.append("response_count_limit")
             break
@@ -358,16 +410,49 @@ def _quarantine_failure_evidence(storage: StagingStorageResource, dataset_slug: 
     return base
 
 
-def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict, list[dict], list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
-    fields = docs["layer_before"].get("fields")
+def _candidate_schema(fields: list[dict]) -> pa.Schema:
+    """Native Z-preserving GeoParquet schema for the sixteen source fields."""
+    schema_fields = [pa.field(field["name"], _arrow_type(field),
+                              nullable=bool(field.get("nullable", True))) for field in fields]
+    schema_fields.append(pa.field("geometry", pa.binary(), nullable=True))
+    geo = {"version":"1.1.0", "primary_column":"geometry", "columns":{"geometry":{
+        "encoding":"WKB", "geometry_types":["MultiLineString Z"],
+        "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"planar",
+    }}}
+    return pa.schema(schema_fields, metadata={b"geo":_canonical(geo)})
+
+
+def _page_rows_table(schema: pa.Schema, fields: list[dict], rows: list[dict],
+                     geometries: list[bytes | None]) -> pa.Table:
+    arrays = {}
+    for field in fields:
+        name = field["name"]
+        arrays[name] = pa.array([row["attributes"][name] for row in rows], type=_arrow_type(field))
+    arrays["geometry"] = pa.array(geometries, type=pa.binary())
+    return pa.Table.from_pydict(arrays, schema=schema)
+
+
+def _build_candidate(capture_root: Path, receipts: dict[str, dict[str, object]]
+                     ) -> tuple[list[dict], dict, bytes]:
+    """Validate every retained response and stream the native Z-preserving parquet.
+
+    Page bodies are re-read from the capture directory one at a time so a full
+    capture (~1.7 GiB of decoded pages) never has to fit in memory. The record
+    and geometry digests are computed incrementally and equal the sha256 of the
+    fully materialized canonical lists.
+    """
+    def doc(name: str) -> dict:
+        return json.loads(_read_capture_body(capture_root, name))
+
+    layer_before = doc("layer_before")
+    fields = layer_before.get("fields")
     if not isinstance(fields, list) or not fields or any(not isinstance(f, dict) for f in fields):
         raise ValueError("source_field_roster_missing")
     plain_fields = [_plain_field(f) for f in fields]
     schema_sha = _sha(_canonical(plain_fields))
     if schema_sha != EXPECTED_SOURCE_SCHEMA_SHA256:
         raise ValueError("source_schema_drift")
-    portal = docs["portal_item"]
+    portal = doc("portal_item")
     if (portal.get("id") != ITEM_ID or portal.get("owner") != "USDOT_BTS"
             or portal.get("title") != LAYER_NAME
             or portal.get("url") != SERVICE_URL or portal.get("access") != "public"
@@ -378,37 +463,41 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dic
             or "National Transportation Atlas Database (NTAD)" not in desc
             or "National Transit Map" not in desc or "September 23, 2026" not in desc):
         raise ValueError("official_BTS_NTAD_relationship_or_vintage_drift")
-    portal_after = docs["portal_item_after"]
+    portal_after = doc("portal_item_after")
     if any(portal.get(key) != portal_after.get(key) for key in (
             "id", "owner", "title", "url", "access", "licenseInfo", "modified", "description")):
         raise ValueError("source_item_changed_during_capture")
-    service, layer = docs["service_before"], docs["layer_before"]
-    if (service.get("serviceItemId") != ITEM_ID
-            or not any(x.get("id") == LAYER_ID and x.get("name") == LAYER_NAME for x in service.get("layers", []) if isinstance(x, dict))
-            or layer.get("name") != LAYER_NAME or layer.get("geometryType") != "esriGeometryPolyline"
-            or layer.get("objectIdField") != "OBJECTID" or layer.get("hasZ") is not False
-            or layer.get("hasM") is not False):
+    service_before = doc("service_before")
+    if (service_before.get("serviceItemId") != ITEM_ID
+            or not any(x.get("id") == LAYER_ID and x.get("name") == LAYER_NAME for x in service_before.get("layers", []) if isinstance(x, dict))
+            or layer_before.get("name") != LAYER_NAME or layer_before.get("geometryType") != "esriGeometryPolyline"
+            or layer_before.get("objectIdField") != "OBJECTID" or layer_before.get("hasZ") is not True
+            or layer_before.get("hasM") is not False):
         raise ValueError("exact_BTS_air_to_truck_layer_identity_drift")
-    if layer.get("extent", {}).get("spatialReference", {}).get("latestWkid") != 4326:
+    if layer_before.get("extent", {}).get("spatialReference", {}).get("latestWkid") != 4326:
         raise ValueError("source_native_crs_drift")
     if (len(fields) != len(EXPECTED_FIELD_NAMES)
             or [f.get("name") for f in fields] != EXPECTED_FIELD_NAMES
             or [f.get("type") for f in fields] != EXPECTED_FIELD_TYPES):
         raise ValueError("source_schema_roster_drift")
-    if (docs["service_before"].get("serviceItemId") != docs["service_after"].get("serviceItemId")
-            or docs["service_before"].get("layers") != docs["service_after"].get("layers")
-            or docs["service_before"].get("serviceDescription") != docs["service_after"].get("serviceDescription")
-            or docs["layer_before"].get("name") != docs["layer_after"].get("name")
-            or docs["layer_before"].get("geometryType") != docs["layer_after"].get("geometryType")
-            or docs["layer_before"].get("objectIdField") != docs["layer_after"].get("objectIdField")
-            or docs["layer_before"].get("spatialReference") != docs["layer_after"].get("spatialReference")
-            or docs["layer_before"].get("extent") != docs["layer_after"].get("extent")
-            or docs["layer_before"].get("editingInfo") != docs["layer_after"].get("editingInfo")):
+    service_after = doc("service_after")
+    layer_after = doc("layer_after")
+    if (service_before.get("serviceItemId") != service_after.get("serviceItemId")
+            or service_before.get("layers") != service_after.get("layers")
+            or service_before.get("serviceDescription") != service_after.get("serviceDescription")
+            or layer_before.get("name") != layer_after.get("name")
+            or layer_before.get("geometryType") != layer_after.get("geometryType")
+            or layer_before.get("objectIdField") != layer_after.get("objectIdField")
+            or layer_before.get("spatialReference") != layer_after.get("spatialReference")
+            or layer_before.get("extent") != layer_after.get("extent")
+            or layer_before.get("editingInfo") != layer_after.get("editingInfo")):
         raise ValueError("source_metadata_changed_during_capture")
-    if [_plain_field(f) for f in docs["layer_after"].get("fields", [])] != plain_fields:
+    if [_plain_field(f) for f in layer_after.get("fields", [])] != plain_fields:
         raise ValueError("source_field_schema_changed_during_capture")
-    counts = (docs["count_before"].get("count"), docs["count_after"].get("count"))
-    ids = (docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds"))
+    count_before, count_after = doc("count_before"), doc("count_after")
+    ids_before, ids_after = doc("ids_before"), doc("ids_after")
+    counts = (count_before.get("count"), count_after.get("count"))
+    ids = (ids_before.get("objectIds"), ids_after.get("objectIds"))
     if (type(counts[0]) is not int or counts[0] != EXPECTED_SOURCE_COUNT
             or type(counts[1]) is not int or counts[1] != counts[0]
             or not isinstance(ids[0], list) or not isinstance(ids[1], list)
@@ -417,138 +506,142 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dic
         raise ValueError("source_count_or_id_roster_drift")
     got_ids = sorted(ids[0])
     if (len(set(got_ids)) != counts[0] or sorted(ids[1]) != got_ids
-            or docs["ids_before"].get("objectIdFieldName") != "OBJECTID"
-            or docs["ids_after"].get("objectIdFieldName") != "OBJECTID"):
+            or ids_before.get("objectIdFieldName") != "OBJECTID"
+            or ids_after.get("objectIdFieldName") != "OBJECTID"):
         raise ValueError("source_id_roster_duplicate")
     if _sha(_canonical(got_ids)) != EXPECTED_SOURCE_ID_SHA256:
         raise ValueError("source_id_roster_drift")
-    seed = docs["ids_seed"].get("objectIds")
+    seed_doc = doc("ids_seed")
+    seed = seed_doc.get("objectIds")
     if (not isinstance(seed, list) or any(type(value) is not int for value in seed)
-            or docs["ids_seed"].get("objectIdFieldName") != "OBJECTID"
+            or seed_doc.get("objectIdFieldName") != "OBJECTID"
             or len(seed) != counts[0] or len(set(seed)) != counts[0] or sorted(seed) != got_ids):
         raise ValueError("source_id_roster_changed_before_capture")
-    page_names = sorted(name for name in captures if name.startswith("page_"))
-    pagination_mode, page_plan = _page_plan(got_ids, layer)
+    page_names = sorted(name for name in receipts if name.startswith("page_"))
+    pagination_mode, page_plan = _page_plan(got_ids, layer_before)
     expected_pages = [name for name, _url, _ids in page_plan]
     if page_names != expected_pages:
         raise ValueError("source_page_roster_incomplete")
-    features = []
-    for page_index, (name, expected_url, expected_page_ids) in enumerate(page_plan):
-        page = docs[name]
-        receipt = captures[name][1]
-        if receipt.get("url") != expected_url:
-            raise ValueError("source_page_query_plan_drift")
-        if pagination_mode == "bounded_object_ids" and len(expected_url) >= MAX_OBJECT_ID_URL_LENGTH:
-            raise ValueError("source_page_get_url_exceeds_safe_limit")
-        if "error" in page:
-            raise ValueError("source_page_error_or_truncated")
-        # The BTS layer sets exceededTransferLimit on a full offset page when
-        # additional ordered rows remain. The independently pinned ID roster
-        # and exact requested slice prove page completeness; a partial or
-        # unexpectedly flagged final page still fails closed.
-        if (page.get("exceededTransferLimit") is True
-                and (pagination_mode != "ordered_offset" or len(expected_page_ids) != PAGE_SIZE
-                     or page_index == len(page_plan) - 1)):
-            raise ValueError("source_page_error_or_truncated")
-        if page.get("spatialReference", {}).get("latestWkid") != 4326:
-            raise ValueError("source_page_crs_drift")
-        rows = page.get("features")
-        if not isinstance(rows, list):
-            raise ValueError("source_page_missing_features")
-        page_ids = [row.get("attributes", {}).get("OBJECTID") for row in rows
-                    if isinstance(row, dict) and isinstance(row.get("attributes"), dict)]
-        if page_ids != expected_page_ids:
-            raise ValueError("source_page_ids_do_not_match_requested_slice")
-        features.extend(rows)
-    page_ids = [f.get("attributes", {}).get("OBJECTID") for f in features]
-    if (len(features) != counts[0] or any(type(value) is not int for value in page_ids)
-            or sorted(page_ids) != got_ids or len(set(page_ids)) != counts[0]):
-        raise ValueError("source_feature_population_incomplete")
+    record_digest = _StreamingCanonicalListDigest()
+    geometry_digest = _StreamingCanonicalListDigest()
+    schema = _candidate_schema(fields)
     field_names = [f["name"] for f in fields]
-    features.sort(key=lambda row: row["attributes"]["OBJECTID"])
-    geom_repr = []
+    parquet_sink = pa.BufferOutputStream()
+    writer = pq.ParquetWriter(parquet_sink, schema, compression="zstd")
+    feature_count = 0
     null_geometry_count = 0
     invalid_geometry_count = 0
-    for row in features:
-        attrs, geom = row.get("attributes"), row.get("geometry")
-        if not isinstance(attrs, dict) or set(attrs) != set(field_names):
-            raise ValueError("source_attribute_roster_drift")
-        for field in fields:
-            value = attrs[field["name"]]
-            if value is None:
-                if field.get("nullable") is False:
-                    raise ValueError("source_nonnullable_attribute_is_null")
-                continue
-            kind = field["type"]
-            if kind in ("esriFieldTypeOID", "esriFieldTypeInteger"):
-                valid = type(value) is int
-            elif kind == "esriFieldTypeDouble":
-                valid = type(value) in (int, float) and math.isfinite(value)
-            elif kind == "esriFieldTypeString":
-                valid = isinstance(value, str)
-            else:
-                raise ValueError("unsupported_source_field_type")
-            if not valid:
-                raise ValueError("source_attribute_value_type_drift")
-        if geom is None:
-            null_geometry_count += 1
-            geom_repr.append([attrs["OBJECTID"], None])
-            continue
-        if not isinstance(geom, dict) or set(geom) != {"paths"}:
-            raise ValueError("source_polyline_geometry_roster_drift")
-        paths = geom.get("paths")
-        if not isinstance(paths, list) or not paths:
-            raise ValueError("source_polyline_paths_missing")
-        normalized_paths = []
-        for path in paths:
-            if not isinstance(path, list) or len(path) < 2:
-                raise ValueError("source_polyline_path_invalid")
-            points = []
-            for point in path:
-                if (not isinstance(point, list) or len(point) != 2
-                        or any(type(coord) not in (int, float) for coord in point)):
-                    raise ValueError("source_polyline_coordinate_invalid")
-                x, y = point
-                if not math.isfinite(x) or not math.isfinite(y) or not (-180 <= x <= 180 and -90 <= y <= 90):
-                    invalid_geometry_count += 1
-                points.append([x, y])
-            normalized_paths.append(points)
-        geom_repr.append([attrs["OBJECTID"], normalized_paths])
+    z_point_count = 0
+    nonzero_z_point_count = 0
+    try:
+        for page_index, (name, expected_url, expected_page_ids) in enumerate(page_plan):
+            receipt = receipts[name]
+            if receipt.get("url") != expected_url:
+                raise ValueError("source_page_query_plan_drift")
+            if pagination_mode == "bounded_object_ids" and len(expected_url) >= MAX_OBJECT_ID_URL_LENGTH:
+                raise ValueError("source_page_get_url_exceeds_safe_limit")
+            page = doc(name)
+            if "error" in page:
+                raise ValueError("source_page_error_or_truncated")
+            # The BTS layer sets exceededTransferLimit on a full offset page when
+            # additional ordered rows remain. The independently pinned ID roster
+            # and exact requested slice prove page completeness; a partial or
+            # unexpectedly flagged final page still fails closed.
+            if (page.get("exceededTransferLimit") is True
+                    and (pagination_mode != "ordered_offset" or len(expected_page_ids) != PAGE_SIZE
+                         or page_index == len(page_plan) - 1)):
+                raise ValueError("source_page_error_or_truncated")
+            if page.get("spatialReference", {}).get("latestWkid") != 4326:
+                raise ValueError("source_page_crs_drift")
+            if "hasZ" in page and page.get("hasZ") is not True:
+                raise ValueError("source_page_dimension_drift")
+            rows = page.get("features")
+            if not isinstance(rows, list):
+                raise ValueError("source_page_missing_features")
+            page_ids = [row.get("attributes", {}).get("OBJECTID") for row in rows
+                        if isinstance(row, dict) and isinstance(row.get("attributes"), dict)]
+            if page_ids != expected_page_ids:
+                raise ValueError("source_page_ids_do_not_match_requested_slice")
+            wkb_geometries: list[bytes | None] = []
+            for row in rows:
+                attrs, geom = row.get("attributes"), row.get("geometry")
+                if not isinstance(attrs, dict) or set(attrs) != set(field_names):
+                    raise ValueError("source_attribute_roster_drift")
+                for field in fields:
+                    value = attrs[field["name"]]
+                    if value is None:
+                        if field.get("nullable") is False:
+                            raise ValueError("source_nonnullable_attribute_is_null")
+                        continue
+                    kind = field["type"]
+                    if kind in ("esriFieldTypeOID", "esriFieldTypeInteger"):
+                        valid = type(value) is int
+                    elif kind == "esriFieldTypeDouble":
+                        valid = type(value) in (int, float) and math.isfinite(value)
+                    elif kind == "esriFieldTypeString":
+                        valid = isinstance(value, str)
+                    else:
+                        raise ValueError("unsupported_source_field_type")
+                    if not valid:
+                        raise ValueError("source_attribute_value_type_drift")
+                record_digest.add(row)
+                feature_count += 1
+                if geom is None:
+                    null_geometry_count += 1
+                    geometry_digest.add([attrs["OBJECTID"], None])
+                    wkb_geometries.append(None)
+                    continue
+                if not isinstance(geom, dict) or set(geom) != {"paths", "hasZ"}:
+                    raise ValueError("source_polyline_geometry_roster_drift")
+                if geom.get("hasZ") is not True:
+                    raise ValueError("source_polyline_geometry_dimension_drift")
+                paths = geom.get("paths")
+                if not isinstance(paths, list) or not paths:
+                    raise ValueError("source_polyline_paths_missing")
+                normalized_paths = []
+                for path in paths:
+                    if not isinstance(path, list) or len(path) < 2:
+                        raise ValueError("source_polyline_path_invalid")
+                    points = []
+                    for point in path:
+                        if (not isinstance(point, list) or len(point) != 3
+                                or any(type(coord) not in (int, float) for coord in point)):
+                            raise ValueError("source_polyline_coordinate_invalid")
+                        x, y, z = point
+                        if (not math.isfinite(x) or not math.isfinite(y) or not math.isfinite(z)
+                                or not (-180 <= x <= 180 and -90 <= y <= 90)):
+                            invalid_geometry_count += 1
+                        z_point_count += 1
+                        if z != 0:
+                            nonzero_z_point_count += 1
+                        points.append([x, y, z])
+                    normalized_paths.append(points)
+                geometry_digest.add([attrs["OBJECTID"], normalized_paths])
+                wkb_geometries.append(MultiLineString(normalized_paths).wkb)
+            writer.write_table(_page_rows_table(schema, fields, rows, wkb_geometries))
+            del page, rows, wkb_geometries
+        writer.close()
+    except BaseException:
+        writer.close()
+        raise
+    if feature_count != counts[0]:
+        raise ValueError("source_feature_population_incomplete")
     audit = {
-        "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(got_ids)),
+        "source_feature_count": feature_count, "source_id_sha256": _sha(_canonical(got_ids)),
         "source_population_complete": True,
-        "source_record_sha256": _sha(_canonical(features)),
-        "source_geometry_sha256": _sha(_canonical(geom_repr)), "source_schema_sha256": schema_sha,
+        "source_record_sha256": record_digest.hexdigest(),
+        "source_geometry_sha256": geometry_digest.hexdigest(), "source_schema_sha256": schema_sha,
         "source_fields": plain_fields, "source_crs_wkid": 4326,
-        "source_geometry_type": "esriGeometryPolyline", "source_null_geometry_count": null_geometry_count,
+        "source_geometry_type": "esriGeometryPolyline", "source_geometry_has_z": True,
+        "source_z_point_count": z_point_count,
+        "source_nonzero_z_point_count": nonzero_z_point_count,
+        "source_null_geometry_count": null_geometry_count,
         "source_invalid_geometry_count": invalid_geometry_count,
         "pagination_mode":pagination_mode,"page_count":len(page_plan),"page_size":PAGE_SIZE,
         "proposed_physical_field_mappings":[{"field":field["name"],"source_type":field["type"],
             "proposed_arrow_type":str(_arrow_type(field)),"approved":False} for field in plain_fields],
     }
-    return layer, plain_fields, features, audit
-
-
-def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
-    arrays = {}
-    schema_fields = []
-    for field in fields:
-        name = field["name"]
-        kind = _arrow_type(field)
-        arrays[name] = pa.array([row["attributes"][name] for row in features], type=kind)
-        schema_fields.append(pa.field(name, kind, nullable=bool(field.get("nullable", True))))
-    arrays["geometry"] = pa.array([
-        None if row["geometry"] is None else MultiLineString(row["geometry"]["paths"]).wkb
-        for row in features
-    ], type=pa.binary())
-    schema_fields.append(pa.field("geometry", pa.binary(), nullable=True))
-    geo = {"version":"1.1.0", "primary_column":"geometry", "columns":{"geometry":{
-        "encoding":"WKB", "geometry_types":["MultiLineString"], "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"planar",
-    }}}
-    schema = pa.schema(schema_fields, metadata={b"geo":_canonical(geo)})
-    sink = pa.BufferOutputStream()
-    pq.write_table(pa.Table.from_pydict(arrays, schema=schema), sink, compression="zstd")
-    return sink.getvalue().to_pybytes()
+    return plain_fields, audit, parquet_sink.getvalue().to_pybytes()
 
 
 def _code_identity() -> dict:
@@ -601,10 +694,10 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    receipts: dict[str, dict] = {}
     total_captured_bytes = 0
 
-    def capture_one(client, name: str, url: str) -> tuple[bytes, dict]:
+    def capture_one(client, name: str, url: str) -> bytes:
         nonlocal total_captured_bytes
 
         def reserve(progress: CaptureProgress) -> None:
@@ -624,36 +717,34 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
         total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
         if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
             raise ValueError("source_capture_exceeds_scratch_budget")
-        return body, receipt
+        receipts[name] = receipt
+        return body
 
-    current_capture_name = "ids_seed"
-    current_capture_url = _query_url(where="1=1", returnIdsOnly="true", f="json")
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/national-transit-map-routes-draft"}) as client:
-            seed_body, seed_receipt = capture_one(client, current_capture_name, current_capture_url)
-            captures["ids_seed"] = (seed_body, seed_receipt)
+            # Response bodies are validated as they arrive and then dropped: the
+            # durable copy on disk is the only retained form, so a full capture
+            # never accumulates in memory.
+            seed_body = capture_one(client, "ids_seed",
+                                    _query_url(where="1=1", returnIdsOnly="true", f="json"))
             seed = json.loads(seed_body).get("objectIds")
             if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
                 raise ValueError("source_seed_id_roster_missing_or_invalid")
+            del seed_body
             for name, url in _source_metadata_urls():
-                current_capture_name, current_capture_url = name, url
-                body, receipt = capture_one(client, name, url)
-                captures[name] = (body, receipt)
-            pinned_ids, layer_before = _validate_before_page_requests(captures)
+                capture_one(client, name, url)
+            pinned_ids, layer_before = _validate_before_page_requests(capture_root, receipts)
             _pagination_mode, page_plan = _page_plan(pinned_ids, layer_before)
             for name, url, expected_page_ids in page_plan:
-                current_capture_name, current_capture_url = name, url
-                body, receipt = capture_one(client, name, url)
-                captures[name] = (body, receipt)
-                _validate_page_ids(body, expected_page_ids)
+                page_body = capture_one(client, name, url)
+                _validate_page_ids(page_body, expected_page_ids)
+                del page_body
             for name, url in _source_after_urls():
-                current_capture_name, current_capture_url = name, url
-                body, receipt = capture_one(client, name, url)
-                captures[name] = (body, receipt)
-        layer, fields, features, audit = _validate(captures)
+                capture_one(client, name, url)
+        _plain_fields, audit, parquet = _build_candidate(capture_root, receipts)
     except Exception as exc:
         error_code = str(exc) if isinstance(exc, ValueError) and str(exc).replace("_", "").isalnum() else type(exc).__name__
-        bounded, omitted = _bounded_failure_evidence(capture_root, captures, error_code)
+        bounded, omitted = _bounded_failure_evidence(capture_root, set(receipts), error_code)
         try:
             (capture_root/"capture_manifest.json").write_bytes(_canonical({
                 "captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,
@@ -665,12 +756,11 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
             _quarantine_failure_evidence(storage, DATASET_SLUG, bounded, error_code, omitted)
         raise
     identity = _code_identity()
-    parquet = _parquet_bytes(fields, features)
     native_path = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {native_path:{"bytes":len(parquet),"sha256":_sha(parquet)}}
     manifest = {
         "schema_version":1,"approved":False,"title":LAYER_NAME,
-        "description":"Current BTS NTAD National Transit Map Routes line layer, described as compiled 2026-09-23. DataLumos V1 is an older 2024 vintage and archive equivalence is unverified; schema, ID, freshness, rights and release approvals remain pending.",
+        "description":"Current BTS NTAD National Transit Map Routes line layer, described as compiled 2026-09-23. The hosted layer declares hasZ=true; page queries send returnZ=true and the native Z coordinate is preserved. DataLumos V1 is an older 2024 vintage and archive equivalence is unverified; schema, ID, freshness, rights and release approvals remain pending.",
         "publisher":PUBLISHER,"agency":"Department of Transportation","source_url":LAYER_URL,
         "license":LICENSE,"source_modified":None,"date_issued":None,
         "date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
@@ -680,14 +770,14 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
             "http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],
             "license":LICENSE,"attribution":"BTS NTAD; item metadata states CC-BY-3.0; rights review remains pending.",
             "release_date":None,"release_date_unknown_reason":"ArcGIS modified timestamp is not a source release date."}
-            for name,(_,receipt) in sorted(captures.items())],
+            for name,receipt in sorted(receipts.items())],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
             "feature_layer_id":LAYER_ID,"source_fields":"all sixteen declared source fields retained with declared source types, including producer-owned Shape__Length",
-            "source_ids":"OBJECTID preserved unchanged; before, seed and after source ID rosters are reconciled","geometry":"native polyline paths encoded as WKB MultiLineString at EPSG:4326 without reprojection, simplification or repair",
+            "source_ids":"OBJECTID preserved unchanged; before, seed and after source ID rosters are reconciled","geometry":"native polyline paths requested with returnZ=true and encoded as WKB MultiLineString Z at EPSG:4326, preserving the producer's native Z coordinate without reprojection, simplification or repair",
             "physical_mapping":"Per-field source-to-Arrow proposals are recorded in source_audit.json; OID widening to int64 preserves values, and all mapping approvals remain false.",
             "candidate_status":"unapproved; production publication prohibited pending source freshness, schema/ID contract, archive equivalence, baseline, rights and mapping acceptance"}}],
         "lineage":f"USDOT_BTS official NTAD account item {ITEM_ID} exposes FeatureServer layer 0. The current item describes a 2026-09-23 compilation. HIFLD inventory references DataLumos project 239727 V1 (2024 vintage); archive equivalence is not assumed.",
-        "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri fields (including OBJECTID and Shape__Length), source IDs, polyline paths and coordinates retained; approvals pending.","objects":[{"path":native_path,**source_objects[native_path]}]}}},
+        "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri fields (including OBJECTID and Shape__Length), source IDs, polyline paths with native Z coordinates and coordinates retained; approvals pending.","objects":[{"path":native_path,**source_objects[native_path]}]}}},
         "unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No display transformation or generalized geometry approved."},
     }
     validate_release_provenance(manifest); validate_output_policy(manifest)
@@ -698,36 +788,55 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
     prefix = candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,
         "source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],
-        "receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
-    outputs = {native_path:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
+        "receipts":dict(sorted(receipts.items()))})+b"\n")
+    metadata_outputs = {"metadata/source_manifest.json":_canonical(manifest)+b"\n",
         "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
-    for name,(body,receipt) in captures.items():
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (capture_root/f"{name}.wire").read_bytes()
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt)+b"\n"
     ready = {"approved":False,"version":version,"objects":source_objects,"source_record_sha256":audit["source_record_sha256"],
         "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
         "baseline_accepted":False,"archive_equivalence_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    outputs["metadata/candidate_ready.json"] = _canonical(ready)+b"\n"
-    if shutil.disk_usage(base).free - sum(len(body) for body in outputs.values()) < DISK_FLOOR_BYTES:
+    candidate_ready = _canonical(ready)+b"\n"
+    output_names = ({native_path, "metadata/candidate_ready.json", *metadata_outputs}
+                    | {f"raw/{name}.{suffix}" for name in receipts for suffix in ("body","wire","receipt.json")})
+    planned_bytes = (len(parquet) + len(candidate_ready) + sum(map(len, metadata_outputs.values()))
+                     + sum(receipt["bytes"] + receipt["wire_bytes"] for receipt in receipts.values()))
+    if shutil.disk_usage(base).free - planned_bytes < DISK_FLOOR_BYTES:
         raise ValueError("staging_disk_floor_before_candidate_write")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
-        return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs))
-    for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
-    descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
+        return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,output_names)
+    write_immutable(storage,f"{prefix}/{native_path}",parquet)
+    del parquet
+    for name,body in metadata_outputs.items():
+        write_immutable(storage,f"{prefix}/{name}",body)
+    for name,receipt in sorted(receipts.items()):
+        write_immutable(storage,f"{prefix}/raw/{name}.body",_read_capture_body(capture_root,name))
+        write_immutable(storage,f"{prefix}/raw/{name}.wire",(capture_root/f"{name}.wire").read_bytes())
+        write_immutable(storage,f"{prefix}/raw/{name}.receipt.json",_canonical(receipt)+b"\n")
+    write_immutable(storage,f"{prefix}/metadata/candidate_ready.json",candidate_ready)
+    descriptors = {native_path:dict(source_objects[native_path])}
+    for name,body in metadata_outputs.items():
+        descriptors[name] = {"bytes":len(body),"sha256":_sha(body)}
+    descriptors["metadata/candidate_ready.json"] = {"bytes":len(candidate_ready),"sha256":_sha(candidate_ready)}
+    for name,receipt in receipts.items():
+        receipt_body = _canonical(receipt)+b"\n"
+        descriptors[f"raw/{name}.body"] = {"bytes":receipt["bytes"],"sha256":receipt["sha256"]}
+        descriptors[f"raw/{name}.wire"] = {"bytes":receipt["wire_bytes"],"sha256":receipt["wire_sha256"]}
+        descriptors[f"raw/{name}.receipt.json"] = {"bytes":len(receipt_body),"sha256":_sha(receipt_body)}
     for name,d in descriptors.items():
         key=f"{prefix}/{name}"; snap=storage.object_snapshot(key)
         if snap is None or snap.size != d["bytes"] or storage.sha256_key(key) != d["sha256"] or storage.object_snapshot(key) != snap:
             raise ValueError("candidate_output_physical_readback_failed:"+name)
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
-        "capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
+        "capture_receipts":dict(receipts),"objects":descriptors}
     seal_ready_candidate(storage,state_key,version,fingerprint,payload)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,
         "source_null_geometry_count":audit["source_null_geometry_count"],
-        "source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json",
+        "source_invalid_geometry_count":audit["source_invalid_geometry_count"],
+        "source_z_point_count":audit["source_z_point_count"],
+        "source_nonzero_z_point_count":audit["source_nonzero_z_point_count"],
+        "candidate_ready":prefix+"/metadata/candidate_ready.json",
         "capture_directory":str(capture_root),"source_release_accepted":False,"schema_contract_accepted":False,
         "id_contract_accepted":False,"freshness_accepted":False,"baseline_accepted":False,
         "archive_equivalence_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}

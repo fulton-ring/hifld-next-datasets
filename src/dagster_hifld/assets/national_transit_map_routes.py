@@ -32,8 +32,9 @@ class NationalTransitMapRoutesConfig(Config):
     description=(
         "Current BTS NTAD National Transit Map Routes line layer, described as "
         "compiled 2026-09-23. Preserves source fields, IDs, and native EPSG:4326 "
-        "paths. DataLumos V1 archive equivalence and all source, baseline, rights, "
-        "contract, and release approvals remain pending."
+        "paths including the producer's Z coordinate (returnZ=true, WKB "
+        "MultiLineString Z). DataLumos V1 archive equivalence and all source, "
+        "baseline, rights, contract, and release approvals remain pending."
     ),
 )
 def national_transit_map_routes(
