@@ -9,18 +9,16 @@ from __future__ import annotations
 import collections
 import fcntl
 import hashlib
-import importlib.metadata
 import io
 import json
+import os
 import math
 import os
-import platform
 import re
 import shutil
 import sqlite3
 import stat
 import struct
-import subprocess
 import tempfile
 import zipfile
 from contextlib import contextmanager
@@ -38,23 +36,28 @@ import shapely
 from fiona.io import ZipMemoryFile
 from shapely.geometry import shape
 
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
 from dagster_hifld.construction_state import (
     canonical_construction_bundle, load_first_construction, seal_first_construction,
 )
 from dagster_hifld.provenance import provenance_projection
-from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.sources.campus_preservation_spec import INPUTS, ARCHIVES, BASELINE_DUPLICATE_IDS
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    validate_staged_release_derivatives)
 
 SLUG = 'colleges-and-universities-campuses'
 TITLE = '2022 HIFLD/ORNL campus historical preservation candidate'
 PRIMARY = 'pasda-hifld-zip'
 READY = 'metadata/campus_preservation_ready.json'
 LAYER = 'campus_historical_native'
-CAPTURES = Path(__file__).parents[3] / 'docs/dataset-sources' / SLUG / 'evidence/captures'
+CAPTURES = Path(os.environ.get('HIFLD_CAMPUS_CAPTURE_DIR',
+    str(Path(__file__).parents[3] / 'docs/dataset-sources' / SLUG / 'evidence/captures')))
 
 
 class CampusQuarantineError(ValueError):
@@ -208,11 +211,9 @@ def validate_capture(name, body, receipt):
 
 def processing_identity():
     root = Path(__file__).parents[3]
-    return {'python':platform.python_version(), 'implementation':platform.python_implementation(),
-            'platform':platform.platform(), 'distributions':sorted((d.metadata['Name'],d.version) for d in importlib.metadata.distributions()),
-            'gdal':pyogrio.__gdal_version_string__, 'geos':shapely.geos_version_string, 'proj':pyproj.proj_version_str,
-            'verifier_sha256':verifier_implementation_sha256(),
-            'files':{str(p.relative_to(root)):sha256_file(p) for p in sorted(root.joinpath('src/dagster_hifld').rglob('*.py'))+[root/'uv.lock',root/'pyproject.toml']}}
+    identity = packaged_processing_identity(root)
+    validate_construction_code_identity(root, identity['code_commit'], identity['files'], identity=identity)
+    return identity
 
 
 def dbf_table(body, expected):
@@ -316,8 +317,9 @@ def parquet_bytes(table):
 
 
 def write_geopackage(table, path):
-    pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='geometry',geometry_type='Unknown',
-                       crs='EPSG:3857',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'geometry'})
+    with with_geopackage_creation_time('2022-07-18T00:00:00.000Z'):
+        pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='geometry',geometry_type='Unknown',
+                           crs='EPSG:3857',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'geometry'})
     with sqlite3.connect(path) as db: db.execute("UPDATE gpkg_contents SET last_change='2022-07-18T00:00:00.000Z'")
 
 
@@ -365,9 +367,8 @@ def manifest_for(captures, identity, parquet):
                        'license':'Original archived FGDC claims public domain/public use; exact source and rights review unresolved.' if mirror else 'Preserved provenance/candidate reference; no additional rights or authority inferred.',
                        'attribution':'Original ORNL/HIFLD credit and PASDA mirror role retained; HIFLD Next is reconstruction processor only.',
                        'release_date_unknown_reason':'Proposed historical preservation candidate: archived FGDC says2022-07-18; exact selected-release bytes/delegation not accepted. Observation time is not release time.'})
-    root = Path(__file__).parents[3]
     manifest = {'schema_version':1,'processor':'HIFLD Next','approved':False,'title':TITLE,
-                'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
+                'code_commit':identity['code_commit'],'code_identity_scheme':identity['code_identity_scheme'],
                 'processing_fingerprint':digest(encode(identity)),'inputs':inputs,
                 'source_selection_status':'Unapproved historical preservation proposal; PASDA is not a maintained producer feed',
                 'transformations':[{'operation':'decode_both_complete_original_archives','parameters':{'native_CRSs':['EPSG:4326','EPSG:3857'],
@@ -434,7 +435,7 @@ def original_context(storage, key, version, fp, captures, identity, proposed):
     manifest = payload['manifest']; validate_release_provenance(manifest)
     if set(manifest) != set(expected) or any(manifest[k] != v for k,v in expected.items() if k != 'code_commit'):
         raise CampusQuarantineError('original_construction_full_manifest_drift')
-    validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
+    validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'],identity=identity)
     return original,manifest
 
 
@@ -501,10 +502,12 @@ def reconcile_cache(storage, prefix, expected, table, version, fp):
     manifest = strict_json(expected['metadata/source_manifest.json'])
     snapshot = 'metadata/source/version_'+digest(expected['metadata/source_manifest.json'])+'_source_manifest.json'
     derivatives = {'metadata/source/source_manifest.json',snapshot,'metadata/source/data_dictionary.json','metadata/source/quality_manifest.json',
-                   'metadata/data_dictionary.json','metadata/quality_manifest.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json'}
+                   'metadata/data_dictionary.json','metadata/quality_manifest.json','metadata/geoparquet_layout.json','metadata/resolved_provenance.json'} | STAGED_RELEASE_DERIVATIVE_NAMES
     actual = {str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     if actual-(owned|{READY}|derivatives) or not (owned|{READY}).issubset(actual):
         raise CampusQuarantineError('unrostered_or_missing_candidate_object')
+    try: validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise CampusQuarantineError('invalid_staged_release_derivatives') from exc
     for name in ['metadata/source/source_manifest.json',snapshot]:
         if (root/name).exists() and (root/name).read_bytes() != expected['metadata/source_manifest.json']:
             raise CampusQuarantineError('authored_manifest_snapshot_changed')
@@ -561,11 +564,11 @@ def stage_campus_preservation(storage, capture_directory):
             captures,manifest = original_context(storage,key,version,fp,captures,identity,tables[PRIMARY])
             observed_trust_loss(storage,version,fp,restored_manifest=manifest)
         else:
-            validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
+            validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'],identity=identity)
         expected = source_payloads(captures,identity,audits,report,manifest,tables)
         # Provenance and actual Git identity are checked before ANY candidate write.
         validate_release_provenance(manifest)
-        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
+        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'],identity=identity)
         building = checked_path(storage,'_building/'+SLUG); building.mkdir(parents=True,exist_ok=True)
         temporary = Path(tempfile.mkdtemp(prefix='candidate-',dir=building))
         try:

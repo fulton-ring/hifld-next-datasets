@@ -15,16 +15,28 @@ import pyarrow.parquet as pq
 from dagster import DefaultScheduleStatus, Definitions, build_schedule_context, validate_run_config
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import campus_preservation as s
-
-_CAPTURE_DIRECTORY = os.environ.get("HIFLD_CAMPUS_CAPTURE_DIR")
-if _CAPTURE_DIRECTORY:
-    s.CAPTURES = Path(_CAPTURE_DIRECTORY)
 from dagster_hifld.assets.campus_preservation import (ornl_campus_historical_integrity_schedule,
     ornl_campus_historical_preservation, ornl_campus_historical_reconstruction_job, campus_historical_full_quality)
 
 
-@unittest.skipUnless(_CAPTURE_DIRECTORY and Path(_CAPTURE_DIRECTORY).is_dir(),
-                     "set HIFLD_CAMPUS_CAPTURE_DIR to an externally restored issue 39 archive")
+class CampusPackagedIdentityTests(unittest.TestCase):
+    def test_runtime_identity_is_valid_without_git_metadata(self):
+        repository = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory(prefix='campus-no-git-package-') as temporary:
+            root = Path(temporary)
+            shutil.copytree(repository/'src/dagster_hifld', root/'src/dagster_hifld')
+            shutil.copy2(repository/'pyproject.toml', root/'pyproject.toml')
+            shutil.copy2(repository/'uv.lock', root/'uv.lock')
+            packaged_source = root/'src/dagster_hifld/sources/campus_preservation.py'
+            self.assertFalse((root/'.git').exists())
+            with patch.object(s, '__file__', str(packaged_source)):
+                identity = s.processing_identity()
+            self.assertEqual(identity['code_identity_scheme'], 'sha256-packaged-dagster-hifld-v1')
+            self.assertEqual(identity['working_tree_status'], 'unknown')
+            self.assertTrue(identity['code_commit'].startswith('packaged-sha256:'))
+
+
+@unittest.skipUnless(s.CAPTURES.is_dir(), 'full capture bodies are supplied outside the source tree')
 class CampusPreservationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -61,6 +73,16 @@ class CampusPreservationTests(unittest.TestCase):
         self.assertEqual(report['published_duplicate_ids'],s.BASELINE_DUPLICATE_IDS)
         self.assertEqual(ornl_campus_historical_integrity_schedule.default_status,DefaultScheduleStatus.STOPPED)
 
+    def test_publication_and_alias_roots_rejected_before_source_reads(self):
+        with tempfile.TemporaryDirectory() as root,patch.object(Path,'read_bytes',side_effect=AssertionError('source read forbidden')):
+            with self.assertRaisesRegex(ValueError,'explicit_unprefixed_local_staging_required'):
+                s.stage_campus_preservation(PublishedStorageResource(local_dir=root),s.CAPTURES)
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root);(root/'actual').mkdir();(root/'alias').symlink_to(root/'actual',target_is_directory=True)
+            for path in [root/'alias',root/'alias'/'child']:
+                with self.subTest(path=path),patch.object(Path,'read_bytes',side_effect=AssertionError('source read forbidden')),self.assertRaises(OSError):
+                    s.stage_campus_preservation(StagingStorageResource(local_dir=str(path)),s.CAPTURES)
+            self.assertEqual(list((root/'actual').iterdir()),[])
 
     def test_bad_receipt_keeps_exact_untrusted_bytes_and_no_candidate(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -217,33 +239,12 @@ class CampusPreservationTests(unittest.TestCase):
             self.assertEqual(built['feature_count'],5898);self.assertFalse(built['reused'])
             self.assertEqual(reused['version'],built['version']);self.assertTrue(reused['reused'])
 
-
-
-class CampusPreservationDefaultTests(unittest.TestCase):
-    """Capture-independent mechanics remain enabled without external evidence."""
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix='campus-independent-')
-        self.base = Path(self.temporary.name)/'staging'
-
-    def tearDown(self):
-        self.temporary.cleanup()
-
-    def test_publication_and_alias_roots_rejected_before_source_reads(self):
-            with tempfile.TemporaryDirectory() as root,patch.object(Path,'read_bytes',side_effect=AssertionError('source read forbidden')):
-                with self.assertRaisesRegex(ValueError,'explicit_unprefixed_local_staging_required'):
-                    s.stage_campus_preservation(PublishedStorageResource(local_dir=root),s.CAPTURES)
-            with tempfile.TemporaryDirectory() as root:
-                root=Path(root);(root/'actual').mkdir();(root/'alias').symlink_to(root/'actual',target_is_directory=True)
-                for path in [root/'alias',root/'alias'/'child']:
-                    with self.subTest(path=path),patch.object(Path,'read_bytes',side_effect=AssertionError('source read forbidden')),self.assertRaises(OSError):
-                        s.stage_campus_preservation(StagingStorageResource(local_dir=str(path)),s.CAPTURES)
-                self.assertEqual(list((root/'actual').iterdir()),[])
-
     def test_stopped_schedule_config_matches_actual_asset_op_name(self):
-            defs=Definitions(assets=[ornl_campus_historical_preservation],asset_checks=[campus_historical_full_quality],
-                resources={'staging_storage':StagingStorageResource(local_dir=str(self.base))},jobs=[ornl_campus_historical_reconstruction_job])
-            with patch.dict(os.environ,{'HIFLD_CAMPUS_CAPTURE_DIR':str(s.CAPTURES)}):
-                validate_run_config(defs.resolve_job_def(ornl_campus_historical_reconstruction_job.name),
-                                    ornl_campus_historical_integrity_schedule.evaluate_tick(build_schedule_context()).run_requests[0].run_config)
+        defs=Definitions(assets=[ornl_campus_historical_preservation],asset_checks=[campus_historical_full_quality],
+            resources={'staging_storage':StagingStorageResource(local_dir=str(self.base))},jobs=[ornl_campus_historical_reconstruction_job])
+        with patch.dict(os.environ,{'HIFLD_CAMPUS_CAPTURE_DIR':str(s.CAPTURES)}):
+            validate_run_config(defs.resolve_job_def(ornl_campus_historical_reconstruction_job.name),
+                                ornl_campus_historical_integrity_schedule.evaluate_tick(build_schedule_context()).run_requests[0].run_config)
+
 
 if __name__=='__main__':unittest.main()
