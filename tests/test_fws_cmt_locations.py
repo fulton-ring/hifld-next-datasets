@@ -71,7 +71,7 @@ def _capture_docs_plain() -> dict:
     layer = {"id": source.LAYER_ID, "name": source.LAYER_NAME,
              "geometryType": "esriGeometryPoint", "maxRecordCount": 2000, "fields": fields,
              "spatialReference": {"wkid": 102100, "latestWkid": 3857},
-             "objectIdFieldName": "ObjectId",
+             "uniqueIdField": {"name": "ObjectId", "isSystemMaintained": True},
              "extent": {"xmin": -2.0e7, "ymin": -3.0e6, "xmax": 2.0e7, "ymax": 1.0e7,
                         "spatialReference": {"wkid": 102100, "latestWkid": 3857}},
              "editingInfo": {"dataLastEditDate": 1793673009098}}

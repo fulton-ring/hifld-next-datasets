@@ -289,7 +289,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
     if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
             or layer.get("geometryType") != "esriGeometryPoint"
             or layer.get("maxRecordCount") != 2000
-            or layer.get("objectIdFieldName") != "ObjectId"):
+            or (layer.get("uniqueIdField") or {}).get("name") != "ObjectId"):
         raise ValueError("source_layer_identity_drift")
     _validate_web_mercator_reference(layer.get("spatialReference"), "source_layer")
     _validate_web_mercator_reference(layer.get("extent", {}).get("spatialReference"), "source_layer_extent")
