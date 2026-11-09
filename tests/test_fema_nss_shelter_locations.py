@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +32,11 @@ def body_bytes(value):
 
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def repo_head():
+    root = Path(source.__file__).parents[3]
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
 
 
 def synthetic_layer(**overrides):
@@ -128,24 +135,20 @@ def build_retained_capture(root, bodies):
     return manifest_sha
 
 
-def replay_retained_capture(tmp, bodies, **overrides):
+def replay_retained_capture(tmp, bodies):
+    """Replay a retained capture through the real unpatched module path.
+
+    Only the transport is absent by construction (retained receipts); request
+    roster/receipt validation, provenance, processing identity and code-identity
+    validation all run for real.
+    """
     storage = StagingStorageResource(local_dir=str(tmp / "staging"), use_local=True,
-                                    backend="local")
+                                     backend="local")
     manifest_sha = build_retained_capture(tmp / "retained", bodies)
-    with patch.object(source, "_require_disk_space"), \
-         patch.object(source, "processing_identity", return_value={
-             "code_identity_scheme": "test", "working_tree_status": "unknown",
-             "code_commit": "test", "files": {},
-         }), \
-         patch.object(source, "validate_construction_code_identity"):
-        return source.capture_fema_nss_shelter_locations(
-            storage, version=vsynthetic_version(), **overrides,
-            retained_capture_directory=str(tmp / "retained"),
-            retained_capture_manifest_sha256=manifest_sha), storage
-
-
-def vsynthetic_version():
-    return "vsynthetic"
+    return source.capture_fema_nss_shelter_locations(
+        storage, version="vsynthetic",
+        retained_capture_directory=str(tmp / "retained"),
+        retained_capture_manifest_sha256=manifest_sha), storage
 
 
 def quarantine_raw_bodies(tmp):
@@ -158,21 +161,11 @@ def quarantine_raw_bodies(tmp):
 
 
 class FemaNssShelterLocationsTests(unittest.TestCase):
-    def test_tiny_synthetic_capture_preserves_native_fields_oid_status_dates_and_xy(self):
+    def test_tiny_synthetic_live_capture_preserves_native_fields_and_binds_real_identity(self):
         fields = [dict(f) for f in source.FIELD_DECLARATIONS]
         attrs = [f for f in fields if f["type"] != "esriFieldTypeGeometry"]
         service = {"description": source.SERVICE_DESCRIPTION}
-        layer = {
-            "name": source.LAYER_NAME,
-            "description": source.LAYER_DESCRIPTION,
-            "geometryType": "esriGeometryPoint",
-            "definitionExpression": None,
-            "hasZ": False,
-            "hasM": False,
-            "advancedQueryCapabilities": {"supportsPagination": True, "supportsOrderBy": True},
-            "extent": {"spatialReference": {"wkid": 4326, "latestWkid": 4326}},
-            "fields": fields,
-        }
+        layer = synthetic_layer(hasZ=False, hasM=False)
         portal = {"id": source.ITEM_ID, "owner": "FEMA_MAC",
                   "title": "National Shelter System Facilities", "type": "Feature Service",
                   "url": source.PORTAL_LAYER_URL,
@@ -223,14 +216,8 @@ class FemaNssShelterLocationsTests(unittest.TestCase):
             tmp = Path(tmp)
             storage = StagingStorageResource(local_dir=str(tmp / "staging"), use_local=True,
                                              backend="local")
-            with patch.object(source, "_require_disk_space"), \
-                 patch.object(source, "capture_get", side_effect=fake_capture), \
-                 patch.object(source.httpx, "Client"), \
-                 patch.object(source, "processing_identity", return_value={
-                     "code_identity_scheme": "test", "working_tree_status": "unknown",
-                     "code_commit": "test", "files": {},
-                 }), \
-                 patch.object(source, "validate_construction_code_identity"):
+            with patch.object(source, "capture_get", side_effect=fake_capture), \
+                 patch.object(source.httpx, "Client"):
                 result = source.capture_fema_nss_shelter_locations(
                     storage, version="vsynthetic", capture_directory=str(tmp / "capture"))
 
@@ -259,6 +246,18 @@ class FemaNssShelterLocationsTests(unittest.TestCase):
                              {"authority": "EPSG", "code": 4326})
             self.assertIn("ids_before", observed)
             self.assertEqual(source.DATASET_SLUG, "national-shelter-system-facilities")
+            identity = json.loads(storage.read_key(
+                result["candidate_ready"].replace("metadata/candidate_ready.json",
+                                                  "metadata/processing_identity.json")))
+            self.assertEqual(identity["code_identity_scheme"], "git-commit-blobs-v1")
+            self.assertEqual(identity["working_tree_status"], "clean")
+            self.assertEqual(identity["code_commit"], repo_head())
+            self.assertIn("src/dagster_hifld/sources/fema_nss_shelter_locations.py",
+                          identity["files"])
+            manifest = json.loads(storage.read_key(
+                result["candidate_ready"].replace("metadata/candidate_ready.json",
+                                                  "metadata/source_manifest.json")))
+            self.assertEqual(manifest["code_commit"], repo_head())
 
     def test_retained_replay_of_live_catalog_shape_with_explicit_declaration_captures(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -286,6 +285,32 @@ class FemaNssShelterLocationsTests(unittest.TestCase):
                            if i["input_id"] == "data_elements_before"]
             self.assertEqual(declaration[0]["retrieval_url"],
                              source.QUERY_DATA_ELEMENTS_URL + "?f=pjson&layers=%5B5%5D")
+            self.assertEqual(manifest["code_commit"], repo_head())
+
+    def test_retained_replay_reuses_the_sealed_candidate_from_the_real_identity_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            storage = StagingStorageResource(local_dir=str(tmp / "staging"), use_local=True,
+                                            backend="local")
+            manifest_sha = build_retained_capture(
+                tmp / "retained", full_capture_bodies(synthetic_layer(), data_elements_body()))
+            first = source.capture_fema_nss_shelter_locations(
+                storage, version="vsynthetic",
+                retained_capture_directory=str(tmp / "retained"),
+                retained_capture_manifest_sha256=manifest_sha)
+            second = source.capture_fema_nss_shelter_locations(
+                storage, version="vsynthetic",
+                retained_capture_directory=str(tmp / "retained"),
+                retained_capture_manifest_sha256=manifest_sha)
+            self.assertFalse(first.get("reused", False))
+            self.assertTrue(second["reused"])
+            self.assertEqual(second["version"], first["version"])
+            identity = json.loads(storage.read_key(
+                first["candidate_ready"].replace("metadata/candidate_ready.json",
+                                                 "metadata/processing_identity.json")))
+            self.assertEqual(identity["code_identity_scheme"], "git-commit-blobs-v1")
+            self.assertEqual(identity["code_commit"], repo_head())
+            self.assertEqual(identity["working_tree_status"], "clean")
 
     def test_retained_replay_nested_data_element_layer_id_is_not_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -387,6 +412,32 @@ class FemaNssShelterLocationsTests(unittest.TestCase):
             with self.assertRaisesRegex(
                     ValueError, "retained_capture_request_mismatch:data_elements_before"):
                 replay_retained_capture(tmp, bodies)
+
+    def test_missing_approval_preserves_populated_accepted_inventory(self):
+        from dagster_hifld.assets.publish import _copy_version_files
+        from dagster_hifld.release_approval import ReleaseApprovalError
+        from dagster_hifld.resources import PublishedStorageResource
+
+        with tempfile.TemporaryDirectory() as staging_dir, \
+                tempfile.TemporaryDirectory() as published_dir:
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+            staging.write(source.DATASET_SLUG, source.FILE_SLUG, "candidate-v1",
+                          "geoparquet/national-shelter-system-facilities.parquet", b"candidate")
+            accepted_key = published.write(source.DATASET_SLUG, source.FILE_SLUG, "accepted-v1",
+                                           "geoparquet/national-shelter-system-facilities.parquet",
+                                           b"accepted")
+            before = {key: (published.object_snapshot(key), published.read_key(key))
+                      for key in published.list_prefix()}
+            self.assertEqual(set(before), {accepted_key})
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": ""}):
+                with self.assertRaisesRegex(ReleaseApprovalError,
+                                            "missing_independent_release_approval_registry"):
+                    _copy_version_files(staging, published, source.DATASET_SLUG,
+                                        source.FILE_SLUG, "candidate-v1")
+            after = {key: (published.object_snapshot(key), published.read_key(key))
+                     for key in published.list_prefix()}
+            self.assertEqual(after, before)
 
     def test_schema_contract_uses_the_declared_oid_and_all_72_attributes(self):
         metadata = {"fields": source.FIELD_DECLARATIONS}
