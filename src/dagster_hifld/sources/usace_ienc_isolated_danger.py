@@ -208,6 +208,11 @@ def _validate_captures(
             raise ValueError("source_point_dimension_or_geometry_drift")
         if any(type(geometry[key]) not in (int, float) or not math.isfinite(geometry[key]) for key in ("x", "y")):
             raise ValueError("source_point_coordinate_invalid")
+        # EPSG:4326 geographic domain, closed bounds included. A finite but
+        # out-of-domain ordinate is impossible source geometry: reject it
+        # before anything is staged or sealed. Never normalize or repair.
+        if not (-180.0 <= geometry["x"] <= 180.0 and -90.0 <= geometry["y"] <= 90.0):
+            raise ValueError(f"source_point_outside_epsg4326_domain:{object_id}")
         for field, (_name, kind, _length) in zip(query_fields, _QUERY_FIELDS):
             value = attributes[field["name"]]
             if value is None:
@@ -253,6 +258,8 @@ def _validate_captures(
         "source_release_accepted": False, "freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
+        "source_coverage_scope": "Single observed ISOLATED_DANGER_BUOY_POINT feature from the current official USACE IENC chart-server layer. The staged extent equals the captured feature envelope and only confirms agreement with the service metadata captured in the same acquisition; it is not an independent geographic coverage baseline, and no nationwide or historical buoy coverage is claimed.",
+        "drift_guard": "Pinned BTS item " + BTS_ITEM_ID + " identity/cadence/delegation links (prior item " + PRIOR_BTS_ITEM_ID + " is retained as denial evidence only, never fetched, no succession claimed), service-folder membership, service/layer identity, EPSG:4326 CRS, pinned schema sha, count and OBJECTID/Feature_ID roster agreement, finite XY ordinates, EPSG:4326 longitude [-180,180] and latitude [-90,90] domain (an out-of-domain point is rejected before staging or sealing and is never normalized or repaired), page errors and transfer limits, and unchanged before/after metadata are checked. A coordinated in-domain relocation of the feature together with the live service extent is not independently detectable: extent equality is same-acquisition consistency, not a geographic coverage claim.",
     }
     return query_fields, audit, features
 
@@ -339,8 +346,11 @@ def _verify_first_candidate(storage: StagingStorageResource, state_key: str, pre
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
             "feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,
+            "source_invalid_geometry_count":0,
             "source_feature_id_sha256":audit["source_feature_id_sha256"],
             "source_record_sha256":audit["source_record_sha256"],
+            "source_coverage_scope":audit["source_coverage_scope"],
+            "drift_guard":audit["drift_guard"],
             "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
             "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,
             "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
@@ -451,7 +461,7 @@ def capture_usace_ienc_isolated_danger(
                 "source_layer_id":LAYER_ID, "source_layer_name":"ISOLATED_DANGER_BUOY_POINT",
                 "source_fields":"All ten query attributes retained under exact producer names and source physical types, including OBJECTID and Feature_ID; the source SHAPE geometry field is written as WKB under its exact producer name.",
                 "source_identifiers":"OBJECTID and Feature_ID are both preserved as distinct source values; no id column, surrogate key, or historical published mapping is created.",
-                "geometry":"Original SHAPE source field and XY coordinates preserved as WKB Point in the source EPSG:4326 CRS; no reprojection or repair.",
+                "geometry":"Original SHAPE source field and XY coordinates preserved as WKB Point in the source EPSG:4326 CRS; no reprojection or repair. A point outside the EPSG:4326 longitude/latitude domain is rejected before staging or sealing, never normalized.",
                 "candidate_status":"Unapproved; publication requires separate source, freshness, rights, baseline, field mapping, ID, and release acceptance.",
             },
         }],
@@ -527,6 +537,8 @@ def capture_usace_ienc_isolated_danger(
         "source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json",
         "source_feature_id_sha256":audit["source_feature_id_sha256"],
         "source_record_sha256":audit["source_record_sha256"],
+        "source_coverage_scope":audit["source_coverage_scope"],
+        "drift_guard":audit["drift_guard"],
         "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,
         "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,
         "capture_directory":str(capture_root),

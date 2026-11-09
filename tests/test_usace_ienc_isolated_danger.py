@@ -3,18 +3,23 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
+import httpx
 import pyarrow.parquet as pq
 import shapely
 from dagster import AssetKey, DefaultScheduleStatus
 
 from dagster_hifld.assets.usace_ienc_isolated_danger import (
     usace_ienc_isolated_danger_buoy_point,
+    usace_ienc_isolated_danger_buoy_point_complete,
     usace_ienc_isolated_danger_draft_schedule,
 )
 from dagster_hifld.definitions import defs
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources import usace_ienc_isolated_danger as source
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix,
     processing_identity,
@@ -23,8 +28,10 @@ from dagster_hifld.sources.epa_frs_common import (
 )
 from dagster_hifld.sources.usace_ienc_isolated_danger import (
     BTS_ITEM_ID,
+    DATASET_SLUG,
     EXPECTED_COUNT,
     EXPECTED_FEATURE_IDS,
+    FILE_SLUG,
     LAYER_ID,
     MASTER_GEODATABASE_URL,
     PRIOR_BTS_ITEM_ID,
@@ -33,10 +40,12 @@ from dagster_hifld.sources.usace_ienc_isolated_danger import (
     _LAYER_FIELDS,
     _QUERY_FIELDS,
     _canonical,
+    _capture_names,
     _sha,
     _parquet_bytes,
     _verify_first_candidate,
     _validate_captures,
+    capture_usace_ienc_isolated_danger,
 )
 
 
@@ -111,6 +120,26 @@ def _captures():
     return {name:(json.dumps(value).encode(),{"status":200}) for name,value in docs.items()}
 
 
+def _relocated(point_x: float, point_y: float):
+    """Reviewer scenario: mutate the point and BOTH live layer extents together."""
+    captures = _captures()
+    page = json.loads(captures["page_000"][0])
+    page["features"][0]["geometry"] = {"x": point_x, "y": point_y}
+    captures["page_000"] = (json.dumps(page).encode(), {"status":200})
+    for name in ("layer_before", "layer_after"):
+        layer = json.loads(captures[name][0])
+        layer["extent"] = {"xmin":point_x, "ymin":point_y, "xmax":point_x, "ymax":point_y}
+        captures[name] = (json.dumps(layer).encode(), {"status":200})
+    return captures
+
+
+def _ordered_bodies(captures):
+    bodies = [json.loads(captures["ids_seed"][0])]
+    bodies.extend(json.loads(captures[name][0])
+                  for name, _ in _capture_names([1]) if name != "ids_seed")
+    return bodies
+
+
 class UsaceIencIsolatedDangerTests(unittest.TestCase):
     def test_complete_native_capture_preserves_ids_names_types_xy_and_feature_date_semantics(self):
         fields, audit, features = _validate_captures(_captures())
@@ -148,6 +177,31 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
             captures["page_000"] = (json.dumps(page).encode(), {"status":200})
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, "source_feature_id"):
                 _validate_captures(captures)
+
+    def test_epsg4326_domain_bounds_pass_and_out_of_domain_points_fail_closed(self):
+        # The closed EPSG:4326 domain bounds themselves are valid source
+        # geometry and must round-trip unmodified; anything outside the
+        # domain is rejected before staging even when the captured layer
+        # extents are mutated to agree with the relocated point.
+        for x, y, in_domain in (
+            (180.0, 90.0, True), (-180.0, -90.0, True),
+            (180.0, -90.0, True), (-180.0, 90.0, True),
+            (180.0000001, 0.0, False), (-180.0000001, 0.0, False),
+            (0.0, 90.0000001, False), (0.0, -90.0000001, False),
+            (500.0, 100.0, False), (-500.0, -100.0, False),
+        ):
+            captures = _relocated(x, y)
+            with self.subTest(point=(x, y)):
+                if in_domain:
+                    fields, audit, features = _validate_captures(captures)
+                    self.assertEqual(audit["source_extent_epsg4326"],
+                                     {"xmin":x, "ymin":y, "xmax":x, "ymax":y})
+                    table = pq.ParquetFile(io.BytesIO(_parquet_bytes(fields, features))).read()
+                    point = shapely.from_wkb(table.column("SHAPE")[0].as_py())
+                    self.assertEqual((point.x, point.y), (x, y))
+                else:
+                    with self.assertRaisesRegex(ValueError, "source_point_outside_epsg4326_domain:1"):
+                        _validate_captures(captures)
 
     def test_count_and_schema_or_z_m_drift_fail_closed(self):
         captures = _captures()
@@ -258,6 +312,10 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
         self.assertFalse(audit["bts_item_succession_claimed"])
         self.assertFalse(audit["source_release_accepted"])
         self.assertFalse(audit["release_accepted"])
+        # Extent equality with the live service metadata is same-acquisition
+        # consistency only; no independent geographic coverage is claimed.
+        self.assertIn("not an independent geographic coverage baseline", audit["source_coverage_scope"])
+        self.assertIn("never normalized or repaired", audit["drift_guard"])
 
     def test_retained_candidate_replay_keeps_original_receipts_and_rejects_rogue_objects(self):
         fields, audit, features = _validate_captures(_captures())
@@ -331,6 +389,11 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
             self.assertTrue(result["reused"])
             self.assertEqual(result["source_feature_id_sha256"], audit["source_feature_id_sha256"])
             self.assertEqual(result["source_record_sha256"], audit["source_record_sha256"])
+            # The reused-candidate handoff must still carry the completeness
+            # metrics so the blocking check fails closed when they are absent.
+            self.assertEqual(result["source_null_geometry_count"], 0)
+            self.assertEqual(result["source_invalid_geometry_count"], 0)
+            self.assertTrue(usace_ienc_isolated_danger_buoy_point_complete(result).passed)
             retained = json.loads(storage.read_key(f"{prefix}/raw/bts_item_before.receipt.json"))
             self.assertEqual(retained["observed_at"], "2026-10-19T00:00:00+00:00")
 
@@ -338,6 +401,161 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "cached_candidate_storage_roster_changed"):
                 _verify_first_candidate(storage, state_key, prefix, version, fingerprint, identity,
                                         audit, parquet_body, fresh_captures)
+
+
+class CoordinatedRelocationCaptureRegression(unittest.TestCase):
+    """The reviewer's coordinated mutations driven through the real capture path."""
+
+    def _fixture_client(self, bodies):
+        response_index = 0
+
+        def handler(request):
+            nonlocal response_index
+            body = bodies[response_index]
+            response_index += 1
+            return httpx.Response(
+                200,
+                stream=httpx.ByteStream(json.dumps(body).encode("utf-8")),
+                request=request,
+                headers={"content-type": "application/json"},
+            )
+
+        transport = httpx.MockTransport(handler)
+        real_client = httpx.Client
+
+        def fixture_client(**kwargs):
+            kwargs.pop("follow_redirects", None)
+            kwargs.pop("timeout", None)
+            kwargs.pop("headers", None)
+            return real_client(transport=transport, **kwargs)
+
+        return fixture_client
+
+    def _published_inventory(self, root):
+        published = PublishedStorageResource(use_local=True, local_dir=str(root / "published"))
+        published.write(DATASET_SLUG, FILE_SLUG, "accepted-v1",
+                        "geoparquet/isolated-danger-buoy-point-usace-ienc.parquet", b"accepted-parquet")
+        published.write(DATASET_SLUG, FILE_SLUG, "accepted-v1",
+                        "metadata/quality_manifest.json", b'{"published":true}')
+        return published, {key: published.read_key(key) for key in published.list_prefix()}
+
+    def test_out_of_range_point_capture_fails_closed_without_seal_or_publication(self):
+        with tempfile.TemporaryDirectory(prefix="hf-buoy-invalid-") as temporary:
+            root = Path(temporary)
+            staging = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            published, published_before = self._published_inventory(root)
+            bodies = _ordered_bodies(_relocated(500.0, 100.0))
+            capture_root = root / "captures"
+            with patch.object(source.httpx, "Client", self._fixture_client(bodies)), patch.object(
+                source.shutil, "disk_usage", return_value=SimpleNamespace(free=400_000_000)
+            ):
+                with self.assertRaisesRegex(ValueError, "source_point_outside_epsg4326_domain:1"):
+                    capture_usace_ienc_isolated_danger(
+                        staging, version="invalid-domain-500-100", capture_directory=str(capture_root)
+                    )
+
+            keys = list(staging.list_prefix())
+            self.assertTrue(keys)
+            self.assertFalse(any("candidate_ready" in key for key in keys))
+            self.assertFalse(any(key.startswith("_construction-state/") for key in keys))
+            self.assertFalse(any(key.startswith(f"{DATASET_SLUG}/") for key in keys))
+            quarantine = [key for key in keys if key.startswith("_quarantine/")]
+            self.assertTrue(quarantine)
+            self.assertTrue(any(key.endswith("/raw/page_000.body") for key in quarantine))
+            failure_keys = [key for key in quarantine if key.endswith("/metadata/failure.json")]
+            self.assertEqual(len(failure_keys), 1)
+            failure = json.loads(staging.read_key(failure_keys[0]))
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertIn("page_000", failure["captured_names"])
+            quarantine_base = failure_keys[0].rsplit("/metadata/failure.json", 1)[0]
+            retained_page = json.loads(staging.read_key(f"{quarantine_base}/raw/page_000.body"))
+            self.assertEqual(retained_page["features"][0]["geometry"], {"x": 500.0, "y": 100.0})
+            manifests = list(capture_root.glob("*/capture_manifest.json"))
+            self.assertEqual(len(manifests), 1)
+            manifest = json.loads(manifests[0].read_bytes())
+            self.assertIs(manifest["complete"], False)
+            self.assertEqual(manifest["error_code"], "ValueError")
+            published_after = {key: published.read_key(key) for key in published.list_prefix()}
+            self.assertEqual(published_after, published_before)
+
+    def test_domain_boundary_point_capture_seals_and_check_passes(self):
+        # A point exactly on the closed EPSG:4326 domain bound is genuine
+        # source geometry: it must seal, round-trip unmodified, and pass the
+        # blocking check; the pre-populated published inventory is untouched.
+        with tempfile.TemporaryDirectory(prefix="hf-buoy-boundary-") as temporary:
+            root = Path(temporary)
+            staging = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            published, published_before = self._published_inventory(root)
+            bodies = _ordered_bodies(_relocated(180.0, 90.0))
+            capture_root = root / "captures"
+            with patch.object(source.httpx, "Client", self._fixture_client(bodies)), patch.object(
+                source.shutil, "disk_usage", return_value=SimpleNamespace(free=400_000_000)
+            ):
+                result = capture_usace_ienc_isolated_danger(
+                    staging, version="boundary-180-90", capture_directory=str(capture_root)
+                )
+
+            self.assertEqual(result["feature_count"], 1)
+            self.assertEqual(result["source_null_geometry_count"], 0)
+            self.assertEqual(result["source_invalid_geometry_count"], 0)
+            self.assertFalse(result["release_accepted"])
+            check = usace_ienc_isolated_danger_buoy_point_complete(result)
+            self.assertTrue(check.passed)
+            self.assertEqual(check.metadata["source_invalid_geometry_count"].value, 0)
+            prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, result["version"])
+            self.assertEqual(result["candidate_ready"], prefix + "/metadata/candidate_ready.json")
+            ready = json.loads(staging.read_key(result["candidate_ready"]))
+            self.assertFalse(ready["approved"])
+            parquet = pq.ParquetFile(io.BytesIO(
+                staging.read_key(f"{prefix}/geoparquet/isolated-danger-buoy-point-usace-ienc.parquet")
+            )).read()
+            point = shapely.from_wkb(parquet.column("SHAPE")[0].as_py())
+            self.assertEqual((point.x, point.y), (180.0, 90.0))
+            self.assertFalse(any(key.startswith("_quarantine/") for key in staging.list_prefix()))
+            self.assertTrue(any(key.startswith("_construction-state/") for key in staging.list_prefix()))
+            published_after = {key: published.read_key(key) for key in published.list_prefix()}
+            self.assertEqual(published_after, published_before)
+
+
+class BlockingCompletenessCheck(unittest.TestCase):
+    """The blocking asset check must fail closed for missing or bad metrics."""
+
+    def _candidate(self) -> dict:
+        return {
+            "feature_count": EXPECTED_COUNT,
+            "source_null_geometry_count": 0,
+            "source_invalid_geometry_count": 0,
+            "source_feature_id_sha256": "0" * 64,
+            "source_coverage_scope": "single observed feature; extent is same-acquisition consistency only",
+            "drift_guard": "guard",
+        }
+
+    def test_complete_metrics_pass(self):
+        result = usace_ienc_isolated_danger_buoy_point_complete(self._candidate())
+        self.assertTrue(result.passed)
+        self.assertEqual(result.metadata["source_invalid_geometry_count"].value, 0)
+        self.assertEqual(result.metadata["source_null_geometry_count"].value, 0)
+
+    def test_missing_or_invalid_geometry_metrics_fail_closed(self):
+        candidate = self._candidate()
+        check = usace_ienc_isolated_danger_buoy_point_complete
+        self.assertFalse(check(dict(candidate, source_invalid_geometry_count=1)).passed)
+        self.assertFalse(check(dict(candidate, source_null_geometry_count=1)).passed)
+        missing_invalid = {key: value for key, value in candidate.items()
+                            if key != "source_invalid_geometry_count"}
+        self.assertFalse(check(missing_invalid).passed)
+        self.assertEqual(check(missing_invalid).metadata["source_invalid_geometry_count"].value, "missing")
+        missing_null = {key: value for key, value in candidate.items()
+                         if key != "source_null_geometry_count"}
+        self.assertFalse(check(missing_null).passed)
+
+    def test_population_failures_still_fail_closed(self):
+        candidate = self._candidate()
+        check = usace_ienc_isolated_danger_buoy_point_complete
+        self.assertFalse(check(dict(candidate, feature_count=EXPECTED_COUNT - 1)).passed)
+        without_ids = {key: value for key, value in candidate.items()
+                       if key != "source_feature_id_sha256"}
+        self.assertFalse(check(without_ids).passed)
 
 
 if __name__ == "__main__":
