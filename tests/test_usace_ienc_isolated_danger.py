@@ -314,13 +314,18 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
             }
             seal_ready_candidate(storage, state_key, version, fingerprint, payload)
 
-            # Catalog-owned additions are allowed, but the first acquisition's
-            # timestamps, URL, body and wire bytes remain pinned to the seal.
+            # The shared cache verifier recomputes catalog derivatives from the
+            # sealed native candidate, so a partial or placeholder catalog
+            # sidecar set is refused fail-closed instead of blessing reuse.
             for name, (body, receipt) in list(fresh_captures.items()):
                 refreshed = dict(receipt)
                 refreshed["observed_at"] = "2026-10-20T00:00:00+00:00"
                 fresh_captures[name] = (body, refreshed)
             write_immutable(storage, f"{prefix}/metadata/quality_manifest.json", b'{"derived":true}\n')
+            with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_incomplete"):
+                _verify_first_candidate(storage, state_key, prefix, version, fingerprint, identity,
+                                        audit, parquet_body, fresh_captures)
+            (Path(tmpdir) / prefix / "metadata/quality_manifest.json").unlink()
             result = _verify_first_candidate(storage, state_key, prefix, version, fingerprint, identity,
                                              audit, parquet_body, fresh_captures)
             self.assertTrue(result["reused"])
