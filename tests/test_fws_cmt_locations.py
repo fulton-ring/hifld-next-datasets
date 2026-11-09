@@ -63,7 +63,7 @@ def _feature(oid: int) -> dict:
     return {"attributes": attributes, "geometry": geometry}
 
 
-def _capture_docs() -> dict[str, tuple[bytes, dict]]:
+def _capture_docs_plain() -> dict:
     fields = [{**declaration, "actualType": "nvarchar", "sqlType": "sqlTypeNVarchar",
                "nullable": True, "editable": True, "defaultValue": None}
               for declaration in source.EXPECTED_FIELD_DECLARATIONS]
@@ -108,19 +108,22 @@ def _capture_docs() -> dict[str, tuple[bytes, dict]]:
         if index < source.PAGE_COUNT - 1:
             page["exceededTransferLimit"] = True
         docs[f"page_{index:03d}"] = page
-    return {name: (json.dumps(doc).encode(), {}) for name, doc in docs.items()}
+    return docs
+
+
+def _capture_docs() -> dict[str, tuple[bytes, dict]]:
+    return {name: (json.dumps(doc).encode(), {})
+            for name, doc in _capture_docs_plain().items()}
 
 
 def _mutated_docs(mutator) -> dict[str, tuple[bytes, dict]]:
-    captures = _capture_docs()
-    mutator(captures)
-    return captures
+    docs = _capture_docs_plain()
+    mutator(docs)
+    return {name: (json.dumps(doc).encode(), {}) for name, doc in docs.items()}
 
 
-def _edit(captures: dict, name: str):
-    body = json.loads(captures[name][0])
-    captures[name] = (json.dumps(body).encode(), {})
-    return body
+def _edit(docs: dict, name: str) -> dict:
+    return docs[name]
 
 
 class FwsCmtLocationsTests(unittest.TestCase):
