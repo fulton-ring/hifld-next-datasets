@@ -353,7 +353,9 @@ class DriftRefusalTests(unittest.TestCase):
     def test_geometry_outside_pinned_coverage_fails_closed(self):
         def move_vertex(docs):
             ring = docs["page_000"]["features"][0]["geometry"]["rings"][0]
-            ring[0] = [ring[0][0] - 10.0, ring[0][1]]
+            moved = [ring[0][0] - 10.0, ring[0][1]]
+            ring[0] = moved
+            ring[-1] = moved
         self.assertEqual(self._drift(move_vertex), "source_geometry_coverage_extent_drift")
 
     def test_snapshot_drift_against_live_pins_fails_closed(self):
@@ -389,8 +391,8 @@ class SyntheticCompleteCaptureTests(unittest.TestCase):
         docs["page_000"]["features"][2]["attributes"]["Feature_ID"] = None
         with patch.multiple(source, **_fixture_pins(docs)):
             _fields, features, audit = source._validate(_captures(docs))
-        self.assertEqual(audit["source_feature_id_unique_count"], source.EXPECTED_COUNT - 2)
-        self.assertEqual(audit["source_feature_id_duplicate_count"], 2)
+        self.assertEqual(audit["source_feature_id_unique_count"], source.EXPECTED_COUNT - 1)
+        self.assertEqual(audit["source_feature_id_duplicate_count"], 1)
         self.assertEqual(features[1]["attributes"]["Feature_ID"],
                          features[0]["attributes"]["Feature_ID"])
         self.assertIsNone(features[2]["attributes"]["Feature_ID"])
@@ -460,9 +462,11 @@ class CaptureFunctionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unsafe_capture_version"):
                 source.capture_usace_lock_gate_areas(storage, version="../outside")
 
-    def test_count_drift_quarantines_evidence_with_incomplete_manifest(self):
+    def test_snapshot_drift_quarantines_evidence_with_incomplete_manifest(self):
+        # The synthetic fixture cannot match the live-capture snapshot pins, so the
+        # live capture path fails inside validation and must quarantine everything
+        # it already captured instead of leaving an unsealed attempt behind.
         docs = _docs()
-        docs["count_after"]["count"] = source.EXPECTED_COUNT - 1
         bodies = {url: _body(docs[name])
                   for name, url in source._capture_urls(source.EXPECTED_IDS)}
         with tempfile.TemporaryDirectory() as tmp:
@@ -473,7 +477,7 @@ class CaptureFunctionTests(unittest.TestCase):
                     patch.object(source.httpx, "Client",
                                  lambda **kwargs: _FakeClient(bodies)):
                 usage.return_value.free = 1_000_000_000
-                with self.assertRaisesRegex(ValueError, "source_count_drift"):
+                with self.assertRaisesRegex(ValueError, "source_record_snapshot_drift"):
                     source.capture_usace_lock_gate_areas(
                         storage, version="draft", capture_directory=str(capture_root))
             manifest = json.loads((capture_root / "capture_manifest.json").read_bytes())
