@@ -804,6 +804,8 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
                 "row_count": csv_stats["row_count"], "source_csv_sha256": csv_sha,
                 "source_schema_sha256": schema_sha, "refresh_status": "STOPPED",
                 "drift_reasons": drift_reasons, "reused": True,
+                "native_columns": list(EXPECTED_COLUMNS),
+                "parquet_key": f"{prefix}/unknown/{FILE_SLUG}.parquet",
                 "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
                 "capture_manifest_sha256": capture_manifest_sha,
                 "capture_directory": str(capture_root), "capture_mode": capture_mode,

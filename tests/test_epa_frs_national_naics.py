@@ -311,6 +311,9 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
                         capture_directory=str(Path(tmp) / "captures"))
                     self.assertTrue(cached["reused"])
                     self.assertEqual(cached["version"], version)
+                    self.assertEqual(cached["native_columns"], list(source.EXPECTED_COLUMNS))
+                    check_fn = epa_frs_national_naics_capture_complete.op.compute_fn.decorated_fn
+                    self.assertTrue(check_fn(cached).passed)
 
     def test_schedule_stopped_and_membership_check_reports_prior_candidate(self):
         self.assertIs(epa_frs_national_naics_draft_schedule.default_status,
