@@ -434,10 +434,10 @@ def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str
                     staging=staging, capture_max_bytes=capture_max_bytes, response_max_bytes=response_max_bytes,
                     layer_response_max_bytes=layer_response_max_bytes)
                 ids = json.loads(ids_body).get("objectIds")
+                captures["ids_before"] = (ids_body, ids_receipt)
                 if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
                         or ids != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT):
                     raise ValueError("source_seed_id_population_drift")
-                captures["ids_before"] = (ids_body, ids_receipt)
                 roster = _capture_roster(ids)
                 for name, url in roster:
                     if name == "ids_before":
