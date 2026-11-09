@@ -1,5 +1,22 @@
 ## Agent development practices for `hifld-next-datasets`
 
+### Scope: HIFLD Next vs civicdata
+
+- **HIFLD Next** holds the state of the world: reference features, usually with geometry — jurisdiction boundaries
+  (states, counties, county subdivisions, places, districts), infrastructure (power plants, substations, towers,
+  pipelines, dams), facilities and service territories. Public, versioned releases.
+- **civicdata** (`fulton-ring/bigass-data-masheen`) holds dated records of actions — filings, applications, permits,
+  violations, interconnection requests, contracts, incentives, notices, meeting records and their documents — and
+  joins to HIFLD Next by identifiers (GEOID, OCD ID, feature IDs). It serves no geometry; it reads HIFLD Next's
+  published GeoParquet at a pinned release.
+- The test: is it a *feature* (it exists now) or an *event* (it was filed or decided at a time)? A substation belongs
+  here; a proposed substation in an interconnection request belongs in civicdata.
+- Keep published releases stable and addressable (`{dataset}/{file}/{version}/geoparquet/{file}.parquet`): civicdata
+  depends on them by version. Layers are published in different CRSs (e.g. counties EPSG:4269, county subdivisions
+  and places EPSG:3857); consumers must read the CRS from the file.
+- Open decision: whether a registry of governing bodies (Census of Governments) belongs here as non-spatial
+  reference data.
+
 ### Environments & dependencies
 
 - This project is bootstrapped with `uv`, which manages the vendored `.venv` and lockfile. Run `uv run <script>` so dependencies (polars, Agno, ddgs, fastapi, openai, python-dotenv, etc.) load from the managed environment.
