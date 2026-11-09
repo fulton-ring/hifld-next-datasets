@@ -49,6 +49,7 @@ def _capture_docs(count=source.EXPECTED_COUNT):
         "id": source.LAYER_ID, "name": "LATERAL_BUOY_POINT", "geometryType": "esriGeometryPoint",
         "maxRecordCount": 2000, "fields": source.EXPECTED_FIELD_DECLARATIONS,
         "spatialReference": {"wkid": 4326, "latestWkid": 4326},
+        "sourceSpatialReference": {"wkid": 4326, "latestWkid": 4326},
         "extent": {**source.EXPECTED_EXTENT, "spatialReference": {"wkid": 4326, "latestWkid": 4326}},
     }
     service = {"mapName": "LATERAL_BUOY_POINT", "copyrightText": "USACE IENC",
