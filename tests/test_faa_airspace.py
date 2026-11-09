@@ -5,8 +5,11 @@ import urllib.error
 from unittest import mock
 import json
 import pathlib
+import sqlite3
 import tempfile
 import unittest
+
+import pyogrio
 
 from dagster_hifld.faa_airspace import stage_candidate, ingest_candidate, retain_capture
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -41,6 +44,23 @@ class FaaCandidateTests(unittest.TestCase):
     def test_missing_identifier_rejected(self):
         for f in self.data['source-native']['features']:f['attributes'].pop('GLOBAL_ID')
         with self.assertRaisesRegex(ValueError,'schema mismatch'):self.run_candidate()
+
+    def test_geopackage_is_idempotent_across_ambient_creation_dates(self):
+        self.write()
+        previous = pyogrio.get_gdal_config_option("OGR_CURRENT_DATE")
+        try:
+            results = []
+            for ambient in ("2026-10-19T00:00:00.000Z", "2099-12-31T23:59:59.999Z"):
+                pyogrio.set_gdal_config_options({"OGR_CURRENT_DATE": ambient})
+                results.append(stage_candidate(self.storage, self.capture))
+                self.assertEqual(pyogrio.get_gdal_config_option("OGR_CURRENT_DATE"), ambient)
+            self.assertEqual(results[0], results[1])
+            gpkg = self.root / 'staging' / results[0]['staging_prefix'] / 'geopackage/airspace.gpkg'
+            with sqlite3.connect(gpkg) as database:
+                self.assertEqual(database.execute("SELECT last_change FROM gpkg_contents").fetchall(),
+                                 [("2026-10-19T00:00:00.000Z",)])
+        finally:
+            pyogrio.set_gdal_config_options({"OGR_CURRENT_DATE": previous})
     def test_incomplete_ids_rejected(self):
         self.data['ids']['objectIds']=[8]
         with self.assertRaisesRegex(ValueError,'ID set mismatch'):self.run_candidate()
