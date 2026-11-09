@@ -2,30 +2,31 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import shutil
+import stat
+import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
+import pyarrow as pa
+import pyarrow.parquet as pq
+from pyproj import CRS
 from shapely import from_wkb
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
-)
-from dagster_hifld.sources.usace_obstruction_lines import (
-    PAGE_MAX_BYTES, _canonical, _capture, _capture_identity, _esri_polyline_wkb,
-    _load_capture, _parquet_bytes, _sha, _validate_spatial_reference,
 )
 
 DATASET_SLUG = "overhead-pipeline-lines-usace-ienc"
@@ -42,12 +43,153 @@ EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
 EXPECTED_ID_SHA256 = "220aadc856da8f05136dac0a5d7f57dc74c25405f08c98ec94380a29ebd2d858"
 PAGE_SIZE = 250
 MAX_CAPTURE_BYTES = 192_000_000
+PAGE_MAX_BYTES = 8_000_000
 EXPECTED_FIELD_DECLARATIONS = [{'name': 'OBJECTID', 'type': 'esriFieldTypeOID', 'alias': 'OBJECTID', 'domain': None}, {'name': 'SHAPE', 'type': 'esriFieldTypeGeometry', 'alias': 'SHAPE', 'domain': None}, {'name': 'Category_of_Pipeline', 'type': 'esriFieldTypeString', 'alias': 'Category_of_Pipeline', 'length': 254, 'domain': None}, {'name': 'Horizontal_Units', 'type': 'esriFieldTypeString', 'alias': 'Horizontal_Units', 'length': 254, 'domain': None}, {'name': 'Object_Name', 'type': 'esriFieldTypeString', 'alias': 'Object_Name', 'length': 254, 'domain': None}, {'name': 'Product', 'type': 'esriFieldTypeString', 'alias': 'Product', 'length': 254, 'domain': None}, {'name': 'Vertical_Clearance', 'type': 'esriFieldTypeString', 'alias': 'Vertical_Clearance', 'length': 254, 'domain': None}, {'name': 'Vertical_Datum', 'type': 'esriFieldTypeString', 'alias': 'Vertical_Datum', 'length': 254, 'domain': None}, {'name': 'Waterway_Distance', 'type': 'esriFieldTypeString', 'alias': 'Waterway_Distance', 'length': 254, 'domain': None}, {'name': 'Information', 'type': 'esriFieldTypeString', 'alias': 'Information', 'length': 254, 'domain': None}, {'name': 'Scale_Minimum', 'type': 'esriFieldTypeInteger', 'alias': 'Scale_Minimum', 'domain': None}, {'name': 'Source_Date', 'type': 'esriFieldTypeString', 'alias': 'Source_Date', 'length': 254, 'domain': None}, {'name': 'Source_Indication', 'type': 'esriFieldTypeString', 'alias': 'Source_Indication', 'length': 254, 'domain': None}, {'name': 'Source_Dataset', 'type': 'esriFieldTypeString', 'alias': 'Source_Dataset', 'length': 254, 'domain': None}, {'name': 'Feature_ID', 'type': 'esriFieldTypeString', 'alias': 'Feature_ID', 'length': 254, 'domain': None}]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
 EXPECTED_EXTENT = {'xmin': -95.86968489999998, 'ymin': 30.355161200000055, 'xmax': -80.82324219999998, 'ymax': 41.69633900000008}
 CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before",
                  "ids_before", "layer_after", "count_after", "ids_after", "service_after",
                  *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
+
+SOURCE_CRS = CRS.from_epsg(4326)
+
+
+def _canonical(value: object) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                      allow_nan=False).encode("utf-8")
+
+
+def _sha(body: bytes) -> str:
+    return hashlib.sha256(body).hexdigest()
+
+
+def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
+    """Validate each advertised ArcGIS CRS representation without guessing."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{label}_crs_drift")
+    found = False
+    for key in ("wkid", "latestWkid"):
+        if key in value:
+            if type(value[key]) is not int or value[key] != 4326:
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    for key in ("wkt", "wkt2"):
+        if key in value:
+            wkt = value[key]
+            if not isinstance(wkt, str) or not wkt.strip():
+                raise ValueError(f"{label}_crs_drift")
+            try:
+                parsed = CRS.from_wkt(wkt)
+            except Exception as exc:
+                raise ValueError(f"{label}_crs_drift") from exc
+            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    if required and not found:
+        raise ValueError(f"{label}_crs_drift")
+    return found
+
+
+def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
+    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire")
+                   for path in root.glob(suffix) if path.is_file())
+    if retained + 2 * PAGE_MAX_BYTES > MAX_CAPTURE_BYTES:
+        raise ValueError("source_capture_budget_exceeded_before_request")
+    return capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
+
+
+def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
+    body_path, wire_path, receipt_path = (root / f"{name}.body", root / f"{name}.wire",
+                                          root / f"{name}.receipt.json")
+    if any(path.is_symlink() for path in (body_path, wire_path, receipt_path)):
+        raise ValueError("retained_capture_symlink_rejected")
+    body, wire, receipt = body_path.read_bytes(), wire_path.read_bytes(), json.loads(receipt_path.read_bytes())
+    if (receipt.get("complete_body") is not True or receipt.get("status") != 200
+            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+        raise ValueError("retained_capture_receipt_invalid:" + name)
+    return body, wire, receipt
+
+
+def _esri_polyline_wkb(geometry: dict) -> bytes:
+    paths = geometry["paths"]
+    out = bytearray(struct.pack("<BI", 1, 5))
+    out.extend(struct.pack("<I", len(paths)))
+    for path in paths:
+        out.extend(struct.pack("<BI", 1, 2))
+        out.extend(struct.pack("<I", len(path)))
+        for point in path:
+            out.extend(struct.pack("<dd", float(point[0]), float(point[1])))
+    return bytes(out)
+
+
+def _arrow_type(field: dict) -> pa.DataType:
+    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
+            "esriFieldTypeString": pa.string()}[field["type"]]
+
+
+def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
+    properties = [field for field in fields if field["name"] != "SHAPE"]
+    arrays = [pa.array([row["attributes"][field["name"]] for row in features], type=_arrow_type(field))
+              for field in properties]
+    arrays.append(pa.array([_esri_polyline_wkb(row["geometry"]) for row in features], type=pa.binary()))
+    table = pa.Table.from_arrays(arrays, names=[field["name"] for field in properties] + ["geometry"])
+    crs = {"$schema": "https://proj.org/schemas/v0.7/projjson.schema.json", "type": "GeographicCRS", "name": "WGS 84",
+           "datum": {"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984",
+                     "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137,
+                                   "inverse_flattening": 298.257223563}, "id": {"authority": "EPSG", "code": 6326}},
+           "coordinate_system": {"subtype": "ellipsoidal", "axis": [
+               {"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"},
+               {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}]},
+           "id": {"authority": "EPSG", "code": 4326}}
+    metadata = {b"geo": _canonical({"version": "1.1.0", "primary_column": "geometry",
+        "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["MultiLineString"], "crs": crs}}})}
+    import io
+    sink = io.BytesIO()
+    pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd", use_dictionary=False)
+    return sink.getvalue()
+
+
+def _capture_identity(captures: dict[str, tuple[bytes, dict]], root: Path) -> dict:
+    digests = {}
+    for name in sorted(captures):
+        body, _receipt = captures[name]
+        _body, wire, _receipt = _load_capture(root, name)
+        digests[name] = {"decoded_sha256": _sha(body), "wire_sha256": _sha(wire)}
+    return digests
+
+
+def _validate_capture_roster(root: Path, expected: set[str] | dict[str, dict[str, object]]) -> None:
+    """Require a flat, exact roster of regular, non-symlink capture files."""
+    if not isinstance(root, Path) or not root.is_dir() or root.is_symlink():
+        raise ValueError("capture_roster_root_invalid")
+    names = set(expected) if isinstance(expected, dict) else expected
+    if not isinstance(names, set) or any(
+        not isinstance(name, str) or not name or Path(name).name != name or name in {".", ".."}
+        for name in names
+    ):
+        raise ValueError("capture_roster_manifest_invalid")
+    actual = set()
+    for entry in root.iterdir():
+        actual.add(entry.name)
+        if entry.is_symlink() or not stat.S_ISREG(entry.lstat().st_mode):
+            raise ValueError("capture_roster_nonregular_path:" + entry.name)
+    if actual != names:
+        raise ValueError("capture_roster_mismatch")
+
+
+def _capture_roster_digests(root: Path, *, exclude: set[str] = frozenset()) -> dict[str, dict[str, object]]:
+    if not isinstance(root, Path) or not root.is_dir() or root.is_symlink():
+        raise ValueError("capture_roster_root_invalid")
+    result = {}
+    for entry in sorted(root.iterdir(), key=lambda path: path.name):
+        if entry.name in exclude:
+            continue
+        if entry.is_symlink() or not stat.S_ISREG(entry.lstat().st_mode):
+            raise ValueError("capture_roster_nonregular_path:" + entry.name)
+        body = entry.read_bytes()
+        result[entry.name] = {"bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
+    return result
 
 
 def _query(params: dict[str, object]) -> str:
@@ -81,8 +223,8 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     roster = manifest.get("artifact_roster")
     if not isinstance(roster, dict) or set(manifest["receipts"]) != CAPTURE_NAMES:
         raise ValueError("retained_capture_roster_or_names_invalid")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
+    _validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
+    if roster != _capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
     expected_urls = dict(_capture_roster(EXPECTED_IDS))
     captures = {}
@@ -289,7 +431,7 @@ def capture_usace_overhead_pipeline_lines(storage: StagingStorageResource, *, ve
             "captured_at": datetime.now(timezone.utc).isoformat(), "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
             "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
-            "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
+            "artifact_roster": _capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
 
     fields, features, audit = _validate(captures)

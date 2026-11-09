@@ -11,7 +11,6 @@ from dagster_hifld.assets.usace_overhead_pipeline_lines import (
 )
 from dagster_hifld.sources import usace_overhead_pipeline_lines as source
 from dagster_hifld.sources.epa_frs_common import _canonical
-from dagster_hifld.http_capture import capture_roster_digests
 
 
 class UsaceOverheadPipelineLinesTests(unittest.TestCase):
@@ -125,7 +124,7 @@ class UsaceOverheadPipelineLinesTests(unittest.TestCase):
                 receipt_path.write_bytes(_canonical(receipt) + b"\n")
                 receipts["page_000"] = receipt
                 manifest = {"complete": True, "receipts": receipts}
-                manifest["artifact_roster"] = capture_roster_digests(root, exclude={"capture_manifest.json"})
+                manifest["artifact_roster"] = source._capture_roster_digests(root, exclude={"capture_manifest.json"})
                 manifest_path.write_bytes(_canonical(manifest) + b"\n")
                 with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
                     source._read_replay(root)

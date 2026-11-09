@@ -18,6 +18,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
+from pyproj import CRS
 from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -35,12 +36,19 @@ from dagster_hifld.sources.epa_frs_common import (
 
 DATASET_SLUG = "navigation-system-of-marks-areas-usace-ienc"
 FILE_SLUG = DATASET_SLUG
-LAYER_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/NAVIGATIONAL_SYSTEM_OF_MARKS_AREA/MapServer/68"
+OLD_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
+BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
+SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson"
+SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/NAVIGATIONAL_SYSTEM_OF_MARKS_AREA/MapServer"
+LAYER_ID = 68
+LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
 EXPECTED_COUNT = 109
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 48_000_000
 MAX_CAPTURE_BYTES = 450_000_000
+SOURCE_CRS = CRS.from_epsg(4326)
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"), ("SHAPE", "esriFieldTypeGeometry"),
     ("System_of_Navigational_Marks", "esriFieldTypeString"),
@@ -61,6 +69,32 @@ def _canonical(value: object) -> bytes:
 
 def _sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
+
+
+def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label}_crs_drift")
+    found = False
+    for key in ("wkid", "latestWkid"):
+        if key in value:
+            if type(value[key]) is not int or value[key] != 4326:
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    for key in ("wkt", "wkt2"):
+        if key in value:
+            wkt = value[key]
+            if not isinstance(wkt, str) or not wkt.strip():
+                raise ValueError(f"{label}_crs_drift")
+            try:
+                crs = CRS.from_wkt(wkt)
+            except Exception as exc:
+                raise ValueError(f"{label}_crs_drift") from exc
+            if not crs.equals(SOURCE_CRS, ignore_axis_order=True):
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    if required and not found:
+        raise ValueError(f"{label}_crs_drift")
+    return found
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
@@ -226,7 +260,9 @@ def _query(params: dict[str, object]) -> str:
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("layer_before", LAYER_URL + "?f=pjson"),
+    urls = [("bts_item", BTS_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
+            ("service_before", SERVICE_URL + "?f=pjson"),
+            ("layer_before", LAYER_URL + "?f=pjson"),
             ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
             ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
     for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
@@ -236,7 +272,8 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
             "outSR":"4326", "orderByFields":"OBJECTID ASC", "f":"json"})))
     urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
                  ("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                 ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))])
+                 ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
+                 ("service_after", SERVICE_URL + "?f=pjson")])
     return urls
 
 
@@ -251,8 +288,41 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
     return body, receipt
 
 
+def _load_prefilled(root: Path, name: str, expected_url: str) -> tuple[bytes, dict]:
+    body, receipt = _load_replay(root, name)
+    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
+            or receipt.get("final_url") != expected_url):
+        raise ValueError("prefilled_capture_request_identity_mismatch:" + name)
+    return body, receipt
+
+
 def _validate(captures: dict[str, tuple[bytes, dict]]):
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    item = docs["bts_item"]
+    description = item.get("description")
+    if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
+            or item.get("type") != "PDF" or item.get("access") != "public"
+            or not isinstance(item.get("title"), str) or "Inland Electronic Navigational Charts" not in item["title"]
+            or not isinstance(description, str)
+            or "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes" not in description
+            or "USACE_IENC_Master_Service_gdb.zip" not in description):
+        raise ValueError("official_bts_distribution_reference_drift")
+    directory = docs["service_directory"]
+    matching_services = [entry for entry in directory.get("services", [])
+                         if isinstance(entry, dict)
+                         and entry.get("name") == "IENC_Feature_Classes/NAVIGATIONAL_SYSTEM_OF_MARKS_AREA"
+                         and entry.get("type") == "MapServer"]
+    if len(matching_services) != 1:
+        raise ValueError("official_ienc_service_directory_drift")
+    service_before, service_after = docs["service_before"], docs["service_after"]
+    service_layers = service_before.get("layers")
+    advertised = [(entry.get("id"), entry.get("name"), entry.get("geometryType"))
+                  for entry in service_layers if isinstance(entry, dict)] if isinstance(service_layers, list) else []
+    if (service_before.get("mapName") != "NAVIGATIONAL_SYSTEM_OF_MARKS_AREA"
+            or service_before.get("copyrightText") != "USACE IENC"
+            or advertised != [(LAYER_ID, "NAVIGATIONAL_SYSTEM_OF_MARKS_AREA", "esriGeometryPolygon")]
+            or service_after != service_before):
+        raise ValueError("official_ienc_service_metadata_changed_or_layer_missing")
     layer = docs["layer_before"]
     fields = layer.get("fields")
     projected=[{key:f[key] for key in ("name","type","alias","length","domain","nullable") if key in f}
@@ -261,16 +331,21 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         raise ValueError("source_field_schema_drift")
     if layer.get("name") != "NAVIGATIONAL_SYSTEM_OF_MARKS_AREA" or layer.get("id") != 68 or layer.get("geometryType") != "esriGeometryPolygon":
         raise ValueError("source_layer_identity_drift")
-    if (layer.get("spatialReference",{}).get("latestWkid") != 4326
-            or layer.get("maxRecordCount") != 2000):
+    if layer.get("maxRecordCount") != 2000:
         raise ValueError("source_spatial_reference_or_page_limit_drift")
-    if docs["layer_after"].get("fields") != fields or docs["layer_after"].get("geometryType") != "esriGeometryPolygon":
+    _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
+    extent_reference = layer.get("extent", {}).get("spatialReference")
+    if extent_reference is not None:
+        _validate_spatial_reference(extent_reference, "source_layer_extent")
+    if docs["layer_after"] != layer:
         raise ValueError("source_schema_changed_during_capture")
     if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
         raise ValueError("source_count_drift")
     before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
     if not isinstance(before,list) or before != after or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT:
         raise ValueError("source_id_population_drift")
+    if docs["ids_seed"].get("objectIds") != before:
+        raise ValueError("source_seed_id_population_changed")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
     if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1)//PAGE_SIZE:
@@ -279,21 +354,37 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         page=docs[name]
         if "error" in page or page.get("exceededTransferLimit") is True:
             raise ValueError("source_page_error_or_truncation")
-        if page.get("spatialReference",{}).get("latestWkid") != 4326:
-            raise ValueError("source_page_spatial_reference_drift")
+        _validate_spatial_reference(page.get("spatialReference"), "source_" + name + "_page")
         rows=page.get("features")
         if not isinstance(rows,list): raise ValueError("source_page_features_missing")
         features.extend(rows)
-    expected_attrs=[f["name"] for f in fields if f["name"]!="SHAPE"]
+    property_fields=[f for f in fields if f["name"]!="SHAPE"]
+    expected_attrs=[f["name"] for f in property_fields]
     got=[]
+    vertex_count=0
     for feature in features:
         attrs, geom=feature.get("attributes"), feature.get("geometry")
         if not isinstance(attrs,dict) or list(attrs)!=expected_attrs or not isinstance(geom,dict) or "rings" not in geom:
             raise ValueError("source_record_schema_or_geometry_drift")
         if set(geom)-{"rings","hasZ","hasM","spatialReference"}:
             raise ValueError("unexpected_source_geometry_ordinates")
+        for field in property_fields:
+            value=attrs[field["name"]]
+            if value is None:
+                continue
+            if field["type"] == "esriFieldTypeOID" and (type(value) is not int or value <= 0):
+                raise ValueError("source_oid_value_type_drift")
+            if field["type"] == "esriFieldTypeString" and not isinstance(value, str):
+                raise ValueError("source_string_value_type_drift:" + field["name"])
+        if geom.get("spatialReference") is not None:
+            _validate_spatial_reference(geom["spatialReference"], "source_" + name + "_feature")
+        rings=geom.get("rings")
+        if not isinstance(rings,list) or not rings or any(not isinstance(ring,list) for ring in rings):
+            raise ValueError("source_polygon_rings_missing")
+        vertex_count += sum(len(ring) for ring in rings)
         got.append(attrs.get("OBJECTID"))
-    if len(features)!=EXPECTED_COUNT or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT:
+    if (len(features)!=EXPECTED_COUNT or any(type(oid) is not int for oid in got)
+            or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     rows=[{"attributes":f["attributes"],"geometry":f["geometry"]} for f in features]
@@ -305,8 +396,12 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "source_feature_count":len(features),"source_id_min":min(got),"source_id_max":max(got),
         "source_geometry_type":"esriGeometryPolygon","source_wkid":4326,
         "source_has_z":bool(layer.get("hasZ")),"source_has_m":bool(layer.get("hasM")),
+        "source_vertex_count":vertex_count,"source_extent":layer.get("extent"),
         "source_coverage_scope":"Complete official IENC navigational system of marks areas feature class; coverage is the published inland charting area.",
-        "drift_guard":"Exact layer id/name, count, field names/types, CRS, page errors, and before/after ID membership are checked."}
+        "drift_guard":"Exact BTS item owner/type/id, official service directory, service/layer identity, count, field schema, CRS, page errors, and before/after ID membership are checked.",
+        "official_source_item":{"id":item["id"],"owner":item["owner"],"type":item["type"],
+            "title":item["title"],"created":item.get("created"),"modified":item.get("modified")},
+        "bts_item_succession_accepted":False}
 
 
 def _write_outputs(storage, prefix: str, outputs: dict[str,bytes]) -> dict[str,dict[str,object]]:
@@ -336,14 +431,13 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
     if replay:
         root=requested
     elif requested:
-        if any(requested.glob("*.body")) or any(requested.glob("*.wire")) or any(requested.glob("*.receipt.json")):
-            raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
-        root=requested/(version+"-"+uuid4().hex)
+        root=requested
     else:
         root=Path("/tmp/hifld-native-reconstruction/6/captures")/(version+"-"+uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
-    root.mkdir(parents=True,exist_ok=True)
+    if replay:
+        root.mkdir(parents=True,exist_ok=True)
     captures={}
     try:
         if replay:
@@ -358,12 +452,19 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
             ids_body,ids_receipt=_load_replay(root,"ids_before")
             ids=json.loads(ids_body).get("objectIds")
             if not isinstance(ids,list): raise ValueError("retained_id_seed_invalid")
-            names=["ids_seed","layer_before","count_before","ids_before",*[f"page_{i:03d}" for i in range((len(ids)+PAGE_SIZE-1)//PAGE_SIZE)],"layer_after","count_after","ids_after"]
+            roster = _capture_roster(ids)
+            names=["ids_seed", *[name for name, _url in roster]]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
             captures={name:_load_replay(root,name) for name in names}
             if any(receipt!=retained_manifest["receipts"][name] for name,(_body,receipt) in captures.items()):
                 raise ValueError("retained_capture_manifest_receipt_mismatch")
+            expected_urls = {name: url for name, url in roster}
+            expected_urls["ids_seed"] = _query({"where":"1=1","returnIdsOnly":"true","f":"json"})
+            for name, (_body, receipt) in captures.items():
+                if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
+                        or receipt.get("final_url") != expected_urls[name]):
+                    raise ValueError("retained_capture_request_identity_mismatch:" + name)
             attempt_map=retained_manifest.get("attempts",{})
             if not isinstance(attempt_map,dict): raise ValueError("retained_capture_attempt_manifest_invalid")
             for name,receipt in attempt_map.items():
@@ -376,16 +477,46 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
                     or receipt.get("wire_bytes")!=len(attempt_wire) or receipt.get("wire_sha256")!=_sha(attempt_wire)):
                     raise ValueError("retained_failed_attempt_bytes_changed:"+name)
         else:
+            prefilled = {}
+            prefill_urls = {"bts_item": BTS_ITEM_URL, "service_directory": SERVICE_DIRECTORY_URL}
+            if requested:
+                for name, url in prefill_urls.items():
+                    paths = [requested / f"{name}{suffix}" for suffix in (".body", ".wire", ".receipt.json")]
+                    present = [path.exists() or path.is_symlink() for path in paths]
+                    if any(present) and not all(present):
+                        raise ValueError("incomplete_prefilled_capture:" + name)
+                    if all(present):
+                        prefilled[name] = _load_prefilled(requested, name, url)
+                if prefilled:
+                    expected_prefills = {f"{name}{suffix}" for name in prefilled
+                                         for suffix in (".body", ".wire", ".receipt.json")}
+                    unexpected = {path.name for suffix in ("*.body", "*.wire", "*.receipt.json")
+                                  for path in requested.glob(suffix)} - expected_prefills
+                    if unexpected:
+                        raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
+                    root = requested
+                else:
+                    if any(requested.glob("*.body")) or any(requested.glob("*.wire")) or any(requested.glob("*.receipt.json")):
+                        raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
+                    root = requested / (version + "-" + uuid4().hex)
+            else:
+                root = Path("/tmp/hifld-native-reconstruction/6/captures") / (version + "-" + uuid4().hex)
+            if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
+                raise ValueError("unsafe_capture_directory")
+            root.mkdir(parents=True, exist_ok=True)
             budget_root=requested if requested else root.parent
             existing_bytes=sum(p.stat().st_size for p in budget_root.rglob("*") if p.is_file() and p.suffix in {".body",".wire"})
             capture_budget=[existing_bytes]
             if existing_bytes>MAX_CAPTURE_BYTES: raise ValueError("source_capture_budget_exceeded_before_request")
+            captures.update(prefilled)
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
                 seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
                 ids=json.loads(seed_body).get("objectIds")
                 if not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT: raise ValueError("source_seed_id_count_drift")
                 captures["ids_seed"]=(seed_body,seed_receipt)
-                for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name,capture_budget)
+                for name,url in _capture_roster(ids):
+                    if name not in captures:
+                        captures[name]=_fetch_retry(client,url,root,name,capture_budget)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         retained={}
@@ -399,16 +530,66 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
-    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in sorted(captures.items())}))
-    audit["source_capture_sha256"]=capture_sha
+    capture_evidence={}
+    for name,(body,receipt) in sorted(captures.items()):
+        wire=(root/f"{name}.wire").read_bytes()
+        capture_evidence[name]={"decoded_sha256":_sha(body),"wire_sha256":_sha(wire),
+            "request_url":receipt["url"],"observed_at":receipt["observed_at"]}
+    capture_sha=_sha(_canonical(capture_evidence))
+    audit.update({"source_capture_sha256":capture_sha,"source_capture_evidence":capture_evidence,
+        "source_receipts":{name:receipt for name,(_body,receipt) in sorted(captures.items())},
+        "source_population_complete":True,"source_release_accepted":False,"source_freshness_accepted":False,
+        "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,
+        "rights_accepted":False,"mapping_approved":False,"release_accepted":False,"baseline_accepted":False})
     version="v"+_sha(_canonical({"source_record_sha256":audit["source_record_sha256"],
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"Official layer metadata does not establish the source release date."} for name,(_body,receipt) in sorted(captures.items())]
-    manifest={"schema_version":1,"approved":False,"title":"Navigation System of Marks Areas (USACE IENC)","description":"Complete official USACE IENC NAVIGATIONAL_SYSTEM_OF_MARKS_AREA feature class; unapproved faithful candidate. Does not assert national coverage or compatibility with the historical HIFLD/FEMA baseline.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":"USDOT BTS IENC inventory item 3607d485a9854d6fa458bf507058ceae links the official USACE IENC Feature Classes service and native file geodatabase. This candidate represents only that full official NAVIGATIONAL_SYSTEM_OF_MARKS_AREA layer.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/navigation-system-of-marks-areas-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No pinned complete native GDB inventory or schema/compatibility approval.","pmtiles":"No display transformation approved."}}
+    inputs=[]
+    for name,(_body,receipt) in sorted(captures.items()):
+        distributor=name=="bts_item"
+        inputs.append({"input_id":name,
+            "producer":"USDOT BTS IENC public ArcGIS item" if distributor else PUBLISHER,
+            "host":urlsplit(receipt["url"]).hostname,
+            "role":"official_distributor" if distributor else "producer_publication",
+            "canonical_url":BTS_ITEM_URL if distributor else LAYER_URL,
+            "retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],
+            "retrieved_at":receipt["observed_at"],"http_status":receipt["status"],
+            "bytes":receipt["bytes"],"sha256":receipt["sha256"],
+            "wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"],
+            "license":"Unresolved; rights review pending.",
+            "attribution":"USACE IENC / BTS; attribution and rights review pending.","release_date":None,
+            "release_date_unknown_reason":"The BTS item describes IENC update cadence but does not identify this layer's release date.",
+            **({"distributor":"USACE IENC Feature Classes service","delegation_evidence":{
+                "bts_item_url":BTS_ITEM_URL,"bts_item_id":BTS_ITEM_ID,"bts_item_owner":"USDOT_BTS",
+                "bts_item_type":"PDF","official_service_directory":SERVICE_DIRECTORY_URL,
+                "linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
+                "basis":"The captured public BTS item identifies IENC and links the USACE Feature Classes service and master geodatabase; the captured service metadata identifies USACE IENC copyright."}} if distributor else {})})
+    manifest={"schema_version":1,"approved":False,"title":"Navigation System of Marks Areas (USACE IENC)",
+        "description":"Complete official USACE IENC NAVIGATIONAL_SYSTEM_OF_MARKS_AREA feature class; unapproved faithful candidate. Does not assert national coverage or compatibility with the historical HIFLD/FEMA baseline.",
+        "publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,
+        "license":None,"source_modified":None,"date_issued":None,"date_modified":None,
+        "processor":"HIFLD Next","code_commit":identity["code_commit"],
+        "code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,
+        "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate",
+            "parameters":{"source_fields":"all declared attributes retained in source order and declared physical types",
+                "source_ids":"OBJECTID and Feature_ID values retained unchanged",
+                "geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair",
+                "candidate_status":"unapproved; BTS-item succession, source release, baseline, ID/schema, coverage, rights and compatibility decisions remain pending"}}],
+        "lineage":(f"Current public BTS IENC PDF item {BTS_ITEM_ID} links the official USACE IENC Feature Classes service and master geodatabase. "
+            f"The previous BTS map-service item {OLD_BTS_ITEM_ID} returned an anonymous-access denial on 2026-10-21; "
+            "succession continuity is recorded but not accepted. This candidate contains only the complete observed service layer 68."),
+        "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings are retained as a candidate; release and compatibility decisions remain pending.",
+            "objects":[{"path":"geoparquet/navigation-system-of-marks-areas-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},
+        "unsupported_output_formats":{"geopackage":"No pinned complete native GDB inventory or schema/compatibility approval.",
+            "pmtiles":"No display transformation approved."}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
-    audit.update({"source_fields":fields,"official_layer_name":"NAVIGATIONAL_SYSTEM_OF_MARKS_AREA","official_source_item":"USDOT_BTS 3607d485a9854d6fa458bf507058ceae","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
+    audit.update({"source_fields":fields,"official_layer_name":"NAVIGATIONAL_SYSTEM_OF_MARKS_AREA",
+        "official_layer_id":LAYER_ID,"official_source_item":"USDOT_BTS " + BTS_ITEM_ID,
+        "bts_item_succession_accepted":False,"source_release_accepted":False,
+        "source_freshness_accepted":False,"schema_contract_accepted":False,
+        "id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,
+        "mapping_approved":False,"release_accepted":False})
     attempts={}
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
@@ -450,4 +631,3 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
-

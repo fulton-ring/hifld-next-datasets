@@ -25,12 +25,17 @@ from dagster_hifld.sources.epa_frs_common import (
 )
 from dagster_hifld.sources.usace_obstruction_lines import (
     PAGE_MAX_BYTES, _canonical, _capture, _capture_identity, _esri_polyline_wkb,
-    _load_capture, _parquet_bytes, _sha, _validate_spatial_reference,
+    _load_capture, _parquet_bytes, _sha, _validate_capture_request_identity,
+    _validate_spatial_reference,
 )
 
 DATASET_SLUG = "overhead-cables-usace-ienc"
 FILE_SLUG = DATASET_SLUG
-BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+# BTS's earlier IENC MapServer item is no longer anonymously readable. Its
+# public replacement is a PDF catalog record that still links the producer's
+# Feature Classes service. Treat that catalog succession as unaccepted.
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
+PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson"
 SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/OVERHEAD_CABLE_LINE/MapServer"
@@ -94,11 +99,13 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
+    expected_urls = dict(_capture_roster(EXPECTED_IDS))
     captures = {}
     for name in sorted(CAPTURE_NAMES):
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
+        _validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures
 
@@ -108,7 +115,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     item = docs["bts_item"]
-    if item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS":
+    if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
+            or item.get("type") != "PDF"):
         raise ValueError("bts_ienc_item_identity_drift")
     text = " ".join(str(item.get(key, "")) for key in ("title", "description"))
     if ("Inland Electronic Navigational Charts" not in text
@@ -223,8 +231,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "geometry_bounds": [min(b[0] for b in bounds), min(b[1] for b in bounds),
                             max(b[2] for b in bounds), max(b[3] for b in bounds)],
         "source_extent": layer["extent"],
-        "source_coverage_scope": "Complete current OVERHEAD_CABLE_LINE layer from USACE IENC chart coverage; inland-chart extent only, not nationwide land coverage.",
-        "drift_guard": "BTS item delegation link, exact service directory/service/layer roster, full field declarations/types, explicit EPSG:4326 layer and response-page SRs, explicit geometry SRs, count and before/after ID roster, per-page IDs/attributes/transfer limits and XY path dimensions checked.",
+        "source_coverage_scope": "Complete observed OVERHEAD_CABLE_LINE layer from the directly queried USACE IENC Feature Classes service; inland-chart extent only, not nationwide land coverage.",
+        "bts_catalog_item_id": BTS_ITEM_ID,
+        "prior_bts_catalog_item_id": PRIOR_BTS_ITEM_ID,
+        "bts_catalog_item_successor_review_pending": True,
+        "drift_guard": "Current BTS PDF catalog link, exact service directory/service/layer roster, full field declarations/types, explicit EPSG:4326 layer and response-page SRs, explicit geometry SRs, count and before/after ID roster, per-page IDs/attributes/transfer limits and XY path dimensions checked.",
     }
     return layer["fields"], features, audit
 
@@ -320,34 +331,40 @@ def capture_usace_overhead_cables(storage: StagingStorageResource, *, version: s
         "observed_final_url": receipt["final_url"], "retrieved_at": receipt["observed_at"],
         "http_status": receipt["status"], "bytes": receipt["bytes"], "sha256": receipt["sha256"],
         "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
-        "release_date": None, "release_date_unknown_reason": "The BTS item describes IENC update cadence but does not identify this layer's release date.",
+        "release_date": None, "release_date_unknown_reason": "The BTS catalog item describes IENC update cadence but does not identify this layer's release date; the item succession does not establish the captured layer's edition date.",
         "license": "Unresolved; rights review pending.", "attribution": "USACE IENC / BTS; attribution and rights review pending.",
         **({"distributor": "USACE IENC Feature Classes service", "delegation_evidence": {
             "bts_item_url": BTS_ITEM_URL, "bts_item_id": BTS_ITEM_ID, "bts_item_owner": "USDOT_BTS",
             "official_service_directory": SERVICE_DIRECTORY_URL,
             "linked_feature_classes_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
-            "basis": "Captured BTS IENC record identifies the program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase; linked service metadata identifies copyright USACE IENC."}}
+            "prior_bts_item_id": PRIOR_BTS_ITEM_ID,
+            "succession_status": "unaccepted; the current public PDF catalog item links the producer service, while a prior draft cited a different BTS item; continuity of the catalog record and layer edition has not been approved",
+            "basis": "The captured BTS PDF record identifies the IENC program, describes USACE/Army Geospatial Center updates, and explicitly links the USACE IENC Feature Classes service and master file geodatabase. The queried layer's own service metadata identifies copyright USACE IENC; the direct service response, not the PDF item, supplies the captured geometry and attributes."}}
            if name == "bts_item" else {})}
         for name, receipt in sorted(receipts.items())]
     manifest = {"schema_version": 1, "approved": False, "title": "Overhead Cables (USACE IENC)",
-        "description": "Complete current official USACE IENC OVERHEAD_CABLE_LINE layer; faithful candidate, not accepted for release.",
+        "description": "Complete observed USACE IENC OVERHEAD_CABLE_LINE layer; catalog-item succession, layer edition, historical continuity, and release remain unaccepted.",
         "publisher": PUBLISHER, "agency": "US Army Corps of Engineers", "source_url": LAYER_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
-        "processor": "HIFLD Next", "code_commit": identity["code_commit"], "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
+        "processor": "HIFLD Next", "code_commit": identity["code_commit"],
+        "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
         "transformations": [{"operation": "Esri XY Polyline to GeoParquet WKB candidate", "parameters": {
             "source_fields": "all declared attributes retained in source order and declared types",
             "source_ids": "OBJECTID and Feature_ID retained unchanged", "source_crs": "EPSG:4326",
             "geometry": "2D path order and coordinates preserved; no reprojection, repair, or simplification",
             "raw_evidence": "complete decoded response and wire bodies retained with checksummed receipts",
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
-        "lineage": f"BTS IENC item {BTS_ITEM_ID} links the official USACE IENC Feature Classes service and master geodatabase. This candidate contains complete service layer {LAYER_ID} OVERHEAD_CABLE_LINE only.",
+        "lineage": f"Current public BTS IENC PDF item {BTS_ITEM_ID} links the USACE IENC Feature Classes service and master geodatabase. A prior draft cited BTS map-service item {PRIOR_BTS_ITEM_ID}; the relationship between the records and continuity of the layer edition remain unapproved. This candidate captures the complete directly queried service layer {LAYER_ID} OVERHEAD_CABLE_LINE only; it makes no claim of historical HIFLD/FEMA equivalence or nationwide terrestrial coverage.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Native attributes, IDs and 2D paths are retained in a typed candidate.",
             "objects": [{"path": output_path, "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
         "unsupported_output_formats": {"geopackage": "No format-specific mapping has been approved.",
             "pmtiles": "No display generalization or release policy has been approved."}}
     validate_release_provenance(manifest); validate_output_policy(manifest); provenance_projection(manifest)
     audit.update({"source_fields": fields, "official_layer_name": "OVERHEAD_CABLE_LINE", "official_layer_id": LAYER_ID,
-                  "official_source_item": "USDOT_BTS " + BTS_ITEM_ID, "source_population_complete": True})
+                  "official_source_item": "USDOT_BTS " + BTS_ITEM_ID,
+                  "prior_bts_catalog_item_id": PRIOR_BTS_ITEM_ID,
+                  "bts_catalog_item_successor_review_pending": True,
+                  "source_population_complete": True})
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):

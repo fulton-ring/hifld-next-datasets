@@ -31,7 +31,7 @@ from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "obstruction-lines-usace-ienc"
 FILE_SLUG = DATASET_SLUG
-BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson"
 SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/OBSTRUCTION_LINE/MapServer"
@@ -151,6 +151,13 @@ def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
     return body, wire, receipt
 
 
+def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
+    """Bind retained response bytes to the exact GET endpoint that names them."""
+    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
+            or receipt.get("final_url") != expected_url):
+        raise ValueError("retained_capture_request_identity_mismatch:" + name)
+
+
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
@@ -166,18 +173,22 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
+    expected_urls = dict(_capture_urls(EXPECTED_IDS))
     captures = {}
     for name in sorted(manifest["receipts"]):
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"][name]:
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
+        _validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
-    if docs["bts_item"].get("id") != BTS_ITEM_ID or docs["bts_item"].get("owner") != "USDOT_BTS":
+    if (docs["bts_item"].get("id") != BTS_ITEM_ID
+            or docs["bts_item"].get("owner") != "USDOT_BTS"
+            or docs["bts_item"].get("type") != "PDF"):
         raise ValueError("bts_ienc_item_identity_drift")
     item_text = " ".join(str(docs["bts_item"].get(key, "")) for key in ("title", "description"))
     if ("Inland Electronic Navigational Charts" not in item_text
@@ -421,7 +432,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
         "description":"Complete current OBSTRUCTION_LINE feature class from the official USACE IENC Feature Classes service; unapproved faithful candidate. Observed coverage is limited to records returned by this layer.",
         "publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,
         "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next",
-        "code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,
+        "code_commit":identity["code_commit"],"inputs":inputs,
         "transformations":[{"operation":"Esri JSON Polyline to GeoParquet WKB candidate; source XY ordinates and path order preserved",
            "parameters":{"feature_count":EXPECTED_COUNT,"source_fields":"all declared non-geometry fields retained in source order and declared types",
              "source_ids":"OBJECTID and Feature_ID preserved unchanged","source_crs":"EPSG:4326","source_geometry":"2D paths exactly as captured; no projection, repair or line simplification",
@@ -487,7 +498,9 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
         "source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "capture_receipts":receipts,"objects":descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
+    validate_construction_code_identity(
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
+    )
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
         "source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":1,"source_id_max":EXPECTED_COUNT,
         "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],

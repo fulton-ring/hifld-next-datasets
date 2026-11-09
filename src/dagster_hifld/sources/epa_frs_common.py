@@ -14,13 +14,14 @@ import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping
+from typing import Callable, Mapping
 from uuid import uuid4
 
 import httpx
 import pyarrow as pa
 import pyproj
 import shapely
+from dagster_hifld.catalog import summarize_staged_catalog
 from dagster_hifld.construction_state import (
     canonical_construction_bundle,
     load_first_construction,
@@ -34,8 +35,10 @@ from dagster_hifld.construction_provenance import (
     _MAX_PATH_BYTES,
     validate_construction_code_identity,
 )
-from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
 
 
@@ -69,8 +72,16 @@ def candidate_prefix(dataset_slug: str, file_slug: str, version: str) -> str:
 
 
 def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
-                *, max_bytes: int = 128 * 1024 * 1024) -> tuple[bytes, dict[str, object]]:
-    """Persist complete GET decoded and wire bodies plus a hash-pinned receipt."""
+                *, max_bytes: int = 128 * 1024 * 1024,
+                reserve: Callable[[CaptureProgress], None] | None = None,
+                before_retain: Callable[[str, bytes], None] | None = None) -> tuple[bytes, dict[str, object]]:
+    """Persist complete GET decoded and wire bodies plus a hash-pinned receipt.
+
+    Incomplete/status-failed responses and mid-stream HTTP errors still leave
+    bounded body/wire evidence and a receipt before this helper raises. When
+    supplied, ``before_retain`` runs before each block is written, so an adapter
+    can refuse an oversized delivered block without exceeding its disk budget.
+    """
     capture_root.mkdir(parents=True, exist_ok=True)
     wire_path, body_path = capture_root / f"{name}.wire", capture_root / f"{name}.body"
     for path in (wire_path, body_path):
@@ -81,6 +92,8 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
 
     def retain(path: Path, digest, data: bytes, kind: str) -> None:
         nonlocal wire_size, body_size
+        if before_retain is not None:
+            before_retain(kind, data)
         with path.open("ab") as stream:
             stream.write(data)
         if kind == "wire":
@@ -88,25 +101,49 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
         else:
             body_size += len(data); body_hash.update(data)
 
-    with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-        result = capture_http_response(
-            response, max_wire_bytes=max_bytes, max_decoded_bytes=max_bytes,
-            reserve=lambda _progress: None,
-            retain_wire=lambda data: retain(wire_path, wire_hash, data, "wire"),
-            retain_decoded=lambda data: retain(body_path, body_hash, data, "body"),
-        )
-        final_url = str(response.url)
+    try:
+        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
+            result = capture_http_response(
+                response, max_wire_bytes=max_bytes, max_decoded_bytes=max_bytes,
+                reserve=reserve or (lambda _progress: None),
+                retain_wire=lambda data: retain(wire_path, wire_hash, data, "wire"),
+                retain_decoded=lambda data: retain(body_path, body_hash, data, "body"),
+            )
+            final_url = str(response.url)
+            status = result.status_code
+            complete = result.complete
+            content_encoding = result.content_encoding
+            content_length = result.content_length
+            error_code = result.error_code
+    except httpx.HTTPError as exc:
+        # Connection/timeout failures before a response still get a durable receipt.
+        # Keep the exception class, never its text (which can contain request details).
+        wire_path.touch(exist_ok=True)
+        body_path.touch(exist_ok=True)
+        receipt = {
+            "method": "GET", "url": url, "final_url": None, "observed_at": observed,
+            "status": None, "complete_body": False,
+            "wire_bytes": 0, "wire_sha256": hashlib.sha256().hexdigest(),
+            "bytes": 0, "sha256": hashlib.sha256().hexdigest(),
+            "content_encoding": None, "content_length": None,
+            "error_code": "request_error", "error_type": type(exc).__name__,
+        }
+        (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+        raise ValueError(f"incomplete_source_capture:{name}") from None
+    wire_path.touch(exist_ok=True)
+    body_path.touch(exist_ok=True)
     receipt = {
         "method": "GET", "url": url, "final_url": final_url, "observed_at": observed,
-        "status": result.status_code, "complete_body": result.complete,
+        "status": status, "complete_body": complete,
         "wire_bytes": result.wire_bytes_retained, "wire_sha256": result.wire_sha256,
         "bytes": result.decoded_bytes_retained, "sha256": result.decoded_sha256,
-        "content_encoding": result.content_encoding, "content_length": result.content_length,
-        "error_code": result.error_code,
+        "content_encoding": content_encoding, "content_length": content_length,
+        "error_code": error_code,
+        "error_type": result.error_type,
     }
     (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
     wire_body, body = wire_path.read_bytes(), body_path.read_bytes()
-    if (not result.complete or result.status_code != 200 or final_url != url
+    if (not complete or status != 200 or final_url != url
             or len(wire_body) != receipt["wire_bytes"] or _sha(wire_body) != receipt["wire_sha256"]
             or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]):
         raise ValueError(f"incomplete_source_capture:{name}")
@@ -260,6 +297,112 @@ def seal_ready_candidate(storage: StagingStorageResource, state_key: str, versio
                             canonical_construction_bundle(version, fingerprint, dict(payload)))
 
 
+STAGED_RELEASE_DERIVATIVE_NAMES = frozenset({"collection.json", "README.md", "AGENTS.md"})
+_MAX_STAGED_RELEASE_DOCUMENT_BYTES = 2 * 1024 * 1024
+
+
+def validate_staged_release_derivatives(storage: StagingStorageResource, prefix: str,
+                                        actual_keys: set[str]) -> set[str]:
+    """Validate only the exact optional trio generated by release-metadata preparation.
+
+    These are derived STAC/document files, not source-owned candidate objects.
+    If any one is present, require all three; validate the Collection against
+    this candidate's dataset/file/semantic version and bound the two UTF-8 docs.
+    """
+    expected = {f"{prefix}/{name}" for name in STAGED_RELEASE_DERIVATIVE_NAMES}
+    found = actual_keys & expected
+    if not found:
+        return set()
+    if found != expected:
+        raise ValueError("incomplete_staged_release_derivatives")
+    from dagster_hifld.portolan.release import read_staged_release
+
+    read_staged_release(storage, prefix)
+    for name in ("README.md", "AGENTS.md"):
+        body = storage.read_key(f"{prefix}/{name}")
+        if not isinstance(body, bytes) or not 0 < len(body) <= _MAX_STAGED_RELEASE_DOCUMENT_BYTES:
+            raise ValueError("invalid_staged_release_document_size:" + name)
+        try:
+            body.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("invalid_staged_release_document_encoding:" + name) from exc
+    return found
+
+
+def _validate_cached_catalog_sidecars(storage: StagingStorageResource, prefix: str,
+                                      actual_keys: set[str]) -> None:
+    """Recompute every catalog derivative from the sealed native candidate."""
+    flat_names = ("metadata/quality_manifest.json", "metadata/data_dictionary.json")
+    flat_keys = {f"{prefix}/{name}" for name in flat_names}
+    found_flat = actual_keys & flat_keys
+    catalog_derivative_keys = flat_keys | {
+        f"{prefix}/metadata/resolved_provenance.json",
+        f"{prefix}/metadata/source/quality_manifest.json",
+        f"{prefix}/metadata/source/data_dictionary.json",
+    }
+    found_catalog_derivatives = actual_keys & catalog_derivative_keys
+    if not found_catalog_derivatives:
+        return
+    if found_flat != flat_keys:
+        raise ValueError("cached_catalog_metadata_incomplete")
+
+    source_catalog_names = (
+        "metadata/source/quality_manifest.json",
+        "metadata/source/data_dictionary.json",
+    )
+    source_catalog_keys = {f"{prefix}/{name}" for name in source_catalog_names}
+    found_source_catalog = actual_keys & source_catalog_keys
+    if found_source_catalog not in (set(), source_catalog_keys):
+        raise ValueError("cached_catalog_source_snapshot_incomplete")
+
+    parts = prefix.split("/")
+    if len(parts) != 3 or any(not part for part in parts):
+        raise ValueError("cached_catalog_prefix_invalid")
+    dataset_slug, file_slug, version = parts
+    resolved_manifest = load_resolved_source_manifest(storage, dataset_slug, file_slug, version)
+    summary = summarize_staged_catalog(
+        storage,
+        dataset_slug,
+        file_slug,
+        version,
+        dataset_slug,
+        source_metadata=resolved_manifest.metadata,
+    )
+
+    def read_stable_json(key: str) -> object:
+        before = storage.object_snapshot(key)
+        if before is None:
+            raise ValueError("cached_catalog_metadata_missing:" + key.rsplit("/", 1)[-1])
+        body = storage.read_key(key)
+        if storage.object_snapshot(key) != before:
+            raise ValueError("cached_catalog_metadata_changed_during_validation")
+        try:
+            return json.loads(body)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("cached_catalog_metadata_invalid") from exc
+
+    quality_key = f"{prefix}/metadata/quality_manifest.json"
+    dictionary_key = f"{prefix}/metadata/data_dictionary.json"
+    quality = read_stable_json(quality_key)
+    dictionary = read_stable_json(dictionary_key)
+    if quality != summary.quality_manifest or dictionary != summary.data_dictionary:
+        raise ValueError("cached_catalog_metadata_mismatch")
+
+    resolved_key = f"{prefix}/metadata/resolved_provenance.json"
+    expected_resolved = provenance_projection(resolved_manifest.metadata)
+    if (resolved_key in actual_keys) != (expected_resolved is not None):
+        raise ValueError("cached_catalog_resolved_provenance_mismatch")
+    if expected_resolved is not None and read_stable_json(resolved_key) != expected_resolved:
+        raise ValueError("cached_catalog_resolved_provenance_mismatch")
+
+    if found_source_catalog:
+        source_quality_key = f"{prefix}/metadata/source/quality_manifest.json"
+        source_dictionary_key = f"{prefix}/metadata/source/data_dictionary.json"
+        if (read_stable_json(source_quality_key) != quality
+                or read_stable_json(source_dictionary_key) != dictionary):
+            raise ValueError("cached_catalog_source_snapshot_changed")
+
+
 def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, state_key: str,
                             prefix: str, version: str, fingerprint: str, identity: Mapping[str, object],
                             source_record_sha256: str, source_schema_sha256: str,
@@ -292,9 +435,14 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
             "metadata/source/source_manifest.json",
             f"metadata/source/version_{manifest_descriptor['sha256']}_source_manifest.json",
         }
-    allowed_keys = expected_keys | {f"{prefix}/{name}" for name in derived_names | snapshot_names}
+        found_snapshots = {f"{prefix}/{name}" for name in snapshot_names} & actual_keys
+        if found_snapshots and len(found_snapshots) != len(snapshot_names):
+            raise ValueError("cached_catalog_source_snapshot_incomplete")
+    staged_release_keys = {f"{prefix}/{name}" for name in STAGED_RELEASE_DERIVATIVE_NAMES}
+    allowed_keys = expected_keys | {f"{prefix}/{name}" for name in derived_names | snapshot_names} | staged_release_keys
     if not expected_keys <= actual_keys or actual_keys - allowed_keys:
         raise ValueError("cached_candidate_storage_roster_changed")
+    validate_staged_release_derivatives(storage, prefix, actual_keys)
     for name in snapshot_names:
         key = f"{prefix}/{name}"
         if key not in actual_keys:
@@ -319,5 +467,6 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
                 or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
                 or receipt_body != _canonical(dict(receipt)) + b"\n"):
             raise ValueError("cached_original_capture_changed:" + name)
+    _validate_cached_catalog_sidecars(storage, prefix, actual_keys)
     validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"], identity=identity)
     return {"version": version, "reused": True}
