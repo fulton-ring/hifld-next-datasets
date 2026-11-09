@@ -115,7 +115,8 @@ def _fixture_factory():
                          "geometry": {"hasZ": True, "paths": pathsets}})
 
     feature_requests = []
-    knobs = {"final_page_exceeded_transfer_limit": False}
+    knobs = {"final_page_exceeded_transfer_limit": False,
+             "page_failures_before_success": 0}
 
     def factory():
         def handler(request):
@@ -127,6 +128,9 @@ def _fixture_factory():
                 result = {"objectIdFieldName": "OBJECTID", "objectIds": [1, 2]}
             elif path.endswith("/query"):
                 feature_requests.append(path + "?" + request.url.query.decode())
+                if knobs["page_failures_before_success"] > 0:
+                    knobs["page_failures_before_success"] -= 1
+                    return httpx.Response(504, request=request)
                 offset = int(query.get("resultOffset", ["0"])[0])
                 limit = int(query.get("resultRecordCount", ["1000"])[0])
                 served = features[offset:offset + limit]
@@ -338,6 +342,35 @@ class NationalTransitMapRoutesTests(unittest.TestCase):
                 digest.add(element)
             self.assertEqual(digest.hexdigest(), _sha(_canonical(value)))
 
+    def test_transient_page_failure_is_retried_within_bounds(self):
+        factory, _fields, _features, _layer, schema_sha, ids_sha, _requests, knobs = _fixture_factory()
+        knobs["page_failures_before_success"] = 1
+        patchers = self._patched(factory, schema_sha, ids_sha,
+                                 extra=(patch.object(source, "PAGE_RETRY_BACKOFF_SECONDS", (0,)),))
+        with tempfile.TemporaryDirectory() as tmp:
+            for p in patchers:
+                p.start()
+            self.addCleanup(lambda: [p.stop() for p in reversed(patchers)])
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            candidate = source.capture_national_transit_map_routes(
+                storage, capture_directory=str(Path(tmp) / "captures"))
+            self.assertEqual(candidate["feature_count"], 2)
+
+    def test_persistent_page_failure_fails_closed_after_bounded_retry(self):
+        factory, _fields, _features, _layer, schema_sha, ids_sha, _requests, knobs = _fixture_factory()
+        knobs["page_failures_before_success"] = 99
+        patchers = self._patched(factory, schema_sha, ids_sha,
+                                 extra=(patch.object(source, "PAGE_ATTEMPTS", 3),
+                                        patch.object(source, "PAGE_RETRY_BACKOFF_SECONDS", (0, 0))))
+        with tempfile.TemporaryDirectory() as tmp:
+            for p in patchers:
+                p.start()
+            self.addCleanup(lambda: [p.stop() for p in reversed(patchers)])
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            with self.assertRaisesRegex(ValueError, "incomplete_source_capture:page_000"):
+                source.capture_national_transit_map_routes(
+                    storage, capture_directory=str(Path(tmp) / "captures"))
+
     def test_failure_evidence_skips_oversized_files_without_reading_them(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -361,6 +394,7 @@ class NationalTransitMapRoutesTests(unittest.TestCase):
         self.assertEqual(source.PAGE_SIZE, 1000)
         self.assertGreaterEqual(source.MAX_BODY_BYTES, 32_000_000)
         self.assertGreaterEqual(source.MAX_CAPTURE_TOTAL_BYTES, 4_000_000_000)
+        self.assertTrue(2 <= source.PAGE_ATTEMPTS <= 8)
 
     def test_registered_draft_is_stopped_and_gate_keeps_approvals_false(self):
         self.assertIn(national_transit_map_routes, hifld_ingest_assets)

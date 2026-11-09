@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import stat
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -63,6 +64,14 @@ MAX_FAILURE_RECEIPT_BYTES = 64_000
 MAX_FAILURE_RECEIPTS_TOTAL_BYTES = 1_000_000
 MAX_CAPTURE_PAGES = 1_024
 MAX_CAPTURE_RESPONSES = MAX_CAPTURE_PAGES + 11
+# 2026-11-09 live evidence: the ArcGIS Online gateway intermittently returned
+# HTTP 504 (twice, at page 12 and page 19 of full captures) and reset one
+# stream mid-body, clearing within a minute each time. Retry incomplete
+# transport responses a bounded number of times with growing backoff; any
+# persistent failure still fails closed, and each accepted response remains a
+# complete hash-pinned producer body.
+PAGE_ATTEMPTS = 4
+PAGE_RETRY_BACKOFF_SECONDS = (15, 30, 60)
 # The complete candidate keeps a second raw copy in staging (bodies + wire,
 # ~3.4 GiB forecast) plus the parquet candidate; keep 2 GiB free after writing.
 DISK_FLOOR_BYTES = 2_000_000_000
@@ -720,27 +729,38 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
         receipts[name] = receipt
         return body
 
+    def capture_with_retry(client, name: str, url: str) -> bytes:
+        for attempt in range(PAGE_ATTEMPTS):
+            if attempt:
+                time.sleep(PAGE_RETRY_BACKOFF_SECONDS[min(attempt - 1, len(PAGE_RETRY_BACKOFF_SECONDS) - 1)])
+            try:
+                return capture_one(client, name, url)
+            except ValueError as exc:
+                if attempt == PAGE_ATTEMPTS - 1 or not str(exc).startswith("incomplete_source_capture:"):
+                    raise
+        raise AssertionError("unreachable_retry_state")
+
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/national-transit-map-routes-draft"}) as client:
             # Response bodies are validated as they arrive and then dropped: the
             # durable copy on disk is the only retained form, so a full capture
             # never accumulates in memory.
-            seed_body = capture_one(client, "ids_seed",
-                                    _query_url(where="1=1", returnIdsOnly="true", f="json"))
+            seed_body = capture_with_retry(client, "ids_seed",
+                                           _query_url(where="1=1", returnIdsOnly="true", f="json"))
             seed = json.loads(seed_body).get("objectIds")
             if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
                 raise ValueError("source_seed_id_roster_missing_or_invalid")
             del seed_body
             for name, url in _source_metadata_urls():
-                capture_one(client, name, url)
+                capture_with_retry(client, name, url)
             pinned_ids, layer_before = _validate_before_page_requests(capture_root, receipts)
             _pagination_mode, page_plan = _page_plan(pinned_ids, layer_before)
             for name, url, expected_page_ids in page_plan:
-                page_body = capture_one(client, name, url)
+                page_body = capture_with_retry(client, name, url)
                 _validate_page_ids(page_body, expected_page_ids)
                 del page_body
             for name, url in _source_after_urls():
-                capture_one(client, name, url)
+                capture_with_retry(client, name, url)
         _plain_fields, audit, parquet = _build_candidate(capture_root, receipts)
     except Exception as exc:
         error_code = str(exc) if isinstance(exc, ValueError) and str(exc).replace("_", "").isalnum() else type(exc).__name__
@@ -775,6 +795,7 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
             "feature_layer_id":LAYER_ID,"source_fields":"all sixteen declared source fields retained with declared source types, including producer-owned Shape__Length",
             "source_ids":"OBJECTID preserved unchanged; before, seed and after source ID rosters are reconciled","geometry":"native polyline paths requested with returnZ=true and encoded as WKB MultiLineString Z at EPSG:4326, preserving the producer's native Z coordinate without reprojection, simplification or repair",
             "physical_mapping":"Per-field source-to-Arrow proposals are recorded in source_audit.json; OID widening to int64 preserves values, and all mapping approvals remain false.",
+            "transport":"Bounded transient retry of incomplete transport responses (at most 4 attempts per request with growing backoff); every accepted response is a complete hash-pinned producer body.",
             "candidate_status":"unapproved; production publication prohibited pending source freshness, schema/ID contract, archive equivalence, baseline, rights and mapping acceptance"}}],
         "lineage":f"USDOT_BTS official NTAD account item {ITEM_ID} exposes FeatureServer layer 0. The current item describes a 2026-09-23 compilation. HIFLD inventory references DataLumos project 239727 V1 (2024 vintage); archive equivalence is not assumed.",
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri fields (including OBJECTID and Shape__Length), source IDs, polyline paths with native Z coordinates and coordinates retained; approvals pending.","objects":[{"path":native_path,**source_objects[native_path]}]}}},
