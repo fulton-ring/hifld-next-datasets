@@ -75,7 +75,7 @@ def arrow_table(*, ids=None, spatial=True, id_type=None):
 
 def native_gate_fixture(root):
     source, target, registry = accepted_fixture(root)
-    prefix = "synthetic/points/vtest"
+    prefix = "synthetic/points/v1.0.0"
     candidate_root = Path(source.local_dir) / prefix / "geoparquet"
     baseline_root = root / "accepted-synthetic-baseline"
     candidate_root.mkdir(parents=True)
@@ -95,7 +95,7 @@ def native_gate_fixture(root):
     result = compare_native_inputs(left, right, proposed, metadata_root, baseline_reference=baseline)
     if result["status"] != "pass":
         raise AssertionError(result)
-    objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "vtest")}
+    objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "v1.0.0")}
     candidate = result["native_inputs"]["candidate"]["receipt"]
     entry.update(baseline=result["baseline"], native_baseline_input=left, contract_sha256=result["contract_sha256"],
                  staged_objects=objects, published_objects=objects,
@@ -193,26 +193,26 @@ class NativeVerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             source, target, registry = native_gate_fixture(Path(d))
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
-                copied = _copy_version_files(source, target, "synthetic", "points", "vtest")
-                self.assertIn("synthetic/points/vtest/metadata/candidate/normalization_lineage.jsonl", copied)
+                copied = _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
+                self.assertIn("synthetic/points/v1.0.0/metadata/candidate/normalization_lineage.jsonl", copied)
                 before = {key: target.object_snapshot(key) for key in target.list_prefix()}
-                source.write("synthetic", "points", "vtest", "geoparquet/extra.parquet", b"unapproved shard")
+                source.write("synthetic", "points", "v1.0.0", "geoparquet/extra.parquet", b"unapproved shard")
                 with self.assertRaises(ReleaseApprovalError):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
 
     def test_deliberately_repinned_false_native_derivation_cannot_publish(self):
         with tempfile.TemporaryDirectory() as d:
             source, target, registry = native_gate_fixture(Path(d))
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
-                _copy_version_files(source, target, "synthetic", "points", "vtest")
+                _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 before = {key: target.object_snapshot(key) for key in target.list_prefix()}
-                forge_synthetic_candidate_labels(source, registry, "synthetic/points/vtest")
-                report = json.loads(source.read_key("synthetic/points/vtest/metadata/baseline_comparison.json"))
+                forge_synthetic_candidate_labels(source, registry, "synthetic/points/v1.0.0")
+                report = json.loads(source.read_key("synthetic/points/v1.0.0/metadata/baseline_comparison.json"))
                 self.assertEqual(report["status"], "pass")
-                self.assertEqual(pq.ParquetFile(Path(source.local_dir) / "synthetic/points/vtest/geoparquet/data.parquet").read()["state"].to_pylist(), ["NJ"] * 3)
+                self.assertEqual(pq.ParquetFile(Path(source.local_dir) / "synthetic/points/v1.0.0/geoparquet/data.parquet").read()["state"].to_pylist(), ["NJ"] * 3)
                 with self.assertRaisesRegex(ReleaseApprovalError, "replay_mismatch"):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
 
     def test_repinned_false_comparison_result_is_independently_recomputed(self):
@@ -221,7 +221,7 @@ class NativeVerificationTests(unittest.TestCase):
             source, target, registry = native_gate_fixture(root)
             value = json.loads(registry.read_text())
             entry = value["releases"][0]
-            prefix = "synthetic/points/vtest"
+            prefix = "synthetic/points/v1.0.0"
             candidate_root = Path(source.local_dir) / prefix / "geoparquet"
             native = candidate_root / "data.parquet"
             table = pq.ParquetFile(native).read()
@@ -244,7 +244,7 @@ class NativeVerificationTests(unittest.TestCase):
             registry.write_text(json.dumps(value))
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
                 with self.assertRaisesRegex(ReleaseApprovalError, "full_comparison_replay_mismatch"):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
             self.assertFalse(target.list_prefix())
 
     def test_native_baseline_originals_missing_changed_extra_or_self_reference_block(self):
@@ -253,7 +253,7 @@ class NativeVerificationTests(unittest.TestCase):
                 root = Path(d)
                 source, target, registry = native_gate_fixture(root)
                 with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                     before = {key: target.object_snapshot(key) for key in target.list_prefix()}
                     value = json.loads(registry.read_text())
                     entry = value["releases"][0]
@@ -267,10 +267,10 @@ class NativeVerificationTests(unittest.TestCase):
                     elif mode == "extra_shard":
                         shutil.copyfile(path, path.with_name("extra.parquet"))
                     else:
-                        entry["native_baseline_input"]["root"] = str(Path(source.local_dir) / "synthetic/points/vtest/geoparquet")
+                        entry["native_baseline_input"]["root"] = str(Path(source.local_dir) / "synthetic/points/v1.0.0/geoparquet")
                     registry.write_text(json.dumps(value))
                     with self.assertRaisesRegex(ReleaseApprovalError, "native_baseline_original|native_original_derivation"):
-                        _copy_version_files(source, target, "synthetic", "points", "vtest")
+                        _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                     self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
 
     def test_proposed_or_missing_native_policy_approval_cannot_publish_even_repinned(self):
@@ -281,7 +281,7 @@ class NativeVerificationTests(unittest.TestCase):
             registry.write_text(json.dumps(value))
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
                 with self.assertRaisesRegex(ReleaseApprovalError, "native_comparison_policy"):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
             self.assertEqual(target.list_prefix(), [])
 
     def test_nonnullable_map_items_and_nested_map_children_block(self):

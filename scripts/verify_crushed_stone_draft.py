@@ -8,7 +8,6 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
 import struct
 from pathlib import Path
 from unittest.mock import patch
@@ -19,6 +18,9 @@ for name in ('dagster','staging','published'):(runtime/name).mkdir(parents=True)
 (runtime/'dagster/dagster.yaml').write_text('telemetry:\n  enabled: false\n')
 for key in ('HIFLD_STAGING_BUCKET','HIFLD_DATASETS_BUCKET','KUBERNETES_SERVICE_HOST','HIFLD_RELEASE_APPROVALS'):os.environ.pop(key,None)
 os.environ.update(DAGSTER_HOME=str(runtime/'dagster'),HIFLD_STAGING_DIR=str(runtime/'staging'),HIFLD_DATASETS_DIR=str(runtime/'published'),HIFLD_CRUSHED_STONE_CAPTURE_DIR=str(captures),HIFLD_CRUSHED_STONE_PACKAGE_ID='stanford-cs268nn2622-preservation-as-provided-v1',HIFLD_SHADOW_MANUAL_ONLY='1')
+# This isolated harness supplies a non-routable HTTPS root to satisfy the
+# Portolan HTTPS-link contract; it is not a real public storage endpoint.
+os.environ['HIFLD_PORTOLAN_PUBLIC_ROOT']='https://example.invalid'
 import pyarrow as pa
 import pyarrow.parquet as pq
 from dagster import Definitions,AssetSelection,define_asset_job,DagsterInstance
@@ -31,12 +33,13 @@ from dagster_hifld.sources import crushed_stone as source
 from dagster_hifld.release_approval import validate_release_provenance
 
 staging=StagingStorageResource(local_dir=str(runtime/'staging'),use_local=True);published=PublishedStorageResource(local_dir=str(runtime/'published'),use_local=True)
-published.write_key('synthetic-prior-release-fixture.bin',b'local-preservation-fixture-only-not-accepted-real-data')
+for index in range(14):
+    published.write_key(f'synthetic-prior-release-fixture/{index:02d}.bin',f'isolated synthetic fixture object {index:02d}; not accepted production data'.encode())
 def snap(storage):return {k:storage.sha256_key(k) for k in storage.list_prefix()}
 def files(root):return {str(p.relative_to(root)):source.sha256_file(p) for p in root.rglob('*') if p.is_file()}
 prior=snap(published);keys=[k for k in normal.resolve_asset_graph().get_all_asset_keys() if k.path[0]=='publish']
 defs=Definitions(assets=normal.assets,asset_checks=normal.asset_checks,resources={'staging_storage':staging,'published_storage':published},jobs=[define_asset_job('crushed_stone_normal_graph',selection=AssetSelection.assets(*keys))])
-report={'code_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(source.__file__).parents[3],text=True).strip(),'module':source.__file__,'runtime':str(runtime),'package_id':source.PACKAGE,'source_accepted':False,'release_accepted':False,'prior_release':'synthetic local fixture only, not a real accepted release','runs':[]}
+report={'execution_code_identity':source.processing_identity(),'module':source.__file__,'runtime':str(runtime),'package_id':source.PACKAGE,'source_accepted':False,'release_accepted':False,'prior_release':'14-object synthetic local fixture only, not a real accepted release','runs':[]}
 def record(kind,result):
     errors=[e.event_specific_data.error.to_string() for e in result.get_step_failure_events()]
     report['runs'].append({'kind':kind,'run_id':result.run_id,'success':result.success,'errors':errors,'materializations':[e.asset_key.to_user_string() for e in result.get_asset_materialization_events()],'checks':[{'name':e.check_name,'passed':e.passed} for e in result.get_asset_check_evaluations()]})
@@ -82,7 +85,7 @@ with DagsterInstance.get() as instance:
     again=run('complete_native_byte_idempotent_reuse');assert again.output_for_node(asset.op.name)['reused'] and files(root)==before
     instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[prefix])
     for cycle in (1,2):
-        result=graph.execute_in_process(instance=instance,partition_key=prefix,raise_on_error=False);errors=record('normal_catalog_'+str(cycle)+'_real_missing_independent_approval',result)
+        result=graph.execute_in_process(instance=instance,partition_key=prefix,raise_on_error=False,run_config={'ops':{'publish__release_metadata':{'config':{'version':'v0.0.0-draft'}}}});errors=record('normal_catalog_'+str(cycle)+'_real_missing_independent_approval',result)
         assert not result.success and errors and all('missing_independent_release_approval_registry' in error for error in errors),errors
         assert snap(published)==prior;run('source_after_catalog_'+str(cycle));assert native.read_bytes()==gold
     full=source.acquire(staging,str(captures),source.PACKAGE);table,published_ids,audit=source.inspect_captures(full);source.verify_outputs(root,table,published_ids);assert pq.read_table(native).equals(source.expected_parquet(table),check_metadata=True)
@@ -95,7 +98,7 @@ with DagsterInstance.get() as instance:
     badprefix=prefix+'-synthetic-null-geometry';badroot=runtime/'staging'/badprefix;shutil.copytree(root,badroot);badnative=badroot/f'geoparquet/{source.SLUG}.parquet';badtable=pq.read_table(badnative);values=badtable['geometry'].to_pylist();values[0]=None
     index=badtable.schema.get_field_index('geometry');badtable=badtable.set_column(index,pa.field('geometry',pa.binary(),nullable=True),pa.array(values,pa.binary()));badnative.write_bytes(source.parquet_bytes(badtable))
     badmanifest=json.loads((badroot/'metadata/source_manifest.json').read_bytes());pin=badmanifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0];pin.update(sha256=source.sha256_file(badnative),bytes=badnative.stat().st_size);(badroot/'metadata/source_manifest.json').write_bytes(source.encode(badmanifest));shutil.rmtree(badroot/'metadata/source');(badroot/'metadata/resolved_provenance.json').unlink()
-    instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[badprefix]);result=graph.execute_in_process(instance=instance,partition_key=badprefix,raise_on_error=False);record('synthetic_null_geometry_quality_gate_preserves_prior',result);assert not result.success and any(not check.passed for check in result.get_asset_check_evaluations()) and snap(published)==prior
+    instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME,[badprefix]);result=graph.execute_in_process(instance=instance,partition_key=badprefix,raise_on_error=False,run_config={'ops':{'publish__release_metadata':{'config':{'version':'v0.0.0-draft'}}}});record('synthetic_null_geometry_quality_gate_preserves_prior',result);assert not result.success and any(not check.passed for check in result.get_asset_check_evaluations()) and snap(published)==prior
     for label in ('unknown_metadata','self_repinned_native_parquet','coforged_original_receipt','missing_original_CAS','all_original_witnesses_missing'):
         ready=json.loads((root/source.READY).read_bytes());restore=None
         if label=='unknown_metadata':(root/'metadata/unexpected.json').write_bytes(b'{"approved":true}');expected='unknown_missing_or_linked_candidate_object'

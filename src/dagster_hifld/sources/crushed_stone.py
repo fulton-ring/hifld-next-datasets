@@ -10,15 +10,12 @@ import pyogrio
 import fcntl
 import hashlib
 import io
-import importlib.metadata
 import json
 import math
 import os
-import platform
 import re
 import stat
 import struct
-import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
@@ -36,10 +33,12 @@ import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.output_policy import validate_output_policy
+from dagster_hifld.portolan.release import read_staged_release
 from dagster_hifld.provenance import provenance_projection
-from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
 from dagster_hifld.validation import sha256_file
 SLUG='crushed-stone-operations'
 PACKAGE='stanford-cs268nn2622-preservation-as-provided-v1'
@@ -72,11 +71,7 @@ def immutable(storage,key,body):
 
 def processing_identity():
     root=Path(__file__).parents[3]
-    return {'python':platform.python_version(),'implementation':platform.python_implementation(),'platform':platform.platform(),
-        'distributions':sorted((d.metadata['Name'],d.version) for d in importlib.metadata.distributions()),
-        'gdal':pyogrio.__gdal_version_string__,'geos':shapely.geos_version_string,'proj':pyproj.proj_version_str,
-        'files':{str(p.relative_to(root)):sha256_file(p) for p in sorted((root/'src/dagster_hifld').rglob('*.py'))+[root/'uv.lock',root/'pyproject.toml']},
-        'verifier_sha256':verifier_implementation_sha256()}
+    return packaged_processing_identity(root)
 
 def retain_failure(storage,captures,reason,attempted=None):
     prefix=f'_quarantine/{SLUG}/acquisitions/{uuid4().hex}'
@@ -116,7 +111,7 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
         raise CrushedStoneQuarantineError('legacy_unbound_original_requires_explicit_reviewed_migration')
     key=construction_record_key(version)
     if create:
-        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
+        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'],identity=identity)
         retained=seal_first_construction(storage,key,version,fingerprint,envelope)
     else:
         retained=load_first_construction(storage,key,version,fingerprint)
@@ -130,7 +125,7 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
         original[name]=(body,item['receipt'])
     pin=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
     expected=manifest_for(original,identity,{k:pin[k] for k in ('sha256','bytes')});actual=bundle['manifest']
-    validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files'])
+    validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files'],identity=identity)
     if set(actual)!=set(expected) or any(actual[k]!=v for k,v in expected.items() if k!='code_commit'):raise CrushedStoneQuarantineError('original_construction_manifest_or_receipts_changed')
     return original,actual
 
@@ -293,7 +288,7 @@ def manifest_for(captures,identity,parquet_pin):
         body,receipt=captures[name];validate_capture(name,body,receipt,PINS[name]['url'])
         role='producer_publication' if name=='legacy_metadata' else 'archive'
         inputs.append({'input_id':name+':'+digest(body),'producer':'U.S. Geological Survey (historical dataset metadata only)' if name=='legacy_metadata' else 'Stanford Libraries preservation' if name.startswith('crstonx020.') or name=='stanford_publicxml' else 'HIFLD Next existing published candidate, acceptance unresolved','host':urlsplit(receipt['url']).hostname,'role':role,'canonical_url':receipt['url'],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],'retrieved_at':receipt['observed_at'],'http_status':200,'sha256':digest(body),'bytes':len(body),'license':LICENSE,'attribution':'Stanford cs268nn2622 preservation-as-provided; USGS National Atlas CRSTON crushed-stone historical family; existing766MINOP construction-family published candidates retained independently. No delegation, package-original authentication, identity correction or source selection accepted.','release_date_unknown_reason':'Official source publication month200506(active2002,production>50000tons,non-government/non-portable), no exact release day; Stanford package preservation and baseline fetch times are not source release dates.'})
-    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),'title':'Crushed Stone Operations — explicit historical2324-record preservation candidate; published766MINOP identity mismatch unapproved','publisher':'Stanford Libraries preservation (not established agency distribution)','agency':'US Geological Survey historical dataset family; input authority unresolved','source_url':'https://purl.stanford.edu/cs268nn2622','license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':inputs,'transformations':[{'operation':'explicit_preservation_package_native_lossless_reconstruction','parameters':{'package_id':PACKAGE,'input_selection':'explicit local package required, no default fetch or polling; acceptance pending','geometry':'original SHP coordinates and own PRJ as provided; own PRJ and historical metadata agree on NAD83; package originality/selection remains unapproved','container':'A new deterministic ZIP of unchanged preservation masters is raw-only archival evidence, not the missing USGS archive or a canonical/output Shapefile. Native GeoParquet is the sole candidate input/output capability.', 'attributes':'Declared LDID87/all current data ASCII, right-padding decode only; case, leading-zero FIPS, widths and exact decimal values preserved, original DBF sidecars retained','IDs':'all native IDs distinct; complete published IDs separately retained, no approved cross-package mapping'}}],'unsupported_output_formats':{'shapefile_zip':'No accepted source/published schema mapping; preserved original five master sidecars remain lossless raw evidence, not a newly approved output.','geopackage':'DBF decimal128 precision/scale and full Arrow physical schema cannot be silently coerced to GPKG REAL/INTEGER; no migration approved.','pmtiles':'Reprojection/quantization and datum choice are unapproved; native coordinates retained.'},'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all source decimal physical declarations, original IDs, strings, native WKB and metadata, no generic conversion or schema expansion. This is capability only, not input/contract/release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**parquet_pin}]}}}}
+    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':identity['code_commit'],'code_identity_scheme':identity['code_identity_scheme'],'title':'Crushed Stone Operations — explicit historical2324-record preservation candidate; published766MINOP identity mismatch unapproved','publisher':'Stanford Libraries preservation (not established agency distribution)','agency':'US Geological Survey historical dataset family; input authority unresolved','source_url':'https://purl.stanford.edu/cs268nn2622','license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':inputs,'transformations':[{'operation':'explicit_preservation_package_native_lossless_reconstruction','parameters':{'package_id':PACKAGE,'input_selection':'explicit local package required, no default fetch or polling; acceptance pending','geometry':'original SHP coordinates and own PRJ as provided; own PRJ and historical metadata agree on NAD83; package originality/selection remains unapproved','container':'A new deterministic ZIP of unchanged preservation masters is raw-only archival evidence, not the missing USGS archive or a canonical/output Shapefile. Native GeoParquet is the sole candidate input/output capability.', 'attributes':'Declared LDID87/all current data ASCII, right-padding decode only; case, leading-zero FIPS, widths and exact decimal values preserved, original DBF sidecars retained','IDs':'all native IDs distinct; complete published IDs separately retained, no approved cross-package mapping'}}],'unsupported_output_formats':{'shapefile_zip':'No accepted source/published schema mapping; preserved original five master sidecars remain lossless raw evidence, not a newly approved output.','geopackage':'DBF decimal128 precision/scale and full Arrow physical schema cannot be silently coerced to GPKG REAL/INTEGER; no migration approved.','pmtiles':'Reprojection/quantization and datum choice are unapproved; native coordinates retained.'},'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all source decimal physical declarations, original IDs, strings, native WKB and metadata, no generic conversion or schema expansion. This is capability only, not input/contract/release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**parquet_pin}]}}}}
     validate_release_provenance(manifest);validate_output_policy(manifest);return manifest
 
 
@@ -344,9 +339,21 @@ def reconcile_cache(storage,prefix,version,table,published_ids,audit,captures,id
     # JSON/dict equality must not equate a boolean with numeric zero or one.
     validate_ready_metadata((root/READY).read_bytes(),version,captures,identity,objects)
     snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'
-    derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
+    release_documents={'collection.json','README.md','AGENTS.md'}
+    derivatives={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}|release_documents
     actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     if actual-(names|{READY}|derivatives) or not (names|{READY}).issubset(actual) or any(p.is_symlink() or(p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise CrushedStoneQuarantineError('unknown_missing_or_linked_candidate_object')
+    found_release_documents=actual&release_documents
+    if found_release_documents and found_release_documents!=release_documents:raise CrushedStoneQuarantineError('incomplete_staged_release_documents')
+    if found_release_documents:
+        try:
+            read_staged_release(storage,prefix)
+            for name in ('README.md','AGENTS.md'):
+                body=(root/name).read_bytes()
+                if not 0<len(body)<=2*1024*1024:raise ValueError('staged_release_document_size')
+                body.decode('utf-8')
+        except (OSError,UnicodeError,ValueError,TypeError) as exc:
+            raise CrushedStoneQuarantineError('invalid_staged_release_documents') from exc
     for name,body in expected.items():
         if (root/name).read_bytes()!=body:raise CrushedStoneQuarantineError('source_owned_report_raw_provenance_or_published_ID_drift:'+name)
     for name,sha in objects.items():
@@ -396,9 +403,9 @@ def stage_crushed_stone(storage,*,capture_dir=None,package_id=None):
                 (private/READY).write_bytes(encode(ready));verify_outputs(private,table,published_ids)
                 for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():
                     if (private/name).read_bytes()!=body:raise CrushedStoneQuarantineError('incomplete_private_source_payload:'+name)
-                # Validate source semantics + exact Git identity before the first seal;
+                # Validate source semantics + explicit processing identity before the first seal;
                 # the complete private candidate exists and has been verified first.
-                validate_release_provenance(manifest);validate_output_policy(manifest);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
+                validate_release_provenance(manifest);validate_output_policy(manifest);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'],identity=identity)
                 captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
                 for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():(private/name).write_bytes(body)
                 ready=ready_metadata(version,captures,identity,{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY});(private/READY).write_bytes(encode(ready));verify_outputs(private,table,published_ids);os.rename(private,target)
