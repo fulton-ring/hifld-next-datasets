@@ -110,6 +110,33 @@ def _resolve(record: Any, path: list[str]) -> Any:
     return record
 
 
+def _untyped(value: Any) -> Any:
+    """Decode the lossless typed encoding back to its original Python value."""
+    if not isinstance(value, list) or not value:
+        raise ValueError("Malformed typed record")
+    kind = value[0]
+    if kind == "null" and len(value) == 1:
+        return None
+    if kind in {"boolean", "integer", "decimal", "string"} and len(value) == 2:
+        if kind == "boolean":
+            return bool(value[1])
+        if kind == "integer":
+            return int(value[1])
+        if kind == "decimal":
+            return Decimal(value[1])
+        return value[1]
+    if kind == "array" and len(value) == 2 and isinstance(value[1], list):
+        return [_untyped(item) for item in value[1]]
+    if kind == "object" and len(value) == 2 and isinstance(value[1], list):
+        result: dict[str, Any] = {}
+        for key, member in value[1]:
+            if not isinstance(key, str) or key in result:
+                raise ValueError("Malformed typed record member")
+            result[key] = _untyped(member)
+        return result
+    raise ValueError("Malformed typed record")
+
+
 def _key_is_null(key: bytes) -> bool:
     return any(member == ["null"] for member in json.loads(key)) if key != _UNKEYED else False
 
@@ -364,7 +391,7 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                     updated = 0
                     for ordinal, record in db.execute(
                             "SELECT ordinal,record FROM stream_rows WHERE stream=? ORDER BY ordinal", (stream_name,)):
-                        key = _json_bytes([_resolve(json.loads(record), path_) for path_ in key_paths])
+                        key = _json_bytes([_resolve(_untyped(json.loads(record)), path_) for path_ in key_paths])
                         if _key_is_null(key):
                             nulls += 1
                         db.execute("UPDATE stream_rows SET key=? WHERE stream=? AND ordinal=?",
@@ -431,13 +458,13 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                                 for right_ordinal, right_record in matches:
                                     matched_right.add(right_ordinal)
                                     ordinal += 1
-                                    record = _json_bytes({"left": json.loads(left_record), "right": json.loads(right_record)})
+                                    record = _json_bytes({"left": _untyped(json.loads(left_record)), "right": _untyped(json.loads(right_record))})
                                     db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
                                     emit(out, ordinal, key, [[left, left_ordinal], [right, right_ordinal]])
                                     quota()
                             elif step["join_type"] in {"left", "full"}:
                                 ordinal += 1
-                                record = _json_bytes({"left": json.loads(left_record), "right": None})
+                                record = _json_bytes({"left": _untyped(json.loads(left_record)), "right": None})
                                 db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
                                 emit(out, ordinal, key, [[left, left_ordinal]])
                                 quota()
@@ -446,7 +473,7 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                                     "SELECT ordinal,key,record FROM stream_rows WHERE stream=? ORDER BY ordinal", (right,)):
                                 if right_ordinal not in matched_right:
                                     ordinal += 1
-                                    record = _json_bytes({"left": None, "right": json.loads(right_record)})
+                                    record = _json_bytes({"left": None, "right": _untyped(json.loads(right_record))})
                                     db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
                                     emit(out, ordinal, key, [[right, right_ordinal]])
                                     quota()
@@ -538,7 +565,7 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                         groups: dict[bytes, list[list]] = {}
                         for row_ordinal, key, record in db.execute(
                                 "SELECT ordinal,key,record FROM stream_rows WHERE stream=? ORDER BY ordinal", (name,)):
-                            groups.setdefault(key, []).append([row_ordinal, json.loads(record)])
+                            groups.setdefault(key, []).append([row_ordinal, _untyped(json.loads(record))])
                         ordinal = 0
                         max_group = 0
                         for key, members in groups.items():
@@ -590,7 +617,7 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                         null_geometries = 0
                         for row_ordinal, key, record in db.execute(
                                 "SELECT ordinal,key,record FROM stream_rows WHERE stream=? ORDER BY ordinal", (name,)):
-                            record_value = json.loads(record)
+                            record_value = _untyped(json.loads(record))
                             properties = {item["name"]: _resolve(record_value, item["path"]) for item in step["properties"]}
                             geometry = _resolve(record_value, step["geometry_path"]) if "geometry_path" in step else None
                             if geometry is None:

@@ -198,7 +198,7 @@ class TransformationAccountingTests(unittest.TestCase):
         ]
         for plan in cases:
             with self.subTest(plan=plan), tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
-                root = Path(d)
+                root, evidence = Path(d), Path(e)
                 spec, _, candidate = fixture_root(root)
                 receipt = account_construction(spec, plan, candidate, evidence)
                 self.assertEqual(receipt["status"], "blocked")
