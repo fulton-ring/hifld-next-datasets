@@ -596,6 +596,16 @@ class ValidateDriftRejections(unittest.TestCase):
         code = self._mutate("page_000", mutate)
         self.assertEqual(str(code), "source_polyline_paths_missing")
 
+    def test_degenerate_line_topology_rejected(self):
+        def mutate(docs):
+            # Two identical in-extent finite points: every path, ordinate,
+            # coverage and population guard passes, yet the LineString is
+            # degenerate and invalid, so it must be rejected before sealing.
+            x, y = EXPECTED_LAYER_EXTENT["xmin"], EXPECTED_LAYER_EXTENT["ymin"]
+            docs["page_000"]["features"][0]["geometry"]["paths"] = [[[x, y], [x, y]]]
+        code = self._mutate("page_000", mutate)
+        self.assertEqual(str(code), "source_line_topology_invalid:1")
+
     def test_multi_path_feature_is_accepted(self):
         docs = _docs()
         feature = docs["page_000"]["features"][0]
@@ -616,6 +626,74 @@ class ValidateDriftRejections(unittest.TestCase):
             feature["geometry"]["hasZ"] = True
         code = self._mutate("page_000", mutate)
         self.assertEqual(str(code), "source_polyline_zm_flags_do_not_match_coordinates")
+
+
+class DegenerateLineAcquisitionQuarantine(unittest.TestCase):
+    def test_degenerate_line_capture_is_rejected_and_retains_quarantine_evidence(self):
+        with tempfile.TemporaryDirectory(prefix="lock-gate-lines-degenerate-") as temporary:
+            root = Path(temporary)
+            staging = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            docs = _docs()
+            x, y = EXPECTED_LAYER_EXTENT["xmin"], EXPECTED_LAYER_EXTENT["ymin"]
+            docs["page_000"]["features"][0]["geometry"]["paths"] = [[[x, y], [x, y]]]
+            responses = [docs["ids_seed"]] + [
+                docs[name] for name, _ in source._capture_roster(EXPECTED_IDS)
+            ]
+            response_index = 0
+
+            def handler(request):
+                nonlocal response_index
+                body = responses[response_index]
+                response_index += 1
+                return httpx.Response(
+                    200,
+                    stream=httpx.ByteStream(json.dumps(body).encode("utf-8")),
+                    request=request,
+                    headers={"content-type": "application/json"},
+                )
+
+            transport = httpx.MockTransport(handler)
+            real_client = httpx.Client
+
+            def fixture_client(**kwargs):
+                kwargs.pop("follow_redirects", None)
+                kwargs.pop("timeout", None)
+                kwargs.pop("headers", None)
+                return real_client(transport=transport, **kwargs)
+
+            capture_root = root / "capture"
+            with patch.object(source.httpx, "Client", fixture_client), patch.object(
+                source.time, "sleep", return_value=None
+            ), patch.object(
+                source.shutil, "disk_usage", return_value=SimpleNamespace(free=400_000_000)
+            ):
+                with self.assertRaisesRegex(ValueError, "source_line_topology_invalid:1"):
+                    source.capture_lock_gate_lines_usace_ienc(
+                        staging, version="degenerate-topology", capture_directory=str(capture_root)
+                    )
+
+            keys = list(staging.list_prefix())
+            self.assertTrue(keys)
+            self.assertFalse(any("candidate_ready" in key for key in keys))
+            self.assertFalse(any(key.startswith("_construction-state/") for key in keys))
+            self.assertFalse(any(key.startswith(f"{DATASET_SLUG}/") for key in keys))
+            self.assertTrue(any(key.startswith("_quarantine/") for key in keys))
+            failure = [key for key in keys if key.endswith("metadata/failure.json")]
+            self.assertEqual(len(failure), 1)
+            payload = json.loads(staging.read_key(failure[0]))
+            self.assertEqual(payload["reason_code"], "ValueError")
+            self.assertIn("page_000", payload["captured_names"])
+            retained = [key for key in keys if key.endswith("raw/page_000.body")]
+            self.assertEqual(len(retained), 1)
+            self.assertEqual(
+                json.loads(staging.read_key(retained[0]))["features"][0]["geometry"]["paths"],
+                [[[x, y], [x, y]]],
+            )
+            manifests = list(capture_root.glob("*/capture_manifest.json"))
+            self.assertEqual(len(manifests), 1)
+            manifest = json.loads(manifests[0].read_bytes())
+            self.assertIs(manifest["complete"], False)
+            self.assertEqual(manifest["error_code"], "ValueError")
 
 
 class ParquetCandidateContract(unittest.TestCase):
