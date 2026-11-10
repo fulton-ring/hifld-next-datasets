@@ -42,7 +42,7 @@ def usace_fuds_munitions_response_sites(
 
 @asset_check(asset=usace_fuds_munitions_response_sites, blocking=True)
 def usace_fuds_munitions_response_sites_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == 1682 and candidate.get("candidate_approved") is False
+    passed = candidate.get("feature_count") == 1685 and candidate.get("candidate_approved") is False
     return AssetCheckResult(passed=passed, metadata={
         "complete_population_captured": passed,
         "source_release_accepted": False,
