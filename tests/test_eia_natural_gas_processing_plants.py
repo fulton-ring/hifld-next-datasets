@@ -12,6 +12,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pyogrio
 from dagster import DefaultScheduleStatus
@@ -19,6 +20,7 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.sources import eia_natural_gas_processing_plants as source
 
 FIXTURE_LAYER = "Fixture_ProcessingPlants_US_2017"
+FIXTURE_PUBLICATION = "2017-01-01"
 PRJ_TEXT = ('GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],'
             'PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]')
 
@@ -103,7 +105,9 @@ def _fixture_zip(layer=FIXTURE_LAYER, fields=FIXTURE_FIELDS, rows=FIXTURE_ROWS, 
         f"{layer}.prj": PRJ_TEXT.encode("ascii"),
         f"{layer}.shp": shp,
         f"{layer}.shx": shx,
-        f"{layer}.shp.xml": b'<?xml version="1.0"?><metadata><idinfo>fixture</idinfo></metadata>',
+        f"{layer}.shp.xml": (b'<?xml version="1.0"?><metadata><dataIdInfo><idCitation><resTitle>Fixture</resTitle>'
+                            b'<date><pubDate>' + (FIXTURE_PUBLICATION + "T00:00:00").encode("ascii") +
+                            b'</pubDate></date></idCitation></dataIdInfo></metadata>'),
     }
     sink = io.BytesIO()
     with zipfile.ZipFile(sink, "w", zipfile.ZIP_DEFLATED) as z:
@@ -126,7 +130,8 @@ def _fixture_pins(zip_body, members, layer=FIXTURE_LAYER, fields=FIXTURE_FIELDS,
     return dict(EXPECTED_LAYER=layer, EXPECTED_COUNT=len(ids), EXPECTED_FIELDS=list(fields),
                 MEMBERS=set(members), ID_SHA=idsha, RECORD_SHA=recsha, GEOMETRY_SHA=geomsha,
                 BOUNDS=bounds, EXPECTED_ZIP_BYTES=len(zip_body),
-                EXPECTED_ZIP_SHA256=hashlib.sha256(zip_body).hexdigest())
+                EXPECTED_ZIP_SHA256=hashlib.sha256(zip_body).hexdigest(),
+                SOURCE_GIS_PUBLICATION=FIXTURE_PUBLICATION)
 
 
 def _fake_capture_get(bodies):
@@ -157,6 +162,8 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
         self.assertEqual(source.SOURCE_URL, "https://www.eia.gov/maps/map_data/NaturalGas_ProcessingPlants_US_EIA.zip")
         self.assertEqual(source.SOURCE_RELEASE, "2017")
         self.assertEqual(source.SOURCE_PACKAGE_MODIFIED, "2020-01-10")
+        self.assertEqual(source.SOURCE_GIS_PUBLICATION, "2020-01-13")
+        self.assertEqual(source.IDENTIFIER_COLUMN, "source_record_number")
         self.assertEqual(source.EXPECTED_LAYER, "NaturalGas_ProcessingPlants_US_2017_v2")
         self.assertEqual(source.EXPECTED_ZIP_BYTES, 78776)
         self.assertEqual(source.EXPECTED_COUNT, 478)
@@ -235,15 +242,18 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
         pins = _fixture_pins(zip_body, members)
         with patch.multiple(source, **pins):
             with tempfile.TemporaryDirectory() as tmp:
-                frame, audit = source._decode(zip_body, Path(tmp))
-                body = source._parquet(frame)
+                frame, fids, audit = source._decode(zip_body, Path(tmp))
+                body = source._parquet(frame, fids)
         with tempfile.NamedTemporaryFile(suffix=".parquet") as stream:
             stream.write(body)
             stream.flush()
             table = pq.read_table(stream.name)
         self.assertEqual(table.num_rows, 2)
         self.assertEqual(table.column_names,
-                         [f[0] for f in FIXTURE_FIELDS] + ["geometry"])
+                         [source.IDENTIFIER_COLUMN] + [f[0] for f in FIXTURE_FIELDS] + ["geometry"])
+        # The validated native record numbers survive as an explicit identifier
+        # column rather than an implicit row position.
+        self.assertEqual(table.column(source.IDENTIFIER_COLUMN).to_pylist(), [1, 2])
         self.assertEqual(table.column("Plant_Name").to_pylist(),
                          ["Fixture Plant Alpha", "Fixture Plant Beta"])
         self.assertEqual(table.column("State").to_pylist(), ["TX", "WY"])
@@ -256,9 +266,38 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
         self.assertEqual(audit["source_geometry_null_count"], 0)
         self.assertEqual(audit["source_id_min"], 1)
         self.assertEqual(audit["source_id_max"], 2)
+        # Producer-declared GIS publication date is recorded separately from the
+        # survey period, survey data release and package modification.
+        self.assertEqual(audit["source_gis_publication_date"], FIXTURE_PUBLICATION)
+        self.assertEqual(audit["source_package_modified"], "2020-01-10")
+        self.assertEqual(audit["source_period"], "2017")
+        # Completeness is scoped to the pinned GIS package, not the full survey.
+        self.assertIn("All 478 records of the pinned official EIA GIS package",
+                      audit["source_coverage_scope"])
+        self.assertIn("Not the complete EIA-757 survey population", audit["source_coverage_scope"])
+        self.assertIn("510 active natural gas processing plants", audit["source_coverage_scope"])
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4326)
         self.assertEqual(source._point_wkb(-95.5, 31.0), table["geometry"][0].as_py())
+
+    def test_publication_date_drift_is_rejected(self):
+        zip_body, members = _fixture_zip()
+        pins = _fixture_pins(zip_body, members)
+        with zipfile.ZipFile(io.BytesIO(zip_body)) as fixture:
+            drifted_members = {name: fixture.read(name) for name in members}
+        drifted_members[f"{FIXTURE_LAYER}.shp.xml"] = (
+            drifted_members[f"{FIXTURE_LAYER}.shp.xml"]
+            .replace((FIXTURE_PUBLICATION + "T00:00:00").encode("ascii"), b"2020-01-13T00:00:00"))
+        sink = io.BytesIO()
+        with zipfile.ZipFile(sink, "w", zipfile.ZIP_DEFLATED) as z:
+            for name, body in drifted_members.items():
+                z.writestr(name, body)
+        drift_zip = sink.getvalue()
+        with patch.multiple(source, **{**pins, "EXPECTED_ZIP_BYTES": len(drift_zip),
+                                       "EXPECTED_ZIP_SHA256": hashlib.sha256(drift_zip).hexdigest()}), \
+                tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "source_publication_date_drift"):
+                source._decode(drift_zip, Path(tmp))
 
     def test_incomplete_capture_is_quarantined_with_retained_receipt(self):
         def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
@@ -311,22 +350,35 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
                 state_key = f"_construction-state/{source.DATASET_SLUG}/{candidate['version']}.json"
                 self.assertTrue(storage.object_snapshot(state_key))
                 self.assertEqual(storage.read_key(f"{prefix}/raw/eia_zip.body"), zip_body)
+                sealed = storage.read_key(f"{prefix}/geoparquet/{source.FILE_SLUG}.parquet")
+                sealed_table = pq.read_table(pa.BufferReader(sealed))
+                self.assertEqual(sealed_table.column(source.IDENTIFIER_COLUMN).to_pylist(), [1, 2])
                 snapshot_source_metadata(storage, source.DATASET_SLUG, source.FILE_SLUG, candidate["version"])
                 manifest = load_resolved_source_manifest(storage, source.DATASET_SLUG, source.FILE_SLUG,
                                                           candidate["version"]).metadata
+                self.assertEqual(manifest["date_issued"], FIXTURE_PUBLICATION)
+                self.assertEqual(manifest["inputs"][0]["release_date"], FIXTURE_PUBLICATION)
+                self.assertNotIn("release_date_unknown_reason", manifest["inputs"][0])
+                self.assertEqual(manifest["inputs"][0]["survey_period"],
+                                 "2017 Form EIA-757 (data as of 2017-12-31)")
+                self.assertEqual(manifest["inputs"][0]["survey_data_release"], "2019-01-31")
+                self.assertEqual(manifest["inputs"][0]["package_modified"], "2020-01-10")
                 summary = summarize_staged_catalog(storage, source.DATASET_SLUG, source.FILE_SLUG,
-                                                   candidate["version"], source.DATASET_SLUG,
-                                                   source_metadata=manifest)
+                                                    candidate["version"], source.DATASET_SLUG,
+                                                    source_metadata=manifest)
                 self.assertEqual(summary.quality_manifest["feature_count"], 2)
                 self.assertEqual(summary.quality_manifest["null_geometry_count"], 0)
                 self.assertTrue(summary.quality_manifest["quality_check_passed"])
                 write_catalog_metadata(storage, dataset_slug=source.DATASET_SLUG, file_slug=source.FILE_SLUG,
-                                       version=candidate["version"], quality_dict=summary.quality_manifest,
-                                       dictionary_dict=summary.data_dictionary)
+                                        version=candidate["version"], quality_dict=summary.quality_manifest,
+                                        dictionary_dict=summary.data_dictionary)
                 reused = source.capture_natural_gas_processing_plants(storage, version="vfixture",
-                                                                      capture_directory=str(root / "captures"))
+                                                                       capture_directory=str(root / "captures"))
                 self.assertTrue(reused["reused"])
                 self.assertEqual(reused["version"], candidate["version"])
+                # Replay verifies and reuses the sealed candidate bytes exactly,
+                # including the explicit identifier column.
+                self.assertEqual(storage.read_key(f"{prefix}/geoparquet/{source.FILE_SLUG}.parquet"), sealed)
 
     def test_missing_approval_preserves_populated_accepted_inventory(self):
         from dagster_hifld.assets.publish import _copy_version_files

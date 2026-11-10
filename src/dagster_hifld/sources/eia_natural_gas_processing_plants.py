@@ -1,6 +1,7 @@
 """Pinned historical EIA Natural Gas Processing Plants GIS candidate for issue #172."""
 from __future__ import annotations
 import hashlib, io, json, math, shutil, struct, tempfile, zipfile
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -24,6 +25,8 @@ SOURCE_URL = "https://www.eia.gov/maps/map_data/NaturalGas_ProcessingPlants_US_E
 SOURCE_RELEASE = "2017"
 SOURCE_PERIOD = 2017
 SOURCE_PACKAGE_MODIFIED = "2020-01-10"
+SOURCE_GIS_PUBLICATION = "2020-01-13"
+IDENTIFIER_COLUMN = "source_record_number"
 EXPECTED_LAYER = "NaturalGas_ProcessingPlants_US_2017_v2"
 EXPECTED_ZIP_BYTES = 78776
 EXPECTED_ZIP_SHA256 = "dd3764cb8e48a645e3f3c3a3b2b616b91e6408b57ada19d292869b234c75d9f5"
@@ -94,6 +97,19 @@ def _fid_roster(shp,shx,count):
     if fids!=list(range(1,count+1)): raise ValueError("source_fid_roster_drift")
     return fids
 
+def _gis_publication_date(xml_path):
+    """Read the producer-declared citation publication date from the pinned metadata.
+
+    The source's ESRI item-description XML declares the GIS publication date in
+    dataIdInfo/idCitation/date/pubDate, separate from the Esri file-modification
+    stamps (CreaDate/ModDate/mdDateSt) in the same document. The single pubDate
+    element is located namespace-tolerantly and pinned exactly; none of these
+    dates is the 2017 survey period or the EIA-757 survey data release.
+    """
+    matches=[elem for elem in ET.parse(xml_path).getroot().iter() if elem.tag.split("}")[-1]=="pubDate"]
+    if len(matches)!=1 or not (matches[0].text or "").strip(): raise ValueError("source_publication_date_missing")
+    return matches[0].text.strip()
+
 def _decode(body,tmp):
     if len(body)!=EXPECTED_ZIP_BYTES or _sha(body)!=EXPECTED_ZIP_SHA256: raise ValueError("pinned_eia_snapshot_drift")
     with zipfile.ZipFile(io.BytesIO(body)) as z:
@@ -111,6 +127,8 @@ def _decode(body,tmp):
     info=pyogrio.read_info(shp)
     if info["layer_name"]!=EXPECTED_LAYER or info["geometry_type"]!="Point" or info["crs"]!="EPSG:4326" or int(info["features"])!=EXPECTED_COUNT: raise ValueError("source_layer_metadata_drift")
     fids=_fid_roster(shp,root/f"{EXPECTED_LAYER}.shx",EXPECTED_COUNT)
+    pubdate=_gis_publication_date(root/f"{EXPECTED_LAYER}.shp.xml")
+    if pubdate!=SOURCE_GIS_PUBLICATION+"T00:00:00": raise ValueError("source_publication_date_drift")
     g=pyogrio.read_dataframe(shp)
     names=[x[0] for x in EXPECTED_FIELDS]
     if list(g.columns)!=names+["geometry"] or len(g)!=EXPECTED_COUNT or g.geometry.isna().any() or g.geometry.is_empty.any() or not (g.geometry.geom_type=="Point").all(): raise ValueError("source_population_or_schema_drift")
@@ -122,12 +140,18 @@ def _decode(body,tmp):
     ids,attrs,idsha,recsha,geomsha,bounds=_content_digests(g,names,fids)
     if idsha!=ID_SHA or recsha!=RECORD_SHA or geomsha!=GEOMETRY_SHA: raise ValueError("source_content_snapshot_drift")
     if bounds!=BOUNDS: raise ValueError("source_bounds_drift")
-    audit={"source_feature_count":len(g),"source_population_complete":True,"source_id_field":"FID (shapefile record number)","source_id_unique":True,"source_id_min":min(ids),"source_id_max":max(ids),"source_id_sha256":idsha,"source_record_sha256":recsha,"source_geometry_sha256":geomsha,"source_schema_sha256":_sha(_canonical(EXPECTED_FIELDS)),"source_dbf_schema":EXPECTED_FIELDS,"source_crs":"EPSG:4326","source_geometry_type":"Point","source_bounds":bounds,"source_period":SOURCE_RELEASE,"source_null_counts":{n:int(g[n].isna().sum()) for n in names},"source_geometry_null_count":int(g.geometry.isna().sum()),"source_geometry_empty_count":int(g.geometry.is_empty.sum()),"source_coverage_scope":"Complete 2017 Form EIA-757 processing-plant population published by EIA (478 plants as of 12/31/2017, Lower 48 states). Historical snapshot; not a current feed or accepted HIFLD equivalent.","drift_guard":"Pinned official archive checksum, complete zip members, exact DBF widths/types, layer name, CRS, contiguous FID roster 1..478, all attributes and values, period, native XY and bounds."}
-    return g,audit
+    audit={"source_feature_count":len(g),"source_population_complete":True,"source_id_field":"FID (shapefile record number)","source_id_unique":True,"source_id_min":min(ids),"source_id_max":max(ids),"source_id_sha256":idsha,"source_record_sha256":recsha,"source_geometry_sha256":geomsha,"source_schema_sha256":_sha(_canonical(EXPECTED_FIELDS)),"source_dbf_schema":EXPECTED_FIELDS,"source_crs":"EPSG:4326","source_geometry_type":"Point","source_bounds":bounds,"source_period":SOURCE_RELEASE,"source_gis_publication_date":SOURCE_GIS_PUBLICATION,"source_gis_publication_date_source":"producer-declared dataIdInfo/idCitation/date/pubDate in the pinned source .shp.xml","source_package_modified":SOURCE_PACKAGE_MODIFIED,"source_null_counts":{n:int(g[n].isna().sum()) for n in names},"source_geometry_null_count":int(g.geometry.isna().sum()),"source_geometry_empty_count":int(g.geometry.is_empty.sum()),"source_coverage_scope":"All 478 records of the pinned official EIA GIS package NaturalGas_ProcessingPlants_US_2017_v2 (2017 Form EIA-757 survey data as of 12/31/2017, Lower 48 states). Not the complete EIA-757 survey population: EIA's Today in Energy analysis (https://www.eia.gov/todayinenergy/detail.php?id=38592) reports 510 active natural gas processing plants in the Lower 48 states at the end of 2017. Historical snapshot; not a current feed or accepted HIFLD equivalent.","drift_guard":"Pinned official archive checksum, complete zip members, exact DBF widths/types, layer name, CRS, contiguous FID roster 1..478, producer-declared GIS publication date, all attributes and values, period, native XY and bounds."}
+    return g,fids,audit
 
 def _point_wkb(x,y): return struct.pack("<BIdd",1,1,float(x),float(y))
-def _parquet(g):
-    arrays=[];fields=[]
+def _parquet(g,fids):
+    # IDENTIFIER_COLUMN carries the native shapefile record number (ESRI FID,
+    # "Internal feature number" per the pinned source metadata) exactly as
+    # extracted from the pinned SHP record headers and validated contiguous
+    # 1..EXPECTED_COUNT, in source row order; no reader-derived index or other
+    # synthetic identifier is written.
+    arrays=[pa.array([int(f) for f in fids],type=pa.int64())]
+    fields=[pa.field(IDENTIFIER_COLUMN,pa.int64(),nullable=False)]
     for name,kind,*_ in EXPECTED_FIELDS:
         vals=[_native(v) for v in g[name].tolist()]
         dtype=pa.int64() if kind=="N" else pa.float64() if kind=="F" else pa.string()
@@ -137,6 +161,7 @@ def _parquet(g):
     sink=io.BytesIO();pq.write_table(pa.Table.from_arrays(arrays,schema=pa.schema(fields,metadata={b"geo":_canonical(geo)})),sink,compression="zstd",use_dictionary=False)
     t=pq.read_table(pa.BufferReader(sink.getvalue()))
     if t.num_rows!=EXPECTED_COUNT: raise ValueError("candidate_row_count_readback_drift")
+    if t[IDENTIFIER_COLUMN].to_pylist()!=[int(f) for f in fids]: raise ValueError("candidate_identifier_readback_drift")
     for name,kind,*_ in EXPECTED_FIELDS:
         if t[name].to_pylist()!=[_native(v) for v in g[name].tolist()]: raise ValueError("candidate_attribute_readback_drift:"+name)
     if any(t["geometry"][i].as_py()!=_point_wkb(x,y) for i,(x,y) in enumerate(zip(g.geometry.x,g.geometry.y))): raise ValueError("candidate_geometry_readback_drift")
@@ -188,13 +213,13 @@ def capture_natural_gas_processing_plants(storage:StagingStorageResource,*,versi
     requested=Path(capture_directory).absolute() if capture_directory else None
     root=requested or Path("/tmp/hifld-native-reconstruction/172/captures")/(version+"-"+uuid4().hex)
     body,wire,receipt=_capture(root,storage,version)
-    with tempfile.TemporaryDirectory() as tmp: frame,audit=_decode(body,Path(tmp));parquet=_parquet(frame)
+    with tempfile.TemporaryDirectory() as tmp: frame,fids,audit=_decode(body,Path(tmp));parquet=_parquet(frame,fids)
     identity=processing_identity(Path(__file__).parents[3]); evidence_sha=_sha(_canonical({"body":receipt["sha256"],"wire":receipt["wire_sha256"],"receipt":receipt}))
     audit.update({"source_capture_evidence_sha256":evidence_sha,"source_receipt":receipt,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"baseline_accepted":False})
-    cv="v"+_sha(_canonical({"archive_sha256":EXPECTED_ZIP_SHA256,"record_sha256":audit["source_record_sha256"],"geometry_sha256":audit["source_geometry_sha256"],"schema_sha256":audit["source_schema_sha256"],"processing_identity":identity}))[:32]
+    cv="v"+_sha(_canonical({"archive_sha256":EXPECTED_ZIP_SHA256,"record_sha256":audit["source_record_sha256"],"geometry_sha256":audit["source_geometry_sha256"],"schema_sha256":audit["source_schema_sha256"],"identifier_sha256":audit["source_id_sha256"],"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,cv);op=f"geoparquet/{FILE_SLUG}.parquet"
-    inp={"input_id":"eia_official_processing_plants_archive","producer":"U.S. Energy Information Administration","host":urlsplit(SOURCE_URL).hostname,"role":"producer_publication","canonical_url":SOURCE_URL,"retrieval_url":SOURCE_URL,"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"],"release_date":None,"release_date_unknown_reason":"Source package identifies the 2017 EIA-757 survey period but not a producer release date for the zip itself.","license":"Attribution/reuse review pending","attribution":"U.S. Energy Information Administration; review pending"}
-    manifest={"schema_version":1,"approved":False,"title":"Natural Gas Processing Plants (EIA GIS, 2017 EIA-757 snapshot)","description":"Pinned historical EIA-hosted NaturalGas_ProcessingPlants_US_2017_v2 shapefile; not represented as a current release or accepted HIFLD successor.","publisher":"U.S. Energy Information Administration","agency":"U.S. Department of Energy","source_url":SOURCE_URL,"license":None,"source_modified":SOURCE_PACKAGE_MODIFIED,"date_issued":None,"date_modified":"2017-12-31","processor":"HIFLD Next","code_commit":identity["code_commit"],"inputs":[inp],"transformations":[{"operation":"Native DBF attributes and EPSG:4326 point shapefile to GeoParquet","parameters":{"source_fields":"all native DBF fields preserved in order, source types and values","source_ids":"source shapefile record numbers (FID 1..478) retained as row identity in source order; no synthetic identifiers","geometry":"native WGS84 XY retained without reprojection","source_period":"2017","candidate_status":"historical, unapproved; equivalence/currentness unresolved"}}],"lineage":"EIA Form EIA-757 Natural Gas Processing Plant Survey data as of 12/31/2017 (released 2019-01-31). EIA's U.S. Energy Atlas hosted layer NaturalGas_ProcessingPlants_US_EIA (services7.arcgis.com/FGr1D95XCGALKXqM, owner EIA.gov) currently requires an ArcGIS token for anonymous reads (HTTP 499, probed 2026-11-09), so this producer-hosted map_data package is the directly accessible official historical distribution of the same layer; community AGOL re-uploads and the DataLumos HIFLD rescue archive are comparison context only, not inputs.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"All source fields, native FID row order, and native point coordinates are retained.","objects":[{"path":op,"bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No published contract/mapping approved","pmtiles":"No display transformation approved"},"promotion_allowed":False,"source_accepted":False,"baseline":None}
+    inp={"input_id":"eia_official_processing_plants_archive","producer":"U.S. Energy Information Administration","host":urlsplit(SOURCE_URL).hostname,"role":"producer_publication","canonical_url":SOURCE_URL,"retrieval_url":SOURCE_URL,"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"],"release_date":SOURCE_GIS_PUBLICATION,"release_date_basis":"Producer-declared GIS publication date (dataIdInfo/idCitation/date/pubDate) embedded in the pinned source package; recorded separately from the 2017 Form EIA-757 survey period (data as of 2017-12-31), the 2019-01-31 EIA-757 survey data release and the 2020-01-10 package modification.","survey_period":"2017 Form EIA-757 (data as of 2017-12-31)","survey_data_release":"2019-01-31","package_modified":SOURCE_PACKAGE_MODIFIED,"license":"Attribution/reuse review pending","attribution":"U.S. Energy Information Administration; review pending"}
+    manifest={"schema_version":1,"approved":False,"title":"Natural Gas Processing Plants (EIA GIS, 2017 EIA-757 snapshot)","description":"Pinned historical EIA-hosted NaturalGas_ProcessingPlants_US_2017_v2 shapefile carrying all 478 records of this official GIS package; EIA's analysis of the same 2017 EIA-757 survey reports 510 active plants, so the package is not represented as the complete survey population. Not represented as a current release or accepted HIFLD successor.","publisher":"U.S. Energy Information Administration","agency":"U.S. Department of Energy","source_url":SOURCE_URL,"license":None,"source_modified":SOURCE_PACKAGE_MODIFIED,"date_issued":SOURCE_GIS_PUBLICATION,"date_modified":"2017-12-31","processor":"HIFLD Next","code_commit":identity["code_commit"],"inputs":[inp],"transformations":[{"operation":"Native DBF attributes and EPSG:4326 point shapefile to GeoParquet","parameters":{"source_fields":"all native DBF fields preserved in order, source types and values","source_ids":"source shapefile record numbers (FID 1..478) carried as the explicit source_record_number identifier column in source row order; no synthetic identifiers","geometry":"native WGS84 XY retained without reprojection","source_period":"2017 (Form EIA-757 survey data as of 2017-12-31)","survey_data_release":"2019-01-31","gis_publication_date":SOURCE_GIS_PUBLICATION,"package_modified":SOURCE_PACKAGE_MODIFIED,"candidate_status":"historical, unapproved; equivalence/currentness unresolved"}}],"lineage":"EIA Form EIA-757 Natural Gas Processing Plant Survey data as of 12/31/2017 (released 2019-01-31). The pinned GIS package declares its own citation publication date 2020-01-13 (dataIdInfo/idCitation/date/pubDate; package modification 2020-01-10) and contains 478 plants; EIA's Today in Energy analysis of the same survey (https://www.eia.gov/todayinenergy/detail.php?id=38592) reports 510 active plants in the Lower 48 states at end-2017, so the candidate claims only the complete 478-record GIS package, not the complete survey population. EIA's U.S. Energy Atlas hosted layer NaturalGas_ProcessingPlants_US_EIA (services7.arcgis.com/FGr1D95XCGALKXqM, owner EIA.gov) currently requires an ArcGIS token for anonymous reads (HTTP 499, probed 2026-11-09), so this producer-hosted map_data package is the directly accessible official historical distribution of the same layer; community AGOL re-uploads and the DataLumos HIFLD rescue archive are comparison context only, not inputs.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"All source fields, the validated native record numbers as an explicit identifier column, and native point coordinates are retained.","objects":[{"path":op,"bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No published contract/mapping approved","pmtiles":"No display transformation approved"},"promotion_allowed":False,"source_accepted":False,"baseline":None}
     validate_release_provenance(manifest);validate_output_policy(manifest)
     outputs={op:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n","metadata/candidate_ready.json":_canonical({"approved":False,"version":cv,"objects":{op:{"bytes":len(parquet),"sha256":_sha(parquet)}},"source_population_complete":True,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"coverage_accepted":False,"release_accepted":False})+b"\n","raw/eia_zip.body":body,"raw/eia_zip.wire":wire,"raw/eia_zip.receipt.json":_canonical(receipt)+b"\n"}
     state=f"_construction-state/{DATASET_SLUG}/{cv}.json";fingerprint=_sha(_canonical({"identity":identity,"archive_sha256":EXPECTED_ZIP_SHA256,"record_sha256":audit["source_record_sha256"],"schema_sha256":audit["source_schema_sha256"]}))
