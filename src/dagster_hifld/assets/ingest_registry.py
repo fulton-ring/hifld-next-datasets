@@ -83,6 +83,7 @@ from dagster_hifld.assets.gcca_warehouse_directory import gcca_warehouses_curren
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
 from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
+from dagster_hifld.assets.lock_gate_lines_usace_ienc import lock_gate_lines_usace_ienc_candidate
 from dagster_hifld.assets.usace_airport_area import usace_airport_area_ienc
 from dagster_hifld.assets.campus_preservation import ornl_campus_historical_preservation
 
@@ -220,6 +221,7 @@ hifld_ingest_assets = [
     coastlines_usace_ienc,
     locks_usace_ienc,
     lock_basins_usace_ienc_candidate,
+    lock_gate_lines_usace_ienc_candidate,
     usace_airport_area_ienc,
     ibc_canada_us_border,
     fws_cbrs_buffer_zone,
