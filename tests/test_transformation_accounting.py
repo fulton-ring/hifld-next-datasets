@@ -72,16 +72,16 @@ def fixture_root(root):
     return spec, plan, candidate
 
 
-def account(root, *, evidence="evidence"):
+def account(root, evidence):
     spec, plan, candidate = fixture_root(root)
-    return account_construction(spec, plan, candidate, root / evidence), spec, plan, candidate
+    return account_construction(spec, plan, candidate, evidence), spec, plan, candidate
 
 
 class TransformationAccountingTests(unittest.TestCase):
     def test_full_plan_replays_candidate_with_complete_accounting(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            receipt, *_ = account(root)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
+            receipt, *_ = account(root, evidence)
             self.assertEqual(receipt["status"], "pass")
             self.assertEqual(receipt["adapter"], ADAPTER)
             self.assertEqual(receipt["acceptance"], "not_established_by_accounting")
@@ -100,54 +100,54 @@ class TransformationAccountingTests(unittest.TestCase):
             self.assertEqual(filter_["dropped_rows"], 1)
             self.assertEqual(filter_["drop_reasons"], {"unmatched_region": 1})
             self.assertEqual(project["output_rows"], 3)
-            lineage = (root / "evidence/transformation_lineage.jsonl").read_text().splitlines()
+            lineage = (evidence / "transformation_lineage.jsonl").read_text().splitlines()
             self.assertEqual(len(lineage), 14)
             rows = [json.loads(line) for line in lineage]
             self.assertEqual(rows[-1]["contributors"], [["kept", 3]])
-            stored = json.loads((root / "evidence/transformation_accounting.json").read_text())
+            stored = json.loads((evidence / "transformation_accounting.json").read_text())
             self.assertEqual(stored["status"], "pass")
             self.assertEqual(stored["receipt_id"], receipt["receipt_id"])
 
     def test_receipt_is_deterministic_across_replays(self):
         receipts = []
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
             root = Path(d)
             for _ in range(3):
-                receipts.append(account(root)[0])
+                receipts.append(account(root, Path(e))[0])
         self.assertEqual(receipts[0], receipts[1])
         self.assertEqual(receipts[1], receipts[2])
 
     def test_undeclared_roster_entry_blocks(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            account(root)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
+            account(root, evidence)
             write_jsonl(root / "streams/hidden-shard.jsonl", [feature("x")])
-            receipt = account(root)[0]
+            receipt = account(root, evidence)[0]
             self.assertEqual(receipt["status"], "blocked")
             self.assertTrue(any("Roster" in code or "undeclared" in code for code in receipt["reason_codes"]))
-            stored = json.loads((root / "evidence/transformation_accounting.json").read_text())
+            stored = json.loads((evidence / "transformation_accounting.json").read_text())
             self.assertEqual(stored["status"], "blocked")
             self.assertEqual(stored["reason_codes"], receipt["reason_codes"])
 
     def test_input_pin_mismatch_and_row_drift_block(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
             spec, plan, candidate = fixture_root(root)
             spec["streams"][0]["sha256"] = "0" * 64
-            receipt = account_construction(spec, plan, candidate, root / "evidence")
+            receipt = account_construction(spec, plan, candidate, evidence)
             self.assertEqual(receipt["status"], "blocked")
             self.assertTrue(any("checksum" in code for code in receipt["reason_codes"]))
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
             spec, plan, candidate = fixture_root(root)
             spec["streams"][0]["rows"] = 3
-            receipt = account_construction(spec, plan, candidate, root / "evidence")
+            receipt = account_construction(spec, plan, candidate, evidence)
             self.assertEqual(receipt["status"], "blocked")
             self.assertTrue(any("row count" in code for code in receipt["reason_codes"]))
 
     def test_candidate_mismatch_and_count_drift_block(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
             spec, plan, candidate = fixture_root(root)
             write_jsonl(root / "streams/candidate.jsonl", [
                 {"type": "Feature", "properties": {"id": "e1", "state": "PA", "region": "East"},
@@ -158,23 +158,23 @@ class TransformationAccountingTests(unittest.TestCase):
                  "geometry": {"type": "Point", "coordinates": [3, 2]}},
             ])
             candidate.update(pin(root / "streams/candidate.jsonl"))
-            receipt = account_construction(spec, plan, candidate, root / "evidence")
+            receipt = account_construction(spec, plan, candidate, evidence)
             self.assertEqual(receipt["status"], "blocked")
             self.assertTrue(any("differs from candidate" in code for code in receipt["reason_codes"]))
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
             spec, plan, candidate = fixture_root(root)
             candidate["rows"] = 2
-            receipt = account_construction(spec, plan, candidate, root / "evidence")
+            receipt = account_construction(spec, plan, candidate, evidence)
             self.assertEqual(receipt["status"], "blocked")
             self.assertTrue(any("row count" in code for code in receipt["reason_codes"]))
 
     def test_ledger_integrity_failures_block(self):
-        def run(root, ledger_rows):
+        def run(root, evidence, ledger_rows):
             spec, plan, candidate = fixture_root(root)
             write_jsonl(root / "streams/dropped.jsonl", ledger_rows)
             plan["steps"][2]["ledger"].update(pin(root / "streams/dropped.jsonl"))
-            return account_construction(spec, plan, candidate, root / "evidence")
+            return account_construction(spec, plan, candidate, evidence)
         cases = [
             ([{"row": 2, "reason": "r"}], "differs from candidate"),
             ([{"row": 9, "reason": "r"}], "Invalid ledger entry"),
@@ -183,8 +183,8 @@ class TransformationAccountingTests(unittest.TestCase):
             ([{"row": 1}], "Invalid ledger entry"),
         ]
         for ledger_rows, expected in cases:
-            with self.subTest(ledger=ledger_rows), tempfile.TemporaryDirectory() as d:
-                receipt = run(Path(d), ledger_rows)
+            with self.subTest(ledger=ledger_rows), tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+                receipt = run(Path(d), Path(e), ledger_rows)
                 self.assertEqual(receipt["status"], "blocked")
                 self.assertTrue(any(expected in code for code in receipt["reason_codes"]), receipt["reason_codes"])
 
@@ -197,15 +197,15 @@ class TransformationAccountingTests(unittest.TestCase):
              "join_type": "outer", "left_keys": [["id"]], "right_keys": [["state"]], "output_stream": "x"}], "output": "x"},
         ]
         for plan in cases:
-            with self.subTest(plan=plan), tempfile.TemporaryDirectory() as d:
+            with self.subTest(plan=plan), tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
                 root = Path(d)
                 spec, _, candidate = fixture_root(root)
-                receipt = account_construction(spec, plan, candidate, root / "evidence")
+                receipt = account_construction(spec, plan, candidate, evidence)
                 self.assertEqual(receipt["status"], "blocked")
 
     def test_input_mutation_during_accounting_blocks(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
             spec, plan, candidate = fixture_root(root)
             original = sha256_file
             calls = 0
@@ -221,20 +221,20 @@ class TransformationAccountingTests(unittest.TestCase):
                     write_jsonl(root / "streams/events-a.jsonl", [feature("drifted")])
                 return result
             with patch("dagster_hifld.transformation_accounting.sha256_file", side_effect=mutate):
-                receipt = account_construction(spec, plan, candidate, root / "evidence")
+                receipt = account_construction(spec, plan, candidate, evidence)
             self.assertEqual(receipt["status"], "blocked")
             self.assertTrue(any("changed during accounting" in code for code in receipt["reason_codes"]), receipt["reason_codes"])
 
     def test_evidence_output_inside_input_root_is_refused(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
             spec, plan, candidate = fixture_root(root)
             with self.assertRaises(ValueError):
                 account_construction(spec, plan, candidate, root / "streams/evidence")
 
     def test_dedup_aggregate_and_join_accounting(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
             streams = root / "streams"
             write_jsonl(streams / "votes.jsonl", [
                 {"ward": "w1", "party": "A", "tally": 3},
@@ -276,7 +276,7 @@ class TransformationAccountingTests(unittest.TestCase):
                 {"name": "auditors", "path": "streams/auditors.jsonl", **pin(streams / "auditors.jsonl"), "rows": 2},
             ]}
             candidate = {"path": "streams/audited.jsonl", **pin(streams / "audited.jsonl"), "rows": 3}
-            receipt = account_construction(spec, plan, candidate, root / "evidence")
+            receipt = account_construction(spec, plan, candidate, evidence)
             self.assertEqual(receipt["status"], "pass")
             dedup, filter_, aggregate, join = receipt["steps"]
             self.assertEqual(dedup["dropped_rows"], 1)
@@ -288,8 +288,8 @@ class TransformationAccountingTests(unittest.TestCase):
             self.assertEqual(join["fan_out"]["one_to_one_keys"], 1)
 
     def test_aggregation_type_and_decimal_accounting(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
             streams = root / "streams"
             write_jsonl(streams / "items.jsonl", [
                 {"group": "g", "value": 2},
@@ -309,7 +309,7 @@ class TransformationAccountingTests(unittest.TestCase):
             spec = {"schema_version": 1, "root": str(root), "roster_prefix": "streams", "streams": [
                 {"name": "items", "path": "streams/items.jsonl", **pin(streams / "items.jsonl"), "rows": 3}]}
             candidate = {"path": "streams/sums.jsonl", **pin(streams / "sums.jsonl"), "rows": 2}
-            receipt = account_construction(spec, plan, candidate, root / "evidence")
+            receipt = account_construction(spec, plan, candidate, evidence)
             self.assertEqual(receipt["status"], "pass")
             # json.dumps of 5.5 stays 5.5; Decimal 3.5 + 2 sums to 5.5 exactly.
             with tempfile.TemporaryDirectory() as d:
@@ -321,15 +321,15 @@ class TransformationAccountingTests(unittest.TestCase):
                 candidate = {"path": "streams/sums.jsonl", **pin(streams / "sums.jsonl"), "rows": 1}
                 spec = {"schema_version": 1, "root": str(root), "roster_prefix": "streams", "streams": [
                     {"name": "items", "path": "streams/items.jsonl", **pin(streams / "items.jsonl"), "rows": 1}]}
-                receipt = account_construction(spec, plan_bad, candidate, root / "evidence")
+                receipt = account_construction(spec, plan_bad, candidate, evidence)
                 self.assertEqual(receipt["status"], "blocked")
                 self.assertTrue(any("Aggregation field type unsupported" in code for code in receipt["reason_codes"]))
 
     def test_accounted_candidate_feeds_full_row_comparison(self):
         """A constructed candidate still faces the unchanged baseline gate."""
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            receipt, spec, plan, candidate = account(root)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
+            receipt, spec, plan, candidate = account(root, evidence)
             self.assertEqual(receipt["status"], "pass")
             baseline = root / "baseline.jsonl"
             write_jsonl(baseline, [json.loads(line) for line in
