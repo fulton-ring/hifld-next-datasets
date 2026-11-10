@@ -15,6 +15,7 @@ import re
 import subprocess
 import tempfile
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from uuid import uuid4
 import httpx
@@ -393,7 +394,7 @@ def inspect_captures(captures):
     extra=sum(v-1 for v in duplicates.values()if v>1)
     duplicate_keys=sorted(k for k,v in duplicates.items()if v>1)
     if extra!=EXPECTED_COMPOSITE_DUPLICATE_COUNT or duplicate_keys!=sorted(EXPECTED_DUPLICATE_KEYS):raise NBIQuarantineError('composite_ID_duplicate_drift_requires_review')
-    if sum(v for k,v in duplicates.values())!=EXPECTED_TOTAL_COUNT:raise NBIQuarantineError('complete_count_drift_requires_review')
+    if sum(duplicates.values())!=EXPECTED_TOTAL_COUNT:raise NBIQuarantineError('complete_count_drift_requires_review')
     roster_sha=digest(('\n'.join(sorted(f'{s}|{n}'for s,n in duplicates))+'\n').encode())
     if roster_sha!=EXPECTED_ID_ROSTER_SHA256:raise NBIQuarantineError('complete_ID_roster_drift_requires_review')
     zero=sum(p['zero']for p in per_state.values());blank=sum(p['blank']for p in per_state.values())
@@ -441,12 +442,16 @@ def validate_receipt(name,body,receipt):
     if not isinstance(receipt.get('observed_at'),str)or datetime.fromisoformat(receipt['observed_at']).tzinfo is None:raise NBIQuarantineError('original_retrieval_timezone_required')
     server_last_modified=receipt.get('server_last_modified')
     if server_last_modified is not None and (type(server_last_modified)is not str or not server_last_modified):raise NBIQuarantineError('invalid_server_last_modified:'+name)
+    if name.startswith('state_'):
+        release={'release_date':parsedate_to_datetime(server_last_modified).date().isoformat()}if server_last_modified else {'release_date_unknown_reason':'No server Last-Modified available for this state file.'}
+    else:
+        release={'release_date_unknown_reason':'FHWA documentation-page edit time is not a data release date; the 2025 ASCII release is established per state file by its server Last-Modified.'}
     return {'input_id':name+':'+digest(body),'producer':PRODUCER,'host':httpx.URL(url).host,
         'role':'producer_publication','distributor':'FHWA first-party publication on www.fhwa.dot.gov (original producer; no mirror or portal intermediary)',
         'delegation_evidence':{'producer_program_url':PROGRAM,'landing_url':LANDING,'files_page_url':FILES_PAGE,'format_url':FORMAT_PAGE,'data_crosswalk_url':CROSSWALK_URL,'download_disclaimer_url':DISCLAIMER},
         'canonical_url':url,'retrieval_url':url,'observed_final_url':url,'retrieved_at':receipt['observed_at'],'http_status':200,'sha256':digest(body),'bytes':len(body),'server_last_modified':server_last_modified,'license':LICENSE,
         'attribution':'FHWA National Bridge Inventory, 2025 ASCII state files; 23 U.S.C. 409 applies (FHWA download disclaimer); complete original item descriptions, attribution and rights retained.',
-        'release_note':'2025 ASCII release: final Coding Guide submittal year; single producer posting event observed 2025-06-12 (per-file HTTP Last-Modified retained).'}
+        **release}
 
 
 def acquire(storage,capture_dir=None):

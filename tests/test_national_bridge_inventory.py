@@ -160,7 +160,8 @@ class NBIContractTests(unittest.TestCase):
     def test_receipt_strictness_and_first_party_provenance(self):
         n='state_DC';body=self.contract.dc
         item=f.validate_receipt(n,body,receipt(self.contract.urls[n],body))
-        self.assertEqual(item['role'],'producer_publication');self.assertIn('FHWA',item['producer'])
+        self.assertEqual(item['role'],'producer_publication');self.assertIn('Federal Highway Administration',item['producer'])
+        self.assertEqual(item['release_date'],'2025-06-12')
         self.assertEqual(item['delegation_evidence']['producer_program_url'],f.PROGRAM)
         self.assertEqual(item['server_last_modified'],'Thu, 12 Jun 2025 16:53:24 GMT')
         for key,value in[('status',200.0),('bytes',True),('complete_body',1),('observed_at','2026-11-10'),('url',self.contract.urls[n]+'x'),('server_last_modified','')]:
