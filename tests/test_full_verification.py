@@ -584,8 +584,9 @@ class AccountingModeGateTests(unittest.TestCase):
                                 {"name": "state", "path": ["left", "properties", "state"]},
                                 {"name": "name", "path": ["left", "properties", "name"]}],
                  "geometry_path": ["left", "geometry"]},
+                {"op": "union", "input_streams": ["candidate"], "output_stream": "audited"},
             ],
-            "output": "candidate",
+            "output": "audited",
         }
         spec = {"schema_version": 1, "root": str(version_dir), "roster_prefix": "streams", "streams": [
             {"name": "events-a", "path": "streams/events-a.jsonl", "sha256": sha256_file(version_dir / "streams/events-a.jsonl"),

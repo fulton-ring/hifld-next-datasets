@@ -399,6 +399,47 @@ class TransformationAccountingTests(unittest.TestCase):
             self.assertTrue(any("differs from candidate" in code for code in receipt["reason_codes"]),
                             receipt["reason_codes"])
 
+    def test_final_step_lineage_pins_match_flushed_sidecar(self):
+        """Union/filter/dedup endings pin the flushed sidecar, not the buffer."""
+        cases = [
+            ("union", [feature("e1")],
+             {"op": "union", "input_streams": ["in"], "output_stream": "out"},
+             [feature("e1")], []),
+            ("filter", [feature("e1", "OH"), feature("e2")],
+             {"op": "filter", "input_stream": "in", "output_stream": "out"},
+             [feature("e2")], [{"row": 1, "reason": "filtered_row"}]),
+            ("dedup", [feature("e1", "OH"), feature("e9", "OH")],
+             {"op": "deduplicate", "input_stream": "in", "key_paths": [["properties", "state"]],
+              "rule": "first", "output_stream": "out"},
+             [feature("e1", "OH")], []),
+        ]
+        for name, rows, step, candidate_rows, ledger_rows in cases:
+            with self.subTest(step=name), tempfile.TemporaryDirectory() as d, \
+                    tempfile.TemporaryDirectory() as e:
+                root, evidence = Path(d), Path(e)
+                streams = root / "streams"
+                write_jsonl(streams / "input.jsonl", rows)
+                step = dict(step)
+                if ledger_rows:
+                    write_jsonl(streams / "dropped.jsonl", ledger_rows)
+                    step["ledger"] = {"path": "streams/dropped.jsonl", **pin(streams / "dropped.jsonl")}
+                write_jsonl(streams / "candidate.jsonl", candidate_rows)
+                plan = {"schema_version": 1, "steps": [step], "output": "out"}
+                spec = {"schema_version": 1, "root": str(root), "roster_prefix": "streams", "streams": [
+                    {"name": "in", "path": "streams/input.jsonl", **pin(streams / "input.jsonl"), "rows": len(rows)}]}
+                candidate = {"path": "streams/candidate.jsonl", **pin(streams / "candidate.jsonl"),
+                             "rows": len(candidate_rows)}
+                receipt = account_construction(spec, plan, candidate, evidence)
+                self.assertEqual(receipt["status"], "pass", receipt["reason_codes"])
+                lineage = evidence / "transformation_lineage.jsonl"
+                actual_bytes = lineage.stat().st_size
+                actual_rows = len(lineage.read_text().splitlines())
+                self.assertGreater(actual_bytes, 0)
+                self.assertEqual(receipt["lineage"]["bytes"], actual_bytes)
+                self.assertEqual(receipt["lineage"]["sha256"], sha256_file(lineage))
+                self.assertEqual(receipt["lineage"]["rows"], actual_rows)
+                self.assertEqual(actual_rows, receipt["steps"][-1]["output_rows"])
+
     def test_full_population_accounting_stays_memory_bounded(self):
         """Many small records never materialize the population in Python memory."""
         rows = 40000

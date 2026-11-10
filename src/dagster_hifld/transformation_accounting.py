@@ -769,6 +769,12 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                                       "recomputed_sha256": canonical.hexdigest(),
                                       "candidate_sha256": candidate_sha, "candidate_rows": compared,
                                       "equal": True}
+                # Pin lineage from the flushed file: the final quota() drains
+                # the buffered sidecar and enforces the scratch budget on the
+                # complete evidence before any checksum, size or row pin is
+                # taken, so a valid final union/filter/dedup cannot pin the
+                # empty-file digest that the release replay would reject.
+                quota()
                 receipt["lineage"] = {"path": lineage_path.name, "sha256": sha256_file(lineage_path),
                                       "bytes": lineage_path.stat().st_size, "rows": lineage_rows}
         for key, expected in pinned.items():
