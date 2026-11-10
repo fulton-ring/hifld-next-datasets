@@ -150,7 +150,7 @@ CONSTRUCTION_STATES=46
 DBF_FIELDS=[('MINOP2X020','N',3,0),('COMMODITY','C',21,0),('SITE_NAME','C',46,0),('COMPANY_NA','C',51,0),('STATE_LOCA','C',14,0),('COUNTY','C',16,0),('LATITUDE','N',9,3),('LONGITUDE','N',11,3),('PLANT_MIN','C',10,0)]
 SOURCE_NAMES=['source_fid','source_shp_record_number']+[f[0] for f in MINEPLANT_DBF_FIELDS]+['geometry']
 
-MINEPLANT_PRJ='GEOGCS["GCS_North_American_1927",DATUM["D_North_American_1927",SPHEROID["Clarke_1866", 6378206.4, 294.9786982138982, AUTHORITY["EPSG","7008"]],TOWGS84[-9.0, 151.0, 185.0, 0.0, 0.0, 0.0, 0.0],AUTHORITY["EPSG","6267"]],PRIMEM["Greenwich", 0.0, AUTHORITY["EPSG","8900"]],UNIT["degree", 0.017453292519943295],AXIS["Lon", EAST],AXIS["Lat", NORTH],AUTHORITY["EPSG","4267"]]'
+MINEPLANT_PRJ='GEOGCS["GCS_North_American_1927",DATUM["D_North_American_1927",SPHEROID["Clarke_1866", 6378206.4, 294.9786982138982, AUTHORITY["EPSG","7008"]],TOWGS84[-9.0, 151.0, 185.0, 0.0, 0.0, 0.0, 0.0],AUTHORITY["EPSG","6267"]],PRIMEM["Greenwich", 0.0, AUTHORITY["EPSG","8901"]],UNIT["degree", 0.017453292519943295],AXIS["Lon", EAST],AXIS["Lat", NORTH],AUTHORITY["EPSG","4267"]]'
 PRESERVED_PRJ='GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
 
 
@@ -365,7 +365,7 @@ def inspect_captures(captures):
         if len(body)!=int(file.attrib['size']) or any(hashlib.new(c.attrib['type'].lower().replace('-',''),body).hexdigest()!=c.text for c in file.findall('checksum')):raise MineralsQuarantineError('preservation_manifest_size_or_checksum_mismatch')
     if sorted(masters)!=sorted('minop2x020.'+s for s in ('dbf','prj','shp','shp.xml','shx')):raise MineralsQuarantineError('missing_preservation_master')
     members=decode_mineplant_zip(captures['usgs_mineplant_zip'][0])
-    if members['mineplant.prj'].decode('ascii')!=MINEPLANT_PRJ:raise MineralsQuarantineError('usgs_native_prj_drift')
+    if members['mineplant.prj'].decode('ascii')!=MINEPLANT_PRJ+'\n':raise MineralsQuarantineError('usgs_native_prj_drift')
     rows=decode_mineplant_dbf(members['mineplant.dbf'])
     crosscheck_mineplant_txt(members['mineplant.txt'],rows)
     geometry=decode_points(members['mineplant.shp'],members['mineplant.shx'],MINEPLANT_RECORDS)
