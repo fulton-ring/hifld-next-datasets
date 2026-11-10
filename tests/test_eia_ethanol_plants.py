@@ -23,13 +23,13 @@ from dagster_hifld.sources.eia_ethanol_plants import (
 
 _PAGE = (b"U.S. Fuel Ethanol Plant Production Capacity EIA-819, Monthly Report of Biofuels")
 _XML = (
-    "<metadata><Esri><CreaDate>20220203</CreaDate></Esri>"
-    "<dataIdInfo><idCitation><resTitle>Ethanol Plants in the United States</resTitle></idCitation>"
-    "<idAbs>Operating fuel ethanol production plants in the United States as of January 1, 2021. "
-    "Attribute data come from EIA, U.S. Fuel Ethanol Plant Production Capacity. "
-    "Source: Form EIA-819. Locations determined through publicly available information.</idAbs>"
-    "<idCredit>U.S. Energy Information Administration</idCredit></dataIdInfo>"
-    "<Esri><itemProps><itemName>" + EXPECTED_LAYER.encode() + b"</itemName></itemProps></Esri></metadata>"
+    b"<metadata><Esri><CreaDate>20220203</CreaDate></Esri>"
+    b"<dataIdInfo><idCitation><resTitle>Ethanol Plants in the United States</resTitle></idCitation>"
+    b"<idAbs>Operating fuel ethanol production plants in the United States as of January 1, 2021. "
+    b"Attribute data come from EIA, U.S. Fuel Ethanol Plant Production Capacity. "
+    b"Source: Form EIA-819. Locations determined through publicly available information.</idAbs>"
+    b"<idCredit>U.S. Energy Information Administration</idCredit></dataIdInfo>"
+    b"<Esri><itemProps><itemName>" + EXPECTED_LAYER.encode() + b"</itemName></itemProps></Esri></metadata>"
 )
 
 
