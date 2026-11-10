@@ -103,10 +103,19 @@ def _paths(value: object, *, name: str, limits: AccountingLimits) -> list[list[s
 
 
 def _resolve(record: Any, path: list[str]) -> Any:
+    """Walk explicit paths; digit segments index arrays, others name keys."""
     for segment in path:
-        if not isinstance(record, dict) or segment not in record:
+        if isinstance(record, dict):
+            if segment not in record:
+                return None
+            record = record[segment]
+        elif isinstance(record, list) and segment.isdigit():
+            index = int(segment)
+            if index >= len(record):
+                return None
+            record = record[index]
+        else:
             return None
-        record = record[segment]
     return record
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dagster_hifld.transformation_accounting import (
-    AccountingLimits, ADAPTER, account_construction, sha256_file,
+    AccountingLimits, ADAPTER, _untyped, account_construction, sha256_file,
 )
 from dagster_hifld.validation import compare_full_rows
 
@@ -103,7 +103,7 @@ class TransformationAccountingTests(unittest.TestCase):
             lineage = (evidence / "transformation_lineage.jsonl").read_text().splitlines()
             self.assertEqual(len(lineage), 14)
             rows = [json.loads(line) for line in lineage]
-            self.assertEqual(rows[-1]["contributors"], [["kept", 3]])
+            self.assertEqual(_untyped(rows[-1]["contributors"]), [["kept", 3]])
             stored = json.loads((evidence / "transformation_accounting.json").read_text())
             self.assertEqual(stored["status"], "pass")
             self.assertEqual(stored["receipt_id"], receipt["receipt_id"])
@@ -260,7 +260,7 @@ class TransformationAccountingTests(unittest.TestCase):
                                       {"name": "best", "function": "max", "field_path": ["party"]}],
                      "output_stream": "totals"},
                     {"op": "join", "left_stream": "totals", "right_stream": "auditors", "join_type": "full",
-                     "left_keys": [["key"]], "right_keys": [["ward"]], "output_stream": "audited"},
+                     "left_keys": [["key", "0"]], "right_keys": [["ward"]], "output_stream": "audited"},
                 ],
                 "output": "audited",
             }
