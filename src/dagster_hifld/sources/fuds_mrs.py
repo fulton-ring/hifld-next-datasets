@@ -34,6 +34,12 @@ FILE_SLUG = DATASET_SLUG
 PUBLISHER = "U.S. Army Corps of Engineers (USACE), Military/FUDS_Data MapServer"
 EXPECTED_COUNT = 1685
 EXPECTED_SCHEMA_SHA256 = "fdfa05fec5e9854080ca4d5f3adab00224a8c61dad140a5efbfe3199e59d2bc2"
+# Declared layer extent (f=pjson, EPSG:4326, probed 2026-11-10). Captured
+# vertices must stay inside it within float-noise tolerance; coverage outside
+# the declared extent or the geographic domain fails closed before sealing.
+EXPECTED_EXTENT = {"xmin": -178.14432731684448, "ymin": -14.27524421543228,
+                   "xmax": 173.67138671914927, "ymax": 61.479497953174985}
+EXTENT_TOLERANCE_DEGREES = 1e-9
 PAGE_SIZE = 250
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 
@@ -80,6 +86,8 @@ def _encode_polygon_z(rings: list[list[list[float]]]) -> bytes:
             if (not isinstance(point, list) or len(point) != 4
                     or any(v is not None and (type(v) not in (int, float) or not math.isfinite(v)) for v in point)):
                 raise ValueError("source_polygon_coordinate_invalid")
+            if not (-180.0 <= point[0] <= 180.0 and -90.0 <= point[1] <= 90.0):
+                raise ValueError("source_polygon_xy_geographic_domain_violation")
         if ring[0][2] is None:
             raise ValueError("source_z_ordinate_null")
         ring_polygon = Polygon([point[:2] for point in ring])
@@ -191,6 +199,11 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
             sr = layer.get("extent", {}).get("spatialReference", {})
             if sr.get("latestWkid", sr.get("wkid")) != 4326 or layer.get("hasZ") is not True or layer.get("hasM") is not True:
                 raise ValueError("source_spatial_dimensions_drift")
+            extent = layer.get("extent", {})
+            if any(type(extent.get(key)) not in (int, float) or not math.isfinite(extent[key])
+                   or abs(extent[key] - EXPECTED_EXTENT[key]) > EXTENT_TOLERANCE_DEGREES
+                   for key in EXPECTED_EXTENT):
+                raise ValueError("source_layer_extent_drift")
             caps = layer.get("advancedQueryCapabilities", {})
             if caps.get("supportsPagination") is not True or caps.get("supportsOrderBy") is not True:
                 raise ValueError("source_ordered_pagination_not_supported")
@@ -241,7 +254,15 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
         for row in features:
             geom = row.get("geometry")
             if geom is not None:
-                _encode_polygon_z(geom.get("rings"))
+                rings = geom.get("rings")
+                _encode_polygon_z(rings)
+                for ring in rings:
+                    for point in ring:
+                        if not (extent["xmin"] - EXTENT_TOLERANCE_DEGREES <= point[0]
+                                <= extent["xmax"] + EXTENT_TOLERANCE_DEGREES
+                                and extent["ymin"] - EXTENT_TOLERANCE_DEGREES <= point[1]
+                                <= extent["ymax"] + EXTENT_TOLERANCE_DEGREES):
+                            raise ValueError("source_vertex_outside_declared_extent")
         record_sha = _sha(_canonical([r["attributes"] for r in features]))
         geometry_sha = _sha(_canonical([[r["attributes"]["OBJECTID"], r.get("geometry")] for r in features]))
         identity = processing_identity(Path(__file__).parents[3])
@@ -286,6 +307,8 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
                        "source_record_sha256":record_sha,"source_geometry_sha256":geometry_sha,
                        "source_schema_sha256":schema_sha,"source_zm_dimensions_preserved":True,
                        "source_returned_spatial_reference":first_page_sr,
+                       "source_declared_extent":extent,
+                       "source_vertices_within_declared_extent":True,
                        "source_vertex_count":sum(len(ring) for r in features if r.get("geometry") for ring in r["geometry"]["rings"]),
                        "source_measure_null_count":sum(p[3] is None for r in features if r.get("geometry") for ring in r["geometry"]["rings"] for p in ring),
                        "source_measure_zero_count":sum(p[3] == 0 for r in features if r.get("geometry") for ring in r["geometry"]["rings"] for p in ring)} )+b"\n"}
