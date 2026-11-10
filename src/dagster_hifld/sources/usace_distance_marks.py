@@ -19,8 +19,17 @@ from dagster_hifld.sources.epa_frs_common import processing_identity
 
 DATASET_SLUG = "distance-marks-usace-ienc-2"
 FILE_SLUG = DATASET_SLUG
-LAYER_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/DISTANCE_MARK_POINT/MapServer/10"
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
+BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
+SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson"
+SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/DISTANCE_MARK_POINT/MapServer"
+LAYER_ID = 10
+LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 EXPECTED_COUNT = 7453
+EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
+EXPECTED_ID_SHA256 = "6e54039c7e61cbf1abd27cd8bcb45e3a447f1cb8ef25cd7f81815263596b26b9"
+EXPECTED_EXTENT = {"xmin": -96.66343689999997, "ymin": 29.732981300000063,
+                  "xmax": -79.48022249999997, "ymax": 45.142035400000054}
 PAGE_SIZE = 200
 FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"),
@@ -46,6 +55,22 @@ def _digest(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
+def _request_url(name: str, params: dict[str, object]) -> str:
+    if name == "bts_item":
+        if params:
+            raise ValueError("bts_item_request_parameters_unexpected")
+        return BTS_ITEM_URL
+    if name == "service_directory":
+        if params:
+            raise ValueError("service_directory_request_parameters_unexpected")
+        return SERVICE_DIRECTORY_URL
+    if name in ("service_before", "service_after"):
+        return SERVICE_URL
+    if name == "layer":
+        return LAYER_URL
+    return LAYER_URL + "/query"
+
+
 def _request(client: httpx.Client, params: dict[str, object], staging, version_key: str, name: str, budget: list[int]) -> dict:
     retained = getattr(client, "retained_capture", None)
     if retained is not None:
@@ -60,7 +85,7 @@ def _request(client: httpx.Client, params: dict[str, object], staging, version_k
         if not isinstance(parsed, dict) or "error" in parsed:
             raise ValueError(f"invalid_arcgis_response:{name}")
         return parsed
-    url = LAYER_URL if name == "layer" else LAYER_URL + "/query"
+    url = _request_url(name, params)
     for attempt in range(3):
         raw_parts: list[bytes] = []
         wire_parts: list[bytes] = []
@@ -114,6 +139,8 @@ def _metadata(client: httpx.Client, staging, version_key: str, budget: list[int]
         raise ValueError("source_layer_identity_drift")
     if value.get("maxRecordCount", 0) < 1:
         raise ValueError("source_transfer_limit_invalid")
+    if {key: value.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT:
+        raise ValueError("source_layer_extent_drift")
     refs = [value.get("spatialReference")]
     if isinstance(value.get("extent"), dict):
         refs.append(value["extent"].get("spatialReference"))
@@ -150,6 +177,31 @@ def _validate_dimensions(declaration: dict) -> None:
             raise ValueError("source_dimension_drift")
 
 
+def _validate_bts_item(item: dict) -> None:
+    if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
+            or item.get("type") != "PDF" or item.get("access") != "public"):
+        raise ValueError("bts_ienc_item_identity_drift")
+    text = " ".join(str(item.get(key, "")) for key in ("title", "description"))
+    if ("Inland Electronic Navigational Charts" not in text
+            or "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes" not in text
+            or "USACE_IENC_Master_Service_gdb.zip" not in text):
+        raise ValueError("bts_ienc_official_distribution_link_drift")
+
+
+def _validate_service_directory(directory: dict) -> None:
+    if not any(service.get("name") == "IENC_Feature_Classes/DISTANCE_MARK_POINT"
+               and service.get("type") == "MapServer" for service in directory.get("services", [])):
+        raise ValueError("official_ienc_service_directory_drift")
+
+
+def _validate_service(service: dict) -> None:
+    advertised = [(layer.get("id"), layer.get("name"), layer.get("geometryType"))
+                  for layer in service.get("layers", [])]
+    if (service.get("mapName") != "DISTANCE_MARK_POINT" or service.get("copyrightText") != "USACE IENC"
+            or advertised != [(LAYER_ID, "DISTANCE_MARK_POINT", "esriGeometryPoint")]):
+        raise ValueError("official_distance_mark_service_drift")
+
+
 def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int]) -> list[int]:
     result = _request(client, {"f": "json", "where": "1=1", "returnIdsOnly": "true"}, staging, version_key, name, budget)
     if result.get("objectIdFieldName") != "OBJECTID":
@@ -159,6 +211,8 @@ def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int]
         raise ValueError("source_id_population_drift")
     if len(set(ids)) != len(ids):
         raise ValueError("source_duplicate_object_id")
+    if sorted(ids) != EXPECTED_IDS:
+        raise ValueError("source_id_population_drift")
     return sorted(ids)
 
 
@@ -248,7 +302,9 @@ class _RetainedCaptureClient:
                 or receipt.get("sha256") != _digest(body) or receipt.get("wire_sha256") != _digest(wire)):
             raise ValueError("retained_source_receipt_mismatch:" + name)
         parsed_url = urlsplit(receipt.get("url", ""))
-        if parsed_url.scheme != "https" or parsed_url.netloc != "ienccloud.us" or parsed_url.path != urlsplit(LAYER_URL if name == "layer" else LAYER_URL + "/query").path:
+        expected_url = urlsplit(_request_url(name, params))
+        if (parsed_url.scheme != expected_url.scheme or parsed_url.netloc != expected_url.netloc
+                or parsed_url.path != expected_url.path):
             raise ValueError("retained_source_request_identity_mismatch:" + name)
         query = parse_qs(parsed_url.query, keep_blank_values=True)
         for key, value in params.items():
@@ -277,16 +333,37 @@ def _write_source_manifest(staging, version_key: str, metadata: dict, identity: 
             raise ValueError("manifest_contains_failed_source_input")
         request_url = receipt["url"]
         input_id = f"{name}:{receipt['sha256']}"
+        if name == "bts_item":
+            producer = "USDOT BTS IENC NTAD item"
+            role = "official_distributor"
+            canonical_url = BTS_ITEM_URL
+        elif name in ("service_directory", "service_before", "service_after"):
+            producer = "USACE IENC (service metadata claim; authority acceptance pending)"
+            role = "producer_publication"
+            canonical_url = SERVICE_DIRECTORY_URL if name == "service_directory" else SERVICE_URL
+        else:
+            producer = "USACE IENC (service metadata claim; authority acceptance pending)"
+            role = "producer_publication"
+            canonical_url = LAYER_URL
         inputs.append({
-            "input_id": input_id, "producer": "USACE IENC (service metadata claim; authority acceptance pending)",
-            "host": urlsplit(request_url).hostname, "role": "producer_publication",
-            "canonical_url": LAYER_URL, "retrieval_url": request_url,
+            "input_id": input_id, "producer": producer,
+            "host": urlsplit(request_url).hostname, "role": role,
+            "canonical_url": canonical_url, "retrieval_url": request_url,
             "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
             "bytes": receipt["bytes"], "sha256": receipt["sha256"], "raw_path": f"raw/{name}.json",
+            **({"distributor": "USACE IENC Feature Classes service",
+                "delegation_evidence": {
+                    "bts_item_url": BTS_ITEM_URL, "bts_item_id": BTS_ITEM_ID, "bts_item_owner": "USDOT_BTS",
+                    "official_service_directory": SERVICE_DIRECTORY_URL,
+                    "linked_feature_classes_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
+                    "basis": "Captured BTS IENC record identifies the program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase; linked service metadata identifies copyright USACE IENC."}}
+               if name == "bts_item" else {}),
             "license": "Unresolved; rights review pending.",
             "attribution": "USACE IENC (service copyright metadata; rights review pending).",
             "release_date": None,
-            "release_date_unknown_reason": "The observed service layer does not identify an immutable producer release date.",
+            "release_date_unknown_reason": ("The BTS item describes IENC update cadence but does not identify this layer's release date."
+                                            if name == "bts_item"
+                                            else "The observed service layer does not identify an immutable producer release date."),
         })
     if raw_source_version:
         source_root = staging.build_target_location(DATASET_SLUG, FILE_SLUG, raw_source_version, "")
@@ -316,6 +393,8 @@ def _write_source_manifest(staging, version_key: str, metadata: dict, identity: 
         "lineage": {"scope": "Complete observed DISTANCE_MARK_POINT layer only; no national or HIFLD archive coverage equivalence asserted.",
                     "layer_id": 10, "source_description": metadata.get("description"),
                     "source_copyright_text": metadata.get("copyrightText"),
+                    "official_distribution": "USDOT BTS NTAD item " + BTS_ITEM_ID + " documents the Inland Electronic Navigational Charts program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase; the service directory lists IENC_Feature_Classes/DISTANCE_MARK_POINT and the service reports copyright USACE IENC.",
+                    "bts_item_succession_claimed": False,
                     "source_release_date_known": False, "source_record_sha256": source_record_sha256,
                     "raw_capture_mode": "retained_response_replay" if raw_source_version else "live_http_capture",
                     "retained_source_capture_version": raw_source_version,
@@ -341,6 +420,10 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
     client = client or httpx.Client(timeout=60, follow_redirects=False)
     try:
         budget = [0]
+        _validate_bts_item(_request(client, {}, staging, version_key, "bts_item", budget))
+        _validate_service_directory(_request(client, {}, staging, version_key, "service_directory", budget))
+        service_before = _request(client, {"f": "json"}, staging, version_key, "service_before", budget)
+        _validate_service(service_before)
         metadata = _metadata(client, staging, version_key, budget)
         count_before = _count_snapshot(client, staging, version_key, "count_before", budget)
         before = _id_snapshot(client, staging, version_key, "ids_before", budget)
@@ -384,6 +467,9 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             pages.append({"offset": offset, "requested_ids": requested, "returned_ids": page_ids, "count": len(page)})
         after = _id_snapshot(client, staging, version_key, "ids_after", budget)
         count_after = _count_snapshot(client, staging, version_key, "count_after", budget)
+        service_after = _request(client, {"f": "json"}, staging, version_key, "service_after", budget)
+        if service_after != service_before:
+            raise ValueError("official_distance_mark_service_changed_during_capture")
         fetched_ids = [feature["attributes"]["OBJECTID"] for feature in features]
         if count_before != count_after or before != after or fetched_ids != before or len(features) != EXPECTED_COUNT:
             raise ValueError("source_population_changed_during_capture")
@@ -403,6 +489,9 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             "source_layer": LAYER_URL,
             "service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
             "service_layer_id": 10,
+            "bts_item_url": BTS_ITEM_URL, "bts_item_id": BTS_ITEM_ID, "bts_item_owner": "USDOT_BTS",
+            "official_service": SERVICE_URL, "official_service_map_name": "DISTANCE_MARK_POINT",
+            "pinned_id_roster_sha256": EXPECTED_ID_SHA256, "pinned_layer_extent": EXPECTED_EXTENT,
             "service_description": metadata.get("description"),
             "source_copyright_text": metadata.get("copyrightText"),
             "source_release_date": None,
