@@ -9,7 +9,7 @@ The adapter captures all 53 state files (50 states, DC, PR, VI) plus landing/for
 All 124 fixed-width Coding Guide items survive as exact source-width strings; no trimming or unit conversion.
 Columns decode 1:1 as ISO-8859-1; the 7 non-ASCII NY/PR location bytes are preserved and count-pinned.
 Points derive only from Items 16/17 by the official crosswalk rules (EPSG:4326, 6-dp quantization).
-Blank/partial source coordinates yield null geometry; zero and out-of-envelope values are preserved and pinned.
+Blank/partial source coordinates yield null geometry; zero, signed, space-padded and out-of-envelope values are preserved and pinned (the padded NC record derives 4.022525/-8.036781 exactly as the producer SNBI transition outputs).
 The archived DataLumos 239684 copy is an USDOT/BTS NTAD redistribution; its 624,193 count matches this release.
 SNBI Excel/JSON/GeoJSON are a changed successor with different populations (e.g. Idaho 4,643 vs 4,646) and schema.
 2025 is the final Coding Guide ASCII year; all state files were posted 2025-06-12 (per-file Last-Modified retained).

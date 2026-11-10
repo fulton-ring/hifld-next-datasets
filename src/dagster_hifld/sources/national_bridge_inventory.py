@@ -58,6 +58,7 @@ EXPECTED_OUT_OF_ENVELOPE_COUNT=56
 EXPECTED_BLANK_COORDINATE_COUNT=22
 EXPECTED_PARTIAL_COORDINATE_COUNT=1
 EXPECTED_SIGNED_COORDINATE_COUNT=369
+EXPECTED_WHITESPACE_COORDINATE_COUNT=1
 EXPECTED_SHORT_RECORD_COUNT=1
 EXPECTED_BLANK_STRUCTURE_NUMBER_COUNT=0
 # The frozen 2025 release embeds 7 non-ASCII bytes in NY/PR location text
@@ -310,9 +311,16 @@ def coordinate_decimal(raw,token):
     if text[:1] in '+-':
         sign=-1 if text[0]=='-' else 1
         text=text[1:]
-    if not text.isdigit() or len(text) not in((8,9)if sign is None else(7,8,9)):raise NBIQuarantineError('state_coordinate_not_fixed_width_digits:'+token)
     degrees=len(text)-6
-    value=Decimal(text[:degrees])+Decimal(text[degrees:degrees+2])/60+Decimal(text[degrees+2:degrees+4]+'.'+text[degrees+4:degrees+6])/3600
+    if degrees<1 or len(text)>9:raise NBIQuarantineError('state_coordinate_not_fixed_width_digits:'+token)
+    # The producer transition tool splits the raw field by position and
+    # numerically coerces each DMS segment (tolerating pad whitespace), so a
+    # space-shifted submission such as b' 3612109' parses as 3d61m21.09s.
+    seg_deg=text[:degrees].strip();seg_min=text[degrees:degrees+2].strip()
+    seg_sec=text[degrees+2:degrees+4].strip();seg_hun=text[degrees+4:degrees+6].strip()
+    if not(seg_deg.isdigit()and seg_min.isdigit()and seg_sec.isdigit()and seg_hun.isdigit()):
+        raise NBIQuarantineError('state_coordinate_not_fixed_width_digits:'+token)
+    value=Decimal(seg_deg)+Decimal(seg_min)/60+Decimal(seg_sec+'.'+seg_hun)/3600
     return sign,value.quantize(Decimal('0.000001'),rounding=ROUND_HALF_UP)
 
 
@@ -320,8 +328,8 @@ def geometry_for(payload,token):
     state=payload[0:3].decode('ascii')
     raw16=payload[129:137];raw17=payload[137:146]
     blank16=raw16.strip()==b'';blank17=raw17.strip()==b''
-    if blank16 and blank17:return None,'blank',False,False
-    if blank16 or blank17:return None,'partial',False,False
+    if blank16 and blank17:return None,'blank',False,False,False
+    if blank16 or blank17:return None,'partial',False,False,False
     sign16,lat=coordinate_decimal(raw16,token);sign17,lon=coordinate_decimal(raw17,token)
     trimmed=state.lstrip('0')or '0'
     if trimmed in NEGATIVE_LATITUDE_CODES:lat=-lat
@@ -329,8 +337,9 @@ def geometry_for(payload,token):
     if sign16 is not None and lat!=0 and sign16!=(1 if lat>0 else -1):raise NBIQuarantineError('state_coordinate_sign_contradicts_documented_hemisphere:'+token)
     if sign17 is not None and lon!=0 and sign17!=(1 if lon>0 else -1):raise NBIQuarantineError('state_coordinate_sign_contradicts_documented_hemisphere:'+token)
     signed=sign16 is not None or sign17 is not None
+    padded=b' ' in raw16 or b' ' in raw17
     zero=lat==0 and lon==0
-    return struct.pack('<BIdd',1,1,float(lon),float(lat)),'present',signed,zero
+    return struct.pack('<BIdd',1,1,float(lon),float(lat)),'present',signed,padded,zero
 
 
 def parse_state_file(body,token,expected):
@@ -340,7 +349,7 @@ def parse_state_file(body,token,expected):
     payloads,style,short=split_state_body(body,token)
     if len(payloads)!=expected[2]or style!=expected[3]or short!=expected[5]:raise NBIQuarantineError('state_file_shape_drift:'+token)
     expected_state=expected[4]
-    columns={n:[] for n,_,_,_ in LAYOUT};geometry=[];ids=[];zero=blank=partial=signed=0;out_of_envelope=0;blank_structure=0
+    columns={n:[] for n,_,_,_ in LAYOUT};geometry=[];ids=[];zero=blank=partial=signed=padded=0;out_of_envelope=0;blank_structure=0
     for payload in payloads:
         state=payload[0:3]
         if state.decode('ascii')!=expected_state:raise NBIQuarantineError('state_item1_code_drift:'+token)
@@ -349,19 +358,20 @@ def parse_state_file(body,token,expected):
         structure=columns[STRUCTURE_NUMBER][len(ids)]
         if not structure.strip():blank_structure+=1
         ids.append((expected_state,structure))
-        point,category,was_signed,was_zero=geometry_for(payload,token)
+        point,category,was_signed,was_padded,was_zero=geometry_for(payload,token)
         if point is None:
             if category=='blank':blank+=1
             else:partial+=1
         else:
             if was_signed:signed+=1
+            if was_padded:padded+=1
             if was_zero:zero+=1
             else:
                 lon_value=struct.unpack('<d',point[5:13])[0];lat_value=struct.unpack('<d',point[13:21])[0]
                 if not(-180<=lon_value<=180 and -90<=lat_value<=90):out_of_envelope+=1
         geometry.append(point)
     arrays=[pa.array(columns[n],type=pa.string())for n,_,_,_ in LAYOUT]+[pa.array(geometry,type=pa.binary())]
-    return arrays,ids,{'rows':len(payloads),'style':style,'short':short,'zero':zero,'blank':blank,'partial':partial,'signed':signed,'out_of_envelope':out_of_envelope,'blank_structure':blank_structure,'non_ascii_bytes':non_ascii}
+    return arrays,ids,{'rows':len(payloads),'style':style,'short':short,'zero':zero,'blank':blank,'partial':partial,'signed':signed,'padded':padded,'out_of_envelope':out_of_envelope,'blank_structure':blank_structure,'non_ascii_bytes':non_ascii}
 
 
 def build_schema():
@@ -399,11 +409,13 @@ def inspect_captures(captures):
     if roster_sha!=EXPECTED_ID_ROSTER_SHA256:raise NBIQuarantineError('complete_ID_roster_drift_requires_review')
     zero=sum(p['zero']for p in per_state.values());blank=sum(p['blank']for p in per_state.values())
     partial=sum(p['partial']for p in per_state.values());signed=sum(p['signed']for p in per_state.values())
+    padded=sum(p['padded']for p in per_state.values())
     ooe=sum(p['out_of_envelope']for p in per_state.values());short=sum(p['short']for p in per_state.values())
     if zero!=EXPECTED_ZERO_COORDINATE_COUNT:raise NBIQuarantineError('zero_coordinate_count_drift_requires_review')
     if ooe!=EXPECTED_OUT_OF_ENVELOPE_COUNT:raise NBIQuarantineError('out_of_envelope_coordinate_count_drift_requires_review')
     if blank!=EXPECTED_BLANK_COORDINATE_COUNT or partial!=EXPECTED_PARTIAL_COORDINATE_COUNT:raise NBIQuarantineError('blank_or_partial_coordinate_drift_requires_review')
     if signed!=EXPECTED_SIGNED_COORDINATE_COUNT:raise NBIQuarantineError('signed_coordinate_count_drift_requires_review')
+    if padded!=EXPECTED_WHITESPACE_COORDINATE_COUNT:raise NBIQuarantineError('whitespace_padded_coordinate_count_drift_requires_review')
     if short!=EXPECTED_SHORT_RECORD_COUNT:raise NBIQuarantineError('short_record_count_drift_requires_review')
     columns=[pa.concat_arrays([a[i]for a in arrays])for i in range(len(LAYOUT)+1)]
     table=pa.Table.from_arrays(columns,schema=build_schema())
@@ -411,10 +423,10 @@ def inspect_captures(captures):
         'state_item1_codes':{t:EXPECTED_FILES[t][4]for t in TOKENS},
         'composite_ID_sha256':roster_sha,'composite_ID_duplicate_keys':[list(k)for k in duplicate_keys],
         'zero_coordinate_count':zero,'blank_coordinate_count':blank,'partial_coordinate_count':partial,
-        'signed_coordinate_values':signed,'out_of_envelope_coordinate_count':ooe,'short_tail_records':short,
+        'signed_coordinate_values':signed,'whitespace_padded_coordinate_values':padded,'out_of_envelope_coordinate_count':ooe,'short_tail_records':short,
         'blank_structure_number_count':blank_structure,'non_ascii_bytes':non_ascii,
         'crs':'EPSG:4326 (WGS 84) decimal degrees, matching the producer SNBI submittal formats B.L.05/B.L.06 and the archived NTAD distribution spatial reference',
-        'coordinate_basis':'Points are derived only from fixed-width Items 16/17 by the official FHWA SNBI Data Crosswalk conversion (DMS to decimal degrees, 6-decimal quantization, documented Item 1 hemisphere rules). Blank or partially blank source coordinates yield null geometry; raw fixed-width strings are preserved unchanged in LATITUDE_016/LONGITUDE_017. Coding Guide datum is unspecified; producer GeoJSON and archived NTAD layer both declare WGS 84.',
+        'coordinate_basis':'Points are derived only from fixed-width Items 16/17 by the official FHWA SNBI Data Crosswalk conversion (DMS to decimal degrees, 6-decimal quantization, documented Item 1 hemisphere rules, producer position-split segment coercion). Blank or partially blank source coordinates yield null geometry; raw fixed-width strings are preserved unchanged in LATITUDE_016/LONGITUDE_017. Signed (369), space-padded (1, producing 4.022525/-8.036781 exactly as the producer SNBI transition outputs), zero (6) and out-of-envelope (56) source values are preserved with pinned counts. Coding Guide datum is unspecified; producer GeoJSON and archived NTAD layer both declare WGS 84.',
         'release_basis':'2025 is the final Coding Guide ASCII submission year (FHWA ascii.cfm). All 53 state files were posted in one producer release event (HTTP Last-Modified 2025-06-12 16:53-16:55 GMT, observed 2026-11-10); per-input server Last-Modified values are retained in raw receipts.',
         'archive_relationship':'The archived HIFLD inventory (DataLumos 239684, NTAD vintage) is an USDOT/BTS redistribution of FHWA data with derived typed/metric fields. This draft reconstructs from the producer directly; total record count 624193 equals the archived NTAD layer count observed 2026-11-08. SNBI JSON/GeoJSON successors are not equivalent populations (e.g. Idaho ASCII 4646 records vs producer SNBI GeoJSON 4643 features; blank/partial-coordinate ASCII records absent).',
         'temporary_objectID_warning':'none: no producer row identifier exists in the ASCII release; the composite (STATE_CODE_001, STRUCTURE_NUMBER_008) pair is a proposed join key with pinned exact duplicate pairs, not an approved unique ID.',
@@ -509,7 +521,7 @@ def manifest_for(captures,identity,output_pin):
             'grain':'All 624193 records of the official FHWA 2025 NBI ASCII release (50 states, DC, PR, VI). No filtering, deduplication, reordering or repair.',
             'source_ids':'Every record keeps its exact fixed-width slice for all 124 official layout items, preserving leading zeros and embedded/trailing spaces. The composite (STATE_CODE_001, STRUCTURE_NUMBER_008) pair is proposed as the join key; its two exact duplicate pairs are pinned in the audit, not silently merged.',
             'types':'All 124 items are published as exact source-width strings with start/end/format metadata from the producer NBI Record Format page; no numeric coercion, unit conversion or trimming. Columns decode 1:1 as ISO-8859-1 so every source byte is preserved verbatim (7 non-ASCII bytes in NY/PR location text; counts pinned). The reserved Washington HQ Use block and computed CAT10/CAT23/CAT29 tail columns are retained; the single producer-truncated NC record stores null tail values, matching the producer SNBI transition output.',
-            'geometry':'Points are derived only from Items 16/17 by the official FHWA SNBI Data Crosswalk rules (DMS to decimal degrees, 6-decimal quantization, negative latitude for Item 1 code 60, negative longitude except codes 64/66/68/69/70). Blank or partially blank coordinates yield null geometry; all-zero and out-of-envelope source values are preserved and their counts pinned. EPSG:4326 per producer GeoJSON and the archived NTAD layer; Coding Guide datum is unspecified.',
+            'geometry':'Points are derived only from Items 16/17 by the official FHWA SNBI Data Crosswalk rules (DMS to decimal degrees, 6-decimal quantization, negative latitude for Item 1 code 60, negative longitude except codes 64/66/68/69/70, producer position-split segment coercion). Blank or partially blank coordinates yield null geometry; all-zero and out-of-envelope source values are preserved and their counts pinned. EPSG:4326 per producer GeoJSON and the archived NTAD layer; Coding Guide datum is unspecified.',
             'relationship':'2025 is the final Coding Guide ASCII year; SNBI Excel/JSON/GeoJSON are a changed successor with a different population and schema. The archived HIFLD copy (DataLumos 239684) is an USDOT/BTS NTAD redistribution with derived typed/metric fields; its 624193-record count equals this producer release. Source, schema/ID contract, coordinate basis, rights and publication acceptance remain pending human decisions.'}}],
         'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all 124 original fixed-width ASCII items as exact strings plus the crosswalk-derived point geometry; no generic conversion or schema mapping approved.','objects':[{'path':'geoparquet/'+SLUG+'.parquet',**output_pin}]}}},
         'unsupported_output_formats':{'geopackage':'Fixed-width string widths, blanks-as-nulls tail and the proposed composite ID need an approved contract; no implicit conversion.','shapefile_zip':'124-character-limit and width/null semantics cannot be silently coerced.','pmtiles':'Projection, quantization and feature ID mappings remain unapproved.'}}

@@ -56,7 +56,7 @@ class PatchedContract:
         return {'EXPECTED_FILES':self.expected,'URLS':self.urls,'TOKENS':('DC','TX'),'EXPECTED_TOTAL_COUNT':3,
             'EXPECTED_ID_ROSTER_SHA256':self.roster_sha,'EXPECTED_COMPOSITE_DUPLICATE_COUNT':0,'EXPECTED_DUPLICATE_KEYS':[],
             'EXPECTED_ZERO_COORDINATE_COUNT':0,'EXPECTED_OUT_OF_ENVELOPE_COUNT':0,'EXPECTED_BLANK_COORDINATE_COUNT':0,
-            'EXPECTED_PARTIAL_COORDINATE_COUNT':0,'EXPECTED_SIGNED_COORDINATE_COUNT':0,'EXPECTED_SHORT_RECORD_COUNT':0,
+            'EXPECTED_PARTIAL_COORDINATE_COUNT':0,'EXPECTED_SIGNED_COORDINATE_COUNT':0,'EXPECTED_WHITESPACE_COORDINATE_COUNT':0,'EXPECTED_SHORT_RECORD_COUNT':0,
             'EXPECTED_BLANK_STRUCTURE_NUMBER_COUNT':0,'EXPECTED_NON_ASCII_BYTES':{}}
     def captures(self):
         return {n:(body,receipt(self.urls[n],body))for n,body in self.bodies.items()}
@@ -87,14 +87,17 @@ class NBIParseTests(unittest.TestCase):
             (b'00385444',b'770301400',b'113',(0.648456,-770.503889)),
             (b'00000039',b'-00000007',b'243',(0.000108,-0.000019)),
             (b'00000000',b'000000000',b'113',(0.0,0.0)),
+            (b' 3612109',b'008017241',b'374',(4.022525,-8.036781)),
             (b'13190000',b'144301230',b'066',(13.316667,144.503417)),
             (b'14033000',b'170120000',b'060',(-14.058333,-170.2))]
         for lat,lon,state,expect in cases:
-            point,category,signed,zero=f.geometry_for(record(state=state,lat=lat,lon=lon),state.decode())
+            point,category,signed,padded,zero=f.geometry_for(record(state=state,lat=lat,lon=lon),state.decode())
             self.assertEqual((struct.unpack('<d',point[13:21])[0],struct.unpack('<d',point[5:13])[0]),expect,(lat,lon,state))
-        point,category,signed,zero=f.geometry_for(record(lat=b'        ',lon=b'         '),'DC')
+        point,category,signed,padded,zero=f.geometry_for(record(lat=b' 3612109'),'NC')
+        self.assertTrue(padded)
+        point,category,signed,padded,zero=f.geometry_for(record(lat=b'        ',lon=b'         '),'DC')
         self.assertIsNone(point);self.assertEqual(category,'blank')
-        point,category,signed,zero=f.geometry_for(record(lat=b'        '),'DC')
+        point,category,signed,padded,zero=f.geometry_for(record(lat=b'        '),'DC')
         self.assertIsNone(point);self.assertEqual(category,'partial')
     def test_signed_value_contradicting_documented_hemisphere_fails_closed(self):
         with self.assertRaisesRegex(ValueError,'sign_contradicts'):f.geometry_for(record(lon=b'+077070110'),'DC')
