@@ -188,6 +188,26 @@ class MooringFacilityAreasUsaceIencTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_geometry_outside_declared_coverage:1"):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
 
+    def test_point_outside_epsg4326_domain_is_rejected(self):
+        docs = self._documents()
+        relocated = [[500.0, 100.0], [500.0, 100.01], [500.01, 100.01], [500.01, 100.0], [500.0, 100.0]]
+        docs["page_000"]["features"][0]["geometry"]["rings"][0] = relocated
+        with self.assertRaisesRegex(ValueError, "source_point_outside_epsg4326_domain:1"):
+            source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
+
+    def test_extent_boundary_vertex_within_serialization_tolerance_is_accepted(self):
+        # Live 2026-11-10 evidence: the source's own vertices touch the declared
+        # extent within float serialization noise; only larger departures fail.
+        docs = self._documents()
+        ring = docs["page_000"]["features"][0]["geometry"]["rings"][0]
+        ring[0][0] = source.EXPECTED_EXTENT["xmin"] - 1e-12
+        ring[0][1] = source.EXPECTED_EXTENT["ymin"] - 1e-12
+        ring[-1][0] = ring[0][0]
+        ring[-1][1] = ring[0][1]
+        _fields, _features, audit = source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
+        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["source_vertex_bounds"]["xmin"], source.EXPECTED_EXTENT["xmin"] - 1e-12)
+
     def test_crs_representations_are_validated(self):
         mutations = [
             (lambda d: d["layer_before"].update(spatialReference={"wkid": 3857, "latestWkid": 4326}), "crs_drift"),

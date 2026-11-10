@@ -54,6 +54,11 @@ CAPTURE_RECEIPT_MAX_BYTES = 64_000
 MIN_FREE_BYTES = 300_000_000
 EXPECTED_EXTENT = {"xmin": -96.38243899999998, "ymin": 30.725778000000048,
                    "xmax": -79.48742699999997, "ymax": 45.03707040000006}
+# Live 2026-11-10 capture evidence: the source's own vertices touch the declared
+# extent within float serialization noise (worst observed 4.8e-11 degrees across
+# 3 OIDs), so containment is enforced with this sub-millimetre tolerance. Any
+# real coverage change stays far outside it and still fails closed.
+EXTENT_TOLERANCE_DEGREES = 1e-9
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"),
     ("Category_of_Mooring_Facility", "esriFieldTypeString"),
@@ -478,8 +483,12 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                         or any(isinstance(value, bool) or not isinstance(value, (int, float))
                                or not math.isfinite(float(value)) for value in point)):
                     raise ValueError(f"source_polygon_coordinate_not_finite_xy:{oid}")
-                if not (EXPECTED_EXTENT["xmin"] <= point[0] <= EXPECTED_EXTENT["xmax"]
-                        and EXPECTED_EXTENT["ymin"] <= point[1] <= EXPECTED_EXTENT["ymax"]):
+                if not (-180.0 <= point[0] <= 180.0 and -90.0 <= point[1] <= 90.0):
+                    raise ValueError(f"source_point_outside_epsg4326_domain:{oid}")
+                if not (EXPECTED_EXTENT["xmin"] - EXTENT_TOLERANCE_DEGREES <= point[0]
+                        <= EXPECTED_EXTENT["xmax"] + EXTENT_TOLERANCE_DEGREES
+                        and EXPECTED_EXTENT["ymin"] - EXTENT_TOLERANCE_DEGREES <= point[1]
+                        <= EXPECTED_EXTENT["ymax"] + EXTENT_TOLERANCE_DEGREES):
                     raise ValueError(f"source_geometry_outside_declared_coverage:{oid}")
                 xs.append(point[0])
                 ys.append(point[1])
@@ -525,8 +534,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                        "binding, advertised service/layer identity, declared field roster/types/order, every "
                        "present layer/page/feature wkid, latestWkid and WKT/WKT2 CRS representation, declared "
                        "2D ordinates, count, before/after IDs, per-page feature completeness, complete returned "
-                       "attributes, polygon ring structure/winding and valid non-empty topology, and every vertex "
-                       "against the declared layer coverage extent are checked.",
+                       "attributes, polygon ring structure/winding and valid non-empty topology, EPSG:4326 "
+                       "domain per vertex, and every vertex against the declared layer coverage extent within "
+                       "a 1e-9 degree serialization tolerance are checked.",
     }
     return fields, features, audit
 
