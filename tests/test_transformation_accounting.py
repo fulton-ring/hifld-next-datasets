@@ -102,8 +102,8 @@ class TransformationAccountingTests(unittest.TestCase):
             self.assertEqual(project["output_rows"], 3)
             lineage = (evidence / "transformation_lineage.jsonl").read_text().splitlines()
             self.assertEqual(len(lineage), 14)
-            rows = [json.loads(line) for line in lineage]
-            self.assertEqual(_untyped(rows[-1]["contributors"]), [["kept", 3]])
+            rows = [_untyped(json.loads(line)) for line in lineage]
+            self.assertEqual(rows[-1]["contributors"], [["kept", 3]])
             stored = json.loads((evidence / "transformation_accounting.json").read_text())
             self.assertEqual(stored["status"], "pass")
             self.assertEqual(stored["receipt_id"], receipt["receipt_id"])
