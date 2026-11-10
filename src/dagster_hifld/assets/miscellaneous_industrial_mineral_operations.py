@@ -1,5 +1,5 @@
-"""Draft-only USGS National Atlas Miscellaneous Industrial Minerals Operations asset with explicit gates."""
-from dagster import (AssetCheckResult, AssetKey, AssetSelection, Config,
+"""USGS National Atlas Miscellaneous Industrial Minerals Operations asset with explicit gates."""
+from dagster import (AssetCheckResult, AssetKey, AssetSelection,
                      DefaultScheduleStatus, ScheduleDefinition, asset, asset_check,
                      define_asset_job)
 
@@ -14,32 +14,29 @@ from dagster_hifld.sources.miscellaneous_industrial_mineral_operations import (
 DATASET_SLUG = FILE_SLUG = "miscellaneous-industrial-mineral-operations"
 
 
-class MiscellaneousIndustrialMineralOperationsConfig(Config):
-    capture_directory: str = ""
-
-
 @asset(
     key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]),
     group_name="usgs",
     compute_kind="http",
     description=(
-        "Lossless reconstruction of the December 2005 USGS National Atlas "
-        "Miscellaneous Industrial Minerals Operations package (minop5x020) from an Internet "
-        "Archive snapshot of the retired producer publication, with the live USGS legacy "
-        "metadata XML retained as historical metadata. Historical archive, not a maintained "
-        "agency feed; HIFLD archive equivalence, datum, schema/ID contract, rights, and release "
-        "decisions remain pending."
+        "USGS National Atlas Miscellaneous Industrial Minerals Operations (minop5x020, "
+        "December 2005, 304 features from the 2003 AMIS survey). The producer publication "
+        "is retired from its only official host (dds.cr.usgs.gov returns 404; the live "
+        "USGS NGTOC FGDC metadata links only to that retired URL), so this ingest fails "
+        "closed and refuses candidate construction until a maintainer accepts an official "
+        "distribution of the retired publication or approves a documented successor scope "
+        "for the live mrdata.usgs.gov mineplant product. Third-party archive snapshots are "
+        "research context only, never pipeline inputs. Source identity, schema/ID contract, "
+        "rights, and release decisions remain pending."
     ),
 )
 def miscellaneous_industrial_mineral_operations_usgs(
-        context, config: MiscellaneousIndustrialMineralOperationsConfig,
-        staging_storage: StagingStorageResource) -> dict:
+        context, staging_storage: StagingStorageResource) -> dict:
     result = capture_miscellaneous_industrial_mineral_operations(
-        staging_storage, version=build_version_id(context),
-        capture_directory=config.capture_directory or None)
+        staging_storage, version=build_version_id(context))
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,
-        [build_publish_partition_key(result["dataset_slug"], result["file_slug"], result["version"])],
+        [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])],
     )
     context.add_output_metadata(result)
     return result

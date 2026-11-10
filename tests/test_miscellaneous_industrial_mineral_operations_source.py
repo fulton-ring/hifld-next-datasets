@@ -1,7 +1,6 @@
-"""Native fidelity, drift, cache, and approval tests for the Miscellaneous Industrial Mineral Operations capture."""
+"""Native fidelity, refusal, boundary, and approval-gate tests for the Miscellaneous Industrial Mineral Operations source."""
 import hashlib
 import io
-import json
 import struct
 import tarfile
 import unittest
@@ -10,16 +9,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-import httpx
-import geopandas as gpd
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.catalog import CatalogSummary, generate_data_dictionary, write_catalog_metadata
-from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.sources import miscellaneous_industrial_mineral_operations as source
-from dagster_hifld.sources.epa_frs_common import capture_get
 
 
 def fixture_rows():
@@ -133,55 +127,20 @@ def build_package(members):
     return stream.getvalue()
 
 
-def patched_pins(members, xml=None, count=3):
-    values = {
-        "COUNT": count,
-        "EXPECTED_IDS": fixture_ids(),
-        "EXPECTED_PACKAGE_BYTES": None,
-        "EXPECTED_PACKAGE_SHA256": None,
-        "EXPECTED_METADATA_BYTES": None,
-        "EXPECTED_METADATA_SHA256": None,
-        "MEMBER_PINS": {},
-    }
+def patched_pins(members):
     package = build_package(members)
-    xml = xml if xml is not None else build_metadata_xml()
-    values["EXPECTED_PACKAGE_BYTES"] = len(package)
-    values["EXPECTED_PACKAGE_SHA256"] = hashlib.sha256(package).hexdigest()
-    values["EXPECTED_METADATA_BYTES"] = len(xml)
-    values["EXPECTED_METADATA_SHA256"] = hashlib.sha256(xml).hexdigest()
-    values["MEMBER_PINS"] = {name: {"bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
-                             for name, body in members.items()}
-    return patch.multiple(source, **values), package, xml
-
-
-def transport(package, xml, package_url=None, metadata_url=None):
-    package_url = package_url or source.PACKAGE_CAPTURE_URL
-    metadata_url = metadata_url or source.LEGACY_METADATA_URL
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        def stream(payload):
-            class Stream(httpx.SyncByteStream):
-                def __iter__(self):
-                    yield payload
-            return Stream()
-        if request.url.host == "web.archive.org" and request.url == httpx.URL(package_url):
-            return httpx.Response(200, headers={"content-type": "application/x-gzip"},
-                                  stream=stream(package))
-        if request.url == httpx.URL(metadata_url):
-            return httpx.Response(200, headers={"content-type": "application/xml"},
-                                  stream=stream(xml))
-        return httpx.Response(404, stream=stream(b"not found"))
-    return httpx.MockTransport(handler)
-
-
-def pinned_client(client):
-    class PinnedClient:
-        def __enter__(self):
-            return client
-
-        def __exit__(self, *_exc):
-            return False
-    return PinnedClient()
+    xml = build_metadata_xml()
+    values = {
+        "COUNT": 3,
+        "EXPECTED_IDS": fixture_ids(),
+        "EXPECTED_PACKAGE_BYTES": len(package),
+        "EXPECTED_PACKAGE_SHA256": hashlib.sha256(package).hexdigest(),
+        "EXPECTED_METADATA_BYTES": len(xml),
+        "EXPECTED_METADATA_SHA256": hashlib.sha256(xml).hexdigest(),
+        "MEMBER_PINS": {name: {"bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
+                        for name, body in members.items()},
+    }
+    return patch.multiple(source, **values)
 
 
 class MiscellaneousValidationTests(unittest.TestCase):
@@ -192,7 +151,7 @@ class MiscellaneousValidationTests(unittest.TestCase):
 
     def test_typed_geoparquet_preserves_native_values_ids_and_source_crs(self):
         members = fixture_members()
-        with patched_pins(members)[0], self.pinned():
+        with patched_pins(members), self.pinned():
             rows = source._decode_dbf(members["minop5x020.dbf"])
             wkbs = source._decode_points(members["minop5x020.shp"], members["minop5x020.shx"])
             features, audit = source._validate_population(rows, wkbs)
@@ -213,6 +172,7 @@ class MiscellaneousValidationTests(unittest.TestCase):
         geoms = [from_wkb(value) for value in table.column("geometry").to_pylist()]
         self.assertEqual([(point.x, point.y) for point in geoms],
                          [(-77.8651, 34.3562), (-81.6779, 39.5843), (-109.4561, 41.1228)])
+        import json
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
         from pyproj import CRS
@@ -225,6 +185,7 @@ class MiscellaneousValidationTests(unittest.TestCase):
         self.assertEqual(audit["states"], 3)
         self.assertGreater(audit["max_coordinate_vs_declared_attribute_delta_degrees"], 0.0)
         self.assertIn("gap at 187", audit["id_roster_note"])
+        self.assertIn("research context only", audit["classification"])
         self.assertIn(b"identity",
                       table.schema.field("source_shp_record_number").metadata)
 
@@ -280,12 +241,12 @@ class MiscellaneousValidationTests(unittest.TestCase):
         tampered = bytearray(members["minop5x020.shp"])
         struct.pack_into(">i", tampered, 100, 5)
         members["minop5x020.shp"] = bytes(tampered)
-        with patched_pins(members)[0], self.pinned():
+        with patched_pins(members), self.pinned():
             rows = source._decode_dbf(members["minop5x020.dbf"])
             with self.assertRaisesRegex(ValueError, "SHP_SHX_record_ID_offset_type_or_coordinate_drift"):
                 source._decode_points(members["minop5x020.shp"], members["minop5x020.shx"])
         shp, shx = build_shp_shx(fixture_points()[:1])
-        with patched_pins(members)[0], self.pinned():
+        with patched_pins(fixture_members()), self.pinned():
             with self.assertRaisesRegex(ValueError, "incomplete_SHP_SHX"):
                 source._decode_points(shp, shx)
 
@@ -333,22 +294,26 @@ class MiscellaneousValidationTests(unittest.TestCase):
         document = source._validate_metadata_text(build_metadata_text())
         self.assertIn("0x92", document["text_encoding_note"])
 
+    def test_package_roster_member_pin_and_tar_drift_fail_closed(self):
+        members = fixture_members()
+        with patched_pins(members):
+            extracted = source._extract_package(build_package(members))
+            self.assertEqual(set(extracted), set(source.MEMBER_NAMES))
+        missing = dict(members)
+        del missing["minop5x020.shx"]
+        with patched_pins(members):
+            with self.assertRaisesRegex(ValueError, "package_member_roster_drift"):
+                source._extract_package(build_package(missing))
+        tampered = dict(members)
+        tampered["minop5x020.txt"] = members["minop5x020.txt"] + b"unexpected tail\n"
+        with patched_pins(members):
+            with self.assertRaisesRegex(ValueError, "pinned_package_member_drift:minop5x020.txt"):
+                source._extract_package(build_package(tampered))
+        with self.assertRaisesRegex(ValueError, "package_tar_gz_unreadable"):
+            source._extract_package(b"not-a-tarball")
 
-class MiscellaneousCaptureCustodyTests(unittest.TestCase):
-    def test_non_200_response_body_and_wire_are_retained_before_refusal(self):
-        with TemporaryDirectory() as tmp:
-            root = Path(tmp) / "capture"
-            root.mkdir(parents=True)
-            transport = httpx.MockTransport(lambda request: httpx.Response(
-                503, stream=_stream(b"temporarily unavailable")))
-            with httpx.Client(transport=transport) as client:
-                with self.assertRaisesRegex(ValueError, "incomplete_source_capture"):
-                    capture_get(client, source.PACKAGE_CAPTURE_URL, root, "national_atlas_package",
-                                max_bytes=source.MAX_PACKAGE_BYTES)
-            receipt = json.loads((root / "national_atlas_package.receipt.json").read_bytes())
-            self.assertEqual(receipt["status"], 503)
-            self.assertEqual((root / "national_atlas_package.wire").read_bytes(), b"temporarily unavailable")
 
+class MiscellaneousSourceBoundaryTests(unittest.TestCase):
     def test_capture_rejects_remote_or_published_storage(self):
         with TemporaryDirectory() as tmp:
             for storage in (PublishedStorageResource(use_local=True, local_dir=tmp),
@@ -360,141 +325,24 @@ class MiscellaneousCaptureCustodyTests(unittest.TestCase):
                 source.capture_miscellaneous_industrial_mineral_operations(
                     StagingStorageResource(use_local=True, local_dir=tmp), version="../escape")
 
-
-def _stream(payload):
-    class Stream(httpx.SyncByteStream):
-        def __iter__(self):
-            yield payload
-    return Stream()
-
-
-class MiscellaneousEndToEndTests(unittest.TestCase):
-    def _fixture_repo(self, tmp):
-        repo = Path(tmp) / "repo"
-        (repo / "src/dagster_hifld").mkdir(parents=True)
-        (repo / "src/dagster_hifld/runtime.py").write_text("candidate transform = 1\n")
-        (repo / "pyproject.toml").write_text("[project]\nname='fixture'\n")
-        (repo / "uv.lock").write_text("version = 1\n")
-        return repo
-
-    def _captured(self, tmp, members=None, served_members=None):
-        members = members if members is not None else fixture_members()
-        patcher, package, xml = patched_pins(members)
-        storage = StagingStorageResource(use_local=True, local_dir=tmp, prefix="")
-        served = build_package(served_members) if served_members is not None else package
-        transport_instance = transport(served, xml)
-        client = httpx.Client(transport=transport_instance)
-        self.addCleanup(client.close)
-        repo = self._fixture_repo(tmp)
-
-        def run(**kwargs):
-            with patcher, patch.object(source.httpx, "Client", lambda **_kw: pinned_client(client)):
-                return source.capture_miscellaneous_industrial_mineral_operations(
-                    storage, repo_root=repo, **kwargs)
-        return run, storage, members
-
-    def test_full_capture_cache_replay_and_tamper_fail_closed(self):
+    def test_capture_refuses_candidate_construction_without_official_distribution(self):
         with TemporaryDirectory() as tmp:
-            run, storage, _members = self._captured(tmp)
-            first = run(version="v1")
-            self.assertFalse(first["reused"])
-            self.assertEqual(first["feature_count"], 3)
-            prefix = f"{first['dataset_slug']}/{first['file_slug']}/{first['version']}"
-            keys = set(storage.list_prefix(prefix))
-            self.assertIn(f"{prefix}/geoparquet/miscellaneous-industrial-mineral-operations.parquet", keys)
-            self.assertNotIn(f"{prefix}/shapefile/minop5x020.shp", keys)
-            self.assertIn(f"{prefix}/raw/minop5x020.shp", keys)
-            self.assertIn(f"{prefix}/raw/national_atlas_package.body", keys)
-            self.assertIn(f"{prefix}/raw/minop5x020.dbf", keys)
-            ready = json.loads(storage.read_key(f"{prefix}/metadata/candidate_ready.json"))
-            self.assertFalse(ready["approved"])
-            self.assertFalse(ready["release_accepted"])
-            manifest = json.loads(storage.read_key(f"{prefix}/metadata/source_manifest.json"))
-            self.assertFalse(manifest["approved"])
-            roles = {item["input_id"]: item["role"] for item in manifest["inputs"]}
-            self.assertEqual(roles["national_atlas_package"], "archive")
-            self.assertEqual(roles["legacy_metadata_xml"], "producer_publication")
-            self.assertIsNone(manifest["inputs"][0]["release_date"])
-            parquet = storage.read_key(f"{prefix}/geoparquet/miscellaneous-industrial-mineral-operations.parquet")
+            staging_root = Path(tmp) / "staging"
+            storage = StagingStorageResource(use_local=True, local_dir=str(staging_root))
+            with self.assertRaisesRegex(
+                    ValueError, "national_atlas_publication_retired_no_official_distribution"):
+                source.capture_miscellaneous_industrial_mineral_operations(
+                    storage, version="v20261110")
+            self.assertFalse(staging_root.exists())
+            self.assertFalse(any(Path(tmp).iterdir()))
+            self.assertFalse(hasattr(source, "httpx"))
 
-            second = run(version="v2")
-            self.assertTrue(second["reused"])
-            self.assertEqual(second["version"], first["version"])
-            self.assertEqual(storage.read_key(f"{prefix}/geoparquet/miscellaneous-industrial-mineral-operations.parquet"),
-                             parquet)
-
-            tampered = Path(tmp) / prefix / "raw" / "minop5x020.dbf"
-            original = tampered.read_bytes()
-            tampered.write_bytes(original[:-1] + b"\x00")
-            with self.assertRaisesRegex(ValueError, "cached_candidate_object_integrity_failed:raw/minop5x020.dbf"):
-                run(version="v3")
-            self.assertEqual(storage.read_key(f"{prefix}/geoparquet/miscellaneous-industrial-mineral-operations.parquet"),
-                             parquet)
-            state_key = f"_construction-state/miscellaneous-industrial-mineral-operations/{first['version']}.json"
-            self.assertIsNotNone(storage.object_snapshot(state_key))
-
-    def test_catalog_cache_revalidates_canonical_metadata_and_source_snapshots(self):
-        with TemporaryDirectory() as tmp:
-            run, storage, _members = self._captured(tmp)
-            first = run(version="v1")
-            prefix = f"{first['dataset_slug']}/{first['file_slug']}/{first['version']}"
-            snapshot_source_metadata(storage, first["dataset_slug"], first["file_slug"], first["version"])
-            resolved = load_resolved_source_manifest(
-                storage, first["dataset_slug"], first["file_slug"], first["version"]
-            )
-            quality = {"version": "v1", "feature_count": first["feature_count"],
-                       "quality_check_passed": True}
-            dictionary = generate_data_dictionary(
-                gpd.GeoDataFrame(), first["dataset_slug"], source_metadata=resolved.metadata,
-            )
-            summary = CatalogSummary(quality, dictionary)
-            write_catalog_metadata(
-                storage, first["dataset_slug"], first["file_slug"], first["version"],
-                summary.quality_manifest, summary.data_dictionary,
-            )
-            quality_key = f"{prefix}/metadata/quality_manifest.json"
-            original_quality = storage.read_key(quality_key)
-            tampered_quality = json.loads(original_quality)
-            tampered_quality["feature_count"] += 1
-            storage.write_key(quality_key, json.dumps(tampered_quality).encode())
-            with patch("dagster_hifld.sources.epa_frs_common.summarize_staged_catalog",
-                       return_value=summary):
-                with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
-                    run(version="v2")
-            storage.write_key(quality_key, original_quality)
-
-            snapshots = sorted((Path(tmp) / prefix / "metadata/source").glob("*source_manifest.json"))
-            self.assertEqual(len(snapshots), 2)
-            snapshots[0].unlink()
-            with patch("dagster_hifld.sources.epa_frs_common.summarize_staged_catalog",
-                       return_value=summary):
-                with self.assertRaisesRegex(ValueError, "cached_catalog_source_snapshot_incomplete"):
-                    run(version="v3")
-
-    def test_drifted_archive_bytes_fail_closed_and_are_quarantined(self):
-        with TemporaryDirectory() as tmp:
-            members = fixture_members()
-            drift = dict(members)
-            drift["minop5x020.txt"] = build_metadata_text() + b"unexpected tail\n"
-            run, storage, _members = self._captured(tmp, members=members, served_members=drift)
-            with self.assertRaisesRegex(ValueError, "pinned_archive_bytes_drift:national_atlas_package"):
-                run(version="v1")
-            quarantine = list(storage.list_prefix("_quarantine/miscellaneous-industrial-mineral-operations"))
-            self.assertTrue(any(name.endswith("/raw/national_atlas_package.body") for name in quarantine))
-            failures = [name for name in quarantine if name.endswith("/metadata/failure.json")]
-            self.assertTrue(failures)
-            self.assertEqual(set(storage.list_prefix("miscellaneous-industrial-mineral-operations")), set())
-
-    def test_incomplete_package_roster_fails_closed(self):
-        with TemporaryDirectory() as tmp:
-            members = fixture_members()
-            del members["minop5x020.shx"]
-            run, storage, _members = self._captured(tmp, members=members)
-            with self.assertRaisesRegex(ValueError, "package_member_roster_drift"):
-                run(version="v1")
-            failures = [name for name in storage.list_prefix("_quarantine/miscellaneous-industrial-mineral-operations")
-                        if name.endswith("/metadata/failure.json")]
-            self.assertTrue(failures)
+    def test_executable_module_contains_no_third_party_archive_capture_input(self):
+        module_bytes = Path(source.__file__).read_bytes()
+        self.assertNotIn(b"web.archive.org", module_bytes)
+        self.assertFalse(hasattr(source, "PACKAGE_CAPTURE_URL"))
+        self.assertIn("dds.cr.usgs.gov/pub/data/nationalatlas/minop5x020_nt00022.tar.gz",
+                      source.ORIGINAL_PACKAGE_URL)
 
 
 class MiscellaneousRegistrationTests(unittest.TestCase):

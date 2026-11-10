@@ -1,16 +1,25 @@
-"""Draft-only lossless reconstruction of the USGS National Atlas Miscellaneous Industrial Mineral Operations package.
+"""USGS National Atlas Miscellaneous Industrial Minerals Operations source record and refusal.
 
-The original producer publication ``minop5x020_nt00022.tar.gz`` (December 2005
-USGS National Atlas release built from the Minerals Information Team's 2003
-Automated Minerals Information System survey) is retired from its original
-``dds.cr.usgs.gov`` host. The Internet Archive snapshot of those producer bytes
-is a historical archive, not a maintained agency feed. The live USGS legacy
-metadata XML document (``minop5x020.xml``) is retained as producer-published
-historical metadata. This module validates both inputs against exact byte
-pins, decodes the native DBF/SHP/SHX masters losslessly, and stages an
-unapproved typed GeoParquet candidate. It does not approve the source,
-archive authority, datum, schema/ID contract, rights, or release, and it
-never substitutes the DataLumos HIFLD mirror.
+The assigned producer publication ``minop5x020_nt00022.tar.gz`` (December 2005 USGS
+National Atlas release built from the Minerals Information Team's 2003 Automated
+Minerals Information System survey) is retired from its only official distribution
+host: ``dds.cr.usgs.gov`` returns 404, and the live USGS NGTOC legacy FGDC XML for
+the layer links only to that retired URL (dated probes 2026-11-10). The producer
+currently serves the same 2003 AMIS survey only through the different combined
+"Active Mines and Mineral Processing Plants" product on mrdata.usgs.gov, which
+changes the record identity (rec_no versus the original MINOP5X020 roster), splits
+multi-commodity sites, and exports three records with truncated site names, rounded
+coordinates, or abbreviated state text. Third-party snapshots of the retired
+publication (including the Internet Archive copy previously captured here) are
+research/comparison context only and are never pipeline inputs.
+
+Until a maintainer accepts an official distribution of the retired publication, or
+approves a documented successor scope for the live mrdata product, this module
+refuses candidate construction: the executable ingest fails closed with
+``national_atlas_publication_retired_no_official_distribution``. The byte pins,
+native DBF/SHP/SHX decoders and metadata validators below record the producer
+contract that any accepted distribution must reproduce; focused tests exercise
+them with synthetic fixtures and no network or archive access is performed.
 """
 from __future__ import annotations
 
@@ -19,51 +28,32 @@ import io
 import json
 import math
 import re
-import shutil
 import struct
 import tarfile
-from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import urlsplit
-from uuid import uuid4
 
-import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 from shapely import from_wkb, is_empty, is_valid, total_bounds
 
-from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.output_policy import validate_output_policy
-from dagster_hifld.provenance import provenance_projection
-from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
-    write_immutable,
-)
 
 DATASET_SLUG = FILE_SLUG = "miscellaneous-industrial-mineral-operations"
 PUBLISHER = "U.S. Geological Survey National Atlas of the United States"
+# The producer's own declared publication URL. Retired: the host returns 404 and
+# the live USGS NGTOC FGDC metadata for this layer links only to this URL.
+# It is recorded as the canonical producer citation, never fetched.
 ORIGINAL_PACKAGE_URL = "https://dds.cr.usgs.gov/pub/data/nationalatlas/minop5x020_nt00022.tar.gz"
-# Internet Archive identity snapshot of the retired producer file. The archived
-# bytes are frozen; this is a historical archive, not a maintained agency feed.
-PACKAGE_CAPTURE_URL = (
-    "https://web.archive.org/web/20161212152931id_/"
-    "https://dds.cr.usgs.gov/pub/data/nationalatlas/minop5x020_nt00022.tar.gz"
-)
+# Live USGS-hosted FGDC metadata document for the retired layer (producer
+# reference evidence; not a data distribution).
 LEGACY_METADATA_URL = "https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/minop5x020.xml"
 COUNT = 304
 EXPECTED_PACKAGE_BYTES = 23_380
 EXPECTED_PACKAGE_SHA256 = "8b7458200c3e8115a99f6edca4438e91844456a8ee0467d34c1a7749f2ea082c"
 EXPECTED_METADATA_BYTES = 20_018
 EXPECTED_METADATA_SHA256 = "1ff2b2c8910aca0fe86e3241c0c3c3e1c45a24c396c4401c074c110a98b7c9ee"
-PACKAGE_MEMBER = "national_atlas_package"
-LEGACY_METADATA_MEMBER = "legacy_metadata_xml"
-EXPECTED_CAPTURE_NAMES = {PACKAGE_MEMBER, LEGACY_METADATA_MEMBER}
 MEMBER_NAMES = ("minop5x020.dbf", "minop5x020.shp", "minop5x020.shx", "minop5x020.txt")
 MEMBER_PINS = {
     "minop5x020.dbf": {"bytes": 59_602, "sha256": "59903827e8df547f5e0e174b0d1412c48a3c1895894dc2b93c3fc11b272690b0"},
@@ -107,7 +97,7 @@ IDENTITY_COLUMN_METADATA = {
 EXPECTED_IDS = tuple(value for value in range(1, 306) if value != 187)
 # The bundled FGDC text metadata carries one Windows-1252 right single quote
 # byte (0x92 in "fuller\x92s earth"). Marker validation decodes the pinned
-# bytes as cp1252; the original bytes are retained unchanged under raw/.
+# bytes as cp1252; producer bytes are never rewritten.
 METADATA_TEXT_ENCODING = "cp1252"
 EXPECTED_TXT_MARKERS = (
     "Title: Miscellaneous Industrial Minerals Operations",
@@ -135,8 +125,6 @@ NATIVE_CRS_DECLARATION = (
     "298.257222. These producer parameters identify native EPSG:4269. Coordinates "
     "are retained unchanged with no reprojection or synthesized PRJ."
 )
-MAX_PACKAGE_BYTES = 4_000_000
-MAX_METADATA_BYTES = 1_000_000
 
 
 def _canonical(value: object) -> bytes:
@@ -151,46 +139,6 @@ def _sha(body: bytes) -> str:
 def _json_safe_row(row: dict[str, object]) -> dict[str, object]:
     return {key: (str(value) if isinstance(value, Decimal) else value)
             for key, value in row.items()}
-
-
-def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
-    body_path, wire_path, receipt_path = (root / f"{name}.body", root / f"{name}.wire",
-                                          root / f"{name}.receipt.json")
-    if any(path.is_symlink() for path in (body_path, wire_path, receipt_path)):
-        raise ValueError("capture_symlink_rejected")
-    body, wire, receipt = body_path.read_bytes(), wire_path.read_bytes(), json.loads(receipt_path.read_bytes())
-    if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise ValueError("capture_receipt_invalid:" + name)
-    return body, wire, receipt
-
-
-def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
-    manifest = json.loads((root / "capture_manifest.json").read_bytes())
-    receipts = manifest.get("receipts", {})
-    if manifest.get("complete") is not True or not isinstance(receipts, dict) or not receipts:
-        raise ValueError("capture_manifest_invalid")
-    captures = {}
-    for name in sorted(receipts):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != receipts.get(name):
-            raise ValueError("capture_receipt_manifest_mismatch:" + name)
-        captures[name] = (body, receipt)
-    return captures
-
-
-def _validate_input_pins(captures: dict[str, tuple[bytes, dict]]) -> None:
-    pins = {PACKAGE_MEMBER: {"bytes": EXPECTED_PACKAGE_BYTES, "sha256": EXPECTED_PACKAGE_SHA256},
-            LEGACY_METADATA_MEMBER: {"bytes": EXPECTED_METADATA_BYTES, "sha256": EXPECTED_METADATA_SHA256}}
-    if set(captures) != EXPECTED_CAPTURE_NAMES:
-        raise ValueError("source_capture_name_roster_drift")
-    for name, pin in pins.items():
-        body, receipt = captures[name]
-        if len(body) != pin["bytes"] or _sha(body) != pin["sha256"]:
-            raise ValueError("pinned_archive_bytes_drift:" + name)
-        if receipt.get("url") != receipt.get("final_url"):
-            raise ValueError("source_capture_redirect_drift:" + name)
 
 
 def _extract_package(body: bytes) -> dict[str, bytes]:
@@ -375,8 +323,9 @@ def _validate_population(rows: list[dict[str, object]], wkbs: list[bytes]) -> tu
                                   "Minerals Operations package as published (304 features); the "
                                   "legacy dataset is explicitly not expected to be updated and no "
                                   "maintained agency feed exists."),
-        "classification": ("historical archive of the producer publication via the Internet Archive; "
-                           "DataLumos HIFLD copy is a separately labeled fallback candidate"),
+        "classification": ("retired USGS National Atlas producer publication; third-party "
+                           "snapshots (Internet Archive, DataLumos HIFLD copy) are research "
+                           "context only and are not used as pipeline inputs"),
         "geometry_attribute_relation": ("Native SHP coordinates carry more precision than the rounded "
                                         "DBF LATITUDE/LONGITUDE attribute values; the FGDC metadata "
                                         "defines no equivalence rule between them, so the difference "
@@ -429,313 +378,30 @@ def _parquet_bytes(rows: list[dict[str, object]], wkbs: list[bytes]) -> bytes:
     return sink.getvalue()
 
 
-def _capture_evidence_hash(captures: dict[str, tuple[bytes, dict]]) -> str:
-    roster = {name: {"body_sha256": receipt["sha256"], "wire_sha256": receipt["wire_sha256"]}
-              for name, (_body, receipt) in sorted(captures.items())}
-    return _sha(_canonical(roster))
 
+def capture_miscellaneous_industrial_mineral_operations(storage: StagingStorageResource,
+                                                        *, version: str) -> None:
+    """Refuse candidate construction until an official distribution is established.
 
-def _processing_identity(repo_root: Path | None = None) -> dict[str, object]:
-    root = Path(repo_root) if repo_root is not None else Path(__file__).parents[3]
-    identity = processing_identity(root)
-    validate_construction_code_identity(root, identity["code_commit"], identity["files"],
-                                        identity=identity)
-    return identity
-
-
-def _preserve_original_receipts(captures: dict[str, tuple[bytes, dict]],
-                                original_receipts: object) -> dict[str, dict]:
-    if not isinstance(original_receipts, dict) or set(original_receipts) != set(captures):
-        raise ValueError("cached_original_receipt_roster_changed")
-    for name, (_body, receipt) in captures.items():
-        sealed = original_receipts[name]
-        fields = ("complete_body", "status", "bytes", "sha256", "wire_bytes", "wire_sha256")
-        if any(receipt.get(field) != sealed.get(field) for field in fields):
-            raise ValueError("cached_source_capture_content_changed:" + name)
-    return original_receipts
-
-
-def capture_miscellaneous_industrial_mineral_operations(storage: StagingStorageResource, *, version: str,
-                                                         capture_directory: str | None = None,
-                                                         repo_root: Path | None = None) -> dict[str, object]:
-    """Capture, validate, and stage the unapproved Miscellaneous Industrial Mineral Operations candidate."""
+    Dated 2026-11-10 probes: the December 2005 National Atlas publication
+    ``minop5x020_nt00022.tar.gz`` is retired from its only official host
+    (``dds.cr.usgs.gov`` returns 404) and the live USGS NGTOC FGDC metadata for
+    the layer links only to that retired URL. The producer's live mrdata.usgs.gov
+    "Active Mines and Mineral Processing Plants" product carries the same 2003
+    AMIS survey records under the layer's 15-commodity scope, but with a
+    different record identity (rec_no roster instead of the original MINOP5X020
+    1..305 roster with the producer gap at 187), differently split
+    multi-commodity sites, three records exported with truncated site names,
+    rounded coordinates, or abbreviated state text, extra fields (fips, huc),
+    and a different CRS declaration. Accepting it, or any third-party snapshot
+    of the retired publication, is a source-identity decision that belongs to
+    maintainers, not to this pipeline. No archive or mirror bytes are fetched,
+    replayed, staged, or quarantined here.
+    """
     if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
         raise ValueError("explicit_isolated_local_staging_required")
     if (not isinstance(version, str) or not version or Path(version).name != version
             or version in {".", ".."} or "/" in version or "\\" in version):
         raise ValueError("unsafe_capture_version")
-    staging = Path(storage.local_dir).absolute()
-    if ".." in staging.parts or any(path.is_symlink() for path in (staging, *staging.parents)):
-        raise ValueError("unsafe_local_staging_root")
-    staging.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(staging).free < 100_000_000:
-        raise ValueError("disk_floor_before_acquisition")
-    requested = Path(capture_directory).absolute() if capture_directory else None
-    replay = bool(requested and (requested / "capture_manifest.json").exists())
-    if replay:
-        root = requested
-        captures = _read_replay(root)
-    else:
-        if requested and any(requested.glob("*.body")):
-            raise ValueError("unsealed_capture_attempt_exists")
-        root = ((requested / version) if requested
-                else Path("/tmp/hifld-miscellaneous-industrial-mineral-operations-capture")) / uuid4().hex
-        if any(path.is_symlink() for path in (root, *root.parents)):
-            raise ValueError("unsafe_capture_directory")
-        root.mkdir(parents=True, exist_ok=False)
-        captures: dict[str, tuple[bytes, dict]] = {}
-        try:
-            with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
-                              headers={"User-Agent": "hifld-next-datasets/usgs-national-atlas-draft"}) as client:
-                captures[PACKAGE_MEMBER] = capture_get(client, PACKAGE_CAPTURE_URL, root,
-                                                       PACKAGE_MEMBER, max_bytes=MAX_PACKAGE_BYTES)
-                captures[LEGACY_METADATA_MEMBER] = capture_get(client, LEGACY_METADATA_URL, root,
-                                                               LEGACY_METADATA_MEMBER,
-                                                               max_bytes=MAX_METADATA_BYTES)
-            _validate_input_pins(captures)
-            _decode_dbf(_extract_package(captures[PACKAGE_MEMBER][0])["minop5x020.dbf"])
-            manifest = {
-                "complete": True,
-                "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
-            }
-            (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
-            captures = _read_replay(root)
-        except Exception as exc:
-            names = sorted(path.name.removesuffix(".receipt.json") for path in root.glob("*.receipt.json"))
-            receipts = {}
-            for name in names:
-                try:
-                    receipts[name] = json.loads((root / f"{name}.receipt.json").read_bytes())
-                except (OSError, ValueError):
-                    receipts[name] = {"receipt_readback_failed": True}
-            (root / "capture_manifest.json").write_bytes(_canonical({
-                "complete": False,
-                "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                "error_code": type(exc).__name__,
-                "receipts": receipts,
-            }) + b"\n")
-            if captures:
-                quarantine_incomplete_capture(storage, root, DATASET_SLUG, version,
-                                              captures, type(exc).__name__)
-            raise
-    _validate_input_pins(captures)
-    extracted = _extract_package(captures[PACKAGE_MEMBER][0])
-    rows = _decode_dbf(extracted["minop5x020.dbf"])
-    wkbs = _decode_points(extracted["minop5x020.shp"], extracted["minop5x020.shx"])
-    _validate_metadata_text(extracted["minop5x020.txt"])
-    _validate_metadata_xml(captures[LEGACY_METADATA_MEMBER][0])
-    features, audit = _validate_population(rows, wkbs)
-    parquet = _parquet_bytes(rows, wkbs)
-    output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    repo = Path(repo_root) if repo_root is not None else Path(__file__).parents[3]
-    identity = _processing_identity(repo)
-    capture_hash = _capture_evidence_hash(captures)
-    version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
-                                       audit["source_schema_sha256"], identity)
-    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    fingerprint = _sha(_canonical({"identity": identity,
-                                   "source_record_sha256": audit["source_record_sha256"],
-                                   "source_schema_sha256": audit["source_schema_sha256"],
-                                   "source_capture_sha256": capture_hash}))
-    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    original_payload = None
-    if storage.object_snapshot(state_key) is not None:
-        original_payload = json.loads(load_first_construction(storage, state_key, version,
-                                                              fingerprint)).get("payload")
-        receipts = _preserve_original_receipts(
-            captures, original_payload.get("capture_receipts") if isinstance(original_payload, dict) else None)
-    audit.update({"source_capture_evidence_sha256": capture_hash, "source_population_complete": True,
-                  "source_release_accepted": False, "source_freshness_accepted": False,
-                  "schema_contract_accepted": False, "id_contract_accepted": False,
-                  "coverage_accepted": False, "rights_accepted": False,
-                  "mapping_approved": False, "release_accepted": False, "baseline_accepted": False})
-    if original_payload is None:
-        receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
-    release_reason = ("The producer FGDC metadata declares publication month 200512 with no exact "
-                      "day; the Internet Archive capture (2016-12-12) and every retrieval time are "
-                      "not source release dates.")
-    inputs = [{
-        "input_id": PACKAGE_MEMBER,
-        "producer": PUBLISHER,
-        "host": urlsplit(receipts[PACKAGE_MEMBER]["url"]).hostname,
-        "role": "archive",
-        "canonical_url": ORIGINAL_PACKAGE_URL,
-        "retrieval_url": receipts[PACKAGE_MEMBER]["url"],
-        "observed_final_url": receipts[PACKAGE_MEMBER]["final_url"],
-        "retrieved_at": receipts[PACKAGE_MEMBER]["observed_at"],
-        "http_status": receipts[PACKAGE_MEMBER]["status"],
-        "bytes": receipts[PACKAGE_MEMBER]["bytes"],
-        "sha256": receipts[PACKAGE_MEMBER]["sha256"],
-        "wire_bytes": receipts[PACKAGE_MEMBER]["wire_bytes"],
-        "wire_sha256": receipts[PACKAGE_MEMBER]["wire_sha256"],
-        "release_date": None,
-        "release_date_unknown_reason": release_reason,
-        "license": "USGS National Atlas metadata states no use restrictions; rights review pending.",
-        "attribution": ("U.S. Geological Survey National Atlas; Minerals Information Team AMIS 2003 "
-                        "operations; final attribution review pending."),
-    }, {
-        "input_id": LEGACY_METADATA_MEMBER,
-        "producer": "U.S. Geological Survey",
-        "host": urlsplit(receipts[LEGACY_METADATA_MEMBER]["url"]).hostname,
-        "role": "producer_publication",
-        "canonical_url": LEGACY_METADATA_URL,
-        "retrieval_url": receipts[LEGACY_METADATA_MEMBER]["url"],
-        "observed_final_url": receipts[LEGACY_METADATA_MEMBER]["final_url"],
-        "retrieved_at": receipts[LEGACY_METADATA_MEMBER]["observed_at"],
-        "http_status": receipts[LEGACY_METADATA_MEMBER]["status"],
-        "bytes": receipts[LEGACY_METADATA_MEMBER]["bytes"],
-        "sha256": receipts[LEGACY_METADATA_MEMBER]["sha256"],
-        "wire_bytes": receipts[LEGACY_METADATA_MEMBER]["wire_bytes"],
-        "wire_sha256": receipts[LEGACY_METADATA_MEMBER]["wire_sha256"],
-        "release_date": None,
-        "release_date_unknown_reason": release_reason,
-        "license": "USGS-published historical FGDC metadata document; rights review pending.",
-        "attribution": ("U.S. Geological Survey historical metadata document retained as evidence; "
-                        "it is not proof of a maintained current distribution."),
-    }]
-    manifest = {
-        "schema_version": 1,
-        "approved": False,
-        "title": "Miscellaneous Industrial Mineral Operations",
-        "description": ("Lossless reconstruction of the December 2005 USGS National Atlas "
-                        "Miscellaneous Industrial Minerals Operations package from an Internet "
-                        "Archive snapshot of the retired producer publication; unapproved "
-                        "candidate only."),
-        "publisher": PUBLISHER,
-        "agency": "U.S. Geological Survey",
-        "source_url": ORIGINAL_PACKAGE_URL,
-        "license": None,
-        "source_modified": None,
-        "date_issued": None,
-        "date_modified": None,
-        "processor": "HIFLD Next",
-        "code_commit": identity["code_commit"],
-        "code_identity_scheme": identity["code_identity_scheme"],
-        "processing_identity": identity,
-        "inputs": inputs,
-        "transformations": [{
-            "operation": "Lossless native DBF/SHP/SHX decode to typed GeoParquet WKB",
-            "parameters": {
-                "package_inputs": ("Exact pinned Internet Archive snapshot bytes of the retired "
-                                   "producer publication; archive classification is retained, and "
-                                   "no mirror or guessed successor is substituted."),
-                "source_fields": ("All nine declared DBF fields retained with exact ASCII text and "
-                                  "base-10 decimal values at their declared DBF widths and scales; "
-                                  "no binary floating substitution."),
-                "source_field_type_mapping": [
-                    {"source_name": name, "source_dbf_type": f"{kind}({width},{scale})",
-                     "output_arrow_type": str(ARROW_TYPES[name])}
-                    for name, (kind, width, scale) in
-                    ((field[0], field[1:]) for field in DBF_FIELDS)
-                ],
-                "source_ids": ("Original MINOP5X020 decimal(3,0) identifiers retained unchanged in "
-                               "DBF order: 304 unique strictly increasing values spanning 1..305 "
-                               "with the producer's own single gap at 187; DBF record indices and "
-                               "SHP record numbers are separate physical identity columns; no "
-                               "substitute row identifiers."),
-                "source_crs": NATIVE_CRS_DECLARATION,
-                "geometry": "Native SHP point coordinates preserved exactly without reprojection, repair, or simplification.",
-                "raw_evidence": ("The complete tar.gz package, the USGS metadata XML, every wire "
-                                 "body, and hash-pinned receipts are retained under raw/."),
-                "candidate_status": ("unapproved; archive authority, source edition equivalence, "
-                                     "schema/ID contract, rights, coverage, and release decisions "
-                                     "pending"),
-            },
-        }],
-        "lineage": ("USGS National Atlas mineral operations series (minop5x020), built from the "
-                    "Minerals Information Team's 2003 Automated Minerals Information System survey "
-                    "and published December 2005. The original dds.cr.usgs.gov host is retired; the "
-                    "DataLumos project 239600 HIFLD item is a separately labeled fallback mirror "
-                    "whose equivalence is unresolved. No maintained agency feed is known."),
-        "prebuilt_output_policy": {
-            "schema_version": 1,
-            "formats": {"geoparquet": {
-                "reason": ("Preserve all declared DBF widths/scales, original IDs, native points, "
-                           "and the unknown-CRS declaration as typed GeoParquet."),
-                "objects": [{"path": output_path, "bytes": len(parquet), "sha256": _sha(parquet)}],
-            }},
-        },
-        "unsupported_output_formats": {
-            "shapefile_zip": "No accepted schema/ID mapping; preserved original masters remain raw evidence.",
-            "geopackage": "DBF decimal128 precision/scale cannot be silently coerced to GPKG REAL; no migration approved.",
-            "pmtiles": "No display generalization, datum choice, or release policy approved.",
-        },
-    }
-    validate_release_provenance(manifest)
-    validate_output_policy(manifest)
-    provenance_projection(manifest)
-    outputs = {
-        output_path: parquet,
-        "metadata/source_manifest.json": _canonical(manifest) + b"\n",
-        "metadata/source_audit.json": _canonical(audit) + b"\n",
-        "metadata/processing_identity.json": _canonical(identity) + b"\n",
-    }
-    for name, (body, _receipt) in captures.items():
-        _b, wire, _r = _load_capture(root, name)
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = wire
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipts[name]) + b"\n"
-    for name in MEMBER_NAMES:
-        outputs[f"raw/{name}"] = extracted[name]
-    ready = {
-        "approved": False,
-        "version": version,
-        "objects": {output_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
-        "source_population_complete": True,
-        "source_record_sha256": audit["source_record_sha256"],
-        "source_schema_sha256": audit["source_schema_sha256"],
-        "source_release_accepted": False,
-        "freshness_accepted": False,
-        "schema_contract_accepted": False,
-        "id_contract_accepted": False,
-        "coverage_accepted": False,
-        "rights_accepted": False,
-        "mapping_approved": False,
-        "release_accepted": False,
-    }
-    outputs["metadata/candidate_ready.json"] = _canonical(ready) + b"\n"
-    if original_payload is not None:
-        verify_cached_candidate(storage, repo, state_key, prefix, version, fingerprint, identity,
-                                audit["source_record_sha256"], audit["source_schema_sha256"],
-                                original_payload["objects"], receipts)
-        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-                "feature_count": COUNT, "source_population_complete": True,
-                "source_id_sha256": audit["source_id_sha256"],
-                "source_record_sha256": audit["source_record_sha256"],
-                "source_schema_sha256": audit["source_schema_sha256"],
-                "source_capture_evidence_sha256": capture_hash, "reused": True,
-                "source_release_accepted": False, "source_freshness_accepted": False,
-                "schema_contract_accepted": False, "id_contract_accepted": False,
-                "baseline_accepted": False, "coverage_accepted": False, "rights_accepted": False,
-                "mapping_approved": False, "release_accepted": False}
-    descriptors = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if snapshot is None or snapshot.size != len(body) or storage.sha256_key(key) != descriptor["sha256"]:
-            raise ValueError("candidate_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint,
-                         {"processing_identity": identity,
-                          "source_record_sha256": audit["source_record_sha256"],
-                          "source_schema_sha256": audit["source_schema_sha256"],
-                          "capture_receipts": receipts, "objects": descriptors})
-    validate_construction_code_identity(repo, identity["code_commit"], identity["files"],
-                                        identity=identity)
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": COUNT, "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"],
-            "source_record_sha256": audit["source_record_sha256"],
-            "source_schema_sha256": audit["source_schema_sha256"],
-            "source_geometry_sha256": audit["source_geometry_sha256"],
-            "source_capture_evidence_sha256": capture_hash,
-            "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
-            "capture_directory": str(root), "reused": replay and original_payload is not None,
-            "source_release_accepted": False, "source_freshness_accepted": False,
-            "schema_contract_accepted": False, "id_contract_accepted": False,
-            "baseline_accepted": False, "coverage_accepted": False, "rights_accepted": False,
-            "mapping_approved": False, "release_accepted": False}
+    raise ValueError("national_atlas_publication_retired_no_official_distribution")
