@@ -61,7 +61,7 @@ def _schema_dbf(path):
     if o>=h or b[o]!=0x0d: raise ValueError("source_dbf_terminator_missing")
     return out
 
-def _content_digests(g,names):
+def _content_digests(g,names,fids):
     """Digest the complete native population exactly as read from the source.
 
     Row identity is the native shapefile record number (FID), so the geometry
@@ -69,11 +69,30 @@ def _content_digests(g,names):
     full attribute vector in source field order.
     """
     attrs=[[_native(v) for v in row] for row in g[names].itertuples(index=False,name=None)]
-    ids=sorted(int(i) for i in g.index)
-    geom=[[int(i),float(g.geometry.iloc[n].x),float(g.geometry.iloc[n].y)] for n,i in enumerate(g.index)]
+    ids=sorted(int(f) for f in fids)
+    geom=[[int(f),float(g.geometry.iloc[n].x),float(g.geometry.iloc[n].y)] for n,f in enumerate(fids)]
     idsha,recsha,geomsha=(_sha(_canonical(x)) for x in (ids,attrs,geom))
     bounds=list(map(float,g.total_bounds))
     return ids,attrs,idsha,recsha,geomsha,bounds
+
+def _fid_roster(shp,shx,count):
+    """Read the native record numbers straight from the shapefile index.
+
+    The ESRI Shapefile driver exposes no FID column, so the source row identity
+    is validated from the .shx offsets and the .shp record headers instead of
+    any reader-derived index.
+    """
+    index=shx.read_bytes(); body=shp.read_bytes()
+    if len(index)!=100+8*count: raise ValueError("source_shx_length_drift")
+    fids=[]
+    for i in range(count):
+        offset,words=struct.unpack(">2I", index[100+8*i:100+8*i+8])
+        if words!=10: raise ValueError("source_shp_content_length_drift")
+        head=body[offset*2:offset*2+4]
+        if len(head)!=4: raise ValueError("source_shp_record_missing")
+        fids.append(int(struct.unpack(">I", head)[0]))
+    if fids!=list(range(1,count+1)): raise ValueError("source_fid_roster_drift")
+    return fids
 
 def _decode(body,tmp):
     if len(body)!=EXPECTED_ZIP_BYTES or _sha(body)!=EXPECTED_ZIP_SHA256: raise ValueError("pinned_eia_snapshot_drift")
@@ -91,17 +110,16 @@ def _decode(body,tmp):
     if _schema_dbf(root/f"{EXPECTED_LAYER}.dbf")!=EXPECTED_FIELDS: raise ValueError("source_dbf_schema_drift")
     info=pyogrio.read_info(shp)
     if info["layer_name"]!=EXPECTED_LAYER or info["geometry_type"]!="Point" or info["crs"]!="EPSG:4326" or int(info["features"])!=EXPECTED_COUNT: raise ValueError("source_layer_metadata_drift")
-    g=pyogrio.read_dataframe(shp,use_fid_as_index=True)
+    fids=_fid_roster(shp,root/f"{EXPECTED_LAYER}.shx",EXPECTED_COUNT)
+    g=pyogrio.read_dataframe(shp)
     names=[x[0] for x in EXPECTED_FIELDS]
     if list(g.columns)!=names+["geometry"] or len(g)!=EXPECTED_COUNT or g.geometry.isna().any() or g.geometry.is_empty.any() or not (g.geometry.geom_type=="Point").all(): raise ValueError("source_population_or_schema_drift")
     if not CRS.from_user_input(g.crs).equals(WGS84,ignore_axis_order=True): raise ValueError("source_crs_drift")
-    fids=[int(i) for i in g.index]
-    if fids!=list(range(1,EXPECTED_COUNT+1)): raise ValueError("source_fid_roster_drift")
     if int(g.Period.min())!=SOURCE_PERIOD or int(g.Period.max())!=SOURCE_PERIOD: raise ValueError("source_period_drift")
     # Shapefile DBF decimal coordinates are rounded to 11 places while the
     # corresponding SHP doubles may differ by a few floating-point ulps.
     if (abs(g.geometry.x.to_numpy()-g.Longitude.to_numpy())>1e-10).any() or (abs(g.geometry.y.to_numpy()-g.Latitude.to_numpy())>1e-10).any(): raise ValueError("source_xy_attribute_drift")
-    ids,attrs,idsha,recsha,geomsha,bounds=_content_digests(g,names)
+    ids,attrs,idsha,recsha,geomsha,bounds=_content_digests(g,names,fids)
     if idsha!=ID_SHA or recsha!=RECORD_SHA or geomsha!=GEOMETRY_SHA: raise ValueError("source_content_snapshot_drift")
     if bounds!=BOUNDS: raise ValueError("source_bounds_drift")
     audit={"source_feature_count":len(g),"source_population_complete":True,"source_id_field":"FID (shapefile record number)","source_id_unique":True,"source_id_min":min(ids),"source_id_max":max(ids),"source_id_sha256":idsha,"source_record_sha256":recsha,"source_geometry_sha256":geomsha,"source_schema_sha256":_sha(_canonical(EXPECTED_FIELDS)),"source_dbf_schema":EXPECTED_FIELDS,"source_crs":"EPSG:4326","source_geometry_type":"Point","source_bounds":bounds,"source_period":SOURCE_RELEASE,"source_null_counts":{n:int(g[n].isna().sum()) for n in names},"source_geometry_null_count":int(g.geometry.isna().sum()),"source_geometry_empty_count":int(g.geometry.is_empty.sum()),"source_coverage_scope":"Complete 2017 Form EIA-757 processing-plant population published by EIA (478 plants as of 12/31/2017, Lower 48 states). Historical snapshot; not a current feed or accepted HIFLD equivalent.","drift_guard":"Pinned official archive checksum, complete zip members, exact DBF widths/types, layer name, CRS, contiguous FID roster 1..478, all attributes and values, period, native XY and bounds."}

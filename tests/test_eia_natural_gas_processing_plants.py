@@ -112,15 +112,17 @@ def _fixture_zip(layer=FIXTURE_LAYER, fields=FIXTURE_FIELDS, rows=FIXTURE_ROWS, 
     return sink.getvalue(), set(members)
 
 
-def _fixture_pins(zip_body, members, layer=FIXTURE_LAYER, fields=FIXTURE_FIELDS):
+def _fixture_pins(zip_body, members, layer=FIXTURE_LAYER, fields=FIXTURE_FIELDS, row_count=2):
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / "shape"
         root.mkdir()
         with zipfile.ZipFile(io.BytesIO(zip_body)) as z:
             for name in members:
                 (root / name).write_bytes(z.read(name))
-        frame = pyogrio.read_dataframe(root / f"{layer}.shp", use_fid_as_index=True)
-    ids, _attrs, idsha, recsha, geomsha, bounds = source._content_digests(frame, [f[0] for f in fields])
+        fids = source._fid_roster(root / f"{layer}.shp", root / f"{layer}.shx", row_count)
+        frame = pyogrio.read_dataframe(root / f"{layer}.shp")
+    ids, _attrs, idsha, recsha, geomsha, bounds = source._content_digests(
+        frame, [f[0] for f in fields], fids)
     return dict(EXPECTED_LAYER=layer, EXPECTED_COUNT=len(ids), EXPECTED_FIELDS=list(fields),
                 MEMBERS=set(members), ID_SHA=idsha, RECORD_SHA=recsha, GEOMETRY_SHA=geomsha,
                 BOUNDS=bounds, EXPECTED_ZIP_BYTES=len(zip_body),
@@ -177,9 +179,9 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
         pins = _fixture_pins(zip_body, members)
         corrupt = bytearray(zip_body)
         corrupt[-1] ^= 0xFF
-        with patch.multiple(source, **pins):
+        with patch.multiple(source, **pins), tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(ValueError, "pinned_eia_snapshot_drift"):
-                source._decode(bytes(corrupt), Path(tempfile.mkdtemp()))
+                source._decode(bytes(corrupt), Path(tmp))
 
     def test_dbf_schema_drift_is_rejected(self):
         zip_body, members = _fixture_zip()
@@ -188,9 +190,9 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
                        for row in FIXTURE_ROWS]
         drift_zip, drift_members = _fixture_zip(fields=drifted, rows=drifted_rows)
         pins = _fixture_pins(zip_body, members)
-        with patch.multiple(source, **pins):
+        with patch.multiple(source, **pins), tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(ValueError, "source_dbf_schema_drift"):
-                source._decode(drift_zip, Path(tempfile.mkdtemp()))
+                source._decode(drift_zip, Path(tmp))
 
     def test_fid_roster_and_period_drift_are_rejected(self):
         zip_body, members = _fixture_zip()
@@ -210,16 +212,16 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
         with zipfile.ZipFile(sink, "w", zipfile.ZIP_DEFLATED) as z:
             for name, body in members2.items():
                 z.writestr(name, body)
-        with patch.multiple(source, **pins):
+        with patch.multiple(source, **pins), tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(ValueError, "source_fid_roster_drift"):
-                source._decode(sink.getvalue(), Path(tempfile.mkdtemp()))
+                source._decode(sink.getvalue(), Path(tmp))
         # Period drift: one row outside the pinned 2017 survey period.
         rows = [dict(FIXTURE_ROWS[0]), dict(FIXTURE_ROWS[1])]
         rows[1]["Period"] = 2014
         period_zip, period_members = _fixture_zip(rows=rows)
-        with patch.multiple(source, **pins):
+        with patch.multiple(source, **pins), tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(ValueError, "source_period_drift"):
-                source._decode(period_zip, Path(tempfile.mkdtemp()))
+                source._decode(period_zip, Path(tmp))
 
     def test_native_fields_and_values_preserved_in_parquet(self):
         zip_body, members = _fixture_zip()
