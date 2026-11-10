@@ -57,13 +57,9 @@ def _digest(body: bytes) -> str:
 
 def _request_url(name: str, params: dict[str, object]) -> str:
     if name == "bts_item":
-        if params:
-            raise ValueError("bts_item_request_parameters_unexpected")
-        return BTS_ITEM_URL
+        return f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}"
     if name == "service_directory":
-        if params:
-            raise ValueError("service_directory_request_parameters_unexpected")
-        return SERVICE_DIRECTORY_URL
+        return "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"
     if name in ("service_before", "service_after"):
         return SERVICE_URL
     if name == "layer":
@@ -420,8 +416,8 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
     client = client or httpx.Client(timeout=60, follow_redirects=False)
     try:
         budget = [0]
-        _validate_bts_item(_request(client, {}, staging, version_key, "bts_item", budget))
-        _validate_service_directory(_request(client, {}, staging, version_key, "service_directory", budget))
+        _validate_bts_item(_request(client, {"f": "json"}, staging, version_key, "bts_item", budget))
+        _validate_service_directory(_request(client, {"f": "pjson"}, staging, version_key, "service_directory", budget))
         service_before = _request(client, {"f": "json"}, staging, version_key, "service_before", budget)
         _validate_service(service_before)
         metadata = _metadata(client, staging, version_key, budget)

@@ -315,8 +315,11 @@ class BtsSourceChainContractTests(unittest.TestCase):
         self.assertEqual(source.SERVICE_URL,
                          "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/"
                          "DISTANCE_MARK_POINT/MapServer")
-        self.assertEqual(source._request_url("bts_item", {}), source.BTS_ITEM_URL)
-        self.assertEqual(source._request_url("service_directory", {}), source.SERVICE_DIRECTORY_URL)
+        self.assertEqual(source._request_url("bts_item", {"f": "json"}),
+                         "https://www.arcgis.com/sharing/rest/content/items/"
+                         "7ec34864c8804468a9cf52d437fe4b6c")
+        self.assertEqual(source._request_url("service_directory", {"f": "pjson"}),
+                         "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes")
         self.assertEqual(source._request_url("service_before", {"f": "json"}), source.SERVICE_URL)
         self.assertEqual(source._request_url("service_after", {"f": "json"}), source.SERVICE_URL)
         self.assertEqual(source._request_url("layer", {"f": "json"}), source.LAYER_URL)
