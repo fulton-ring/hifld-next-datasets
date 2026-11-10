@@ -77,7 +77,7 @@ class NBIParseTests(unittest.TestCase):
         self.assertEqual(table.num_rows,1);self.assertEqual(table.num_columns,125)
         self.assertEqual(table['STRUCTURE_NUMBER_008'].to_pylist(),['0001           '])
         self.assertEqual(table['LATITUDE_016'].to_pylist(),['38554600']);self.assertEqual(table['LONGITUDE_017'].to_pylist(),['077070110'])
-        self.assertEqual(table['KILOPOINT_011'].to_pylist(),['       '])
+        self.assertEqual(table['KILOMETERPOINT_011'].to_pylist(),['       '])
         self.assertEqual(table['WASHINGTON_HQ_USE_RESERVED'].to_pylist(),[' '*41])
         self.assertEqual(table['DECK_AREA'].to_pylist(),['0000010000'])
         self.assertEqual(table['geometry'].to_pylist(),[struct.pack('<BIdd',1,1,-77.116972,38.929444)])

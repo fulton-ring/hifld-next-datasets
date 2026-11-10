@@ -372,7 +372,7 @@ STRUCTURE_NUMBER=next(n for n,_,_,_ in LAYOUT if n=='STRUCTURE_NUMBER_008')
 
 
 def state_tokens(body):
-    return {t.decode('ascii')for t in re.findall(rb'nbiState=([A-Z]{2}25)',body)}
+    return {t.decode('ascii')for t in re.findall(rb'nbiState=([A-Z]{2})25',body)}
 
 
 def inspect_captures(captures):
