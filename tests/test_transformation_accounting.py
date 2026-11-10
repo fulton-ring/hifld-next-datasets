@@ -429,7 +429,7 @@ class TransformationAccountingTests(unittest.TestCase):
             tracemalloc.start()
             try:
                 receipt = account_construction(spec, plan, candidate, evidence)
-                _, peak = tracemalloc.get_tracemalloc_memory()
+                _, peak = tracemalloc.get_traced_memory()
             finally:
                 tracemalloc.stop()
             self.assertEqual(receipt["status"], "pass", receipt["reason_codes"])
