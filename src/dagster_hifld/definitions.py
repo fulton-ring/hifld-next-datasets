@@ -1097,6 +1097,7 @@ defs = Definitions(
         bts_intermodal_freight_air_to_truck_complete,
         fema_nfhl_nodes_complete,
         fema_nfhl_hydrologic_reaches_complete,
+        usace_fuds_public_properties_complete,
     ],
     jobs=[
         bts_ferry_terminals_draft_refresh_job,
@@ -1205,7 +1206,6 @@ defs = Definitions(
         fdic_locations_draft_job,
         fema_regions_draft_job,
         ferc_historical_reconstruction_job,
-        usace_fuds_public_properties_complete,
     ],
     schedules=[
         bts_ferry_terminals_draft_refresh_schedule,
