@@ -108,7 +108,9 @@ def build_shp_shx(points):
 
 
 def build_metadata_text():
-    return ("\n".join(source.EXPECTED_TXT_MARKERS) + "\n").encode("ascii")
+    body = ("\n".join(source.EXPECTED_TXT_MARKERS) + "\n"
+            "    Clay operations (kaolin, fuller\u2019s earth) may have many satellite pits.\n")
+    return body.encode(source.METADATA_TEXT_ENCODING)
 
 
 def build_metadata_xml():
@@ -307,11 +309,11 @@ class MiscellaneousValidationTests(unittest.TestCase):
                 source._decode_points(shp, bytes(tampered))
 
     def test_metadata_marker_drift_fails_closed(self):
-        text = build_metadata_text().decode("ascii").replace(
+        text = build_metadata_text().decode(source.METADATA_TEXT_ENCODING).replace(
             "Horizontal_Datum_Name: North American Datum of 1983",
             "Horizontal_Datum_Name: North American Datum of 1927")
         with self.assertRaisesRegex(ValueError, "producer_metadata_marker_drift:Horizontal_Datum_Name"):
-            source._validate_metadata_text(text.encode("ascii"))
+            source._validate_metadata_text(text.encode(source.METADATA_TEXT_ENCODING))
         xml = build_metadata_xml().decode("ascii").replace(
             "<title>Miscellaneous Industrial Minerals Operations - Direct Download</title>",
             "<title>Some Other Layer - Direct Download</title>")
@@ -326,6 +328,8 @@ class MiscellaneousValidationTests(unittest.TestCase):
     def test_metadata_text_encoding_drift_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "producer_metadata_text_encoding_drift"):
             source._validate_metadata_text(build_metadata_text() + b"\x93")
+        with self.assertRaisesRegex(ValueError, "producer_metadata_text_encoding_drift"):
+            source._validate_metadata_text(build_metadata_text().replace(b"\x92", b"'"))
         document = source._validate_metadata_text(build_metadata_text())
         self.assertIn("0x92", document["text_encoding_note"])
 
