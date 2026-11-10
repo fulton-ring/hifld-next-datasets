@@ -59,7 +59,7 @@ class PatchedContract:
             'EXPECTED_PARTIAL_COORDINATE_COUNT':0,'EXPECTED_SIGNED_COORDINATE_COUNT':0,'EXPECTED_SHORT_RECORD_COUNT':0,
             'EXPECTED_BLANK_STRUCTURE_NUMBER_COUNT':0,'EXPECTED_NON_ASCII_BYTES':{}}
     def captures(self):
-        return {n:(body,receipt(self.contract.urls[n],body))for n,body in self.bodies.items()}
+        return {n:(body,receipt(self.urls[n],body))for n,body in self.bodies.items()}
 
 
 class NBIParseTests(unittest.TestCase):
