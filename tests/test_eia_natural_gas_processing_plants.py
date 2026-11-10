@@ -188,8 +188,12 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
         drifted = [("XPlant_Name", "C", 32, 0), *FIXTURE_FIELDS[1:]]
         drifted_rows = [{("XPlant_Name" if k == "Plant_Name" else k): v for k, v in row.items()}
                        for row in FIXTURE_ROWS]
-        drift_zip, drift_members = _fixture_zip(fields=drifted, rows=drifted_rows)
+        drift_zip, _drift_members = _fixture_zip(fields=drifted, rows=drifted_rows)
         pins = _fixture_pins(zip_body, members)
+        # The drifted package checksum is expected, so decoding reaches the
+        # DBF schema comparison instead of the archive checksum guard.
+        pins.update(EXPECTED_ZIP_BYTES=len(drift_zip),
+                    EXPECTED_ZIP_SHA256=hashlib.sha256(drift_zip).hexdigest())
         with patch.multiple(source, **pins), tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(ValueError, "source_dbf_schema_drift"):
                 source._decode(drift_zip, Path(tmp))
@@ -198,28 +202,30 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
         zip_body, members = _fixture_zip()
         pins = _fixture_pins(zip_body, members)
         # Non-contiguous FID roster: shapefile record numbers start at 2.
-        rows = list(FIXTURE_ROWS)
-        shp, shx = _point_geometry_bytes([(r["Longitude"], r["Latitude"]) for r in rows])
+        shp, shx = _point_geometry_bytes([(r["Longitude"], r["Latitude"]) for r in FIXTURE_ROWS])
         patched_shp = bytearray(shp)
         struct.pack_into(">i", patched_shp, 100, 2)
         struct.pack_into(">i", patched_shp, 128, 3)
-        struct.pack_into(">ii", shx, 100, 50, 10)
-        struct.pack_into(">ii", shx, 108, 64, 10)
-        members2 = dict(members)
-        members2[f"{FIXTURE_LAYER}.shp"] = bytes(patched_shp)
-        members2[f"{FIXTURE_LAYER}.shx"] = shx
+        drifted_members = dict(members)
+        drifted_members[f"{FIXTURE_LAYER}.shp"] = bytes(patched_shp)
+        drifted_members[f"{FIXTURE_LAYER}.shx"] = shx
         sink = io.BytesIO()
         with zipfile.ZipFile(sink, "w", zipfile.ZIP_DEFLATED) as z:
-            for name, body in members2.items():
+            for name, body in drifted_members.items():
                 z.writestr(name, body)
-        with patch.multiple(source, **pins), tempfile.TemporaryDirectory() as tmp:
+        fid_zip = sink.getvalue()
+        with patch.multiple(source, **{**pins, "EXPECTED_ZIP_BYTES": len(fid_zip),
+                                       "EXPECTED_ZIP_SHA256": hashlib.sha256(fid_zip).hexdigest()}), \
+                tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(ValueError, "source_fid_roster_drift"):
-                source._decode(sink.getvalue(), Path(tmp))
+                source._decode(fid_zip, Path(tmp))
         # Period drift: one row outside the pinned 2017 survey period.
         rows = [dict(FIXTURE_ROWS[0]), dict(FIXTURE_ROWS[1])]
         rows[1]["Period"] = 2014
-        period_zip, period_members = _fixture_zip(rows=rows)
-        with patch.multiple(source, **pins), tempfile.TemporaryDirectory() as tmp:
+        period_zip, _period_members = _fixture_zip(rows=rows)
+        with patch.multiple(source, **{**pins, "EXPECTED_ZIP_BYTES": len(period_zip),
+                                       "EXPECTED_ZIP_SHA256": hashlib.sha256(period_zip).hexdigest()}), \
+                tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(ValueError, "source_period_drift"):
                 source._decode(period_zip, Path(tmp))
 
@@ -364,8 +370,8 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
         job_checks = list(job.asset_layer.asset_graph.asset_check_keys)
         self.assertEqual(len(job_checks), 1)
         self.assertEqual(job_checks[0].name, "eia_natural_gas_processing_plants_complete")
-        schedule_names = {schedule.name for schedule in defs.get_schedule_defs()}
-        self.assertIn("eia_natural_gas_processing_plants_draft_refresh_schedule", schedule_names)
+        schedule = defs.get_schedule_def("eia_natural_gas_processing_plants_draft_refresh_schedule")
+        self.assertEqual(schedule.name, "eia_natural_gas_processing_plants_draft_refresh_schedule")
 
 
 if __name__ == "__main__":
