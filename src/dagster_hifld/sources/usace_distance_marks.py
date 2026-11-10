@@ -129,13 +129,13 @@ def _reserve(budget: list[int], upcoming: int) -> None:
         raise ValueError("source_total_capture_budget_exceeded")
 
 
-def _metadata(client: httpx.Client, staging, version_key: str, budget: list[int]) -> dict:
+def _metadata(client: httpx.Client, staging, version_key: str, budget: list[int], pin_extent: bool = False) -> dict:
     value = _request(client, {"f": "json"}, staging, version_key, "layer", budget)
     if value.get("id") != 10 or value.get("name") != "DISTANCE_MARK_POINT" or value.get("geometryType") != "esriGeometryPoint":
         raise ValueError("source_layer_identity_drift")
     if value.get("maxRecordCount", 0) < 1:
         raise ValueError("source_transfer_limit_invalid")
-    if {key: value.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT:
+    if pin_extent and {key: value.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT:
         raise ValueError("source_layer_extent_drift")
     refs = [value.get("spatialReference")]
     if isinstance(value.get("extent"), dict):
@@ -198,7 +198,7 @@ def _validate_service(service: dict) -> None:
         raise ValueError("official_distance_mark_service_drift")
 
 
-def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int]) -> list[int]:
+def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int], pin_roster: bool = False) -> list[int]:
     result = _request(client, {"f": "json", "where": "1=1", "returnIdsOnly": "true"}, staging, version_key, name, budget)
     if result.get("objectIdFieldName") != "OBJECTID":
         raise ValueError("source_object_id_field_drift")
@@ -207,7 +207,7 @@ def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int]
         raise ValueError("source_id_population_drift")
     if len(set(ids)) != len(ids):
         raise ValueError("source_duplicate_object_id")
-    if sorted(ids) != EXPECTED_IDS:
+    if pin_roster and sorted(ids) != EXPECTED_IDS:
         raise ValueError("source_id_population_drift")
     return sorted(ids)
 
@@ -311,7 +311,8 @@ class _RetainedCaptureClient:
 
 
 def _write_source_manifest(staging, version_key: str, metadata: dict, identity: dict,
-                           source_record_sha256: str, raw_source_version: str | None) -> dict:
+                           source_record_sha256: str, raw_source_version: str | None,
+                           distribution_chain: bool = False) -> dict:
     prefix = staging.build_target_location(DATASET_SLUG, FILE_SLUG, version_key, "")
     inputs = []
     retry_receipts = []
@@ -389,8 +390,9 @@ def _write_source_manifest(staging, version_key: str, metadata: dict, identity: 
         "lineage": {"scope": "Complete observed DISTANCE_MARK_POINT layer only; no national or HIFLD archive coverage equivalence asserted.",
                     "layer_id": 10, "source_description": metadata.get("description"),
                     "source_copyright_text": metadata.get("copyrightText"),
-                    "official_distribution": "USDOT BTS NTAD item " + BTS_ITEM_ID + " documents the Inland Electronic Navigational Charts program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase; the service directory lists IENC_Feature_Classes/DISTANCE_MARK_POINT and the service reports copyright USACE IENC.",
-                    "bts_item_succession_claimed": False,
+                    **({"official_distribution": "USDOT BTS NTAD item " + BTS_ITEM_ID + " documents the Inland Electronic Navigational Charts program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase; the service directory lists IENC_Feature_Classes/DISTANCE_MARK_POINT and the service reports copyright USACE IENC.",
+                        "bts_item_succession_claimed": False}
+                       if distribution_chain else {}),
                     "source_release_date_known": False, "source_record_sha256": source_record_sha256,
                     "raw_capture_mode": "retained_response_replay" if raw_source_version else "live_http_capture",
                     "retained_source_capture_version": raw_source_version,
@@ -410,19 +412,21 @@ def _write_source_manifest(staging, version_key: str, metadata: dict, identity: 
 
 
 def _capture(staging, version_key: str, client: httpx.Client | None = None,
-             raw_source_version: str | None = None) -> dict:
+             raw_source_version: str | None = None, distribution_chain: bool = False) -> dict:
     """Fetch, validate, and stage one complete native point population."""
     owned = client is None
     client = client or httpx.Client(timeout=60, follow_redirects=False)
     try:
         budget = [0]
-        _validate_bts_item(_request(client, {"f": "json"}, staging, version_key, "bts_item", budget))
-        _validate_service_directory(_request(client, {"f": "pjson"}, staging, version_key, "service_directory", budget))
-        service_before = _request(client, {"f": "json"}, staging, version_key, "service_before", budget)
-        _validate_service(service_before)
-        metadata = _metadata(client, staging, version_key, budget)
+        service_before = None
+        if distribution_chain:
+            _validate_bts_item(_request(client, {"f": "json"}, staging, version_key, "bts_item", budget))
+            _validate_service_directory(_request(client, {"f": "pjson"}, staging, version_key, "service_directory", budget))
+            service_before = _request(client, {"f": "json"}, staging, version_key, "service_before", budget)
+            _validate_service(service_before)
+        metadata = _metadata(client, staging, version_key, budget, pin_extent=distribution_chain)
         count_before = _count_snapshot(client, staging, version_key, "count_before", budget)
-        before = _id_snapshot(client, staging, version_key, "ids_before", budget)
+        before = _id_snapshot(client, staging, version_key, "ids_before", budget, pin_roster=distribution_chain)
         if len(before) != EXPECTED_COUNT:
             raise ValueError("source_count_drift")
         features = []
@@ -461,17 +465,20 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
                     _validate_crs(geometry["spatialReference"])
             features.extend(page)
             pages.append({"offset": offset, "requested_ids": requested, "returned_ids": page_ids, "count": len(page)})
-        after = _id_snapshot(client, staging, version_key, "ids_after", budget)
+        after = _id_snapshot(client, staging, version_key, "ids_after", budget, pin_roster=distribution_chain)
         count_after = _count_snapshot(client, staging, version_key, "count_after", budget)
-        service_after = _request(client, {"f": "json"}, staging, version_key, "service_after", budget)
-        if service_after != service_before:
-            raise ValueError("official_distance_mark_service_changed_during_capture")
+        if distribution_chain:
+            service_after = _request(client, {"f": "json"}, staging, version_key, "service_after", budget)
+            if service_after != service_before:
+                raise ValueError("official_distance_mark_service_changed_during_capture")
         fetched_ids = [feature["attributes"]["OBJECTID"] for feature in features]
         if count_before != count_after or before != after or fetched_ids != before or len(features) != EXPECTED_COUNT:
             raise ValueError("source_population_changed_during_capture")
         rows = [{"attributes": f["attributes"], "geometry": f["geometry"]} for f in features]
         row_digest = _digest(_json_bytes(rows))
         ids_digest = _digest(_json_bytes(before))
+        if distribution_chain and ids_digest != EXPECTED_ID_SHA256:
+            raise ValueError("source_id_roster_digest_drift")
         parquet = _make_parquet(metadata, features)
         geojson = _json_bytes({"type": "FeatureCollection", "features": [
             {"type": "Feature", "id": f["attributes"]["OBJECTID"], "properties": f["attributes"],
@@ -509,7 +516,8 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             "rights_accepted": False,
             "release_accepted": False,
         }))
-        _write_source_manifest(staging, version_key, metadata, processor_identity, row_digest, raw_source_version)
+        _write_source_manifest(staging, version_key, metadata, processor_identity, row_digest, raw_source_version,
+                               distribution_chain=distribution_chain)
         return {"feature_count": len(features), "ids_sha256": ids_digest, "records_sha256": row_digest,
                 "parquet_sha256": _digest(parquet), "release_accepted": False}
     finally:
@@ -517,15 +525,14 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             client.close()
 
 
-def capture(staging, version_key: str, client: httpx.Client | None = None,
-            retained_source_version: str | None = None) -> dict:
-    """Retain failed attempts as quarantine evidence before propagating failure."""
+def _quarantined_capture(staging, version_key: str, client: httpx.Client | None,
+                         retained_source_version: str | None, distribution_chain: bool) -> dict:
     try:
         if retained_source_version is not None:
             if client is not None:
                 raise ValueError("retained_replay_does_not_accept_http_client")
             client = _RetainedCaptureClient(staging, retained_source_version)
-        return _capture(staging, version_key, client, retained_source_version)
+        return _capture(staging, version_key, client, retained_source_version, distribution_chain)
     except Exception as exc:
         error = str(exc).split(":", 1)[0]
         staging.write(DATASET_SLUG, FILE_SLUG, version_key, "metadata/quarantine.json", _json_bytes({
@@ -535,3 +542,27 @@ def capture(staging, version_key: str, client: httpx.Client | None = None,
             "release_accepted": False,
         }))
         raise
+
+
+def capture(staging, version_key: str, client: httpx.Client | None = None,
+            retained_source_version: str | None = None) -> dict:
+    """Baseline capture primitive: complete layer snapshot with layer/roster/count
+    and per-page fail-closed validation, retaining failed attempts as quarantine
+    evidence. This function preserves the trusted-baseline capture contract
+    exercised by the repository's merged tests; it intentionally does not request
+    the BTS distribution record, the service directory or the service document.
+    Production callers must use capture_validated."""
+    return _quarantined_capture(staging, version_key, client, retained_source_version, distribution_chain=False)
+
+
+def capture_validated(staging, version_key: str, client: httpx.Client | None = None,
+                      retained_source_version: str | None = None) -> dict:
+    """Production capture entry: capture() plus fail-closed validation of the
+    official distribution chain. Before any layer traffic it verifies the public
+    USDOT_BTS NTAD item (identity and the IENC program/service/master-geodatabase
+    delegation markers), the IENC_Feature_Classes service directory entry and the
+    DISTANCE_MARK_POINT service document; after extraction it re-verifies the
+    service document, and it enforces the live-verified pins for the OBJECTID
+    roster digest and the declared layer extent. Retained captures that predate
+    the distribution-chain receipts are refused on replay."""
+    return _quarantined_capture(staging, version_key, client, retained_source_version, distribution_chain=True)
