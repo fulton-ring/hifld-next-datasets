@@ -104,7 +104,7 @@ class NBIParseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'sign_contradicts'):f.geometry_for(record(state=b'066',lat=b'13190000',lon=b'-144301230'),'GU')
     def test_malformed_coordinates_and_line_handling(self):
         with self.assertRaises(ValueError):f.geometry_for(record(lat=b'38554A00',lon=b'077070110'),'DC')
-        with self.assertRaises(ValueError):f.coordinate_decimal(b'3855 460','DC')
+        with self.assertRaises(ValueError):f.coordinate_decimal(b'385546A0','DC')
         with self.assertRaises(ValueError):f.split_state_body(b'38554600','DC')
         with self.assertRaises(ValueError):f.split_state_body(record(),'DC')
         with self.assertRaises(ValueError):f.split_state_body(record()[:300]+b'\r\n','DC')
