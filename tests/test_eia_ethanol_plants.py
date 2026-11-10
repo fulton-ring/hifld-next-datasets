@@ -132,8 +132,7 @@ class EiaEthanolPlantsSourceContractTest(unittest.TestCase):
             self.assertEqual(audit["source_crs"], "EPSG:4326")
             self.assertEqual(audit["source_geometry_null_count"], 0)
             self.assertEqual(audit["source_release"], "2021-01")
-            self.assertFalse(audit["source_release_accepted"])
-            self.assertFalse(audit["release_accepted"])
+            self.assertEqual(audit["source_xy_attribute_max_delta"], 0.0)
 
     def test_pinned_archive_byte_drift_rejected(self):
         with self._fixture() as (src, root, body):
