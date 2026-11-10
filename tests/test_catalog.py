@@ -6,6 +6,7 @@ from unittest.mock import patch
 import zipfile
 
 import geopandas as gpd
+import fiona
 import pandas as pd
 from shapely.geometry import Polygon
 from shapely.geometry import Point
@@ -24,6 +25,25 @@ from dagster_hifld.resources import StagingStorageResource
 
 
 class CatalogTests(unittest.TestCase):
+    def test_streamed_dictionary_preserves_nullable_int64_precision_and_declared_float(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "source.gpkg"
+            schema = {"geometry": "Point", "properties": {"PUB_DATE": "int64", "LARGE_ID": "int64", "UNILATERAL": "float", "EMPTY_FLOAT": "float"}}
+            with fiona.open(path, "w", driver="GPKG", schema=schema, crs="EPSG:4326", layer="source") as sink:
+                for number in (None, 9007199254740993):
+                    sink.write({"geometry": {"type": "Point", "coordinates": [1, 2]},
+                                "properties": {"PUB_DATE": 20250101 if number else None, "LARGE_ID": number,
+                                               "UNILATERAL": 3.0 if number else None, "EMPTY_FLOAT": None}})
+            sample, _ = _summarize_geospatial_source(path, "source")
+            columns = {item["name"]: item for item in generate_data_dictionary(sample, "source")["columns"]}
+            self.assertEqual(columns["PUB_DATE"]["type"], "integer")
+            self.assertEqual(columns["PUB_DATE"]["exampleValues"], ["20250101"])
+            self.assertEqual(columns["LARGE_ID"]["exampleValues"], ["9007199254740993"])
+            self.assertEqual(columns["LARGE_ID"]["min"], 9007199254740993)
+            self.assertIsInstance(columns["LARGE_ID"]["min"], int)
+            self.assertEqual(columns["UNILATERAL"]["type"], "float")
+            self.assertEqual(columns["UNILATERAL"]["exampleValues"], ["3.0"])
+            self.assertEqual(columns["EMPTY_FLOAT"]["type"], "float")
     def test_generate_quality_manifest_matches_expected_fields(self):
         gdf = gpd.GeoDataFrame(
             {"station_id": [1, 2], "name": ["A", "B"]},

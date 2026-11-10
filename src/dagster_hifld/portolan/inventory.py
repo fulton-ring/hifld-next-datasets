@@ -15,6 +15,8 @@ import httpx
 from pyproj import CRS, Transformer
 from pyproj.exceptions import CRSError, ProjError
 
+from dagster_hifld.provenance import provenance_projection
+
 from .catalog import (
     HIFLD_ARCHIVE_LICENSE_HREF,
     HIFLD_ARCHIVE_PUBLIC_DOMAIN_MARK,
@@ -358,6 +360,8 @@ def _catalog_record(
 ) -> CatalogRecord:
     version = documents["version"]
     dictionary = documents["dictionary"]
+    if provenance_projection(version) is not None or provenance_projection(dictionary) is not None:
+        raise ValueError("Modern multi-input inventory requires exact downloadable metadata SHA-256 pins; use published provenance attachment instead of dropping inputs")
     quality = documents["quality"]
     source_tags = version.get("tags")
     dictionary_title = _text(dictionary, "title")

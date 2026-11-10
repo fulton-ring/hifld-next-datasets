@@ -3,6 +3,10 @@
 from collections.abc import Sequence
 
 from dagster_hifld.resources import StagingStorageResource, StorageObjectSnapshot
+from dagster_hifld.release_approval import (
+    require_generated_object_approval,
+    require_release_approval,
+)
 from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
 
 
@@ -19,6 +23,7 @@ def promote_immutable_objects(
     destinations are pinned by the storage backend's conditional-copy primitive.
     A failed partial upload is safe to retry; changed bytes need a new version.
     """
+    accepted_snapshots = require_release_approval(source, destination, list(pairs))
     if version_prefix is not None:
         prefix = destination._ensure_prefixed(version_prefix).rstrip("/") + "/"
         selected = {destination._ensure_prefixed(key) for _, key in pairs}
@@ -37,6 +42,9 @@ def promote_immutable_objects(
         before = source.object_snapshot(source_key)
         if before is None:
             raise FileNotFoundError(source_key)
+        approved = accepted_snapshots.get(source._ensure_prefixed(source_key))
+        if approved is not None and before != approved:
+            raise RuntimeError(f"Source changed after release acceptance: {source_key}")
         target = destination.object_snapshot(destination_key)
         if target is not None:
             if not source.object_content_matches(
@@ -71,6 +79,7 @@ def write_immutable_object(
     storage: StagingStorageResource, key: str, contents: bytes
 ) -> str:
     """Create a generated canonical object, or reuse its identical bytes."""
+    require_generated_object_approval(storage, key, contents)
     before = storage.object_snapshot(key)
     if before is None:
         storage.write_key_if_unchanged(key, contents, None)

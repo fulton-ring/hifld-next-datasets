@@ -8,10 +8,23 @@ from dagster_hifld.source_manifest import (
     ResolvedSourceManifest,
     load_resolved_source_manifest,
     snapshot_source_metadata,
+    unsupported_output_reason,
 )
 
 
 class SourceManifestTests(unittest.TestCase):
+    def test_output_exclusions_require_supported_names_and_nonblank_string_reasons(self):
+        for policy in (None, [], "shapefile_zip", {"shapefile_zip": None},
+                       {"shapefile_zip": ""}, {"shapefile_zip": "  "},
+                       {"shapefile_zip": False}, {"shapefile_zip": {"reason": "loss"}},
+                       {"geoparquet": None}, {"unknown_format": "loss"},
+                       {"shapefile_zip": "loss", "pmtiles": 3}):
+            with self.subTest(policy=policy), self.assertRaises(ValueError):
+                unsupported_output_reason({"unsupported_output_formats": policy}, "shapefile_zip")
+        self.assertIsNone(unsupported_output_reason({}, "shapefile_zip"))
+        self.assertIsNone(unsupported_output_reason({"unsupported_output_formats": {}}, "shapefile_zip"))
+        self.assertEqual(unsupported_output_reason({"unsupported_output_formats": {"shapefile_zip": "DBF loss"}}, "shapefile_zip"), "DBF loss")
+
     def test_snapshots_authored_metadata_before_generated_catalog_overwrites_it(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             staging = StagingStorageResource(
