@@ -138,7 +138,7 @@ def _decode(body, tmp):
         raise ValueError("source_crs_drift")
     if g["OBJECTID"].isna().any() or g["OBJECTID"].duplicated().any():
         raise ValueError("source_id_drift")
-    if set(g["Data_Perio"].tolist()) != [EXPECTED_DATA_PERIOD]:
+    if set(g["Data_Perio"].tolist()) != {EXPECTED_DATA_PERIOD}:
         raise ValueError("source_data_period_drift")
     dx = abs(g.geometry.x.to_numpy() - g["Longitude"].to_numpy())
     dy = abs(g.geometry.y.to_numpy() - g["Latitude"].to_numpy())
