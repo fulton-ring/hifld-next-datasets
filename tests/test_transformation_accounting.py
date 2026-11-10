@@ -8,10 +8,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from dagster_hifld.assets.publish import _copy_version_files
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.release_approval import ReleaseApprovalError, require_release_approval
+from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.transformation_accounting import (
-    AccountingLimits, ADAPTER, _json_bytes, _untyped, account_construction, sha256_file,
+    AccountingLimits, ADAPTER, ADAPTER as ACCOUNTING_ADAPTER,
+    _code_digest as _accounting_code_digest, _digest as _accounting_digest,
+    _json_bytes, _untyped, account_construction, sha256_file,
 )
 from dagster_hifld.validation import compare_full_rows
+from test_full_verification import accepted_fixture, feature as accepted_feature
 
 
 def write_jsonl(path, rows):
@@ -487,6 +494,204 @@ class TransformationAccountingTests(unittest.TestCase):
             last = lineage[-1].encode()
             self.assertEqual(_json_bytes(_untyped(json.loads(last))), last)
             self.assertEqual(len(_untyped(json.loads(last))["contributors"]), rows)
+
+
+class AccountingModeGateTests(unittest.TestCase):
+    """Constructed candidates need replayed executable accounting to release."""
+
+    def _accounted_fixture(self, root):
+        """Extend the accepted fixture with a constructed candidate custody chain."""
+        source, target, registry = accepted_fixture(root)
+        prefix = "synthetic/points/v1.0.0"
+        version_dir = root / "staging" / prefix
+        shard_a = (json.dumps(accepted_feature()) + "\n").encode()
+        shard_b = (json.dumps(accepted_feature("002", "VA", "B")) + "\n").encode()
+        regions = (json.dumps({"state": "PA", "region": "East"}) + "\n").encode()
+        ledger = (json.dumps({"row": 2, "reason": "unmatched_region"}) + "\n").encode()
+        for name, body in (("streams/events-a.jsonl", shard_a), ("streams/events-b.jsonl", shard_b),
+                           ("streams/regions.jsonl", regions), ("streams/dropped.jsonl", ledger)):
+            source.write("synthetic", "points", "v1.0.0", name, body)
+        plan = {
+            "schema_version": 1,
+            "steps": [
+                {"op": "union", "input_streams": ["events-a", "events-b"], "output_stream": "events"},
+                {"op": "join", "left_stream": "events", "right_stream": "regions", "join_type": "left",
+                 "left_keys": [["properties", "state"]], "right_keys": [["state"]], "output_stream": "joined"},
+                {"op": "filter", "input_stream": "joined", "output_stream": "kept",
+                 "ledger": {"path": "streams/dropped.jsonl", "sha256": sha256_file(version_dir / "streams/dropped.jsonl"),
+                            "bytes": len(ledger)}},
+                {"op": "project", "input_stream": "kept", "output_stream": "candidate",
+                 "properties": [{"name": "id", "path": ["left", "properties", "id"]},
+                                {"name": "state", "path": ["left", "properties", "state"]},
+                                {"name": "name", "path": ["left", "properties", "name"]}],
+                 "geometry_path": ["left", "geometry"]},
+                {"op": "union", "input_streams": ["candidate"], "output_stream": "audited"},
+            ],
+            "output": "audited",
+        }
+        spec = {"schema_version": 1, "root": str(version_dir), "roster_prefix": "streams", "streams": [
+            {"name": "events-a", "path": "streams/events-a.jsonl", "sha256": sha256_file(version_dir / "streams/events-a.jsonl"),
+             "bytes": len(shard_a), "rows": 1},
+            {"name": "events-b", "path": "streams/events-b.jsonl", "sha256": sha256_file(version_dir / "streams/events-b.jsonl"),
+             "bytes": len(shard_b), "rows": 1},
+            {"name": "regions", "path": "streams/regions.jsonl", "sha256": sha256_file(version_dir / "streams/regions.jsonl"),
+             "bytes": len(regions), "rows": 1},
+        ]}
+        candidate = version_dir / "metadata/candidate.records.jsonl"
+        candidate_pin = {"path": "metadata/candidate.records.jsonl", "sha256": sha256_file(candidate),
+                         "bytes": candidate.stat().st_size, "rows": 1}
+        receipt = account_construction(spec, plan, candidate_pin, root / "accounting-evidence")
+        assert receipt["status"] == "pass"
+        source.write("synthetic", "points", "v1.0.0", "metadata/construction_plan.json",
+                     (json.dumps(plan, sort_keys=True, indent=2) + "\n").encode())
+        source.write("synthetic", "points", "v1.0.0", "metadata/transformation_accounting.json",
+                     (root / "accounting-evidence/transformation_accounting.json").read_bytes())
+        source.write("synthetic", "points", "v1.0.0", "metadata/transformation_lineage.jsonl",
+                     (root / "accounting-evidence/transformation_lineage.jsonl").read_bytes())
+
+        descriptor = {"adapter": ACCOUNTING_ADAPTER,
+                      "plan": {"path": "construction_plan.json",
+                               "sha256": sha256_file(version_dir / "metadata/construction_plan.json")},
+                      "receipt": {"path": "transformation_accounting.json",
+                                  "sha256": sha256_file(version_dir / "metadata/transformation_accounting.json")},
+                      "lineage": {"path": "transformation_lineage.jsonl",
+                                  "sha256": sha256_file(version_dir / "metadata/transformation_lineage.jsonl")}}
+        report = json.loads(source.read_key(f"{prefix}/metadata/baseline_comparison.json"))
+        report["construction_accounting"] = descriptor
+        source.write_key(f"{prefix}/metadata/baseline_comparison.json", json.dumps(report, sort_keys=True).encode())
+
+        manifest_key = f"{prefix}/metadata/source_manifest.json"
+        manifest = json.loads(source.read_key(manifest_key))
+        manifest["transformations"] = [{"name": "union_paged_shards"}, {"name": "left_join_regions"},
+                                       {"name": "filter_unmatched_regions"}, {"name": "project_published_schema"}]
+        objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "v1.0.0")}
+        manifest["lineage"] = {
+            "schema_version": 1, "adapter": ACCOUNTING_ADAPTER,
+            "code_sha256": _accounting_code_digest(),
+            "input_streams": {f"{prefix}/streams/{name}": objects[f"{prefix}/streams/{name}"]
+                              for name in ("events-a.jsonl", "events-b.jsonl", "regions.jsonl")},
+            "plan": {"key": f"{prefix}/metadata/construction_plan.json", "sha256": descriptor["plan"]["sha256"]},
+            "receipt": {"key": f"{prefix}/metadata/transformation_accounting.json", "sha256": descriptor["receipt"]["sha256"]},
+            "lineage": {"key": f"{prefix}/metadata/transformation_lineage.jsonl", "sha256": descriptor["lineage"]["sha256"]},
+            "output": {"key": f"{prefix}/metadata/candidate.records.jsonl",
+                       "sha256": objects[f"{prefix}/metadata/candidate.records.jsonl"],
+                       "bytes": candidate.stat().st_size},
+        }
+        source.write_key(manifest_key, json.dumps(manifest).encode())
+        snapshot_source_metadata(source, "synthetic", "points", "v1.0.0")
+        projection = provenance_projection(load_resolved_source_manifest(source, "synthetic", "points", "v1.0.0").metadata)
+        source.write_key(f"{prefix}/metadata/resolved_provenance.json", json.dumps(projection).encode())
+        source.write_key(f"{prefix}/metadata/data_dictionary.json",
+                         json.dumps({"agency": "Synthetic Agency", **projection}).encode())
+
+        objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "v1.0.0")}
+        value = json.loads(registry.read_text())
+        entry = value["releases"][0]
+        entry.update(
+            report_sha256=objects[f"{prefix}/metadata/baseline_comparison.json"],
+            provenance_sha256=objects[manifest_key],
+            staged_objects=objects, published_objects=objects,
+        )
+        entry["candidate_comparison_input"]["derivation"] = {
+            "code_sha256": _accounting_code_digest(),
+            "parameters": {"mode": "transformation_accounting_v1",
+                           "plan_path": "construction_plan.json",
+                           "receipt_path": "transformation_accounting.json"},
+            "source_objects": {f"{prefix}/streams/{name}": objects[f"{prefix}/streams/{name}"]
+                               for name in ("events-a.jsonl", "events-b.jsonl", "regions.jsonl")},
+        }
+        registry.write_text(json.dumps(value))
+        return source, target, registry, prefix, objects
+
+    def test_accounted_construction_replays_and_promotes(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            source, target, registry, prefix, objects = self._accounted_fixture(root)
+            candidate_key = f"{prefix}/metadata/candidate.records.jsonl"
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                snapshots = require_release_approval(source, target, [(candidate_key, candidate_key)])
+            self.assertIn(candidate_key, snapshots)
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
+            published = set(target.list_prefix())
+            self.assertTrue(any(key.endswith("transformation_accounting.json") for key in published))
+            self.assertTrue(any(key.endswith("transformation_lineage.jsonl") for key in published))
+            self.assertEqual(target.sha256_key(f"{prefix}/streams/events-a.jsonl"), objects[f"{prefix}/streams/events-a.jsonl"])
+
+    def test_forged_self_consistent_receipt_is_caught_by_replay(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            source, target, registry, prefix, objects = self._accounted_fixture(root)
+            source, target = source, target
+            receipt_key = f"{prefix}/metadata/transformation_accounting.json"
+            receipt = json.loads(source.read_key(receipt_key))
+            receipt["steps"][0]["output_rows"] += 100
+            receipt["receipt_id"] = _accounting_digest({k: v for k, v in receipt.items() if k != "receipt_id"})
+            source.write_key(receipt_key, json.dumps(receipt, sort_keys=True).encode())
+            objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "v1.0.0")}
+            report = json.loads(source.read_key(f"{prefix}/metadata/baseline_comparison.json"))
+            report["construction_accounting"]["receipt"]["sha256"] = objects[receipt_key]
+            source.write_key(f"{prefix}/metadata/baseline_comparison.json", json.dumps(report, sort_keys=True).encode())
+            value = json.loads(registry.read_text())
+            entry = value["releases"][0]
+            entry["staged_objects"] = objects
+            entry["published_objects"] = objects
+            entry["report_sha256"] = objects[f"{prefix}/metadata/baseline_comparison.json"]
+            entry["candidate_comparison_input"]["derivation"]["source_objects"] = {
+                f"{prefix}/streams/{name}": objects[f"{prefix}/streams/{name}"]
+                for name in ("events-a.jsonl", "events-b.jsonl", "regions.jsonl")}
+            manifest_key = f"{prefix}/metadata/source_manifest.json"
+            manifest = json.loads(source.read_key(manifest_key))
+            manifest["lineage"]["receipt"]["sha256"] = objects[receipt_key]
+            source.write_key(manifest_key, json.dumps(manifest).encode())
+            snapshot_source_metadata(source, "synthetic", "points", "v1.0.0")
+            projection = provenance_projection(load_resolved_source_manifest(source, "synthetic", "points", "v1.0.0").metadata)
+            source.write_key(f"{prefix}/metadata/resolved_provenance.json", json.dumps(projection).encode())
+            source.write_key(f"{prefix}/metadata/data_dictionary.json",
+                             json.dumps({"agency": "Synthetic Agency", **projection}).encode())
+            objects = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "v1.0.0")}
+            entry["staged_objects"] = objects
+            entry["published_objects"] = objects
+            entry["provenance_sha256"] = objects[manifest_key]
+            entry["report_sha256"] = objects[f"{prefix}/metadata/baseline_comparison.json"]
+            registry.write_text(json.dumps(value))
+            candidate_key = f"{prefix}/metadata/candidate.records.jsonl"
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                with self.assertRaisesRegex(ReleaseApprovalError, "construction_accounting_replay_mismatch"):
+                    require_release_approval(source, target, [(candidate_key, candidate_key)])
+            self.assertEqual(target.list_prefix(), [])
+
+    def test_accounted_mode_requires_declared_transformations_and_matched_candidate_pin(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            source, target, registry, prefix, objects = self._accounted_fixture(root)
+            manifest_key = f"{prefix}/metadata/source_manifest.json"
+            candidate_key = f"{prefix}/metadata/candidate.records.jsonl"
+            with tempfile.TemporaryDirectory() as mutation:
+                manifest = json.loads(source.read_key(manifest_key))
+                manifest["transformations"] = []
+                source.write_key(manifest_key, json.dumps(manifest).encode())
+                snapshot_source_metadata(source, "synthetic", "points", "v1.0.0")
+                projection = provenance_projection(load_resolved_source_manifest(source, "synthetic", "points", "v1.0.0").metadata)
+                source.write_key(f"{prefix}/metadata/resolved_provenance.json", json.dumps(projection).encode())
+                source.write_key(f"{prefix}/metadata/data_dictionary.json",
+                                 json.dumps({"agency": "Synthetic Agency", **projection}).encode())
+                objects_now = {key: source.sha256_key(key) for key in source.list_keys("synthetic", "points", "v1.0.0")}
+                value = json.loads(registry.read_text())
+                value["releases"][0].update(staged_objects=objects_now, published_objects=objects_now,
+                                            provenance_sha256=objects_now[manifest_key])
+                registry.write_text(json.dumps(value))
+                with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                    with self.assertRaisesRegex(ReleaseApprovalError, "declared_transformations"):
+                        require_release_approval(source, target, [(candidate_key, candidate_key)])
+            self.assertEqual(target.list_prefix(), [])
+            value = json.loads(registry.read_text())
+            value["releases"][0]["candidate_comparison_input"]["sha256"] = "0" * 64
+            registry.write_text(json.dumps(value))
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
+                with self.assertRaises(ReleaseApprovalError):
+                    require_release_approval(source, target, [(candidate_key, candidate_key)])
+            self.assertEqual(target.list_prefix(), [])
 
 
 if __name__ == "__main__":
