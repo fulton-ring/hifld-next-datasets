@@ -147,12 +147,12 @@ class NBIContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'producer_state_file_roster_drift'):f.inspect_captures(bad)
         bad=dict(good);del bad['state_TX']
         with self.assertRaisesRegex(ValueError,'capture_roster_drift'):f.inspect_captures(bad)
-        extended=good['state_TX'][0]+record(state=b'486',structure=b'0003           ')
+        extended=good['state_TX'][0]+record(state=b'486',structure=b'0003           ')+b'\r\n'
         bad=dict(good);bad['state_TX']=(extended,receipt(self.contract.urls['state_TX'],extended))
         rebind=dict(self.contract.expected);rebind['TX']=expected_for(extended,'486',rows=3)
         with mock.patch.object(f,'EXPECTED_FILES',rebind):
             with self.assertRaisesRegex(ValueError,'complete_count_drift'):f.inspect_captures(bad)
-        duplicated=good['state_TX'][0]+record(state=b'486',structure=b'1103(RAMP C)')
+        duplicated=good['state_TX'][0]+record(state=b'486',structure=b'1103(RAMP C)')+b'\r\n'
         bad=dict(good);bad['state_TX']=(duplicated,receipt(self.contract.urls['state_TX'],duplicated))
         rebind=dict(self.contract.expected);rebind['TX']=expected_for(duplicated,'486',rows=3)
         with mock.patch.object(f,'EXPECTED_FILES',rebind):
@@ -208,6 +208,7 @@ class NBIContractTests(unittest.TestCase):
             f.write_private(root,f.READY,f.encode(ready))
             f.write_private(root,'metadata/source/source_manifest.json',b'{"approved":true}')
             with self.assertRaisesRegex(ValueError,'cached_source_snapshot_drift'):f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+            f.write_private(root,'metadata/source/source_manifest.json',f.encode(manifest))
             snapshot_source_metadata(storage,f.SLUG,f.SLUG,version)
             resolved=load_resolved_source_manifest(storage,f.SLUG,f.SLUG,version)
             summary=summarize_staged_catalog(storage,f.SLUG,f.SLUG,version,f.SLUG,source_metadata=resolved.metadata)
