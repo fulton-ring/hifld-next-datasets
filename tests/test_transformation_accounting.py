@@ -1,13 +1,15 @@
 import copy
+import decimal
 import json
 import os
 import tempfile
+import tracemalloc
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from dagster_hifld.transformation_accounting import (
-    AccountingLimits, ADAPTER, _untyped, account_construction, sha256_file,
+    AccountingLimits, ADAPTER, _json_bytes, _untyped, account_construction, sha256_file,
 )
 from dagster_hifld.validation import compare_full_rows
 
@@ -347,6 +349,103 @@ class TransformationAccountingTests(unittest.TestCase):
                                        candidate_sha256=sha256_file(root / "streams/candidate.jsonl"),
                                        baseline_reference=reference)
             self.assertEqual(report["status"], "pass")
+
+    def test_decimal_sums_are_exact_and_context_independent(self):
+        """High-precision and cancelled sums replay exactly under any decimal context."""
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
+            streams = root / "streams"
+            streams.mkdir(parents=True)
+            (streams / "items.jsonl").write_text(
+                '{"group": "big", "value": 123456789012345678901234567890.1}\n'
+                '{"group": "big", "value": 0.2}\n'
+                '{"group": "mix", "value": 1000000000000000000000000000000}\n'
+                '{"group": "mix", "value": 0.5}\n'
+                '{"group": "cancel", "value": 12345678901234567890123456789}\n'
+                '{"group": "cancel", "value": -12345678901234567890123456788}\n'
+                '{"group": "cancel", "value": 1.5}\n')
+            (streams / "sums.jsonl").write_text(
+                '{"key": ["big"], "rows": 2, "total": 123456789012345678901234567890.3, "counted": 2}\n'
+                '{"key": ["mix"], "rows": 2, "total": 1000000000000000000000000000000.5, "counted": 2}\n'
+                '{"key": ["cancel"], "rows": 3, "total": 2.5, "counted": 3}\n')
+            plan = {"schema_version": 1, "steps": [
+                {"op": "aggregate", "input_stream": "items", "key_paths": [["group"]],
+                 "aggregations": [{"name": "total", "function": "sum", "field_path": ["value"]},
+                                  {"name": "counted", "function": "count"}],
+                 "output_stream": "sums"}], "output": "sums"}
+            spec = {"schema_version": 1, "root": str(root), "roster_prefix": "streams", "streams": [
+                {"name": "items", "path": "streams/items.jsonl",
+                 **pin(streams / "items.jsonl"), "rows": 7}]}
+            candidate = {"path": "streams/sums.jsonl", **pin(streams / "sums.jsonl"), "rows": 3}
+            with decimal.localcontext(decimal.Context(prec=2)):
+                receipt_tiny = account_construction(spec, plan, candidate, evidence)
+            with decimal.localcontext(decimal.Context(prec=999)):
+                receipt_huge = account_construction(spec, plan, candidate, evidence)
+            receipt_default = account_construction(spec, plan, candidate, evidence)
+            self.assertEqual(receipt_default["status"], "pass", receipt_default["reason_codes"])
+            self.assertEqual(receipt_tiny, receipt_default)
+            self.assertEqual(receipt_huge, receipt_default)
+            for line in (evidence / "transformation_lineage.jsonl").read_text().splitlines():
+                raw = line.encode()
+                self.assertEqual(_json_bytes(_untyped(json.loads(raw))), raw)
+            # A context-rounded sum (prec 28 default) must never pass replay.
+            (streams / "sums.jsonl").write_text(
+                '{"key": ["big"], "rows": 2, "total": 1.234567890123456789012345679E+29, "counted": 2}\n'
+                '{"key": ["mix"], "rows": 2, "total": 1000000000000000000000000000000.5, "counted": 2}\n'
+                '{"key": ["cancel"], "rows": 3, "total": 2.5, "counted": 3}\n')
+            candidate.update(pin(streams / "sums.jsonl"))
+            receipt = account_construction(spec, plan, candidate, evidence)
+            self.assertEqual(receipt["status"], "blocked")
+            self.assertTrue(any("differs from candidate" in code for code in receipt["reason_codes"]),
+                            receipt["reason_codes"])
+
+    def test_full_population_accounting_stays_memory_bounded(self):
+        """Many small records never materialize the population in Python memory."""
+        rows = 40000
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
+            streams = root / "streams"
+            streams.mkdir(parents=True)
+            shard_a, shard_b = streams / "votes-a.jsonl", streams / "votes-b.jsonl"
+            with shard_a.open("w") as first, shard_b.open("w") as second:
+                for i in range(rows):
+                    line = json.dumps({"id": i, "ward": "w", "tally": (i % 5) + 1}) + "\n"
+                    (first if i < rows // 2 else second).write(line)
+            total = sum((i % 5) + 1 for i in range(rows))
+            (streams / "totals.jsonl").write_text(
+                json.dumps({"key": ["w"], "rows": rows, "total": total, "counted": rows}) + "\n")
+            plan = {"schema_version": 1, "steps": [
+                {"op": "union", "input_streams": ["votes-a", "votes-b"], "output_stream": "votes"},
+                {"op": "deduplicate", "input_stream": "votes", "key_paths": [["id"]], "rule": "first",
+                 "output_stream": "unique"},
+                {"op": "aggregate", "input_stream": "unique", "key_paths": [["ward"]],
+                 "aggregations": [{"name": "total", "function": "sum", "field_path": ["tally"]},
+                                  {"name": "counted", "function": "count"}],
+                 "output_stream": "totals"}], "output": "totals"}
+            spec = {"schema_version": 1, "root": str(root), "roster_prefix": "streams", "streams": [
+                {"name": "votes-a", "path": "streams/votes-a.jsonl", **pin(shard_a), "rows": rows // 2},
+                {"name": "votes-b", "path": "streams/votes-b.jsonl", **pin(shard_b), "rows": rows - rows // 2}]}
+            candidate = {"path": "streams/totals.jsonl", **pin(streams / "totals.jsonl"), "rows": 1}
+            tracemalloc.start()
+            try:
+                receipt = account_construction(spec, plan, candidate, evidence)
+                _, peak = tracemalloc.get_tracemalloc_memory()
+            finally:
+                tracemalloc.stop()
+            self.assertEqual(receipt["status"], "pass", receipt["reason_codes"])
+            union, dedup, aggregate = receipt["steps"]
+            self.assertEqual(union["output_rows"], rows)
+            self.assertEqual(dedup["dropped_rows"], 0)
+            self.assertEqual(aggregate["groups"], 1)
+            self.assertEqual(aggregate["max_group_rows"], rows)
+            self.assertEqual(aggregate["min_group_rows"], rows)
+            self.assertLess(peak, 12 * 1024 * 1024,
+                            "population-sized Python allocations leaked into accounting")
+            lineage = (evidence / "transformation_lineage.jsonl").read_text().splitlines()
+            self.assertEqual(len(lineage), 2 * rows + 1)
+            last = lineage[-1].encode()
+            self.assertEqual(_json_bytes(_untyped(json.loads(last))), last)
+            self.assertEqual(len(_untyped(json.loads(last))["contributors"]), rows)
 
 
 if __name__ == "__main__":

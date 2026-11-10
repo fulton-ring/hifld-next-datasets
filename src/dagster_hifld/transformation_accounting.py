@@ -119,6 +119,36 @@ def _resolve(record: Any, path: list[str]) -> Any:
     return record
 
 
+def _decimal_parts(value: Decimal) -> tuple[int, int]:
+    """Exact (mantissa, scale) parts of a finite decimal; no context is used."""
+    sign, digits, exponent = value.as_tuple()
+    if not isinstance(exponent, int):
+        raise ValueError("Non-finite decimal in aggregation field")
+    mantissa = 0
+    for digit in digits:
+        mantissa = mantissa * 10 + digit
+    return (-mantissa if sign else mantissa), -exponent
+
+
+def _sum_parts(total: tuple[int, int], part: tuple[int, int]) -> tuple[int, int]:
+    """Exact integer mantissa/scale addition; aligns scales without rounding."""
+    total_mantissa, total_scale = total
+    part_mantissa, part_scale = part
+    if part_scale > total_scale:
+        total_mantissa *= 10 ** (part_scale - total_scale)
+        total_scale = part_scale
+    elif total_scale > part_scale:
+        part_mantissa *= 10 ** (total_scale - part_scale)
+    return total_mantissa + part_mantissa, total_scale
+
+
+def _parts_to_decimal(total: tuple[int, int]) -> Decimal:
+    """Rebuild the exact decimal from integer parts via the lossless constructor."""
+    mantissa, scale = total
+    digits = tuple(int(digit) for digit in str(abs(mantissa)))
+    return Decimal((1 if mantissa < 0 else 0, digits or (0,), -scale))
+
+
 def _untyped(value: Any) -> Any:
     """Decode the lossless typed encoding back to its original Python value."""
     if not isinstance(value, list) or not value:
@@ -250,17 +280,15 @@ def _validate_plan(plan: dict, stream_names: set[str], limits: AccountingLimits)
         raise ValueError("Every non-terminal stream must be consumed exactly once")
 
 
-def _load_records(path: Path, *, limits: AccountingLimits) -> list[bytes]:
-    """Strictly parse one complete pinned JSONL stream into canonical records."""
-    records = []
+def _iter_records(path: Path, *, limits: AccountingLimits):
+    """Strictly parse one pinned JSONL stream, one canonical record at a time."""
     with path.open("rb") as stream:
         while line := stream.readline(limits.max_record_bytes + 1):
             if len(line) > limits.max_record_bytes:
                 raise ValueError("Record byte limit exceeded")
             record = json.loads(line, parse_float=Decimal, parse_constant=_reject_constant,
                                 object_pairs_hook=_no_duplicate_members)
-            records.append(_json_bytes(record))
-    return records
+            yield _json_bytes(record)
 
 
 def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Path,
@@ -387,10 +415,32 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                     if lineage_path.stat().st_size + scratch_bytes > limits.max_scratch_bytes:
                         raise ValueError("Scratch quota exceeded")
 
-                def emit(out_stream: str, ordinal: int, key: bytes, contributors: list[list]) -> None:
+                charged = 0
+
+                def charge(delta: int) -> None:
+                    """Charge scratch growth by bytes so bulk loops stay quota-bounded."""
+                    nonlocal charged
+                    charged += delta
+                    if charged >= 4 * 1024 * 1024:
+                        charged = 0
+                        quota()
+
+                def emit(out_stream: str, ordinal: int, key: bytes, contributors) -> None:
+                    # Contributors stream one at a time so a population-sized
+                    # group cannot materialize its lineage row in Python memory;
+                    # the assembled bytes equal _json_bytes of the whole record.
                     nonlocal lineage_rows
-                    lineage.write(_json_bytes({"output_stream": out_stream, "row": ordinal, "key": json.loads(key),
-                                               "contributors": contributors}) + b"\n")
+                    lineage.write(b'["object",[["contributors",["array",[')
+                    written = 0
+                    for contributor in contributors:
+                        lineage.write((b"," if written else b"") + _json_bytes(contributor))
+                        written += 1
+                        if written % 1024 == 0:
+                            lineage.flush()
+                            quota()
+                    lineage.write(b']]],["key",' + _json_bytes(json.loads(key)) + b'],["output_stream",'
+                                  + _json_bytes(out_stream) + b'],["row",'
+                                  + _json_bytes(ordinal) + b']]]\n')
                     lineage_rows += 1
                     if lineage_rows % 1024 == 0:
                         quota()
@@ -415,12 +465,14 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                     return db.execute("SELECT COUNT(*) FROM stream_rows WHERE stream=?", (stream_name,)).fetchone()[0]
 
                 for name, pin in sorted(streams.items()):
-                    records = _load_records(root / pin["path"], limits=limits)
-                    if len(records) != pin["rows"]:
+                    rows = 0
+                    for record in _iter_records(root / pin["path"], limits=limits):
+                        rows += 1
+                        db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (name, rows, _UNKEYED, record))
+                        charge(len(record) + 64)
+                    if rows != pin["rows"]:
                         raise ValueError("Input stream row count differs from pin")
-                    for ordinal, record in enumerate(records, start=1):
-                        db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (name, ordinal, _UNKEYED, record))
-                        quota()
+                    quota()
 
                 for index, step in enumerate(plan["steps"]):
                     op, out = step["op"], step["output_stream"]
@@ -439,7 +491,7 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                                 ordinal += 1
                                 db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, _UNKEYED, record))
                                 emit(out, ordinal, _UNKEYED, [[name, row_ordinal]])
-                                quota()
+                                charge(len(record) + 64)
                         accounting["output_rows"] = ordinal
                         if ordinal != total:
                             raise ValueError("Union row accounting mismatch")
@@ -451,40 +503,44 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                         receipt["null_keys"][left] = left_nulls
                         receipt["null_keys"][right] = right_nulls
                         left_rows, right_rows = stream_size(left), stream_size(right)
-                        matched_left: set[int] = set()
-                        matched_right: set[int] = set()
-                        matched_keys: set[bytes] = set()
                         ordinal = 0
                         for left_ordinal, key, left_record in db.execute(
                                 "SELECT ordinal,key,record FROM stream_rows WHERE stream=? ORDER BY ordinal", (left,)):
-                            matches = list(db.execute(
-                                "SELECT ordinal,record FROM stream_rows WHERE stream=? AND key=? ORDER BY ordinal",
-                                (right, key)))
-                            if matches:
-                                matched_keys.add(key)
-                                matched_left.add(left_ordinal)
-                                for right_ordinal, right_record in matches:
-                                    matched_right.add(right_ordinal)
-                                    ordinal += 1
-                                    record = _json_bytes({"left": _untyped(json.loads(left_record)), "right": _untyped(json.loads(right_record))})
-                                    db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
-                                    emit(out, ordinal, key, [[left, left_ordinal], [right, right_ordinal]])
-                                    quota()
-                            elif step["join_type"] in {"left", "full"}:
+                            matched = False
+                            for right_ordinal, right_record in db.execute(
+                                    "SELECT ordinal,record FROM stream_rows WHERE stream=? AND key=? ORDER BY ordinal",
+                                    (right, key)):
+                                matched = True
+                                ordinal += 1
+                                record = _json_bytes({"left": _untyped(json.loads(left_record)), "right": _untyped(json.loads(right_record))})
+                                db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
+                                emit(out, ordinal, key, [[left, left_ordinal], [right, right_ordinal]])
+                                charge(len(record) + 64)
+                            if not matched and step["join_type"] in {"left", "full"}:
                                 ordinal += 1
                                 record = _json_bytes({"left": _untyped(json.loads(left_record)), "right": None})
                                 db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
                                 emit(out, ordinal, key, [[left, left_ordinal]])
-                                quota()
+                                charge(len(record) + 64)
                         if step["join_type"] in {"right", "full"}:
                             for right_ordinal, key, right_record in db.execute(
-                                    "SELECT ordinal,key,record FROM stream_rows WHERE stream=? ORDER BY ordinal", (right,)):
-                                if right_ordinal not in matched_right:
-                                    ordinal += 1
-                                    record = _json_bytes({"left": None, "right": _untyped(json.loads(right_record))})
-                                    db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
-                                    emit(out, ordinal, key, [[right, right_ordinal]])
-                                    quota()
+                                    "SELECT ordinal,key,record FROM stream_rows r WHERE r.stream=? AND NOT EXISTS("
+                                    "SELECT 1 FROM stream_rows l WHERE l.stream=? AND l.key=r.key) ORDER BY r.ordinal",
+                                    (right, left)):
+                                ordinal += 1
+                                record = _json_bytes({"left": None, "right": _untyped(json.loads(right_record))})
+                                db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
+                                emit(out, ordinal, key, [[right, right_ordinal]])
+                                charge(len(record) + 64)
+                        matched_left = db.execute(
+                            "SELECT COUNT(*) FROM stream_rows l WHERE l.stream=? AND EXISTS("
+                            "SELECT 1 FROM stream_rows r WHERE r.stream=? AND r.key=l.key)", (left, right)).fetchone()[0]
+                        matched_right = db.execute(
+                            "SELECT COUNT(*) FROM stream_rows r WHERE r.stream=? AND EXISTS("
+                            "SELECT 1 FROM stream_rows l WHERE l.stream=? AND l.key=r.key)", (right, left)).fetchone()[0]
+                        distinct_matched_keys = db.execute(
+                            "SELECT COUNT(DISTINCT l.key) FROM stream_rows l WHERE l.stream=? AND EXISTS("
+                            "SELECT 1 FROM stream_rows r WHERE r.stream=? AND r.key=l.key)", (left, right)).fetchone()[0]
                         buckets = {"one_to_one_keys": 0, "one_to_many_keys": 0, "many_to_one_keys": 0, "many_to_many_keys": 0}
                         for left_count, right_count in db.execute(
                                 "SELECT COUNT(DISTINCT a.ordinal),COUNT(DISTINCT b.ordinal) FROM stream_rows a "
@@ -501,10 +557,10 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                                 (left, right, left, limits.max_unmatched_key_samples)):
                             samples.append([json.loads(key), count])
                         accounting.update({"left_rows": left_rows, "right_rows": right_rows,
-                                           "matched_left_rows": len(matched_left), "matched_right_rows": len(matched_right),
-                                           "unmatched_left_rows": left_rows - len(matched_left),
-                                           "unmatched_right_rows": right_rows - len(matched_right),
-                                           "distinct_matched_keys": len(matched_keys), "fan_out": buckets,
+                                           "matched_left_rows": matched_left, "matched_right_rows": matched_right,
+                                           "unmatched_left_rows": left_rows - matched_left,
+                                           "unmatched_right_rows": right_rows - matched_right,
+                                           "distinct_matched_keys": distinct_matched_keys, "fan_out": buckets,
                                            "null_left_keys": left_nulls, "null_right_keys": right_nulls,
                                            "unmatched_left_key_samples": samples, "output_rows": ordinal})
 
@@ -513,32 +569,39 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                         ledger_path = root / step["ledger"]["path"]
                         if ledger_path.stat().st_size != step["ledger"]["bytes"]:
                             raise ValueError("Filter ledger size differs from pin")
-                        dropped: dict[int, str] = {}
+                        input_rows = stream_size(name)
+                        db.execute("DROP TABLE IF EXISTS filter_drops")
+                        db.execute("CREATE TABLE filter_drops (row INTEGER PRIMARY KEY, reason TEXT)")
                         with ledger_path.open("rb") as ledger_file:
                             while line := ledger_file.readline(limits.max_record_bytes + 1):
                                 if len(line) > limits.max_record_bytes:
                                     raise ValueError("Ledger entry exceeds byte limit")
                                 entry = json.loads(line, parse_constant=_reject_constant, object_pairs_hook=_no_duplicate_members)
                                 if (not isinstance(entry, dict) or set(entry) != {"row", "reason"}
-                                        or type(entry["row"]) is not int or not 1 <= entry["row"] <= stream_size(name)
+                                        or type(entry["row"]) is not int or not 1 <= entry["row"] <= input_rows
                                         or not isinstance(entry["reason"], str) or not 1 <= len(entry["reason"]) <= 128):
                                     raise ValueError("Invalid ledger entry")
-                                if entry["row"] in dropped:
-                                    raise ValueError("Duplicate ledger row")
-                                dropped[entry["row"]] = entry["reason"]
-                        reasons: dict[str, int] = {}
+                                try:
+                                    db.execute("INSERT INTO filter_drops VALUES (?,?)", (entry["row"], entry["reason"]))
+                                except sqlite3.IntegrityError as exc:
+                                    raise ValueError("Duplicate ledger row") from exc
+                        reasons = {reason: count for reason, count in db.execute(
+                            "SELECT reason,COUNT(*) FROM filter_drops GROUP BY reason ORDER BY reason")}
+                        dropped_rows = db.execute("SELECT COUNT(*) FROM filter_drops").fetchone()[0]
                         ordinal = 0
-                        for row_ordinal, key, record in db.execute(
-                                "SELECT ordinal,key,record FROM stream_rows WHERE stream=? ORDER BY ordinal", (name,)):
-                            if row_ordinal in dropped:
-                                reasons[dropped[row_ordinal]] = reasons.get(dropped[row_ordinal], 0) + 1
+                        for row_ordinal, key, record, drop_reason in db.execute(
+                                "SELECT s.ordinal,s.key,s.record,d.reason FROM stream_rows s "
+                                "LEFT JOIN filter_drops d ON d.row=s.ordinal WHERE s.stream=? "
+                                "ORDER BY s.ordinal", (name,)):
+                            if drop_reason is not None:
                                 continue
                             ordinal += 1
                             db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
                             emit(out, ordinal, key, [[name, row_ordinal]])
-                            quota()
-                        accounting.update({"input_rows": ordinal + len(dropped), "kept_rows": ordinal,
-                                           "dropped_rows": len(dropped), "drop_reasons": reasons,
+                            charge(len(record) + 64)
+                        db.execute("DROP TABLE filter_drops")
+                        accounting.update({"input_rows": input_rows, "kept_rows": ordinal,
+                                           "dropped_rows": dropped_rows, "drop_reasons": reasons,
                                            "output_rows": ordinal})
 
                     elif op == "deduplicate":
@@ -546,22 +609,24 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                         nulls = set_keys(name, step["key_paths"])
                         receipt["null_keys"][name] = nulls
                         rule = step["rule"]
-                        keep = {row_ordinal for (row_ordinal,) in db.execute(
-                            f"SELECT {'MIN(ordinal)' if rule == 'first' else 'MAX(ordinal)'} FROM stream_rows WHERE stream=? GROUP BY key",
-                            (name,))}
-                        distinct = len(keep)
+                        db.execute("DROP TABLE IF EXISTS dedup_keep")
+                        db.execute("CREATE TABLE dedup_keep (ordinal INTEGER PRIMARY KEY)")
+                        db.execute(f"INSERT INTO dedup_keep SELECT {'MIN(ordinal)' if rule == 'first' else 'MAX(ordinal)'} "
+                                   "FROM stream_rows WHERE stream=? GROUP BY key", (name,))
+                        distinct = db.execute("SELECT COUNT(*) FROM dedup_keep").fetchone()[0]
                         dropped_rows = stream_size(name) - distinct
                         keys_with_duplicates = db.execute(
                             "SELECT COUNT(*) FROM (SELECT key FROM stream_rows WHERE stream=? GROUP BY key HAVING COUNT(*)>1)",
                             (name,)).fetchone()[0]
                         ordinal = 0
                         for row_ordinal, key, record in db.execute(
-                                "SELECT ordinal,key,record FROM stream_rows WHERE stream=? ORDER BY ordinal", (name,)):
-                            if row_ordinal in keep:
-                                ordinal += 1
-                                db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
-                                emit(out, ordinal, key, [[name, row_ordinal]])
-                                quota()
+                                "SELECT s.ordinal,s.key,s.record FROM stream_rows s "
+                                "JOIN dedup_keep k ON k.ordinal=s.ordinal WHERE s.stream=? ORDER BY s.ordinal", (name,)):
+                            ordinal += 1
+                            db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, record))
+                            emit(out, ordinal, key, [[name, row_ordinal]])
+                            charge(len(record) + 64)
+                        db.execute("DROP TABLE dedup_keep")
                         accounting.update({"rule": rule, "distinct_keys": distinct,
                                            "keys_with_duplicates": keys_with_duplicates, "dropped_rows": dropped_rows,
                                            "input_rows": distinct + dropped_rows, "output_rows": ordinal})
@@ -570,54 +635,89 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                         name = step["input_stream"]
                         nulls = set_keys(name, step["key_paths"])
                         receipt["null_keys"][name] = nulls
-                        groups: dict[bytes, list[list]] = {}
-                        for row_ordinal, key, record in db.execute(
-                                "SELECT ordinal,key,record FROM stream_rows WHERE stream=? ORDER BY ordinal", (name,)):
-                            groups.setdefault(key, []).append([row_ordinal, _untyped(json.loads(record))])
+                        input_rows = stream_size(name)
                         ordinal = 0
+                        groups = 0
                         max_group = 0
-                        for key, members in groups.items():
+                        min_group = 0
+                        # Groups and their members stream through SQLite; Python
+                        # holds only per-group aggregates, never the population.
+                        for (key,) in db.execute(
+                                "SELECT key FROM stream_rows WHERE stream=? GROUP BY key ORDER BY MIN(ordinal)", (name,)):
+                            groups += 1
                             ordinal += 1
-                            max_group = max(max_group, len(members))
-                            output: dict[str, Any] = {"key": [_resolve(members[0][1], path_) for path_ in step["key_paths"]],
-                                                      "rows": len(members)}
+                            members = 0
+                            first_record: Any = None
+                            states: dict[str, dict[str, Any]] = {}
                             for item in step["aggregations"]:
-                                function = item["function"]
-                                if function == "count":
-                                    output[item["name"]] = len(members)
-                                    continue
-                                values: list[Any] = []
-                                for _, record_value in members:
+                                if item["function"] != "count":
+                                    states[item["name"]] = {"kinds": set(), "int_sum": 0,
+                                                            "parts": (0, 0), "best": None}
+                            for _, record in db.execute(
+                                    "SELECT ordinal,record FROM stream_rows WHERE stream=? AND key=? ORDER BY ordinal",
+                                    (name, key)):
+                                members += 1
+                                record_value = _untyped(json.loads(record))
+                                if first_record is None:
+                                    first_record = record_value
+                                for item in step["aggregations"]:
+                                    function = item["function"]
+                                    if function == "count":
+                                        continue
                                     value = _resolve(record_value, item["field_path"])
                                     if value is None:
                                         continue
                                     if isinstance(value, bool) or not isinstance(value, (int, Decimal, str)):
                                         raise ValueError("Aggregation field type unsupported")
-                                    values.append(value)
-                                kinds = {"int" if isinstance(value, int) else "decimal" if isinstance(value, Decimal) else "string" for value in values}
-                                if len(kinds) > 2 or ("int" in kinds and "string" in kinds) or ("decimal" in kinds and "string" in kinds):
-                                    raise ValueError("Aggregation field type unsupported")
-                                if function == "sum":
-                                    if "string" in kinds:
+                                    state = states[item["name"]]
+                                    state["kinds"].add("int" if isinstance(value, int)
+                                                       else "decimal" if isinstance(value, Decimal) else "string")
+                                    kinds = state["kinds"]
+                                    if len(kinds) > 2 or ("int" in kinds and "string" in kinds) \
+                                            or ("decimal" in kinds and "string" in kinds):
                                         raise ValueError("Aggregation field type unsupported")
-                                    if not values:
-                                        output[item["name"]] = None
-                                    elif kinds == {"int"}:
-                                        output[item["name"]] = sum(values)
+                                    if function == "sum":
+                                        # Integer mantissa/scale accumulation is
+                                        # exact and independent of the ambient
+                                        # decimal context, so replay cannot round.
+                                        if "string" in kinds:
+                                            raise ValueError("Aggregation field type unsupported")
+                                        if isinstance(value, int):
+                                            state["int_sum"] += value
+                                        else:
+                                            state["parts"] = _sum_parts(state["parts"], _decimal_parts(value))
+                                    elif state["best"] is None or (value < state["best"] if function == "min"
+                                                                   else value > state["best"]):
+                                        state["best"] = value
+                                if members % 1024 == 0:
+                                    quota()
+                            output: dict[str, Any] = {"key": [_resolve(first_record, path_) for path_ in step["key_paths"]],
+                                                      "rows": members}
+                            for item in step["aggregations"]:
+                                function = item["function"]
+                                if function == "count":
+                                    output[item["name"]] = members
+                                    continue
+                                state = states[item["name"]]
+                                if not state["kinds"]:
+                                    output[item["name"]] = None
+                                elif function == "sum":
+                                    if state["kinds"] == {"int"}:
+                                        output[item["name"]] = state["int_sum"]
                                     else:
-                                        output[item["name"]] = sum(Decimal(value) if isinstance(value, int) else value for value in values)
+                                        output[item["name"]] = _parts_to_decimal(
+                                            _sum_parts(state["parts"], (state["int_sum"], 0)))
                                 else:
-                                    if not values:
-                                        output[item["name"]] = None
-                                    else:
-                                        output[item["name"]] = min(values) if function == "min" else max(values)
+                                    output[item["name"]] = state["best"]
                             db.execute("INSERT INTO stream_rows VALUES (?,?,?,?)", (out, ordinal, key, _json_bytes(output)))
-                            emit(out, ordinal, key, [[name, member[0]] for member in members])
+                            emit(out, ordinal, key, ([name, member] for (member,) in db.execute(
+                                    "SELECT ordinal FROM stream_rows WHERE stream=? AND key=? ORDER BY ordinal",
+                                    (name, key))))
+                            max_group = max(max_group, members)
+                            min_group = members if groups == 1 else min(min_group, members)
                             quota()
-                        accounting.update({"input_rows": sum(len(members) for members in groups.values()),
-                                           "groups": len(groups), "max_group_rows": max_group,
-                                           "min_group_rows": min((len(m) for m in groups.values()), default=0),
-                                           "output_rows": ordinal})
+                        accounting.update({"input_rows": input_rows, "groups": groups, "max_group_rows": max_group,
+                                           "min_group_rows": min_group, "output_rows": ordinal})
 
                     else:  # project
                         name = step["input_stream"]
@@ -640,19 +740,34 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                     receipt["steps"].append(accounting)
 
                 terminal = _stream_name(plan["output"])
-                recomputed = [record for (record,) in db.execute(
-                    "SELECT record FROM stream_rows WHERE stream=? ORDER BY ordinal", (terminal,))]
-                candidate_records = _load_records(root / candidate_key, limits=limits)
-                if len(candidate_records) != candidate["rows"] or len(candidate_records) != len(recomputed):
+                recomputed_rows = stream_size(terminal)
+                if recomputed_rows != candidate["rows"]:
                     raise ValueError("Terminal row count differs from candidate")
                 canonical = hashlib.sha256()
-                for actual_record, expected in zip(recomputed, candidate_records, strict=True):
-                    if actual_record != expected:
-                        raise ValueError("Terminal record differs from candidate")
-                    canonical.update(actual_record + b"\n")
-                receipt["terminal"] = {"stream": terminal, "rows": len(recomputed),
+                compared = 0
+                with (root / candidate_key).open("rb") as candidate_stream:
+                    for (actual_record,) in db.execute(
+                            "SELECT record FROM stream_rows WHERE stream=? ORDER BY ordinal", (terminal,)):
+                        line = candidate_stream.readline(limits.max_record_bytes + 1)
+                        if not line:
+                            raise ValueError("Terminal row count differs from candidate")
+                        if len(line) > limits.max_record_bytes:
+                            raise ValueError("Record byte limit exceeded")
+                        expected = _json_bytes(json.loads(line, parse_float=Decimal, parse_constant=_reject_constant,
+                                                          object_pairs_hook=_no_duplicate_members))
+                        if actual_record != expected:
+                            raise ValueError("Terminal record differs from candidate")
+                        canonical.update(actual_record + b"\n")
+                        compared += 1
+                        if compared % 1024 == 0:
+                            quota()
+                    if candidate_stream.read(1):
+                        raise ValueError("Terminal row count differs from candidate")
+                if compared != recomputed_rows:
+                    raise ValueError("Terminal row count differs from candidate")
+                receipt["terminal"] = {"stream": terminal, "rows": compared,
                                       "recomputed_sha256": canonical.hexdigest(),
-                                      "candidate_sha256": candidate_sha, "candidate_rows": len(candidate_records),
+                                      "candidate_sha256": candidate_sha, "candidate_rows": compared,
                                       "equal": True}
                 receipt["lineage"] = {"path": lineage_path.name, "sha256": sha256_file(lineage_path),
                                       "bytes": lineage_path.stat().st_size, "rows": lineage_rows}
