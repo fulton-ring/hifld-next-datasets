@@ -51,9 +51,9 @@ MEMBERS = {f"{EXPECTED_LAYER}.{suffix}" for suffix in ("cpg", "dbf", "prj", "sbn
 # corresponding SHP doubles differ by reprojection-roundtrip ulps; observed
 # maximum divergence in the pinned archive is below 5e-10.
 XY_ATTRIBUTE_MAX_DELTA = 1e-9
-ID_SHA = "replaced-after-observed-baseline"
-RECORD_SHA = "replaced-after-observed-baseline"
-GEOMETRY_SHA = "replaced-after-observed-baseline"
+ID_SHA = "b3de5218d8feaa9eec1e5f9cd6f585de1e9192a44ce80bb6e7b54bebedb07c4a"
+RECORD_SHA = "a64864ec9d78abfa2f209db5cf82915c3e38bf248d12a90bcaf604b43ec40013"
+GEOMETRY_SHA = "12f90b4e124fc38f2afbcb09b57b9e8a2273edeba1ef001123c7c91b67d93cb6"
 BOUNDS = [-121.33560000003301, 32.93949999967761, -76.38009999964684, 47.371400000248904]
 WGS84 = CRS.from_epsg(4326)
 

@@ -51,7 +51,7 @@ class EiaEthanolPlantsSourceContractTest(unittest.TestCase):
             ("Data_Perio", "C", 254, 0), ("Source", "C", 254, 0),
             ("Longitude", "F", 19, 11), ("Latitude", "F", 19, 11),
         ])
-        self.assertNotIn("replaced-after-observed-baseline", (ID_SHA,))
+        self.assertEqual(ID_SHA, "b3de5218d8feaa9eec1e5f9cd6f585de1e9192a44ce80bb6e7b54bebedb07c4a")
 
     def test_geometry_encoding_preserves_native_xy(self):
         self.assertEqual(_point_wkb(1.5, -2.25).hex(), "0101000000000000000000f83f00000000000002c0")
