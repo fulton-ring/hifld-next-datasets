@@ -353,9 +353,9 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
             with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/epa-power-generation-draft"}) as client:
                 seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")
                 seed = json.loads(seed_body).get("objectIds")
+                captures["ids_seed"] = (seed_body, seed_receipt)
                 if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT:
                     raise ValueError("source_seed_id_count_drift")
-                captures["ids_seed"] = (seed_body, seed_receipt)
                 for name, url in _feature_urls(seed):
                     body, receipt = _fetch(client, url, capture_root, name)
                     captures[name] = (body, receipt)
