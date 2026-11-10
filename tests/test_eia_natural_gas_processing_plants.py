@@ -206,7 +206,8 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
         patched_shp = bytearray(shp)
         struct.pack_into(">i", patched_shp, 100, 2)
         struct.pack_into(">i", patched_shp, 128, 3)
-        drifted_members = dict(members)
+        with zipfile.ZipFile(io.BytesIO(zip_body)) as fixture:
+            drifted_members = {name: fixture.read(name) for name in members}
         drifted_members[f"{FIXTURE_LAYER}.shp"] = bytes(patched_shp)
         drifted_members[f"{FIXTURE_LAYER}.shx"] = shx
         sink = io.BytesIO()
