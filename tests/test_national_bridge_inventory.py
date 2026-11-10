@@ -59,7 +59,7 @@ class PatchedContract:
             'EXPECTED_PARTIAL_COORDINATE_COUNT':0,'EXPECTED_SIGNED_COORDINATE_COUNT':0,'EXPECTED_SHORT_RECORD_COUNT':0,
             'EXPECTED_BLANK_STRUCTURE_NUMBER_COUNT':0,'EXPECTED_NON_ASCII_BYTES':{}}
     def captures(self):
-        return {n:(body,receipt(self.urls[n],body))for n,body in self.bodies.items()}
+        return {n:(body,receipt(self.contract.urls[n],body))for n,body in self.bodies.items()}
 
 
 class NBIParseTests(unittest.TestCase):
@@ -140,31 +140,31 @@ class NBIContractTests(unittest.TestCase):
     def test_state_file_bytes_roster_and_population_drift(self):
         good=self.contract.captures()
         bad=dict(good);changed=state_body(record(structure=b'0999           '))
-        bad['state_DC']=(changed,receipt(self.urls['state_DC'],changed))
+        bad['state_DC']=(changed,receipt(self.contract.urls['state_DC'],changed))
         with self.assertRaisesRegex(ValueError,'state_file_bytes_drift'):f.inspect_captures(bad)
         bad=dict(good);page=good['files_page'][0].replace(b'nbiState=DC25',b'nbiState=XX25')
-        bad['files_page']=(page,receipt(self.urls['files_page'],page))
+        bad['files_page']=(page,receipt(self.contract.urls['files_page'],page))
         with self.assertRaisesRegex(ValueError,'producer_state_file_roster_drift'):f.inspect_captures(bad)
         bad=dict(good);del bad['state_TX']
         with self.assertRaisesRegex(ValueError,'capture_roster_drift'):f.inspect_captures(bad)
         extended=good['state_TX'][0]+record(state=b'486',structure=b'0003           ')
-        bad=dict(good);bad['state_TX']=(extended,receipt(self.urls['state_TX'],extended))
+        bad=dict(good);bad['state_TX']=(extended,receipt(self.contract.urls['state_TX'],extended))
         rebind=dict(self.contract.expected);rebind['TX']=expected_for(extended,'486',rows=3)
         with mock.patch.object(f,'EXPECTED_FILES',rebind):
             with self.assertRaisesRegex(ValueError,'complete_count_drift'):f.inspect_captures(bad)
         duplicated=good['state_TX'][0]+record(state=b'486',structure=b'1103(RAMP C)')
-        bad=dict(good);bad['state_TX']=(duplicated,receipt(self.urls['state_TX'],duplicated))
+        bad=dict(good);bad['state_TX']=(duplicated,receipt(self.contract.urls['state_TX'],duplicated))
         rebind=dict(self.contract.expected);rebind['TX']=expected_for(duplicated,'486',rows=3)
         with mock.patch.object(f,'EXPECTED_FILES',rebind):
             with self.assertRaisesRegex(ValueError,'composite_ID_duplicate_drift'):f.inspect_captures(bad)
     def test_receipt_strictness_and_first_party_provenance(self):
         n='state_DC';body=self.contract.dc
-        item=f.validate_receipt(n,body,receipt(self.urls[n],body))
+        item=f.validate_receipt(n,body,receipt(self.contract.urls[n],body))
         self.assertEqual(item['role'],'producer_publication');self.assertIn('FHWA',item['producer'])
         self.assertEqual(item['delegation_evidence']['producer_program_url'],f.PROGRAM)
         self.assertEqual(item['server_last_modified'],'Thu, 12 Jun 2025 16:53:24 GMT')
-        for key,value in[('status',200.0),('bytes',True),('complete_body',1),('observed_at','2026-11-10'),('url',self.urls[n]+'x'),('server_last_modified','')]:
-            bad=receipt(self.urls[n],body);bad[key]=value
+        for key,value in[('status',200.0),('bytes',True),('complete_body',1),('observed_at','2026-11-10'),('url',self.contract.urls[n]+'x'),('server_last_modified','')]:
+            bad=receipt(self.contract.urls[n],body);bad[key]=value
             with self.assertRaises(ValueError,msg=key):f.validate_receipt(n,body,bad)
     def test_registration_explicit_asset_and_stopped_refresh(self):
         key=AssetKey(['ingest',f.SLUG,f.SLUG])
