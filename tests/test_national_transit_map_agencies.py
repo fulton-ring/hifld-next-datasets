@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from dagster import DefaultScheduleStatus
+
 from dagster_hifld.sources import national_transit_map_agencies as source
 
 
@@ -111,6 +113,29 @@ class NationalTransitMapAgenciesCaptureTests(unittest.TestCase):
                 replay=source._load_retained_capture(root,destination)
             self.assertEqual(replay["sample"],(body,receipt))
             self.assertEqual((destination/"sample.wire").read_bytes(),wire)
+
+
+class NationalTransitMapAgenciesRegistrationTests(unittest.TestCase):
+    def test_registered_checks_job_and_stopped_schedule(self):
+        from dagster_hifld.assets.national_transit_map_agencies import (
+            bts_national_transit_map_agencies,
+            bts_national_transit_map_agencies_candidate_complete,
+            bts_national_transit_map_agencies_release_gate,
+        )
+        from dagster_hifld.definitions import defs
+
+        repo = defs.get_repository_def()
+        job = repo.get_job("bts_national_transit_map_agencies_draft_refresh")
+        self.assertEqual(job.asset_layer.executable_asset_keys, bts_national_transit_map_agencies.keys)
+        graph = defs.resolve_asset_graph()
+        self.assertTrue(set(bts_national_transit_map_agencies_candidate_complete.check_keys) <= graph.asset_check_keys)
+        self.assertTrue(set(bts_national_transit_map_agencies_release_gate.check_keys) <= graph.asset_check_keys)
+        for check in (bts_national_transit_map_agencies_candidate_complete, bts_national_transit_map_agencies_release_gate):
+            self.assertTrue(next(iter(check.check_specs)).blocking)
+        schedule = repo.get_schedule_def("bts_national_transit_map_agencies_draft_refresh_schedule")
+        self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
+        self.assertEqual(schedule.cron_schedule, "0 8 1 * *")
+        self.assertEqual(schedule.execution_timezone, "America/New_York")
 
 
 if __name__ == "__main__":
