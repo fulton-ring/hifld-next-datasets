@@ -261,9 +261,10 @@ def _capture(root, storage, version):
             with tempfile.TemporaryDirectory(dir=root) as tmp:
                 _decode(body, Path(tmp))
         mp.write_bytes(_canonical({"complete": True, "captured_at": datetime.now(timezone.utc).isoformat(),
-                                   "receipts": {name: caps[name][2] for name in _EXPECTED_URLS},
+                                   "receipts": {name: caps[name][1] for name in _EXPECTED_URLS},
                                    "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
-        return caps
+        return {name: (caps[name][0], (root / f"{name}.wire").read_bytes(), caps[name][1])
+                for name in _EXPECTED_URLS}
     except Exception as exc:
         rec = {}
         for p in root.glob("*.receipt.json"):
