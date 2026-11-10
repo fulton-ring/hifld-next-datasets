@@ -74,7 +74,7 @@ def _dbf_bytes(fields, rows):
 
 
 def _point_geometry_bytes(points):
-    shp = bytearray(100)
+    shp = bytearray(100 + 28 * len(points))
     shx = bytearray(100 + 8 * len(points))
     for buffer in (shp, shx):
         struct.pack_into(">i", buffer, 0, 9994)
@@ -361,7 +361,9 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
         self.assertTrue(any(k.name == "eia_natural_gas_processing_plants_complete"
                             for k in graph.asset_check_keys))
         job = defs.resolve_job_def("eia_natural_gas_processing_plants_draft_refresh")
-        self.assertEqual(len(job.asset_layer.asset_graph.asset_check_keys), 0)
+        job_checks = list(job.asset_layer.asset_graph.asset_check_keys)
+        self.assertEqual(len(job_checks), 1)
+        self.assertEqual(job_checks[0].name, "eia_natural_gas_processing_plants_complete")
         schedule_names = {schedule.name for schedule in defs.get_schedule_defs()}
         self.assertIn("eia_natural_gas_processing_plants_draft_refresh_schedule", schedule_names)
 
