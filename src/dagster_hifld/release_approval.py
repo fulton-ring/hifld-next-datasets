@@ -546,8 +546,11 @@ def _require_accounted_jsonl_derivation(entry: dict, source: StagingStorageResou
         spec = {"schema_version": 1, "root": str(Path(version_dir)),
                 "roster_prefix": receipt_parameters.get("roster_prefix", "."),
                 "streams": [{"name": name, **pin} for name, pin in receipt_streams.items()]}
-        with tempfile.TemporaryDirectory(prefix="hifld-accounting-replay-") as temporary:
-            replay = account_construction(spec, plan, receipt_candidate, Path(temporary) / "evidence", limits=limits)
+        try:
+            with tempfile.TemporaryDirectory(prefix="hifld-accounting-replay-") as temporary:
+                replay = account_construction(spec, plan, receipt_candidate, Path(temporary) / "evidence", limits=limits)
+        except (ValueError, OSError, KeyError, TypeError) as exc:
+            raise ReleaseApprovalError("construction_accounting_replay_failed:" + str(exc)) from exc
         if replay != receipt:
             raise ReleaseApprovalError("construction_accounting_replay_mismatch")
 

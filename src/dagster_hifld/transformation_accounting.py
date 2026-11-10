@@ -444,7 +444,7 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                         left_rows, right_rows = stream_size(left), stream_size(right)
                         matched_left: set[int] = set()
                         matched_right: set[int] = set()
-                        distinct_keys = 0
+                        matched_keys: set[bytes] = set()
                         ordinal = 0
                         for left_ordinal, key, left_record in db.execute(
                                 "SELECT ordinal,key,record FROM stream_rows WHERE stream=? ORDER BY ordinal", (left,)):
@@ -452,8 +452,7 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                                 "SELECT ordinal,record FROM stream_rows WHERE stream=? AND key=? ORDER BY ordinal",
                                 (right, key)))
                             if matches:
-                                if left_ordinal not in matched_left:
-                                    distinct_keys += 1
+                                matched_keys.add(key)
                                 matched_left.add(left_ordinal)
                                 for right_ordinal, right_record in matches:
                                     matched_right.add(right_ordinal)
@@ -496,7 +495,7 @@ def account_construction(spec: dict, plan: dict, candidate: dict, output_dir: Pa
                                            "matched_left_rows": len(matched_left), "matched_right_rows": len(matched_right),
                                            "unmatched_left_rows": left_rows - len(matched_left),
                                            "unmatched_right_rows": right_rows - len(matched_right),
-                                           "distinct_matched_keys": distinct_keys, "fan_out": buckets,
+                                           "distinct_matched_keys": len(matched_keys), "fan_out": buckets,
                                            "null_left_keys": left_nulls, "null_right_keys": right_nulls,
                                            "unmatched_left_key_samples": samples, "output_rows": ordinal})
 

@@ -200,8 +200,8 @@ class TransformationAccountingTests(unittest.TestCase):
             with self.subTest(plan=plan), tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
                 root, evidence = Path(d), Path(e)
                 spec, _, candidate = fixture_root(root)
-                receipt = account_construction(spec, plan, candidate, evidence)
-                self.assertEqual(receipt["status"], "blocked")
+                with self.assertRaises(ValueError):
+                    account_construction(spec, plan, candidate, evidence)
 
     def test_input_mutation_during_accounting_blocks(self):
         with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
