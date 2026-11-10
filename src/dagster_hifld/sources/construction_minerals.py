@@ -8,15 +8,12 @@ import collections
 import fcntl
 import hashlib
 import io
-import importlib.metadata
 import json
 import math
 import os
-import platform
 import re
 import stat
 import struct
-import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
@@ -28,17 +25,18 @@ from uuid import uuid4
 from fiona.io import MemoryFile, ZipMemoryFile
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pyogrio
 import pyproj
 import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
-from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 SLUG='construction-minerals-operations'
 PACKAGE='stanford-ds401wt4784-preservation-as-provided-v1'
 READY='metadata/construction_minerals_candidate_ready.json'
@@ -67,12 +65,7 @@ def immutable(storage,key,body):
     elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:raise MineralsQuarantineError('immutable_capture_changed:'+key)
 
 def processing_identity():
-    root=Path(__file__).parents[3]
-    return {'python':platform.python_version(),'implementation':platform.python_implementation(),'platform':platform.platform(),
-        'distributions':sorted((d.metadata['Name'],d.version) for d in importlib.metadata.distributions()),
-        'gdal':pyogrio.__gdal_version_string__,'geos':shapely.geos_version_string,'proj':pyproj.proj_version_str,
-        'files':{str(p.relative_to(root)):sha256_file(p) for p in sorted((root/'src/dagster_hifld').rglob('*.py'))+[root/'uv.lock',root/'pyproject.toml']},
-        'verifier_sha256':verifier_implementation_sha256()}
+    return packaged_processing_identity(Path(__file__).parents[3])
 
 def retain_failure(storage,captures,reason,attempted=None):
     prefix=f'_quarantine/{SLUG}/acquisitions/{uuid4().hex}'
@@ -112,7 +105,7 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
         raise MineralsQuarantineError('legacy_unbound_original_requires_explicit_reviewed_migration')
     key=construction_record_key(version)
     if create:
-        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
+        validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'],identity=identity)
         retained=seal_first_construction(storage,key,version,fingerprint,envelope)
     else:
         retained=load_first_construction(storage,key,version,fingerprint)
@@ -126,7 +119,7 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
         original[name]=(body,item['receipt'])
     pin=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
     expected=manifest_for(original,identity,{k:pin[k] for k in ('sha256','bytes')});actual=bundle['manifest']
-    validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files'])
+    validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files'],identity=identity)
     if set(actual)!=set(expected) or any(actual[k]!=v for k,v in expected.items() if k!='code_commit'):raise MineralsQuarantineError('original_construction_manifest_or_receipts_changed')
     return original,actual
 
@@ -298,7 +291,7 @@ def manifest_for(captures,identity,parquet_pin):
         body,receipt=captures[name];validate_capture(name,body,receipt,PINS[name]['url'])
         role='producer_publication' if name=='legacy_metadata' else 'archive'
         inputs.append({'input_id':name+':'+digest(body),'producer':'U.S. Geological Survey (historical dataset metadata only)' if name=='legacy_metadata' else 'Stanford Libraries preservation' if name.startswith('minop2x020.') or name=='stanford_publicxml' else 'HIFLD Next existing published candidate, acceptance unresolved','host':urlsplit(receipt['url']).hostname,'role':role,'canonical_url':receipt['url'],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],'retrieved_at':receipt['observed_at'],'http_status':200,'sha256':digest(body),'bytes':len(body),'license':LICENSE,'attribution':'Stanford ds401wt4784 preservation-as-provided; USGS National Atlas exact dataset family metadata; baseline retained independently. No delegation or package-original authentication established.','release_date_unknown_reason':'Official source publication month200512(active2003), no exact release day; Stanford package preservation and baseline fetch times are not source release dates.'})
-    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),'title':'Construction Minerals Operations — explicit unapproved Stanford historical preservation reconstruction','publisher':'Stanford Libraries preservation (not established agency distribution)','agency':'US Geological Survey historical dataset family; input authority unresolved','source_url':'https://purl.stanford.edu/ds401wt4784','license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':inputs,'transformations':[{'operation':'explicit_preservation_package_native_lossless_reconstruction','parameters':{'package_id':PACKAGE,'input_selection':'explicit local package required, no default fetch or polling; acceptance pending','geometry':'original SHP coordinates and own PRJ as provided; contradictory NAD83 metadata retained and unresolved','container':'A new deterministic ZIP of unchanged preservation master sidecars is required by the shared canonical multipart-source transport convention; not the missing original USGS archive', 'attributes':'ASCII right-padding decode only; mixed case, width and decimal values preserved, original DBF sidecars retained','IDs':'all native IDs distinct; complete published IDs separately retained, no approved cross-package mapping'}}],'unsupported_output_formats':{'shapefile_zip':'No accepted source/published schema mapping; preserved original five master sidecars remain lossless raw evidence, not a newly approved output.','geopackage':'DBF decimal128 precision/scale and full Arrow physical schema cannot be silently coerced to GPKG REAL/INTEGER; no migration approved.','pmtiles':'Reprojection/quantization and datum choice are unapproved; native coordinates retained.'},'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all source decimal physical declarations, original IDs, strings, native WKB and metadata, no generic conversion or schema expansion. This is capability only, not input/contract/release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**parquet_pin}]}}}}
+    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':identity['code_commit'],'title':'Construction Minerals Operations — explicit unapproved Stanford historical preservation reconstruction','publisher':'Stanford Libraries preservation (not established agency distribution)','agency':'US Geological Survey historical dataset family; input authority unresolved','source_url':'https://purl.stanford.edu/ds401wt4784','license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':inputs,'transformations':[{'operation':'explicit_preservation_package_native_lossless_reconstruction','parameters':{'package_id':PACKAGE,'input_selection':'explicit local package required, no default fetch or polling; acceptance pending','geometry':'original SHP coordinates and own PRJ as provided; contradictory NAD83 metadata retained and unresolved','container':'A new deterministic ZIP of unchanged preservation master sidecars is required by the shared canonical multipart-source transport convention; not the missing original USGS archive', 'attributes':'ASCII right-padding decode only; mixed case, width and decimal values preserved, original DBF sidecars retained','IDs':'all native IDs distinct; complete published IDs separately retained, no approved cross-package mapping'}}],'unsupported_output_formats':{'shapefile_zip':'No accepted source/published schema mapping; preserved original five master sidecars remain lossless raw evidence, not a newly approved output.','geopackage':'DBF decimal128 precision/scale and full Arrow physical schema cannot be silently coerced to GPKG REAL/INTEGER; no migration approved.','pmtiles':'Reprojection/quantization and datum choice are unapproved; native coordinates retained.'},'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all source decimal physical declarations, original IDs, strings, native WKB and metadata, no generic conversion or schema expansion. This is capability only, not input/contract/release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**parquet_pin}]}}}}
     validate_release_provenance(manifest);validate_output_policy(manifest);return manifest
 
 
@@ -337,9 +330,11 @@ def reconcile_cache(storage,prefix,version,table,published_ids,audit,captures,id
     extracted_root=root/'shapefile/.extracted/preservation-package'
     if extracted_root.exists():
         if not extracted_root.is_dir() or {str(p.relative_to(root)) for p in extracted_root.rglob('*') if p.is_file()}!=set(extracted) or any((root/name).read_bytes()!=body for name,body in extracted.items()):raise MineralsQuarantineError('catalog_extracted_original_sidecar_bytes_or_completeness_drift')
-    derivatives={*extracted,'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}
+    derivatives={*extracted,'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}|STAGED_RELEASE_DERIVATIVE_NAMES
     actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
     if actual-(names|{READY}|derivatives) or not (names|{READY}).issubset(actual) or any(p.is_symlink() or(p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise MineralsQuarantineError('unknown_missing_or_linked_candidate_object')
+    try: validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in actual})
+    except (OSError,UnicodeError,ValueError,TypeError) as exc: raise MineralsQuarantineError('invalid_staged_release_derivatives') from exc
     for name,body in expected.items():
         if (root/name).read_bytes()!=body:raise MineralsQuarantineError('source_owned_report_raw_provenance_or_published_ID_drift:'+name)
     for name,sha in ready['objects'].items():
@@ -379,7 +374,7 @@ def stage_construction_minerals(storage,*,capture_dir=None,package_id=None):
                     if (private/name).read_bytes()!=body:raise MineralsQuarantineError('incomplete_private_source_payload:'+name)
                 # Validate source semantics + exact Git identity before the first seal;
                 # the complete private candidate exists and has been verified first.
-                validate_release_provenance(manifest);validate_output_policy(manifest);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
+                validate_release_provenance(manifest);validate_output_policy(manifest);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'],identity=identity)
                 captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
                 for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():(private/name).write_bytes(body)
                 ready['objects']={str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY};(private/READY).write_bytes(encode(ready));verify_outputs(private,table,published_ids);os.rename(private,target)
