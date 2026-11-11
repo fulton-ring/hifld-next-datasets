@@ -59,9 +59,9 @@ PROPOSED_PHYSICAL_TYPE_MAPPING = {
 }
 EXPECTED_COUNT = 7_068_559
 EXPECTED_SCHEMA_SHA256 = "749193bd01b2b1410e27b79c3996e8525035fc61bd15c7143c750cb91740c467"
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_IDS_SHA256 = ""
+EXPECTED_RECORD_SHA256 = "cced1a9bf52a69fbe70bd3a3dc59b2f225466670c74f4ef224bf00707f045da1"
+EXPECTED_GEOMETRY_SHA256 = "5d0bd9592a151edaa099036e918333129f135ad6bce0a60552123ead99b41ce9"
+EXPECTED_IDS_SHA256 = "ff220ea309a3f919516d336ef201ffd01756f5e5f82213616c426cd53157f8f0"
 PAGE_SIZE = 2000
 MAX_BODY_BYTES = 6_000_000
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
@@ -103,6 +103,10 @@ METADATA_NAMES = ("portal_item", "service_before", "layer_before", "count_before
 
 class EPAFRSInterestsError(ValueError):
     """The source snapshot cannot be represented as the pinned FRS_INTERESTS candidate."""
+
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
 
 
 def _canonical(value: object) -> bytes:

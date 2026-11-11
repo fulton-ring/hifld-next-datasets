@@ -135,6 +135,9 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport):
     contexts = [
         patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
+        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
+        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
+        patch.object(src, "EXPECTED_IDS_SHA256", ""),
         patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
@@ -279,6 +282,28 @@ class EpaFrsInterestsTests(unittest.TestCase):
                                                        capture_directory=str(capture_root))
                 self.assertEqual(sealed["feature_count"], FIXTURE_COUNT)
                 self.assertTrue(sorted(capture_root.glob("page_*.error-*.body")))
+
+    def test_pinned_record_baseline_drift_is_refused_and_quarantined(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                src.capture_epa_frs_interests(storage, version="pin-run",
+                                              capture_directory=str(capture_root))
+                with patch.object(src, "EXPECTED_RECORD_SHA256", "0" * 64):
+                    with self.assertRaisesRegex(src.EPAFRSInterestsError,
+                                                "source_value_or_geometry_baseline_drift"):
+                        src.capture_epa_frs_interests(storage, version="pin-run-drift",
+                                                      capture_directory=str(capture_root))
+                quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+                self.assertTrue(quarantined)
+                failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+                self.assertEqual(failure["reason_code"], "source_value_or_geometry_baseline_drift")
 
     def test_resume_reuses_retained_pages_and_discards_torn_evidence(self):
         rows = _fixture_rows(FIXTURE_COUNT)
