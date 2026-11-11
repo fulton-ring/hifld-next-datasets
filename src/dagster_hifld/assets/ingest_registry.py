@@ -69,6 +69,7 @@ from dagster_hifld.assets.river_areas_usace_ienc import river_areas_usace_ienc
 from dagster_hifld.assets.shoreline_construction_locations_usace_ienc import shoreline_construction_locations_usace_ienc
 from dagster_hifld.assets.sea_area_locations_usace_ienc import sea_area_locations_usace_ienc
 from dagster_hifld.assets.sea_areas_usace_ienc import sea_areas_usace_ienc
+from dagster_hifld.assets.cellular_towers import cellular_towers
 from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import shoreline_construction_areas_usace_ienc
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
@@ -210,6 +211,7 @@ hifld_ingest_assets = [
     sea_area_locations_usace_ienc,
     sea_areas_usace_ienc,
     shoreline_construction_areas_usace_ienc,
+    cellular_towers,
     sloped_ground_lines_usace_ienc,
     census_secondary_school_districts,
     principal_ports_usace,
