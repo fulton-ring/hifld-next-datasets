@@ -66,6 +66,7 @@ from dagster_hifld.assets.usace_dam_lines import usace_dam_lines_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
 from dagster_hifld.assets.usace_mooring_facility_lines import usace_mooring_facility_lines_usace_ienc
 from dagster_hifld.assets.river_areas_usace_ienc import river_areas_usace_ienc
+from dagster_hifld.assets.sea_area_locations_usace_ienc import sea_area_locations_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
 from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
@@ -201,6 +202,7 @@ hifld_ingest_assets = [
     usace_obstruction_lines_usace_ienc,
     usace_mooring_facility_lines_usace_ienc,
     river_areas_usace_ienc,
+    sea_area_locations_usace_ienc,
     census_secondary_school_districts,
     principal_ports_usace,
     census_unified_school_districts,
