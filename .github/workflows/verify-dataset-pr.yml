@@ -28,7 +28,7 @@ jobs:
   resolve:
     # Dispatch must use trusted main, never a PR-supplied workflow.
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
       pr_number: ${{ steps.identity.outputs.pr_number }}
@@ -53,7 +53,7 @@ jobs:
   verify:
     needs: resolve
     name: verify-pr-${{ needs.resolve.outputs.pr_number }}-${{ needs.resolve.outputs.head_sha }}-base-${{ needs.resolve.outputs.base_sha }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 50
     permissions:
       contents: read
@@ -139,7 +139,7 @@ jobs:
 
   identity-still-current:
     needs: [resolve, verify]
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
