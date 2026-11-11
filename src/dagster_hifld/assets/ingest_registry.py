@@ -13,8 +13,11 @@ from dagster_hifld.assets.nfhl_hydrologic_reaches import fema_nfhl_hydrologic_re
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.epa_icis_wastewater import epa_icis_wastewater_treatment_plants
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
+from dagster_hifld.assets.national_inventory_of_dams import national_inventory_of_dams_ingest
 from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
 from dagster_hifld.assets.fuds_district_boundaries import usace_fuds_program_district_boundaries
+from dagster_hifld.assets.fuds_public_properties import usace_fuds_public_properties
+from dagster_hifld.assets.fuds_property_boundaries import fuds_property_boundaries_ingest
 from dagster_hifld.assets.epa_small_scale import epa_small_scale_regions
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
 from dagster_hifld.assets.crushed_stone import usgs_crushed_stone_preservation
@@ -63,6 +66,11 @@ from dagster_hifld.assets.usace_overhead_cables import usace_overhead_cables_usa
 from dagster_hifld.assets.usace_dam_lines import usace_dam_lines_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
 from dagster_hifld.assets.usace_mooring_facility_lines import usace_mooring_facility_lines_usace_ienc
+from dagster_hifld.assets.river_areas_usace_ienc import river_areas_usace_ienc
+from dagster_hifld.assets.sea_area_locations_usace_ienc import sea_area_locations_usace_ienc
+from dagster_hifld.assets.sea_areas_usace_ienc import sea_areas_usace_ienc
+from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import shoreline_construction_areas_usace_ienc
+from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
 from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
@@ -135,6 +143,7 @@ from dagster_hifld.assets.bts_air_truck import bts_intermodal_freight_air_to_tru
 from dagster_hifld.assets.epa_sems import epa_sems_interests
 from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
+from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
 
 hifld_ingest_assets = [
     bts_ferry_terminals,
@@ -197,6 +206,11 @@ hifld_ingest_assets = [
     usace_dam_lines_usace_ienc,
     usace_obstruction_lines_usace_ienc,
     usace_mooring_facility_lines_usace_ienc,
+    river_areas_usace_ienc,
+    sea_area_locations_usace_ienc,
+    sea_areas_usace_ienc,
+    shoreline_construction_areas_usace_ienc,
+    sloped_ground_lines_usace_ienc,
     census_secondary_school_districts,
     principal_ports_usace,
     census_unified_school_districts,
@@ -213,8 +227,10 @@ hifld_ingest_assets = [
     epa_frs_eia_860_power_generation_facilities_by_source,
     epa_icis_wastewater_treatment_plants,
     fuds_irm_property_point_ingest,
+    national_inventory_of_dams_ingest,
     usace_fuds_projects_points,
     usace_fuds_program_district_boundaries,
+    fuds_property_boundaries_ingest,
     epa_small_scale_regions,
     nces_private_schools_2023_24,
     nces_public_schools,
@@ -259,4 +275,6 @@ hifld_ingest_assets = [
     bts_intermodal_freight_air_to_truck,
     fema_nfhl_nodes,
     fema_nfhl_hydrologic_reaches,
+    usace_fuds_munitions_response_sites,
+    usace_fuds_public_properties,
 ]
