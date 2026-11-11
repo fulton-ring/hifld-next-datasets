@@ -59,6 +59,10 @@ EXPECTED_FIELD_DECLARATIONS = [
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
 EXPECTED_EXTENT = {"xmin": -96.39078139999998, "ymin": 34.012356100000034,
                    "xmax": -84.46132699999998, "ymax": 44.94622700000008}
+# Every XY vertex must stay inside the EPSG:4326 geographic domain and the pinned
+# layer extent within binary64 float-noise tolerance; drift outside either fails
+# closed before any candidate write or seal.
+EXTENT_TOLERANCE_DEGREES = 1e-9
 CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before",
                  "ids_before", "layer_after", "count_after", "ids_after", "service_after",
                  *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
@@ -199,6 +203,13 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                     if (not isinstance(point, list) or len(point) != 2
                             or any(type(coord) not in (int, float) or not math.isfinite(coord) for coord in point)):
                         raise ValueError("source_xy_ordinate_contract_drift")
+                    if not (-180.0 <= point[0] <= 180.0 and -90.0 <= point[1] <= 90.0):
+                        raise ValueError("source_xy_geographic_domain_violation")
+                    if not (EXPECTED_EXTENT["xmin"] - EXTENT_TOLERANCE_DEGREES <= point[0]
+                            <= EXPECTED_EXTENT["xmax"] + EXTENT_TOLERANCE_DEGREES
+                            and EXPECTED_EXTENT["ymin"] - EXTENT_TOLERANCE_DEGREES <= point[1]
+                            <= EXPECTED_EXTENT["ymax"] + EXTENT_TOLERANCE_DEGREES):
+                        raise ValueError("source_vertex_outside_declared_extent")
                     vertices += 1
             oid = attrs.get("OBJECTID")
             if type(oid) is not int or oid not in expected_ids:
@@ -234,7 +245,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "bts_catalog_item_id": BTS_ITEM_ID,
         "prior_bts_catalog_item_id": PRIOR_BTS_ITEM_ID,
         "bts_catalog_item_successor_review_pending": True,
-        "drift_guard": "Current BTS PDF catalog link, exact service directory/service/layer roster, full field declarations/types, explicit EPSG:4326 layer and response-page SRs, explicit geometry SRs, count and before/after ID roster, per-page IDs/attributes/transfer limits and XY path dimensions checked.",
+        "drift_guard": "Current BTS PDF catalog link, exact service directory/service/layer roster, full field declarations/types, explicit EPSG:4326 layer and response-page SRs, explicit geometry SRs, count and before/after ID roster, per-page IDs/attributes/transfer limits, XY path dimensions and EPSG:4326 geographic-domain plus pinned-extent containment of every vertex checked.",
     }
     return layer["fields"], features, audit
 

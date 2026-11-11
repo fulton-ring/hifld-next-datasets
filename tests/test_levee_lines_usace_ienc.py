@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ from dagster_hifld.assets.levee_lines_usace_ienc import (
     levee_lines_usace_ienc_complete, levee_lines_usace_ienc_draft_schedule,
     levee_lines_usace_ienc,
 )
+from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.sources import levee_lines_usace_ienc as source
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import _canonical
@@ -101,6 +103,99 @@ class LeveeLinesUsaceIencTests(unittest.TestCase):
                 mutate(docs)
                 with self.assertRaisesRegex(ValueError, expected):
                     source._validate(self._captures(docs))
+
+    def test_vertex_domain_and_coverage_drift_fail_closed(self):
+        def replace_vertex(docs, vertex, index):
+            docs["page_000"]["features"][0]["geometry"]["paths"][0][index] = vertex
+        cases = [
+            ("out-of-range latitude", lambda d: replace_vertex(d, [-94.0, 100.0], 0),
+             "source_xy_geographic_domain_violation"),
+            ("in-range outside coverage", lambda d: replace_vertex(d, [0.0, 0.0], 1),
+             "source_vertex_outside_declared_extent"),
+        ]
+        for label, mutate, expected in cases:
+            with self.subTest(label=label):
+                docs = json.loads(json.dumps(self._documents()))
+                mutate(docs)
+                with self.assertRaisesRegex(ValueError, expected):
+                    source._validate(self._captures(docs))
+        boundary = json.loads(json.dumps(self._documents()))
+        boundary["page_000"]["features"][0]["geometry"]["paths"] = [[
+            [source.EXPECTED_EXTENT["xmin"], source.EXPECTED_EXTENT["ymin"]],
+            [source.EXPECTED_EXTENT["xmax"], source.EXPECTED_EXTENT["ymax"]]]]
+        _fields, _features, audit = source._validate(self._captures(boundary))
+        self.assertEqual(audit["source_vertex_count"], 1470)
+        self.assertEqual(audit["geometry_invalid_count"], 0)
+        self.assertIn("pinned-extent containment of every vertex", audit["drift_guard"])
+
+    def _replay_directory(self, root, docs, mutate=None):
+        documents = json.loads(json.dumps(docs))
+        if mutate is not None:
+            mutate(documents)
+        root.mkdir(parents=True)
+        roster_urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        receipts = {}
+        for name in sorted(source.CAPTURE_NAMES):
+            body = _canonical(documents[name])
+            receipt = {"method": "GET", "url": roster_urls[name], "final_url": roster_urls[name],
+                       "observed_at": "2026-11-11T00:00:00+00:00", "status": 200, "complete_body": True,
+                       "wire_bytes": len(body), "wire_sha256": hashlib.sha256(body).hexdigest(),
+                       "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(),
+                       "content_encoding": "identity", "content_length": len(body),
+                       "error_code": None, "error_type": None}
+            receipts[name] = receipt
+            (root / f"{name}.body").write_bytes(body)
+            (root / f"{name}.wire").write_bytes(body)
+            (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+        manifest = {"complete": True, "captured_at": "2026-11-11T00:00:00+00:00",
+                    "source_feature_count": source.EXPECTED_COUNT, "receipts": receipts,
+                    "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}
+        (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
+        return root
+
+    def test_drifted_replay_seals_no_ready_candidate(self):
+        def replace_vertex(docs, vertex, index):
+            docs["page_000"]["features"][0]["geometry"]["paths"][0][index] = vertex
+        cases = [
+            ("out-of-range latitude", lambda d: replace_vertex(d, [-94.0, 100.0], 0),
+             "source_xy_geographic_domain_violation"),
+            ("in-range outside coverage", lambda d: replace_vertex(d, [0.0, 0.0], 1),
+             "source_vertex_outside_declared_extent"),
+        ]
+        for label, mutate, expected in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+                root = self._replay_directory(Path(tmp) / "capture", self._documents(), mutate)
+                with self.assertRaisesRegex(ValueError, expected):
+                    source.capture_levee_lines_usace_ienc(storage, version="regression",
+                                                          capture_directory=str(root))
+                self.assertEqual(storage.list_prefix(""), [])
+
+    def test_valid_replay_seals_ready_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            root = self._replay_directory(Path(tmp) / "capture", self._documents())
+            first = source.capture_levee_lines_usace_ienc(storage, version="regression",
+                                                          capture_directory=str(root))
+            self.assertFalse(first["reused"])
+            self.assertEqual(first["feature_count"], source.EXPECTED_COUNT)
+            self.assertTrue(first["source_population_complete"])
+            self.assertFalse(first["release_accepted"])
+            ready = json.loads(storage.read_key(first["candidate_ready"]))
+            self.assertEqual(ready["version"], first["version"])
+            self.assertFalse(ready["approved"])
+            prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{first['version']}"
+            staged = set(storage.list_prefix(prefix))
+            self.assertIn(f"{prefix}/geoparquet/{source.FILE_SLUG}.parquet", staged)
+            self.assertIn(f"{prefix}/raw/page_000.body", staged)
+            self.assertIn(f"{prefix}/metadata/candidate_ready.json", staged)
+            audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
+            self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+            self.assertEqual(audit["geometry_invalid_count"], 0)
+            second = source.capture_levee_lines_usace_ienc(storage, version="regression",
+                                                           capture_directory=str(root))
+            self.assertTrue(second["reused"])
+            self.assertEqual(second["version"], first["version"])
 
     def test_capture_version_cannot_escape_capture_root(self):
         with tempfile.TemporaryDirectory() as tmp:
