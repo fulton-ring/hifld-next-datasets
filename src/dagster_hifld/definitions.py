@@ -639,6 +639,11 @@ from dagster_hifld.assets.ferrous_metal_mines import (
     ferrous_metal_mines_draft_schedule,
     ferrous_metal_mines_population_complete,
 )
+from dagster_hifld.assets.miscellaneous_industrial_mineral_operations import (
+    miscellaneous_industrial_mineral_operations_draft_job,
+    miscellaneous_industrial_mineral_operations_draft_schedule,
+    miscellaneous_industrial_mineral_operations_population_complete,
+)
 
 from dagster_hifld.assets.docks import (
     docks_draft_job,
@@ -1122,6 +1127,7 @@ defs = Definitions(
         usace_floating_docks_complete,
         ferrous_metal_processing_plants_population_complete,
         ferrous_metal_mines_population_complete,
+        miscellaneous_industrial_mineral_operations_population_complete,
         usace_data_coverage_areas_complete,
         epa_emergency_response_rmp_facilities_complete,
         epa_frs_sic_complete,
@@ -1246,6 +1252,7 @@ defs = Definitions(
         usace_floating_docks_draft_job,
         ferrous_metal_processing_plants_draft_job,
         ferrous_metal_mines_draft_job,
+        miscellaneous_industrial_mineral_operations_draft_job,
         crushed_stone_preservation_job,
         usace_data_coverage_areas_draft_job,
         epa_rmp_facilities_draft_job,
@@ -1370,6 +1377,7 @@ defs = Definitions(
         usace_floating_docks_draft_schedule,
         ferrous_metal_processing_plants_draft_schedule,
         ferrous_metal_mines_draft_schedule,
+        miscellaneous_industrial_mineral_operations_draft_schedule,
         crushed_stone_preservation_schedule,
         electric_retail_service_territories_preservation_schedule,
         usace_data_coverage_areas_draft_schedule,
