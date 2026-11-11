@@ -226,6 +226,12 @@ from dagster_hifld.assets.land_region_areas_usace_ienc import (
     land_region_areas_usace_ienc_complete,
     land_region_areas_usace_ienc_draft_job,
 )
+from dagster_hifld.assets.land_surface_areas_usace_ienc import (
+    land_surface_areas_usace_ienc_draft_schedule,
+    land_surface_areas_usace_ienc_complete,
+    land_surface_areas_usace_ienc_geometry_quality,
+    land_surface_areas_usace_ienc_draft_job,
+)
 
 from dagster_hifld.assets.principal_ports import (
     principal_ports_source_complete,
@@ -1036,6 +1042,8 @@ defs = Definitions(
         usace_pylon_areas_complete,
         hf_areas_usace_ienc_complete,
         land_region_areas_usace_ienc_complete,
+        land_surface_areas_usace_ienc_complete,
+        land_surface_areas_usace_ienc_geometry_quality,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
@@ -1136,6 +1144,7 @@ defs = Definitions(
         usace_pylon_areas_draft_job,
         hf_areas_usace_ienc_draft_job,
         land_region_areas_usace_ienc_draft_job,
+        land_surface_areas_usace_ienc_draft_job,
         pylon_locations_draft_refresh_job,
         distance_marks_draft_refresh_job,
         recommended_tracks_draft_job,
@@ -1243,6 +1252,7 @@ defs = Definitions(
         usace_pylon_areas_draft_schedule,
         hf_areas_usace_ienc_draft_schedule,
         land_region_areas_usace_ienc_draft_schedule,
+        land_surface_areas_usace_ienc_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
         noaa_territorial_draft_weekly_schedule,
