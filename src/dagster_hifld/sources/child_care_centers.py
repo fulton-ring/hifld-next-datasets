@@ -140,10 +140,9 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
             ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
             ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))]
     for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds": ",".join(map(str, page_ids)),
-            "outFields": "*", "returnGeometry": "true", "outSR": "4326",
-            "orderByFields": "OBJECTID ASC", "f": "json"})))
+        urls.append((f"page_{index:03d}", _query({"where": "1=1", "outFields": "*",
+            "returnGeometry": "true", "outSR": "4326", "orderByFields": "OBJECTID ASC",
+            "resultOffset": start, "resultRecordCount": PAGE_SIZE, "f": "json"})))
     urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
                  ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
                  ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
@@ -232,6 +231,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]], *,
             or layer.get("geometryType") != "esriGeometryPoint"
             or layer.get("maxRecordCount") != PAGE_SIZE
             or layer.get("advancedQueryCapabilities", {}).get("supportsOrderBy") is not True
+            or layer.get("advancedQueryCapabilities", {}).get("supportsPagination") is not True
             or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT):
         raise ValueError("source_layer_identity_extent_or_limit_drift")
     if layer.get("hasZ") or layer.get("hasM"):
@@ -260,7 +260,13 @@ def _validate(captures: dict[str, tuple[bytes, dict]], *,
     for page_index in range(page_count):
         name = f"page_{page_index:03d}"
         page = docs[name]
-        if "error" in page or page.get("exceededTransferLimit") is True:
+        if "error" in page:
+            raise ValueError("source_page_error_or_transfer_limit:" + name)
+        exceeded = page.get("exceededTransferLimit") is True
+        final_page = page_index == page_count - 1
+        if final_page and exceeded:
+            # A transfer-limited final page means the population was not fully
+            # transferred; a non-final full page legitimately carries the flag.
             raise ValueError("source_page_error_or_transfer_limit:" + name)
         if page.get("hasZ") or page.get("hasM"):
             raise ValueError("source_page_dimensional_drift:" + name)
@@ -347,10 +353,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]], *,
         "drift_guard": (
             "Exact EPA service folder, service identity (map name, document title/subject, "
             "copyright text), ten-layer roster, full field declarations/types, layer identity, "
-            "extent and record limit, explicit EPSG:4326 layer/page spatial references, before and "
-            "after count and OBJECTID rosters, per-page id slices, attribute types including "
-            "float32 round-trip for single-precision columns and declared-extent containment are "
-            "checked; duplicate provider ID values are preserved."),
+            "extent, record limit and pagination/orderBy capabilities, explicit EPSG:4326 "
+            "layer/page spatial references, before and after count and OBJECTID rosters, per-page "
+            "id slices, attribute types including float32 round-trip for single-precision columns "
+            "and declared-extent containment are checked; the transfer-limit flag is rejected on "
+            "the final page; duplicate provider ID values are preserved."),
     }
     return EXPECTED_FIELD_DECLARATIONS, features, audit
 

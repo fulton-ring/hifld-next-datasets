@@ -31,7 +31,7 @@ class ChildCareCentersTests(unittest.TestCase):
     def _layer(self):
         return {"id": source.LAYER_ID, "name": source.LAYER_NAME,
                 "geometryType": "esriGeometryPoint", "maxRecordCount": source.PAGE_SIZE,
-                "advancedQueryCapabilities": {"supportsOrderBy": True},
+                "advancedQueryCapabilities": {"supportsOrderBy": True, "supportsPagination": True},
                 "spatialReference": {"wkid": 4326, "latestWkid": 4326},
                 "extent": {**source.EXPECTED_EXTENT, "spatialReference": {"wkid": 4326}},
                 "fields": source.EXPECTED_FIELD_DECLARATIONS}
@@ -67,7 +67,10 @@ class ChildCareCentersTests(unittest.TestCase):
                 else:
                     attrs[name] = f"{name}-{oid}"
             rows.append({"attributes": attrs, "geometry": {"x": -113.0 - oid * 0.01, "y": 37.0 + oid * 0.01}})
-        docs["page_000"] = {"spatialReference": {"wkid": 4326, "latestWkid": 4326}, "features": rows}
+        for page_index, start in enumerate(range(0, count, source.PAGE_SIZE)):
+            docs[f"page_{page_index:03d}"] = {
+                "spatialReference": {"wkid": 4326, "latestWkid": 4326},
+                "features": rows[start:start + source.PAGE_SIZE]}
         return docs
 
     def _captures(self, docs):
@@ -104,17 +107,36 @@ class ChildCareCentersTests(unittest.TestCase):
         urls = dict(source._capture_roster(source.EXPECTED_IDS))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")],
                          [f"page_{index:03d}" for index in range(116)])
-        self.assertIn("objectIds=1%2C2%2C3", urls["page_000"])
+        self.assertIn("resultOffset=0", urls["page_000"])
+        self.assertIn("resultRecordCount=1000", urls["page_000"])
         self.assertIn("orderByFields=OBJECTID+ASC", urls["page_000"])
         self.assertIn("outSR=4326", urls["page_000"])
-        final_ids = urls["page_115"].split("objectIds=")[1].split("&")[0].split("%2C")
-        self.assertEqual(len(final_ids), 36)
-        self.assertEqual(final_ids[0], "115001")
-        self.assertEqual(final_ids[-1], "115036")
-        self.assertNotIn("115037", urls["page_115"])
+        self.assertIn("resultOffset=115000", urls["page_115"])
+        self.assertEqual("115036", source.EXPECTED_IDS[-1].__str__())
+        self.assertNotIn("resultOffset=116000", urls["page_115"])
         self.assertEqual(urls["service_directory"], source.SERVICE_DIRECTORY_URL)
         self.assertIn("returnCountOnly=true", urls["count_before"])
         self.assertIn("returnIdsOnly=true", urls["ids_before"])
+
+    def test_full_nonfinal_pages_may_flag_transfer_limit_but_final_pages_may_not(self):
+        full_docs = self._documents(1500)
+        full_docs["page_000"]["exceededTransferLimit"] = True
+        fields, features, audit = source._validate(
+            self._captures(full_docs), expected_count=1500,
+            expected_id_sha256=_sha(list(range(1, 1501))))
+        self.assertEqual(audit["source_feature_count"], 1500)
+
+        docs = json.loads(json.dumps(self._documents(1500)))
+        docs["page_001"]["exceededTransferLimit"] = True
+        with self.assertRaisesRegex(ValueError, "source_page_error_or_transfer_limit"):
+            source._validate(self._captures(docs), expected_count=1500,
+                             expected_id_sha256=_sha(list(range(1, 1501))))
+
+        docs = json.loads(json.dumps(self._documents(6)))
+        docs["layer_before"]["advancedQueryCapabilities"] = {"supportsOrderBy": True, "supportsPagination": False}
+        with self.assertRaisesRegex(ValueError, "source_layer_identity_extent_or_limit_drift"):
+            source._validate(self._captures(docs), expected_count=6,
+                             expected_id_sha256=_sha(list(range(1, 7))))
 
     def test_complete_native_population_and_geometry_are_validated(self):
         fields, features, audit = self._validate_synthetic()
