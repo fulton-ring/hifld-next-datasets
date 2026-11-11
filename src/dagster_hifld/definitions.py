@@ -264,6 +264,11 @@ from dagster_hifld.assets.river_areas_usace_ienc import (
     river_areas_usace_ienc_draft_job,
     river_areas_usace_ienc_draft_schedule,
 )
+from dagster_hifld.assets.shoreline_construction_locations_usace_ienc import (
+    shoreline_construction_locations_usace_ienc_complete,
+    shoreline_construction_locations_usace_ienc_draft_job,
+    shoreline_construction_locations_usace_ienc_draft_schedule,
+)
 from dagster_hifld.assets.sea_area_locations_usace_ienc import (
     sea_area_locations_usace_ienc_complete,
     sea_area_locations_usace_ienc_draft_job,
@@ -288,6 +293,10 @@ from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
     usace_overhead_cables_draft_job,
+)
+from dagster_hifld.assets.building_locations_usace_ienc import (
+    building_locations_population_complete,
+    building_locations_draft_schedule,
 )
 
 from dagster_hifld.assets.nces_private_schools import (
@@ -1088,7 +1097,9 @@ defs = Definitions(
         principal_ports_source_complete,
         usace_overhead_cables_complete,
         usace_dam_lines_complete,
+        building_locations_population_complete,
         river_areas_usace_ienc_complete,
+        shoreline_construction_locations_usace_ienc_complete,
         sea_area_locations_usace_ienc_complete,
         sea_areas_usace_ienc_complete,
         shoreline_construction_areas_usace_ienc_complete,
@@ -1194,6 +1205,7 @@ defs = Definitions(
         usace_overhead_cables_draft_job,
         usace_dam_lines_draft_job,
         river_areas_usace_ienc_draft_job,
+        shoreline_construction_locations_usace_ienc_draft_job,
         sea_area_locations_usace_ienc_draft_job,
         sea_areas_usace_ienc_draft_job,
         shoreline_construction_areas_usace_ienc_draft_job,
@@ -1311,7 +1323,9 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_schedule,
         usace_overhead_cables_draft_schedule,
         usace_dam_lines_draft_schedule,
+        building_locations_draft_schedule,
         river_areas_usace_ienc_draft_schedule,
+        shoreline_construction_locations_usace_ienc_draft_schedule,
         sea_area_locations_usace_ienc_draft_schedule,
         sea_areas_usace_ienc_draft_schedule,
         shoreline_construction_areas_usace_ienc_draft_schedule,
