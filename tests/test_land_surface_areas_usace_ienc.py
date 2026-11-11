@@ -49,7 +49,7 @@ def _crossing_hole_rings() -> list[list[list[float]]]:
     """
     x0, y0 = EXPECTED_LAYER_EXTENT["xmin"], EXPECTED_LAYER_EXTENT["ymin"]
     shell = _ring(x0, y0)
-    hx, hy, size = x0 + 0.0005, y0 + 0.0005, 0.0015
+    hx, hy, size = x0 + 0.0005, y0 + 0.0005, 0.0009
     hole = [
         [hx, hy], [hx + size, hy], [hx + size, hy + size], [hx, hy + size], [hx, hy],
     ]
@@ -289,8 +289,9 @@ class ValidateDriftRejections(unittest.TestCase):
 
     def test_page_roster_incomplete(self):
         docs = _docs()
+        pins = _pins(docs)
         docs.pop("page_000")
-        with patch.multiple(source, **_pins(docs)):
+        with patch.multiple(source, **pins):
             with self.assertRaisesRegex(ValueError, "source_capture_roster_incomplete"):
                 _validate(_captures(docs))
 
