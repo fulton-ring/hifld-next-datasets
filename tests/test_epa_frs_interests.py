@@ -159,7 +159,7 @@ class EpaFrsInterestsTests(unittest.TestCase):
         self.assertEqual(src.ITEM_ID, "cdff193a3e3743a5bc770e2743f215b3")
         self.assertEqual(src.LAYER_ID, 0)
         self.assertEqual(src.LAYER_NAME, "FRS_INTERESTS")
-        self.assertEqual(src.EXPECTED_COUNT, 7_097_772)
+        self.assertEqual(src.EXPECTED_COUNT, 7_068_559)
         self.assertEqual(len(src.NATIVE_FIELDS), 32)
         self.assertIsNone(src.SOURCE_VINTAGE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
@@ -222,6 +222,28 @@ class EpaFrsInterestsTests(unittest.TestCase):
                     candidate = result.output_for_node("ingest__frs_interests__frs_interests")
                     self.assertEqual(candidate["feature_count"], FIXTURE_COUNT)
                     self.assertTrue(candidate["reused"])
+
+    def test_live_field_shape_without_explicit_length_is_accepted(self):
+        # The hosted layer omits "length" for OID/numeric/date fields; the roster
+        # check must treat the omitted key as None instead of raising KeyError.
+        fields = []
+        for name, esri_type, nullable, length in src.NATIVE_FIELDS:
+            field = {"name": name, "type": esri_type, "alias": name,
+                     "nullable": nullable, "domain": None}
+            if length is not None:
+                field["length"] = length
+            fields.append(field)
+        schema_sha = src._profile_schema({"fields": fields})[1]
+        transport = make_responder(_fixture_rows(FIXTURE_COUNT), layer_fields=fields)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with fixture_mode(schema_sha, transport):
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                result = src.capture_epa_frs_interests(
+                    storage, version="live-shape-run", capture_directory=str(root / "capture"))
+                self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+                self.assertFalse(result["reused"])
 
     def test_resume_reuses_retained_pages_and_discards_torn_evidence(self):
         rows = _fixture_rows(FIXTURE_COUNT)

@@ -13,9 +13,10 @@ import html
 import json
 import shutil
 from array import array
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Mapping
+from typing import Iterable, Iterator
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -55,7 +56,7 @@ PROPOSED_PHYSICAL_TYPE_MAPPING = {
     "esriFieldTypeDouble": {"arrow": "float64", "status": "proposed_unapproved"},
     "esriFieldTypeDate": {"arrow": "timestamp(ms, UTC)", "status": "proposed_unapproved"},
 }
-EXPECTED_COUNT = 7_097_772
+EXPECTED_COUNT = 7_068_559
 EXPECTED_SCHEMA_SHA256 = "749193bd01b2b1410e27b79c3996e8525035fc61bd15c7143c750cb91740c467"
 EXPECTED_RECORD_SHA256 = ""
 EXPECTED_GEOMETRY_SHA256 = ""
@@ -190,18 +191,24 @@ def _expected_capture_names(count: int) -> list[str]:
             "page_tail", "layer_after", "service_after", "count_after"]
 
 
-def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body_path = capture_root / f"{name}.body"
-    receipt_path = capture_root / f"{name}.receipt.json"
-    body, wire = body_path.read_bytes(), (capture_root / f"{name}.wire").read_bytes()
-    receipt_body = receipt_path.read_bytes()
+def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
+    """Parse and structurally validate one retained receipt without page bytes."""
     try:
-        receipt = json.loads(receipt_body)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise EPAFRSInterestsError("retained_capture_receipt_invalid:" + name) from exc
-    if (receipt.get("method") != "GET" or receipt.get("url") != receipt.get("final_url")
-            or receipt.get("complete_body") is not True or receipt.get("status") != 200
-            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
+            or receipt.get("url") != receipt.get("final_url")
+            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
+        raise EPAFRSInterestsError("retained_capture_receipt_invalid:" + name)
+    return receipt
+
+
+def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
+    body, wire = ((capture_root / f"{name}.body").read_bytes(),
+                  (capture_root / f"{name}.wire").read_bytes())
+    receipt = _load_receipt(capture_root, name)
+    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
             or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
         raise EPAFRSInterestsError("retained_capture_receipt_invalid:" + name)
     return body, receipt
@@ -242,8 +249,26 @@ def _retained_or_fetch(client: httpx.Client | None, capture_root: Path, name: st
     return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
 
 
-def _load_capture_receipts(capture_root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
-    return {name: _read_capture(capture_root, name) for name in _expected_capture_names(EXPECTED_COUNT)}
+def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
+    """Load every expected receipt without holding any page body in memory."""
+    return {name: _load_receipt(capture_root, name) for name in _expected_capture_names(EXPECTED_COUNT)}
+
+
+class _RetainedCaptureViews(Mapping):
+    """Lazily materialize one capture view per access so quarantine stays bounded."""
+
+    def __init__(self, capture_root: Path, names: Iterable[str]):
+        self._capture_root = Path(capture_root)
+        self._names = tuple(names)
+
+    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
+        return _read_capture(self._capture_root, name)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._names)
+
+    def __len__(self) -> int:
+        return len(self._names)
 
 
 def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[str, object]:
@@ -267,7 +292,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     if spatial.get("latestWkid") != 4269:
         raise EPAFRSInterestsError("source_crs_drift")
     fields, schema_sha = _profile_schema(layer)
-    if tuple((f["name"], f["type"], f["nullable"], f["length"]) for f in fields) != NATIVE_FIELDS:
+    if tuple((f["name"], f["type"], f["nullable"], f.get("length")) for f in fields) != NATIVE_FIELDS:
         raise EPAFRSInterestsError("source_schema_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise EPAFRSInterestsError("source_schema_baseline_drift")
@@ -398,7 +423,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     parquet_body = Path(extracted["parquet_path"]).read_bytes()
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
-    captures = _load_capture_receipts(capture_root)
+    receipts = _load_receipt_map(capture_root)
     manifest = {
         "schema_version": 1, "approved": False, "title": LAYER_NAME,
         "description": ("Exact EPA_GEO hosted full-universe EPA FRS INTERESTS point layer. "
@@ -420,8 +445,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                   "url": extracted["item_provenance"]["license"]},
              "attribution": extracted["item_provenance"]["attribution"], "release_date": None,
              "release_date_unknown_reason": SOURCE_VINTAGE_NOTE}
-            for name, (_body, receipt) in sorted(captures.items())
-        ],
+             for name, receipt in sorted(receipts.items())
+         ],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"feature_layer_id": LAYER_ID,
                                             "source_fields": "all 32 fields preserved in producer order and declared physical types",
@@ -448,25 +473,32 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "schema_contract_accepted": False, "id_contract_accepted": False,
              "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
 
-    outputs: dict[str, bytes] = {
+    metadata_outputs: dict[str, bytes] = {
         parquet_name: parquet_body,
         "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n",
         "metadata/processing_identity.json": _canonical(identity) + b"\n",
         "metadata/candidate_ready.json": _canonical(ready) + b"\n",
     }
-    for name, (body, receipt) in captures.items():
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (capture_root / f"{name}.wire").read_bytes()
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
-    fingerprint = _sha(_canonical(identity))
-    for relative, body in outputs.items():
+    # Stream every retained capture to storage one page at a time; the full
+    # universe holds millions of features, so the seal never holds more than
+    # one page body/wire pair plus the small receipt and descriptor maps.
+    descriptors: dict[str, dict[str, object]] = {}
+    for relative, body in metadata_outputs.items():
         write_immutable(storage, f"{prefix}/{relative}", body)
-    descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
+        descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
+    for name in sorted(receipts):
+        body, receipt = _read_capture(capture_root, name)
+        wire = (capture_root / f"{name}.wire").read_bytes()
+        for suffix, blob in (("body", body), ("wire", wire),
+                             ("receipt.json", _canonical(receipt) + b"\n")):
+            relative = f"raw/{name}.{suffix}"
+            write_immutable(storage, f"{prefix}/{relative}", blob)
+            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
+    fingerprint = _sha(_canonical(identity))
     payload = {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": {name: receipt for name, (body, receipt) in sorted(captures.items())},
-               "objects": descriptors}
+               "capture_receipts": receipts, "objects": descriptors}
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
@@ -646,15 +678,17 @@ def capture_epa_frs_interests(storage: StagingStorageResource, *, version: str,
         return _seal_candidate(storage, capture_root, extracted, resumed_pages=resumed_pages,
                                first_captured_at=captured[0], last_captured_at=str(state["tail"]["captured_at"]))
     except Exception as exc:
-        captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+        valid_names = []
         for receipt_path in sorted(capture_root.glob("*.receipt.json")) if capture_root.exists() else []:
             name = receipt_path.name.removesuffix(".receipt.json")
             try:
-                captures[name] = _read_capture(capture_root, name)
+                _read_capture(capture_root, name)
             except (OSError, EPAFRSInterestsError, ValueError):
                 continue
-        if captures:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, captures,
+            valid_names.append(name)
+        if valid_names:
+            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
+                                          _RetainedCaptureViews(capture_root, valid_names),
                                           getattr(exc, "code", type(exc).__name__) or type(exc).__name__)
         raise
 
