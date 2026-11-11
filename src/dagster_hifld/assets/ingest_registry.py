@@ -16,6 +16,7 @@ from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point
 from dagster_hifld.assets.national_inventory_of_dams import national_inventory_of_dams_ingest
 from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
 from dagster_hifld.assets.fuds_district_boundaries import usace_fuds_program_district_boundaries
+from dagster_hifld.assets.fuds_property_boundaries import fuds_property_boundaries_ingest
 from dagster_hifld.assets.epa_small_scale import epa_small_scale_regions
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
 from dagster_hifld.assets.crushed_stone import usgs_crushed_stone_preservation
@@ -216,6 +217,7 @@ hifld_ingest_assets = [
     national_inventory_of_dams_ingest,
     usace_fuds_projects_points,
     usace_fuds_program_district_boundaries,
+    fuds_property_boundaries_ingest,
     epa_small_scale_regions,
     nces_private_schools_2023_24,
     nces_public_schools,

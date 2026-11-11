@@ -152,6 +152,11 @@ from dagster_hifld.assets.fuds_irm_property_point import (
     fuds_irm_property_point_draft_schedule,
     fuds_irm_property_point_geometry_quality,
 )
+from dagster_hifld.assets.fuds_property_boundaries import (
+    fuds_property_boundaries_complete,
+    fuds_property_boundaries_draft_schedule,
+    fuds_property_boundaries_geometry_quality,
+)
 from dagster_hifld.assets.bts_marine_roro import (
     bts_intermodal_freight_marine_roll_on_roll_off_complete,
     bts_marine_roro_draft_schedule,
@@ -1018,6 +1023,8 @@ defs = Definitions(
         epa_icis_wastewater_capture_complete,
         fuds_irm_property_point_complete,
         fuds_irm_property_point_geometry_quality,
+        fuds_property_boundaries_complete,
+        fuds_property_boundaries_geometry_quality,
         bts_intermodal_freight_marine_roll_on_roll_off_complete,
         bts_intermodal_freight_rail_tofc_cofc_complete,
         usace_fuds_projects_points_complete,
@@ -1222,6 +1229,7 @@ defs = Definitions(
         ferry_routes_source_integrity_schedule,
         epa_large_scale_source_integrity_schedule,
         fuds_irm_property_point_draft_schedule,
+        fuds_property_boundaries_draft_schedule,
         bts_marine_roro_draft_schedule,
         bts_rail_tofc_cofc_draft_schedule,
         epa_regions_draft_schedule,
