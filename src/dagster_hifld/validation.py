@@ -38,6 +38,18 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+# Reading a file updates its access timestamp on some filesystems (and, on
+# Linux, the change timestamp with it), so those two fields cannot distinguish
+# a read from a mutation and are excluded from input identity; content is
+# pinned separately by SHA-256 in the end guard.
+_INPUT_IDENTITY_STAT_FIELDS = ("st_mode", "st_ino", "st_dev", "st_nlink", "st_uid", "st_gid",
+                               "st_rdev", "st_size", "st_blksize", "st_blocks", "st_mtime_ns")
+
+
+def _comparison_input_identity(path: Path) -> tuple:
+    return tuple(getattr(path.stat(), field, None) for field in _INPUT_IDENTITY_STAT_FIELDS)
+
+
 def typed_value(value: Any) -> Any:
     """Lossless type tagging; integer keys never pass through SQLite numbers."""
     if value is None:
@@ -221,7 +233,7 @@ def compare_full_rows(
                 raise ValueError("Candidate cannot be its own baseline")
             identities = {}
             for path, expected in ((baseline, baseline_sha256), (candidate, candidate_sha256)):
-                identities[path] = path.stat()
+                identities[path] = _comparison_input_identity(path)
                 if sha256_file(path) != expected:
                     raise ValueError("Input checksum mismatch")
             report["baseline_input_bytes"] = baseline.stat().st_size
@@ -327,7 +339,7 @@ def compare_full_rows(
                         quota()
                     report["differences"] = changes
                     for path, expected in ((baseline, baseline_sha256), (candidate, candidate_sha256)):
-                        if path.stat() != identities[path] or sha256_file(path) != expected:
+                        if _comparison_input_identity(path) != identities[path] or sha256_file(path) != expected:
                             raise ValueError("Input changed during comparison")
                     invalid = any(c["invalid_records"] or c["null_keys"] or c["duplicate_keys"] for c in report["populations"].values())
                     report["status"] = "fail" if invalid else "needs_decision" if any(changes.values()) else "pass"

@@ -244,6 +244,55 @@ class FullPopulationTests(unittest.TestCase):
                                            baseline_reference=baseline_reference(baseline))
             self.assertEqual(report["status"], "blocked")
 
+    def test_input_access_time_update_during_comparison_still_passes(self):
+        # Reading the input legitimately updates atime (and ctime with it on
+        # Linux) on some filesystems; identical content must still compare.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            baseline, candidate = root / "baseline.jsonl", root / "candidate.jsonl"
+            stream(baseline, [feature()])
+            stream(candidate, [feature()])
+            original = sha256_file
+            touched = False
+            def touch_access_time(path):
+                nonlocal touched
+                result = original(path)
+                if not touched and Path(path) == candidate:
+                    touched = True
+                    stat = os.stat(candidate)
+                    os.utime(candidate, ns=(stat.st_atime_ns + 1_000_000_000, stat.st_mtime_ns))
+                return result
+            with patch("dagster_hifld.validation.sha256_file", side_effect=touch_access_time):
+                report = compare_full_rows(baseline, candidate, CONTRACT, root / "out",
+                                           baseline_sha256=original(baseline), candidate_sha256=original(candidate),
+                                           baseline_reference=baseline_reference(baseline))
+            self.assertEqual(report["status"], "pass")
+
+    def test_input_mtime_only_update_during_comparison_is_blocked(self):
+        # A modification-time change with identical content is still a blocked
+        # input change; only read-mutated access times are tolerated.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            baseline, candidate = root / "baseline.jsonl", root / "candidate.jsonl"
+            stream(baseline, [feature()])
+            stream(candidate, [feature()])
+            original = sha256_file
+            touched = False
+            def touch_modification_time(path):
+                nonlocal touched
+                result = original(path)
+                if not touched and Path(path) == candidate:
+                    touched = True
+                    stat = os.stat(candidate)
+                    os.utime(candidate, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+                return result
+            with patch("dagster_hifld.validation.sha256_file", side_effect=touch_modification_time):
+                report = compare_full_rows(baseline, candidate, CONTRACT, root / "out",
+                                           baseline_sha256=original(baseline), candidate_sha256=original(candidate),
+                                           baseline_reference=baseline_reference(baseline))
+            self.assertEqual(report["status"], "blocked")
+            self.assertTrue(any("Input changed during comparison" in code for code in report["reason_codes"]))
+
     def test_multi_input_provenance_merge_preserves_identity_and_rejects_conflicts(self):
         one, two = {"input_id": "a", "producer": "Agency A"}, {"input_id": "b", "producer": "Agency B"}
         merged = _merge_manifest_layers([("dataset", "a", {"inputs": [one]}), ("version", "b", {"inputs": [two]})])
