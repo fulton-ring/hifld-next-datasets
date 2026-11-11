@@ -135,6 +135,18 @@ from dagster_hifld.assets.fuds_projects_points import (
     fuds_projects_points_draft_schedule,
     usace_fuds_projects_points_complete,
 )
+from dagster_hifld.assets.fuds_public_properties import (
+    usace_fuds_public_properties_complete,
+    fuds_public_properties_draft_schedule,
+)
+from dagster_hifld.assets.nfhl_nodes import (
+    nfhl_nodes_draft_schedule,
+    fema_nfhl_nodes_complete,
+)
+from dagster_hifld.assets.nfhl_hydrologic_reaches import (
+    nfhl_hydrologic_reaches_draft_schedule,
+    fema_nfhl_hydrologic_reaches_complete,
+)
 from dagster_hifld.assets.fuds_district_boundaries import (
     fuds_district_boundaries_draft_schedule,
     usace_fuds_program_district_boundaries_complete,
@@ -143,6 +155,11 @@ from dagster_hifld.assets.fuds_irm_property_point import (
     fuds_irm_property_point_complete,
     fuds_irm_property_point_draft_schedule,
     fuds_irm_property_point_geometry_quality,
+)
+from dagster_hifld.assets.fuds_property_boundaries import (
+    fuds_property_boundaries_complete,
+    fuds_property_boundaries_draft_schedule,
+    fuds_property_boundaries_geometry_quality,
 )
 from dagster_hifld.assets.bts_marine_roro import (
     bts_intermodal_freight_marine_roll_on_roll_off_complete,
@@ -208,6 +225,11 @@ from dagster_hifld.assets.hf_areas_usace_ienc import (
     hf_areas_usace_ienc_complete,
     hf_areas_usace_ienc_draft_job,
 )
+from dagster_hifld.assets.land_region_areas_usace_ienc import (
+    land_region_areas_usace_ienc_draft_schedule,
+    land_region_areas_usace_ienc_complete,
+    land_region_areas_usace_ienc_draft_job,
+)
 
 from dagster_hifld.assets.principal_ports import (
     principal_ports_source_complete,
@@ -236,6 +258,31 @@ from dagster_hifld.assets.usace_dam_lines import (
     usace_dam_lines_complete,
     usace_dam_lines_draft_job,
     usace_dam_lines_draft_schedule,
+)
+from dagster_hifld.assets.river_areas_usace_ienc import (
+    river_areas_usace_ienc_complete,
+    river_areas_usace_ienc_draft_job,
+    river_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sea_area_locations_usace_ienc import (
+    sea_area_locations_usace_ienc_complete,
+    sea_area_locations_usace_ienc_draft_job,
+    sea_area_locations_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sea_areas_usace_ienc import (
+    sea_areas_usace_ienc_complete,
+    sea_areas_usace_ienc_draft_job,
+    sea_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import (
+    shoreline_construction_areas_usace_ienc_complete,
+    shoreline_construction_areas_usace_ienc_draft_job,
+    shoreline_construction_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sloped_ground_lines_usace_ienc import (
+    sloped_ground_lines_usace_ienc_complete,
+    sloped_ground_lines_usace_ienc_draft_job,
+    sloped_ground_lines_usace_ienc_draft_schedule,
 )
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
@@ -293,6 +340,18 @@ from dagster_hifld.assets.coastlines_usace_ienc import (
     coastlines_usace_ienc_draft_schedule,
 )
 
+from dagster_hifld.assets.locks_usace_ienc import (
+    locks_usace_ienc_complete,
+    locks_usace_ienc_draft_job,
+    locks_usace_ienc_draft_schedule,
+)
+
+from dagster_hifld.assets.lock_basins_usace_ienc import (
+    lock_basins_usace_ienc_complete,
+    lock_basins_usace_ienc_draft_job,
+    lock_basins_usace_ienc_draft_schedule,
+)
+
 from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_complete,
     usace_overhead_pipeline_lines_draft_job,
@@ -303,6 +362,12 @@ from dagster_hifld.assets.usace_obstruction_lines import (
     usace_obstruction_lines_complete,
     usace_obstruction_lines_draft_job,
     usace_obstruction_lines_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_mooring_facility_lines import (
+    usace_mooring_facility_lines_complete,
+    usace_mooring_facility_lines_draft_job,
+    usace_mooring_facility_lines_draft_schedule,
 )
 
 from dagster_hifld.assets.floodwalls_usace_ienc import (
@@ -497,6 +562,12 @@ from dagster_hifld.assets.state_capitols import (
     state_capitols_draft_schedule,
     state_capitols_population_complete,
 )
+from dagster_hifld.assets.national_inventory_of_dams import (
+    national_inventory_of_dams_draft_job,
+    national_inventory_of_dams_draft_schedule,
+    national_inventory_of_dams_geometry_quality,
+    national_inventory_of_dams_population_complete,
+)
 from dagster_hifld.assets.campus_preservation import (
     campus_historical_full_quality,
     ornl_campus_historical_integrity_schedule,
@@ -505,6 +576,15 @@ from dagster_hifld.assets.campus_preservation import (
 from dagster_hifld.assets.combined_statistical_areas import (
     csa_source_integrity_job,
     csa_source_integrity_schedule,
+)
+from dagster_hifld.assets.epa_icis_wastewater import (
+    epa_icis_wastewater_capture_complete,
+    epa_icis_wastewater_draft_job,
+    epa_icis_wastewater_draft_schedule,
+)
+from dagster_hifld.assets.fuds_mrs import (
+    usace_fuds_munitions_response_sites_complete,
+    fuds_mrs_draft_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -974,8 +1054,11 @@ defs = Definitions(
         arc_regions_full_quality,
         eia_power_plants_complete,
         epa_frs_eia_860_power_generation_complete,
+        epa_icis_wastewater_capture_complete,
         fuds_irm_property_point_complete,
         fuds_irm_property_point_geometry_quality,
+        fuds_property_boundaries_complete,
+        fuds_property_boundaries_geometry_quality,
         bts_intermodal_freight_marine_roll_on_roll_off_complete,
         bts_intermodal_freight_rail_tofc_cofc_complete,
         usace_fuds_projects_points_complete,
@@ -990,9 +1073,11 @@ defs = Definitions(
         courthouses_population_complete,
         usace_pylon_areas_complete,
         hf_areas_usace_ienc_complete,
+        land_region_areas_usace_ienc_complete,
         usace_recommended_tracks_complete,
         usace_overhead_pipeline_lines_complete,
         usace_obstruction_lines_complete,
+        usace_mooring_facility_lines_complete,
         floodwalls_usace_ienc_complete,
         harbor_facility_locations_usace_ienc_complete,
         usace_administrative_areas_complete,
@@ -1001,6 +1086,11 @@ defs = Definitions(
         principal_ports_source_complete,
         usace_overhead_cables_complete,
         usace_dam_lines_complete,
+        river_areas_usace_ienc_complete,
+        sea_area_locations_usace_ienc_complete,
+        sea_areas_usace_ienc_complete,
+        shoreline_construction_areas_usace_ienc_complete,
+        sloped_ground_lines_usace_ienc_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         usace_dry_docks_complete,
@@ -1021,10 +1111,14 @@ defs = Definitions(
         nces_private_schools_complete,
         nces_public_schools_complete,
         coastlines_usace_ienc_complete,
+        locks_usace_ienc_complete,
+        lock_basins_usace_ienc_complete,
         usace_airport_area_complete,
         usace_airport_area_quality,
         usace_airport_area_release,
         state_capitols_population_complete,
+        national_inventory_of_dams_population_complete,
+        national_inventory_of_dams_geometry_quality,
         campus_historical_full_quality,
         usace_conveyor_areas_complete,
         usace_depth_areas_complete,
@@ -1056,6 +1150,10 @@ defs = Definitions(
         ferc_historical_full_quality,
         fuds_program_division_boundaries_complete,
         bts_intermodal_freight_air_to_truck_complete,
+        fema_nfhl_nodes_complete,
+        fema_nfhl_hydrologic_reaches_complete,
+        usace_fuds_munitions_response_sites_complete,
+        usace_fuds_public_properties_complete,
     ],
     jobs=[
         bts_ferry_terminals_draft_refresh_job,
@@ -1083,6 +1181,7 @@ defs = Definitions(
         usgs_ems_stations_draft_refresh_job,
         usace_pylon_areas_draft_job,
         hf_areas_usace_ienc_draft_job,
+        land_region_areas_usace_ienc_draft_job,
         pylon_locations_draft_refresh_job,
         distance_marks_draft_refresh_job,
         recommended_tracks_draft_job,
@@ -1090,7 +1189,13 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_job,
         usace_overhead_cables_draft_job,
         usace_dam_lines_draft_job,
+        river_areas_usace_ienc_draft_job,
+        sea_area_locations_usace_ienc_draft_job,
+        sea_areas_usace_ienc_draft_job,
+        shoreline_construction_areas_usace_ienc_draft_job,
+        sloped_ground_lines_usace_ienc_draft_job,
         usace_obstruction_lines_draft_job,
+        usace_mooring_facility_lines_draft_job,
         floodwalls_usace_ienc_draft_job,
         harbor_facility_locations_usace_ienc_draft_job,
         usace_administrative_areas_draft_job,
@@ -1104,6 +1209,7 @@ defs = Definitions(
         plate_boundaries_draft_job,
         eia_power_plants_draft_job,
         epa_power_generation_draft_job,
+        epa_icis_wastewater_draft_job,
         epa_frs_naics_draft_job,
         gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
@@ -1120,6 +1226,8 @@ defs = Definitions(
         us_state_boundaries_draft_job,
         nces_public_schools_draft_job,
         coastlines_usace_ienc_draft_job,
+        locks_usace_ienc_draft_job,
+        lock_basins_usace_ienc_draft_job,
         arc_regions_draft_job,
         aiannh_source_integrity_refresh_job,
         red_cross_headquarters_draft_job,
@@ -1133,6 +1241,7 @@ defs = Definitions(
         fws_cbrs_units_draft_refresh_job,
         cdp_source_integrity_job,
         state_capitols_draft_job,
+        national_inventory_of_dams_draft_job,
         ornl_campus_historical_reconstruction_job,
         csa_source_integrity_job,
         concity_source_integrity_job,
@@ -1167,6 +1276,7 @@ defs = Definitions(
         ferry_routes_source_integrity_schedule,
         epa_large_scale_source_integrity_schedule,
         fuds_irm_property_point_draft_schedule,
+        fuds_property_boundaries_draft_schedule,
         bts_marine_roro_draft_schedule,
         bts_rail_tofc_cofc_draft_schedule,
         epa_regions_draft_schedule,
@@ -1184,6 +1294,7 @@ defs = Definitions(
         census_tracts_draft_schedule,
         usace_pylon_areas_draft_schedule,
         hf_areas_usace_ienc_draft_schedule,
+        land_region_areas_usace_ienc_draft_schedule,
         faa_airspace_draft_refresh_schedule,
         noaa_eez_draft_weekly_schedule,
         noaa_territorial_draft_weekly_schedule,
@@ -1197,7 +1308,13 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_schedule,
         usace_overhead_cables_draft_schedule,
         usace_dam_lines_draft_schedule,
+        river_areas_usace_ienc_draft_schedule,
+        sea_area_locations_usace_ienc_draft_schedule,
+        sea_areas_usace_ienc_draft_schedule,
+        shoreline_construction_areas_usace_ienc_draft_schedule,
+        sloped_ground_lines_usace_ienc_draft_schedule,
         usace_obstruction_lines_draft_schedule,
+        usace_mooring_facility_lines_draft_schedule,
         floodwalls_usace_ienc_draft_schedule,
         harbor_facility_locations_usace_ienc_draft_schedule,
         usace_administrative_areas_draft_schedule,
@@ -1216,7 +1333,10 @@ defs = Definitions(
         plate_boundaries_draft_schedule,
         eia_power_plants_draft_schedule,
         epa_power_generation_draft_schedule,
+        epa_icis_wastewater_draft_schedule,
         fuds_projects_points_draft_schedule,
+        nfhl_nodes_draft_schedule,
+        nfhl_hydrologic_reaches_draft_schedule,
         epa_frs_naics_draft_schedule,
         gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
@@ -1231,6 +1351,8 @@ defs = Definitions(
         nces_private_schools_draft_schedule,
         nces_public_schools_draft_schedule,
         coastlines_usace_ienc_draft_schedule,
+        locks_usace_ienc_draft_schedule,
+        lock_basins_usace_ienc_draft_schedule,
         arc_regions_draft_schedule,
         aiannh_source_integrity_refresh_schedule,
         red_cross_headquarters_draft_schedule,
@@ -1245,6 +1367,7 @@ defs = Definitions(
         fws_cbrs_units_draft_refresh_schedule,
         cdp_source_integrity_schedule,
         state_capitols_draft_schedule,
+        national_inventory_of_dams_draft_schedule,
         csa_source_integrity_schedule,
         concity_source_integrity_schedule,
         usace_conveyor_areas_draft_schedule,
@@ -1275,6 +1398,8 @@ defs = Definitions(
         fuds_district_boundaries_draft_schedule,
         tsunami_events_draft_schedule,
         bts_air_truck_draft_schedule,
+        fuds_mrs_draft_schedule,
+        fuds_public_properties_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),

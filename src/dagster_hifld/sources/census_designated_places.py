@@ -29,6 +29,7 @@ import pyarrow.parquet as pq
 import pyogrio
 import pyproj
 import shapely
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
@@ -197,7 +198,8 @@ def expected_parquet(table):
     return table.replace_schema_metadata({b'geo':encode(geo)})
 
 def write_gpkg(table,path):
-    pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
+    with with_geopackage_creation_time('2024-01-01T00:00:00.000Z'):
+        pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
     with sqlite3.connect(path) as db:db.execute("UPDATE gpkg_contents SET last_change='2024-01-01T00:00:00.000Z'")
 
 def record_hash(table):
