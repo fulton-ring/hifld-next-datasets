@@ -259,6 +259,11 @@ from dagster_hifld.assets.usace_dam_lines import (
     usace_dam_lines_draft_job,
     usace_dam_lines_draft_schedule,
 )
+from dagster_hifld.assets.river_areas_usace_ienc import (
+    river_areas_usace_ienc_complete,
+    river_areas_usace_ienc_draft_job,
+    river_areas_usace_ienc_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
@@ -1061,6 +1066,7 @@ defs = Definitions(
         usace_overhead_cables_complete,
         usace_dam_lines_complete,
         building_locations_population_complete,
+        river_areas_usace_ienc_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         usace_dry_docks_complete,
@@ -1158,6 +1164,7 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_job,
         usace_overhead_cables_draft_job,
         usace_dam_lines_draft_job,
+        river_areas_usace_ienc_draft_job,
         usace_obstruction_lines_draft_job,
         usace_mooring_facility_lines_draft_job,
         floodwalls_usace_ienc_draft_job,
@@ -1272,6 +1279,7 @@ defs = Definitions(
         usace_overhead_cables_draft_schedule,
         usace_dam_lines_draft_schedule,
         building_locations_draft_schedule,
+        river_areas_usace_ienc_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         usace_mooring_facility_lines_draft_schedule,
         floodwalls_usace_ienc_draft_schedule,
