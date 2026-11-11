@@ -32,6 +32,15 @@ from dagster_hifld.sources.epa_frs_contact_stream import (
 
 DATASET_SLUG = "epa-frs-interest-contact"
 FILE_SLUG = DATASET_SLUG
+# Catalog and release preparation add derived documents to a sealed version
+# prefix after acquisition. They are never source-owned candidate objects.
+CATALOG_DERIVED_NAMES = frozenset({
+    "metadata/quality_manifest.json",
+    "metadata/data_dictionary.json",
+    "metadata/resolved_provenance.json",
+    "metadata/source/quality_manifest.json",
+    "metadata/source/data_dictionary.json",
+})
 EXPECTED_FIELDS = (
     "OBJECTID", "PGM_SYS_ACRNM", "PGM_SYS_ID", "FULL_NAME", "PHONE_NUMBER",
     "MAILING_ADDRESS", "SUPPLEMENTAL_ADDRESS", "CITY_NAME", "STATE_CODE",
@@ -102,13 +111,125 @@ def _quarantine(storage: StagingStorageResource, capture_root: Path, *, reason: 
     return prefix
 
 
+def _read_stable_json(storage: StagingStorageResource, key: str) -> object:
+    before = storage.object_snapshot(key)
+    if before is None:
+        raise ValueError("resume_catalog_document_missing:" + key.rsplit("/", 1)[-1])
+    body = storage.read_key(key)
+    if storage.object_snapshot(key) != before:
+        raise ValueError("resume_catalog_document_changed_during_validation")
+    try:
+        return json.loads(body)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("resume_catalog_document_invalid") from exc
+
+
+def _validate_resume_catalog_sidecars(storage: StagingStorageResource, prefix: str,
+                                       actual_keys: set[str],
+                                       manifest_descriptor: dict[str, object]) -> None:
+    """Narrowly validate catalog-derived documents on a retained candidate.
+
+    A cataloged retained prefix carries derived documents this ingest never
+    sealed. Allow only the exact catalog-owned set, require complete pairs,
+    bind the quality and dictionary semantics to this candidate's pinned
+    contract, and verify snapshots against the sealed manifest bytes. Nothing
+    here grants source, quality or release approval.
+    """
+    flat = {"metadata/quality_manifest.json", "metadata/data_dictionary.json"}
+    source_pair = {"metadata/source/quality_manifest.json", "metadata/source/data_dictionary.json"}
+    snapshot_pair = {"metadata/source/source_manifest.json",
+                    f"metadata/source/version_{manifest_descriptor['sha256']}_source_manifest.json"}
+    keys = {name: f"{prefix}/{name}" for name in CATALOG_DERIVED_NAMES | source_pair | snapshot_pair}
+    found_flat = {name for name in flat if keys[name] in actual_keys}
+    found_source = {name for name in source_pair if keys[name] in actual_keys}
+    found_snapshots = {name for name in snapshot_pair if keys[name] in actual_keys}
+    found_resolved = keys["metadata/resolved_provenance.json"] in actual_keys
+    if not (found_flat or found_source or found_snapshots or found_resolved):
+        return
+    if found_flat != flat:
+        # Catalog always writes the quality and dictionary documents together.
+        raise ValueError("resume_catalog_metadata_incomplete")
+    if found_source and found_source != source_pair:
+        raise ValueError("resume_catalog_source_snapshot_incomplete")
+    if found_snapshots and found_snapshots != snapshot_pair:
+        raise ValueError("resume_catalog_manifest_snapshot_incomplete")
+    quality = _read_stable_json(storage, keys["metadata/quality_manifest.json"])
+    dictionary = _read_stable_json(storage, keys["metadata/data_dictionary.json"])
+    columns = dictionary.get("columns") if isinstance(dictionary, dict) else None
+    column_names = ([item.get("name") if isinstance(item, dict) else None for item in columns]
+                    if isinstance(columns, list) else None)
+    if (not isinstance(quality, dict)
+            or quality.get("feature_count") != EXPECTED_ROWS
+            or quality.get("quality_check_passed") is not True
+            or quality.get("geometry_type") is not None
+            or quality.get("spatial_status") != "non_spatial_source"
+            or column_names != list(EXPECTED_FIELDS)):
+        raise ValueError("resume_catalog_document_semantics_changed")
+    if found_source:
+        if (_read_stable_json(storage, keys["metadata/source/quality_manifest.json"]) != quality
+                or _read_stable_json(storage, keys["metadata/source/data_dictionary.json"]) != dictionary):
+            raise ValueError("resume_catalog_source_snapshot_changed")
+    for name in found_snapshots:
+        snapshot = storage.object_snapshot(keys[name])
+        if (snapshot is None or manifest_descriptor != {"bytes": snapshot.size,
+                "sha256": storage.sha256_key(keys[name])}
+                or storage.object_snapshot(keys[name]) != snapshot):
+            raise ValueError("resume_catalog_manifest_snapshot_changed")
+    if found_resolved:
+        _read_stable_json(storage, keys["metadata/resolved_provenance.json"])
+
+
+def _verify_retained_source_bounds(parquet: pq.ParquetFile,
+                                   capture: dict[str, object]) -> dict[str, object]:
+    """Bind the retained payload's ID column to the producer's recorded bounds.
+
+    Completeness, range and duplicate-key checks run against the producer
+    payload exactly as the capture manifest recorded it: the native roster
+    digest, the pinned row count, and the maximum object ID the producer
+    reported. The scan reads only the single native ID column, never the
+    full wire archive.
+    """
+    maximum_id = capture.get("maximum_object_id")
+    if type(maximum_id) is not int or maximum_id < 1:
+        raise ValueError("resume_candidate_source_id_bounds_missing")
+    roster_digest = hashlib.sha256()
+    scanned = 0
+    previous = 0
+    minimum_id = None
+    for batch in parquet.iter_batches(batch_size=65_536, columns=("OBJECTID",)):
+        column = batch.column(0)
+        if column.type != pa.int64():
+            raise ValueError("resume_candidate_parquet_schema_or_count_changed")
+        for value in column.to_pylist():
+            if type(value) is not int:
+                raise ValueError("resume_candidate_object_id_type_changed")
+            if not 0 < value <= maximum_id:
+                raise ValueError("resume_candidate_object_id_out_of_source_bounds")
+            if value <= previous:
+                raise ValueError("resume_candidate_duplicate_or_unordered_object_id")
+            if scanned == 0:
+                minimum_id = value
+            previous = value
+            roster_digest.update(f"{value}\n".encode())
+            scanned += 1
+    if scanned != EXPECTED_ROWS:
+        raise ValueError("resume_candidate_object_id_count_changed")
+    if roster_digest.hexdigest() != capture.get("source_ids_sha256"):
+        raise ValueError("resume_candidate_source_id_roster_changed")
+    return {"count": scanned, "minimum_object_id": minimum_id,
+            "maximum_object_id": previous, "sha256": roster_digest.hexdigest()}
+
+
 def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str,
                                 identity: dict[str, object]) -> dict[str, object]:
     """Seal an exact complete retained capture under this code identity, offline.
 
     This path is intentionally explicit in asset config. It verifies source
     receipts, object snapshots, the Parquet footer, and completeness metadata;
-    the source observation timestamp and receipt bytes remain unchanged.
+    it additionally scans the retained native ID column against the producer
+    payload bounds the capture manifest recorded, and admits only the narrowly
+    validated catalog-derived documents a cataloged prefix carries. The source
+    observation timestamp and receipt bytes remain unchanged.
     """
     expected_prefix = f"{DATASET_SLUG}/{FILE_SLUG}/"
     if (not old_prefix.startswith(expected_prefix) or "/" in old_prefix[len(expected_prefix):]
@@ -163,8 +284,25 @@ def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str
         "metadata/processing_identity.json", "metadata/candidate_ready.json",
     )
     expected_keys = {f"{old_prefix}/{name}" for name in names}
-    if set(storage.list_prefix(old_prefix)) != expected_keys:
+    actual_keys = set(storage.list_prefix(old_prefix))
+    if not expected_keys <= actual_keys:
         raise ValueError("resume_candidate_storage_roster_changed")
+    manifest_key = f"{old_prefix}/metadata/source_manifest.json"
+    manifest_before = storage.object_snapshot(manifest_key)
+    if manifest_before is None:
+        raise ValueError("resume_candidate_storage_roster_changed")
+    manifest_descriptor = {"bytes": manifest_before.size, "sha256": storage.sha256_key(manifest_key)}
+    # A cataloged retained candidate also carries the derived documents and
+    # manifest snapshots catalog/release preparation wrote into the sealed
+    # prefix. Admit exactly that set, narrowly validated, and refuse anything
+    # else; the sealed source objects themselves stay immutable.
+    manifest_snapshots = {"metadata/source/source_manifest.json",
+                          f"metadata/source/version_{manifest_descriptor['sha256']}_source_manifest.json"}
+    allowed_keys = expected_keys | {
+        f"{old_prefix}/{name}" for name in CATALOG_DERIVED_NAMES | manifest_snapshots}
+    if actual_keys - allowed_keys:
+        raise ValueError("resume_candidate_storage_roster_changed")
+    _validate_resume_catalog_sidecars(storage, old_prefix, actual_keys, manifest_descriptor)
     snapshots = {}
     for name in names:
         key = f"{old_prefix}/{name}"
@@ -206,6 +344,7 @@ def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str
                 or any(parquet.schema_arrow.field(name).type != pa.string()
                        for name in EXPECTED_FIELDS[1:])):
             raise ValueError("resume_candidate_parquet_schema_or_count_changed")
+        source_id_bounds = _verify_retained_source_bounds(parquet, capture)
 
         version = content_derived_version(capture["source_record_sha256"],
             hashlib.sha256(b"nonspatial").hexdigest(), capture["source_schema_sha256"], identity)
@@ -262,7 +401,7 @@ def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str
                                    "historical_published_membership_not_yet_compared"],
                 "parquet_key": f"{prefix}/unknown/{FILE_SLUG}.parquet",
                 "candidate_ready": ready_key, "reused": False, "resumed_offline": True,
-                "release_accepted": False}
+                "source_id_bounds": source_id_bounds, "release_accepted": False}
     finally:
         shutil.rmtree(capture_root, ignore_errors=True)
 
