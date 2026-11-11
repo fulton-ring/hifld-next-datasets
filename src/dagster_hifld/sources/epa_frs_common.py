@@ -73,11 +73,16 @@ def candidate_prefix(dataset_slug: str, file_slug: str, version: str) -> str:
 
 def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
                 *, max_bytes: int = 128 * 1024 * 1024,
-                reserve: Callable[[CaptureProgress], None] | None = None) -> tuple[bytes, dict[str, object]]:
+                max_wire_block_bytes: int | None = None,
+                include_observed_wire: bool = False,
+                reserve: Callable[[CaptureProgress], None] | None = None,
+                before_retain: Callable[[str, bytes], None] | None = None) -> tuple[bytes, dict[str, object]]:
     """Persist complete GET decoded and wire bodies plus a hash-pinned receipt.
 
     Incomplete/status-failed responses and mid-stream HTTP errors still leave
-    bounded body/wire evidence and a receipt before this helper raises.
+    bounded body/wire evidence and a receipt before this helper raises. When
+    supplied, ``before_retain`` runs before each block is written, so an adapter
+    can refuse an oversized delivered block without exceeding its disk budget.
     """
     capture_root.mkdir(parents=True, exist_ok=True)
     wire_path, body_path = capture_root / f"{name}.wire", capture_root / f"{name}.body"
@@ -89,6 +94,8 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
 
     def retain(path: Path, digest, data: bytes, kind: str) -> None:
         nonlocal wire_size, body_size
+        if before_retain is not None:
+            before_retain(kind, data)
         with path.open("ab") as stream:
             stream.write(data)
         if kind == "wire":
@@ -100,6 +107,7 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
         with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
             result = capture_http_response(
                 response, max_wire_bytes=max_bytes, max_decoded_bytes=max_bytes,
+                max_wire_block_bytes=max_wire_block_bytes,
                 reserve=reserve or (lambda _progress: None),
                 retain_wire=lambda data: retain(wire_path, wire_hash, data, "wire"),
                 retain_decoded=lambda data: retain(body_path, body_hash, data, "body"),
@@ -136,6 +144,9 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
         "error_code": error_code,
         "error_type": result.error_type,
     }
+    if include_observed_wire:
+        receipt["observed_wire_bytes"] = result.wire_bytes_received
+        receipt["observed_wire_sha256"] = result.received_wire_sha256
     (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
     wire_body, body = wire_path.read_bytes(), body_path.read_bytes()
     if (not complete or status != 200 or final_url != url
