@@ -179,7 +179,11 @@ def _decimal(value: str, label: str) -> float | None:
 def _decimal_degrees(degrees: int, minutes: int, seconds: float | None,
                      direction: str, negative_direction: str) -> float:
     value = degrees + minutes / 60 + (seconds or 0.0) / 3600
-    return round(-value if direction == negative_direction else value, 10)
+    if direction == negative_direction:
+        value = -value
+    # The historical published layer derived latdec/londec at 12 significant
+    # digits; 24147.5 of its 24148x2 values match this formula on its own DMS.
+    return float(f"{value:.12g}")
 
 
 def _point_wkb(longitude: float, latitude: float) -> bytes:
@@ -473,10 +477,11 @@ def capture_cellular_towers(storage: StagingStorageResource, *, version: str,
             "population": "one published row per LO location record whose HD license status is A (active); all radio service codes are CL",
             "source_ids": "UniqSysID (HD/EN/LO unique system identifier) and LocNum (LO location number) retained unchanged and jointly unique",
             "source_values": "all published attribute strings retained verbatim including empty fields; numeric columns typed from the FCC public access database definitions",
-            "derived_columns": ("latdec/londec are DMS-to-decimal conversions of the raw components rounded to "
-                                "10 decimals (missing minutes or seconds contribute zero; out-of-nominal raw "
-                                "components are preserved verbatim and converted by the same formula); url embeds "
-                                "UniqSysID as the ULS license-location key"),
+            "derived_columns": ("latdec/londec are DMS-to-decimal conversions of the raw components formatted "
+                                "to 12 significant digits, matching the historical published layer's derived-"
+                                "column convention (missing minutes or seconds contribute zero; out-of-nominal "
+                                "raw components are preserved verbatim and converted by the same formula); url "
+                                "embeds UniqSysID as the ULS license-location key"),
             "geometry": "WKB Point (londec, latdec) in EPSG:4326, no reprojection, repair or geocoding",
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
         "lineage": ("The FCC moved ULS daily and weekly public access downloads from wireless2.fcc.gov to "

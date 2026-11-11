@@ -132,20 +132,20 @@ class CellularTowersTests(unittest.TestCase):
         self.assertEqual(audit["source_null_geometry_count"], 0)
         self.assertEqual(audit["source_incomplete_seconds_count"], 1)
         self.assertEqual(audit["source_file_creation_date"], "Sun Nov  8 10:00:57 EST 2026")
-        self.assertEqual(audit["source_bounds"], [-121.7583333333, -14.0, 145.3333333333, 38.5041666667])
+        self.assertEqual(audit["source_bounds"], [-121.758333333, -14.0, 145.333333333, 38.5041666667])
         self.assertIn("not a census of physical towers", audit["source_coverage_scope"])
         first = published[0]
         self.assertEqual(first["Licensee"], "Licensee One")
         self.assertEqual(first["url"], source.LICENSE_URL_TEMPLATE.format(101))
-        self.assertEqual(struct.unpack("<BIdd", first["geometry"]), (1, 1, -121.7583333333, 38.5041666667))
+        self.assertEqual(struct.unpack("<BIdd", first["geometry"]), (1, 1, -121.758333333, 38.5041666667))
         incomplete = published[2]
         self.assertIsNone(incomplete["LatSec"])
         self.assertEqual(incomplete["latdec"], 30.0666666667)
         self.assertIsNotNone(incomplete["geometry"])
         southern = published[3]
         self.assertEqual(southern["latdec"], -14.0)
-        self.assertEqual(southern["londec"], 145.3333333333)
-        self.assertEqual(struct.unpack("<BIdd", southern["geometry"]), (1, 1, 145.3333333333, -14.0))
+        self.assertEqual(southern["londec"], 145.333333333)
+        self.assertEqual(struct.unpack("<BIdd", southern["geometry"]), (1, 1, 145.333333333, -14.0))
         empty = published[1]
         self.assertEqual(empty["TowReg"], "")
         self.assertEqual(empty["StrucType"], "")
@@ -167,7 +167,7 @@ class CellularTowersTests(unittest.TestCase):
         self.assertIsNone(rows[1]["SupStruc"])
         self.assertIsNone(rows[2]["LatSec"])
         self.assertEqual(rows[2]["latdec"], 30.0666666667)
-        self.assertEqual(rows[3]["londec"], 145.3333333333)
+        self.assertEqual(rows[3]["londec"], 145.333333333)
         geometry_meta = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geometry_meta["primary_column"], "geometry")
         self.assertEqual(geometry_meta["columns"]["geometry"]["geometry_types"], ["Point"])
