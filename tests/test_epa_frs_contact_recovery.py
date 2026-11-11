@@ -245,6 +245,26 @@ class EpaFrsContactRecoveryTests(unittest.TestCase):
             self.assertEqual(json.loads(storage.read_key(
                 f"{recovered_prefix}/metadata/processing_identity.json")), new_code)
 
+    def test_recovery_accepts_cataloged_pair_after_code_identity_change(self):
+        """The prior review's reproduction: the catalog pair alone must not block recovery."""
+        with tempfile.TemporaryDirectory() as directory:
+            storage, old_prefix, capture, _real_identity, _parquet = self._build_retained_fixture(directory)
+            quality, dictionary = _catalog_documents(2)
+            write_immutable(storage, f"{old_prefix}/metadata/quality_manifest.json",
+                            json.dumps(quality, sort_keys=True, indent=2).encode())
+            write_immutable(storage, f"{old_prefix}/metadata/data_dictionary.json",
+                            json.dumps(dictionary, sort_keys=True, indent=2).encode())
+            new_code = _identity("2" * 40)
+            with patch("dagster_hifld.assets.epa_frs_interest_contact.EXPECTED_ROWS", 2), \
+                    patch("dagster_hifld.assets.epa_frs_interest_contact.processing_identity",
+                          return_value=new_code), \
+                    DagsterInstance.ephemeral() as instance:
+                context = build_asset_context(asset_config={"resume_candidate": old_prefix},
+                                              instance=instance)
+                result = epa_frs_interest_contact(context, storage)
+            self.assertTrue(result["resumed_offline"])
+            self.assertEqual(result["captured_at"], capture["captured_at"])
+
     def test_recovery_refuses_unknown_retained_object(self):
         with tempfile.TemporaryDirectory() as directory:
             storage, old_prefix, capture, _identity, _parquet = self._build_retained_fixture(directory)
