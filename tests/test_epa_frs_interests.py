@@ -245,6 +245,41 @@ class EpaFrsInterestsTests(unittest.TestCase):
                 self.assertEqual(result["feature_count"], FIXTURE_COUNT)
                 self.assertFalse(result["reused"])
 
+    def test_transient_error_page_is_witnessed_and_resume_refetches(self):
+        # A complete HTTP 200 error body has a self-consistent receipt; without
+        # witnessing it aside, a resumed capture would replay the same retained
+        # error forever instead of refetching the page.
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        base = make_responder(rows)
+        injected = {"error_sent": False}
+
+        def responder(request: httpx.Request) -> httpx.Response:
+            query = parse_qs(urlparse(str(request.url)).query)
+            if "where" in query and "returnCountOnly" not in query and not injected["error_sent"]:
+                injected["error_sent"] = True
+                return httpx.Response(200, stream=JSONStream({"error": {"code": 429, "message": "busy"}}),
+                                      headers={"content-type": "application/json"})
+            return base.handler(request)
+
+        transport = httpx.MockTransport(responder)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, "source_page_error"):
+                    src.fetch_frs_interests_pages(capture_root)
+                self.assertTrue(sorted(capture_root.glob("page_*.error-*.body")))
+                self.assertFalse((capture_root / "page_000000.body").exists())
+                result = src.fetch_frs_interests_pages(capture_root)
+                self.assertTrue(result["complete"])
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                sealed = src.capture_epa_frs_interests(storage, version="witness-run",
+                                                       capture_directory=str(capture_root))
+                self.assertEqual(sealed["feature_count"], FIXTURE_COUNT)
+                self.assertTrue(sorted(capture_root.glob("page_*.error-*.body")))
+
     def test_resume_reuses_retained_pages_and_discards_torn_evidence(self):
         rows = _fixture_rows(FIXTURE_COUNT)
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]

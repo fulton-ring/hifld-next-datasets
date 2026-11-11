@@ -16,6 +16,7 @@ from array import array
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
+from time import time_ns
 from typing import Iterable, Iterator
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -247,6 +248,29 @@ def _retained_or_fetch(client: httpx.Client | None, capture_root: Path, name: st
     if client is None:
         raise EPAFRSInterestsError("retained_capture_file_missing:" + name)
     return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
+
+
+def _witness_error_response(capture_root: Path, name: str) -> None:
+    """Move a retained producer error answer aside so the slot can be refetched.
+
+    A complete HTTP 200 error body carries a self-consistent receipt, so without
+    this witness step a resumed capture would replay the same error forever.
+    """
+    stamp = time_ns()
+    for suffix in ("body", "wire", "receipt.json"):
+        source = capture_root / f"{name}.{suffix}"
+        if source.exists():
+            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
+
+
+def _reject_error_response(capture_root: Path, name: str, body: bytes) -> None:
+    try:
+        document = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return
+    if isinstance(document, dict) and "error" in document:
+        _witness_error_response(capture_root, name)
+        raise EPAFRSInterestsError("source_page_error")
 
 
 def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
@@ -567,6 +591,7 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
                    "service_before": SERVICE_URL + "?f=pjson", "layer_before": LAYER_URL + "?f=pjson",
                    "count_before": _count_url()}[name]
             retained[name] = _retained_or_fetch(active, capture_root, name, url)
+            _reject_error_response(capture_root, name, retained[name][0])
         count_before = json.loads(retained["count_before"][0]).get("count")
         if count_before != EXPECTED_COUNT:
             raise EPAFRSInterestsError("source_count_drift")
@@ -576,6 +601,7 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
             body, receipt = _retained_or_fetch(active, capture_root, name, _page_url(last_objectid))
             page = json.loads(body)
             if "error" in page:
+                _witness_error_response(capture_root, name)
                 raise EPAFRSInterestsError("source_page_error")
             features = page.get("features")
             if not isinstance(features, list):
@@ -601,6 +627,7 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
             if len(features) < PAGE_SIZE:
                 tail_body, tail_receipt = _retained_or_fetch(active, capture_root, "page_tail",
                                                              _page_url(last_objectid))
+                _reject_error_response(capture_root, "page_tail", tail_body)
                 if json.loads(tail_body).get("features") != []:
                     raise EPAFRSInterestsError("source_tail_page_not_empty")
                 tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
@@ -619,6 +646,7 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
                           ("service_after", SERVICE_URL + "?f=pjson"),
                           ("count_after", _count_url())):
             body, _receipt = _retained_or_fetch(active, capture_root, name, url)
+            _reject_error_response(capture_root, name, body)
             retained[name] = (body, _read_capture(capture_root, name)[1])
         if json.loads(retained["count_after"][0]).get("count") != count_before:
             raise EPAFRSInterestsError("source_metadata_or_count_changed_during_capture")
