@@ -300,7 +300,7 @@ class _RetainedCaptureViews(Mapping):
 
 
 def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[str, object]:
-    """Re-verify every retained page byte and optionally stream the native geoparquet."""
+    """Re-verify every retained page byte and optionally reconstruct the native geoparquet."""
     docs = {name: json.loads(_read_capture(capture_root, name)[0]) for name in METADATA_NAMES}
     portal = docs["portal_item"]
     item_provenance = _item_provenance(portal)
@@ -349,10 +349,15 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     }}}
     schema = pa.schema(arrow_fields, metadata={b"geo": _canonical(geo)})
     sink_path = parquet_sink
-    writer = (pq.ParquetWriter(sink_path, schema, compression="zstd")
-              if sink_path is not None and not sink_path.exists() else None)
+    tmp_path = (sink_path.with_name(f"{sink_path.name}.construction-tmp")
+                if sink_path is not None else None)
     if sink_path is not None:
         sink_path.parent.mkdir(parents=True, exist_ok=True)
+    # Never trust an existing output file: reconstruction always streams from
+    # the validated pages into a temporary file that atomically replaces the
+    # sink only after every check passes, so an interrupted construction can
+    # never be sealed.
+    writer = pq.ParquetWriter(tmp_path, schema, compression="zstd") if tmp_path is not None else None
 
     ids = array("q")
     record_hash, geometry_hash = hashlib.sha256(), hashlib.sha256()
@@ -360,47 +365,59 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     null_geometry_count = 0
     page_bodies = sorted(name for name in _expected_capture_names(EXPECTED_COUNT)
                          if name.startswith("page_") and name != "page_tail")
-    for page_name in page_bodies:
-        page = json.loads(_read_capture(capture_root, page_name)[0])
-        if "error" in page:
-            raise EPAFRSInterestsError("source_page_error")
-        if page.get("spatialReference", {}).get("latestWkid") != 4269:
-            raise EPAFRSInterestsError("source_page_spatial_reference_drift")
-        features = page.get("features")
-        if not isinstance(features, list) or len(features) > PAGE_SIZE:
-            raise EPAFRSInterestsError("source_page_row_count_incomplete")
-        columns: dict[str, list[object]] = {name: [] for name in expected_names}
-        geometry: list[bytes] = []
-        for feature in features:
-            _validate_feature(feature, expected_names)
-            attrs, geom = feature["attributes"], feature["geometry"]
-            objectid = attrs["OBJECTID"]
-            if objectid <= last_objectid:
-                raise EPAFRSInterestsError("source_object_ids_not_strictly_increasing")
-            last_objectid = objectid
-            record_hash.update(_canonical(feature) + b"\x00")
-            geometry_hash.update(_canonical([objectid, geom["x"], geom["y"]]) + b"\x00")
-            ids.append(objectid)
-            if geom.get("x") is None or geom.get("y") is None:
-                null_geometry_count += 1
-            for name in expected_names:
-                columns[name].append(attrs[name])
-            geometry.append(Point(geom["x"], geom["y"]).wkb)
+    try:
+        for page_name in page_bodies:
+            page = json.loads(_read_capture(capture_root, page_name)[0])
+            if "error" in page:
+                raise EPAFRSInterestsError("source_page_error")
+            if page.get("spatialReference", {}).get("latestWkid") != 4269:
+                raise EPAFRSInterestsError("source_page_spatial_reference_drift")
+            features = page.get("features")
+            if not isinstance(features, list) or len(features) > PAGE_SIZE:
+                raise EPAFRSInterestsError("source_page_row_count_incomplete")
+            columns: dict[str, list[object]] = {name: [] for name in expected_names}
+            geometry: list[bytes] = []
+            for feature in features:
+                _validate_feature(feature, expected_names)
+                attrs, geom = feature["attributes"], feature["geometry"]
+                objectid = attrs["OBJECTID"]
+                if objectid <= last_objectid:
+                    raise EPAFRSInterestsError("source_object_ids_not_strictly_increasing")
+                last_objectid = objectid
+                record_hash.update(_canonical(feature) + b"\x00")
+                geometry_hash.update(_canonical([objectid, geom["x"], geom["y"]]) + b"\x00")
+                ids.append(objectid)
+                if geom.get("x") is None or geom.get("y") is None:
+                    null_geometry_count += 1
+                for name in expected_names:
+                    columns[name].append(attrs[name])
+                geometry.append(Point(geom["x"], geom["y"]).wkb)
+            if writer is not None:
+                batch = pa.Table.from_pydict({**columns, "geometry": geometry}, schema=schema)
+                writer.write_table(batch)
         if writer is not None:
-            batch = pa.Table.from_pydict({**columns, "geometry": geometry}, schema=schema)
-            writer.write_table(batch)
-    if writer is not None:
-        writer.close()
-    if len(ids) != EXPECTED_COUNT or last_objectid == 0:
-        raise EPAFRSInterestsError("source_page_population_incomplete")
-    ids_sha = _sha(_canonical(list(ids)))
-    record_sha, geometry_sha = record_hash.hexdigest(), geometry_hash.hexdigest()
-    if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-        raise EPAFRSInterestsError("source_value_or_geometry_baseline_drift")
-    if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise EPAFRSInterestsError("source_geometry_or_coverage_drift")
-    if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
-        raise EPAFRSInterestsError("source_id_roster_drift")
+            writer.close()
+            writer = None
+        if len(ids) != EXPECTED_COUNT or last_objectid == 0:
+            raise EPAFRSInterestsError("source_page_population_incomplete")
+        ids_sha = _sha(_canonical(list(ids)))
+        record_sha, geometry_sha = record_hash.hexdigest(), geometry_hash.hexdigest()
+        if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
+            raise EPAFRSInterestsError("source_value_or_geometry_baseline_drift")
+        if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
+            raise EPAFRSInterestsError("source_geometry_or_coverage_drift")
+        if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
+            raise EPAFRSInterestsError("source_id_roster_drift")
+        if tmp_path is not None:
+            tmp_path.replace(sink_path)
+    finally:
+        if writer is not None:
+            try:
+                writer.close()
+            except Exception:
+                pass
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
     return {"item_provenance": item_provenance, "fields": fields, "schema_sha": schema_sha,
             "record_sha": record_sha, "geometry_sha": geometry_sha, "ids_sha": ids_sha,
             "null_geometry_count": null_geometry_count, "parquet_path": sink_path}
@@ -666,7 +683,9 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
         active.close()
 
     last_captured_at = str(tail["captured_at"])
-    extracted = _stream_validate(capture_root, parquet_sink=capture_root / f"{FILE_SLUG}.parquet")
+    # Construction happens once at seal time (capture_epa_frs_interests);
+    # retention and validation stay the only fetch-time side effects.
+    extracted = _stream_validate(capture_root, parquet_sink=None)
     (capture_root / "computed_baseline.json").write_bytes(_canonical({
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],

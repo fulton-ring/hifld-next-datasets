@@ -1,4 +1,5 @@
 """Focused tests for the full-universe EPA FRS INTERESTS draft pipeline."""
+import io
 import json
 import tempfile
 import unittest
@@ -389,6 +390,105 @@ class EpaFrsInterestsTests(unittest.TestCase):
                     self.assertTrue(quarantined, f"no quarantine for {expected_error}")
                     failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
                     self.assertTrue(failure["reason_code"])
+
+
+    def test_corrupt_existing_output_is_reconstructed_not_sealed(self):
+        # Review follow-up: construction must never trust an existing output
+        # file. Unreadable bytes at the sink are reconstructed from the
+        # validated pages before anything can be sealed.
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                src.fetch_frs_interests_pages(capture_root)
+                parquet_path = capture_root / f"{src.FILE_SLUG}.parquet"
+                parquet_path.write_bytes(b"PAR1interrupted")
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                result = src.capture_epa_frs_interests(storage, version="corrupt-output-run",
+                                                       capture_directory=str(capture_root))
+                self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+                self.assertFalse(result["reused"])
+                table = pq.read_table(parquet_path)
+                self.assertEqual(table.num_rows, FIXTURE_COUNT)
+                self.assertEqual(table.column("REGISTRY_ID").to_pylist(),
+                                 [f"{i:012d}" for i in range(1, FIXTURE_COUNT + 1)])
+                prefix = f"{src.DATASET_SLUG}/{src.FILE_SLUG}/{result['version']}"
+                sealed = storage.read_key(f"{prefix}/geoparquet/{src.DATASET_SLUG}.parquet")
+                self.assertEqual(sealed, parquet_path.read_bytes())
+                self.assertEqual(pq.read_table(io.BytesIO(sealed)).num_rows, FIXTURE_COUNT)
+                self.assertFalse(list(capture_root.glob("*.construction-tmp")))
+
+    def test_truncated_valid_output_is_reconstructed_and_prior_candidate_preserved(self):
+        # Review follow-up: a readable but incomplete existing output must not
+        # seal as a complete candidate, and a prior sealed candidate elsewhere
+        # stays byte-identical.
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                first_storage = StagingStorageResource(use_local=True,
+                                                       local_dir=str(root / "staging-first"),
+                                                       prefix="", backend="local")
+                first = src.capture_epa_frs_interests(first_storage, version="truncated-run-first",
+                                                      capture_directory=str(capture_root))
+                prefix = f"{src.DATASET_SLUG}/{src.FILE_SLUG}/{first['version']}"
+                sealed_before = first_storage.read_key(f"{prefix}/geoparquet/{src.DATASET_SLUG}.parquet")
+                parquet_path = capture_root / f"{src.FILE_SLUG}.parquet"
+                pq.write_table(pq.read_table(parquet_path).slice(0, 1), parquet_path)
+                self.assertEqual(pq.read_table(parquet_path).num_rows, 1)
+                second_storage = StagingStorageResource(use_local=True,
+                                                        local_dir=str(root / "staging-second"),
+                                                        prefix="", backend="local")
+                second = src.capture_epa_frs_interests(second_storage, version="truncated-run-second",
+                                                       capture_directory=str(capture_root))
+                self.assertEqual(second["version"], first["version"])
+                self.assertFalse(second["reused"])
+                self.assertEqual(pq.read_table(parquet_path).num_rows, FIXTURE_COUNT)
+                sealed_second = second_storage.read_key(f"{prefix}/geoparquet/{src.DATASET_SLUG}.parquet")
+                self.assertEqual(pq.read_table(io.BytesIO(sealed_second)).num_rows, FIXTURE_COUNT)
+                self.assertEqual(sealed_second, parquet_path.read_bytes())
+                self.assertEqual(
+                    first_storage.read_key(f"{prefix}/geoparquet/{src.DATASET_SLUG}.parquet"),
+                    sealed_before)
+                self.assertFalse(list(capture_root.glob("*.construction-tmp")))
+
+    def test_failed_validation_preserves_prior_output_and_candidate(self):
+        # Review follow-up: a failed attempt must not disturb a prior good
+        # output or sealed candidate and leaves no construction residue.
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                first = src.capture_epa_frs_interests(storage, version="preserve-run",
+                                                      capture_directory=str(capture_root))
+                prefix = f"{src.DATASET_SLUG}/{src.FILE_SLUG}/{first['version']}"
+                parquet_path = capture_root / f"{src.FILE_SLUG}.parquet"
+                good_bytes = parquet_path.read_bytes()
+                sealed_before = storage.read_key(f"{prefix}/geoparquet/{src.DATASET_SLUG}.parquet")
+                with patch.object(src, "EXPECTED_RECORD_SHA256", "0" * 64):
+                    with self.assertRaisesRegex(src.EPAFRSInterestsError,
+                                                "source_value_or_geometry_baseline_drift"):
+                        src.capture_epa_frs_interests(storage, version="preserve-run-drift",
+                                                      capture_directory=str(capture_root))
+                self.assertEqual(parquet_path.read_bytes(), good_bytes)
+                self.assertFalse(list(capture_root.glob("*.construction-tmp")))
+                self.assertEqual(storage.read_key(f"{prefix}/geoparquet/{src.DATASET_SLUG}.parquet"),
+                                 sealed_before)
+                again = src.capture_epa_frs_interests(storage, version="preserve-run-again",
+                                                     capture_directory=str(capture_root))
+                self.assertTrue(again["reused"])
 
 
 if __name__ == "__main__":
