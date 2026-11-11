@@ -307,13 +307,19 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
         layer, fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}
+        failed_captures: dict[str, tuple[bytes, dict[str, object]]] = {}
         for path in sorted(capture_root.glob("*.receipt.json")):
-            try: receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
+            try:
+                name = path.name.removesuffix(".receipt.json")
+                receipt = json.loads(path.read_bytes())
+                receipts[name] = receipt
+                body_path = capture_root / f"{name}.body"
+                failed_captures[name] = (body_path.read_bytes() if body_path.exists() else b"", receipt)
             except (ValueError, OSError): receipts[path.name] = {"receipt_readback_failed":True}
         (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__,"receipts":receipts})+b"\n")
-        if captures:
+        if failed_captures:
             quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          captures, type(exc).__name__)
+                                          failed_captures, type(exc).__name__)
         raise
 
     identity = _code_identity()
