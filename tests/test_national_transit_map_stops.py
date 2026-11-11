@@ -296,7 +296,7 @@ class NationalTransitMapStopsTests(unittest.TestCase):
         observed=[]
         with tempfile.TemporaryDirectory() as tmp:
             tmp=Path(tmp)
-            capture_root=tmp/"capture"
+            capture_parent=tmp/"capture"
             storage=StagingStorageResource(local_dir=str(tmp/"staging"),use_local=True,
                                            backend="local",prefix="")
             patches=_capture_patches(2,2,_fake_capture_get(observed,bodies))
@@ -304,11 +304,12 @@ class NationalTransitMapStopsTests(unittest.TestCase):
                 p.start()
             try:
                 live=source.capture_national_transit_map_stops(
-                    storage,version="synthetic",capture_directory=str(capture_root))
+                    storage,version="synthetic",capture_directory=str(capture_parent))
             finally:
                 for p in patches:
                     p.stop()
             self.assertFalse(live["reused"])
+            capture_root=Path(live["capture_directory"])
             manifest_path=capture_root/"capture_manifest.json"
             digest=hashlib.sha256(manifest_path.read_bytes()).hexdigest()
             calls_after_live=len(observed)
