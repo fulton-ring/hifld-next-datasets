@@ -557,6 +557,10 @@ from dagster_hifld.assets.epa_icis_wastewater import (
     epa_icis_wastewater_draft_job,
     epa_icis_wastewater_draft_schedule,
 )
+from dagster_hifld.assets.fuds_mrs import (
+    usace_fuds_munitions_response_sites_complete,
+    fuds_mrs_draft_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -1118,6 +1122,7 @@ defs = Definitions(
         bts_intermodal_freight_air_to_truck_complete,
         fema_nfhl_nodes_complete,
         fema_nfhl_hydrologic_reaches_complete,
+        usace_fuds_munitions_response_sites_complete,
         usace_fuds_public_properties_complete,
     ],
     jobs=[
@@ -1353,6 +1358,7 @@ defs = Definitions(
         fuds_district_boundaries_draft_schedule,
         tsunami_events_draft_schedule,
         bts_air_truck_draft_schedule,
+        fuds_mrs_draft_schedule,
         fuds_public_properties_draft_schedule,
     ],
     sensors=_configured_sensors(),

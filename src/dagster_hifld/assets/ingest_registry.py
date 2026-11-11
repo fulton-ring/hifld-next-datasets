@@ -138,6 +138,7 @@ from dagster_hifld.assets.bts_air_truck import bts_intermodal_freight_air_to_tru
 from dagster_hifld.assets.epa_sems import epa_sems_interests
 from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
+from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
 
 hifld_ingest_assets = [
     bts_ferry_terminals,
@@ -264,5 +265,6 @@ hifld_ingest_assets = [
     bts_intermodal_freight_air_to_truck,
     fema_nfhl_nodes,
     fema_nfhl_hydrologic_reaches,
+    usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,
 ]
