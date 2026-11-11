@@ -33,6 +33,7 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.http_capture import capture_http_response
@@ -360,11 +361,12 @@ def native_outputs(table, directory):
     target = directory / 'regions.gpkg'
     schema = {'properties': {name: 'int64' if kind == 'esriFieldTypeOID' else 'float' if kind == 'esriFieldTypeDouble' else f'str:{width}'
         for name, kind, nullable, width in FIELDS}, 'geometry': 'Unknown'}
-    with fiona.open(target, 'w', driver='GPKG', layer=SLUG, crs='EPSG:3857', schema=schema,
-                    FID='__gpkg_fid', GEOMETRY_NAME='geometry') as output:
-        for row in table.to_pylist():
-            output.write({'type': 'Feature', 'properties': {name: row[name] for name, *_ in FIELDS},
-                'geometry': mapping(shapely.from_wkb(row['geometry']))})
+    with with_geopackage_creation_time('2000-01-01T00:00:00.000Z'):
+        with fiona.open(target, 'w', driver='GPKG', layer=SLUG, crs='EPSG:3857', schema=schema,
+                        FID='__gpkg_fid', GEOMETRY_NAME='geometry') as output:
+            for row in table.to_pylist():
+                output.write({'type': 'Feature', 'properties': {name: row[name] for name, *_ in FIELDS},
+                    'geometry': mapping(shapely.from_wkb(row['geometry']))})
     # Local export metadata, not a claimed producer release/capture date.
     with sqlite3.connect(target) as db:
         db.execute("UPDATE gpkg_contents SET last_change='2000-01-01T00:00:00.000Z'")

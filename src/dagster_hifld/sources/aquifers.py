@@ -29,6 +29,7 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import (canonical_construction_bundle, load_first_construction, seal_first_construction)
 from dagster_hifld.provenance import provenance_projection
@@ -322,9 +323,10 @@ def validate_cached_geopackage_metadata(path: Path, records: bytes) -> None:
     # no invented tolerance or geometry repair is used to reconcile the cache.
     with tempfile.TemporaryDirectory(prefix='aquifers-native-metadata-') as temporary:
         fresh = Path(temporary) / 'original.gpkg'
-        with fiona.open(fresh, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
-                        schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
-            destination.writerecords(json.loads(line) for line in records.splitlines())
+        with with_geopackage_creation_time('2003-10-01T00:00:00.000Z'):
+            with fiona.open(fresh, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
+                            schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
+                destination.writerecords(json.loads(line) for line in records.splitlines())
         with sqlite3.connect(fresh) as database:
             database.execute("UPDATE gpkg_contents SET last_change='2003-10-01T00:00:00.000Z'")
         if geopackage_native_metadata(path) != geopackage_native_metadata(fresh):
@@ -606,9 +608,10 @@ def stage_aquifers_candidate(storage: StagingStorageResource, *, archive_path: P
             if construction_history_exists(storage, version):
                 receipt, original_manifest = original_construction(storage, version, body, identity)
             geopackage = directory / f'{SLUG}.gpkg'
-            with fiona.open(geopackage, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
-                            schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
-                destination.writerecords(rows)
+            with with_geopackage_creation_time('2003-10-01T00:00:00.000Z'):
+                with fiona.open(geopackage, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
+                                schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
+                    destination.writerecords(rows)
             with sqlite3.connect(geopackage) as db:
                 db.execute("UPDATE gpkg_contents SET last_change='2003-10-01T00:00:00.000Z'")
             source_records = directory / 'source.jsonl'
