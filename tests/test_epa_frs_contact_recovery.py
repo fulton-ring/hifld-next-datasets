@@ -16,7 +16,9 @@ from dagster_hifld.assets.epa_frs_interest_contact import (
     epa_frs_interest_contact, _reuse_existing_contact_candidate,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
+from dagster_hifld.sources.epa_frs_common import (
+    candidate_prefix, content_derived_version, processing_identity, write_immutable,
+)
 from dagster_hifld.sources.epa_frs_contact_stream import (
     FIELDS, TABLE_URL, canonical, compact_capture_receipt_index,
 )
@@ -244,6 +246,62 @@ class EpaFrsContactRecoveryTests(unittest.TestCase):
                 "metadata/processing_identity.json", "metadata/candidate_ready.json")})
             self.assertEqual(json.loads(storage.read_key(
                 f"{recovered_prefix}/metadata/processing_identity.json")), new_code)
+
+    def test_recovery_refuses_tampered_sealed_source_object(self):
+        """Altered sealed provenance must refuse cross-identity recovery.
+
+        The prior review's reproduction: seal the fixture under one identity,
+        alter only the sealed source_capture.json observation timestamp, then
+        recover under a changed identity. The original construction witness
+        still records the sealed object hash, so recovery must refuse instead
+        of copying and resealing the altered timestamp. Catalog sidecars stay
+        admissible; the refusal targets the source object.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            storage, old_prefix, capture, _real_identity, _parquet = self._build_retained_fixture(directory)
+            old_code = _identity("0" * 40)
+            with patch("dagster_hifld.assets.epa_frs_interest_contact.EXPECTED_ROWS", 2), \
+                    patch("dagster_hifld.assets.epa_frs_interest_contact.processing_identity",
+                          return_value=old_code), \
+                    DagsterInstance.ephemeral() as instance:
+                context = build_asset_context(asset_config={"resume_candidate": old_prefix},
+                                              instance=instance)
+                sealed = epa_frs_interest_contact(context, storage)
+            sealed_prefix = sealed["candidate_ready"].removesuffix("/metadata/candidate_ready.json")
+            self._add_catalog_documents(storage, sealed_prefix, capture)
+
+            tampered_capture = {**capture, "captured_at": "2099-01-01T00:00:00Z"}
+            Path(directory, f"{sealed_prefix}/metadata/source_capture.json").write_bytes(
+                canonical(tampered_capture) + b"\n")
+
+            new_code = _identity("1" * 40)
+            with patch("dagster_hifld.assets.epa_frs_interest_contact.EXPECTED_ROWS", 2), \
+                    patch("dagster_hifld.assets.epa_frs_interest_contact.processing_identity",
+                          return_value=new_code), \
+                    DagsterInstance.ephemeral() as instance:
+                context = build_asset_context(asset_config={"resume_candidate": sealed_prefix},
+                                              instance=instance)
+                with self.assertRaisesRegex(ValueError, "resume_candidate_sealed_source_changed"):
+                    epa_frs_interest_contact(context, storage)
+            # The refusal happened before any object was copied or resealed.
+            refused_version = content_derived_version(
+                capture["source_record_sha256"], hashlib.sha256(b"nonspatial").hexdigest(),
+                capture["source_schema_sha256"], new_code)
+            self.assertEqual(storage.list_prefix(
+                candidate_prefix(DATASET_SLUG, FILE_SLUG, refused_version)), [])
+            # The sealed observation itself is still intact and recoverable
+            # under the changed identity once the tamper is removed.
+            Path(directory, f"{sealed_prefix}/metadata/source_capture.json").write_bytes(
+                canonical(capture) + b"\n")
+            with patch("dagster_hifld.assets.epa_frs_interest_contact.EXPECTED_ROWS", 2), \
+                    patch("dagster_hifld.assets.epa_frs_interest_contact.processing_identity",
+                          return_value=new_code), \
+                    DagsterInstance.ephemeral() as instance:
+                context = build_asset_context(asset_config={"resume_candidate": sealed_prefix},
+                                              instance=instance)
+                recovered = epa_frs_interest_contact(context, storage)
+            self.assertTrue(recovered["resumed_offline"])
+            self.assertEqual(recovered["captured_at"], capture["captured_at"])
 
     def test_recovery_accepts_cataloged_pair_after_code_identity_change(self):
         """The prior review's reproduction: the catalog pair alone must not block recovery."""

@@ -226,10 +226,13 @@ def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str
 
     This path is intentionally explicit in asset config. It verifies source
     receipts, object snapshots, the Parquet footer, and completeness metadata;
-    it additionally scans the retained native ID column against the producer
-    payload bounds the capture manifest recorded, and admits only the narrowly
-    validated catalog-derived documents a cataloged prefix carries. The source
-    observation timestamp and receipt bytes remain unchanged.
+    when the retained version carries a first-construction seal it validates
+    that original witness and requires every source-owned object to match it
+    before resealing. It additionally scans the retained native ID column
+    against the producer payload bounds the capture manifest recorded, and
+    admits only the narrowly validated catalog-derived documents a cataloged
+    prefix carries. The source observation timestamp and receipt bytes remain
+    unchanged.
     """
     expected_prefix = f"{DATASET_SLUG}/{FILE_SLUG}/"
     if (not old_prefix.startswith(expected_prefix) or "/" in old_prefix[len(expected_prefix):]
@@ -313,6 +316,29 @@ def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str
         if storage.object_snapshot(key) != snapshot:
             raise ValueError("resume_candidate_object_changed_during_verify")
         snapshots[name] = {"bytes": snapshot.size, "sha256": sha}
+
+    # A retained version sealed by an earlier construction carries an outside
+    # first-construction witness. That seal is the only record of the original
+    # object descriptors, so every source-owned object must still match it
+    # before anything is copied or resealed; altered sealed provenance must
+    # refuse instead of receiving a new valid seal. A genuinely unsealed
+    # legacy capture has no witness and keeps the fresh-hash path above.
+    old_version = old_prefix.rsplit("/", 1)[-1]
+    old_state_key = f"_construction-state/{DATASET_SLUG}/{old_version}.json"
+    if storage.object_snapshot(old_state_key) is not None:
+        state_header = json.loads(storage.read_key(old_state_key))
+        fingerprint = (state_header.get("processing_fingerprint")
+                       if isinstance(state_header, dict) else None)
+        if not isinstance(fingerprint, str) or not fingerprint:
+            raise ValueError("resume_candidate_sealed_witness_invalid")
+        sealed_payload = json.loads(load_first_construction(
+            storage, old_state_key, old_version, fingerprint)).get("payload")
+        if (not isinstance(sealed_payload, dict)
+                or sealed_payload.get("processing_identity") != old_identity
+                or sealed_payload.get("source_record_sha256") != capture.get("source_record_sha256")
+                or sealed_payload.get("source_schema_sha256") != capture.get("source_schema_sha256")
+                or sealed_payload.get("objects") != snapshots):
+            raise ValueError("resume_candidate_sealed_source_changed")
 
     if ready.get("objects") != {f"unknown/{FILE_SLUG}.parquet":
                                   snapshots[f"unknown/{FILE_SLUG}.parquet"]}:
