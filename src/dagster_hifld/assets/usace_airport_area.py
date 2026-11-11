@@ -89,7 +89,8 @@ def usace_airport_area_release(candidate: dict) -> AssetCheckResult:
 
 usace_airport_area_draft_job = define_asset_job(
     "usace_airport_area_draft_refresh",
-    selection=AssetSelection.assets(usace_airport_area_ienc),
+    selection=(AssetSelection.assets(usace_airport_area_ienc)
+               | AssetSelection.checks(usace_airport_area_ienc)),
 )
 usace_airport_area_draft_schedule = ScheduleDefinition(
     name="usace_airport_area_draft_refresh_schedule",

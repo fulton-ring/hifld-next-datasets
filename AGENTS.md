@@ -1,5 +1,22 @@
 ## Agent development practices for `hifld-next-datasets`
 
+### Scope: HIFLD Next vs civicdata
+
+- **HIFLD Next** holds the state of the world: reference features, usually with geometry — jurisdiction boundaries
+  (states, counties, county subdivisions, places, districts), infrastructure (power plants, substations, towers,
+  pipelines, dams), facilities and service territories. Public, versioned releases.
+- **civicdata** (`fulton-ring/bigass-data-masheen`) holds dated records of actions — filings, applications, permits,
+  violations, interconnection requests, contracts, incentives, notices, meeting records and their documents — and
+  joins to HIFLD Next by identifiers (GEOID, OCD ID, feature IDs). It serves no geometry; it reads HIFLD Next's
+  published GeoParquet at a pinned release.
+- The test: is it a *feature* (it exists now) or an *event* (it was filed or decided at a time)? A substation belongs
+  here; a proposed substation in an interconnection request belongs in civicdata.
+- Keep published releases stable and addressable (`{dataset}/{file}/{version}/geoparquet/{file}.parquet`): civicdata
+  depends on them by version. Layers are published in different CRSs (e.g. counties EPSG:4269, county subdivisions
+  and places EPSG:3857); consumers must read the CRS from the file.
+- Open decision: whether a registry of governing bodies (Census of Governments) belongs here as non-spatial
+  reference data.
+
 ### Environments & dependencies
 
 - This project is bootstrapped with `uv`, which manages the vendored `.venv` and lockfile. Run `uv run <script>` so dependencies (polars, Agno, ddgs, fastapi, openai, python-dotenv, etc.) load from the managed environment.
@@ -88,3 +105,20 @@ This is separate from the Agno `find-dataset-sources` CLI. It implements a **thr
 
 - Run the full suite: `uv run python -m unittest discover tests`
 - Tests cover partition wiring, sensor behavior (with mocks), catalog helpers, explicit asset keys (e.g. NOAA distinct layers), and resource path behavior. When changing `DATASET_FILE_PAIRS` or discovery logic, extend `tests/test_dynamic_partitions.py` or add focused tests rather than relying only on manual GCS checks.
+
+### Factory implementation and review
+
+The current assigned project playbook at
+`/data/home/.factory/instructions/projects/hifld-next.md` owns factory roles,
+admission, board routing and merge procedures. Follow that playbook and the
+current assignment for the worker's saved report schema and handoff.
+
+Managers maintain the board. Implementation workers push their changes and update
+the existing PR, then save an accurate report. Independent reviewers work
+read-only. Keep dataset PRs small: reuse existing assets and helpers, consolidate
+source evidence and documentation, and add files only for necessary runtime code,
+meaningful regressions or essential provenance.
+
+Code review and merge do not grant source, contract, baseline, rights or release
+acceptance, or authorize production publication. Preserve runtime approval gates
+and identify remaining acceptance decisions in the handoff.

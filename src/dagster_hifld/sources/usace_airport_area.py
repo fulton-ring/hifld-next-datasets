@@ -21,14 +21,14 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.usace_administrative_areas import (
-    _canonical, _sha, _fetch_retry, _esri_polygon,
+from dagster_hifld.sources.epa_frs_common import (
+    _canonical, _sha, candidate_prefix, processing_identity,
+    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+)
+from dagster_hifld.sources.usace_pylon_areas import (
+    _fetch_retry, _esri_polygon,
     _parquet_bytes, _load_replay, _write_outputs,
     PAGE_SIZE, MAX_CAPTURE_BYTES,
-)
-from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
 )
 
 DATASET_SLUG = "airport-area-usace-ienc"
@@ -49,10 +49,24 @@ EXPECTED_FIELD_DECLARATIONS = [
      **({"length":254} if kind == "esriFieldTypeString" else {})}
     for name,kind in EXPECTED_FIELDS
 ]
+UNSUPPORTED_OUTPUT_FORMATS = {
+    "shapefile_zip": "Shapefile field-name and value coercion can lose native schema; no export mapping is approved.",
+    "geopackage": "No pinned complete native GDB inventory or schema/compatibility approval.",
+    "pmtiles": "No display transformation approved.",
+}
 
 
 def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
+
+
+def _capture_started_at(captures: dict[str, tuple[bytes, dict]]) -> str:
+    """Use the first request receipt as capture time, including on replay."""
+    receipt = captures.get("ids_seed", (b"", {}))[1]
+    observed_at = receipt.get("observed_at")
+    if not isinstance(observed_at, str) or not observed_at:
+        raise ValueError("source_capture_start_receipt_missing")
+    return observed_at
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
@@ -232,14 +246,14 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"Official layer metadata does not establish the source release date."} for name,(_body,receipt) in sorted(captures.items())]
-    manifest={"schema_version":1,"approved":False,"title":"Airport Area (USACE IENC)","description":"Complete official USACE IENC AIRPORT_AREA feature class; unapproved faithful candidate. Does not assert national airport coverage or compatibility with the historical HIFLD/FEMA baseline.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":"USDOT BTS IENC inventory item 3607d485a9854d6fa458bf507058ceae links the official USACE IENC Feature Classes service and native file geodatabase. This candidate represents only that full official AIRPORT_AREA layer.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/airport-area-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No pinned complete native GDB inventory or schema/compatibility approval.","pmtiles":"No display transformation approved."}}
+    manifest={"schema_version":1,"approved":False,"title":"Airport Area (USACE IENC)","description":"Complete official USACE IENC AIRPORT_AREA feature class; unapproved faithful candidate. Does not assert national airport coverage or compatibility with the historical HIFLD/FEMA baseline.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":"USDOT BTS IENC inventory item 3607d485a9854d6fa458bf507058ceae links the official USACE IENC Feature Classes service and native file geodatabase. This candidate represents only that full official AIRPORT_AREA layer.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/airport-area-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":UNSUPPORTED_OUTPUT_FORMATS}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"source_fields":fields,"official_layer_name":"AIRPORT_AREA","official_source_item":"USDOT_BTS 3607d485a9854d6fa458bf507058ceae","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
     attempts={}
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":_capture_started_at(captures),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/airport-area-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
@@ -279,5 +293,7 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
+    validate_construction_code_identity(
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
+    )
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_empty_geometry_count":audit["source_empty_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
