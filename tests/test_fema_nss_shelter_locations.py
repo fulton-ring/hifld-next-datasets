@@ -450,7 +450,11 @@ class FemaNssShelterLocationsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_schema_drift"):
             source._field_contract(changed)
         self.assertEqual(source.MAX_RESPONSE_BYTES, 4_000_000)
-        self.assertLessEqual(source.MAX_CAPTURE_BYTES, 256_000_000)
+        # The capture budget must hold the full live population (254,968,822
+        # bytes were retained by page_273 of 288 on 2026-11-11 before the old
+        # 256,000,000-byte bound failed the run) while staying bounded.
+        self.assertGreater(source.MAX_CAPTURE_BYTES, 269_000_000)
+        self.assertLessEqual(source.MAX_CAPTURE_BYTES, 512_000_000)
 
 
 if __name__ == "__main__":

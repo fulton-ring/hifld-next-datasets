@@ -172,7 +172,10 @@ FIELD_DECLARATIONS = [{'name': 'shelter_id', 'type': 'esriFieldTypeInteger', 'al
  {'name': 'subfacility_code', 'type': 'esriFieldTypeString', 'alias': 'SUBFACILITY_CODE', 'length': 20},
  {'name': 'data_source_id', 'type': 'esriFieldTypeInteger', 'alias': 'DATA_SOURCE_ID', 'length': None}]
 PAGE_SIZE = 250
-MAX_CAPTURE_BYTES = 256_000_000
+# 2026-11-11 live capture: 71,916 features needed ~268 MiB of retained wire+body
+# (page_273 of 288 tripped the former 256,000,000-byte bound). Keep the bound
+# explicit with ~1.9x headroom so budget overruns still fail closed.
+MAX_CAPTURE_BYTES = 512_000_000
 MAX_RESPONSE_BYTES = 4_000_000
 MIN_CAPTURE_BYTES = 1
 DISK_FLOOR_BYTES = 400_000_000
