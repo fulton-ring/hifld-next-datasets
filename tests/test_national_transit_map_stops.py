@@ -288,6 +288,104 @@ class NationalTransitMapStopsTests(unittest.TestCase):
                     bodies["page_000"]=valid_page_000
                     bodies["page_001"]=valid_page_001
 
+    def test_transient_page_error_is_retried_without_losing_evidence(self):
+        layer, fields = _tiny_layer(2)
+        rows=[_stop_row(fields,1,-73.0,42.0,17.5),_stop_row(fields,2,-122.0,47.0,18.5)]
+        bodies=_metadata_bodies(layer,2,[1,2])
+        bodies["page_000"]={"spatialReference":{"wkid":4326,"latestWkid":4326},
+                            "features":rows,"exceededTransferLimit":False}
+        # The pinned BTS layer intermittently answers a valid ordered page
+        # with a complete HTTP 200 Esri error document (observed 2026-11-11).
+        transient={"error":{"code":400,"message":"Cannot perform query. Invalid query parameters."}}
+        observed=[]
+        calls=[]
+        def flaky_capture(_client,url,root,name,**kwargs):
+            calls.append(name)
+            response = transient if name=="page_000" and calls.count("page_000")==1 else bodies[name]
+            body=json.dumps(response,separators=(",",":"),ensure_ascii=False).encode()
+            digest=hashlib.sha256(body).hexdigest()
+            receipt={"method":"GET","url":url,"final_url":url,"observed_at":"2026-11-11T21:26:41Z",
+                     "status":200,"complete_body":True,"bytes":len(body),"sha256":digest,
+                     "wire_bytes":len(body),"wire_sha256":digest,"error_code":None,"error_type":None}
+            root.mkdir(parents=True,exist_ok=True)
+            kwargs["reserve"](SimpleNamespace(reserve_bytes=min(1,len(body))))
+            kwargs["before_retain"]("wire",body)
+            kwargs["before_retain"]("body",body)
+            (root/f"{name}.wire").write_bytes(body)
+            (root/f"{name}.body").write_bytes(body)
+            (root/f"{name}.receipt.json").write_bytes(canonical(receipt)+b"\n")
+            observed.append(name)
+            return body,receipt
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp=Path(tmp)
+            storage=StagingStorageResource(local_dir=str(tmp/"staging"),use_local=True,
+                                           backend="local",prefix="")
+            patches=_capture_patches(2,2,flaky_capture)+[patch.object(source.time,"sleep")]
+            for p in patches:
+                p.start()
+            try:
+                result=source.capture_national_transit_map_stops(
+                    storage,version="synthetic",capture_directory=str(tmp/"capture"))
+            finally:
+                for p in patches:
+                    p.stop()
+            self.assertEqual(result["feature_count"],2)
+            self.assertEqual(calls.count("page_000"),2)
+            capture_root=Path(result["capture_directory"])
+            audit=json.loads(storage.read_key(result["candidate_ready"].replace(
+                "metadata/candidate_ready.json","metadata/source_audit.json")))
+            self.assertEqual(audit["capture_request_attempts"],{"page_000":2})
+            manifest=json.loads((capture_root/"capture_manifest.json").read_bytes())
+            retained_files=sum((capture_root/d["body"]["file"]).stat().st_size
+                               +(capture_root/d["wire"]["file"]).stat().st_size
+                               for d in manifest["captures"].values())
+            self.assertEqual(manifest["retained_bytes"],retained_files)
+            self.assertEqual(sorted(p.name for p in capture_root.iterdir()),
+                             sorted({f"{n}{s}" for n in manifest["captures"]
+                                     for s in (".body",".wire",".receipt.json")}
+                                    | {"capture_manifest.json"}))
+
+    def test_persistent_page_error_exhausts_retries_and_quarantines(self):
+        layer, fields = _tiny_layer(2)
+        ids={"objectIdFieldName":"OBJECTID","objectIds":[1,2]}
+        bodies=_metadata_bodies(layer,2,[1,2])
+        calls=[]
+        def always_error_capture(_client,url,root,name,**kwargs):
+            calls.append(name)
+            body=json.dumps({"error":{"code":400,"message":"Cannot perform query. Invalid query parameters."}},
+                            separators=(",",":")).encode()
+            digest=hashlib.sha256(body).hexdigest()
+            receipt={"method":"GET","url":url,"final_url":url,"observed_at":"2026-11-11T21:26:41Z",
+                     "status":200,"complete_body":True,"bytes":len(body),"sha256":digest,
+                     "wire_bytes":len(body),"wire_sha256":digest,"error_code":None,"error_type":None}
+            root.mkdir(parents=True,exist_ok=True)
+            kwargs["reserve"](SimpleNamespace(reserve_bytes=1))
+            kwargs["before_retain"]("wire",body)
+            kwargs["before_retain"]("body",body)
+            (root/f"{name}.wire").write_bytes(body)
+            (root/f"{name}.body").write_bytes(body)
+            (root/f"{name}.receipt.json").write_bytes(canonical(receipt)+b"\n")
+            return body,receipt
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp=Path(tmp)
+            storage=StagingStorageResource(local_dir=str(tmp/"staging"),use_local=True,
+                                           backend="local",prefix="")
+            patches=_capture_patches(2,2,always_error_capture)+[patch.object(source.time,"sleep")]
+            for p in patches:
+                p.start()
+            try:
+                with self.assertRaisesRegex(ValueError,"source_response_error:portal_item"):
+                    source.capture_national_transit_map_stops(
+                        storage,version="synthetic",capture_directory=str(tmp/"capture"))
+            finally:
+                for p in patches:
+                    p.stop()
+            self.assertEqual(calls.count("portal_item"),source.MAX_REQUEST_ATTEMPTS)
+            quarantined=sorted(storage.list_prefix("_quarantine"))
+            self.assertTrue(any("failure.json" in key for key in quarantined))
+
     def test_retained_capture_replay_round_trip_and_refusals(self):
         layer, fields = _tiny_layer(2)
         rows=[_stop_row(fields,1,-73.0,42.0,17.5),_stop_row(fields,2,-122.0,47.0,18.5)]

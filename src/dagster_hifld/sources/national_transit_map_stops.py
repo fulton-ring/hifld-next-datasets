@@ -13,6 +13,7 @@ import re
 import shutil
 import stat
 import struct
+import time
 from contextlib import nullcontext
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -67,6 +68,12 @@ MAX_CAPTURE_MANIFEST_BYTES = 8_000_000
 MAX_CAPTURE_RECEIPT_BYTES = 64_000
 MAX_CAPTURE_RECEIPT_TOTAL_BYTES = 16_000_000
 MAX_CAPTURE_REQUESTS = 512
+MAX_REQUEST_ATTEMPTS = 5
+RETRY_BACKOFF_SECONDS = (5.0, 30.0, 90.0, 180.0)
+RETRYABLE_CAPTURE_ERROR_CODES = frozenset({
+    "request_error", "transport_error", "decode_error", "compressed_stream_incomplete",
+    "content_length_mismatch", "httpx_wire_count_mismatch",
+})
 MIN_FREE_BYTES = 400_000_000
 STAGING_OVERHEAD_BYTES = 8_000_000
 MIN_CAPTURE_BYTES = 1
@@ -271,6 +278,37 @@ def _field_contract(layer: dict) -> list[dict]:
     return fields
 
 
+def _retryable_request_failure(exc: Exception, name: str, attempt_no: int, root: Path) -> bool:
+    """Classify one failed request attempt as a bounded-retry transient or terminal.
+
+    The BTS FeatureServer intermittently answers a valid ordered page with a
+    complete HTTP 200 body holding an Esri error document, or drops the
+    transfer mid-stream; both were observed on the pinned layer (2026-11-11,
+    resultOffset 498000). Only those transport/response classes are retried.
+    Deterministic drift, contract, size-cap and budget failures stay terminal,
+    so a retry can never mask a real source change. Each retried attempt
+    replaces the previous attempt's retained body/wire/receipt files; the
+    candidate audit records the attempt count per request.
+    """
+    if not isinstance(exc, ValueError) or attempt_no >= MAX_REQUEST_ATTEMPTS:
+        return False
+    message = str(exc)
+    if message == "source_response_error:" + name:
+        return True
+    if not message.startswith("incomplete_source_capture:" + name):
+        return False
+    try:
+        receipt = json.loads(_bounded_read(root / f"{name}.receipt.json", MAX_CAPTURE_RECEIPT_BYTES))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(receipt, dict):
+        return False
+    code = receipt.get("error_code")
+    if code in RETRYABLE_CAPTURE_ERROR_CODES:
+        return True
+    return code is None and type(receipt.get("status")) is int and receipt["status"] >= 500
+
+
 def capture_national_transit_map_stops(storage: StagingStorageResource, *, version: str,
         capture_directory: str | None = None, retained_capture_directory: str | None = None,
         retained_capture_manifest_sha256: str | None = None,
@@ -305,6 +343,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
 
     offline = None
     captures: dict[str, tuple[bytes, dict]] = {}
+    request_attempts: dict[str, int] = {}
     retained = 0
     if retained_capture_directory:
         offline, captures, manifest_sha = _load_retained_capture(root)
@@ -321,42 +360,53 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
         if offline is not None:
             if name not in captures or captures[name][1].get("url") != url:
                 raise ValueError("retained_capture_request_mismatch:" + name)
-            body = captures[name][0]
-        else:
+            result = json.loads(captures[name][0])
+            if not isinstance(result, dict) or "error" in result:
+                raise ValueError("source_response_error:" + name)
+            return result
+        for attempt_no in range(1, MAX_REQUEST_ATTEMPTS + 1):
             response_used = [0]
+            attempt_retained = 0
             def reserve(progress):
                 if retained + progress.reserve_bytes > max_capture_bytes:
                     raise ValueError("source_capture_budget_exceeded")
                 if shutil.disk_usage(root).free < MIN_FREE_BYTES + progress.reserve_bytes + STAGING_OVERHEAD_BYTES:
                     raise ValueError("capture_disk_reserve_exceeded")
             def before_retain(_kind: str, data: bytes):
-                nonlocal retained
+                nonlocal retained, attempt_retained
                 if retained + len(data) > max_capture_bytes or response_used[0] + len(data) > response_cap:
                     raise ValueError("source_capture_budget_exceeded")
                 if shutil.disk_usage(root).free < MIN_FREE_BYTES + len(data) + STAGING_OVERHEAD_BYTES:
                     raise ValueError("capture_disk_reserve_exceeded")
                 response_used[0] += len(data)
                 retained += len(data)
+                attempt_retained += len(data)
             try:
                 body, receipt = capture_get(client, url, root, name, max_bytes=response_cap,
                                             reserve=reserve, before_retain=before_retain)
-            except Exception:
-                receipt_path = root / f"{name}.receipt.json"
-                body_path = root / f"{name}.body"
-                if receipt_path.is_file() and body_path.is_file():
-                    try:
-                        partial_receipt = json.loads(_bounded_read(receipt_path, MAX_CAPTURE_RECEIPT_BYTES))
-                        partial_body = _bounded_read(body_path, response_cap)
-                        if isinstance(partial_receipt, dict):
-                            captures[name] = (partial_body, partial_receipt)
-                    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-                        pass
-                raise
+                result = json.loads(body)
+                if not isinstance(result, dict) or "error" in result:
+                    raise ValueError("source_response_error:" + name)
+            except Exception as exc:
+                if not _retryable_request_failure(exc, name, attempt_no, root):
+                    receipt_path = root / f"{name}.receipt.json"
+                    body_path = root / f"{name}.body"
+                    if receipt_path.is_file() and body_path.is_file():
+                        try:
+                            partial_receipt = json.loads(_bounded_read(receipt_path, MAX_CAPTURE_RECEIPT_BYTES))
+                            partial_body = _bounded_read(body_path, response_cap)
+                            if isinstance(partial_receipt, dict):
+                                captures[name] = (partial_body, partial_receipt)
+                        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                            pass
+                    raise
+                retained -= attempt_retained
+                request_attempts[name] = attempt_no + 1
+                time.sleep(RETRY_BACKOFF_SECONDS[attempt_no - 1])
+                continue
             captures[name] = (body, receipt)
-        result = json.loads(body)
-        if not isinstance(result, dict) or "error" in result:
-            raise ValueError("source_response_error:" + name)
-        return result
+            return result
+        raise ValueError("source_capture_attempts_exhausted:" + name)
 
     try:
         client_context = nullcontext(None) if offline is not None else httpx.Client(
@@ -503,7 +553,8 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
         "producer_stated_compilation_date":"2026-09-23","portal_item_modified_epoch_ms":portal["modified"],
         "portal_item_modified_is_release_date":False,"layer_last_edit_epoch_ms":source_modified,
         "capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["retained_bytes"],
-        "capture_budget_bytes":max_capture_bytes,"archive_baseline_accepted":False}
+        "capture_budget_bytes":max_capture_bytes,"capture_request_attempts":request_attempts,
+        "archive_baseline_accepted":False}
     manifest={"schema_version":1,"approved":False,"title":LAYER_NAME,"publisher":PUBLISHER,
         "agency":"Bureau of Transportation Statistics","source_url":LAYER_URL,
         "source_release_date":"2026-09-23","source_release_date_type":"producer-stated compilation date; independent release record not found",
