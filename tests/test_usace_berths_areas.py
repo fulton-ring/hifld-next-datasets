@@ -91,5 +91,86 @@ class UsaceBerthsAreasTests(unittest.TestCase):
             )
 
 
+_BTS_ITEM = {
+    "id": "7ec34864c8804468a9cf52d437fe4b6c",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "description": (
+        "Inland Electronic Navigational Charts (IENC) web services: "
+        "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes and master "
+        "geodatabase USACE_IENC_Master_Service_gdb.zip."
+    ),
+}
+
+
+class BtsSourceChainContractTests(unittest.TestCase):
+    """Fail-closed delegation guard for the repaired BTS source chain (#21)."""
+
+    def _bts_error(self, item_doc: dict) -> str:
+        body = json.dumps(item_doc).encode("utf-8")
+        with self.assertRaises(ValueError) as raised:
+            source._validate({"bts_item": (body, {"complete_body": True, "status": 200})})
+        return str(raised.exception)
+
+    def test_pins_current_item_and_never_requests_prior_denied_item(self):
+        self.assertEqual(source.BTS_ITEM_ID, "7ec34864c8804468a9cf52d437fe4b6c")
+        self.assertEqual(source.PRIOR_BTS_ITEM_ID, "3607d485a9854d6fa458bf507058ceae")
+        self.assertEqual(
+            source.BTS_ITEM_URL,
+            "https://www.arcgis.com/sharing/rest/content/items/"
+            "7ec34864c8804468a9cf52d437fe4b6c?f=json",
+        )
+        requested = [url for _name, url in source._capture_urls(source.EXPECTED_IDS)]
+        self.assertIn(source.BTS_ITEM_URL, requested)
+        self.assertTrue(all(source.PRIOR_BTS_ITEM_ID not in url for url in requested))
+
+    def test_denial_body_and_identity_drift_fail_closed(self):
+        denial = {"error": {"code": 403, "messageCode": "GWM_0003",
+                            "message": "Access denied", "details": []}}
+        cases = [
+            ("anonymous arcgis denial body", denial),
+            ("prior denied item id", {**_BTS_ITEM, "id": source.PRIOR_BTS_ITEM_ID}),
+            ("foreign owner", {**_BTS_ITEM, "owner": "SOMEONE_ELSE"}),
+        ]
+        for label, doc in cases:
+            with self.subTest(label=label):
+                self.assertEqual(self._bts_error(doc), "bts_ienc_item_identity_drift")
+
+    def test_delegation_marker_drift_fails_closed(self):
+        cases = [
+            ("missing ienccloud service link", {**_BTS_ITEM, "description": (
+                "Inland Electronic Navigational Charts master geodatabase "
+                "USACE_IENC_Master_Service_gdb.zip.")}),
+            ("missing master gdb link", {**_BTS_ITEM, "description": (
+                "Inland Electronic Navigational Charts web services "
+                "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes.")}),
+            ("missing ienc program title", {**_BTS_ITEM, "title": "Unrelated item",
+                                             "description": (
+                                                 "Web services "
+                                                 "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes "
+                                                 "and USACE_IENC_Master_Service_gdb.zip.")}),
+        ]
+        for label, doc in cases:
+            with self.subTest(label=label):
+                self.assertEqual(self._bts_error(doc), "bts_ienc_official_distribution_link_drift")
+
+    def test_capture_receipt_for_prior_item_is_rejected_on_replay(self):
+        prior_url = ("https://www.arcgis.com/sharing/rest/content/items/"
+                     + source.PRIOR_BTS_ITEM_ID + "?f=json")
+        with self.assertRaisesRegex(
+                ValueError, "retained_capture_request_identity_mismatch:bts_item"):
+            source._validate_request_identity(
+                "bts_item", {"method": "GET", "url": prior_url, "final_url": prior_url},
+                source.BTS_ITEM_URL)
+
+    def test_prior_item_is_retained_evidence_only_without_succession_claim(self):
+        module_text = Path(source.__file__).read_text(encoding="utf-8")
+        self.assertIn('"bts_item_succession_claimed": False', module_text)
+        self.assertIn('"prior_bts_item_id": PRIOR_BTS_ITEM_ID', module_text)
+        self.assertIn("no succession or historical equivalence between the two items is claimed",
+                      module_text)
+        self.assertIn("recorded in docs, not validated here", module_text)
+
+
 if __name__ == "__main__":
     unittest.main()
