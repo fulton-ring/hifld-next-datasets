@@ -264,6 +264,16 @@ from dagster_hifld.assets.river_areas_usace_ienc import (
     river_areas_usace_ienc_draft_job,
     river_areas_usace_ienc_draft_schedule,
 )
+from dagster_hifld.assets.sea_area_locations_usace_ienc import (
+    sea_area_locations_usace_ienc_complete,
+    sea_area_locations_usace_ienc_draft_job,
+    sea_area_locations_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sea_areas_usace_ienc import (
+    sea_areas_usace_ienc_complete,
+    sea_areas_usace_ienc_draft_job,
+    sea_areas_usace_ienc_draft_schedule,
+)
 from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import (
     shoreline_construction_areas_usace_ienc_complete,
     shoreline_construction_areas_usace_ienc_draft_job,
@@ -273,6 +283,11 @@ from dagster_hifld.assets.restricted_navigation_areas_usace_ienc import (
     restricted_navigation_areas_usace_ienc_complete,
     restricted_navigation_areas_usace_ienc_draft_job,
     restricted_navigation_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sloped_ground_lines_usace_ienc import (
+    sloped_ground_lines_usace_ienc_complete,
+    sloped_ground_lines_usace_ienc_draft_job,
+    sloped_ground_lines_usace_ienc_draft_schedule,
 )
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
@@ -1072,8 +1087,11 @@ defs = Definitions(
         usace_overhead_cables_complete,
         usace_dam_lines_complete,
         river_areas_usace_ienc_complete,
+        sea_area_locations_usace_ienc_complete,
+        sea_areas_usace_ienc_complete,
         shoreline_construction_areas_usace_ienc_complete,
         restricted_navigation_areas_usace_ienc_complete,
+        sloped_ground_lines_usace_ienc_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         usace_dry_docks_complete,
@@ -1172,8 +1190,11 @@ defs = Definitions(
         usace_overhead_cables_draft_job,
         usace_dam_lines_draft_job,
         river_areas_usace_ienc_draft_job,
+        sea_area_locations_usace_ienc_draft_job,
+        sea_areas_usace_ienc_draft_job,
         shoreline_construction_areas_usace_ienc_draft_job,
         restricted_navigation_areas_usace_ienc_draft_job,
+        sloped_ground_lines_usace_ienc_draft_job,
         usace_obstruction_lines_draft_job,
         usace_mooring_facility_lines_draft_job,
         floodwalls_usace_ienc_draft_job,
@@ -1288,8 +1309,11 @@ defs = Definitions(
         usace_overhead_cables_draft_schedule,
         usace_dam_lines_draft_schedule,
         river_areas_usace_ienc_draft_schedule,
+        sea_area_locations_usace_ienc_draft_schedule,
+        sea_areas_usace_ienc_draft_schedule,
         shoreline_construction_areas_usace_ienc_draft_schedule,
         restricted_navigation_areas_usace_ienc_draft_schedule,
+        sloped_ground_lines_usace_ienc_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         usace_mooring_facility_lines_draft_schedule,
         floodwalls_usace_ienc_draft_schedule,
