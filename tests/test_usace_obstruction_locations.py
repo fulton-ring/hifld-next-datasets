@@ -203,6 +203,41 @@ class ObstructionLocationsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "official_obstruction_point_service_drift"):
             source._validate(captures)
 
+    def test_rejects_points_outside_geographic_bounds_or_declared_coverage(self):
+        mutations = [
+            ("latitude beyond CRS bounds", lambda d: d["page_000"]["features"][0]["geometry"].update(y=100.0),
+             "source_point_outside_geographic_bounds"),
+            ("longitude beyond CRS bounds", lambda d: d["page_000"]["features"][0]["geometry"].update(x=-180.5),
+             "source_point_outside_geographic_bounds"),
+            ("null-island point outside coverage", lambda d: d["page_000"]["features"][0]["geometry"].update(x=0.0, y=0.0),
+             "source_point_outside_declared_coverage"),
+            ("in-CRS point outside coverage", lambda d: d["page_000"]["features"][0]["geometry"].update(x=-91.0, y=89.9),
+             "source_point_outside_declared_coverage"),
+            ("west of declared extent", lambda d: d["page_000"]["features"][0]["geometry"].update(x=-95.5),
+             "source_point_outside_declared_coverage"),
+            ("beyond tolerance over extent", lambda d: d["page_000"]["features"][0]["geometry"].update(
+                x=-91.0, y=source.EXPECTED_EXTENT["ymax"] + 1e-8),
+             "source_point_outside_declared_coverage"),
+        ]
+        for label, mutate, expected in mutations:
+            with self.subTest(label=label):
+                docs = _capture_doc_values()
+                mutate(docs)
+                with self.assertRaisesRegex(ValueError, expected):
+                    source._validate({name: (json.dumps(value).encode(), {}) for name, value in docs.items()})
+
+    def test_accepts_boundary_points_within_represented_extent_and_tolerance(self):
+        docs = _capture_doc_values()
+        docs["page_000"]["features"][0]["geometry"].update(x=source.EXPECTED_EXTENT["xmin"],
+                                                           y=source.EXPECTED_EXTENT["ymin"])
+        docs["page_000"]["features"][1]["geometry"].update(
+            x=source.EXPECTED_EXTENT["xmax"] - 4.8e-11,
+            y=source.EXPECTED_EXTENT["ymax"] + 4.8e-11)
+        _fields, features, audit = source._validate({name: (json.dumps(value).encode(), {}) for name, value in docs.items()})
+        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["geometry_invalid_count"], 0)
+        self.assertEqual(features[0]["geometry"]["x"], source.EXPECTED_EXTENT["xmin"])
+
     def _capture_directory(self, root: Path):
         docs = {name: json.loads(body) for name, (body, _receipt) in _capture_docs().items()}
         receipts = {}

@@ -64,6 +64,12 @@ EXPECTED_FIELD_DECLARATIONS = [
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
 EXPECTED_EXTENT = {"xmin": -95.41964149999995, "ymin": 29.745652300000074,
                    "xmax": -80.43407549999995, "ymax": 44.202593000000036}
+# ArcGIS derives the declared extent from the same float64 ordinates as the
+# returned points; recomputation noise observed on sibling IENC layers reaches
+# ~5e-11 degrees, and live OBSTRUCTION_POINT points sit byte-equal on all four
+# extent faces. A 1e-9-degree (~0.1 mm) tolerance absorbs that representation
+# noise while any genuine coordinate or coverage change still fails closed.
+EXTENT_TOLERANCE = 1e-9
 CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before",
                  "ids_before", "layer_after", "count_after", "ids_after", "service_after",
                  *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
@@ -195,6 +201,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                 raise ValueError("source_point_geometry_structure_drift")
             if not math.isfinite(geometry["x"]) or not math.isfinite(geometry["y"]):
                 raise ValueError("source_xy_ordinate_contract_drift")
+            if not (-180.0 <= geometry["x"] <= 180.0 and -90.0 <= geometry["y"] <= 90.0):
+                raise ValueError("source_point_outside_geographic_bounds")
+            if not (EXPECTED_EXTENT["xmin"] - EXTENT_TOLERANCE <= geometry["x"] <= EXPECTED_EXTENT["xmax"] + EXTENT_TOLERANCE
+                    and EXPECTED_EXTENT["ymin"] - EXTENT_TOLERANCE <= geometry["y"] <= EXPECTED_EXTENT["ymax"] + EXTENT_TOLERANCE):
+                raise ValueError("source_point_outside_declared_coverage")
             if geometry.get("spatialReference") is not None:
                 _validate_spatial_reference(geometry["spatialReference"], "source_" + name + "_feature")
             oid = attrs.get("OBJECTID")
@@ -223,7 +234,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
              "geometry_empty_count": geometry_empty, "geometry_invalid_count": 0,
              "geometry_bounds": bounds, "source_extent": layer["extent"],
              "source_coverage_scope": "Complete current OBSTRUCTION_POINT layer from USACE IENC chart coverage; inland-chart extent only, not a nationwide obstruction inventory.",
-             "drift_guard": "BTS item delegation, exact service directory/service/layer roster, full ArcGIS field declarations/types, layer/page/feature SRs, count and before/after ID roster, per-page native XY and attribute checks."}
+             "drift_guard": "BTS item delegation, exact service directory/service/layer roster, full ArcGIS field declarations/types, layer/page/feature SRs, count and before/after ID roster, per-page native XY and attribute checks, EPSG:4326 geographic bounds, and pinned-extent containment (1e-9-degree tolerance) on every point."}
     return layer["fields"], features, audit
 
 
