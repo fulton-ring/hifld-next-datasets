@@ -63,6 +63,7 @@ from dagster_hifld.assets.usace_recommended_tracks import usace_recommended_trac
 from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pipeline_lines_usace_ienc
 from dagster_hifld.assets.usace_overhead_cables import usace_overhead_cables_usace_ienc
 from dagster_hifld.assets.usace_dam_lines import usace_dam_lines_usace_ienc
+from dagster_hifld.assets.levee_areas_usace_ienc import levee_areas_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
 from dagster_hifld.assets.usace_mooring_facility_lines import usace_mooring_facility_lines_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
@@ -196,6 +197,7 @@ hifld_ingest_assets = [
     usace_overhead_pipeline_lines_usace_ienc,
     usace_overhead_cables_usace_ienc,
     usace_dam_lines_usace_ienc,
+    levee_areas_usace_ienc,
     usace_obstruction_lines_usace_ienc,
     usace_mooring_facility_lines_usace_ienc,
     census_secondary_school_districts,
