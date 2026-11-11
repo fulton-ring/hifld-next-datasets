@@ -30,6 +30,12 @@ class ComparisonLimits:
     sqlite_cache_kib: int = 8192
 
 
+def _file_identity(path: Path) -> tuple[int, ...]:
+    """Identify file content changes without access time, which reads may update."""
+    value = path.stat()
+    return (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -221,7 +227,7 @@ def compare_full_rows(
                 raise ValueError("Candidate cannot be its own baseline")
             identities = {}
             for path, expected in ((baseline, baseline_sha256), (candidate, candidate_sha256)):
-                identities[path] = path.stat()
+                identities[path] = _file_identity(path)
                 if sha256_file(path) != expected:
                     raise ValueError("Input checksum mismatch")
             report["baseline_input_bytes"] = baseline.stat().st_size
@@ -327,7 +333,7 @@ def compare_full_rows(
                         quota()
                     report["differences"] = changes
                     for path, expected in ((baseline, baseline_sha256), (candidate, candidate_sha256)):
-                        if path.stat() != identities[path] or sha256_file(path) != expected:
+                        if _file_identity(path) != identities[path] or sha256_file(path) != expected:
                             raise ValueError("Input changed during comparison")
                     invalid = any(c["invalid_records"] or c["null_keys"] or c["duplicate_keys"] for c in report["populations"].values())
                     report["status"] = "fail" if invalid else "needs_decision" if any(changes.values()) else "pass"

@@ -265,10 +265,44 @@ from dagster_hifld.assets.usace_dam_lines import (
     usace_dam_lines_draft_job,
     usace_dam_lines_draft_schedule,
 )
+from dagster_hifld.assets.river_areas_usace_ienc import (
+    river_areas_usace_ienc_complete,
+    river_areas_usace_ienc_draft_job,
+    river_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.shoreline_construction_locations_usace_ienc import (
+    shoreline_construction_locations_usace_ienc_complete,
+    shoreline_construction_locations_usace_ienc_draft_job,
+    shoreline_construction_locations_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sea_area_locations_usace_ienc import (
+    sea_area_locations_usace_ienc_complete,
+    sea_area_locations_usace_ienc_draft_job,
+    sea_area_locations_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sea_areas_usace_ienc import (
+    sea_areas_usace_ienc_complete,
+    sea_areas_usace_ienc_draft_job,
+    sea_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import (
+    shoreline_construction_areas_usace_ienc_complete,
+    shoreline_construction_areas_usace_ienc_draft_job,
+    shoreline_construction_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sloped_ground_lines_usace_ienc import (
+    sloped_ground_lines_usace_ienc_complete,
+    sloped_ground_lines_usace_ienc_draft_job,
+    sloped_ground_lines_usace_ienc_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
     usace_overhead_cables_draft_job,
+)
+from dagster_hifld.assets.building_locations_usace_ienc import (
+    building_locations_population_complete,
+    building_locations_draft_schedule,
 )
 
 from dagster_hifld.assets.nces_private_schools import (
@@ -557,6 +591,10 @@ from dagster_hifld.assets.epa_icis_wastewater import (
     epa_icis_wastewater_capture_complete,
     epa_icis_wastewater_draft_job,
     epa_icis_wastewater_draft_schedule,
+)
+from dagster_hifld.assets.fuds_mrs import (
+    usace_fuds_munitions_response_sites_complete,
+    fuds_mrs_draft_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -1060,6 +1098,13 @@ defs = Definitions(
         principal_ports_source_complete,
         usace_overhead_cables_complete,
         usace_dam_lines_complete,
+        building_locations_population_complete,
+        river_areas_usace_ienc_complete,
+        shoreline_construction_locations_usace_ienc_complete,
+        sea_area_locations_usace_ienc_complete,
+        sea_areas_usace_ienc_complete,
+        shoreline_construction_areas_usace_ienc_complete,
+        sloped_ground_lines_usace_ienc_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         usace_dry_docks_complete,
@@ -1120,6 +1165,7 @@ defs = Definitions(
         bts_intermodal_freight_air_to_truck_complete,
         fema_nfhl_nodes_complete,
         fema_nfhl_hydrologic_reaches_complete,
+        usace_fuds_munitions_response_sites_complete,
         usace_fuds_public_properties_complete,
     ],
     jobs=[
@@ -1157,6 +1203,12 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_job,
         usace_overhead_cables_draft_job,
         usace_dam_lines_draft_job,
+        river_areas_usace_ienc_draft_job,
+        shoreline_construction_locations_usace_ienc_draft_job,
+        sea_area_locations_usace_ienc_draft_job,
+        sea_areas_usace_ienc_draft_job,
+        shoreline_construction_areas_usace_ienc_draft_job,
+        sloped_ground_lines_usace_ienc_draft_job,
         usace_obstruction_lines_draft_job,
         usace_mooring_facility_lines_draft_job,
         floodwalls_usace_ienc_draft_job,
@@ -1271,6 +1323,13 @@ defs = Definitions(
         usace_overhead_pipeline_lines_draft_schedule,
         usace_overhead_cables_draft_schedule,
         usace_dam_lines_draft_schedule,
+        building_locations_draft_schedule,
+        river_areas_usace_ienc_draft_schedule,
+        shoreline_construction_locations_usace_ienc_draft_schedule,
+        sea_area_locations_usace_ienc_draft_schedule,
+        sea_areas_usace_ienc_draft_schedule,
+        shoreline_construction_areas_usace_ienc_draft_schedule,
+        sloped_ground_lines_usace_ienc_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         usace_mooring_facility_lines_draft_schedule,
         floodwalls_usace_ienc_draft_schedule,
@@ -1355,6 +1414,7 @@ defs = Definitions(
         fuds_district_boundaries_draft_schedule,
         tsunami_events_draft_schedule,
         bts_air_truck_draft_schedule,
+        fuds_mrs_draft_schedule,
         fuds_public_properties_draft_schedule,
     ],
     sensors=_configured_sensors(),
