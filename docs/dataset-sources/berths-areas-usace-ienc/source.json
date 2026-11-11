@@ -17,9 +17,17 @@
   },
   "dataset_slug": "berths-areas-usace-ienc",
   "distributor": {
-    "item_id": "3607d485a9854d6fa458bf507058ceae",
-    "item_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
-    "name": "US Department of Transportation, Bureau of Transportation Statistics"
+    "item_id": "7ec34864c8804468a9cf52d437fe4b6c",
+    "item_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
+    "name": "US Department of Transportation, Bureau of Transportation Statistics",
+    "prior_item_id": "3607d485a9854d6fa458bf507058ceae",
+    "prior_item_status": "earlier pinned BTS map-service item used by the original 2026-10-20 capture; returned anonymous-access denial (HTTP 200 carrying ArcGIS 403 GWM_0003) on 2026-10-21, reconfirmed 2026-11-08; retained as prior evidence only, never fetched",
+    "bts_item_succession_claimed": false
+  },
+  "source_chain_repair": {
+    "verified_on": "2026-11-09",
+    "probes": "service directory lists IENC_Feature_Classes/BERTHS_AREA; single layer id 98 BERTHS_AREA esriGeometryPolygon EPSG:4326 maxRecordCount 2000; count 1108; OBJECTID roster 1-1108 with roster sha256 601df26e076232404b0e22fd1afacd6ca6461064107ae1ce4b33d1f92b2cfbd5; 16-field schema sha256 55fe5000eb9aacd69e612211f48b5cf5532cee536f1080901d177e5842a0751c; layer extent unchanged; current BTS item 7ec34864c8804468a9cf52d437fe4b6c owner USDOT_BTS carries all three delegation markers (IENC program title, IENC_Feature_Classes service link, USACE_IENC_Master_Service_gdb.zip link)",
+    "record_and_geometry_parity": "record/geometry snapshot hashes remain pinned to the 2026-10-20 extraction and are enforced fail-closed on every fresh capture; the prior sealed capture is not replayable against the current pin because its bts_item receipt URL names the denied prior item"
   },
   "file_slug": "berths-areas-usace-ienc",
   "inventory_id": "berths-areas-usace-ienc",
