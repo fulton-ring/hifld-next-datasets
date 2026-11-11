@@ -15,9 +15,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  unit:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     env:
       # Local, isolated roots; no production storage or model credentials.
       HIFLD_STAGING_BUCKET: ''
@@ -64,4 +68,20 @@ jobs:
           sudo install ~/.local/tippecanoe/tippecanoe ~/.local/tippecanoe/tippecanoe-decode /usr/local/bin/
           tippecanoe --version
       - run: uv sync --locked
-      - run: uv run --locked python -m unittest discover tests
+      - name: Run test shard ${{ matrix.shard }} of 4
+        env:
+          SHARD: ${{ matrix.shard }}
+        # Each shard runs on its own runner, so tests sharing fixed paths cannot collide.
+        # PYTHONPATH=tests matches `unittest discover tests` imports.
+        run: |
+          modules=$(ls tests/test_*.py | sort | awk -v shard="$SHARD" '(NR - 1) % 4 == shard' | xargs -n1 basename | sed 's/\.py$//')
+          PYTHONPATH=tests uv run --locked python -m unittest $modules
+
+  # The factory requires this single check name.
+  test:
+    needs: unit
+    if: always()
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 2
+    steps:
+      - run: test "${{ needs.unit.result }}" = success
