@@ -226,13 +226,14 @@ def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str
 
     This path is intentionally explicit in asset config. It verifies source
     receipts, object snapshots, the Parquet footer, and completeness metadata;
-    when the retained version carries a first-construction seal it validates
-    that original witness and requires every source-owned object to match it
-    before resealing. It additionally scans the retained native ID column
-    against the producer payload bounds the capture manifest recorded, and
-    admits only the narrowly validated catalog-derived documents a cataloged
-    prefix carries. The source observation timestamp and receipt bytes remain
-    unchanged.
+    when any part of a first-construction witness (state alias, marker, or
+    content-addressed evidence) survives it requires the complete witness and
+    that every source-owned object still match it before resealing, refusing
+    partially surviving state rather than falling back to fresh hashes. It
+    additionally scans the retained native ID column against the producer
+    payload bounds the capture manifest recorded, and admits only the narrowly
+    validated catalog-derived documents a cataloged prefix carries. The source
+    observation timestamp and receipt bytes remain unchanged.
     """
     expected_prefix = f"{DATASET_SLUG}/{FILE_SLUG}/"
     if (not old_prefix.startswith(expected_prefix) or "/" in old_prefix[len(expected_prefix):]
@@ -317,15 +318,25 @@ def _recover_retained_candidate(storage: StagingStorageResource, old_prefix: str
             raise ValueError("resume_candidate_object_changed_during_verify")
         snapshots[name] = {"bytes": snapshot.size, "sha256": sha}
 
-    # A retained version sealed by an earlier construction carries an outside
-    # first-construction witness. That seal is the only record of the original
-    # object descriptors, so every source-owned object must still match it
-    # before anything is copied or resealed; altered sealed provenance must
-    # refuse instead of receiving a new valid seal. A genuinely unsealed
-    # legacy capture has no witness and keeps the fresh-hash path above.
+    # A retained version sealed by an earlier construction carries outside
+    # first-construction witnesses: the state alias, the first-construction
+    # marker, and the content-addressed evidence directory (which also keeps
+    # pending evidence from an interrupted seal). Any surviving witness means
+    # the retained version was sealed, and the original seal is then the only
+    # record of the original object descriptors. The witness must validate in
+    # full before anything is copied or resealed: partially surviving state,
+    # for example a lost alias with the marker or evidence still present, must
+    # refuse instead of falling back to fresh hashes, so altered sealed
+    # provenance can never receive a new valid seal. Only a genuinely unsealed
+    # legacy capture, with no witness at all, keeps the fresh-hash path above.
     old_version = old_prefix.rsplit("/", 1)[-1]
     old_state_key = f"_construction-state/{DATASET_SLUG}/{old_version}.json"
-    if storage.object_snapshot(old_state_key) is not None:
+    sealed_alias = storage.object_snapshot(old_state_key)
+    sealed_marker = storage.object_snapshot(old_state_key + ".first-construction.json")
+    sealed_evidence = storage.list_prefix(old_state_key + ".evidence/")
+    if sealed_alias is not None or sealed_marker is not None or sealed_evidence:
+        if sealed_alias is None or sealed_marker is None:
+            raise ValueError("resume_candidate_seal_witness_incomplete")
         state_header = json.loads(storage.read_key(old_state_key))
         fingerprint = (state_header.get("processing_fingerprint")
                        if isinstance(state_header, dict) else None)

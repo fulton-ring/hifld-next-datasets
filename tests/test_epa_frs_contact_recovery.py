@@ -303,6 +303,90 @@ class EpaFrsContactRecoveryTests(unittest.TestCase):
             self.assertTrue(recovered["resumed_offline"])
             self.assertEqual(recovered["captured_at"], capture["captured_at"])
 
+    def test_recovery_refuses_partially_lost_construction_witness(self):
+        """Surviving construction witnesses must never look unsealed.
+
+        The prior review's reproduction: seal the fixture under one identity,
+        alter the sealed source observation, then lose only the state alias.
+        While the marker or any evidence (including pending evidence from an
+        interrupted seal) survives, cross-identity recovery must refuse
+        before destination writes instead of treating the sealed capture as a
+        fresh-hash legacy.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            storage, old_prefix, capture, _real_identity, _parquet = self._build_retained_fixture(directory)
+            old_code = _identity("0" * 40)
+            with patch("dagster_hifld.assets.epa_frs_interest_contact.EXPECTED_ROWS", 2), \
+                    patch("dagster_hifld.assets.epa_frs_interest_contact.processing_identity",
+                          return_value=old_code), \
+                    DagsterInstance.ephemeral() as instance:
+                context = build_asset_context(asset_config={"resume_candidate": old_prefix},
+                                              instance=instance)
+                sealed = epa_frs_interest_contact(context, storage)
+            sealed_prefix = sealed["candidate_ready"].removesuffix("/metadata/candidate_ready.json")
+            self._add_catalog_documents(storage, sealed_prefix, capture)
+            tampered_capture = {**capture, "captured_at": "2099-01-01T00:00:00Z"}
+            Path(directory, f"{sealed_prefix}/metadata/source_capture.json").write_bytes(
+                canonical(tampered_capture) + b"\n")
+
+            state_key = f"_construction-state/{DATASET_SLUG}/{sealed['version']}.json"
+            state_path = Path(directory, storage._ensure_prefixed(state_key))
+            marker_path = state_path.with_name(state_path.name + ".first-construction.json")
+            evidence_dir = state_path.with_name(state_path.name + ".evidence")
+            evidence_files = sorted(evidence_dir.iterdir())
+            self.assertEqual(len(evidence_files), 1)
+
+            new_code = _identity("1" * 40)
+            refused_version = content_derived_version(
+                capture["source_record_sha256"], hashlib.sha256(b"nonspatial").hexdigest(),
+                capture["source_schema_sha256"], new_code)
+            refused_prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, refused_version)
+
+            def attempt_recovery():
+                with patch("dagster_hifld.assets.epa_frs_interest_contact.EXPECTED_ROWS", 2), \
+                        patch("dagster_hifld.assets.epa_frs_interest_contact.processing_identity",
+                              return_value=new_code), \
+                        DagsterInstance.ephemeral() as instance:
+                    context = build_asset_context(asset_config={"resume_candidate": sealed_prefix},
+                                                  instance=instance)
+                    return epa_frs_interest_contact(context, storage)
+
+            # Alias lost, marker and evidence survive: the prior review's
+            # reproduction; refuse before anything is copied or resealed.
+            state_path.unlink()
+            with self.assertRaisesRegex(ValueError, "resume_candidate_seal_witness_incomplete"):
+                attempt_recovery()
+            self.assertEqual(storage.list_prefix(refused_prefix), [])
+
+            # Marker lost too, evidence alone survives: still refuse.
+            marker_path.unlink()
+            with self.assertRaisesRegex(ValueError, "resume_candidate_seal_witness_incomplete"):
+                attempt_recovery()
+            self.assertEqual(storage.list_prefix(refused_prefix), [])
+
+            # Alias restored from its evidence copy, marker missing: the
+            # witness set is incomplete, so refuse.
+            write_immutable(storage, state_key, evidence_files[0].read_bytes())
+            with self.assertRaisesRegex(ValueError, "resume_candidate_seal_witness_incomplete"):
+                attempt_recovery()
+            self.assertEqual(storage.list_prefix(refused_prefix), [])
+
+            # Pending evidence alone still counts as a surviving witness.
+            state_path.unlink()
+            evidence_files[0].unlink()
+            (evidence_dir / ".pending-fixture").write_bytes(b"interrupted seal evidence")
+            with self.assertRaisesRegex(ValueError, "resume_candidate_seal_witness_incomplete"):
+                attempt_recovery()
+            self.assertEqual(storage.list_prefix(refused_prefix), [])
+
+            # With every outside witness gone the capture is indistinguishable
+            # from a genuinely unsealed legacy one; the documented local
+            # witness boundary applies and recovery proceeds with fresh hashes.
+            (evidence_dir / ".pending-fixture").unlink()
+            recovered = attempt_recovery()
+            self.assertTrue(recovered["resumed_offline"])
+            self.assertEqual(recovered["captured_at"], tampered_capture["captured_at"])
+
     def test_recovery_accepts_cataloged_pair_after_code_identity_change(self):
         """The prior review's reproduction: the catalog pair alone must not block recovery."""
         with tempfile.TemporaryDirectory() as directory:
