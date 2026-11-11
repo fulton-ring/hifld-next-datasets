@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import httpx
 from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usace_navigation_lights import (
@@ -13,6 +14,22 @@ from dagster_hifld.assets.usace_navigation_lights import (
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import usace_navigation_lights as source
 from dagster_hifld.sources.epa_frs_common import _canonical
+
+
+class _FlakyTransport(httpx.BaseTransport):
+    """Serve one transient 503, then the real payload; observed live on ienccloud."""
+
+    def __init__(self, *, always_failing=False):
+        self.calls = 0
+        self.always_failing = always_failing
+
+    def handle_request(self, request):
+        self.calls += 1
+        if self.calls == 1 or self.always_failing:
+            return httpx.Response(503, stream=httpx.ByteStream(b"temporarily unavailable"),
+                                  request=request, headers={"content-type": "text/plain"})
+        return httpx.Response(200, stream=httpx.ByteStream(b'{"count":8892}'),
+                              request=request, headers={"content-type": "application/json"})
 
 
 class UsaceNavigationLightsTests(unittest.TestCase):
@@ -124,6 +141,34 @@ class UsaceNavigationLightsTests(unittest.TestCase):
                 mutate(docs)
                 with self.assertRaisesRegex(ValueError, expected):
                     source._validate(self._captures(docs))
+
+    def test_transient_failure_is_retried_and_failed_attempt_retained(self):
+        transport = _FlakyTransport()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with httpx.Client(transport=transport) as client:
+                body, receipt = source._fetch_retry(
+                    client, "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LIGHTS_POINT/MapServer/16/query?where=1%3D1&returnCountOnly=true&f=json",
+                    root, "count_before")
+            self.assertEqual(body, b'{"count":8892}')
+            self.assertEqual(receipt["status"], 200)
+            retained = json.loads((root / "count_before.attempt1.receipt.json").read_bytes())
+            self.assertEqual(retained["status"], 503)
+            self.assertEqual((root / "count_before.attempt1.body").read_bytes(), b"temporarily unavailable")
+            canonical = json.loads((root / "count_before.receipt.json").read_bytes())
+            self.assertEqual(canonical["status"], 200)
+            self.assertEqual(canonical["bytes"], len(body))
+
+    def test_persistent_failure_refuses_after_bounded_retry(self):
+        transport = _FlakyTransport(always_failing=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with httpx.Client(transport=transport) as client:
+                with self.assertRaisesRegex(ValueError, "incomplete_source_capture:count_before.attempt2"):
+                    source._fetch_retry(client, "https://ienccloud.us/probe", root, "count_before")
+            self.assertEqual(transport.calls, 2)
+            self.assertTrue((root / "count_before.attempt2.receipt.json").exists())
+            self.assertFalse((root / "count_before.receipt.json").exists())
 
     def test_capture_version_cannot_escape_capture_root(self):
         with tempfile.TemporaryDirectory() as tmp:

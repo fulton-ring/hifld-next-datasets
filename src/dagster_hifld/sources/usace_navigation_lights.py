@@ -155,6 +155,23 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes
     return capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
 
 
+def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
+    """Retry one transient transport/incomplete read, retaining every attempt."""
+    last = None
+    for attempt in range(2):
+        attempt_name = f"{name}.attempt{attempt + 1}"
+        try:
+            body, receipt = _fetch(client, url, root, attempt_name)
+            for suffix in ("body", "wire", "receipt.json"):
+                (root / f"{attempt_name}.{suffix}").replace(root / f"{name}.{suffix}")
+            return body, receipt
+        except (httpx.TransportError, ValueError) as exc:
+            last = exc
+            if isinstance(exc, ValueError) and not str(exc).startswith("incomplete_source_capture:"):
+                raise
+    raise last
+
+
 def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
     body_path, wire_path, receipt_path = (root / f"{name}.body", root / f"{name}.wire",
                                           root / f"{name}.receipt.json")
@@ -188,6 +205,22 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
+    attempt_map = manifest.get("attempts", {})
+    if not isinstance(attempt_map, dict):
+        raise ValueError("retained_capture_attempt_manifest_invalid")
+    for attempt_name, attempt_receipt in attempt_map.items():
+        if (not isinstance(attempt_name, str) or Path(attempt_name).name != attempt_name
+                or "/" in attempt_name or "\\" in attempt_name):
+            raise ValueError("retained_capture_attempt_name_invalid")
+        attempt_paths = [root / f"{attempt_name}.body", root / f"{attempt_name}.wire"]
+        if any(path.is_symlink() for path in attempt_paths):
+            raise ValueError("retained_capture_attempt_symlink_rejected")
+        attempt_body, attempt_wire = attempt_paths[0].read_bytes(), attempt_paths[1].read_bytes()
+        if (attempt_receipt.get("bytes") != len(attempt_body)
+                or attempt_receipt.get("sha256") != _sha(attempt_body)
+                or attempt_receipt.get("wire_bytes") != len(attempt_wire)
+                or attempt_receipt.get("wire_sha256") != _sha(attempt_wire)):
+            raise ValueError("retained_failed_attempt_bytes_changed:" + attempt_name)
     expected_urls = dict(_capture_roster(EXPECTED_IDS))
     captures = {}
     for name in sorted(CAPTURE_NAMES):
@@ -404,7 +437,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
                 for name, url in _capture_roster(EXPECTED_IDS):
-                    body, receipt = _fetch(client, url, root, name)
+                    body, receipt = _fetch_retry(client, url, root, name)
                     captures[name] = (body, receipt)
                     if name == "ids_before":
                         ids = json.loads(body).get("objectIds")
@@ -431,6 +464,8 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "attempts": {path.name.removesuffix(".receipt.json"): json.loads(path.read_bytes())
+                         for path in sorted(root.glob("*.attempt*.receipt.json"))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
 
