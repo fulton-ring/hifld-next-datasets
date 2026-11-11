@@ -348,7 +348,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                 raise ValueError("source_geometry_attribute_null_pairing_drift")
             if geometry is not None:
                 if (not isinstance(geometry, dict)
-                        or set(geometry) - {"x", "y", "spatialReference"} 
+                        or set(geometry) - {"x", "y", "spatialReference"}
                         or type(geometry.get("x")) not in (int, float)
                         or type(geometry.get("y")) not in (int, float)
                         or not math.isfinite(geometry["x"]) or not math.isfinite(geometry["y"])
