@@ -279,6 +279,11 @@ from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import (
     shoreline_construction_areas_usace_ienc_draft_job,
     shoreline_construction_areas_usace_ienc_draft_schedule,
 )
+from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import (
+    small_craft_facility_areas_usace_ienc_complete,
+    small_craft_facility_areas_usace_ienc_draft_job,
+    small_craft_facility_areas_usace_ienc_draft_schedule,
+)
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import (
     sloped_ground_lines_usace_ienc_complete,
     sloped_ground_lines_usace_ienc_draft_job,
@@ -1085,6 +1090,7 @@ defs = Definitions(
         sea_area_locations_usace_ienc_complete,
         sea_areas_usace_ienc_complete,
         shoreline_construction_areas_usace_ienc_complete,
+        small_craft_facility_areas_usace_ienc_complete,
         sloped_ground_lines_usace_ienc_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
@@ -1187,6 +1193,7 @@ defs = Definitions(
         sea_area_locations_usace_ienc_draft_job,
         sea_areas_usace_ienc_draft_job,
         shoreline_construction_areas_usace_ienc_draft_job,
+        small_craft_facility_areas_usace_ienc_draft_job,
         sloped_ground_lines_usace_ienc_draft_job,
         usace_obstruction_lines_draft_job,
         usace_mooring_facility_lines_draft_job,
@@ -1305,6 +1312,7 @@ defs = Definitions(
         sea_area_locations_usace_ienc_draft_schedule,
         sea_areas_usace_ienc_draft_schedule,
         shoreline_construction_areas_usace_ienc_draft_schedule,
+        small_craft_facility_areas_usace_ienc_draft_schedule,
         sloped_ground_lines_usace_ienc_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         usace_mooring_facility_lines_draft_schedule,
