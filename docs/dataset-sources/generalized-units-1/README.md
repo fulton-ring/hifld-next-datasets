@@ -31,6 +31,31 @@ under `/tmp/genunits-stage`. Candidate version
 hash-verified; registered catalog metadata written (942 features, Mixed
 Polygon/MultiPolygon, 0 invalid, 10 columns).
 
+Complete lifecycle re-verified 2026-11-11 at head `5860cf1a` in a retained
+factory task sandbox, after the shared comparator end guard
+(`src/dagster_hifld/validation.py`) was made read-time-insensitive: inputs on
+filesystems that update atime/ctime on read previously failed closed the
+full-record fidelity gate (`geopackage_complete_fidelity_failure`) despite
+byte-identical data. Page re-captured byte-identical to the pin (same SHA256,
+19,137,445 bytes). Dagster runs (isolated `DAGSTER_HOME`/staging):
+live-fetch ingests `1dfed889-95ce-4365-8742-7e0442c082ff` and
+`6799a56b-1ca2-4659-b0a0-fdb8799b0c62` (each observation set stages its own
+version; the pinned page held every time), capture-dir ingest
+`fed26c02-d0b1-42fd-97da-e88467836324` and identical replay
+`0b4acc40-b6c8-41b1-9dd8-e51ed01e5c7e` — candidate
+`v0.0.0-draft-generalizedunits-1cb4e67b96a93376-aaac93cfff6b0cb3`, 32 objects
+hash-verified, full-record source-fidelity comparison `pass` (942/942 rows,
+zero differences); catalog `473d8d8a-595c-4a87-9b8f-bde9847a2871` with the
+blocking `quality_manifest` check passed. Publication refused fail-closed:
+direct exact-object promotion with a valid empty approval registry raised
+`ReleaseApprovalError: missing_or_ambiguous_exact_object_approval`, and the
+Dagster publish/verify run `8fe118b7-1e6b-4271-9079-bb268f3aea69` failed with
+no published writes; a populated three-object synthetic published fixture and
+the staged candidate were preserved byte-for-byte, and a false quality
+manifest blocks the same downstream check. Raw captures, receipts, staging,
+Dagster home and proof records are retained on the factory task sandbox disk
+(`/workspace/evidence`).
+
 Unresolved (blockers, requires maintainer decision): DHS crosswalk match
 (https://doi.org/10.3886/E241367V1 is Cloudflare-blocked for anonymous access),
 historical HIFLD baseline equivalence (DataLumos V1 page is also
