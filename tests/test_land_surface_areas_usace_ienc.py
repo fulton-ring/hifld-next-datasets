@@ -364,8 +364,8 @@ class ValidateDriftRejections(unittest.TestCase):
     def test_ambiguous_hole_ownership_rejected(self):
         def mutate(docs):
             x0, y0 = EXPECTED_LAYER_EXTENT["xmin"], EXPECTED_LAYER_EXTENT["ymin"]
-            shell_a = _ring(x0, y0)
-            shell_b = _ring(x0 + 0.5, y0)
+            shell_a = _ring(x0, y0, 0.001)
+            shell_b = _ring(x0, y0, 0.002)
             hole = _crossing_hole_rings()[1]
             docs["page_000"]["features"][0]["geometry"]["rings"] = [shell_a, shell_b, hole]
         code, _ = self._mutate(mutate)
