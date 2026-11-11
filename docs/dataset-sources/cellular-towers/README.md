@@ -22,8 +22,12 @@ roster and receipt drift, zip member roster, per-record-type field counts and
 record-type prefixes, HD/EN/LO record totals, radio service roster, license
 status distribution, licensee and callsign joins, duplicate `(UniqSysID,
 LocNum)` keys, active-population count, full active ID roster digest, state
-roster digest, DMS component ranges and directions, coordinate range and
-null-geometry count. The weekly refresh schedule is stopped. The archived HIFLD
+roster digest, DMS direction codes, derived-decimal coordinate range and
+null-geometry count. Raw DMS components are preserved verbatim, including the
+pinned population's out-of-nominal values (seconds 60.0, minutes 73), which the
+FCC's own layer description anticipates ("It is known that there are some
+errors in the licensing information - Latitude, Longitude and Ground Elevation
+data"). The weekly refresh schedule is stopped. The archived HIFLD
 OPEN Cellular Towers layer (DataLumos project 238960, DOI 10.3886/E238960V1)
 and the DHS crosswalk DOI (10.3886/E241367V1) return HTTP 403 anonymously, so
 archive crosswalk identity remains unverified; the existing published HIFLD

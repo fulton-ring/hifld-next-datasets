@@ -198,8 +198,8 @@ class CellularTowersTests(unittest.TestCase):
              "source_state_roster_drift"),
             ("latitude direction", lambda hd, en, lo: (hd, en, [lo[0], _lo(101, "KNKA101", 2, lat_dir="X"), *lo[2:]]),
              "source_latitude_direction_drift"),
-            ("latitude component", lambda hd, en, lo: (hd, en, [lo[0], _lo(101, "KNKA101", 2, lat_deg="999"), *lo[2:]]),
-             "source_latitude_component_drift"),
+            ("latitude coordinate range", lambda hd, en, lo: (hd, en, [lo[0], _lo(101, "KNKA101", 2, lat_deg="999"), *lo[2:]]),
+             "source_coordinate_out_of_range"),
             ("coordinate range", lambda hd, en, lo: (hd, en, [lo[0], _lo(101, "KNKA101", 2, lon_deg="180", lon_min="59", lon_sec="59.9", lon_dir="E"), *lo[2:]]),
              "source_coordinate_out_of_range"),
             ("null geometry", lambda hd, en, lo: (hd, en, [lo[0], _lo(101, "KNKA101", 2, lat_deg="", lon_deg=""), *lo[2:]]),
@@ -211,6 +211,15 @@ class CellularTowersTests(unittest.TestCase):
                 hd, en, lo = mutate(*_documents())
                 with self.assertRaisesRegex(ValueError, expected):
                     self._validate(hd, en, lo, pins)
+
+    def test_out_of_nominal_dms_components_are_preserved_and_converted(self):
+        hd, en, lo = _documents()
+        lo = [lo[0], _lo(101, "KNKA101", 2, lat_deg="36", lat_min="73", lat_sec="11.3", state="TX"), *lo[2:]]
+        published, audit = self._validate(hd, en, lo)
+        preserved = published[1]
+        self.assertEqual((preserved["LatDeg"], preserved["LatMin"], preserved["LatSec"]), (36, 73, 11.3))
+        self.assertEqual(preserved["latdec"], 37.2198055556)
+        self.assertIsNotNone(preserved["geometry"])
 
     def test_population_pins_fail_closed(self):
         hd, en, lo = _documents()

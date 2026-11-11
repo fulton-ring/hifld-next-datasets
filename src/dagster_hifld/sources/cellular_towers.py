@@ -272,12 +272,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         else:
             if lat_dir not in {"N", "S"}:
                 raise ValueError("source_latitude_direction_drift")
-            if not 0 <= lat_deg <= 90 or not 0 <= (lat_min or 0) <= 59 or (lat_sec is not None and not 0 <= lat_sec < 60):
-                raise ValueError("source_latitude_component_drift")
             if lon_dir not in {"E", "W"}:
                 raise ValueError("source_longitude_direction_drift")
-            if not 0 <= lon_deg <= 180 or not 0 <= (lon_min or 0) <= 59 or (lon_sec is not None and not 0 <= lon_sec < 60):
-                raise ValueError("source_longitude_component_drift")
+            # Raw DMS components are preserved verbatim even when out of nominal
+            # range (the pinned population includes seconds 60.0 and minutes 73);
+            # the FCC's own layer description warns of coordinate errors.
             lat_dec = _decimal_degrees(lat_deg, lat_min or 0, lat_sec, lat_dir, "S")
             lon_dec = _decimal_degrees(lon_deg, lon_min or 0, lon_sec, lon_dir, "W")
             if not -90 <= lat_dec <= 90 or not -180 <= lon_dec <= 180:
@@ -340,8 +339,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                         "per-record-type field counts and record-type prefixes, HD/EN/LO record totals, radio "
                         "service roster, license status distribution, unique license and licensee identities, "
                         "LO/HD callsign join, unique (UniqSysID, LocNum) keys, active-location count, full active "
-                        "ID roster digest, state roster digest, DMS component ranges and directions, coordinate "
-                        "range and null-geometry count are checked; duplicate location keys fail closed."),
+                        "ID roster digest, state roster digest, DMS direction codes, derived-decimal coordinate "
+                        "range and null-geometry count are checked; duplicate location keys fail closed. Raw DMS "
+                        "components are preserved verbatim, including the pinned population's out-of-nominal "
+                        "values (seconds 60.0, minutes 73) that the FCC's layer description anticipates."),
     }
     return published, audit
 
@@ -472,7 +473,10 @@ def capture_cellular_towers(storage: StagingStorageResource, *, version: str,
             "population": "one published row per LO location record whose HD license status is A (active); all radio service codes are CL",
             "source_ids": "UniqSysID (HD/EN/LO unique system identifier) and LocNum (LO location number) retained unchanged and jointly unique",
             "source_values": "all published attribute strings retained verbatim including empty fields; numeric columns typed from the FCC public access database definitions",
-            "derived_columns": "latdec/londec are DMS-to-decimal conversions rounded to 10 decimals (missing minutes or seconds contribute zero); url embeds UniqSysID as the ULS license-location key",
+            "derived_columns": ("latdec/londec are DMS-to-decimal conversions of the raw components rounded to "
+                                "10 decimals (missing minutes or seconds contribute zero; out-of-nominal raw "
+                                "components are preserved verbatim and converted by the same formula); url embeds "
+                                "UniqSysID as the ULS license-location key"),
             "geometry": "WKB Point (londec, latdec) in EPSG:4326, no reprojection, repair or geocoding",
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
         "lineage": ("The FCC moved ULS daily and weekly public access downloads from wireless2.fcc.gov to "
