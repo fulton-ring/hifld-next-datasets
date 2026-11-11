@@ -179,7 +179,8 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
     total = receipt_total = 0
     for name, desc in manifest["captures"].items():
         if (not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", name)
-                or not isinstance(desc, dict) or set(desc) != {"body", "wire", "receipt", "request_url"}):
+                or not isinstance(desc, dict)
+                or set(desc) != {"body", "wire", "receipt", "request_url", "response_budget_bytes"}):
             raise ValueError("retained_capture_manifest_invalid")
         response_cap = MAX_ID_ROSTER_RESPONSE_BYTES if name in {"ids_before", "ids_after"} else MAX_RESPONSE_BYTES
         if desc.get("response_budget_bytes") != response_cap:
@@ -401,8 +402,15 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
                 expected = seed[offset:offset+PAGE_SIZE]
                 page = get(client,f"page_{page_no:03d}",_page_url(offset,len(expected),has_z,has_m))
                 rows = page.get("features")
-                if not isinstance(rows,list) or len(rows)!=len(expected) or page.get("exceededTransferLimit") is True:
+                if not isinstance(rows,list) or len(rows)!=len(expected):
                     raise ValueError("source_page_incomplete")
+                # The BTS layer sets exceededTransferLimit on a full ordered
+                # offset page while additional rows remain; the independently
+                # pinned ID roster slice proves that page is complete. A
+                # flagged final page means the server holds rows beyond the
+                # pinned population and still fails closed.
+                if page.get("exceededTransferLimit") is True and offset+len(expected)>=count:
+                    raise ValueError("source_final_page_exceeded_transfer_limit")
                 page_sr=page.get("spatialReference",{})
                 if not isinstance(page_sr,dict) or page_sr.get("latestWkid",page_sr.get("wkid"))!=4326:
                     raise ValueError("source_page_crs_drift")

@@ -23,6 +23,73 @@ def canonical(value):
                       allow_nan=False).encode()
 
 
+def _tiny_layer(page_size):
+    fields = [dict(field) for field in source.FIELD_DECLARATIONS]
+    layer = {
+        "name": source.LAYER_NAME, "geometryType": "esriGeometryPoint",
+        "objectIdField": "OBJECTID", "hasZ": True, "hasM": False,
+        "spatialReference": {"wkid":4326,"latestWkid":4326},
+        "extent": {"spatialReference":{"wkid":4326,"latestWkid":4326}},
+        "maxRecordCount": page_size,
+        "advancedQueryCapabilities":{"supportsPagination":True,"supportsOrderBy":True},
+        "fields":fields,
+    }
+    return layer, fields
+
+
+def _stop_row(fields, oid, x, y, z):
+    attributes = {field["name"]: None for field in fields}
+    attributes.update({"OBJECTID":oid,"ntd_id":"n-"+str(oid),"feed_id":"feed-A",
+                       "stop_id":"stop-"+str(oid),"stop_name":"Station "+str(oid),
+                       "stop_lat":y,"stop_lon":x,"stop_type":"1"})
+    return {"attributes":attributes,"geometry":{"x":x,"y":y,"z":z}}
+
+
+def _metadata_bodies(layer, count, object_ids):
+    service={"serviceItemId":source.ITEM_ID,"description":source.DESCRIPTION,
+             "layers":[{"id":0,"name":source.LAYER_NAME}]}
+    portal={"id":source.ITEM_ID,"owner":"USDOT_BTS","orgId":"xOi1kZaI0eWDREZv",
+            "title":source.LAYER_NAME,"type":"Feature Service","url":source.SERVICE_URL,
+            "access":"public","description":source.DESCRIPTION,"modified":1792186548000}
+    ids={"objectIdFieldName":"OBJECTID","objectIds":object_ids}
+    return {"portal_item":portal,"service_before":service,"service_after":service,
+            "layer_before":layer,"layer_after":layer,
+            "count_before":{"count":count},"count_after":{"count":count},
+            "ids_before":ids,"ids_after":ids}
+
+
+def _fake_capture_get(observed, bodies):
+    def fake_capture(_client,url,root,name,**kwargs):
+        body=json.dumps(bodies[name],separators=(",",":"),ensure_ascii=False).encode()
+        digest=hashlib.sha256(body).hexdigest()
+        receipt={"method":"GET","url":url,"final_url":url,"observed_at":"2026-10-22T00:00:00Z",
+                 "status":200,"complete_body":True,"bytes":len(body),"sha256":digest,
+                 "wire_bytes":len(body),"wire_sha256":digest,"error_code":None,"error_type":None}
+        root.mkdir(parents=True,exist_ok=True)
+        kwargs["reserve"](SimpleNamespace(reserve_bytes=min(1,len(body))))
+        kwargs["before_retain"]("wire",body)
+        kwargs["before_retain"]("body",body)
+        (root/f"{name}.wire").write_bytes(body)
+        (root/f"{name}.body").write_bytes(body)
+        (root/f"{name}.receipt.json").write_bytes(canonical(receipt)+b"\n")
+        observed.append(name)
+        return body,receipt
+    return fake_capture
+
+
+def _capture_patches(expected_count, page_size, fake_capture):
+    return [patch.object(source,"EXPECTED_COUNT",expected_count),
+            patch.object(source,"PAGE_SIZE",page_size),
+            patch.object(source,"capture_get",side_effect=fake_capture),
+            patch.object(source.httpx,"Client"),
+            patch.object(source.shutil,"disk_usage",
+                         return_value=SimpleNamespace(free=1_000_000_000)),
+            patch.object(source,"processing_identity",return_value={
+                "code_identity_scheme":"test","working_tree_status":"unknown",
+                "code_commit":"test","files":{}}),
+            patch.object(source,"validate_construction_code_identity")]
+
+
 class NationalTransitMapStopsTests(unittest.TestCase):
     def test_exact_native_schema_z_geometry_and_stopped_registration(self):
         self.assertEqual(len(source.FIELD_DECLARATIONS), 20)
@@ -157,6 +224,134 @@ class NationalTransitMapStopsTests(unittest.TestCase):
                             capture_directory=str(case_root/"capture"))
             bodies.clear()
             bodies.update(valid_bodies)
+
+    def test_multipage_capture_accepts_bts_transfer_limit_on_full_pages(self):
+        layer, fields = _tiny_layer(2)
+        rows = {oid: _stop_row(fields, oid, x, y, z) for oid, x, y, z in
+                ((1,-73.0,42.0,17.5),(2,-122.0,47.0,18.5),(3,-118.0,34.0,19.5))}
+        bodies=_metadata_bodies(layer,3,[1,2,3])
+        # The live BTS layer sets exceededTransferLimit on every full ordered
+        # offset page while more rows remain (observed 2026-11-11 on page 1 of
+        # 337) and omits it on the final partial page.
+        bodies["page_000"]={"spatialReference":{"wkid":4326,"latestWkid":4326},
+                            "features":[rows[1],rows[2]],"exceededTransferLimit":True}
+        bodies["page_001"]={"spatialReference":{"wkid":4326,"latestWkid":4326},
+                            "features":[rows[3]]}
+        observed=[]
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp=Path(tmp)
+            storage=StagingStorageResource(local_dir=str(tmp/"staging"),use_local=True,
+                                           backend="local",prefix="")
+            patches=_capture_patches(3,2,_fake_capture_get(observed,bodies))
+            for p in patches:
+                p.start()
+            try:
+                result=source.capture_national_transit_map_stops(
+                    storage,version="synthetic",capture_directory=str(tmp/"capture"))
+            finally:
+                for p in patches:
+                    p.stop()
+            self.assertEqual(result["feature_count"],3)
+            self.assertIn("page_000",observed)
+            self.assertIn("page_001",observed)
+            native=tmp/"staging"/result["candidate_ready"].replace(
+                "metadata/candidate_ready.json",f"geoparquet/{source.DATASET_SLUG}.parquet")
+            self.assertEqual(pq.read_table(native)["OBJECTID"].to_pylist(),[1,2,3])
+
+            variants=(
+                ("flagged_final_page", lambda: bodies["page_001"].update(exceededTransferLimit=True),
+                 "source_final_page_exceeded_transfer_limit"),
+                ("truncated_nonfinal_page", lambda: bodies["page_000"].update(features=[rows[1]]),
+                 "source_page_incomplete"),
+            )
+            for index,(name,mutate,reason) in enumerate(variants):
+                with self.subTest(name=name, invalid_page=index):
+                    valid_page_000=deepcopy(bodies["page_000"])
+                    valid_page_001=deepcopy(bodies["page_001"])
+                    mutate()
+                    case_root=tmp/f"invalid-page-{index}"
+                    case_root.mkdir()
+                    case_storage=StagingStorageResource(local_dir=str(case_root/"staging"),use_local=True,
+                                                        backend="local",prefix="")
+                    patches=_capture_patches(3,2,_fake_capture_get([],bodies))
+                    for p in patches:
+                        p.start()
+                    try:
+                        with self.assertRaisesRegex(ValueError,reason):
+                            source.capture_national_transit_map_stops(
+                                case_storage,version=f"synthetic-invalid-{index}",
+                                capture_directory=str(case_root/"capture"))
+                    finally:
+                        for p in patches:
+                            p.stop()
+                    bodies["page_000"]=valid_page_000
+                    bodies["page_001"]=valid_page_001
+
+    def test_retained_capture_replay_round_trip_and_refusals(self):
+        layer, fields = _tiny_layer(2)
+        rows=[_stop_row(fields,1,-73.0,42.0,17.5),_stop_row(fields,2,-122.0,47.0,18.5)]
+        bodies=_metadata_bodies(layer,2,[1,2])
+        bodies["page_000"]={"spatialReference":{"wkid":4326,"latestWkid":4326},
+                            "features":rows,"exceededTransferLimit":False}
+        observed=[]
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp=Path(tmp)
+            capture_root=tmp/"capture"
+            storage=StagingStorageResource(local_dir=str(tmp/"staging"),use_local=True,
+                                           backend="local",prefix="")
+            patches=_capture_patches(2,2,_fake_capture_get(observed,bodies))
+            for p in patches:
+                p.start()
+            try:
+                live=source.capture_national_transit_map_stops(
+                    storage,version="synthetic",capture_directory=str(capture_root))
+            finally:
+                for p in patches:
+                    p.stop()
+            self.assertFalse(live["reused"])
+            manifest_path=capture_root/"capture_manifest.json"
+            digest=hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            calls_after_live=len(observed)
+
+            # The writer's own five-key descriptors (request_url,
+            # response_budget_bytes, body, wire, receipt) must replay through
+            # the retained-capture loader and hit the sealed candidate cache.
+            replay_patches=_capture_patches(2,2,_fake_capture_get(observed,bodies))
+            for p in replay_patches:
+                p.start()
+            try:
+                replay=source.capture_national_transit_map_stops(
+                    storage,version="synthetic-replay",
+                    retained_capture_directory=str(capture_root),
+                    retained_capture_manifest_sha256=digest)
+            finally:
+                for p in replay_patches:
+                    p.stop()
+            self.assertTrue(replay["reused"])
+            self.assertEqual(replay["version"],live["version"])
+            self.assertEqual(replay["feature_count"],2)
+            self.assertEqual(len(observed),calls_after_live)
+
+            tampered_patches=_capture_patches(2,2,_fake_capture_get(observed,bodies))
+            for p in tampered_patches:
+                p.start()
+            try:
+                with self.assertRaisesRegex(ValueError,"retained_capture_manifest_digest_mismatch"):
+                    source.capture_national_transit_map_stops(
+                        storage,version="synthetic-wrong-digest",
+                        retained_capture_directory=str(capture_root),
+                        retained_capture_manifest_sha256="0"*64)
+                manifest=json.loads(manifest_path.read_text())
+                manifest["captures"]["portal_item"].pop("response_budget_bytes")
+                manifest_path.write_bytes(canonical(manifest)+b"\n")
+                with self.assertRaisesRegex(ValueError,"retained_capture_manifest_invalid"):
+                    source.capture_national_transit_map_stops(
+                        storage,version="synthetic-tampered",
+                        retained_capture_directory=str(capture_root),
+                        retained_capture_manifest_sha256=digest)
+            finally:
+                for p in tampered_patches:
+                    p.stop()
 
 
 if __name__ == "__main__":
