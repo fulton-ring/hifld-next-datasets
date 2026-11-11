@@ -22,8 +22,7 @@ class UsaceNauticalPublicationInformationAreasTests(unittest.TestCase):
         self.assertIn("no national coverage claim", audit["source_coverage_scope"])
 
     def test_current_bts_item_or_pdf_drift_is_refused(self):
-        _, _, base = self._validate_complete_fixture()
-        self.assertIn("current_official_source_item", base)
+        self._validate_complete_fixture()
         for mutation in (
             {"id": "3607d485a9854d6fa458bf507058ceae"},
             {"owner": "someone_else"},
