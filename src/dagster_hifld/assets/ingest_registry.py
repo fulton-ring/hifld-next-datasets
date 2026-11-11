@@ -118,6 +118,7 @@ from dagster_hifld.assets.hf_areas_usace_ienc import hf_areas_usace_ienc_candida
 from dagster_hifld.assets.land_region_areas_usace_ienc import (
     land_region_areas_usace_ienc_candidate,
 )
+from dagster_hifld.assets.building_locations_usace_ienc import building_locations_usace_ienc
 from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_usgs,
 )
@@ -275,6 +276,7 @@ hifld_ingest_assets = [
     bts_intermodal_freight_air_to_truck,
     fema_nfhl_nodes,
     fema_nfhl_hydrologic_reaches,
+    building_locations_usace_ienc,
     usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,
 ]
