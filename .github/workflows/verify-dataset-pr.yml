@@ -35,7 +35,7 @@ jobs:
       head_sha: ${{ steps.identity.outputs.head_sha }}
       base_sha: ${{ steps.identity.outputs.base_sha }}
     steps:
-      - uses: useblacksmith/checkout@v1 # v4
+      - uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7 # v1.8.2
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -62,13 +62,13 @@ jobs:
       HIFLD_STAGING_BUCKET: ''
       HIFLD_DATASETS_BUCKET: ''
     steps:
-      - uses: useblacksmith/checkout@v1 # v4
+      - uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7 # v1.8.2
         with:
           ref: ${{ needs.resolve.outputs.head_sha }}
           fetch-depth: 0 # Provenance regressions validate historical Git blobs.
           persist-credentials: false
       - name: Checkout trusted baseline tests
-        uses: useblacksmith/checkout@v1 # v4
+        uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7 # v1.8.2
         with:
           ref: ${{ needs.resolve.outputs.base_sha }}
           path: trusted-baseline
@@ -142,7 +142,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: useblacksmith/checkout@v1 # v4
+      - uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7 # v1.8.2
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
