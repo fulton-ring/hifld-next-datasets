@@ -67,9 +67,11 @@ from dagster_hifld.assets.levee_lines_usace_ienc import levee_lines_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
 from dagster_hifld.assets.usace_mooring_facility_lines import usace_mooring_facility_lines_usace_ienc
 from dagster_hifld.assets.river_areas_usace_ienc import river_areas_usace_ienc
+from dagster_hifld.assets.shoreline_construction_locations_usace_ienc import shoreline_construction_locations_usace_ienc
 from dagster_hifld.assets.sea_area_locations_usace_ienc import sea_area_locations_usace_ienc
 from dagster_hifld.assets.sea_areas_usace_ienc import sea_areas_usace_ienc
 from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import shoreline_construction_areas_usace_ienc
+from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
 from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
@@ -117,6 +119,7 @@ from dagster_hifld.assets.hf_areas_usace_ienc import hf_areas_usace_ienc_candida
 from dagster_hifld.assets.land_region_areas_usace_ienc import (
     land_region_areas_usace_ienc_candidate,
 )
+from dagster_hifld.assets.building_locations_usace_ienc import building_locations_usace_ienc
 from dagster_hifld.assets.ferrous_metal_processing_plants import (
     ferrous_metal_processing_plants_usgs,
 )
@@ -206,9 +209,11 @@ hifld_ingest_assets = [
     usace_obstruction_lines_usace_ienc,
     usace_mooring_facility_lines_usace_ienc,
     river_areas_usace_ienc,
+    shoreline_construction_locations_usace_ienc,
     sea_area_locations_usace_ienc,
     sea_areas_usace_ienc,
     shoreline_construction_areas_usace_ienc,
+    sloped_ground_lines_usace_ienc,
     census_secondary_school_districts,
     principal_ports_usace,
     census_unified_school_districts,
@@ -273,6 +278,7 @@ hifld_ingest_assets = [
     bts_intermodal_freight_air_to_truck,
     fema_nfhl_nodes,
     fema_nfhl_hydrologic_reaches,
+    building_locations_usace_ienc,
     usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,
 ]
