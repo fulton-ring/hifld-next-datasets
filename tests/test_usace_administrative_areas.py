@@ -14,12 +14,64 @@ import shapely
 
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 from dagster_hifld.sources.usace_administrative_areas import (
-    EXPECTED_FIELD_DECLARATIONS, EXPECTED_FIELDS, _esri_polygon, _fetch_retry, _parquet_bytes, _validate,
+    CURRENT_BTS_ITEM_ID, EXPECTED_FIELD_DECLARATIONS, EXPECTED_FIELDS, PAGE_SIZE,
+    _esri_polygon, _fetch_retry, _parquet_bytes, _validate,
 )
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 
 
 class UsaceAdministrativeAreasTests(unittest.TestCase):
+    def test_bts_pdf_redirect_receipt_drops_temporary_signature_query(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = Mock()
+            signed_url = "https://www.arcgis.com/itemdata/folder/7ec/IENC.pdf?X-Amz-Signature=temporary"
+            response = httpx.Response(
+                200, stream=httpx.ByteStream(b"%PDF-1.7\nretained PDF bytes"),
+                request=httpx.Request("GET", signed_url),
+            )
+            client.stream.return_value = nullcontext(response)
+            body, receipt = _fetch_retry(
+                client,
+                "https://www.arcgis.com/sharing/rest/content/items/7ec/data",
+                root,
+                "bts_pdf",
+                [0],
+                allow_arcgis_item_redirect=True,
+            )
+            self.assertTrue(body.startswith(b"%PDF-"))
+            self.assertEqual(receipt["final_url"], "https://www.arcgis.com/itemdata/folder/7ec/IENC.pdf")
+            self.assertNotIn(b"X-Amz-Signature", (root / "bts_pdf.receipt.json").read_bytes())
+            self.assertNotIn(b"temporary", (root / "bts_pdf.receipt.json").read_bytes())
+
+    def test_zero_byte_redirect_retains_empty_body_and_wire_with_matching_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = Mock()
+            signed_url = "https://www.arcgis.com/itemdata/folder/7ec/IENC.pdf?temporary=signature"
+            response = httpx.Response(
+                200, stream=httpx.ByteStream(b""),
+                request=httpx.Request("GET", signed_url),
+            )
+            client.stream.return_value = nullcontext(response)
+            body, receipt = _fetch_retry(
+                client,
+                "https://www.arcgis.com/sharing/rest/content/items/7ec/data",
+                root,
+                "bts_pdf",
+                [0],
+                allow_arcgis_item_redirect=True,
+            )
+            self.assertEqual(body, b"")
+            self.assertTrue(receipt["complete_body"])
+            self.assertEqual(receipt["bytes"], 0)
+            self.assertEqual(receipt["sha256"], hashlib.sha256(b"").hexdigest())
+            self.assertEqual(receipt["wire_bytes"], 0)
+            self.assertEqual(receipt["wire_sha256"], hashlib.sha256(b"").hexdigest())
+            self.assertEqual((root / "bts_pdf.body").read_bytes(), b"")
+            self.assertEqual((root / "bts_pdf.wire").read_bytes(), b"")
+            self.assertNotIn(b"temporary", (root / "bts_pdf.receipt.json").read_bytes())
+
     def test_midstream_transport_failure_is_receipted_and_retry_roster_is_sealed(self):
         class BrokenStream(httpx.SyncByteStream):
             def __iter__(self):
@@ -106,6 +158,9 @@ class UsaceAdministrativeAreasTests(unittest.TestCase):
         fields=EXPECTED_FIELD_DECLARATIONS
         ids=[3,8]
         docs={
+            "bts_item":{"id":CURRENT_BTS_ITEM_ID,"owner":"USDOT_BTS","type":"PDF","access":"public",
+                       "title":"Inland Electronic Navigational Charts",
+                       "description":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes; USACE_IENC_Master_Service_gdb.zip"},
             "layer_before":{"name":"ADMINISTRATIVE_AREA","id":56,"geometryType":"esriGeometryPolygon","spatialReference":{"latestWkid":4326},"maxRecordCount":2000,"fields":fields},
             "layer_after":{"fields":fields,"geometryType":"esriGeometryPolygon"},
             "count_before":{"count":2966},"count_after":{"count":2966},
@@ -119,8 +174,9 @@ class UsaceAdministrativeAreasTests(unittest.TestCase):
             features.append({"attributes":row,"geometry":{"rings":[[[0,0],[0,1],[1,1],[1,0],[0,0]]]}})
         docs["ids_before"]["objectIds"]=list(range(2966));docs["ids_after"]["objectIds"]=list(range(2966))
         captures={name:(__import__("json").dumps(doc).encode(),{}) for name,doc in docs.items()}
-        for i in range(3):
-            captures[f"page_{i:03d}"]=(__import__("json").dumps({"spatialReference":{"latestWkid":4326},"features":features[i*1000:(i+1)*1000]}).encode(),{})
+        captures["bts_pdf"]=(b"%PDF-1.7\nsynthetic authority-document bytes",{})
+        for i,start in enumerate(range(0, len(features), PAGE_SIZE)):
+            captures[f"page_{i:03d}"]=(__import__("json").dumps({"spatialReference":{"latestWkid":4326},"features":features[start:start+PAGE_SIZE]}).encode(),{})
         parsed_fields,parsed_features,audit=_validate(captures)
         self.assertEqual(parsed_fields,fields);self.assertEqual(len(parsed_features),2966)
         self.assertEqual(audit["source_feature_count"],2966)

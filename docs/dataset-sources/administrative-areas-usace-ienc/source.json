@@ -1,0 +1,35 @@
+{
+  "dataset_slug": "administrative-areas-usace-ienc",
+  "file_slug": "administrative-areas-usace-ienc",
+  "publisher": "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service",
+  "source_layer": "ADMINISTRATIVE_AREA",
+  "source_layer_id": 56,
+  "source_layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/ADMINISTRATIVE_AREA/MapServer/56",
+  "current_distributor": {
+    "item_id": "7ec34864c8804468a9cf52d437fe4b6c",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "type": "PDF",
+    "metadata_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json"
+  },
+  "historical_distributor_observation": {
+    "item_id": "3607d485a9854d6fa458bf507058ceae",
+    "succession_accepted": false,
+    "continuity_established": false
+  },
+  "observed_feature_count": 2966,
+  "observed_geometry": "esriGeometryPolygon",
+  "observed_crs": "EPSG:4326",
+  "candidate_format": "GeoParquet",
+  "acceptance": {
+    "source_release": false,
+    "freshness": false,
+    "historical_equivalence": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "national_coverage": false,
+    "rights": false,
+    "mapping": false,
+    "release": false
+  }
+}
