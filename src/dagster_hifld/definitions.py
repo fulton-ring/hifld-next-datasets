@@ -135,6 +135,10 @@ from dagster_hifld.assets.fuds_projects_points import (
     fuds_projects_points_draft_schedule,
     usace_fuds_projects_points_complete,
 )
+from dagster_hifld.assets.fuds_public_properties import (
+    usace_fuds_public_properties_complete,
+    fuds_public_properties_draft_schedule,
+)
 from dagster_hifld.assets.nfhl_nodes import (
     nfhl_nodes_draft_schedule,
     fema_nfhl_nodes_complete,
@@ -1113,6 +1117,7 @@ defs = Definitions(
         bts_intermodal_freight_air_to_truck_complete,
         fema_nfhl_nodes_complete,
         fema_nfhl_hydrologic_reaches_complete,
+        usace_fuds_public_properties_complete,
     ],
     jobs=[
         bts_ferry_terminals_draft_refresh_job,
@@ -1346,6 +1351,7 @@ defs = Definitions(
         fuds_district_boundaries_draft_schedule,
         tsunami_events_draft_schedule,
         bts_air_truck_draft_schedule,
+        fuds_public_properties_draft_schedule,
     ],
     sensors=_configured_sensors(),
     executor=_default_executor(),
