@@ -152,6 +152,11 @@ from dagster_hifld.assets.fuds_irm_property_point import (
     fuds_irm_property_point_draft_schedule,
     fuds_irm_property_point_geometry_quality,
 )
+from dagster_hifld.assets.fuds_property_boundaries import (
+    fuds_property_boundaries_complete,
+    fuds_property_boundaries_draft_schedule,
+    fuds_property_boundaries_geometry_quality,
+)
 from dagster_hifld.assets.bts_marine_roro import (
     bts_intermodal_freight_marine_roll_on_roll_off_complete,
     bts_marine_roro_draft_schedule,
@@ -526,6 +531,12 @@ from dagster_hifld.assets.state_capitols import (
     state_capitols_draft_job,
     state_capitols_draft_schedule,
     state_capitols_population_complete,
+)
+from dagster_hifld.assets.national_inventory_of_dams import (
+    national_inventory_of_dams_draft_job,
+    national_inventory_of_dams_draft_schedule,
+    national_inventory_of_dams_geometry_quality,
+    national_inventory_of_dams_population_complete,
 )
 from dagster_hifld.assets.campus_preservation import (
     campus_historical_full_quality,
@@ -1012,6 +1023,8 @@ defs = Definitions(
         epa_icis_wastewater_capture_complete,
         fuds_irm_property_point_complete,
         fuds_irm_property_point_geometry_quality,
+        fuds_property_boundaries_complete,
+        fuds_property_boundaries_geometry_quality,
         bts_intermodal_freight_marine_roll_on_roll_off_complete,
         bts_intermodal_freight_rail_tofc_cofc_complete,
         usace_fuds_projects_points_complete,
@@ -1065,6 +1078,8 @@ defs = Definitions(
         usace_airport_area_quality,
         usace_airport_area_release,
         state_capitols_population_complete,
+        national_inventory_of_dams_population_complete,
+        national_inventory_of_dams_geometry_quality,
         campus_historical_full_quality,
         usace_conveyor_areas_complete,
         usace_depth_areas_complete,
@@ -1179,6 +1194,7 @@ defs = Definitions(
         fws_cbrs_units_draft_refresh_job,
         cdp_source_integrity_job,
         state_capitols_draft_job,
+        national_inventory_of_dams_draft_job,
         ornl_campus_historical_reconstruction_job,
         csa_source_integrity_job,
         concity_source_integrity_job,
@@ -1213,6 +1229,7 @@ defs = Definitions(
         ferry_routes_source_integrity_schedule,
         epa_large_scale_source_integrity_schedule,
         fuds_irm_property_point_draft_schedule,
+        fuds_property_boundaries_draft_schedule,
         bts_marine_roro_draft_schedule,
         bts_rail_tofc_cofc_draft_schedule,
         epa_regions_draft_schedule,
@@ -1298,6 +1315,7 @@ defs = Definitions(
         fws_cbrs_units_draft_refresh_schedule,
         cdp_source_integrity_schedule,
         state_capitols_draft_schedule,
+        national_inventory_of_dams_draft_schedule,
         csa_source_integrity_schedule,
         concity_source_integrity_schedule,
         usace_conveyor_areas_draft_schedule,
