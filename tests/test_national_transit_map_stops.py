@@ -15,7 +15,7 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.national_transit_map_stops import national_transit_map_stops_draft_schedule
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import national_transit_map_stops as source
+from dagster_hifld.sources import epa_frs_common, national_transit_map_stops as source
 
 
 def canonical(value):
@@ -87,7 +87,8 @@ def _capture_patches(expected_count, page_size, fake_capture):
             patch.object(source,"processing_identity",return_value={
                 "code_identity_scheme":"test","working_tree_status":"unknown",
                 "code_commit":"test","files":{}}),
-            patch.object(source,"validate_construction_code_identity")]
+            patch.object(source,"validate_construction_code_identity"),
+            patch.object(epa_frs_common,"validate_construction_code_identity")]
 
 
 class NationalTransitMapStopsTests(unittest.TestCase):
