@@ -486,7 +486,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
         (root/"capture_manifest.json").write_bytes(capture_manifest_bytes)
         capture_manifest_sha=_sha(capture_manifest_bytes)
     else:
-        capture_manifest, captures, capture_manifest_sha=offline
+        capture_manifest, capture_manifest_sha = offline, manifest_sha
     record_sha=_sha(_canonical(features))
     geometry_sha=_sha(_canonical(geometry_repr))
     schema_sha=_sha(_canonical(FIELD_DECLARATIONS))
