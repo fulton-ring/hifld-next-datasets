@@ -30,6 +30,7 @@ import pyarrow.parquet as pq
 from shapely import from_wkb
 from shapely.geometry import LineString, MultiLineString, mapping
 
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.release_approval import verifier_implementation_sha256
 
@@ -372,10 +373,13 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     with tempfile.TemporaryDirectory(prefix="hifld_noaa_candidate_") as directory:
         path = Path(directory) / "source.gpkg"
         properties = {f.name: ("int32" if pa.types.is_int32(f.type) else "int64" if pa.types.is_integer(f.type) else "float" if pa.types.is_floating(f.type) else "str") for f in table.schema if f.name != "SHAPE"}
-        with fiona.open(path, "w", driver="GPKG", layer=file_slug, crs="EPSG:4326", schema={"geometry": "Unknown", "properties": properties}, GEOMETRY_NAME="SHAPE") as destination:
-            for row in table.to_pylist():
-                from_geometry = from_wkb(row.pop("SHAPE"))
-                destination.write({"geometry": mapping(from_geometry), "properties": row})
+        # Ambient GDAL creation timestamps add a nondeterministic commit, so the
+        # bridge pins creation time like every canonical GeoPackage writer.
+        with with_geopackage_creation_time("1970-01-01T00:00:00.000Z"):
+            with fiona.open(path, "w", driver="GPKG", layer=file_slug, crs="EPSG:4326", schema={"geometry": "Unknown", "properties": properties}, GEOMETRY_NAME="SHAPE") as destination:
+                for row in table.to_pylist():
+                    from_geometry = from_wkb(row.pop("SHAPE"))
+                    destination.write({"geometry": mapping(from_geometry), "properties": row})
         with sqlite3.connect(path) as connection:
             connection.execute("UPDATE gpkg_contents SET last_change = '1970-01-01T00:00:00.000Z'")
             connection.commit()
