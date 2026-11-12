@@ -44,7 +44,7 @@ def _attrs(oid, **overrides):
     values = {"OBJECTID": oid, "DFIRM_ID": "06023C", "VERSION_ID": "2.3.2.0", "PFD_ID": f"06023C_{oid}",
               "VZONE_LIMT": "T", "SOURCE_CIT": "06023C_STUDY9",
               "SHAPE.STLength()": 0.014328450871417635,
-              "GFID": f"eb7121fb-e281-4ce4-9d87-{oid:012d}",
+              "GFID": None,
               "GlobalID": "{C21D80FE-FFD6-41E4-891B-B1B906AD851A}"}
     values.update(overrides)
     return {name: values[name] for name in ATTR_NAMES}
@@ -65,7 +65,7 @@ def _fixture():
     features = [
         {"attributes": _attrs(10), "geometry": {"paths": [PATH_A]}},
         {"attributes": _attrs(11), "geometry": {"paths": [PATH_B, PATH_C]}},
-        {"attributes": _attrs(12), "geometry": None},
+        {"attributes": _attrs(12, **{"SHAPE.STLength()": None}), "geometry": None},
         {"attributes": _attrs(13), "geometry": {"paths": [[["NaN", "NaN"], ["NaN", "NaN"]]]}},
         {"attributes": _attrs(14), "geometry": {"paths": [PATH_B, PATH_C, PATH_A]}},
     ]
@@ -139,7 +139,7 @@ class NfhlPrimaryFrontalDunesTests(unittest.TestCase):
         self.assertEqual(table.column("SHAPE.STLength()").type.__str__(), "double")
         self.assertEqual(table.column("SHAPE.STLength()").to_pylist()[0], 0.014328450871417635)
         self.assertEqual(table.column("GlobalID").type.__str__(), "string")
-        self.assertIsNone(table.column("CST_STRUCT").to_pylist()[0])
+        self.assertEqual(table.column("VZONE_LIMT").to_pylist()[0], "T")
         line_10 = shapely.from_wkb(table.column("SHAPE").to_pylist()[0])
         self.assertIsInstance(line_10, shapely.LineString)
         self.assertEqual([list(coordinate) for coordinate in line_10.coords], PATH_A)
