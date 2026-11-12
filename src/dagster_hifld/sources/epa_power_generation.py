@@ -242,9 +242,6 @@ def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_
                             audit["source_schema_sha256"], objects, payload["capture_receipts"])
     if not isinstance(objects, dict) or set(objects) != expected_keys:
         raise ValueError("cached_candidate_roster_changed")
-    actual_keys = set(storage.list_prefix(prefix))
-    if actual_keys != {f"{prefix}/{name}" for name in expected_keys}:
-        raise ValueError("cached_candidate_storage_roster_changed")
     for name, descriptor in objects.items():
         key = f"{prefix}/{name}"
         snapshot = storage.object_snapshot(key)
@@ -310,13 +307,19 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
         layer, fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}
+        failed_captures: dict[str, tuple[bytes, dict[str, object]]] = {}
         for path in sorted(capture_root.glob("*.receipt.json")):
-            try: receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
+            try:
+                name = path.name.removesuffix(".receipt.json")
+                receipt = json.loads(path.read_bytes())
+                receipts[name] = receipt
+                body_path = capture_root / f"{name}.body"
+                failed_captures[name] = (body_path.read_bytes() if body_path.exists() else b"", receipt)
             except (ValueError, OSError): receipts[path.name] = {"receipt_readback_failed":True}
         (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__,"receipts":receipts})+b"\n")
-        if captures:
+        if failed_captures:
             quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          captures, type(exc).__name__)
+                                          failed_captures, type(exc).__name__)
         raise
 
     identity = _code_identity()

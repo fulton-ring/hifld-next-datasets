@@ -63,9 +63,9 @@ class PrebuiltOutputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             storage, target, registry = accepted_fixture(root)
-            prefix = "synthetic/points/vtest"
+            prefix = "synthetic/points/v1.0.0"
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
-                _copy_version_files(storage, target, "synthetic", "points", "vtest")
+                _copy_version_files(storage, target, "synthetic", "points", "v1.0.0")
                 published_before = {key: target.object_snapshot(key) for key in target.list_prefix()}
                 parent = b'{"unsupported_output_formats":{"geoparquet":"Inherited whole-format ban"}}'
                 storage.write_key("synthetic/metadata/source_manifest.json", parent)
@@ -81,8 +81,8 @@ class PrebuiltOutputTests(unittest.TestCase):
                 entry.update(staged_objects=objects, published_objects=objects, provenance_sha256=objects[manifest_key])
                 registry.write_text(json.dumps(approval))
                 staged_before = {key: storage.read_key(key) for key in storage.list_prefix()}
-                for call in [lambda: _write_and_publish_geoparquet(storage, "synthetic", "points", "vtest"),
-                             lambda: _copy_version_files(storage, target, "synthetic", "points", "vtest")]:
+                for call in [lambda: _write_and_publish_geoparquet(storage, "synthetic", "points", "v1.0.0"),
+                             lambda: _copy_version_files(storage, target, "synthetic", "points", "v1.0.0")]:
                     with self.assertRaisesRegex(ValueError, "wholly banned"):
                         call()
                 self.assertEqual(staged_before, {key: storage.read_key(key) for key in storage.list_prefix()})

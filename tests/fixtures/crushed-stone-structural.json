@@ -1,0 +1,17 @@
+{
+  "scope": "SYNTHETIC structural unit fixture. No real source/baseline authority or acceptance. Generated records exercise fixed original DBF/SHP layout, exactdecimal preservation and ID/error handling only.",
+  "row_count": 2324,
+  "sample": {
+    "COMP_NAME": " Synthetic company",
+    "OPER_NAME": "Synthetic quarry",
+    "COUNTY": "SYNTHETIC",
+    "STATE": "AL",
+    "FIPS": "01117",
+    "STATE_FIPS": "01",
+    "OPER_TYPE": "OPEN QUARRY",
+    "COMMODITY": "CRUSHED STONE"
+  },
+  "x_origin": 10.0,
+  "y_origin": 20.0,
+  "step": 0.0001
+}
