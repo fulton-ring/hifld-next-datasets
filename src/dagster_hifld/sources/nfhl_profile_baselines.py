@@ -127,6 +127,8 @@ EXPECTED_RECORD_SHA256 = ""
 EXPECTED_GEOMETRY_SHA256 = ""
 EXPECTED_NULL_GEOMETRY_COUNT = -1
 EXPECTED_NULL_GEOMETRY_ID_SHA256 = ""
+EXPECTED_EMPTY_GEOMETRY_COUNT = -1
+EXPECTED_EMPTY_GEOMETRY_ID_SHA256 = ""
 EXPECTED_NAN_GEOMETRY_COUNT = -1
 EXPECTED_NULL_Z_VERTEX_COUNT = -1
 EXPECTED_NAN_Z_VERTEX_COUNT = -1
@@ -469,7 +471,9 @@ class _StreamStats:
         self.feature_count = 0
         self.null_geometry_count = 0
         self.nan_geometry_count = 0
+        self.empty_geometry_count = 0
         self.null_geometry_ids: list[int] = []
+        self.empty_geometry_ids: list[int] = []
         self.null_z_vertex_count = 0
         self.nan_z_vertex_count = 0
         self.null_m_vertex_count = 0
@@ -496,8 +500,16 @@ class _StreamStats:
                                               or (set(geom) == {"hasZ", "hasM", "paths"}
                                                   and geom["hasZ"] is SOURCE_HAS_Z
                                                   and geom["hasM"] is SOURCE_HAS_M)) \
-                or not isinstance(geom["paths"], list) or not geom["paths"]:
+                or not isinstance(geom["paths"], list):
             raise ValueError("source_line_geometry_invalid")
+        if not geom["paths"]:
+            # The producer publishes geometry objects with an empty paths list
+            # (no parts); the record is retained with null candidate geometry
+            # and its own audited roster, never dropped.
+            self.empty_geometry_count += 1
+            self.empty_geometry_ids.append(oid)
+            self._geometries.add([oid, []])
+            return
         nan_paths = False
         for path in geom["paths"]:
             if not isinstance(path, list) or len(path) < 2:
@@ -646,7 +658,8 @@ def _require_pins() -> None:
             or not EXPECTED_OBSERVED_BOUNDS or not EXPECTED_GEOMETRY_TYPES
             or min(EXPECTED_COUNT, EXPECTED_NULL_GEOMETRY_COUNT, EXPECTED_NAN_GEOMETRY_COUNT,
                    EXPECTED_NULL_Z_VERTEX_COUNT, EXPECTED_NAN_Z_VERTEX_COUNT,
-                   EXPECTED_NULL_M_VERTEX_COUNT, EXPECTED_NAN_M_VERTEX_COUNT) < 0):
+                   EXPECTED_NULL_M_VERTEX_COUNT, EXPECTED_NAN_M_VERTEX_COUNT,
+                   EXPECTED_EMPTY_GEOMETRY_COUNT) < 0):
         raise ValueError("source_population_pins_not_established")
 
 
@@ -662,6 +675,10 @@ def _check_population_pins(stats: "_StreamStats") -> None:
         raise ValueError("source_null_geometry_count_drift")
     if _sha(_canonical(sorted(stats.null_geometry_ids))) != EXPECTED_NULL_GEOMETRY_ID_SHA256:
         raise ValueError("source_null_geometry_id_roster_drift")
+    if stats.empty_geometry_count != EXPECTED_EMPTY_GEOMETRY_COUNT:
+        raise ValueError("source_empty_geometry_count_drift")
+    if _sha(_canonical(sorted(stats.empty_geometry_ids))) != EXPECTED_EMPTY_GEOMETRY_ID_SHA256:
+        raise ValueError("source_empty_geometry_id_roster_drift")
     if stats.nan_geometry_count != EXPECTED_NAN_GEOMETRY_COUNT:
         raise ValueError("source_nan_string_geometry_count_drift")
     if stats.null_z_vertex_count != EXPECTED_NULL_Z_VERTEX_COUNT:
@@ -936,6 +953,8 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
              "source_height_model": EXPECTED_SOURCE_HEIGHT_MODEL,
              "null_geometry_count": stats.null_geometry_count,
              "null_geometry_object_ids": sorted(stats.null_geometry_ids),
+             "empty_geometry_count": stats.empty_geometry_count,
+             "empty_geometry_object_ids": sorted(stats.empty_geometry_ids),
              "nan_string_geometry_count": stats.nan_geometry_count,
              "null_z_vertex_count": stats.null_z_vertex_count,
              "nan_z_vertex_count": stats.nan_z_vertex_count,
@@ -1054,6 +1073,7 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                                 contract["schema_sha256"], objects, payload.get("capture_receipts", {}))
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
                 "feature_count": stats.feature_count, "source_null_geometry_count": stats.null_geometry_count,
+                "source_empty_geometry_count": stats.empty_geometry_count,
                 "source_nan_string_geometry_count": stats.nan_geometry_count,
                 "source_null_m_vertex_count": stats.null_m_vertex_count,
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
@@ -1072,6 +1092,7 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": stats.feature_count, "source_null_geometry_count": stats.null_geometry_count,
+            "source_empty_geometry_count": stats.empty_geometry_count,
             "source_nan_string_geometry_count": stats.nan_geometry_count,
             "source_null_m_vertex_count": stats.null_m_vertex_count,
             "candidate_ready": prefix + "/metadata/candidate_ready.json",

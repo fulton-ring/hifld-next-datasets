@@ -78,8 +78,9 @@ def _fixture():
                                 [[-88.0, 32.0, 0, None], [-89.0, 31.0, 0, None]]]}},
         {"attributes": attrs(13),
          "geometry": {"paths": [[[-90.0, 30.0, 0, None], [-90.1, 30.1, 0, None]]]}},
+        {"attributes": attrs(14), "geometry": {"hasZ": True, "hasM": True, "paths": []}},
     ]
-    ids = [10, 11, 12, 13]
+    ids = [10, 11, 12, 13, 14]
     schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f} for f in fields]
     attr_names = [f["name"] for f in fields if f["name"] != "SHAPE"]
     stats = source._StreamStats()
@@ -87,13 +88,14 @@ def _fixture():
         stats.add(feature, attr_names)
     crs = {"wkid": 4269, "latestWkid": 4269}
     page0 = {"features": features[:2], "spatialReference": crs, "exceededTransferLimit": True}
-    page1 = {"features": features[2:], "spatialReference": crs}
+    page1 = {"features": features[2:4], "spatialReference": crs}
+    page2 = {"features": features[4:], "spatialReference": crs}
     docs = {"service_before": service, "service_after": service, "layer_before": layer, "layer_after": layer,
-            "count_before": {"count": 4}, "count_after": {"count": 4},
+            "count_before": {"count": 5}, "count_after": {"count": 5},
             "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_seed": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
-            "page_000000_00002": page0, "page_000002_00002": page1}
+            "page_000000_00002": page0, "page_000002_00002": page1, "page_000004_00001": page2}
     return fields, features, docs, schema, stats, attr_names, ids
 
 
@@ -106,10 +108,13 @@ def _docs_to_bodies(docs):
 
 def _pins(docs, schema, stats, ids):
     null_count = stats.null_geometry_count
-    return dict(EXPECTED_COUNT=4, SEGMENT_START_RECORDS=2, MIN_FREE_BYTES=0,
+    return dict(EXPECTED_COUNT=5, SEGMENT_START_RECORDS=2, MIN_FREE_BYTES=0,
                 EXPECTED_NULL_GEOMETRY_COUNT=null_count,
                 EXPECTED_NULL_GEOMETRY_ID_SHA256=hashlib.sha256(
                     _canonical(sorted(stats.null_geometry_ids))).hexdigest(),
+                EXPECTED_EMPTY_GEOMETRY_COUNT=stats.empty_geometry_count,
+                EXPECTED_EMPTY_GEOMETRY_ID_SHA256=hashlib.sha256(
+                    _canonical(sorted(stats.empty_geometry_ids))).hexdigest(),
                 EXPECTED_NAN_GEOMETRY_COUNT=stats.nan_geometry_count,
                 EXPECTED_NULL_Z_VERTEX_COUNT=stats.null_z_vertex_count,
                 EXPECTED_NAN_Z_VERTEX_COUNT=stats.nan_z_vertex_count,
@@ -135,8 +140,9 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
             geom = feature["geometry"]
             geometry_records.append([feature["attributes"]["OBJECTID"],
                                      None if geom is None else geom["paths"]])
+        self.assertEqual(stats.empty_geometry_count, 1)
         self.assertEqual(stats.geometry_sha256, hashlib.sha256(_canonical(geometry_records)).hexdigest())
-        self.assertEqual(stats.feature_count, 4)
+        self.assertEqual(stats.feature_count, 5)
 
     def test_streamed_digests_are_incremental_over_batches(self):
         fields, features, _, _, stats, attr_names, _ = _fixture()
@@ -262,14 +268,14 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
     def test_contract_accepts_reversed_roster_response_order(self):
         fields, features, docs, schema, stats, attr_names, ids = _fixture()
         reversed_docs = json.loads(json.dumps(docs))
-        reversed_docs["ids_seed"]["objectIds"] = [13, 11, 12, 10]
-        reversed_docs["ids_before"]["objectIds"] = [11, 12, 10, 13]
+        reversed_docs["ids_seed"]["objectIds"] = [14, 13, 11, 12, 10]
+        reversed_docs["ids_before"]["objectIds"] = [11, 12, 10, 14, 13]
         with patch.multiple(source, **_pins({}, schema, stats, ids)):
             contract = source._contract_from_docs(
                 {**{name: reversed_docs[name] for name in
                     ("ids_seed", "service_before", "layer_before", "count_before", "ids_before")},
                  "service_doc": SERVICE_DOC_BODY})
-        self.assertEqual(contract["ids"], [10, 11, 12, 13])
+        self.assertEqual(contract["ids"], [10, 11, 12, 13, 14])
 
     def test_page_crs_drift_is_rejected(self):
         fields, features, docs, schema, stats, attr_names, ids = _fixture()
@@ -289,11 +295,11 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
 
     def test_final_page_cannot_claim_transfer_truncation(self):
         fields, features, docs, schema, stats, attr_names, ids = _fixture()
-        page = json.loads(json.dumps(docs["page_000002_00002"]))
+        page = json.loads(json.dumps(docs["page_000004_00001"]))
         page["exceededTransferLimit"] = True
         with patch.multiple(source, **_pins({}, schema, stats, ids)):
             with self.assertRaisesRegex(ValueError, "source_page_unexpected_exceeded_transfer_limit"):
-                source._validate_page(2, 2, page, sorted(ids), attr_names, source._StreamStats())
+                source._validate_page(4, 1, page, sorted(ids), attr_names, source._StreamStats())
 
     def test_unexpected_field_is_rejected_by_schema_contract(self):
         fields, features, docs, schema, stats, attr_names, ids = _fixture()
@@ -314,6 +320,8 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
         for feature in page["features"]:
             drifted_stats.add(feature, attr_names)
         for feature in docs["page_000002_00002"]["features"]:
+            drifted_stats.add(feature, attr_names)
+        for feature in docs["page_000004_00001"]["features"]:
             drifted_stats.add(feature, attr_names)
         with patch.multiple(source, **_pins({}, schema, stats, ids)):
             with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
@@ -365,23 +373,23 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
         with patch.multiple(source, **pins):
             with TemporaryDirectory() as capture_dir:
                 root = Path(capture_dir)
-                for name in ("page_000000_00002", "page_000002_00002"):
+                for name in ("page_000000_00002", "page_000002_00002", "page_000004_00001"):
                     (root / f"{name}.body").write_bytes(
                         json.dumps(docs[name], separators=(",", ":")).encode())
-                parquet = source._parquet_from_pages(root, [(0, 2), (2, 2)], schema)
+                parquet = source._parquet_from_pages(root, [(0, 2), (2, 2), (4, 1)], schema)
                 parquet_body = Path(parquet["path"]).read_bytes()
         import tempfile
         with tempfile.NamedTemporaryFile(suffix=".parquet") as stream:
             stream.write(parquet_body)
             stream.flush()
             table = pq.read_table(stream.name)
-        self.assertEqual(table.num_rows, 4)
-        self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12, 13])
+        self.assertEqual(table.num_rows, 5)
+        self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12, 13, 14])
         self.assertEqual(table.column("BASELN_ID").to_pylist(),
-                         ["01049C_10", "01049C_11", "01049C_12", "01049C_13"])
-        self.assertEqual(table.column("WTR_NM").to_pylist(), ["PHILLIPS BRANCH"] * 4)
+                         ["01049C_10", "01049C_11", "01049C_12", "01049C_13", "01049C_14"])
+        self.assertEqual(table.column("WTR_NM").to_pylist(), ["PHILLIPS BRANCH"] * 5)
         self.assertEqual(table.column("SHAPE.STLength()").type.__str__(), "double")
-        self.assertEqual(table.column("SHAPE").null_count, 1)
+        self.assertEqual(table.column("SHAPE").null_count, 2)
         shapes = table.column("SHAPE").to_pylist()
         first = shapely.from_wkb(shapes[0])
         self.assertIsInstance(first, LineString)
@@ -585,7 +593,7 @@ class RetryAndResumeTests(unittest.TestCase):
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 settled = source._capture_segments(None, root, sorted(ids), attr_names, source._StreamStats(), {})
-            self.assertEqual(sorted(settled), [(0, 2), (2, 2)])
+            self.assertEqual(sorted(settled), [(0, 2), (2, 2), (4, 1)])
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), ERROR_BODY)
             self.assertEqual(calls.count("page_000000_00004"), 1)
 
@@ -624,8 +632,8 @@ class RetryAndResumeTests(unittest.TestCase):
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 segments = source._capture_segments(None, root, sorted(ids), attr_names, source._StreamStats(), {})
-            self.assertEqual(sorted(segments), [(0, 2), (2, 2)])
-            self.assertEqual(calls, ["page_000002_00002"])
+            self.assertEqual(sorted(segments), [(0, 2), (2, 2), (4, 1)])
+            self.assertEqual(calls, ["page_000002_00002", "page_000004_00001"])
 
     def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
         from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
@@ -654,7 +662,7 @@ class RetryAndResumeTests(unittest.TestCase):
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_profile_baselines(storage, version="vfixture",
                                                                   capture_directory=str(root / "captures"))
-                self.assertEqual(candidate["feature_count"], 4)
+                self.assertEqual(candidate["feature_count"], 5)
                 self.assertEqual(candidate["source_null_geometry_count"], 1)
                 self.assertEqual(candidate["source_null_m_vertex_count"], 6)
                 prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
@@ -662,7 +670,8 @@ class RetryAndResumeTests(unittest.TestCase):
                 self.assertTrue(storage.object_snapshot(state_key))
                 for name in ("ids_seed", "service_doc", "service_before", "layer_before", "count_before",
                              "ids_before", "page_000000_00002", "page_000002_00002",
-                             "layer_after", "service_after", "count_after", "ids_after"):
+                             "page_000004_00001", "layer_after", "service_after", "count_after",
+                             "ids_after"):
                     body = bodies[name]
                     self.assertEqual(storage.read_key(f"{prefix}/raw/{name}.body"), body)
                     self.assertEqual(storage.read_key(f"{prefix}/raw/{name}.wire"), body)
@@ -672,7 +681,7 @@ class RetryAndResumeTests(unittest.TestCase):
                 summary = summarize_staged_catalog(storage, source.DATASET_SLUG, source.FILE_SLUG,
                                                    candidate["version"], source.DATASET_SLUG,
                                                    source_metadata=manifest)
-                self.assertEqual(summary.quality_manifest["null_geometry_count"], 1)
+                self.assertEqual(summary.quality_manifest["null_geometry_count"], 2)
                 self.assertFalse(summary.quality_manifest["quality_check_passed"])
                 write_catalog_metadata(storage, dataset_slug=source.DATASET_SLUG, file_slug=source.FILE_SLUG,
                                        version=candidate["version"], quality_dict=summary.quality_manifest,
@@ -717,7 +726,7 @@ class BisectionOnTransportTests(unittest.TestCase):
                  patch.object(source.time, "sleep"):
                 settled = source._capture_segments(None, root, sorted(ids), attr_names,
                                                    source._StreamStats(), {})
-            self.assertEqual(sorted(settled), [(0, 2), (2, 2)])
+            self.assertEqual(sorted(settled), [(0, 2), (2, 2), (4, 1)])
             self.assertEqual(calls.count("page_000000_00004"), 2)
             self.assertIn("page_000000_00002", calls)
 
