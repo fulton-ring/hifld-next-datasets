@@ -469,8 +469,11 @@ class _StreamStats:
             self.null_geometry_ids.append(oid)
             self._digest_item(self._geometry_digest, [oid, None])
             return
-        if not isinstance(geom, dict) or set(geom) != {"paths"} or not isinstance(geom["paths"], list) \
-                or not geom["paths"]:
+        if not isinstance(geom, dict) or not (set(geom) == {"paths"}
+                                              or (set(geom) == {"hasZ", "hasM", "paths"}
+                                                  and geom["hasZ"] is SOURCE_HAS_Z
+                                                  and geom["hasM"] is SOURCE_HAS_M)) \
+                or not isinstance(geom["paths"], list) or not geom["paths"]:
             raise ValueError("source_line_geometry_invalid")
         nan_paths = False
         for path in geom["paths"]:
@@ -652,7 +655,10 @@ def _usable_paths(geom: object) -> list | None:
     that can never be given a coerced location); Z/M ``null`` or string-``"NaN"``
     ordinates remain usable and map to WKB NaN with the audit counts intact.
     """
-    if not isinstance(geom, dict) or set(geom) != {"paths"}:
+    if not isinstance(geom, dict) or not (set(geom) == {"paths"}
+                                          or (set(geom) == {"hasZ", "hasM", "paths"}
+                                              and geom["hasZ"] is SOURCE_HAS_Z
+                                              and geom["hasM"] is SOURCE_HAS_M)):
         return None
     paths = geom.get("paths")
     if not isinstance(paths, list) or not paths:
