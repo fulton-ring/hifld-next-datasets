@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "inventory_id": "shipping-fairways",
+  "title": "Shipping Fairways",
+  "agency": "U.S. Department of Commerce, NOAA, National Ocean Service, Office of Coast Survey",
+  "publisher": "NOAA Office of Coast Survey (OCS); ENCDirect NavigationChartData MarineTransportation map service",
+  "inventory_agency_column_mismatch": "The HIFLD inventory row and its DataLumos DOI author list the agency as US Army Corps of Engineers, but the item's own FGDC metadata credits NOAA OCS (originator; contact Patrick Keown) and the description covers coastal zones (right whale SMAs, PSSA, ATBA) that no inland USACE IENC feature class describes. The board routing to USACE IENC (issue #310 comment, 2026-11-12) was therefore a documented routing mismatch, not an accepted substitution.",
+  "crosswalk": {
+    "doi": "10.3886/E241367V1",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "hifld_inventory_row": "shipping-fairways, Shipping Fairways",
+    "archive_url": "https://www.datalumos.org/datalumos/project/240646/version/V1/view",
+    "archive_source_modified": "2025-04-08",
+    "archive_source_date": "2017-06-19",
+    "archive_role": "Historical HIFLD/DataLumos copy; portal modification date is not a current producer release date.",
+    "historical_id_and_geometry_match": "Not established; DataLumos project 240646 and the crosswalk DOI returned HTTP 403 anonymously in this run, and no historical file bytes were recovered."
+  },
+  "producer_lineage": {
+    "inport_record": "https://www.fisheries.noaa.gov/inport/item/39986",
+    "inport_title": "Shipping Fairways, Lanes, and Zones for US waters",
+    "inport_owner": "Office of Coast Survey (OCS), updated 2026-03-04",
+    "inport_publication_date": "2015-12-04",
+    "inport_maintenance": "Weekly",
+    "fgdc_copies_agreeing": [
+      "https://www.gsa.state.al.us/apps/CAGDV/Metadata/Infrastructure/shipping_lanes_and_fairways.html",
+      "https://www.fisheries.noaa.gov/inport/item/39986",
+      "https://data.noaa.gov/metaview/page?header=none&view=getDataView&xml=NOAA%2Fnos%2Focs%2Fiso%2Fxml%2F39986.xml"
+    ],
+    "hifld_item_metadata_copy": "https://www.datacommons.psu.edu/metadata/Shipping%20Fairways-metadata.html (creation 2017-06-19, revision 2025-04-08 matching the inventory row; credits NOAA)"
+  },
+  "official_landing": "https://encdirect.noaa.gov/",
+  "service_url": "https://encdirect.noaa.gov/arcgis/rest/services/NavigationChartData/MarineTransportation/MapServer",
+  "layer_url": "https://encdirect.noaa.gov/arcgis/rest/services/NavigationChartData/MarineTransportation/MapServer/0",
+  "alternate_static_download": {
+    "url": "https://encdirect.noaa.gov/theme_layers/data/shipping_lanes/shippinglanes.zip",
+    "observed_last_modified": "2020-11-09T03:00:16Z",
+    "role": "Official NOAA OCS shapefile download listed by InPort; server Last-Modified predates the maintained service, so it is documented as a stale alternate, not the pipeline input."
+  },
+  "observed": {
+    "layer_id": 0,
+    "layer_name": "Shipping Lanes and Regulations",
+    "service_map_name": "MarineTransportation",
+    "service_copyright": "Department of Commerce (DOC), National Oceanic and Atmospheric Administration (NOAA), National Ocean Service (NOS), Office Coast Survey (OCS)",
+    "layer_copyright": "U.S. Coast Guard",
+    "geometry_type": "esriGeometryPolygon",
+    "native_crs": "EPSG:4326",
+    "max_record_count": 10000,
+    "feature_count": 346,
+    "native_OBJECTID": "346 integer IDs, 144533 through 145166, sparse with gaps preserved (sorted, unique)",
+    "native_OBJECTID_sha256_canonical_json": "a2588be717502bf3999fbff37d4459b9d5db4adbc1a04cb400f37118dcabd589",
+    "fields": [
+      {"name": "OBJECTID", "type": "esriFieldTypeOID"},
+      {"name": "THEMELAYER", "type": "esriFieldTypeString", "length": 200},
+      {"name": "INFORM", "type": "esriFieldTypeString", "length": 400},
+      {"name": "OBJNAM", "type": "esriFieldTypeString", "length": 400},
+      {"name": "SHAPE", "type": "esriFieldTypeGeometry"}
+    ],
+    "layer_extent": {"xmin": -180, "ymin": 9.30976600000002, "xmax": 180, "ymax": 66.566622},
+    "sample_attributes": {
+      "THEMELAYER": "Speed Restrictions/Right Whales",
+      "INFORM": "50 CFR 224.105: All vessels greater than or equal to 65ft/19.8m in length must slow to speeds of 10 knots or less in seasonal management areas.",
+      "OBJNAM": "Right Whale Seasonal Management Area"
+    },
+    "source_release_date": null,
+    "release_date_unknown_reason": "InPort publishes the metadata record (2015-12-04) and describes weekly maintenance; the service exposes no layer or feature edition date.",
+    "observation_date": "2026-11-12",
+    "endpoint_reliability": "The ENCDirect service intermittently answers HTTP 500 'Could not find service' (about one request in three probed 2026-11-12, including f=pjson and returnCountOnly calls); the capture path retries bounded retryable failures and discards partial evidence before sealing."
+  },
+  "capture_policy": "Retain decoded ESRI JSON response bodies, exact HTTP wire bodies and receipts for the producer InPort lineage record, the ENCDirect service directory/service/layer metadata, independent count/ID rosters before and after extraction, and all explicit-OBJECTID pages. Candidate GeoParquet preserves declared source field types and native EPSG:4326 geometry without reprojection or repair.",
+  "completeness_policy": "Check producer lineage markers, service directory/service/layer identity, all declared field names/types/aliases, CRS representations, pinned layer extent, before/after count and ID rosters, all explicit-ID pages, native attribute types, geometry structure/ordinates/validity and complete sparse OBJECTID roster. Quarantine incomplete captures and drift; retry only bounded retryable server failures.",
+  "coverage_scope": "Complete observed NOAA OCS ENCDirect Shipping Lanes and Regulations layer: coastal and ocean shipping zones for U.S. waters. Not a census of all water areas and not the inland USACE IENC fairway product.",
+  "proposed_contract": {
+    "status": "Draft only; maintainer approval required.",
+    "native_identifier": "OBJECTID integer, unchanged; the native roster is sparse and is preserved exactly, with no substitute row IDs.",
+    "attributes": "Preserve all 4 non-geometry source attributes (THEMELAYER, INFORM, OBJNAM plus OBJECTID) and values, including nulls; no silent drop or mapping.",
+    "geometry": "Polygon/MultiPolygon in EPSG:4326, all source rings and coordinates unchanged; XY-only (no Z/M observed).",
+    "unexpected_source_drift": "Quarantine and request maintainer review."
+  },
+  "archive_denial_observation": {
+    "observed_at": "2026-11-12",
+    "urls": [
+      "https://www.datalumos.org/datalumos/project/240646/version/V1/view",
+      "https://doi.org/10.3886/E241367V1"
+    ],
+    "http_status": 403,
+    "interpretation": "Access denial for this anonymous research session; it does not imply the archive is unavailable."
+  },
+  "approval": {
+    "historical_baseline_and_continuity": false,
+    "source_release_and_freshness": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "attribution": false,
+    "release": false,
+    "inventory_agency_column_mismatch_routing": false,
+    "production_publication": false
+  },
+  "implementation": {
+    "source_module": "src/dagster_hifld/sources/shipping_fairways.py",
+    "asset_module": "src/dagster_hifld/assets/shipping_fairways.py",
+    "tests": "tests/test_shipping_fairways.py",
+    "schedule": "STOPPED",
+    "candidate_only": true
+  }
+}
