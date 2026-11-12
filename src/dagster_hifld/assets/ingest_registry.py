@@ -1,8 +1,11 @@
-"""Explicit ingest asset registry.
+"""Ingest asset registry.
 
-Keep source-specific ingest assets explicit. Downstream catalog/publish/check
+New datasets declare ``INGEST_ASSETS`` in their own asset module (see
+``discovery.py``) rather than adding entries here. Downstream catalog/publish/check
 assets are derived automatically from this registry.
 """
+
+from dagster_hifld.assets.discovery import discovered, unique
 
 from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volcanoes
 from dagster_hifld.assets.usgs import usgs_aquifers
@@ -10,7 +13,6 @@ from dagster_hifld.assets.ems_stations import usgs_ems_stations
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
 from dagster_hifld.assets.nfhl_nodes import fema_nfhl_nodes
 from dagster_hifld.assets.nfhl_hydrologic_reaches import fema_nfhl_hydrologic_reaches
-from dagster_hifld.assets.gnis_antarctica import usgs_gnis_antarctica
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.epa_icis_wastewater import epa_icis_wastewater_treatment_plants
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
@@ -74,11 +76,13 @@ from dagster_hifld.assets.sea_areas_usace_ienc import sea_areas_usace_ienc
 from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import shoreline_construction_areas_usace_ienc
 from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
+from dagster_hifld.assets.child_care_centers import child_care_centers
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
 from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
 from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
 from dagster_hifld.assets.usace_hulke_areas import usace_hulke_areas_usace_ienc
+from dagster_hifld.assets.usace_landmark_areas import usace_landmark_areas_usace_ienc
 from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 from dagster_hifld.assets.nces_public_schools import nces_public_schools
@@ -132,6 +136,7 @@ from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_facilities
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
+from dagster_hifld.assets.epa_frs_interest_contact import epa_frs_interest_contact
 from dagster_hifld.assets.epa_rcra_tsd import epa_rcra_treatment_storage_and_disposal_facilities
 from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
@@ -139,6 +144,7 @@ from dagster_hifld.assets.epa_facilities import epa_facilities
 from dagster_hifld.assets.epa_facilities_labels import epa_facilities_labels
 from dagster_hifld.assets.epa_frs_tri import epa_frs_toxic_release_inventory
 from dagster_hifld.assets.epa_tsca import epa_frs_toxic_substances_control_act_tsca
+from dagster_hifld.assets.epa_frs_interests import epa_frs_interests
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 from dagster_hifld.assets.electric_retail_service_territories import electric_retail_service_territories_preservation_candidate
 from dagster_hifld.assets.epa_eez import epa_eez
@@ -183,6 +189,7 @@ hifld_ingest_assets = [
     census_bureau_tracts,
     usace_pontoon_areas_usace_ienc,
     usace_hulke_areas_usace_ienc,
+    usace_landmark_areas_usace_ienc,
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
     noaa_24nm_contiguous_zone,
@@ -224,6 +231,7 @@ hifld_ingest_assets = [
     shoreline_construction_areas_usace_ienc,
     small_craft_facility_areas_usace_ienc,
     sloped_ground_lines_usace_ienc,
+    child_care_centers,
     census_secondary_school_districts,
     principal_ports_usace,
     census_unified_school_districts,
@@ -282,16 +290,19 @@ hifld_ingest_assets = [
     electric_retail_service_territories_preservation_candidate,
     epa_emergency_response_rmp_facilities,
     epa_frs_sic_powerplants,
+    epa_frs_interest_contact,
     epa_rcra_treatment_storage_and_disposal_facilities,
     epa_facilities,
     epa_facilities_labels,
     epa_frs_toxic_release_inventory,
     epa_frs_toxic_substances_control_act_tsca,
+    epa_frs_interests,
     bts_intermodal_freight_air_to_truck,
     fema_nfhl_nodes,
     fema_nfhl_hydrologic_reaches,
-    usgs_gnis_antarctica,
     building_locations_usace_ienc,
     usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,
 ]
+
+hifld_ingest_assets = unique(hifld_ingest_assets, discovered("INGEST_ASSETS"))

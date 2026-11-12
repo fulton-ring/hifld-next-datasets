@@ -75,3 +75,8 @@ gnis_antarctica_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [usgs_gnis_antarctica]
+ASSET_CHECKS = [usgs_gnis_antarctica_complete]
+JOBS = [gnis_antarctica_draft_job]
+SCHEDULES = [gnis_antarctica_draft_schedule]
