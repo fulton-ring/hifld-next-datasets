@@ -92,3 +92,11 @@ epa_frs_national_naics_draft_schedule = ScheduleDefinition(
                    "retained_capture_manifest_sha256": ""}
     }}},
 )
+
+INGEST_ASSETS = [epa_frs_national_naics]
+ASSET_CHECKS = [
+    epa_frs_national_naics_capture_complete,
+    epa_frs_national_naics_membership_compatible,
+]
+JOBS = [epa_frs_national_naics_draft_job]
+SCHEDULES = [epa_frs_national_naics_draft_schedule]
