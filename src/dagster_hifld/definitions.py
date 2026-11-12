@@ -391,6 +391,12 @@ from dagster_hifld.assets.usace_obstruction_lines import (
     usace_obstruction_lines_draft_schedule,
 )
 
+from dagster_hifld.assets.usace_obstruction_locations import (
+    usace_obstruction_locations_complete,
+    usace_obstruction_locations_draft_job,
+    usace_obstruction_locations_draft_schedule,
+)
+
 from dagster_hifld.assets.usace_mooring_facility_lines import (
     usace_mooring_facility_lines_complete,
     usace_mooring_facility_lines_draft_job,
@@ -1135,6 +1141,7 @@ defs = Definitions(
             usace_overhead_pipeline_lines_complete,
             usace_obstruction_lines_complete,
             usace_mooring_facility_lines_complete,
+            usace_obstruction_locations_complete,
             floodwalls_usace_ienc_complete,
             harbor_facility_locations_usace_ienc_complete,
             usace_administrative_areas_complete,
@@ -1270,6 +1277,7 @@ defs = Definitions(
             child_care_centers_draft_job,
             usace_obstruction_lines_draft_job,
             usace_mooring_facility_lines_draft_job,
+            usace_obstruction_locations_draft_job,
             floodwalls_usace_ienc_draft_job,
             harbor_facility_locations_usace_ienc_draft_job,
             usace_administrative_areas_draft_job,
@@ -1403,6 +1411,7 @@ defs = Definitions(
             child_care_centers_draft_schedule,
             usace_obstruction_lines_draft_schedule,
             usace_mooring_facility_lines_draft_schedule,
+            usace_obstruction_locations_draft_schedule,
             floodwalls_usace_ienc_draft_schedule,
             harbor_facility_locations_usace_ienc_draft_schedule,
             usace_administrative_areas_draft_schedule,
