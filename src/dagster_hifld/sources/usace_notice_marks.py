@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import math
 import shutil
 import struct
 from datetime import datetime, timezone
@@ -45,6 +46,12 @@ EXPECTED_FIELDS = [
     ("Source_Date", "esriFieldTypeString"), ("Source_Indication", "esriFieldTypeString"),
     ("Source_Dataset", "esriFieldTypeString"), ("Feature_ID", "esriFieldTypeString"),
 ]
+EXPECTED_EXTENT = {"xmin": -91.44894799999997, "ymin": 30.979580700000042,
+                   "xmax": -79.48334619999997, "ymax": 41.433491900000035}
+# Explicit tolerance, in EPSG:4326 degrees, for comparing observed coordinates
+# with the declared/pinned layer extent (~0.11 m; absorbs serialization noise
+# only, so real coverage displacement or loss is still rejected).
+EXTENT_TOLERANCE_DEGREES = 1e-6
 
 
 def validate_notice_snapshot(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
@@ -62,6 +69,13 @@ def validate_notice_snapshot(captures: Mapping[str, tuple[bytes, dict]]) -> tupl
             or layer.get("spatialReference", {}).get("latestWkid") != 4326
             or layer.get("maxRecordCount") != 2000):
         raise ValueError("source_layer_schema_or_spatial_contract_drift")
+    extent = layer.get("extent")
+    if (not isinstance(extent, dict)
+            or extent.get("spatialReference", {}).get("latestWkid") != 4326
+            or any(type(extent.get(key)) not in (int, float) or not math.isfinite(extent[key])
+                   or abs(extent[key] - EXPECTED_EXTENT[key]) > EXTENT_TOLERANCE_DEGREES
+                   for key in EXPECTED_EXTENT)):
+        raise ValueError("source_layer_coverage_extent_drift")
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_metadata_changed_during_capture")
     if any(docs[name].get("count") != EXPECTED_COUNT for name in ("count_before", "count_after")):
@@ -89,12 +103,24 @@ def validate_notice_snapshot(captures: Mapping[str, tuple[bytes, dict]]) -> tupl
         attrs, geom = feature.get("attributes"), feature.get("geometry")
         if (not isinstance(attrs, dict) or list(attrs) != attr_names
                 or not isinstance(geom, dict) or set(geom) - {"x", "y", "z", "m", "spatialReference"}
-                or not all(isinstance(geom.get(k), (int, float)) for k in ("x", "y"))):
+                or any(type(geom.get(k)) not in (int, float) or not math.isfinite(geom[k]) for k in ("x", "y"))):
             raise ValueError("source_record_schema_or_geometry_drift")
+        x, y = geom["x"], geom["y"]
+        if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
+            raise ValueError("source_coordinate_range_drift")
+        if not (extent["xmin"] - EXTENT_TOLERANCE_DEGREES <= x <= extent["xmax"] + EXTENT_TOLERANCE_DEGREES
+                and extent["ymin"] - EXTENT_TOLERANCE_DEGREES <= y <= extent["ymax"] + EXTENT_TOLERANCE_DEGREES):
+            raise ValueError("source_feature_outside_coverage_extent")
         got_ids.append(attrs.get("OBJECTID"))
         geom_audit.append([attrs["OBJECTID"], geom])
     if len(features) != EXPECTED_COUNT or sorted(got_ids) != ids or len(set(got_ids)) != EXPECTED_COUNT:
         raise ValueError("source_feature_population_incomplete")
+    observed_extent = {"xmin": min(f["geometry"]["x"] for f in features),
+                       "ymin": min(f["geometry"]["y"] for f in features),
+                       "xmax": max(f["geometry"]["x"] for f in features),
+                       "ymax": max(f["geometry"]["y"] for f in features)}
+    if any(abs(observed_extent[key] - EXPECTED_EXTENT[key]) > EXTENT_TOLERANCE_DEGREES for key in EXPECTED_EXTENT):
+        raise ValueError("source_observed_coverage_extent_drift")
     features.sort(key=lambda f: f["attributes"]["OBJECTID"])
     audit = {
         "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids)),
@@ -103,8 +129,12 @@ def validate_notice_snapshot(captures: Mapping[str, tuple[bytes, dict]]) -> tupl
         "source_geometry_sha256": _sha(_canonical(sorted(geom_audit))),
         "source_schema_sha256": _sha(_canonical(fields)), "source_wkid": 4326,
         "source_geometry_type": "esriGeometryPoint", "null_geometry_count": 0,
+        "source_coverage_extent": dict(EXPECTED_EXTENT),
+        "source_extent_tolerance_degrees": EXTENT_TOLERANCE_DEGREES,
         "source_coverage_scope": "Complete official USACE IENC NOTICE_MARK_POINT feature class; coverage limited to the IENC charting program.",
-        "drift_guard": "Exact layer identity, field names/types, CRS, count, all-row ID roster and before/after metadata are checked.",
+        "drift_guard": "Exact layer identity, field names/types, CRS, declared coverage extent, count, all-row ID roster, "
+                       "per-point EPSG:4326 legal ranges and declared-extent containment with observed-envelope agreement, "
+                       "and before/after metadata are checked.",
     }
     return fields, features, audit
 
@@ -126,7 +156,7 @@ def notice_geoparquet(fields: list[dict], features: list[dict]) -> bytes:
         ordinates = [point["x"], point["y"]]
         if has_z: ordinates.append(point["z"])
         if has_m: ordinates.append(point["m"])
-        if any(not isinstance(value, (int, float)) for value in ordinates):
+        if any(type(value) not in (int, float) or not math.isfinite(value) for value in ordinates):
             raise ValueError("source_point_ordinate_invalid")
         type_code = 1 + (1000 if has_z and not has_m else 2000 if has_m and not has_z else 3000 if has_z and has_m else 0)
         geometry.append(struct.pack("<BI" + "d" * len(ordinates), 1, type_code, *ordinates))
@@ -239,11 +269,11 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
                 raise
     try:
         fields, features, audit = validate_notice_snapshot(captures)
+        parquet = notice_geoparquet(fields, features)
     except Exception as exc:
         if not replay:
             _record_incomplete(root,storage,version,captures,exc)
         raise
-    parquet = notice_geoparquet(fields, features)
     source_evidence = {
         name: {
             "body_sha256": _sha(body),

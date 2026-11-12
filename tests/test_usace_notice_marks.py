@@ -18,7 +18,8 @@ class UsaceNoticeMarksTests(unittest.TestCase):
                    **({"length":254} if kind == "esriFieldTypeString" else {})}
                   for name, kind in marks.EXPECTED_FIELDS]
         layer = {"id":18,"name":"NOTICE_MARK_POINT","geometryType":"esriGeometryPoint",
-                 "spatialReference":{"latestWkid":4326},"maxRecordCount":2000,"fields":fields}
+                 "spatialReference":{"latestWkid":4326},"maxRecordCount":2000,
+                 "extent":{**marks.EXPECTED_EXTENT,"spatialReference":{"latestWkid":4326}},"fields":fields}
         ids = [101, 205]
         attrs = []
         for oid in ids:
@@ -28,8 +29,8 @@ class UsaceNoticeMarksTests(unittest.TestCase):
             "layer_before":layer,"layer_after":layer,
             "count_before":{"count":2},"count_after":{"count":2},
             "ids_seed":{"objectIds":ids},"ids_before":{"objectIds":ids},"ids_after":{"objectIds":ids},
-            "page_000":{"spatialReference":{"latestWkid":4326},"features":[{"attributes":attrs[0],"geometry":{"x":-90.0,"y":30.0}}]},
-            "page_001":{"spatialReference":{"latestWkid":4326},"features":[{"attributes":attrs[1],"geometry":{"x":-91.0,"y":31.0}}]},
+            "page_000":{"spatialReference":{"latestWkid":4326},"features":[{"attributes":attrs[0],"geometry":{"x":marks.EXPECTED_EXTENT["xmin"],"y":marks.EXPECTED_EXTENT["ymin"]}}]},
+            "page_001":{"spatialReference":{"latestWkid":4326},"features":[{"attributes":attrs[1],"geometry":{"x":marks.EXPECTED_EXTENT["xmax"],"y":marks.EXPECTED_EXTENT["ymax"]}}]},
         }
         return fields, {name:(json.dumps(doc,separators=(",",":")).encode(), {}) for name,doc in docs.items()}
 
@@ -70,12 +71,78 @@ class UsaceNoticeMarksTests(unittest.TestCase):
                 marks.validate_notice_snapshot(bad)
 
             bad = dict(captures)
+            row = json.loads(captures["page_000"][0])["features"][0]
             bad["page_000"] = (json.dumps({"spatialReference":{"latestWkid":4326},"features":[
-                {"attributes":json.loads(captures["page_000"][0])["features"][0]["attributes"],"geometry":{"x":-90.0,"y":30.0,"z":4.0}}
+                {"attributes":row["attributes"],"geometry":{**row["geometry"],"z":4.0}}
             ]}).encode(), {})
             with self.assertRaisesRegex(ValueError, "source_point_ordinate_roster_drift"):
                 _fields, features, _audit = marks.validate_notice_snapshot(bad)
                 marks.notice_geoparquet(_fields, features)
+
+    def test_point_validity_and_coverage_drift_rejected(self):
+        fields, captures = self._captures()
+        base = json.loads(captures["page_000"][0])["features"][0]
+        other = json.loads(captures["page_001"][0])["features"][0]
+        def replace(geometry):
+            bad = dict(captures)
+            bad["page_000"] = (json.dumps({"spatialReference":{"latestWkid":4326},
+                "features":[{"attributes":base["attributes"],"geometry":geometry}]}).encode(), {})
+            return bad
+        with patch.object(marks, "EXPECTED_COUNT", 2), patch.object(marks, "PAGE_SIZE", 1):
+            parsed, features, audit = marks.validate_notice_snapshot(captures)
+            self.assertEqual(audit["source_coverage_extent"], marks.EXPECTED_EXTENT)
+            self.assertEqual(audit["source_extent_tolerance_degrees"], marks.EXTENT_TOLERANCE_DEGREES)
+
+            bad = dict(captures)
+            bad["page_000"] = (json.dumps({"spatialReference":{"latestWkid":4326},"features":[
+                {"attributes":base["attributes"],"geometry":{"x":base["geometry"]["x"],"y":100.0}}]}).encode(), {})
+            with self.assertRaisesRegex(ValueError, "source_coordinate_range_drift"):
+                marks.validate_notice_snapshot(bad)
+            bad = dict(captures)
+            bad["page_000"] = (json.dumps({"spatialReference":{"latestWkid":4326},"features":[
+                {"attributes":base["attributes"],"geometry":{"x":200.0,"y":base["geometry"]["y"]}}]}).encode(), {})
+            with self.assertRaisesRegex(ValueError, "source_coordinate_range_drift"):
+                marks.validate_notice_snapshot(bad)
+
+            bad = dict(captures)
+            bad["page_000"] = (json.dumps({"spatialReference":{"latestWkid":4326},"features":[
+                {"attributes":base["attributes"],"geometry":{"x":base["geometry"]["x"],"y":True}}]}).encode(), {})
+            with self.assertRaisesRegex(ValueError, "source_record_schema_or_geometry_drift"):
+                marks.validate_notice_snapshot(bad)
+            bad = dict(captures)
+            bad["page_000"] = (json.dumps({"spatialReference":{"latestWkid":4326},"features":[
+                {"attributes":base["attributes"],"geometry":{"x":base["geometry"]["x"],"y":float("nan")}}]}).encode(), {})
+            with self.assertRaisesRegex(ValueError, "source_record_schema_or_geometry_drift"):
+                marks.validate_notice_snapshot(bad)
+
+            bad = replace({"x":0.0,"y":0.0})
+            with self.assertRaisesRegex(ValueError, "source_feature_outside_coverage_extent"):
+                marks.validate_notice_snapshot(bad)
+            beyond = marks.EXPECTED_EXTENT["xmin"] - 10 * marks.EXTENT_TOLERANCE_DEGREES
+            bad = replace({"x":beyond,"y":base["geometry"]["y"]})
+            with self.assertRaisesRegex(ValueError, "source_feature_outside_coverage_extent"):
+                marks.validate_notice_snapshot(bad)
+
+            for changed in (lambda ext: {**ext, "xmin":ext["xmin"] + 0.5},
+                            lambda ext: {**ext, "ymin":None},
+                            lambda ext: {**ext, "spatialReference":{"latestWkid":4269}}):
+                bad = dict(captures)
+                layer = json.loads(captures["layer_before"][0])
+                layer["extent"] = changed(layer["extent"])
+                bad["layer_before"] = (json.dumps(layer).encode(), {})
+                with self.assertRaisesRegex(ValueError, "source_layer_coverage_extent_drift"):
+                    marks.validate_notice_snapshot(bad)
+
+            bad = dict(captures)
+            bad["page_001"] = (json.dumps({"spatialReference":{"latestWkid":4326},"features":[
+                {"attributes":other["attributes"],"geometry":{"x":-90.0,"y":40.0}}]}).encode(), {})
+            with self.assertRaisesRegex(ValueError, "source_observed_coverage_extent_drift"):
+                marks.validate_notice_snapshot(bad)
+
+            tampered = [dict(feature) for feature in features]
+            tampered[0] = {**tampered[0], "geometry":{**tampered[0]["geometry"],"y":float("nan")}}
+            with self.assertRaisesRegex(ValueError, "source_point_ordinate_invalid"):
+                marks.notice_geoparquet(parsed, tampered)
 
     def test_offline_replay_and_first_candidate_cache(self):
         _fields, captures = self._captures()
