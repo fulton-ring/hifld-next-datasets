@@ -66,6 +66,12 @@ def _fixture():
     layer = {"id": 1, "name": "LOMRs", "type": "Feature Layer", "geometryType": "esriGeometryPolygon",
              "maxRecordCount": 2000, "advancedQueryCapabilities": {"supportsPagination": True},
              "sourceSpatialReference": {"wkid": 4269, "latestWkid": 4269},
+             "drawingInfo": {"renderer": {"type": "uniqueValue", "field1": "STATUS",
+                                          "uniqueValueInfos": [{"value": "Effective", "label": "Effective"}],
+                                          "authoringInfo": {"colorRamp": {"type": "multipart", "colorRamps": [
+                                              {"type": "multiPartColorRamp", "colorRamps": [
+                                                  {"type": "algorithmicColorRamp", "fromColor": [242, 204, 189, 255],
+                                                   "toColor": [252, 187, 219, 255]}]}]}}}},
              "extent": {"xmin": -160.0, "ymin": 20.0, "xmax": -60.0, "ymax": 65.0,
                         "spatialReference": {"wkid": 4269, "latestWkid": 4269}},
              "fields": fields}
@@ -234,6 +240,27 @@ class NfhlLomrsTests(unittest.TestCase):
         captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
         features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_schema_contract_drift"):
+            self._validated(features, captures, schema, geom)
+
+    def test_layer_symbology_palette_rotation_is_not_metadata_change(self):
+        # Producer-observed server behavior (verified 2026-11-12 on four
+        # consecutive layer-metadata fetches): each request regenerates the
+        # decorative renderer color-ramp palette while every other key, the
+        # renderer field/classes, and the rest of drawingInfo stay identical.
+        _, features, captures, schema, geom = _fixture()
+        after = json.loads(captures["layer_after"][0])
+        palette = after["drawingInfo"]["renderer"]["authoringInfo"]["colorRamp"]["colorRamps"]
+        rotated = [{**ramp, "fromColor": [c + 1 for c in ramp["fromColor"]],
+                    "toColor": [c + 1 for c in ramp["toColor"]]} for ramp in palette]
+        after["drawingInfo"]["renderer"]["authoringInfo"]["colorRamp"]["colorRamps"] = rotated
+        captures["layer_after"] = (json.dumps(after, separators=(",", ":")).encode(), {"status": 200})
+        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        self._validated(features, captures, schema, geom)
+        # Any other drawingInfo change is still a metadata change.
+        after2 = json.loads(captures["layer_after"][0])
+        after2["drawingInfo"]["renderer"]["field1"] = "STATUS_EDIT"
+        captures["layer_after"] = (json.dumps(after2, separators=(",", ":")).encode(), {"status": 200})
+        with self.assertRaisesRegex(ValueError, "source_layer_metadata_changed_during_capture"):
             self._validated(features, captures, schema, geom)
 
     def test_final_page_cannot_claim_transfer_truncation(self):

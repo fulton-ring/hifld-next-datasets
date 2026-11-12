@@ -243,9 +243,22 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_schema_contract_drift")
     if docs["layer_after"].get("fields") is None or [_plain_field(x) for x in docs["layer_after"]["fields"]] != fields:
         raise ValueError("source_field_schema_changed_during_capture")
-    for name in ("layer_before", "layer_after"):
-        if docs[name] != layer:
-            raise ValueError("source_layer_metadata_changed_during_capture")
+    # The producer's ArcGIS server regenerates the decorative renderer
+    # color-ramp palette (drawingInfo.renderer.authoringInfo.colorRamps) on
+    # every request (verified 2026-11-12 on four consecutive layer-metadata
+    # fetches: that palette alone rotated; the renderer field/classes, the
+    # rest of drawingInfo, and all other keys stayed byte-identical). That
+    # decoration is excluded from the before/after metadata comparison; every
+    # other layer key, including the rest of drawingInfo, must match exactly.
+    def _stable_layer(doc: dict) -> dict:
+        copy = json.loads(json.dumps(doc))
+        ramp = copy.get("drawingInfo", {}).get("renderer", {}).get("authoringInfo", {}).get("colorRamp", {})
+        if isinstance(ramp, dict) and "colorRamps" in ramp:
+            del ramp["colorRamps"]
+        return copy
+
+    if _stable_layer(docs["layer_before"]) != _stable_layer(docs["layer_after"]):
+        raise ValueError("source_layer_metadata_changed_during_capture")
     if docs["service_after"] != service:
         raise ValueError("source_service_metadata_changed_during_capture")
     if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
