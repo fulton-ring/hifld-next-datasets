@@ -15,6 +15,7 @@ from dagster_hifld.assets.nfhl_hydrologic_reaches import fema_nfhl_hydrologic_re
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.epa_icis_wastewater import epa_icis_wastewater_treatment_plants
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
+from dagster_hifld.assets.fuds_irm_property_boundary import fuds_irm_property_boundary_ingest
 from dagster_hifld.assets.national_inventory_of_dams import national_inventory_of_dams_ingest
 from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
 from dagster_hifld.assets.fuds_district_boundaries import usace_fuds_program_district_boundaries
@@ -245,6 +246,7 @@ hifld_ingest_assets = [
     epa_frs_eia_860_power_generation_facilities_by_source,
     epa_icis_wastewater_treatment_plants,
     fuds_irm_property_point_ingest,
+    fuds_irm_property_boundary_ingest,
     national_inventory_of_dams_ingest,
     usace_fuds_projects_points,
     usace_fuds_program_district_boundaries,
