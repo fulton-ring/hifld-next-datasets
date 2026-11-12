@@ -81,7 +81,7 @@ This is separate from the Agno `find-dataset-sources` CLI. It implements a **thr
 #### Partition registry
 
 - `partitions.py` builds one `DynamicPartitionsDefinition` per `(dataset_slug, file_slug)` in `DATASET_FILE_PAIRS` and exposes `PARTITIONS_BY_PAIR` and `get_partition_name` (`{dataset_slug}--{file_slug}`).
-- Adding a new **simple** dataset: add the pair to `_DATASET_FILE_PAIRS_BASE` in `partitions.py`, add ingest + catalog + publish wiring (and checks if desired), matching existing agency modules.
+- Adding a new dataset: register it from its own asset module, not the shared files. Define module-level `INGEST_ASSETS`, and as needed `ASSET_CHECKS`, `JOBS` and `SCHEDULES`, in `src/dagster_hifld/assets/<dataset>.py`. `assets/discovery.py` collects them, so do not edit `assets/ingest_registry.py` or the lists in `definitions.py` (parallel PRs conflict there). Catalog and publish assets derive from the ingest registry automatically. When resolving a conflict in those shared files, move the PR's entries into its module lists instead.
 - Adding a **large** dataset with many file slugs: add `*_DATASET_FILE_PAIRS` (or equivalent) in that dataset’s module (see census blocks), then extend `DATASET_FILE_PAIRS` in `partitions.py` with `*THAT_LIST` only—keep the long tables out of `partitions.py`.
 
 #### Sensors
