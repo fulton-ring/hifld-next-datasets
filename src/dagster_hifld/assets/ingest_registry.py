@@ -27,10 +27,7 @@ from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.usace_waterway_lines import usace_navigable_waterway_network_lines
-<<<<<<< HEAD
 from dagster_hifld.assets.usace_waterway_nodes import usace_waterway_network_nodes
-from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
-=======
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
 from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms
 from dagster_hifld.assets.proposed_critical_habitat import proposed_critical_habitat_features
@@ -91,7 +88,6 @@ from dagster_hifld.assets.epa_facilities import epa_facilities
 from dagster_hifld.assets.epa_facilities_labels import epa_facilities_labels
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 from dagster_hifld.assets.electric_retail_service_territories import electric_retail_service_territories_preservation_candidate
->>>>>>> origin/codex/cloud-dataset-178
 
 hifld_ingest_assets = [
     census_elementary_districts,
@@ -118,9 +114,7 @@ hifld_ingest_assets = [
     dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
     usace_navigable_waterway_network_lines,
-<<<<<<< HEAD
     usace_waterway_network_nodes,
-=======
     bsee_ocs_platforms,
     proposed_critical_habitat_features,
     usace_navigation_marks_areas_usace_ienc,
@@ -150,7 +144,6 @@ hifld_ingest_assets = [
     usace_dumping_ground_areas_usace_ienc,
     plate_boundaries_usgs,
     eia_power_plants_historical,
->>>>>>> origin/codex/cloud-dataset-178
     epa_frs_eia_860_power_generation_facilities_by_source,
     nces_private_schools_2023_24,
     nces_public_schools,
