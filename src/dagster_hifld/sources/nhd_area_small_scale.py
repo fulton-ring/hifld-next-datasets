@@ -479,7 +479,13 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     if docs["layer_after"].get("fields") is None or [_plain_field(x) for x in docs["layer_after"]["fields"]] != fields:
         raise ValueError("source_field_schema_changed_during_capture")
     for name in ("layer_before", "layer_after"):
-        if docs[name] != layer:
+        # The producer regenerates the layer's display-only renderer
+        # ("drawingInfo", including random color-ramp colors) on every request
+        # (observed 2026-11-12); it is display styling, not data, and is
+        # excluded from the metadata stability comparison.  Both raw copies are
+        # retained verbatim as evidence either way.
+        if {k: v for k, v in docs[name].items() if k != "drawingInfo"} \
+                != {k: v for k, v in layer.items() if k != "drawingInfo"}:
             raise ValueError("source_layer_metadata_changed_during_capture")
     if docs["service_after"] != service:
         raise ValueError("source_service_metadata_changed_during_capture")
