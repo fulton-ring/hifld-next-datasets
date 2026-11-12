@@ -50,8 +50,8 @@ HOLE_B = [[-116.017, 33.407], [-116.017, 33.406], [-116.016, 33.406], [-116.017,
 HOLE_OUTSIDE = [[-110.0, 40.0], [-110.0, 39.0], [-109.0, 39.0], [-110.0, 40.0]]
 # Clockwise closed self-intersecting (bowtie) exterior, verbatim source ring
 # shape observed on the pinned live capture (NFHL OBJECTIDs 784 and 185347).
-RING_BOWTIE = [[-116.0, 33.0], [-116.0, 33.04], [-116.01, 33.0 - 0.01], [-116.04, 33.04],
-               [-116.04, 33.0], [-116.0, 33.0]]
+RING_BOWTIE = [[-116.0, 33.0], [-116.04, 33.0], [-116.04, 33.04], [-116.01, 33.0 - 0.01],
+               [-116.0, 33.04], [-116.0, 33.0]]
 
 
 def _attrs(oid, **overrides):
@@ -108,7 +108,7 @@ def _fixture():
             "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_seed": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
-            "page_000": page_docs[0], "page_001": page_docs[1], "page_002": page_docs[2]}
+            "page_000": page_docs[0], "page_001": page_docs[1], "page_002": page_docs[2], "page_003": page_docs[3]}
     captures = {name: (json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode(), {"status": 200})
                 for name, doc in docs.items()}
     captures["service_doc"] = (SERVICE_DOC_BODY, {"status": 200})
@@ -211,7 +211,7 @@ class NfhlLomrsTests(unittest.TestCase):
             doc = json.loads(captures[name][0])
             doc["objectIds"] = ids
             captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         _, _, extracted = self._validated(features, captures, schema, geom)
         self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14, 15, 16])
         self.assertEqual(extracted["audit"]["null_geometry_count"], 1)
@@ -225,7 +225,7 @@ class NfhlLomrsTests(unittest.TestCase):
     def test_missing_service_documentation_link_is_rejected(self):
         _, features, captures, schema, geom = _fixture()
         captures["service_doc"] = (b"<html>unrelated</html>", {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "fema_service_documentation_link_drift"):
             self._validated(features, captures, schema, geom)
 
@@ -234,7 +234,7 @@ class NfhlLomrsTests(unittest.TestCase):
         page = json.loads(captures["page_000"][0])
         page["spatialReference"] = {"wkid": 4326, "latestWkid": 4326}
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_page_000_crs_drift"):
             self._validated(features, captures, schema, geom)
 
@@ -243,7 +243,7 @@ class NfhlLomrsTests(unittest.TestCase):
         layer = json.loads(captures["layer_before"][0])
         layer["geometryType"] = "esriGeometryPolyline"
         captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "exact_nfhl_lomrs_layer_metadata_drift"):
             self._validated(features, captures, schema, geom)
 
@@ -252,7 +252,7 @@ class NfhlLomrsTests(unittest.TestCase):
         layer = json.loads(captures["layer_before"][0])
         layer["fields"][4]["type"] = "esriFieldTypeString"
         captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_schema_contract_drift"):
             self._validated(features, captures, schema, geom)
 
@@ -268,7 +268,7 @@ class NfhlLomrsTests(unittest.TestCase):
                     "toColor": [c + 1 for c in ramp["toColor"]]} for ramp in palette]
         after["drawingInfo"]["renderer"]["authoringInfo"]["colorRamp"]["colorRamps"] = rotated
         captures["layer_after"] = (json.dumps(after, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         self._validated(features, captures, schema, geom)
         # Any other drawingInfo change is still a metadata change.
         after2 = json.loads(captures["layer_after"][0])
@@ -279,10 +279,10 @@ class NfhlLomrsTests(unittest.TestCase):
 
     def test_final_page_cannot_claim_transfer_truncation(self):
         _, features, captures, schema, geom = _fixture()
-        final = json.loads(captures["page_002"][0])
+        final = json.loads(captures["page_003"][0])
         final["exceededTransferLimit"] = True
-        captures["page_002"] = (json.dumps(final, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        captures["page_003"] = (json.dumps(final, separators=(",", ":")).encode(), {"status": 200})
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_page_unexpected_exceeded_transfer_limit"):
             self._validated(features, captures, schema, geom)
 
@@ -291,7 +291,7 @@ class NfhlLomrsTests(unittest.TestCase):
         layer = json.loads(captures["layer_before"][0])
         layer["fields"].append({"name": "SURPRISE", "type": "esriFieldTypeString"})
         captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_schema_contract_drift"):
             self._validated(features, captures, schema, geom)
 
@@ -300,7 +300,7 @@ class NfhlLomrsTests(unittest.TestCase):
         page = json.loads(captures["page_000"][0])
         page["features"] = page["features"][:1]
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_reordered"):
             self._validated(features, captures, schema, geom)
 

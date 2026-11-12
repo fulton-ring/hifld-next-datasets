@@ -548,7 +548,6 @@ def capture_nfhl_lomrs(storage: StagingStorageResource, *, version: str,
         raise
     identity = _code_identity()
     parquet_body, self_intersecting = _parquet_bytes(source_fields, extracted["features"])
-    audit["self_intersecting_geometry_count"] = self_intersecting
     rel = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {rel: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
     manifest = {
@@ -616,8 +615,9 @@ def capture_nfhl_lomrs(storage: StagingStorageResource, *, version: str,
     audit = {**extracted["audit"], "source_fields": [_plain_field(f) for f in source_fields],
              "official_layer_name": LAYER_NAME, "layer_id": LAYER_ID, "service_url": SERVICE_URL,
              "release_date_unknown": True, "freshness_accepted": False, "schema_contract_accepted": False,
-             "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False,
+             "id_contract_accepted": False, "rights_accepted": False,              "mapping_approved": False,
              "release_accepted": False}
+    audit["self_intersecting_geometry_count"] = self_intersecting
     version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
