@@ -7,7 +7,9 @@ the producer's own publication of this HIFLD inventory dataset
 (``nfhl/firm-panels-1``, DataLumos 239969 historical archive copy used for
 identification only). The layer is continuously updated and publishes no
 per-snapshot release date; source freshness, rights, and public-schema
-compatibility are not accepted by this draft.
+compatibility are not accepted by this draft. Twenty-nine producer rows
+publish null geometry; they are retained as records with null candidate
+geometry, raw evidence intact, and never silently coerced to a location.
 
 Like the sibling NFHL line layer, this layer is captured as adaptively
 bisected segments of the sorted OBJECTID roster: the producer's MapServer
@@ -78,14 +80,18 @@ DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 SEGMENT_PROBE_ATTEMPTS = 2
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
-# Pins below are the observed 2026-11-12 complete-layer population contract.
+# Pins below are the observed 2026-11-12 complete-layer population contract,
+# established by one dated complete capture (92 adaptive segments tiling the
+# sorted OBJECTID roster; 29 producer rows publish null geometry and are
+# retained as null candidate geometries).
 EXPECTED_COUNT = 183940
-EXPECTED_ID_SHA256 = "PENDING_PROBE"
-EXPECTED_SCHEMA_SHA256 = "PENDING_PROBE"
-EXPECTED_RECORD_SHA256 = "PENDING_PROBE"
-EXPECTED_GEOMETRY_SHA256 = "PENDING_PROBE"
-EXPECTED_OBSERVED_BOUNDS = None
-EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_ID_SHA256 = "86d1b395061546868286561bd9b52a5e31560623e477d46bd3b5b53d15e2bad6"
+EXPECTED_SCHEMA_SHA256 = "a9dbba1539a832a2d68fa5014d73c4e280ee14aef547650bfba2cb93cc6418c8"
+EXPECTED_RECORD_SHA256 = "e7dce32be4560104b72b6995874da9d9380679b08548cc5dad5811c6a8808c2b"
+EXPECTED_GEOMETRY_SHA256 = "f8a144dcc1cc4f4de4ecea96174e224279d7e6090a44ffb0f68c3cbe2e70fc94"
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -170.8750000748356, "ymin": -14.437508255539456,
+                            "xmax": 145.87500003900197, "ymax": 66.62501246934221}
+EXPECTED_NULL_GEOMETRY_COUNT = 29
 EXPECTED_NAN_GEOMETRY_COUNT = 0
 EXPECTED_LAYER_EXTENT = {"xmin": -170.8750000748356, "ymin": -14.437508255539456,
                          "xmax": 145.87500003900197, "ymax": 66.62501246934221}
