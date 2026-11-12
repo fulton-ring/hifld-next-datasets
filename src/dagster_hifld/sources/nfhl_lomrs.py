@@ -16,7 +16,8 @@ candidate WKB geometry is built by that rule (single-exterior features keep
 their source ring order; the five multi-exterior features become MultiPolygons
 with holes joined to their smallest containing exterior) without dropping,
 adding, or reordering any source vertex. 37 source features have null geometry
-and are retained as null.
+and one more (NFHL OBJECTID 3987) records a geometry value holding no rings;
+both are retained verbatim, counted separately, and never coerced to a location.
 """
 from __future__ import annotations
 
@@ -79,6 +80,10 @@ EXPECTED_GEOMETRY_SHA256 = "ade1e4e7352b3e80727a4ce4df6eba722c852f329c6011041df8
 EXPECTED_SCHEMA_SHA256 = "ec75a61b5fd15b1e220c880b07fe43e0dacfb466718116a1c2006fc776c82efe"
 EXPECTED_NULL_GEOMETRY_COUNT = 37
 EXPECTED_NAN_GEOMETRY_COUNT = 0
+# The producer records some features with a geometry value that holds no rings
+# at all (observed verbatim on the pinned capture: NFHL OBJECTID 3987 serves
+# {"rings": []}); the value is retained losslessly and counted, never coerced.
+EXPECTED_EMPTY_RINGS_GEOMETRY_COUNT = 1
 EXPECTED_OBSERVED_BOUNDS = {"xmin": -157.9016097476065, "ymin": 18.036626896474615,
                             "xmax": -65.68982948447291, "ymax": 64.84674939130537}
 EXPECTED_LAYER_EXTENT = {"xmin": -158.20976380790182, "ymin": 18.036626896474615,
@@ -281,6 +286,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
     null_geometry = 0
     nan_geometry = 0
+    empty_rings_geometry = 0
     geometry_records = []
     observed_bounds: list[float] = []
     for feature in features:
@@ -292,9 +298,15 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
             null_geometry += 1
             geometry_records.append([attrs["OBJECTID"], None])
             continue
-        if not isinstance(geom, dict) or set(geom) != {"rings"} or not isinstance(geom["rings"], list) \
-                or not geom["rings"]:
+        if not isinstance(geom, dict) or set(geom) != {"rings"} or not isinstance(geom["rings"], list):
             raise ValueError("source_polygon_geometry_invalid")
+        if not geom["rings"]:
+            # Producer-observed empty geometry value: retained verbatim in the
+            # record and raw evidence and counted as unusable geometry, never
+            # silently coerced to a location; WKB geometry stays null.
+            empty_rings_geometry += 1
+            geometry_records.append([attrs["OBJECTID"], []])
+            continue
         nan_rings = False
         validated_rings = []
         feature_bounds: list[float] = []
@@ -341,6 +353,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "source_schema_sha256": schema_sha, "source_crs_epsg": SOURCE_CRS_WKID,
              "geometry_type": "Polygon", "null_geometry_count": null_geometry,
              "nan_string_geometry_count": nan_geometry,
+             "empty_rings_geometry_count": empty_rings_geometry,
              "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
              "unique_source_id_count": len(ids),
              "source_release_date": None,
@@ -517,7 +530,9 @@ def capture_nfhl_lomrs(storage: StagingStorageResource, *, version: str,
         "schema_version": 1, "approved": False, "title": "LOMRs (FEMA NFHL)",
         "description": "FEMA National Flood Hazard Layer (NFHL) MapServer layer 1 'LOMRs', captured "
                        "completely from the producer's own REST publication. Complete source attributes and NAD83 "
-                       "polygon geometry are represented in the candidate. The NFHL is continuously updated and "
+                       "polygon geometry are represented in the candidate. 37 source features have null geometry "
+                       "and one more records a geometry value holding no rings; both are retained verbatim and "
+                       "counted. The NFHL is continuously updated and "
                        "publishes no per-snapshot release date; freshness, rights, public schema/ID contract, and "
                        "release acceptance remain unresolved and unapproved.",
         "publisher": PUBLISHER, "agency": "Federal Emergency Management Agency", "source_url": LAYER_URL,
@@ -612,6 +627,7 @@ def capture_nfhl_lomrs(storage: StagingStorageResource, *, version: str,
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
                 "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
                 "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
+                "source_empty_rings_geometry_count": audit["empty_rings_geometry_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_release_accepted": False, "source_freshness_accepted": False,
                 "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
@@ -635,6 +651,7 @@ def capture_nfhl_lomrs(storage: StagingStorageResource, *, version: str,
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
             "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
+            "source_empty_rings_geometry_count": audit["empty_rings_geometry_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False,

@@ -77,19 +77,22 @@ def _fixture():
         {"attributes": _attrs(12), "geometry": None},
         {"attributes": _attrs(13), "geometry": {"rings": [[["NaN", "NaN"], ["NaN", "NaN"], ["NaN", "NaN"]]]}},
         {"attributes": _attrs(14), "geometry": {"rings": [RING_B, HOLE_B]}},
+        # Producer-observed shape (NFHL OBJECTID 3987 on the 2026-11-12 capture):
+        # a geometry value that holds no rings at all.
+        {"attributes": _attrs(15), "geometry": {"rings": []}},
     ]
-    ids = [10, 11, 12, 13, 14]
+    ids = [10, 11, 12, 13, 14, 15]
     schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f} for f in fields]
     geom_records = [[10, [RING_A]], [11, [RING_A, HOLE_A]], [12, None],
                     [13, [[["NaN", "NaN"], ["NaN", "NaN"], ["NaN", "NaN"]]]],
-                    [14, [RING_B, HOLE_B]]]
+                    [14, [RING_B, HOLE_B]], [15, []]]
     crs = {"wkid": 4269, "latestWkid": 4269}
-    pages = [features[0:2], features[2:4], features[4:5]]
+    pages = [features[0:2], features[2:4], features[4:6]]
     page_docs = [{"features": page, "spatialReference": crs,
                   **({"exceededTransferLimit": True} if index < len(pages) - 1 else {})}
                  for index, page in enumerate(pages)]
     docs = {"service_before": service, "service_after": service, "layer_before": layer, "layer_after": layer,
-            "count_before": {"count": 5}, "count_after": {"count": 5},
+            "count_before": {"count": 6}, "count_after": {"count": 6},
             "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_seed": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
@@ -115,9 +118,9 @@ def _bounds(features):
 
 
 def _pins(features, schema, geom_records):
-    return dict(EXPECTED_COUNT=5, PAGE_SIZE=2, EXPECTED_NULL_GEOMETRY_COUNT=1,
-                EXPECTED_NAN_GEOMETRY_COUNT=1,
-                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),
+    return dict(EXPECTED_COUNT=6, PAGE_SIZE=2, EXPECTED_NULL_GEOMETRY_COUNT=1,
+                EXPECTED_NAN_GEOMETRY_COUNT=1, EXPECTED_EMPTY_RINGS_GEOMETRY_COUNT=1,
+                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14, 15])).hexdigest(),
                 EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(sorted(features,
                                                                          key=lambda row: row["attributes"]["OBJECTID"]))).hexdigest(),
                 EXPECTED_GEOMETRY_SHA256=hashlib.sha256(_canonical(sorted(geom_records))).hexdigest(),
@@ -138,14 +141,14 @@ class NfhlLomrsTests(unittest.TestCase):
             stream.write(body)
             stream.flush()
             table = pq.read_table(stream.name)
-        self.assertEqual(table.num_rows, 5)
-        self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12, 13, 14])
+        self.assertEqual(table.num_rows, 6)
+        self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12, 13, 14, 15])
         self.assertEqual(table.column("LOMR_ID").to_pylist(),
-                         ["01003C_10", "01003C_11", "01003C_12", "01003C_13", "01003C_14"])
+                         ["01003C_10", "01003C_11", "01003C_12", "01003C_13", "01003C_14", "01003C_15"])
         self.assertEqual(table.column("EFF_DATE").type.__str__(), "int64")
-        self.assertEqual(table.column("EFF_DATE").to_pylist(), [1601251200000] * 5)
+        self.assertEqual(table.column("EFF_DATE").to_pylist(), [1601251200000] * 6)
         self.assertEqual(table.column("SHAPE.STArea()").type.__str__(), "double")
-        self.assertEqual(table.column("SHAPE").null_count, 2)
+        self.assertEqual(table.column("SHAPE").null_count, 3)
         polygon_10 = shapely.from_wkb(table.column("SHAPE").to_pylist()[0])
         self.assertEqual(list(polygon_10.exterior.coords), [tuple(vertex) for vertex in RING_A])
         self.assertEqual(len(polygon_10.interiors), 0)
@@ -155,8 +158,10 @@ class NfhlLomrsTests(unittest.TestCase):
                          [[tuple(vertex) for vertex in HOLE_A]])
         self.assertIsNone(table.column("SHAPE").to_pylist()[2])
         self.assertIsNone(table.column("SHAPE").to_pylist()[3])
+        self.assertIsNone(table.column("SHAPE").to_pylist()[5])
         self.assertEqual(table.column("LOMR_ID").to_pylist()[3], "01003C_13")
         self.assertEqual(table.column("CASE_NO").to_pylist()[3], "19-04-0013P")
+        self.assertEqual(table.column("CASE_NO").to_pylist()[5], "19-04-0015P")
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"]["code"], 4269)
         self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["Polygon", "MultiPolygon"])
@@ -181,16 +186,17 @@ class NfhlLomrsTests(unittest.TestCase):
 
     def test_id_roster_response_order_is_not_population_drift(self):
         _, _, captures, schema, geom = _fixture()
-        for name, ids in (("ids_seed", [12, 10, 11, 14, 13]), ("ids_before", [11, 12, 10, 13, 14]),
-                          ("ids_after", [10, 11, 12, 13, 14])):
+        for name, ids in (("ids_seed", [12, 10, 11, 14, 13, 15]), ("ids_before", [11, 12, 10, 13, 14, 15]),
+                          ("ids_after", [10, 11, 12, 13, 14, 15])):
             doc = json.loads(captures[name][0])
             doc["objectIds"] = ids
             captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
         features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         _, _, extracted = self._validated(features, captures, schema, geom)
-        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14])
+        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14, 15])
         self.assertEqual(extracted["audit"]["null_geometry_count"], 1)
         self.assertEqual(extracted["audit"]["nan_string_geometry_count"], 1)
+        self.assertEqual(extracted["audit"]["empty_rings_geometry_count"], 1)
 
     def _validated(self, features, captures, schema, geom):
         with patch.multiple(source, **_pins(features, schema, geom)):
@@ -346,9 +352,10 @@ class NfhlLomrsTests(unittest.TestCase):
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_lomrs(storage, version="vfixture",
                                                       capture_directory=str(root / "captures"))
-                self.assertEqual(candidate["feature_count"], 5)
+                self.assertEqual(candidate["feature_count"], 6)
                 self.assertEqual(candidate["source_null_geometry_count"], 1)
                 self.assertEqual(candidate["source_nan_string_geometry_count"], 1)
+                self.assertEqual(candidate["source_empty_rings_geometry_count"], 1)
                 prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
                 state_key = f"_construction-state/{source.DATASET_SLUG}/{candidate['version']}.json"
                 self.assertTrue(storage.object_snapshot(state_key))
@@ -361,7 +368,7 @@ class NfhlLomrsTests(unittest.TestCase):
                 summary = summarize_staged_catalog(storage, source.DATASET_SLUG, source.FILE_SLUG,
                                                    candidate["version"], source.DATASET_SLUG,
                                                    source_metadata=manifest)
-                self.assertEqual(summary.quality_manifest["null_geometry_count"], 2)
+                self.assertEqual(summary.quality_manifest["null_geometry_count"], 3)
                 self.assertFalse(summary.quality_manifest["quality_check_passed"])
                 write_catalog_metadata(storage, dataset_slug=source.DATASET_SLUG, file_slug=source.FILE_SLUG,
                                        version=candidate["version"], quality_dict=summary.quality_manifest,

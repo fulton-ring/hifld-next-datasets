@@ -6,6 +6,7 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.nfhl_lomrs import (
     DATASET_SLUG,
     EXPECTED_COUNT,
+    EXPECTED_EMPTY_RINGS_GEOMETRY_COUNT,
     EXPECTED_NAN_GEOMETRY_COUNT,
     EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
@@ -45,13 +46,15 @@ def fema_nfhl_lomrs_complete(candidate: dict) -> AssetCheckResult:
     passed = (candidate.get("feature_count") == EXPECTED_COUNT
               and candidate.get("candidate_ready") is not None
               and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
-              and candidate.get("source_nan_string_geometry_count") == EXPECTED_NAN_GEOMETRY_COUNT)
+              and candidate.get("source_nan_string_geometry_count") == EXPECTED_NAN_GEOMETRY_COUNT
+              and candidate.get("source_empty_rings_geometry_count") == EXPECTED_EMPTY_RINGS_GEOMETRY_COUNT)
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
             "source_null_geometry_count": candidate.get("source_null_geometry_count", 0),
             "source_nan_string_geometry_count": candidate.get("source_nan_string_geometry_count", 0),
+            "source_empty_rings_geometry_count": candidate.get("source_empty_rings_geometry_count", 0),
             "technical_geometry_quality_accepted": False,
             "source_release_accepted": False,
             "source_freshness_accepted": False,
