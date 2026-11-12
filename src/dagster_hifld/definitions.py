@@ -47,11 +47,6 @@ from dagster_hifld.assets.fema_regions import (
     fema_regions_draft_schedule,
     fema_regions_full_quality,
 )
-from dagster_hifld.assets.ferc_regions import (
-    ferc_historical_full_quality,
-    ferc_historical_integrity_schedule,
-    ferc_historical_reconstruction_job,
-)
 from dagster_hifld.assets.fuds_division_boundaries import (
     fuds_division_draft_schedule,
     fuds_program_division_boundaries_complete,
@@ -72,10 +67,6 @@ from dagster_hifld.assets.epa_disaster_debris import (
     epa_disaster_debris_draft_job,
     epa_disaster_debris_draft_schedule,
     epa_disaster_debris_recovery_data,
-)
-from dagster_hifld.assets.crushed_stone import (
-    crushed_stone_preservation_job,
-    crushed_stone_preservation_schedule,
 )
 from dagster_hifld.assets.colleges_universities import (
     colleges_source_integrity_job,
@@ -420,13 +411,6 @@ from dagster_hifld.assets.usace_data_coverage_areas import (
     usace_data_coverage_areas_draft_job,
     usace_data_coverage_areas_draft_schedule,
 )
-from dagster_hifld.assets.electric_retail_service_territories import (
-    electric_retail_service_territories_population_complete,
-    electric_retail_service_territories_geometry_valid,
-    electric_retail_service_territories_release_pending,
-    electric_retail_service_territories_preservation_job,
-    electric_retail_service_territories_preservation_schedule,
-)
 
 from dagster_hifld.assets.epa_rmp_facilities import (
     epa_emergency_response_rmp_facilities_complete,
@@ -624,11 +608,6 @@ from dagster_hifld.assets.national_inventory_of_dams import (
     national_inventory_of_dams_geometry_quality,
     national_inventory_of_dams_population_complete,
 )
-from dagster_hifld.assets.campus_preservation import (
-    campus_historical_full_quality,
-    ornl_campus_historical_integrity_schedule,
-    ornl_campus_historical_reconstruction_job,
-)
 from dagster_hifld.assets.combined_statistical_areas import (
     csa_source_integrity_job,
     csa_source_integrity_schedule,
@@ -689,11 +668,6 @@ from dagster_hifld.assets.usace_floating_docks import (
     usace_floating_docks_complete,
     usace_floating_docks_draft_job,
     usace_floating_docks_draft_schedule,
-)
-from dagster_hifld.assets.ferrous_metal_processing_plants import (
-    ferrous_metal_processing_plants_draft_job,
-    ferrous_metal_processing_plants_draft_schedule,
-    ferrous_metal_processing_plants_population_complete,
 )
 from dagster_hifld.assets.ferrous_metal_mines import (
     ferrous_metal_mines_draft_job,
@@ -1190,14 +1164,12 @@ defs = Definitions(
             state_capitols_population_complete,
             national_inventory_of_dams_population_complete,
             national_inventory_of_dams_geometry_quality,
-            campus_historical_full_quality,
             usace_conveyor_areas_complete,
             usace_depth_areas_complete,
             usace_crane_locations_complete,
             usace_crane_locations_quality,
             usace_crane_locations_release,
             usace_floating_docks_complete,
-            ferrous_metal_processing_plants_population_complete,
             ferrous_metal_mines_population_complete,
             usace_data_coverage_areas_complete,
             epa_emergency_response_rmp_facilities_complete,
@@ -1208,9 +1180,6 @@ defs = Definitions(
             docks_source_population_complete,
             docks_source_geometry_quality,
             docks_release_acceptance_pending,
-            electric_retail_service_territories_population_complete,
-            electric_retail_service_territories_geometry_valid,
-            electric_retail_service_territories_release_pending,
             epa_facilities_full_quality,
             epa_facilities_labels_full_quality,
             epa_eez_full_quality,
@@ -1220,7 +1189,6 @@ defs = Definitions(
             epa_frs_interests_complete,
             fdic_locations_full_quality,
             fema_regions_full_quality,
-            ferc_historical_full_quality,
             fuds_program_division_boundaries_complete,
             bts_intermodal_freight_air_to_truck_complete,
             fema_nfhl_nodes_complete,
@@ -1328,7 +1296,6 @@ defs = Definitions(
             cdp_source_integrity_job,
             state_capitols_draft_job,
             national_inventory_of_dams_draft_job,
-            ornl_campus_historical_reconstruction_job,
             csa_source_integrity_job,
             concity_source_integrity_job,
             usace_conveyor_areas_draft_job,
@@ -1337,15 +1304,12 @@ defs = Definitions(
             county_subdivisions_draft_refresh_job,
             usace_crane_locations_draft_job,
             usace_floating_docks_draft_job,
-            ferrous_metal_processing_plants_draft_job,
             ferrous_metal_mines_draft_job,
-            crushed_stone_preservation_job,
             usace_data_coverage_areas_draft_job,
             epa_rmp_facilities_draft_job,
             epa_frs_sic_draft_job,
             epa_rcra_tsd_draft_job,
             docks_draft_job,
-            electric_retail_service_territories_preservation_job,
             epa_facilities_draft_job,
             epa_facilities_labels_draft_job,
             epa_eez_draft_job,
@@ -1355,7 +1319,6 @@ defs = Definitions(
             epa_frs_interests_draft_job,
             fdic_locations_draft_job,
             fema_regions_draft_job,
-            ferc_historical_reconstruction_job,
             dialysis_source_integrity_job,
         ],
         discovered("JOBS"),
@@ -1457,7 +1420,6 @@ defs = Definitions(
             aiannh_source_integrity_refresh_schedule,
             red_cross_headquarters_draft_schedule,
             usace_airport_area_draft_schedule,
-            ornl_campus_historical_integrity_schedule,
             amtrak_draft_refresh_schedule,
             faa_aviation_draft_refresh_schedule,
             ibc_boundary_draft_refresh_schedule,
@@ -1477,10 +1439,7 @@ defs = Definitions(
             county_subdivisions_draft_refresh_schedule,
             usace_crane_locations_draft_schedule,
             usace_floating_docks_draft_schedule,
-            ferrous_metal_processing_plants_draft_schedule,
             ferrous_metal_mines_draft_schedule,
-            crushed_stone_preservation_schedule,
-            electric_retail_service_territories_preservation_schedule,
             usace_data_coverage_areas_draft_schedule,
             epa_rmp_facilities_draft_schedule,
             epa_frs_sic_draft_schedule,
@@ -1496,7 +1455,6 @@ defs = Definitions(
             epa_frs_interests_draft_schedule,
             fdic_locations_draft_schedule,
             fema_regions_draft_schedule,
-            ferc_historical_integrity_schedule,
             fuds_division_draft_schedule,
             fuds_district_boundaries_draft_schedule,
             tsunami_events_draft_schedule,
