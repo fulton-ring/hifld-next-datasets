@@ -41,6 +41,7 @@ def land_mobile_broadcast_towers_complete(candidate: dict) -> AssetCheckResult:
                 - candidate.get("missing_coordinate_record_count", 0))
     passed = (feature_count > 0
               and candidate.get("source_population_complete") is True
+              and candidate.get("licensee_join_complete") is True
               and candidate.get("null_geometry_count", 0) == 0
               and feature_count == expected)
     return AssetCheckResult(passed=passed, metadata={
@@ -49,6 +50,7 @@ def land_mobile_broadcast_towers_complete(candidate: dict) -> AssetCheckResult:
         "invalid_coordinate_record_count": candidate.get("invalid_coordinate_record_count", 0),
         "missing_coordinate_record_count": candidate.get("missing_coordinate_record_count", 0),
         "service_code_counts": candidate.get("service_code_counts", {}),
+        "licensee_join_complete": candidate.get("licensee_join_complete", False),
         "record_sha256": candidate.get("record_sha256", "missing"),
         "schema_sha256": candidate.get("schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),

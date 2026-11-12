@@ -84,22 +84,26 @@ def _fixture_tables(hd_lines, en_lines, lo_lines):
             for name, body in tables.items()}
 
 
+def _default_fixture_tables():
+    hd_lines = [_hd_line(1100664, "BLN00751", service="LP"), _hd_line(1102015, "DKQA998")]
+    en_lines = [_en_line(1100664, "BLN00751"), _en_line(1102015, "DKQA998")]
+    lo_lines = [
+        _lo_line(1100664, "BLN00751", "F", lat=("38", "57", "35.4", "N"), lon=("77", "26", "47.0", "W")),
+        _lo_line(1102015, "DKQA998", "F"),
+        _lo_line(1103000, "KA2000", "M", lat=("37", "52", "7.7", "N"), lon=("122", "15", "37.9", "W"))]
+    for index in range(150):
+        uid = 1200000 + index
+        latitude = ("45", f"{index % 60:02d}", "0.0", "N")
+        longitude = ("100", f"{index % 60:02d}", "0.0", "W")
+        hd_lines.append(_hd_line(uid, f"BLT{index:05d}"))
+        en_lines.append(_en_line(uid, f"BLT{index:05d}"))
+        lo_lines.append(_lo_line(uid, f"BLT{index:05d}", "F", lat=latitude, lon=longitude))
+    return _fixture_tables(hd_lines, en_lines, lo_lines)
+
+
 def _fixture_zip(tables=None, extra_members=(), missing_members=()):
     if tables is None:
-        hd_lines = [_hd_line(1100664, "BLN00751", service="LP"), _hd_line(1102015, "DKQA998")]
-        en_lines = [_en_line(1100664, "BLN00751"), _en_line(1102015, "DKQA998")]
-        lo_lines = [
-            _lo_line(1100664, "BLN00751", "F", lat=("38", "57", "35.4", "N"), lon=("77", "26", "47.0", "W")),
-            _lo_line(1102015, "DKQA998", "F"),
-            _lo_line(1103000, "KA2000", "M", lat=("37", "52", "7.7", "N"), lon=("122", "15", "37.9", "W"))]
-        for index in range(150):
-            uid = 1200000 + index
-            latitude = ("45", f"{index % 60:02d}", "0.0", "N")
-            longitude = ("100", f"{index % 60:02d}", "0.0", "W")
-            hd_lines.append(_hd_line(uid, f"BLT{index:05d}"))
-            en_lines.append(_en_line(uid, f"BLT{index:05d}"))
-            lo_lines.append(_lo_line(uid, f"BLT{index:05d}", "F", lat=latitude, lon=longitude))
-        tables = _fixture_tables(hd_lines, en_lines, lo_lines)
+        tables = _default_fixture_tables()
     members = {name: body for name, body in tables.items()}
     for name in extra_members:
         members[name] = b"x\n"
@@ -184,20 +188,60 @@ class LandMobileBroadcastTowersContractTests(unittest.TestCase):
         self.assertEqual(source.EN_ENTITY_TYPE_INDEX, 5)
 
     def test_dms_to_decimal_matches_fcc_native_values(self):
-        self.assertAlmostEqual(source._dms_to_decimal(38, 57, 35.4, "N", max_degrees=90),
+        self.assertAlmostEqual(source._dms_to_decimal(38, 57, 35.4, "N", max_degrees=90,
+                                                      directions=source.LATITUDE_DIRECTIONS),
                                38 + 57 / 60 + 35.4 / 3600)
-        self.assertAlmostEqual(source._dms_to_decimal(77, 26, 47.0, "W", max_degrees=180),
+        self.assertAlmostEqual(source._dms_to_decimal(77, 26, 47.0, "W", max_degrees=180,
+                                                      directions=source.LONGITUDE_DIRECTIONS),
                                -(77 + 26 / 60 + 47 / 3600))
-        self.assertAlmostEqual(source._dms_to_decimal(170, 39, 44.9, "E", max_degrees=180),
+        self.assertAlmostEqual(source._dms_to_decimal(170, 39, 44.9, "E", max_degrees=180,
+                                                      directions=source.LONGITUDE_DIRECTIONS),
                                170 + 39 / 60 + 44.9 / 3600)
-        self.assertAlmostEqual(source._dms_to_decimal(13, 28, 0.0, "S", max_degrees=90),
+        self.assertAlmostEqual(source._dms_to_decimal(13, 28, 0.0, "S", max_degrees=90,
+                                                      directions=source.LATITUDE_DIRECTIONS),
                                -(13 + 28 / 60))
-        self.assertIsNone(source._dms_to_decimal(38, 57, 70.0, "N", max_degrees=90))
-        self.assertIsNone(source._dms_to_decimal(38, 60, 0.0, "N", max_degrees=90))
-        self.assertIsNone(source._dms_to_decimal(38, 57, 35.4, "X", max_degrees=90))
-        self.assertIsNone(source._dms_to_decimal(91, 0, 0.0, "N", max_degrees=90))
-        self.assertIsNone(source._dms_to_decimal(181, 0, 0.0, "W", max_degrees=180))
-        self.assertIsNone(source._dms_to_decimal(None, 57, 35.4, "N", max_degrees=90))
+        self.assertIsNone(source._dms_to_decimal(38, 57, 70.0, "N", max_degrees=90,
+                                                 directions=source.LATITUDE_DIRECTIONS))
+        self.assertIsNone(source._dms_to_decimal(38, 60, 0.0, "N", max_degrees=90,
+                                                 directions=source.LATITUDE_DIRECTIONS))
+        self.assertIsNone(source._dms_to_decimal(38, 57, 35.4, "X", max_degrees=90,
+                                                 directions=source.LATITUDE_DIRECTIONS))
+        self.assertIsNone(source._dms_to_decimal(91, 0, 0.0, "N", max_degrees=90,
+                                                 directions=source.LATITUDE_DIRECTIONS))
+        self.assertIsNone(source._dms_to_decimal(181, 0, 0.0, "W", max_degrees=180,
+                                                 directions=source.LONGITUDE_DIRECTIONS))
+        self.assertIsNone(source._dms_to_decimal(None, 57, 35.4, "N", max_degrees=90,
+                                                 directions=source.LATITUDE_DIRECTIONS))
+
+    def test_dms_directions_are_axis_pinned_and_decimal_value_is_bounded(self):
+        # Wrong-axis directions are invalid, not mapped coordinates.
+        self.assertIsNone(source._dms_to_decimal(38, 0, 0.0, "E", max_degrees=90,
+                                                 directions=source.LATITUDE_DIRECTIONS))
+        self.assertIsNone(source._dms_to_decimal(38, 0, 0.0, "W", max_degrees=90,
+                                                 directions=source.LATITUDE_DIRECTIONS))
+        self.assertIsNone(source._dms_to_decimal(77, 26, 47.0, "N", max_degrees=180,
+                                                 directions=source.LONGITUDE_DIRECTIONS))
+        self.assertIsNone(source._dms_to_decimal(77, 26, 47.0, "S", max_degrees=180,
+                                                 directions=source.LONGITUDE_DIRECTIONS))
+        # The composed decimal value, not just the degrees component, is bounded.
+        self.assertIsNone(source._dms_to_decimal(90, 30, 0.0, "N", max_degrees=90,
+                                                 directions=source.LATITUDE_DIRECTIONS))
+        self.assertIsNone(source._dms_to_decimal(180, 0, 0.1, "E", max_degrees=180,
+                                                 directions=source.LONGITUDE_DIRECTIONS))
+        self.assertAlmostEqual(source._dms_to_decimal(179, 59, 59.9, "E", max_degrees=180,
+                                                      directions=source.LONGITUDE_DIRECTIONS),
+                               179 + 59 / 60 + 59.9 / 3600)
+        # Exact axis bounds stay valid.
+        self.assertAlmostEqual(source._dms_to_decimal(90, 0, 0.0, "N", max_degrees=90,
+                                                      directions=source.LATITUDE_DIRECTIONS), 90.0)
+        self.assertAlmostEqual(source._dms_to_decimal(90, 0, 0.0, "S", max_degrees=90,
+                                                      directions=source.LATITUDE_DIRECTIONS), -90.0)
+        self.assertAlmostEqual(source._dms_to_decimal(180, 0, 0.0, "E", max_degrees=180,
+                                                      directions=source.LONGITUDE_DIRECTIONS), 180.0)
+        self.assertAlmostEqual(source._dms_to_decimal(180, 0, 0.0, "W", max_degrees=180,
+                                                      directions=source.LONGITUDE_DIRECTIONS), -180.0)
+        self.assertEqual(source.LATITUDE_DIRECTIONS, ("N", "S"))
+        self.assertEqual(source.LONGITUDE_DIRECTIONS, ("E", "W"))
 
     def test_point_wkb_is_little_endian_point(self):
         self.assertEqual(source._point_wkb(1.5, -2.25).hex(),
@@ -340,6 +384,57 @@ class LandMobileBroadcastTowersDecodeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "uls_fixed_location_callsign_disagreement"):
             source._decode(_fixture_zip(tables))
 
+    def test_missing_licensee_join_is_rejected(self):
+        # One fixed location's EN licensee row removed (producer counts updated to
+        # match): the documented single-licensee join invariant rejects the capture
+        # instead of decoding with null licensee fields.
+        tables = _fixture_tables(
+            [_hd_line(1100664, "BLN00751"), _hd_line(1109500, "BLN09500")],
+            [_en_line(1100664, "BLN00751")],
+            [_lo_line(1100664, "BLN00751", "F", lat=("38", "57", "35.4", "N"),
+                      lon=("77", "26", "47.0", "W")),
+             _lo_line(1109500, "BLN09500", "F", lat=("38", "57", "35.4", "N"),
+                      lon=("77", "26", "47.0", "W"))])
+        with self.assertRaisesRegex(ValueError, "uls_fixed_location_without_licensee:1"):
+            source._decode(_fixture_zip(tables))
+
+    def test_en_licensee_callsign_disagreement_is_rejected(self):
+        tables = _fixture_tables(
+            [_hd_line(1100664, "BLN00751")], [_en_line(1100664, "BLN00042")],
+            [_lo_line(1100664, "BLN00751", "F", lat=("38", "57", "35.4", "N"),
+                      lon=("77", "26", "47.0", "W"))])
+        with self.assertRaisesRegex(ValueError, "uls_en_licensee_callsign_disagreement:1"):
+            source._decode(_fixture_zip(tables))
+
+    def test_wrong_axis_coordinate_direction_is_counted_as_invalid(self):
+        # Directions borrowed from the wrong axis (a latitude carried 'E', a
+        # longitude carried 'N') are excluded from features and counted, never
+        # mapped into geometries.
+        hd_lines, en_lines, lo_lines = [], [], []
+        for index in range(300):
+            uid = 1400000 + index
+            hd_lines.append(_hd_line(uid, f"BLX{index:05d}"))
+            en_lines.append(_en_line(uid, f"BLX{index:05d}"))
+            lo_lines.append(_lo_line(uid, f"BLX{index:05d}", "F",
+                                     lat=("45", f"{index % 60:02d}", "0.0", "N"),
+                                     lon=("100", f"{index % 60:02d}", "0.0", "W")))
+        hd_lines.append(_hd_line(1500000, "BLX99998"))
+        en_lines.append(_en_line(1500000, "BLX99998"))
+        lo_lines.append(_lo_line(1500000, "BLX99998", "F", lat=("38", "0", "0.0", "E"),
+                                 lon=("77", "26", "47.0", "W")))
+        hd_lines.append(_hd_line(1500001, "BLX99999"))
+        en_lines.append(_en_line(1500001, "BLX99999"))
+        lo_lines.append(_lo_line(1500001, "BLX99999", "F", lat=("38", "57", "35.4", "N"),
+                                 lon=("90", "30", "0.0", "N")))
+        features, audit, parquet = source._decode(_fixture_zip(
+            _fixture_tables(hd_lines, en_lines, lo_lines)))
+        self.assertEqual(audit["fixed_location_count"], 302)
+        self.assertEqual(audit["invalid_coordinate_record_count"], 2)
+        self.assertEqual(audit["missing_coordinate_record_count"], 0)
+        self.assertEqual(len(features), 300)
+        self.assertEqual(audit["invalid_coordinate_unique_system_identifiers"],
+                         [1500000, 1500001])
+
     def test_excessive_null_geometry_is_rejected(self):
         tables = _fixture_tables(
             [_hd_line(1100664, "BLN00751")], [_en_line(1100664, "BLN00751")],
@@ -396,6 +491,66 @@ class LandMobileBroadcastTowersLifecycleTests(unittest.TestCase):
                 self.assertTrue(reused["reused"])
                 self.assertEqual(reused["version"], candidate["version"])
                 self.assertEqual(storage.read_key(f"{prefix}/geoparquet/{source.FILE_SLUG}.parquet"), sealed)
+
+    def test_blocking_check_requires_complete_licensee_join(self):
+        from dagster_hifld.assets.land_mobile_broadcast_towers import (
+            land_mobile_broadcast_towers_complete,
+        )
+        candidate = {"feature_count": 151, "fixed_location_count": 152,
+                     "invalid_coordinate_record_count": 0, "missing_coordinate_record_count": 1,
+                     "source_population_complete": True, "licensee_join_complete": True,
+                     "null_geometry_count": 0}
+        check = land_mobile_broadcast_towers_complete(candidate)
+        self.assertTrue(check.passed)
+        self.assertTrue(check.metadata["licensee_join_complete"].value)
+        self.assertFalse(check.metadata["release_accepted"].value)
+        failed = dict(candidate, licensee_join_complete=False)
+        self.assertFalse(land_mobile_broadcast_towers_complete(failed).passed)
+
+    def test_weekly_regeneration_seals_new_candidate_without_identity_mismatch(self):
+        # A regenerated weekly archive whose decoded features are unchanged (here
+        # only the counts creation timestamp moves Nov 8 -> Nov 15) must seal a
+        # new immutable candidate: the candidate version includes the archive
+        # identity, so it cannot collide with the sealed candidate and then fail
+        # construction_bundle_identity_mismatch on its refresh.
+        regenerated_tables = _default_fixture_tables()
+        regenerated_tables["counts"] = _counts_file(hd=152, en=152, lo=153).decode(
+            "latin-1").replace("Sun Nov  8 09:29:39 EST 2026",
+                               "Sun Nov 15 09:29:39 EST 2026").encode("latin-1")
+        regenerated = _fixture_zip(regenerated_tables)
+        original = _fixture_zip()
+        self.assertNotEqual(hashlib.sha256(original).hexdigest(),
+                            hashlib.sha256(regenerated).hexdigest())
+        with tempfile.TemporaryDirectory(prefix="lmbt-refresh-") as temporary:
+            root = Path(temporary)
+            storage = source.StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                    prefix="")
+            with patch.object(source, "capture_get", side_effect=_fake_capture_get(
+                    {"lm_bcast": original})), \
+                    patch.object(source.httpx, "Client", side_effect=lambda *a, **k: EmptyClient()):
+                sealed = source.capture_land_mobile_broadcast_towers(
+                    storage, version="vfixture", capture_directory=str(root / "captures-a"))
+                self.assertFalse(sealed["reused"])
+            with patch.object(source, "capture_get", side_effect=_fake_capture_get(
+                    {"lm_bcast": regenerated})), \
+                    patch.object(source.httpx, "Client", side_effect=lambda *a, **k: EmptyClient()):
+                refresh = source.capture_land_mobile_broadcast_towers(
+                    storage, version="vfixture", capture_directory=str(root / "captures-b"))
+            self.assertFalse(refresh["reused"])
+            self.assertNotEqual(refresh["version"], sealed["version"])
+            self.assertEqual(refresh["record_sha256"], sealed["record_sha256"])
+            self.assertEqual(refresh["feature_count"], sealed["feature_count"])
+            self.assertEqual(refresh["licensee_join_complete"], True)
+            slug = source.DATASET_SLUG
+            self.assertTrue(storage.object_snapshot(f"_construction-state/{slug}/{sealed['version']}.json"))
+            self.assertTrue(storage.object_snapshot(f"_construction-state/{slug}/{refresh['version']}.json"))
+            with patch.object(source, "capture_get", side_effect=_fake_capture_get(
+                    {"lm_bcast": original})), \
+                    patch.object(source.httpx, "Client", side_effect=lambda *a, **k: EmptyClient()):
+                replay = source.capture_land_mobile_broadcast_towers(
+                    storage, version="vfixture", capture_directory=str(root / "captures-a"))
+            self.assertTrue(replay["reused"])
+            self.assertEqual(replay["version"], sealed["version"])
 
     def test_incomplete_capture_is_quarantined_with_retained_receipt(self):
         def fake_capture_get(_client, url, capture_root, name, *, max_bytes):

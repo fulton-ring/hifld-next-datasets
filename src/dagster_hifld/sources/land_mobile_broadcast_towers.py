@@ -39,7 +39,6 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix,
     capture_get,
-    content_derived_version,
     processing_identity,
     quarantine_incomplete_capture,
     seal_ready_candidate,
@@ -132,6 +131,12 @@ LOCATION_TYPE_INDEX = [name for name, _ in LOCATION_FIELDS].index("location_type
 # 6 are mobile, itinerant, temporary or control-station location types.
 FIXED_LOCATION_TYPE = "F"
 
+# Official axis directions of the LO DMS columns per the Public Access Database
+# Definitions: latitude_direction carries only N/S and longitude_direction only
+# E/W; a direction from the wrong axis is invalid, never a mapped coordinate.
+LATITUDE_DIRECTIONS = ("N", "S")
+LONGITUDE_DIRECTIONS = ("E", "W")
+
 # HD license-header layout carries 59 positions (51-55 added 2019/2020 and 56-59
 # for 900 MHz certifications; verified 59 fields on every HD record 2026-11-12).
 HD_EXPECTED_FIELD_COUNT = 59
@@ -142,7 +147,9 @@ HD_JOIN_INDEXES = {
 HD_CALL_SIGN_INDEX = 4
 # EN entity records: one licensee ('L' Entity Type) per license was observed.
 EN_EXPECTED_FIELD_COUNT = 30
-# 0-based indices of the EN join columns (official positions 2, 6, 7, 8).
+# Official positions 5-8 are Call Sign, Entity Type, Licensee ID and Entity Name
+# (0-based indices 4-7); the licensee row's call sign must agree with the license.
+EN_CALL_SIGN_INDEX = 4
 EN_ENTITY_TYPE_INDEX = 5
 EN_LICENSEE_INDEXES = {"licensee_id": 6, "licensee_name": 7}
 LICENSEE_ENTITY_TYPE = "L"
@@ -262,15 +269,23 @@ def _cast(field: str, kind: str) -> object:
 
 
 def _dms_to_decimal(degrees: object, minutes: object, seconds: object,
-                    direction: object, *, max_degrees: int) -> float | None:
-    """Native DMS to decimal degrees; invalid or incomplete values stay None."""
+                    direction: object, *, max_degrees: int,
+                    directions: tuple[str, str]) -> float | None:
+    """Native DMS to decimal degrees; invalid or incomplete values stay None.
+
+    ``directions`` pins the axis (latitude N/S, longitude E/W), so a direction
+    borrowed from the wrong axis is invalid. The composed decimal value is bound
+    too: a degrees-only check would accept 90°30' N as a valid latitude.
+    """
     if None in (degrees, minutes, seconds, direction):
         return None
     if not 0 <= degrees <= max_degrees or not 0 <= minutes < 60 or not 0 <= seconds < 60:
         return None
-    if direction not in ("N", "S", "E", "W"):
+    if direction not in directions:
         return None
     decimal = degrees + minutes / 60 + seconds / 3600
+    if decimal > max_degrees:
+        return None
     if direction in ("S", "W"):
         decimal = -decimal
     return decimal
@@ -285,8 +300,9 @@ def _join_features(tables: Mapping[str, bytes], counts: Mapping[str, object]) ->
 
     Completeness is verified against the producer's own `counts` manifest: every
     listed table must contain exactly the declared number of records. Every fixed
-    LO population record joins to its HD license header and single licensee EN
-    record on Unique System Identifier, with call-sign agreement enforced.
+    LO population record joins to its HD license header and its single licensee
+    EN record on Unique System Identifier, with license and licensee call-sign
+    agreement enforced; join-integrity violations reject the whole capture.
     """
     for member in sorted(EXPECTED_MEMBERS):
         if member not in tables:
@@ -335,6 +351,8 @@ def _join_features(tables: Mapping[str, bytes], counts: Mapping[str, object]) ->
     missing_coordinates: list[int] = []
     missing_header: list[int] = []
     callsign_disagreements: list[int] = []
+    missing_licensee: list[int] = []
+    licensee_callsign_disagreements: list[int] = []
     for fields in fixed_records:
         record = {name: _cast(fields[index], kind)
                   for index, (name, kind) in enumerate(LOCATION_FIELDS)}
@@ -346,16 +364,23 @@ def _join_features(tables: Mapping[str, bytes], counts: Mapping[str, object]) ->
         for name, index in HD_JOIN_INDEXES.items():
             record[name] = header[index]
         licensee = licensees.get(uid)
+        if licensee is None:
+            # The documented invariant is exactly one matching licensee EN record
+            # per license; a missing join is drift, never a silently null field.
+            missing_licensee.append(uid)
+            continue
+        if licensee[EN_CALL_SIGN_INDEX] != record["call_sign"]:
+            licensee_callsign_disagreements.append(uid)
         for name, index in EN_LICENSEE_INDEXES.items():
-            record[name] = None if licensee is None else licensee[index]
+            record[name] = licensee[index]
         if record["call_sign"] != header[HD_CALL_SIGN_INDEX]:
             callsign_disagreements.append(uid)
         latitude = _dms_to_decimal(record["latitude_degrees"], record["latitude_minutes"],
                                    record["latitude_seconds"], record["latitude_direction"],
-                                   max_degrees=90)
+                                   max_degrees=90, directions=LATITUDE_DIRECTIONS)
         longitude = _dms_to_decimal(record["longitude_degrees"], record["longitude_minutes"],
                                     record["longitude_seconds"], record["longitude_direction"],
-                                    max_degrees=180)
+                                    max_degrees=180, directions=LONGITUDE_DIRECTIONS)
         if latitude is None or longitude is None:
             # The FCC states the licensing data contain known coordinate errors:
             # unmappable fixed locations are excluded from candidate features but
@@ -369,8 +394,13 @@ def _join_features(tables: Mapping[str, bytes], counts: Mapping[str, object]) ->
         features.append(record)
     if missing_header:
         raise ULSDraftError(f"uls_fixed_location_without_license_header:{len(missing_header)}")
+    if missing_licensee:
+        raise ULSDraftError(f"uls_fixed_location_without_licensee:{len(missing_licensee)}")
     if callsign_disagreements:
         raise ULSDraftError(f"uls_fixed_location_callsign_disagreement:{len(callsign_disagreements)}")
+    if licensee_callsign_disagreements:
+        raise ULSDraftError(
+            f"uls_en_licensee_callsign_disagreement:{len(licensee_callsign_disagreements)}")
     audit = {
         "uls_file_creation_date": counts["file_creation_date"],
         "uls_file_creation_date_iso": counts["file_creation_date_iso"],
@@ -386,6 +416,7 @@ def _join_features(tables: Mapping[str, bytes], counts: Mapping[str, object]) ->
         "missing_coordinate_unique_system_identifiers": sorted(missing_coordinates)[:50],
         "license_header_count": len(headers),
         "licensee_entity_count": len(licensees),
+        "licensee_join_complete": True,
     }
     return features, audit
 
@@ -561,7 +592,16 @@ def capture_land_mobile_broadcast_towers(storage: StagingStorageResource, *, ver
     schema_sha = _sha(_canonical(list(OUTPUT_FIELD_TYPES)))
     evidence_sha = _sha(_canonical({"body": receipt["sha256"], "wire": receipt["wire_sha256"],
                                     "receipt": receipt}))
-    candidate_version = content_derived_version(record_sha, geometry_sha, schema_sha, identity)
+    # The candidate version and the construction fingerprint both include the
+    # captured archive identity: a weekly regeneration is a new release even when
+    # decoded features are unchanged, and a replay of the same archive bytes
+    # reuses the same immutable candidate. A version that omitted the archive
+    # sha256 would collide with its own refresh and then fail the fingerprint
+    # check as a construction_bundle_identity_mismatch.
+    candidate_version = "v" + _sha(_canonical({
+        "archive_sha256": receipt["sha256"], "record_sha256": record_sha,
+        "geometry_sha256": geometry_sha, "schema_sha256": schema_sha,
+        "processing_identity": identity}))[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, candidate_version)
     op = f"geoparquet/{FILE_SLUG}.parquet"
     creation = audit["uls_file_creation_date"]
@@ -621,8 +661,10 @@ def capture_land_mobile_broadcast_towers(storage: StagingStorageResource, *, ver
                                        "meanings, or substituted."),
                 "joins": ("License status, radio service code and grant/expire dates from the "
                           "official HD table plus licensee id/name from the single licensee EN "
-                          "record, joined on Unique System Identifier; every raw table is "
-                          "staged losslessly under raw/."),
+                          "record, joined on Unique System Identifier; exactly one matching "
+                          "licensee per fixed location and license/licensee call-sign "
+                          "agreement are enforced and violations reject the capture; every "
+                          "raw table is staged losslessly under raw/."),
                 "geometry": ("DMS converted to decimal degrees only for the geometry column; "
                              "invalid or incomplete DMS keeps null geometry with raw values "
                              "retained. No reprojection or coordinate repair."),
@@ -689,6 +731,7 @@ def capture_land_mobile_broadcast_towers(storage: StagingStorageResource, *, ver
                 "invalid_coordinate_record_count": audit["invalid_coordinate_record_count"],
                 "missing_coordinate_record_count": audit["missing_coordinate_record_count"],
                 "service_code_counts": audit["service_code_counts"],
+                "licensee_join_complete": audit["licensee_join_complete"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_capture_evidence_sha256": evidence_sha, "capture_directory": str(root),
                 "release_accepted": False}
@@ -715,6 +758,7 @@ def capture_land_mobile_broadcast_towers(storage: StagingStorageResource, *, ver
             "invalid_coordinate_record_count": audit["invalid_coordinate_record_count"],
             "missing_coordinate_record_count": audit["missing_coordinate_record_count"],
             "service_code_counts": audit["service_code_counts"],
+            "licensee_join_complete": audit["licensee_join_complete"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
             "source_capture_evidence_sha256": evidence_sha, "capture_directory": str(root),
             "source_release_accepted": False, "source_freshness_accepted": False,
