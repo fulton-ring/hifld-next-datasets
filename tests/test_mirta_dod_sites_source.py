@@ -475,7 +475,9 @@ class MirtaScenarioTests(unittest.TestCase):
 class MirtaCompleteSourceTests(unittest.TestCase):
     def test_complete_original_source(self):
         with tempfile.TemporaryDirectory() as tmp:
-            staging = StagingStorageResource(local_dir=str(Path(tmp) / 'staging'))
+            staging_root = Path(tmp) / 'staging'
+            staging_root.mkdir()
+            staging = StagingStorageResource(local_dir=str(staging_root))
             result = s.stage_mirta_boundaries(staging, capture_dir=CAPTURE)
             self.assertEqual(result['feature_count'], 825)
             self.assertFalse(result['reused'])
