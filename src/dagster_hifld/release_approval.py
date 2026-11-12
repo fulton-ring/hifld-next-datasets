@@ -12,12 +12,19 @@ import json
 import os
 import re
 import tempfile
+from decimal import Decimal
 from pathlib import Path
 
 from dagster_hifld.provenance import provenance_projection, validate_provenance
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest, unsupported_output_reason, prebuilt_output_keys
 from dagster_hifld.native_verification import ADAPTER as NATIVE_ADAPTER, NativeReadLimits, _code_digest, _digest, compare_native_inputs, reader_versions
+from dagster_hifld.transformation_accounting import (
+    ADAPTER as ACCOUNTING_ADAPTER, AccountingLimits, account_construction,
+    _code_digest as _accounting_code_digest, _digest as _accounting_digest,
+)
+from dagster_hifld.validation import _no_duplicate_members, typed_value
+from dagster_hifld.portolan.release import read_staged_release, require_current_baseline
 
 
 class ReleaseApprovalError(ValueError):
@@ -98,12 +105,13 @@ def _entry(registry: dict, destination: StagingStorageResource, key: str) -> dic
     return entry
 
 
-def require_generated_object_approval(storage: StagingStorageResource, key: str, contents: bytes) -> None:
+def require_generated_object_approval(storage: StagingStorageResource, key: str, contents: bytes) -> dict:
     """Generated published metadata/styles are also subject to exact acceptance."""
     logical = storage._ensure_prefixed(key).removeprefix(storage.prefix.rstrip("/") + "/") if storage.prefix else key
     entry = _entry(_registry(None, storage), storage, logical)
     if hashlib.sha256(contents).hexdigest() != entry["published_objects"][logical]:
         raise ReleaseApprovalError(f"generated_object_differs_from_accepted_bytes:{logical}")
+    return entry
 
 
 def require_release_approval(
@@ -123,6 +131,7 @@ def require_release_approval(
     registry = _registry(source, destination)
     snapshots = {}
     checked = set()
+    identities = {}
     for source_key, destination_key in pairs:
         logical = destination._ensure_prefixed(destination_key)
         if destination.prefix:
@@ -133,7 +142,21 @@ def require_release_approval(
             prefix = entry.get("staged_version_prefix", "")
             if not prefix or len(prefix.split("/")) != 3:
                 raise ReleaseApprovalError("invalid_staged_version_identity")
+            document, destination_prefix = read_staged_release(source, prefix)
+            # Existing evidence verifiers reason about staged keys. Translate
+            # the approved destination inventory back to that namespace once;
+            # no provenance/report bytes or their original custody paths change.
+            translated = {
+                prefix + "/" + key.removeprefix(destination_prefix + "/"): digest
+                for key, digest in entry["published_objects"].items()
+                if key.startswith(destination_prefix + "/")
+            }
+            entry = {**entry, "published_objects": translated}
+            identities[entry_id] = (entry, prefix, destination_prefix)
             expected = entry.get("staged_objects", {})
+            collection_key = f"{prefix}/collection.json"
+            if not expected.get(collection_key) or translated.get(collection_key) != expected[collection_key]:
+                raise ReleaseApprovalError("staged_collection_version_not_independently_approved")
             actual_keys = source.list_prefix(prefix)
             normalized = {key.removeprefix(source.prefix.rstrip("/") + "/") if source.prefix else key: key for key in actual_keys}
             if set(normalized) != set(expected):
@@ -145,6 +168,7 @@ def require_release_approval(
                 if source.object_snapshot(key) != before:
                     raise ReleaseApprovalError(f"staged_object_changed_during_verification:{name}")
                 snapshots[key] = before
+            require_current_baseline(destination, document, entry["baseline"])
             for filename, digest in (("baseline_comparison.json", entry["report_sha256"]), ("source_manifest.json", entry["provenance_sha256"])):
                 key = f"{prefix}/metadata/{filename}"
                 if expected.get(key) != digest:
@@ -208,12 +232,17 @@ def require_release_approval(
                 _require_downloadable_evidence(entry, prefix, field_sidecar)
             if "native_inputs" in report:
                 _require_native_evidence(report, entry, source, prefix)
+            else:
+                _require_executable_jsonl_derivation(entry, source, prefix, report)
             checked.add(entry_id)
+        entry, prefix, destination_prefix = identities[entry_id]
         normalized_source = source._ensure_prefixed(source_key)
         if normalized_source not in snapshots:
             raise ReleaseApprovalError("source_object_outside_reviewed_inventory")
         name = normalized_source.removeprefix(source.prefix.rstrip("/") + "/") if source.prefix else normalized_source
-        if entry["published_objects"][logical] != entry["staged_objects"][name]:
+        if logical != destination_prefix + "/" + name.removeprefix(prefix + "/"):
+            raise ReleaseApprovalError("destination_does_not_match_approved_stac_version")
+        if entry["published_objects"].get(name) != entry["staged_objects"][name]:
             raise ReleaseApprovalError(f"copy_bytes_differ_from_accepted_output:{logical}")
     return snapshots
 
@@ -318,6 +347,212 @@ def _require_native_evidence(report: dict, entry: dict, source: StagingStorageRe
             or physical.get("equal") is not equal or (not equal and report.get("status") == "pass")):
         raise ReleaseApprovalError("native_report_physical_schema_unmatched")
     _replay_native_originals(report, entry, source, prefix)
+
+
+def _direct_jsonl_adapter_code_sha256() -> str:
+    """Code pin for the one JSONL custody route this verifier executes itself."""
+    digest = hashlib.sha256()
+    for path in (Path(__file__), Path(__file__).with_name("validation.py")):
+        body = path.read_bytes()
+        digest.update(len(body).to_bytes(8, "big"))
+        digest.update(body)
+    return digest.hexdigest()
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non_finite_json_constant:{value}")
+
+
+def _require_executable_jsonl_derivation(entry: dict, source: StagingStorageResource, prefix: str, report: dict) -> None:
+    """Verify every JSONL comparison row keeps executable custody to its sources.
+
+    The direct route supports ordered concatenation of pinned GeoJSON Feature
+    Collections only. Constructed outputs (joins, filters, aggregation and
+    other declared transformations) require the transformation-accounting
+    adapter: a pinned plan, a complete pinned input roster and a receipt the
+    verifier replays row-by-row. Manifest text and row counts alone cannot
+    establish custody in either mode.
+    """
+    candidate = entry.get("candidate_comparison_input", {})
+    derivation = candidate.get("derivation", {})
+    params = derivation.get("parameters", {})
+    if params.get("mode") == "transformation_accounting_v1":
+        _require_accounted_jsonl_derivation(entry, source, prefix, report)
+        return
+    source_objects = derivation.get("source_objects", {})
+    if (derivation.get("code_sha256") != _direct_jsonl_adapter_code_sha256()
+            or not isinstance(source_objects, dict) or not source_objects
+            or not isinstance(params, dict) or params.get("mode") != "direct_geojson_feature_collection_to_jsonl_v1"):
+        raise ReleaseApprovalError("jsonl_derivation_has_no_executable_accounting")
+    input_order = params.get("input_order")
+    if (set(params) != {"mode", "input_order"} or not isinstance(input_order, list) or not input_order
+            or len(input_order) > 64
+            or len(input_order) != len(set(input_order)) or set(input_order) != set(source_objects)
+            or any(not isinstance(key, str) or not key.endswith(".geojson") for key in input_order)):
+        raise ReleaseApprovalError("jsonl_derivation_input_roster_invalid")
+    dataset_slug, file_slug, version = prefix.split("/")
+    manifest = load_resolved_source_manifest(source, dataset_slug, file_slug, version).metadata
+    if manifest.get("transformations") != []:
+        raise ReleaseApprovalError("jsonl_transform_requires_executable_native_lineage")
+    expected_lineage = {
+        "schema_version": 1,
+        "adapter": "direct_geojson_feature_collection_to_jsonl_v1",
+        "code_sha256": derivation["code_sha256"],
+        "input_order": input_order,
+        "source_objects": source_objects,
+        "output": {"key": candidate.get("key"), "sha256": candidate.get("sha256"), "bytes": candidate.get("bytes")},
+    }
+    if manifest.get("lineage") != expected_lineage:
+        raise ReleaseApprovalError("jsonl_executable_lineage_missing_from_runtime_provenance")
+
+    byte_limit = 64 * 1024 * 1024
+    candidate_key = candidate.get("key")
+    if not isinstance(candidate_key, str) or source.key_size(candidate_key) > byte_limit:
+        raise ReleaseApprovalError("jsonl_candidate_exceeds_direct_adapter_budget")
+    candidate_bytes = source.read_key(candidate_key)
+    if hashlib.sha256(candidate_bytes).hexdigest() != candidate.get("sha256") or len(candidate_bytes) != candidate.get("bytes"):
+        raise ReleaseApprovalError("jsonl_candidate_changed_during_lineage_check")
+    consumed_bytes = len(candidate_bytes)
+    candidate_lines = candidate_bytes.splitlines()
+    position = 0
+    try:
+        for key in input_order:
+            if source.key_size(key) > byte_limit:
+                raise ReleaseApprovalError("jsonl_source_exceeds_direct_adapter_budget")
+            body = source.read_key(key)
+            if hashlib.sha256(body).hexdigest() != source_objects[key] or len(body) > byte_limit:
+                raise ReleaseApprovalError("jsonl_source_changed_during_lineage_check")
+            consumed_bytes += len(body)
+            if consumed_bytes > byte_limit:
+                raise ReleaseApprovalError("jsonl_derivation_exceeds_direct_adapter_budget")
+            collection = json.loads(body, parse_float=Decimal, object_pairs_hook=_no_duplicate_members,
+                                    parse_constant=_reject_json_constant)
+            if (not isinstance(collection, dict) or set(collection) != {"type", "features"}
+                    or collection.get("type") != "FeatureCollection" or not isinstance(collection["features"], list)):
+                raise ReleaseApprovalError("jsonl_source_is_not_supported_feature_collection")
+            for feature in collection["features"]:
+                if not isinstance(feature, dict) or set(feature) != {"type", "properties", "geometry"}:
+                    raise ReleaseApprovalError("jsonl_source_feature_has_unsupported_members")
+                if position >= len(candidate_lines) or not candidate_lines[position]:
+                    raise ReleaseApprovalError("jsonl_candidate_omits_source_feature")
+                row = json.loads(candidate_lines[position], parse_float=Decimal,
+                                 object_pairs_hook=_no_duplicate_members, parse_constant=_reject_json_constant)
+                if typed_value(row) != typed_value(feature):
+                    raise ReleaseApprovalError("jsonl_candidate_feature_differs_from_source")
+                position += 1
+        if position != len(candidate_lines):
+            raise ReleaseApprovalError("jsonl_candidate_contains_unaccounted_features")
+    except (ValueError, TypeError, UnicodeDecodeError, RecursionError) as exc:
+        raise ReleaseApprovalError("jsonl_source_to_output_accounting_failed:" + str(exc)) from exc
+
+
+def _require_accounted_jsonl_derivation(entry: dict, source: StagingStorageResource, prefix: str, report: dict) -> None:
+    """Replay executable transformation accounting for a constructed output.
+
+    The plan, receipt and complete lineage sidecar must be independently
+    pinned and downloadable. The verifier re-runs the bounded plan over the
+    pinned staged input roster and requires the recomputed receipt and
+    terminal stream to match exactly. This is construction custody only; the
+    accepted baseline comparison and release decision remain separate gates.
+    """
+    candidate = entry.get("candidate_comparison_input", {})
+    derivation = candidate.get("derivation", {})
+    params = derivation.get("parameters", {})
+    source_objects = derivation.get("source_objects", {})
+    if (derivation.get("code_sha256") != _accounting_code_digest()
+            or not isinstance(source_objects, dict) or not source_objects
+            or not isinstance(params, dict) or set(params) != {"mode", "plan_path", "receipt_path"}
+            or params.get("mode") != "transformation_accounting_v1"):
+        raise ReleaseApprovalError("accounted_derivation_has_no_executable_accounting")
+    descriptor = report.get("construction_accounting")
+    if not isinstance(descriptor, dict) or set(descriptor) != {"adapter", "plan", "receipt", "lineage"}:
+        raise ReleaseApprovalError("missing_or_malformed_construction_accounting_descriptor")
+    if descriptor.get("adapter") != ACCOUNTING_ADAPTER:
+        raise ReleaseApprovalError("construction_accounting_adapter_unmatched")
+    for name in ("plan", "receipt", "lineage"):
+        if not isinstance(descriptor.get(name), dict) or set(descriptor[name]) != {"path", "sha256"}:
+            raise ReleaseApprovalError("construction_accounting_evidence_incomplete")
+    if params["plan_path"] != descriptor["plan"]["path"] or params["receipt_path"] != descriptor["receipt"]["path"]:
+        raise ReleaseApprovalError("accounted_derivation_paths_do_not_match_report")
+    plan_key = _require_downloadable_evidence(entry, prefix, descriptor["plan"])
+    receipt_key = _require_downloadable_evidence(entry, prefix, descriptor["receipt"])
+    lineage_key = _require_downloadable_evidence(entry, prefix, descriptor["lineage"])
+    dataset_slug, file_slug, version = prefix.split("/")
+    manifest = load_resolved_source_manifest(source, dataset_slug, file_slug, version).metadata
+    transformations = manifest.get("transformations")
+    if not isinstance(transformations, list) or not transformations:
+        raise ReleaseApprovalError("accounted_output_requires_declared_transformations")
+    try:
+        plan_body = source.read_key(plan_key)
+        receipt_body = source.read_key(receipt_key)
+        receipt = json.loads(receipt_body)
+    except (OSError, ValueError) as exc:
+        raise ReleaseApprovalError("unreadable_construction_accounting_evidence") from exc
+    if hashlib.sha256(plan_body).hexdigest() != descriptor["plan"]["sha256"]:
+        raise ReleaseApprovalError("construction_plan_changed_during_verification")
+    if hashlib.sha256(receipt_body).hexdigest() != descriptor["receipt"]["sha256"]:
+        raise ReleaseApprovalError("construction_receipt_changed_during_verification")
+    try:
+        plan = json.loads(plan_body, parse_float=Decimal, object_pairs_hook=_no_duplicate_members,
+                          parse_constant=_reject_json_constant)
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise ReleaseApprovalError("unreadable_construction_plan") from exc
+    expected_plan_sha = hashlib.sha256(json.dumps(plan, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if (not isinstance(receipt, dict) or receipt.get("schema_version") != 1
+            or receipt.get("adapter") != ACCOUNTING_ADAPTER or receipt.get("status") != "pass"
+            or receipt.get("acceptance") != "not_established_by_accounting"
+            or receipt.get("code_sha256") != _accounting_code_digest()
+            or receipt.get("plan_sha256") != expected_plan_sha
+            or _accounting_digest({key: value for key, value in receipt.items() if key != "receipt_id"}) != receipt.get("receipt_id")):
+        raise ReleaseApprovalError("construction_receipt_incomplete_forged_or_stale")
+    receipt_parameters = receipt.get("parameters", {})
+    receipt_streams = receipt_parameters.get("streams", {})
+    receipt_candidate = receipt_parameters.get("candidate", {})
+    if (not isinstance(receipt_streams, dict) or not receipt_streams
+            or any(f"{prefix}/{pin.get('path')}" not in source_objects
+                   or source_objects[f"{prefix}/{pin.get('path')}"] != pin.get("sha256")
+                   for pin in receipt_streams.values())):
+        raise ReleaseApprovalError("accounting_input_roster_not_independently_pinned")
+    if (f"{prefix}/{receipt_candidate.get('path')}" != candidate.get("key")
+            or receipt_candidate.get("sha256") != candidate.get("sha256")
+            or receipt_candidate.get("bytes") != candidate.get("bytes")
+            or candidate.get("adapter") != "typed-geojson-feature-jsonl-v1"):
+        raise ReleaseApprovalError("accounting_candidate_pin_unmatched")
+    lineage = receipt.get("lineage", {})
+    if (not isinstance(lineage, dict) or lineage.get("sha256") != descriptor["lineage"].get("sha256")
+            or lineage.get("path") != descriptor["lineage"].get("path")
+            or source.key_size(lineage_key) != lineage.get("bytes")):
+        raise ReleaseApprovalError("accounting_lineage_sidecar_unmatched")
+    expected_lineage = {
+        "schema_version": 1,
+        "adapter": ACCOUNTING_ADAPTER,
+        "code_sha256": _accounting_code_digest(),
+        "input_streams": source_objects,
+        "plan": {"key": plan_key, "sha256": descriptor["plan"]["sha256"]},
+        "receipt": {"key": receipt_key, "sha256": descriptor["receipt"]["sha256"]},
+        "lineage": {"key": lineage_key, "sha256": descriptor["lineage"]["sha256"]},
+        "output": {"key": candidate.get("key"), "sha256": candidate.get("sha256"), "bytes": candidate.get("bytes")},
+    }
+    if manifest.get("lineage") != expected_lineage:
+        raise ReleaseApprovalError("accounting_lineage_missing_from_runtime_provenance")
+    try:
+        limits = AccountingLimits(**receipt.get("limits", {}))
+    except (TypeError, ValueError) as exc:
+        raise ReleaseApprovalError("invalid_accounting_replay_limits") from exc
+    defaults = AccountingLimits()
+    if any(type(value) is not int or value < 1 or value > getattr(defaults, name) for name, value in vars(limits).items()):
+        raise ReleaseApprovalError("accounting_replay_limits_exceed_trusted_default_budgets")
+    with source.get_local_version_dir(dataset_slug, file_slug, version) as version_dir:
+        spec = {"schema_version": 1, "root": str(Path(version_dir)),
+                "roster_prefix": receipt_parameters.get("roster_prefix", "."),
+                "streams": [{"name": name, **pin} for name, pin in receipt_streams.items()]}
+        try:
+            with tempfile.TemporaryDirectory(prefix="hifld-accounting-replay-") as temporary:
+                replay = account_construction(spec, plan, receipt_candidate, Path(temporary) / "evidence", limits=limits)
+        except (ValueError, OSError, KeyError, TypeError) as exc:
+            raise ReleaseApprovalError("construction_accounting_replay_failed:" + str(exc)) from exc
+        if replay != receipt:
+            raise ReleaseApprovalError("construction_accounting_replay_mismatch")
 
 
 def _replay_native_originals(report: dict, entry: dict, source: StagingStorageResource, prefix: str) -> None:
