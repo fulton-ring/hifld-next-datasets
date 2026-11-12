@@ -146,7 +146,10 @@ from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsuna
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
 from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
 
+from dagster_hifld.assets.healthcare_dialysis import healthcare_ready_dialysis_centers
+
 hifld_ingest_assets = [
+    healthcare_ready_dialysis_centers,
     bts_ferry_terminals,
     smithsonian_holocene_volcanoes,
     bts_ferry_routes,

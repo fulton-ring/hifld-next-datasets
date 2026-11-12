@@ -15,6 +15,7 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.healthcare_dialysis import dialysis_source_integrity_job, dialysis_source_integrity_schedule, dialysis_source_locations
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals_draft_refresh_job, bts_ferry_terminals_draft_refresh_schedule
 from dagster_hifld.assets.smithsonian_holocene import holocene_source_integrity_job, holocene_source_integrity_schedule
 from dagster_hifld.assets.historical_tsunami_events import (
@@ -1157,6 +1158,7 @@ defs = Definitions(
         bts_intermodal_freight_air_to_truck_complete,
         fema_nfhl_nodes_complete,
         fema_nfhl_hydrologic_reaches_complete,
+        dialysis_source_locations,
         usace_fuds_munitions_response_sites_complete,
         usace_fuds_public_properties_complete,
     ],
@@ -1274,6 +1276,7 @@ defs = Definitions(
         fdic_locations_draft_job,
         fema_regions_draft_job,
         ferc_historical_reconstruction_job,
+        dialysis_source_integrity_job,
     ],
     schedules=[
         bts_ferry_terminals_draft_refresh_schedule,
@@ -1404,6 +1407,7 @@ defs = Definitions(
         fuds_district_boundaries_draft_schedule,
         tsunami_events_draft_schedule,
         bts_air_truck_draft_schedule,
+        dialysis_source_integrity_schedule,
         fuds_mrs_draft_schedule,
         fuds_public_properties_draft_schedule,
     ],
