@@ -1096,17 +1096,17 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
         if receipt is None or receipt.get("complete_body") is not True:
             raise ValueError("source_raw_evidence_missing_for_staging:" + name)
         if is_zip:
-            _upload_immutable_file(storage, f"raw/{name}.zip", capture_root / f"{name}.zip",
+            _upload_immutable_file(storage, f"{prefix}/raw/{name}.zip", capture_root / f"{name}.zip",
                                    {"bytes": receipt["bytes"], "sha256": receipt["sha256"]},
                                    consume_source=True)
         else:
-            _upload_immutable_file(storage, f"raw/{name}.body", capture_root / f"{name}.body",
+            _upload_immutable_file(storage, f"{prefix}/raw/{name}.body", capture_root / f"{name}.body",
                                    {"bytes": receipt["bytes"], "sha256": receipt["sha256"]},
                                    consume_source=True)
-            _upload_immutable_file(storage, f"raw/{name}.wire", capture_root / f"{name}.wire",
+            _upload_immutable_file(storage, f"{prefix}/raw/{name}.wire", capture_root / f"{name}.wire",
                                    {"bytes": receipt["wire_bytes"], "sha256": receipt["wire_sha256"]},
                                    consume_source=True)
-        write_immutable(storage, f"raw/{name}.receipt.json", _manifest_body(receipt))
+        write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _manifest_body(receipt))
     descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in metadata_objects.items()}
     descriptors[parquet_rel] = source_objects[parquet_rel]
     descriptors.update(raw_descriptors)
