@@ -144,6 +144,12 @@ from dagster_hifld.assets.epa_power_generation import (
     epa_power_generation_draft_job,
     epa_power_generation_draft_schedule,
 )
+from dagster_hifld.assets.national_transit_map_agencies import (
+    bts_national_transit_map_agencies_candidate_complete,
+    bts_national_transit_map_agencies_draft_job,
+    bts_national_transit_map_agencies_draft_schedule,
+    bts_national_transit_map_agencies_release_gate,
+)
 from dagster_hifld.assets.fuds_projects_points import (
     fuds_projects_points_draft_schedule,
     usace_fuds_projects_points_complete,
@@ -1247,6 +1253,8 @@ defs = Definitions(
             dialysis_source_locations,
             usace_fuds_munitions_response_sites_complete,
             usace_fuds_public_properties_complete,
+            bts_national_transit_map_agencies_candidate_complete,
+            bts_national_transit_map_agencies_release_gate,
         ],
         discovered("ASSET_CHECKS"),
     ),
@@ -1379,6 +1387,7 @@ defs = Definitions(
             fema_regions_draft_job,
             ferc_historical_reconstruction_job,
             dialysis_source_integrity_job,
+            bts_national_transit_map_agencies_draft_job,
         ],
         discovered("JOBS"),
     ),
@@ -1529,6 +1538,7 @@ defs = Definitions(
             dialysis_source_integrity_schedule,
             fuds_mrs_draft_schedule,
             fuds_public_properties_draft_schedule,
+            bts_national_transit_map_agencies_draft_schedule,
         ],
         discovered("SCHEDULES"),
     ),

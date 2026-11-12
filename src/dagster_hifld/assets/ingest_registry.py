@@ -161,6 +161,7 @@ from dagster_hifld.assets.epa_sems import epa_sems_interests
 from dagster_hifld.assets.national_bridge_inventory import national_bridge_inventory
 from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
+from dagster_hifld.assets.national_transit_map_agencies import bts_national_transit_map_agencies
 from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
 
 from dagster_hifld.assets.healthcare_dialysis import healthcare_ready_dialysis_centers
@@ -313,6 +314,7 @@ hifld_ingest_assets = [
     building_locations_usace_ienc,
     usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,
+    bts_national_transit_map_agencies,
 ]
 
 hifld_ingest_assets = unique(hifld_ingest_assets, discovered("INGEST_ASSETS"))
