@@ -369,6 +369,8 @@ def _control_identity_projection(name: str, body: bytes) -> object:
     and must match exactly. The archive body is never projected here:
     validate_receipt pins its size and sha256.
     """
+    if name == 'archive':
+        return None
     doc = strict_json(body)
     if name == 'gdb_item':
         return {field: doc.get(field) for field in ('id', 'owner', 'orgId', 'name', 'type', 'size')}
@@ -383,8 +385,6 @@ def _control_identity_projection(name: str, body: bytes) -> object:
                            for field in doc.get('fields', [])]}
     if name in ('count', 'spotcheck'):
         return doc
-    if name == 'archive':
-        return None
     raise GeoMACQuarantineError('unknown_capture_name:' + name)
 
 

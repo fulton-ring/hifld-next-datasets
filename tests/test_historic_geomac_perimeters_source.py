@@ -300,14 +300,16 @@ class GeoMACMechanicsTests(unittest.TestCase):
             doc['owner'] = 'some_other_account'
             case.rewrite_capture('gdb_item', s.encode(doc))
 
-        for mutate, quarantined in [(drifted_spotcheck_with_view_counters, True),
-                                    (renamed_gdb_owner, False)]:
+        for mutate, quarantined, reason in [(drifted_spotcheck_with_view_counters, True,
+                                             'cached_capture_differs_from_fresh_source'),
+                                            (renamed_gdb_owner, False,
+                                             'official_nifc_gdb_item_identity_changed')]:
             with scenario() as (case, store):
                 first = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
                 self.assertFalse(first['reused'])
                 root = Path(store.local_dir) / s.SLUG / s.SLUG / first['version']
                 mutate(case)
-                with self.assertRaises(ValueError):
+                with self.assertRaisesRegex(ValueError, reason):
                     s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
                 self.assertEqual(root.exists(), not quarantined)
                 self.assertEqual(quarantined, bool(
