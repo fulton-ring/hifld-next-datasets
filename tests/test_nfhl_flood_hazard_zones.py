@@ -510,7 +510,7 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
             storage = _storage(root)
             candidate = _run_capture(storage, root, _Router(_default_listing(), self.zips),
                                      pins=_pins_from_contract(contract))
-            self.assertFalse(candidate["reused"])
+            self.assertNotIn("reused", candidate)
             self.assertEqual(candidate["feature_count"], 5)
             self.assertEqual(candidate["source_null_geometry_count"], 1)
             prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
@@ -574,7 +574,7 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
             router = _Router(_default_listing(), self.zips)
             candidate = _run_capture(storage, root, router, pins=_pins_from_contract(contract))
             self.assertEqual(router.static_downloads, 0)
-            self.assertFalse(candidate["reused"])
+            self.assertNotIn("reused", candidate)
             self.assertEqual(candidate["feature_count"], 5)
 
     def test_transient_transport_failure_retries_with_attempt_evidence(self):
