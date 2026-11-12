@@ -259,7 +259,12 @@ def capture_epa_icis_wastewater_sic(staging_storage: StagingStorageResource, *,
                 "geometry": False, "compression": "zstd"}},
         ],
         "title": PORTAL_ITEM_TITLE,
-        "description": "EPA Office of Environmental Information's public FRS_Wastewater FeatureServer table 2, titled ICIS Wastewater Treatment Plants SIC Codes. The service is explicitly compiled from EPA FRS and ICIS. The table declares no formal ArcGIS relationship; a matching field name does not establish a reviewed join or complete coverage, so linkage remains unresolved. The HIFLD candidate is a historical archive and is not treated as the current source.",
+        "source_landing_url": f"https://www.arcgis.com/home/item.html?id={PROFILE.portal_item_id}",
+        "machine_download_url": TABLE_URL,
+        "historical_archive": {"archive": "DataLumos", "project_id": "239290", "version": "V1",
+                               "url": "https://www.datalumos.org/datalumos/project/239290/version/V1/view",
+                               "role": "historical_archive_not_refresh_authority"},
+        "description": "EPA Office of Environmental Information's public FRS_Wastewater FeatureServer table 2, titled ICIS Wastewater Treatment Plants SIC Codes. The service is explicitly compiled from EPA FRS and ICIS. The table declares no formal ArcGIS relationship; a matching field name does not establish a reviewed join or complete coverage, so linkage remains unresolved. The DataLumos candidate is a historical archive and is not treated as the current source.",
         "publisher": "U.S. Environmental Protection Agency, Office of Environmental Information (EPA_GEO)",
         "agency": "Environmental Protection Agency", "source_url": TABLE_URL,
         "license": "U.S. EPA public domain (source service item license statement)",
@@ -267,6 +272,7 @@ def capture_epa_icis_wastewater_sic(staging_storage: StagingStorageResource, *,
         "lineage": ["EPA_GEO hosted ArcGIS item 0895b107f9184e7cb31707767b506a64",
                     "EPA FRS_Wastewater FeatureServer table 2 SIC Codes",
                     "EPA ICIS wastewater treatment facility information combined with EPA FRS facility data",
+                    "DataLumos project 239290 V1 is a historical archive, not the refresh source",
                     "REGISTRY_ID appears in both table 2 and layer 0, but no formal ArcGIS relationship is declared; no join or coverage claim is made"],
         "portal_item_modified": manifest.get("portal_item", {}).get("modified"),
         "source_release_date": None, "source_vintage": None,
@@ -337,6 +343,15 @@ def epa_icis_wastewater_sic_complete(candidate: dict) -> AssetCheckResult:
 
 
 @asset_check(asset=epa_icis_wastewater_sic_codes, blocking=False)
+def epa_icis_wastewater_sic_release_approved(candidate: dict) -> AssetCheckResult:
+    approved = candidate.get("release_accepted") is True
+    return AssetCheckResult(passed=approved, metadata={
+        "release_accepted": approved,
+        "gate": "maintainer_approval_of_raw_published_schema_and_id_contract_required",
+    })
+
+
+@asset_check(asset=epa_icis_wastewater_sic_codes, blocking=False)
 def epa_icis_wastewater_sic_published_membership_compatible(candidate: dict) -> AssetCheckResult:
     drift = candidate.get("drift_reasons", [])
     return AssetCheckResult(passed=not drift, metadata={"source_rows": candidate.get("row_count", 0),
@@ -347,5 +362,10 @@ epa_icis_wastewater_sic_draft_job = define_asset_job("epa_icis_wastewater_sic_dr
     selection=AssetSelection.assets(epa_icis_wastewater_sic_codes))
 epa_icis_wastewater_sic_draft_schedule = ScheduleDefinition(name="epa_icis_wastewater_sic_draft_refresh_schedule",
     job=epa_icis_wastewater_sic_draft_job, cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
-    default_status=DefaultScheduleStatus.STOPPED,
-    run_config={"ops": {"epa_icis_wastewater_sic_codes": {"config": {"offline_replay_version": ""}}}})
+    default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [epa_icis_wastewater_sic_codes]
+ASSET_CHECKS = [epa_icis_wastewater_sic_complete, epa_icis_wastewater_sic_release_approved,
+                epa_icis_wastewater_sic_published_membership_compatible]
+JOBS = [epa_icis_wastewater_sic_draft_job]
+SCHEDULES = [epa_icis_wastewater_sic_draft_schedule]
