@@ -1,71 +1,89 @@
-"""Lossless, approval-gated capture of the FEMA NFHL "Flood Hazard Zones" polygon layer.
+"""Lossless, approval-gated capture of the FEMA NFHL "Flood Hazard Zones" polygons
+from FEMA's own National Flood Hazard Layer (NFHL) county/community databases.
 
-FEMA's National Flood Hazard Layer (NFHL) MapServer (service ``public/NFHL``,
-documented by FEMA's MSC "GIS Web Services for the FEMA National Flood Hazard
-Layer" page at the exact REST URL used here) exposes layer 28 "Flood Hazard
-Zones" as the producer's own publication of this HIFLD inventory dataset
-(``nfhl/flood-hazard-zones-1``, DataLumos 239971 historical archive copy used
-for identification only). The layer is continuously updated and publishes no
-per-snapshot release date; source freshness, rights, and public-schema
-compatibility are not accepted by this draft.
+FEMA publishes the NFHL — the producer's own database of effective flood hazard
+data that its MSC "GIS Web Services" page documents behind the public REST
+service — as state- and county/community-level NFHL Database extracts through
+the FEMA Map Service Center. This module captures every NFHL Database product
+that FEMA's own NFHL Database search page
+(https://hazards.fema.gov/femaportal/NFHL/searchResult.action, one complete
+HTML listing of all county/community products with their update dates, sizes
+and download links) lists, downloading each product zip from that page's own
+download link and extracting its ``S_FLD_HAZ_AR`` polygon feature class
+("Flood Hazard Area"), the producer's publication of this HIFLD inventory
+dataset (``nfhl/flood-hazard-zones-1``; the DataLumos 239971 historical
+archive copy is identification context only, never a pipeline input).
 
-Scale economics measured by dated anonymous probes (2026-11-12): the live
-layer holds 5,824,639 polygon features; the producer refuses whole
-``maxRecordCount`` (2000-record) pages with a complete HTTP 200 Esri error
-document (its serialized responses approach the producer's transfer cap), a
-200-record slice of the roster head alone serialized to 26.7 MB (~133 KB per
-coastal feature), and mid-roster 100-record slices serialized to ~0.9-1.1 MB
-(~9-11 KB per feature). A complete lossless capture therefore spans multiple
-tens of gigabytes of producer JSON across many thousands of requests, so this
-module is built for resumable, memory-bounded capture instead of the
-single-pass pattern of its smaller NFHL siblings:
+Why the bulk NFHL Databases and not the public REST layer 28 (dated evidence,
+2026-11-12): the REST service's query endpoint permanently refuses to serve
+one roster feature's full-resolution geometry — roster offset 1328 (OBJECTID
+1886) returns a complete HTTP 200 Esri 500 error document after 8-20 s of
+server work for every faithful request shape (resultOffset paging,
+``where=OBJECTID=1886``, geometry-only fields, envelope intersects), while
+attributes-only and reduced-precision requests are served, the immediately
+adjacent roster features serve at full fidelity, and the same feature is
+present complete in FEMA's bulk distribution (Winston County NFHL Database
+01133C_20110916.zip ``S_FLD_HAZ_AR``: one polygon, 1,541,156 vertices, bounds
+-87.6292..-87.1106 x 33.9849..34.3028, matching the REST feature's diagnostic
+envelope). A REST capture of layer 28 therefore can never tile the complete
+roster, while FEMA's own bulk distribution serves the complete population.
+Both are the same maintained FEMA NFHL product; this module captures the
+distribution FEMA itself serves completely.
+
+Scale economics measured by dated anonymous probes (2026-11-12): the listing
+rosters 2,672 county/community products (~89 GiB of zips by FEMA's own size
+labels); the ``S_FLD_HAZ_AR`` feature class carries the NFHL schema verified
+identical across 2003-2025 product vintages (19 typed DBF fields plus polygon
+geometry; unset numeric BFE/depth/velocity values are the producer's -9999
+sentinel, retained verbatim). The module therefore streams per product: each
+product zip is captured once with a hash-pinned receipt and verified against
+the zip's own CRCs, its feature class is read and folded into
+order-dependent record/geometry/roster digests and an incrementally written
+GeoParquet candidate, and the extracted sidecars are released immediately so
+disk stays bounded.
 
 - The capture attempt directory is stable per version and persists accepted
-  segment bodies with hash-pinned receipts plus an accepted-segment plan
-  (``segments.json``); a resumed run re-verifies each cached body against its
-  receipt digest, re-fetches every service/layer/count/roster bracket fresh,
-  and acquires only the missing roster ranges. Because every page carries its
-  OBJECTID roster slice, re-checking cached pages against the fresh bracket
-  roster proves each page still belongs to the live population.
-- Validation streams page bodies from disk one page at a time: the roster
-  slice check, strict OBJECTID monotonicity, per-feature canonical record and
-  geometry digests, bounds, and null/NaN counts are computed incrementally and
-  the GeoParquet candidate is written incrementally, so agent memory stays
-  bounded no matter how large the layer grows.
+  product zips with hash-pinned receipts; a resumed run re-verifies each
+  cached zip against its receipt digest, re-fetches the listing fresh and
+  re-derives the product roster, and downloads only the missing products.
+  Listing stability is enforced by capturing the listing again after the
+  download phase and requiring the parsed product roster to be unchanged.
+- Geometry is the producer's own shapefile geometry as GDAL serializes it to
+  WKB: verbatim vertices, the shapefile's explicit part structure (first ring
+  of each part exterior, following rings holes — shapefile semantics, not an
+  orientation heuristic), and the shapefile's implicit ring closure made
+  explicit as WKB requires. GDAL's version is pinned in the processing
+  identity, and the geometry digest folds each feature's WKB bytes verbatim.
 - Until a dated complete capture establishes the population pins below, the
-  module runs in live mode: acquisition and streaming validation complete, the
-  computed population contract is written to ``population_pins.json`` in the
-  attempt directory, and the run fails closed with
+  module runs in live mode: acquisition and streaming validation complete,
+  the computed population contract is written to ``population_pins.json`` in
+  the attempt directory, and the run fails closed with
   ``source_population_pins_not_established`` without staging anything. With
   pins set, the module reproduces every pin and stages the unapproved
   candidate exactly like its NFHL siblings.
-
-Producer polygon semantics follow the Esri JSON convention verified on FEMA's
-sibling NFHL polygon layer (Alluvial Fans, pinned 2026-11-12): every source
-ring is explicitly closed and clockwise rings are exteriors while
-counter-clockwise rings are holes, so candidate WKB geometry is built by that
-rule (holes join their smallest containing exterior) without dropping, adding,
-or reordering any source vertex.
 """
 from __future__ import annotations
 
 import hashlib
+import html as html_module
 import json
-import math
 import re
 import shutil
 import time
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, unquote, urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pyogrio
 import pyproj
-from shapely.geometry import MultiPolygon, Polygon
+import shapely
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -79,47 +97,33 @@ from dagster_hifld.sources.epa_frs_common import (
 
 DATASET_SLUG = "nfhl-flood-hazard-zones"
 FILE_SLUG = DATASET_SLUG
-SERVICE_URL = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer"
-SERVICE_DOC_URL = "https://hazards.fema.gov/femaportal/resources/flood_map_svc.htm"
-SERVICE_DOC_BODY_MARKER = b"https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer"
-LAYER_ID = 28
-LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-LAYER_NAME = "Flood Hazard Zones"
 PUBLISHER = "Federal Emergency Management Agency (FEMA)"
 SOURCE_CRS_WKID = 4269
-# Initial segment width, capped by the producer's maxRecordCount (2000). Any
-# segment whose response would approach the producer's transfer cap is
-# bisected until the producer serves it; see the module docstring.
-SEGMENT_START_RECORDS = 2000
-MAX_CAPTURE_BYTES = 64 * 1024 * 1024
-# Roster (returnIdsOnly) documents for this layer span several tens of
-# megabytes, larger than the sibling layers' rosters; they use their own cap.
-DOC_CAPTURE_MAX_BYTES = 256 * 1024 * 1024
-# The producer refuses a whole-layer returnIdsOnly request with its 500 error
-# document (observed 2026-11-12), but serves OBJECTID-range queries: a
-# one-million-OBJECTID window returned ~2.6 MB / 385,763 ids, so the roster
-# is assembled from disjoint windows of this width.
-ROSTER_WINDOW = 1_000_000
+# FEMA's own NFHL Database search page: one complete listing of every
+# county/community NFHL Database product (Item ID, county, state, update
+# date, size, download link).
+LISTING_URL = "https://hazards.fema.gov/femaportal/NFHL/searchResult.action"
+# Each listing row's download link points at this portal servlet, which
+# redirects to the product zip on the same FEMA host.
+SERVLET_URL = "https://hazards.fema.gov/femaportal/NFHL/Download/ProductsDownLoadServlet"
+FEATURE_CLASS = "S_FLD_HAZ_AR"
+FEATURE_CLASS_SUFFIXES = (".shp", ".shx", ".dbf", ".prj")
+FEATURE_CLASS_OPTIONAL_SUFFIXES = (".cpg",)
+ALLOWED_DOWNLOAD_HOSTS = {"hazards.fema.gov"}
+LISTING_MARKER = "National Flood Hazard Layer (NFHL) Database Search Results"
+LISTING_MAX_BYTES = 64 * 1024 * 1024
+PRODUCT_ZIP_MAX_BYTES = 2 * 1024 * 1024 * 1024
+LISTING_ATTEMPTS = 4
+LISTING_BASE_DELAY_SECONDS = 10.0
+ZIP_ATTEMPTS = 4
+ZIP_BASE_DELAY_SECONDS = 10.0
 MIN_FREE_BYTES = 24_000_000_000
-# The producer's MapServer also intermittently answers valid requests with
-# complete HTTP 200 Esri error documents or transient connection resets
-# (observed on FEMA's sibling NFHL layers and on this layer's 2026-11-12
-# probes). Every request retries a bounded number of times for that transient
-# mode; a retry re-issues the exact same request, and completeness is still
-# enforced by the before/after id rosters, counts, exact segment tiling, and
-# full-record digests, so retries can never mask drift. Segments wider than
-# one record that keep failing are bisected (the producer's transfer cap); a
-# single-record segment that keeps failing fails the capture explicitly.
-DOC_CAPTURE_ATTEMPTS = 4
-DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
-SEGMENT_PROBE_ATTEMPTS = 2
-SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
-# Population pins below are None until a dated complete capture of the whole
-# roster establishes them; see the module docstring. In live mode the capture
-# completes, writes the computed contract to ``population_pins.json``, and
-# fails closed without staging. The service layer roster, verified live
-# 2026-11-12, is pinned immediately: it is one cheap independently
-# re-verifiable service contract, not a capture-derived population contract.
+# Population pins below are None until a dated complete capture of every
+# listed product establishes them; see the module docstring. In live mode the
+# capture completes, writes the computed contract to ``population_pins.json``,
+# and fails closed without staging.
+EXPECTED_PRODUCT_COUNT = None
+EXPECTED_PRODUCT_ROSTER_SHA256 = None
 EXPECTED_COUNT = None
 EXPECTED_ID_SHA256 = None
 EXPECTED_SCHEMA_SHA256 = None
@@ -128,25 +132,9 @@ EXPECTED_GEOMETRY_SHA256 = None
 EXPECTED_OBSERVED_BOUNDS = None
 EXPECTED_NULL_GEOMETRY_COUNT = None
 EXPECTED_NAN_GEOMETRY_COUNT = None
-EXPECTED_LAYER_EXTENT = None
-EXPECTED_SERVICE_LAYER_ROSTER = [
-    (0, "NFHL Availability", "Feature Layer"), (3, "FIRM Panels", "Feature Layer"),
-    (1, "LOMRs", "Feature Layer"), (34, "LOMAs", "Feature Layer"),
-    (22, "Political Jurisdictions", "Feature Layer"), (17, "Profile Baselines", "Feature Layer"),
-    (20, "Water Lines", "Feature Layer"), (14, "Cross-Sections", "Feature Layer"),
-    (16, "Base Flood Elevations", "Feature Layer"), (23, "Levees", "Feature Layer"),
-    (29, "Seclusion Boundaries", "Feature Layer"), (15, "Coastal Transects", "Feature Layer"),
-    (18, "Transect Baselines", "Feature Layer"), (24, "General Structures", "Feature Layer"),
-    (7, "River Mile Markers", "Feature Layer"), (32, "Water Areas", "Feature Layer"),
-    (5, "PLSS", "Feature Layer"), (19, "Limit of Moderate Wave Action", "Feature Layer"),
-    (27, "Flood Hazard Boundaries", "Feature Layer"), (28, "Flood Hazard Zones", "Feature Layer"),
-    (25, "Primary Frontal Dunes", "Feature Layer"), (4, "Base Index", "Feature Layer"),
-    (6, "Topographic Low Confidence Areas", "Feature Layer"), (8, "Datum Conversion Points", "Feature Layer"),
-    (9, "Coastal Gages", "Feature Layer"), (10, "Gages", "Feature Layer"),
-    (11, "Nodes", "Feature Layer"), (12, "High Water Marks", "Feature Layer"),
-    (13, "Station Start Points", "Feature Layer"), (26, "Hydrologic Reaches", "Feature Layer"),
-    (30, "Alluvial Fans", "Feature Layer"), (31, "Subbasins", "Feature Layer"),
-]
+
+_ARROW_TYPES = {"string": pa.string(), "double": pa.float64(),
+                "int64": pa.int64(), "boolean": pa.bool_()}
 
 
 class _PinsPendingError(Exception):
@@ -169,210 +157,528 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
-    return {key: field[key] for key in ("name", "type", "alias", "length", "nullable", "domain") if key in field}
+def _plain_text(value: object) -> str:
+    return html_module.unescape(value).strip() if isinstance(value, str) else value
 
 
-def _query(params: dict[str, object]) -> str:
-    return LAYER_URL + "/query?" + urlencode(params)
+_ITEM_ID = re.compile(r"^[0-9A-Z]{5,6}-NFHL$")
+_CENTER_CELL = re.compile(r'^\s*<center class="txt12">(.*?)</center>\s*$', re.S)
+_HIDDEN_SPAN = re.compile(r'<span style="display:none;">([^<>]*)</span>')
+_HREF_CELL = re.compile(r'<a href="Download/ProductsDownLoadServlet\?([^"]+)"')
+_JAVA_MONTHS = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+                "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
+_SIZE_CELL = re.compile(r"^([0-9.]+)\s*(KB|MB|GB)$")
+_JAVA_DATE = re.compile(r"^([A-Z][a-z]{2}) ([A-Z][a-z]{2}) +(\d{1,2}) \d{2}:\d{2}:\d{2} ([A-Z]{2,5}) (\d{4})$")
 
 
-def _segment_name(offset: int, count: int) -> str:
-    return f"page_{offset:07d}_{count:04d}"
+def _servlet_url(product: Mapping[str, str]) -> str:
+    """The listing row's own download link, percent-encoded for provenance."""
+    return SERVLET_URL + "?" + urlencode({
+        "DFIRMID": product["dfirm_id"], "state": product["state"],
+        "county": product["county"], "fileName": product["file_name"]},
+        quote_via=quote)
 
 
-_SEGMENT_NAME_PATTERN = re.compile(r"page_([0-9]{7,})_([0-9]{4,})$")
+def _parse_listing(body: bytes) -> list[dict[str, str]]:
+    """Parse FEMA's NFHL Database listing into its canonical product roster.
 
-
-def _parse_segment_name(name: str) -> tuple[int, int]:
-    match = _SEGMENT_NAME_PATTERN.fullmatch(name)
-    if match is None:
-        raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    return int(match.group(1)), int(match.group(2))
-
-
-def _segment_query(offset: int, count: int) -> str:
-    return _query({"where": "1=1", "outFields": "*", "returnGeometry": "true",
-                   "orderByFields": "OBJECTID ASC", "resultOffset": offset,
-                   "resultRecordCount": count, "f": "json"})
-
-
-def _doc_urls() -> list[tuple[str, str]]:
-    return [
-        ("service_doc", SERVICE_DOC_URL),
-        ("service_before", SERVICE_URL + "?f=pjson"),
-        ("layer_before", LAYER_URL + "?f=pjson"),
-        ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-    ]
-
-
-def _after_doc_urls() -> list[tuple[str, str]]:
-    return [
-        ("layer_after", LAYER_URL + "?f=pjson"),
-        ("service_after", SERVICE_URL + "?f=pjson"),
-        ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-    ]
-
-
-def _stats_query() -> str:
-    return _query({"where": "1=1",
-                   "outStatistics": json.dumps([
-                       {"statisticType": "min", "onStatisticField": "OBJECTID",
-                        "outStatisticFieldName": "MIN_OBJECTID"},
-                       {"statisticType": "max", "onStatisticField": "OBJECTID",
-                        "outStatisticFieldName": "MAX_OBJECTID"}]),
-                   "returnGeometry": "false", "f": "json"})
-
-
-def _roster_range_url(low: int, high: int) -> str:
-    return _query({"where": f"OBJECTID>={low} AND OBJECTID<{high}", "returnIdsOnly": "true", "f": "json"})
-
-
-def _capture_roster(client: httpx.Client, capture_root: Path, name_prefix: str,
-                    min_oid: int, max_oid: int) -> list[int]:
-    """Capture the complete OBJECTID roster as range-chunked returnIdsOnly requests.
-
-    The producer refuses a whole-layer ``returnIdsOnly`` request for this
-    layer's population (observed 2026-11-12: a complete HTTP 200 Esri error
-    document of 80 bytes, retried four times), but serves constrained
-    OBJECTID ranges; the roster is therefore assembled from disjoint windows
-    covering [min_oid, max_oid], each window's response captured as its own
-    evidence. The assembled roster must be unique and integer-valued.
+    Every product row must carry a complete, self-consistent six-cell record
+    (Item ID, county, state, update date, size, download link): an
+    ``<id>-NFHL`` Item ID whose identifier matches the row's download link, a
+    java-format update date whose calendar date matches the zip file name's
+    publication date, and a FEMA size label. Any structural surprise fails
+    closed; the roster is returned in canonical Item ID order.
     """
-    ids: list[int] = []
-    for index, low in enumerate(range(min_oid, max_oid + 1, ROSTER_WINDOW)):
-        name = f"{name_prefix}_r{index:03d}"
-        body, _receipt = _capture_with_retry(
-            client, _roster_range_url(low, min(low + ROSTER_WINDOW, max_oid + 1)),
-            capture_root, name, max_bytes=DOC_CAPTURE_MAX_BYTES,
-            attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-        doc = json.loads(body)
-        if not isinstance(doc, dict) or doc.get("objectIdFieldName") != "OBJECTID":
-            raise ValueError("source_id_field_changed")
-        chunk = doc.get("objectIds")
-        if not isinstance(chunk, list) or any(type(value) is not int for value in chunk):
-            raise ValueError("source_id_population_drift")
-        ids.extend(chunk)
-    if not ids or len(set(ids)) != len(ids):
-        raise ValueError("source_id_population_drift")
-    return sorted(ids)
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("source_listing_structure_drift") from exc
+    if LISTING_MARKER not in text:
+        raise ValueError("official_fema_nfhl_database_listing_drift")
+    products: list[dict[str, str]] = []
+    seen_items: set[str] = set()
+    seen_files: set[str] = set()
+    for chunk in text.split("<tr>")[1:]:
+        if "ProductsDownLoadServlet" not in chunk:
+            continue
+        row = chunk.split("</tr>")[0]
+        pieces = re.split(r"(<td[^>]*>)", row)
+        contents = pieces[2::2]
+        if len(pieces) != 13 or len(contents) != 6:
+            raise ValueError("source_listing_structure_drift")
+        contents = [content.replace("</td>", "") for content in contents]
+        item_center = _CENTER_CELL.fullmatch(contents[0])
+        county_center = _CENTER_CELL.fullmatch(contents[1])
+        state_center = _CENTER_CELL.fullmatch(contents[2])
+        date_center = _CENTER_CELL.fullmatch(contents[3])
+        size_center = _CENTER_CELL.fullmatch(contents[4])
+        href_match = _HREF_CELL.search(contents[5])
+        if None in (item_center, county_center, state_center, date_center, size_center) \
+                or href_match is None:
+            raise ValueError("source_listing_structure_drift")
+        item_match = _ITEM_ID.fullmatch(item_center.group(1).strip())
+        county_span = _HIDDEN_SPAN.search(county_center.group(1))
+        date_span = _HIDDEN_SPAN.search(date_center.group(1))
+        if item_match is None or county_span is None or date_span is None:
+            raise ValueError("source_listing_structure_drift")
+        item_id = _plain_text(item_match.group(0))
+        # The download link carries the display county name, not the hidden
+        # sort name (they differ, e.g. "TERRITORY OF THE VIRGIN ISLANDS").
+        county_name = county_center.group(1)[county_span.end():]
+        county = _plain_text(county_name)
+        if not county:
+            raise ValueError("source_listing_structure_drift")
+        state = _plain_text(state_center.group(1))
+        if not state:
+            raise ValueError("source_listing_structure_drift")
+        size_match = _SIZE_CELL.fullmatch(_plain_text(size_center.group(1)))
+        if size_match is None:
+            raise ValueError("source_listing_structure_drift")
+        size_label = size_match.group(0)
+        java_date = _plain_text(date_span.group(1))
+        date_match = _JAVA_DATE.fullmatch(java_date)
+        if date_match is None or date_match.group(2) not in _JAVA_MONTHS:
+            raise ValueError("source_listing_structure_drift")
+        params = dict(re.findall(r"([^&=]+)=([^&]*)", href_match.group(1)))
+        dfirm_id = _plain_text(unquote(params.get("DFIRMID", "")))
+        link_state = _plain_text(unquote(params.get("state", "")))
+        link_county = _plain_text(unquote(params.get("county", "")))
+        file_name = _plain_text(unquote(params.get("fileName", "")))
+        if dfirm_id + "-NFHL" != item_id:
+            raise ValueError("source_listing_structure_drift")
+        if link_state != state or link_county != county:
+            raise ValueError("source_listing_structure_drift")
+        if not re.fullmatch(rf"{re.escape(dfirm_id)}_[0-9]{{8}}\.zip", file_name):
+            raise ValueError("source_listing_structure_drift")
+        date_match = _JAVA_DATE.fullmatch(java_date)
+        if date_match is None or date_match.group(2) not in _JAVA_MONTHS:
+            raise ValueError("source_listing_structure_drift")
+        # The listing's update date and the zip file name's publication date
+        # are distinct producer fields (observed 2026-11-12, 47167C: listing
+        # update 2011-10-21, product publication 2019-08-28); both are
+        # recorded, and either changing is roster drift.
+        file_date = file_name.split("_", 1)[1].split(".", 1)[0]
+        if item_id in seen_items or file_name in seen_files:
+            raise ValueError("source_product_roster_drift")
+        seen_items.add(item_id)
+        seen_files.add(file_name)
+        products.append({"item_id": item_id, "dfirm_id": dfirm_id, "state": state,
+                         "county": county, "file_name": file_name,
+                         "update_date_java": java_date, "file_date": file_date,
+                         "size_label": size_label})
+    if not products:
+        raise ValueError("source_listing_structure_drift")
+    return sorted(products, key=lambda product: product["item_id"])
 
 
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
+def product_roster_sha256(products: list[dict[str, str]]) -> str:
+    return _sha(_canonical(products))
 
-    Retries cover the producer's transient complete-200 Esri error documents
-    and incomplete transport captures; failed attempts are preserved on disk
-    under ``<name>.attempt-NN`` evidence names and never enter the capture
-    roster. The final attempt's body is always returned as captured, so a
-    persistent producer failure surfaces to the caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
+
+def _update_date_iso(product: Mapping[str, str]) -> str:
+    """The product's own publication date (baked into its zip file name), ISO form."""
+    if not re.fullmatch(r"[0-9]{8}", product["file_date"]):
+        raise ValueError("source_listing_structure_drift")
+    return f"{product['file_date'][0:4]}-{product['file_date'][4:6]}-{product['file_date'][6:8]}"
+
+
+def _capture_listing(client: httpx.Client, capture_root: Path, name: str) -> bytes:
+    """Capture one listing bracket, retrying bounded times on transient failures."""
+    for attempt in range(1, LISTING_ATTEMPTS + 1):
         try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
+            body, _receipt = capture_get(client, LISTING_URL, capture_root, name,
+                                         max_bytes=LISTING_MAX_BYTES)
+            return body
         except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
+            if attempt >= LISTING_ATTEMPTS or not str(exc).startswith("incomplete_source_capture:"):
                 raise
-            for suffix in (".body", ".wire", ".receipt.json"):
-                path = capture_root / f"{name}{suffix}"
-                if path.exists():
-                    path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            for suffix in (".body", ".wire", ".receipt.json"):
-                path = capture_root / f"{name}{suffix}"
-                if path.exists():
-                    path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
+        time.sleep(LISTING_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
+    raise ValueError(f"incomplete_source_capture:{name}")
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
+def _capture_download_location(client: httpx.Client, product: Mapping[str, str],
+                               capture_root: Path, *, attempts: int, base_delay: float) -> str:
+    """Resolve the listing row's download link, capturing the redirect as evidence.
+
+    The servlet answers with a redirect to the product zip on the same FEMA
+    host; the redirect receipt records exactly where FEMA's own link pointed
+    at retrieval time. Redirects off the producer's host fail closed.
+    """
+    url = _servlet_url(product)
+    name = f"{product['item_id']}.redirect"
+    for attempt in range(1, attempts + 1):
+        observed = datetime.now(timezone.utc).isoformat()
+        try:
+            with client.stream("GET", url) as response:
+                status = response.status_code
+                location = response.headers.get("location") if status in (301, 302, 303, 307, 308) else None
+                receipt = {"method": "GET", "url": url, "observed_at": observed,
+                           "status": status, "location": location}
+                (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+                if location is None:
+                    raise ValueError("source_download_redirect_missing")
+                parsed = urlsplit(location)
+                if parsed.scheme != "https" or (parsed.hostname or "") not in ALLOWED_DOWNLOAD_HOSTS:
+                    raise ValueError("source_download_redirect_host_unrecognized")
+                return location
+        except httpx.HTTPError:
+            if attempt >= attempts:
+                raise ValueError(f"incomplete_source_capture:{name}") from None
+        time.sleep(base_delay * (3 ** (attempt - 1)))
+    raise ValueError(f"incomplete_source_capture:{name}")
 
 
-class _DiskPageBodies(Mapping):
-    """Lazy read-only view of captured segment bodies stored on disk."""
-
-    def __init__(self, capture_root: Path, names: list[str]):
-        self._capture_root = capture_root
-        self._names = {name: None for name in names}
-
-    def __len__(self) -> int:
-        return len(self._names)
-
-    def __iter__(self):
-        return iter(self._names)
-
-    def __getitem__(self, name: str) -> bytes:
-        return (self._capture_root / f"{name}.body").read_bytes()
-
-
-def _load_plan(capture_root: Path) -> list[tuple[int, int]]:
-    """Load the accepted-segment plan persisted by prior attempts, if any."""
-    path = capture_root / "segments.json"
+def _product_zip_receipt(capture_root: Path, name: str) -> dict[str, object] | None:
+    path = capture_root / f"{name}.receipt.json"
     if not path.exists():
-        return []
+        return None
     try:
-        state = json.loads(path.read_bytes())
-        segments = [tuple(pair) for pair in state["accepted"]]
-    except (ValueError, KeyError, TypeError):
-        raise ValueError("resume_segment_plan_unreadable")
-    if any(not isinstance(offset, int) or not isinstance(count, int) or offset < 0 or count < 1
-           for offset, count in segments):
-        raise ValueError("resume_segment_plan_unreadable")
-    segments.sort()
-    previous_end = 0
-    for offset, count in segments:
-        if offset < previous_end:
-            raise ValueError("resume_segment_plan_overlapped")
-        previous_end = offset + count
-    return segments
-
-
-def _persist_plan(capture_root: Path, segments: list[tuple[int, int]]) -> None:
-    payload = _canonical({"accepted": [[offset, count] for offset, count in sorted(segments)]})
-    tmp = capture_root / "segments.json.tmp"
-    tmp.write_bytes(payload)
-    tmp.replace(capture_root / "segments.json")
-
-
-def _verify_cached_segment(capture_root: Path, name: str) -> bool:
-    body_path = capture_root / f"{name}.body"
-    receipt_path = capture_root / f"{name}.receipt.json"
-    if not body_path.exists() or not receipt_path.exists():
-        return False
-    try:
-        receipt = json.loads(receipt_path.read_bytes())
-        body = body_path.read_bytes()
+        receipt = json.loads(path.read_bytes())
     except (OSError, ValueError):
+        return None
+    return receipt if isinstance(receipt, dict) else None
+
+
+def _feature_class_members(capture_root: Path, name: str) -> list[str] | None:
+    zip_path = capture_root / f"{name}.zip"
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            members = set(archive.namelist())
+    except (OSError, zipfile.BadZipFile):
+        return None
+    required = [f"{FEATURE_CLASS}{suffix}" for suffix in FEATURE_CLASS_SUFFIXES]
+    optional = [f"{FEATURE_CLASS}{suffix}" for suffix in FEATURE_CLASS_OPTIONAL_SUFFIXES]
+    present = [member for member in required if member in members]
+    unexpected = [member for member in members
+                  if member.startswith(FEATURE_CLASS + ".")
+                  and member not in required and member not in optional]
+    if (present and len(present) != len(required)) or (not present and unexpected):
+        return None
+    return present
+
+
+def _verify_cached_product_zip(capture_root: Path, product: Mapping[str, str]) -> bool:
+    name = product["item_id"]
+    zip_path = capture_root / f"{name}.zip"
+    receipt = _product_zip_receipt(capture_root, name)
+    if receipt is None or receipt.get("complete_body") is not True or receipt.get("status") != 200:
         return False
-    return (receipt.get("complete_body") is True and receipt.get("status") == 200
-            and receipt.get("bytes") == len(body) and receipt.get("sha256") == _sha(body)
-            and not _producer_error_doc(body))
+    try:
+        size = zip_path.stat().st_size
+    except OSError:
+        return False
+    if receipt.get("bytes") != size or receipt.get("sha256") != _file_sha256(zip_path):
+        return False
+    return _feature_class_members(capture_root, name) is not None
+
+
+def _capture_product_zip(client: httpx.Client, product: Mapping[str, str],
+                         capture_root: Path, *, attempts: int, base_delay: float) -> Path:
+    """Capture one product zip with a hash-pinned receipt, resumably.
+
+    The zip body is streamed straight to disk under the identity encoding
+    this request pins (its wire bytes are then identical to the body, so the
+    receipt's sha256 plus the zip's own member CRCs verify it), which keeps
+    this layer's ~89 GiB raw capture and staging within one disk. Failed
+    attempts are preserved as ``<item>.attempt-NN.zip`` evidence with their
+    own receipts and never enter the capture roster; a product the producer
+    keeps failing to serve fails the capture explicitly.
+    """
+    name = product["item_id"]
+    zip_path = capture_root / f"{name}.zip"
+    if _verify_cached_product_zip(capture_root, product):
+        return zip_path
+    for attempt in range(1, attempts + 1):
+        location = _capture_download_location(client, product, capture_root,
+                                              attempts=attempts, base_delay=base_delay)
+        observed = datetime.now(timezone.utc).isoformat()
+        digest = hashlib.sha256()
+        size = 0
+        status = None
+        final_url = None
+        content_length = None
+        partial = capture_root / f"{name}.zip.partial"
+        # Touch first so a connect-phase failure still leaves bounded attempt
+        # evidence (the same discipline as the shared capture helper).
+        partial.touch(exist_ok=True)
+        transport_failed = False
+        crc_failed = False
+        cap_exceeded = False
+        try:
+            with client.stream("GET", location, headers={"Accept-Encoding": "identity"}) as response:
+                status = response.status_code
+                final_url = str(response.url)
+                content_length = response.headers.get("Content-Length")
+                if status != 200:
+                    raise ValueError(f"incomplete_source_capture:{name}")
+                with partial.open("wb") as stream:
+                    for block in response.iter_bytes(1 << 20):
+                        size += len(block)
+                        if size > PRODUCT_ZIP_MAX_BYTES:
+                            raise ValueError("source_product_zip_exceeds_capture_cap")
+                        digest.update(block)
+                        stream.write(block)
+        except ValueError as exc:
+            if str(exc) == "source_product_zip_exceeds_capture_cap":
+                cap_exceeded = True
+            else:
+                transport_failed = True
+        except httpx.HTTPError:
+            transport_failed = True
+        complete = (not transport_failed and not cap_exceeded and status == 200
+                    and size > 0 and (content_length is None or content_length == str(size)))
+        if complete:
+            try:
+                with zipfile.ZipFile(partial) as archive:
+                    if archive.testzip() is not None:
+                        crc_failed = True
+            except (OSError, zipfile.BadZipFile):
+                crc_failed = True
+        if complete and not crc_failed:
+            receipt = {"method": "GET", "url": location, "final_url": final_url,
+                       "observed_at": observed, "status": status, "complete_body": True,
+                       "bytes": size, "sha256": digest.hexdigest(),
+                       "content_encoding": "identity",
+                       "content_length": int(content_length) if content_length else None}
+            partial.replace(zip_path)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            if _feature_class_members(capture_root, name) is None:
+                raise ValueError("source_product_zip_integrity_failed")
+            return zip_path
+        if cap_exceeded:
+            partial.unlink(missing_ok=True)
+            raise ValueError("source_product_zip_exceeds_capture_cap")
+        evidence = capture_root / f"{name}.attempt-{attempt:02d}.zip"
+        if partial.exists():
+            partial.rename(evidence)
+        attempt_receipt = {"method": "GET", "url": location, "final_url": final_url,
+                           "observed_at": observed, "status": status, "complete_body": False,
+                           "bytes": size, "sha256": digest.hexdigest(),
+                           "error_code": "source_product_zip_crc_failed" if crc_failed
+                                         else "incomplete_source_capture"}
+        (capture_root / f"{name}.attempt-{attempt:02d}.receipt.json").write_bytes(
+            _canonical(attempt_receipt) + b"\n")
+        if attempt < attempts:
+            time.sleep(base_delay * (3 ** (attempt - 1)))
+    raise ValueError(f"incomplete_source_capture:{name}")
+
+
+def _extract_feature_class(zip_path: Path, work_dir: Path) -> dict[str, Path] | None:
+    """Extract the S_FLD_HAZ_AR sidecars for one product, or None if absent.
+
+    A product zip without the polygon feature class contributes zero features
+    (FEMA publishes county/community databases whose NFHL extract has no
+    flood hazard area polygons); a zip with only some of the feature class
+    members is corrupt and fails closed.
+    """
+    with zipfile.ZipFile(zip_path) as archive:
+        members = set(archive.namelist())
+        required = [f"{FEATURE_CLASS}{suffix}" for suffix in FEATURE_CLASS_SUFFIXES]
+        if not all(member in members for member in required):
+            if any(member.startswith(FEATURE_CLASS + ".") for member in members):
+                raise ValueError("source_product_zip_integrity_failed")
+            return None
+        work_dir.mkdir(parents=True, exist_ok=True)
+        paths: dict[str, Path] = {}
+        wanted = list(required) + [f"{FEATURE_CLASS}{suffix}"
+                                   for suffix in FEATURE_CLASS_OPTIONAL_SUFFIXES
+                                   if f"{FEATURE_CLASS}{suffix}" in members]
+        for member in wanted:
+            target = work_dir / member
+            with archive.open(member) as source, target.open("wb") as destination:
+                shutil.copyfileobj(source, destination)
+            paths[member] = target
+        return paths
+
+
+def _schema_signature(meta: Mapping[str, object]) -> list[list[str]]:
+    fields = meta.get("fields")
+    dtypes = meta.get("dtypes")
+    if fields is None or dtypes is None:
+        raise ValueError("source_schema_contract_drift")
+    fields, dtypes = list(fields), list(dtypes)
+    if len(fields) != len(dtypes):
+        raise ValueError("source_schema_contract_drift")
+    signature = []
+    for name, dtype in zip(fields, dtypes):
+        type_name = {"object": "string", "float64": "double",
+                     "int64": "int64", "bool": "boolean"}.get(str(dtype))
+        if type_name is None:
+            raise ValueError("source_field_type_unsupported")
+        signature.append([str(name), type_name])
+    return signature
+
+
+def _feature_schema(signature: list[list[str]]) -> list[pa.Field]:
+    fields = [pa.field(name, _ARROW_TYPES[type_name]) for name, type_name in signature]
+    fields.append(pa.field("SHAPE", pa.binary()))
+    return fields
+
+
+def _validate_feature_geometry(wkb: bytes | None, bounds: list,
+                               counters: dict[str, int]) -> bytes | None:
+    """Validate one feature's GDAL WKB geometry and return the candidate bytes.
+
+    The raw WKB is returned for the candidate unless the source geometry is
+    null or carries unusable NaN ordinates (which, like the sibling REST
+    captures' string-'NaN' rows, are retained in the record/geometry digests
+    as verbatim evidence but yield null candidate geometry). Bounds and the
+    null/NaN counters accumulate in place.
+    """
+    if wkb is None:
+        counters["null_geometry"] += 1
+        return None
+    try:
+        geometry = shapely.wkb.loads(wkb)
+    except Exception as exc:  # noqa: BLE001 - producer data driven
+        raise ValueError("source_geometry_unreadable") from exc
+    if geometry.geom_type not in ("Polygon", "MultiPolygon"):
+        raise ValueError("source_geometry_type_drift")
+    if bool(shapely.has_z(geometry)):
+        raise ValueError("source_z_or_m_geometry_unsupported")
+    coordinates = np.asarray(shapely.get_coordinates(geometry), dtype="float64")
+    if np.isnan(coordinates).any():
+        counters["nan_geometry"] += 1
+        return None
+    if (coordinates[:, 0].min() < -180.0 or coordinates[:, 0].max() > 180.0
+            or coordinates[:, 1].min() < -90.0 or coordinates[:, 1].max() > 90.0):
+        raise ValueError("source_coordinate_range_drift")
+    x_min = float(coordinates[:, 0].min())
+    y_min = float(coordinates[:, 1].min())
+    x_max = float(coordinates[:, 0].max())
+    y_max = float(coordinates[:, 1].max())
+    if bounds[0] is None or x_min < bounds[0]:
+        bounds[0] = x_min
+    if bounds[1] is None or y_min < bounds[1]:
+        bounds[1] = y_min
+    if bounds[2] is None or x_max > bounds[2]:
+        bounds[2] = x_max
+    if bounds[3] is None or y_max > bounds[3]:
+        bounds[3] = y_max
+    return wkb
+
+
+def _stream_validate(products: list[dict[str, str]], capture_root: Path,
+                     parquet_path: Path) -> dict[str, object]:
+    """Stream every product's feature class into the population contract.
+
+    Products are consumed in canonical Item ID order; each zip is re-verified
+    against its receipt, its feature class is extracted and read, and every
+    feature folds into the record/geometry digests, the ID roster, the
+    observed bounds and the null/NaN counters while the GeoParquet candidate
+    is written incrementally. Feature-class schemas must be identical across
+    every product (verified identical across 2003-2025 vintages) or the
+    capture fails closed.
+    """
+    capture_root = Path(capture_root)
+    record_digest = hashlib.sha256()
+    record_digest.update(b"[")
+    geometry_digest = hashlib.sha256()
+    geometry_digest.update(b"[")
+    ids: list[list[str | None]] = []
+    counters = {"null_geometry": 0, "nan_geometry": 0, "features": 0,
+                "products": 0, "products_without_polygon_feature_class": 0}
+    bounds: list = [None, None, None, None]
+    running_signature: list[list[str]] | None = None
+    first_feature = True
+    writer = None
+    arrow_schema = None
+    work_root = capture_root / "_work"
+    try:
+        for product in products:
+            name = product["item_id"]
+            zip_path = capture_root / f"{name}.zip"
+            if not _verify_cached_product_zip(capture_root, product):
+                raise ValueError("source_raw_evidence_missing_for_staging:" + name)
+            extracted = _extract_feature_class(zip_path, work_root / name)
+            if extracted is None:
+                counters["products_without_polygon_feature_class"] += 1
+                continue
+            counters["products"] += 1
+            shp_path = extracted[f"{FEATURE_CLASS}.shp"]
+            try:
+                meta = pyogrio.read_info(str(shp_path))
+                signature = _schema_signature(meta)
+                if meta.get("crs") != f"EPSG:{SOURCE_CRS_WKID}":
+                    raise ValueError("source_crs_drift")
+                if meta.get("geometry_type") not in ("Polygon", "MultiPolygon"):
+                    raise ValueError("source_geometry_type_drift")
+                if running_signature is None:
+                    running_signature = signature
+                    arrow_schema = pa.schema(_feature_schema(signature))
+                    geo = {"version": "1.1.0", "primary_column": "SHAPE",
+                           "columns": {"SHAPE": {"encoding": "WKB",
+                                                 "geometry_types": ["Polygon", "MultiPolygon"],
+                                                 "crs": pyproj.CRS.from_epsg(SOURCE_CRS_WKID).to_json_dict(),
+                                                 "edges": "planar"}}}
+                    writer = pq.ParquetWriter(parquet_path,
+                                              arrow_schema.with_metadata({b"geo": _canonical(geo)}),
+                                              compression="zstd")
+                elif signature != running_signature:
+                    raise ValueError("source_schema_contract_drift")
+                _meta, table = pyogrio.read_arrow(str(shp_path))
+            except ValueError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - producer data driven
+                raise ValueError(f"source_feature_class_unreadable:{name}") from exc
+            field_names = [field[0] for field in running_signature]
+            try:
+                for batch in table.to_batches(max_chunksize=4096):
+                    columns = {field: batch.column(field).to_pylist() for field in field_names}
+                    wkbs = batch.column("wkb_geometry").to_pylist()
+                    shapes: list[bytes | None] = []
+                    for position in range(batch.num_rows):
+                        attributes = {field: columns[field][position] for field in field_names}
+                        try:
+                            record_canonical = _canonical(attributes)
+                        except (TypeError, ValueError) as exc:
+                            raise ValueError("source_record_value_drift") from exc
+                        if not first_feature:
+                            record_digest.update(b",")
+                            geometry_digest.update(b",")
+                        record_digest.update(record_canonical)
+                        first_feature = False
+                        ids.append([product["item_id"], attributes.get("DFIRM_ID"),
+                                    attributes.get("FLD_AR_ID")])
+                        wkb = wkbs[position]
+                        geometry_digest.update(len(wkb).to_bytes(8, "big") if wkb is not None
+                                               else (0).to_bytes(8, "big"))
+                        if wkb is not None:
+                            geometry_digest.update(wkb)
+                        shapes.append(_validate_feature_geometry(wkb, bounds, counters))
+                        counters["features"] += 1
+                    parquet_columns = {field: pa.array(columns[field], type=arrow_schema.field(field).type)
+                                       for field in field_names}
+                    parquet_columns["SHAPE"] = pa.array(shapes, type=pa.binary())
+                    writer.write_table(pa.Table.from_pydict(parquet_columns, schema=arrow_schema))
+            finally:
+                shutil.rmtree(work_root / name, ignore_errors=True)
+    finally:
+        if writer is not None:
+            writer.close()
+        shutil.rmtree(work_root, ignore_errors=True)
+    record_digest.update(b"]")
+    geometry_digest.update(b"]")
+    return {"record_sha256": record_digest.hexdigest(),
+            "geometry_sha256": geometry_digest.hexdigest(),
+            "schema_sha256": _sha(_canonical(running_signature)),
+            "schema_signature": running_signature,
+            "id_sha256": _sha(_canonical(sorted(ids))),
+            "id_count": len(ids),
+            "bounds": bounds,
+            "counters": counters}
 
 
 def _resolve_capture_root(attempt_root: Path, version: str) -> Path:
     """Reuse the one resumable attempt for this version, or start a fresh one.
 
     A prior incomplete attempt (``capture_manifest.json`` present and not
-    marked sealed) is reused so its accepted segment bodies carry forward;
+    marked sealed) is reused so its accepted product zips carry forward;
     multiple incomplete attempts are ambiguous and fail closed rather than
     guessing which evidence to trust. A prior sealed attempt is never reused
     (its candidate must be consumed through the construction-state cache).
     """
     prefix = f"{version}-"
-    sealed = []
     candidates = []
     for child in sorted(child for child in attempt_root.iterdir()
                         if child.is_dir() and child.name.startswith(prefix)):
@@ -384,10 +690,6 @@ def _resolve_capture_root(attempt_root: Path, version: str) -> Path:
             except ValueError:
                 manifest = {}
         if manifest.get("complete") is True and manifest.get("staged") is True:
-            # A sealed attempt's candidate is consumed through the
-            # construction-state cache, never through its capture directory;
-            # sealed attempts are ignored so a fresh attempt can still run.
-            sealed.append(child)
             continue
         candidates.append(child)
     if len(candidates) > 1:
@@ -397,425 +699,128 @@ def _resolve_capture_root(attempt_root: Path, version: str) -> Path:
     return attempt_root / f"{version}-{uuid4().hex}"
 
 
-def _acquire_segments(client: httpx.Client, capture_root: Path, total: int) -> list[tuple[int, int]]:
-    """Capture every roster segment, resuming from the persisted plan.
-
-    The work queue starts from the gaps not already covered by accepted
-    segments (a prior attempt's partially bisected tile leaves gaps inside its
-    tile, which are re-enqueued as ranges and bisected again if the producer
-    still refuses them). Every accepted segment is appended to the persisted
-    plan before the next request, so an interrupted session loses at most the
-    one in-flight segment.
-    """
-    accepted = _load_plan(capture_root)
-    accepted = [(offset, count) for offset, count in accepted if _verify_cached_segment(
-        capture_root, _segment_name(offset, count))]
-    _persist_plan(capture_root, accepted)
-    accepted_set = set(accepted)
-    queue = []
-    position = 0
-    for offset, count in sorted(accepted) + [(total, 0)]:
-        while position < offset:
-            take = min(SEGMENT_START_RECORDS, offset - position)
-            queue.append((position, take))
-            position += take
-        position = max(position, offset + count)
-    accepted_segments: list[tuple[int, int]] = list(accepted)
-    while queue:
-        offset, count = queue.pop(0)
-        name = _segment_name(offset, count)
-        if (offset, count) in accepted_set:
-            continue
-        try:
-            body, receipt = _capture_with_retry(
-                client, _segment_query(offset, count), capture_root, name,
-                max_bytes=MAX_CAPTURE_BYTES,
-                attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
-        except ValueError as exc:
-            # A segment the producer keeps refusing or that cannot be served
-            # within this module's capture cap (this layer's dense head region
-            # makes 2000-record pages far larger than the sibling layers', both
-            # observed 2026-11-12) is bisected; its refused attempts stay on
-            # disk as evidence under the segment's name. A single-record
-            # segment that still fails ends the capture explicitly. Smaller
-            # requests are also more likely to survive the producer's transient
-            # connection resets, and correctness never depends on why a segment
-            # was refused: every served segment is verified against the pinned
-            # roster slice.
-            if count == 1 or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            middle = count // 2
-            queue.insert(0, (offset + middle, count - middle))
-            queue.insert(0, (offset, middle))
-            continue
-        if _producer_error_doc(body):
-            if count == 1:
-                raise ValueError("source_single_feature_unservable")
-            middle = count // 2
-            queue.insert(0, (offset + middle, count - middle))
-            queue.insert(0, (offset, middle))
-            continue
-        if (offset, count) not in accepted_segments:
-            accepted_segments.append((offset, count))
-            _persist_plan(capture_root, accepted_segments)
-    return sorted(accepted_segments)
-
-
-def _classify_geometries_streaming(features: list[dict[str, object]], attr_names: list[str],
-                                   bounds: list, counters: dict[str, int]) -> list:
-    """Validate one segment's features and return their geometry records.
-
-    Each feature's geometry is validated and returned as ``[OBJECTID, rings]``
-    (``[OBJECTID, None]`` for null geometry) aligned with the feature order;
-    the caller folds them, in roster order and with the same list separators
-    as the record digest, into the geometry digest. Bounds and null/NaN
-    counters accumulate here. String-"NaN" ordinates (seen on FEMA's sibling
-    NFHL layers) are retained verbatim in the record/raw evidence and gated as
-    unusable geometry, never silently coerced.
-    """
-    geometry_records = []
-    for feature in features:
-        attrs = feature.get("attributes")
-        if not isinstance(attrs, dict) or list(attrs) != attr_names:
-            raise ValueError("source_record_attribute_schema_drift")
-        geom = feature.get("geometry")
-        if geom is None:
-            counters["null_geometry"] += 1
-            geometry_records.append([attrs["OBJECTID"], None])
-            continue
-        if not isinstance(geom, dict) or set(geom) != {"rings"} or not isinstance(geom["rings"], list) \
-                or not geom["rings"]:
-            raise ValueError("source_polygon_geometry_invalid")
-        nan_rings = False
-        validated_rings = []
-        for ring in geom["rings"]:
-            if not isinstance(ring, list) or not ring:
-                raise ValueError("source_polygon_geometry_invalid")
-            for vertex in ring:
-                if not isinstance(vertex, list) or len(vertex) != 2:
-                    raise ValueError("source_polygon_geometry_invalid")
-                x, y = vertex
-                if type(x) in (int, float) and type(y) in (int, float):
-                    if not (-180 <= x <= 180 and -90 <= y <= 90):
-                        raise ValueError("source_coordinate_range_drift")
-                    # Bounded running box ([xmin, ymin, xmax, ymax], leading
-                    # None until the first vertex): this layer's ~5.8M-feature
-                    # population carries order 10^9 vertices in total, so
-                    # collecting every ordinate in a list would exhaust agent
-                    # memory long before validation finished.
-                    if bounds[0] is None or x < bounds[0]:
-                        bounds[0] = x
-                    if bounds[1] is None or y < bounds[1]:
-                        bounds[1] = y
-                    if bounds[2] is None or x > bounds[2]:
-                        bounds[2] = x
-                    if bounds[3] is None or y > bounds[3]:
-                        bounds[3] = y
-                elif x == "NaN" and y == "NaN":
-                    nan_rings = True
-                else:
-                    raise ValueError("source_polygon_geometry_invalid")
-            validated_rings.append(ring)
-        geometry_records.append([attrs["OBJECTID"], validated_rings])
-        if nan_rings:
-            counters["nan_geometry"] += 1
-    return geometry_records
-
-
-def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
-    return {"esriFieldTypeOID": pa.int64(),
-            "esriFieldTypeGlobalID": pa.string(),
-            "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDouble": pa.float64()}[str(field["type"])]
-
-
-def _signed_area(ring: list) -> float:
-    """Signed area of a planar ring (positive counterclockwise), translated origin.
-
-    The shoelace sum is taken around the first vertex instead of the global
-    origin: per-edge terms then scale with the ring's own extent, so a tiny
-    exterior ring next to global lon/lat coordinates keeps its sign. The raw
-    global sum loses such rings to cancellation — live FEMA NFHL layer 4
-    (Base Index) ring OBJECTID 49181, 2026-11-12, summed to exactly 0.0
-    despite a true signed area of about -1.5e-15, which misclassified that
-    clockwise exterior as a hole; this layer's dense national polygon
-    population spans the same coordinate scale. Vertices are only read to
-    measure orientation; stored geometry is never translated.
-    """
-    closed = ring if ring[0] == ring[-1] else ring + [ring[0]]
-    x0, y0 = closed[0]
-    area = math.fsum((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
-                     for (x1, y1), (x2, y2) in zip(closed, closed[1:]))
-    return area / 2.0
-
-
-def _polygon_wkb(geom: object) -> bytes | None:
-    """WKB for one feature's rings under the producer's verified ring semantics.
-
-    Esri JSON (verified on FEMA's pinned sibling polygon captures): every ring
-    is explicitly closed, clockwise rings are exteriors, counter-clockwise
-    rings are holes. Vertices are passed to shapely verbatim; exteriors with
-    no claimable hole keep their ring order and holes join their smallest
-    containing exterior.
-    """
-    if not isinstance(geom, dict) or set(geom) != {"rings"} or not isinstance(geom["rings"], list) \
-            or not geom["rings"]:
-        return None
-    rings = geom["rings"]
-    for ring in rings:
-        if not isinstance(ring, list) or not ring:
-            return None
-        for vertex in ring:
-            if not (isinstance(vertex, list) and len(vertex) == 2
-                    and type(vertex[0]) in (int, float) and type(vertex[1]) in (int, float)):
-                return None
-    exteriors, holes = [], []
-    for ring in rings:
-        area = _signed_area(ring)
-        if area == 0:
-            raise ValueError("source_polygon_ring_degenerate")
-        (exteriors if area < 0 else holes).append(ring)
-    if not exteriors:
-        raise ValueError("source_polygon_exterior_missing")
-    shells = [(Polygon(ring), index) for index, ring in enumerate(exteriors)]
-    for shell, _ in shells:
-        if not shell.is_valid:
-            raise ValueError("source_polygon_ring_self_intersecting")
-    assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
-    for hole in holes:
-        polygon = Polygon(hole)
-        candidates = [(abs(_signed_area(ring)), index) for index, ring in enumerate(exteriors)
-                      if Polygon(ring).contains(polygon.representative_point())]
-        if not candidates:
-            raise ValueError("source_polygon_hole_unassigned")
-        assigned[min(candidates)[1]].append(hole)
-    polygons = [Polygon(exteriors[index], assigned[index]) for _, index in sorted(shells, key=lambda item: item[1])]
-    return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
-
-
-def _validate_captures(page_bodies: Mapping[str, bytes], docs: Mapping[str, object],
-                       ids: list[int], *, parquet_path: Path | None = None):
-    """Stream-validate the capture and compute the live population contract.
-
-    Page bodies are consumed one page at a time in roster order; the accepted
-    segments must tile the roster exactly, every page must carry its exact
-    OBJECTID slice in ascending order, and every feature's canonical record
-    and geometry are folded into streaming digests. When ``parquet_path`` is
-    given, the GeoParquet candidate is written incrementally alongside the
-    digest pass. In live mode (pins unset) the computed contract is returned
-    for pin establishment; with pins set every computed value is compared to
-    its pin.
-    """
-    segments = sorted(_parse_segment_name(name) for name in page_bodies)
-    page_names = [_segment_name(offset, count) for offset, count in segments]
-    position = 0
-    for offset, count in segments:
-        if offset != position:
-            raise ValueError("source_page_tiling_incomplete_or_overlapped")
-        position += count
-    if position != len(ids):
-        raise ValueError("source_page_tiling_incomplete_or_overlapped")
-    if SERVICE_DOC_BODY_MARKER not in docs["service_doc"]:
-        raise ValueError("fema_service_documentation_link_drift")
-    service, layer = docs["service_before"], docs["layer_before"]
-    if not isinstance(service, dict) or service.get("mapName") != "NFHL":
-        raise ValueError("official_fema_nfhl_service_identity_drift")
-    service_layers = service.get("layers")
-    roster = [(x.get("id"), x.get("name"), x.get("type")) for x in service_layers if isinstance(x, dict)] \
-        if isinstance(service_layers, list) else None
-    if roster != EXPECTED_SERVICE_LAYER_ROSTER:
-        raise ValueError("fema_nfhl_service_layer_roster_drift")
-    if not any(x.get("id") == LAYER_ID and x.get("name") == LAYER_NAME and x.get("type") == "Feature Layer"
-               for x in service_layers):
-        raise ValueError("exact_nfhl_flood_hazard_zones_layer_missing")
-    if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
-            or layer.get("type") != "Feature Layer" or layer.get("geometryType") != "esriGeometryPolygon"):
-        raise ValueError("exact_nfhl_flood_hazard_zones_layer_metadata_drift")
-    if layer.get("hasZ") is True or layer.get("hasM") is True:
-        raise ValueError("source_z_or_m_geometry_unsupported")
-    if layer.get("advancedQueryCapabilities", {}).get("supportsPagination") is not True:
-        raise ValueError("source_pagination_capability_changed")
-    if layer.get("maxRecordCount") != 2000:
-        raise ValueError("source_record_limit_drift")
-    _validate_spatial_reference(layer.get("sourceSpatialReference"), "source_layer")
-    extent = layer.get("extent", {})
-    _validate_spatial_reference(extent.get("spatialReference"), "source_layer_extent")
-    if EXPECTED_LAYER_EXTENT is not None \
-            and {key: extent.get(key) for key in EXPECTED_LAYER_EXTENT} != EXPECTED_LAYER_EXTENT:
-        raise ValueError("source_layer_extent_drift")
-    fields_value = layer.get("fields")
-    if not isinstance(fields_value, list) or any(not isinstance(x, dict) for x in fields_value):
-        raise ValueError("source_field_roster_drift")
-    fields = [_plain_field(x) for x in fields_value]
-    schema_sha = _sha(_canonical(fields))
-    if EXPECTED_SCHEMA_SHA256 is not None and schema_sha != EXPECTED_SCHEMA_SHA256:
-        raise ValueError("source_schema_contract_drift")
-    if docs["layer_after"].get("fields") is None or [_plain_field(x) for x in docs["layer_after"]["fields"]] != fields:
-        raise ValueError("source_field_schema_changed_during_capture")
-    for name in ("layer_before", "layer_after"):
-        if _stable_layer(docs[name]) != _stable_layer(layer):
-            raise ValueError("source_layer_metadata_changed_during_capture")
-    if docs["service_after"] != service:
-        raise ValueError("source_service_metadata_changed_during_capture")
-    if (docs["count_before"].get("count") != len(ids)
-            or docs["count_after"].get("count") != len(ids)):
-        raise ValueError("source_count_drift")
-    if docs["count_before"] != docs["count_after"]:
-        raise ValueError("source_count_changed_during_capture")
-    for name in ("ids_before", "ids_after"):
-        roster_ids = docs[name].get("objectIds")
-        if (not isinstance(roster_ids, list) or len(roster_ids) != len(ids)
-                or any(type(value) is not int for value in roster_ids)
-                or len(set(roster_ids)) != len(ids) or sorted(roster_ids) != ids):
-            raise ValueError("source_id_population_drift")
-    if any(docs[name].get("objectIdFieldName") != "OBJECTID" for name in ("ids_before", "ids_after")):
-        raise ValueError("source_id_field_changed")
-
-    attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
-    record_digest = hashlib.sha256()
-    geometry_digest = hashlib.sha256()
-    record_digest.update(b"[")
-    geometry_digest.update(b"[")
-    counters = {"null_geometry": 0, "nan_geometry": 0, "features": 0}
-    bounds: list = [None, None, None, None]
-    writer = None
-    arrow_schema = None
-    first_feature_index = 0
-    previous_oid = None
-    try:
-        for (offset, count), name in zip(segments, page_names):
-            page = json.loads(page_bodies[name])
-            if not isinstance(page, dict) or "error" in page:
-                raise ValueError("source_page_error")
-            _validate_spatial_reference(page.get("spatialReference"), f"source_page_{offset:07d}")
-            rows = page.get("features")
-            if not isinstance(rows, list):
-                raise ValueError("source_page_missing_features")
-            expected = ids[offset:offset + count]
-            actual = [r.get("attributes", {}).get("OBJECTID") for r in rows if isinstance(r, dict)]
-            if actual != expected or len(rows) != len(expected):
-                raise ValueError("source_page_id_slice_incomplete_or_reordered")
-            if page.get("exceededTransferLimit") is True and offset + count >= len(ids):
-                raise ValueError("source_page_unexpected_exceeded_transfer_limit")
-            for index, feature in enumerate(rows):
-                attrs = feature.get("attributes")
-                oid = attrs["OBJECTID"] if isinstance(attrs, dict) else None
-                if previous_oid is not None and oid is not None and oid <= previous_oid:
-                    raise ValueError("source_page_objectid_not_ascending")
-                previous_oid = oid
-            geometry_records = _classify_geometries_streaming(rows, attr_names, bounds, counters)
-            for feature, geometry_record in zip(rows, geometry_records):
-                if first_feature_index:
-                    record_digest.update(b",")
-                    geometry_digest.update(b",")
-                record_digest.update(_canonical(feature))
-                geometry_digest.update(_canonical(geometry_record))
-                first_feature_index += 1
-            counters["features"] += len(rows)
-            if parquet_path is not None:
-                if writer is None:
-                    arrow_schema = pa.schema(
-                        [pa.field(field["name"], pa.binary() if field["name"] == "SHAPE"
-                                  else _arrow_type(field), nullable=True) for field in fields])
-                    geo = {"version": "1.1.0", "primary_column": "SHAPE", "columns": {"SHAPE": {
-                        "encoding": "WKB", "geometry_types": ["Polygon", "MultiPolygon"],
-                        "crs": pyproj.CRS.from_epsg(SOURCE_CRS_WKID).to_json_dict(), "edges": "planar"}}}
-                    writer = pq.ParquetWriter(parquet_path, arrow_schema.with_metadata({b"geo": _canonical(geo)}),
-                                              compression="zstd")
-                columns = {}
-                for field in fields:
-                    column_name = field["name"]
-                    if column_name == "SHAPE":
-                        values = [_polygon_wkb(row.get("geometry")) for row in rows]
-                    else:
-                        values = [row["attributes"].get(column_name) for row in rows]
-                    columns[column_name] = pa.array(values, type=arrow_schema.field(column_name).type)
-                writer.write_table(pa.Table.from_pydict(columns, schema=arrow_schema))
-    finally:
-        if writer is not None:
-            writer.close()
-    record_digest.update(b"]")
-    geometry_digest.update(b"]")
-    record_sha = record_digest.hexdigest()
-    geometry_sha = geometry_digest.hexdigest()
-    computed_bounds = None
-    if bounds[0] is not None:
-        computed_bounds = {"xmin": bounds[0], "ymin": bounds[1],
-                           "xmax": bounds[2], "ymax": bounds[3]}
-    audit = {"source_feature_count": counters["features"], "source_id_sha256": _sha(_canonical(ids)),
-             "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
-             "source_schema_sha256": schema_sha, "source_crs_epsg": SOURCE_CRS_WKID,
-             "geometry_type": "Polygon", "null_geometry_count": counters["null_geometry"],
-             "nan_string_geometry_count": counters["nan_geometry"],
-             "observed_bounds": computed_bounds,
-             "declared_layer_extent": {key: extent.get(key) for key in
-                                       ("xmin", "ymin", "xmax", "ymax")} if extent else None,
-             "unique_source_id_count": len(ids), "source_segment_count": len(segments),
-             "source_release_date": None,
-             "source_release_date_unknown_reason":
-                 "FEMA updates the NFHL continuously and publishes no release date for this layer; "
-                 "fetch time and the DataLumos archive modification date (2024-10-31) are not release dates."}
-    if EXPECTED_COUNT is not None:
-        if counters["features"] != EXPECTED_COUNT:
-            raise ValueError("source_feature_count_drift")
-        if _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-            raise ValueError("source_id_roster_drift")
-        if geometry_sha != EXPECTED_GEOMETRY_SHA256:
-            raise ValueError("source_geometry_or_coverage_drift")
-        if record_sha != EXPECTED_RECORD_SHA256:
-            raise ValueError("source_record_value_drift")
-        if (counters["null_geometry"] != EXPECTED_NULL_GEOMETRY_COUNT
-                or counters["nan_geometry"] != EXPECTED_NAN_GEOMETRY_COUNT):
-            raise ValueError("source_geometry_null_or_nan_count_drift")
-        if EXPECTED_OBSERVED_BOUNDS is not None and computed_bounds != EXPECTED_OBSERVED_BOUNDS:
-            raise ValueError("source_observed_coverage_drift")
-        contract = {}
-    else:
-        contract = {"expected_count": counters["features"], "expected_id_sha256": _sha(_canonical(ids)),
-                    "expected_schema_sha256": schema_sha, "expected_record_sha256": record_sha,
-                    "expected_geometry_sha256": geometry_sha,
-                    "expected_observed_bounds": computed_bounds,
-                    "expected_null_geometry_count": counters["null_geometry"],
-                    "expected_nan_geometry_count": counters["nan_geometry"],
-                    "expected_layer_extent": audit["declared_layer_extent"]}
-    return layer, fields_value, {"audit": audit, "ids": ids, "contract": contract}
-
-
-def _stable_layer(doc: dict) -> dict:
-    """Layer document without the producer's per-request volatile symbology.
-
-    Verified live 2026-11-12 on this layer (and previously on the sibling NFHL
-    polygon layer): every layer fetch rotates
-    ``drawingInfo.renderer.authoringInfo.colorRamp.colorRamps`` palette colors;
-    everything else in the layer document is stable. Only that palette is
-    excluded from before/after equality; the rest of the renderer and the whole
-    layer document are still compared.
-    """
-    copy = json.loads(json.dumps(doc))
-    ramp = copy.get("drawingInfo", {}).get("renderer", {}).get("authoringInfo", {}).get("colorRamp", {})
-    if isinstance(ramp, dict) and "colorRamps" in ramp:
-        del ramp["colorRamps"]
-    return copy
-
-
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_missing")
-    for key in ("wkid", "latestWkid"):
-        wkid = value.get(key)
-        if wkid is not None and wkid != SOURCE_CRS_WKID:
-            raise ValueError(label + "_crs_drift")
-
-
-def _code_identity() -> dict[str, object]:
-    identity = processing_identity(Path(__file__).parents[3])
-    identity["gdal"] = __import__("pyogrio").__gdal_version_string__
-    return identity
-
-
 def _manifest_body(manifest: Mapping[str, object]) -> bytes:
     return _canonical(manifest) + b"\n"
+
+
+def _upload_immutable_file(storage: StagingStorageResource, key: str, source: Path,
+                           descriptor: Mapping[str, object], *, consume_source: bool = False) -> None:
+    snapshot = storage.object_snapshot(key)
+    if snapshot is None:
+        if not source.exists():
+            raise ValueError("source_raw_evidence_missing_for_staging:" + source.name)
+        storage.upload_local_file(source, key)
+        snapshot = storage.object_snapshot(key)
+    if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
+        raise ValueError("candidate_output_physical_readback_failed:" + key)
+    if consume_source and storage.use_local:
+        # The staged object is now the verified durable copy of this raw
+        # evidence (the local backend stages by copying), and the raw
+        # descriptors come from the receipts, so a staging run interrupted
+        # after some uploads resumes from the already-staged objects without
+        # re-downloading their products; releasing each capture-directory
+        # source as it is staged keeps this layer's ~89 GiB raw staging
+        # within one disk.
+        source.unlink()
+
+
+def _reusable_cached_candidate(storage: StagingStorageResource) -> dict[str, object] | None:
+    """Return the sealed candidate for the current code identity, if still valid.
+
+    Reached only after the live listing's parsed product roster matched the
+    pinned roster (the caller enforces that gate), so a repeated ingest of
+    unchanged source content reuses the already-staged candidate — re-verifying
+    every staged object and original listing receipt — instead of re-acquiring
+    this layer's ~89 GiB of product zips. A roster drift or a changed
+    processing identity never reaches this path; multiple identity-matching
+    cached candidates are ambiguous and fail closed rather than guessing.
+    """
+    if EXPECTED_COUNT is None or EXPECTED_PRODUCT_ROSTER_SHA256 is None:
+        return None
+    identity = _code_identity()
+    fingerprint = _sha(_canonical(identity))
+    state_prefix = f"_construction-state/{DATASET_SLUG}/"
+    matching: list[str] = []
+    for key in storage.list_prefix(state_prefix):
+        if not re.fullmatch(r"v[0-9a-f]{32}\.json", key.rsplit("/", 1)[-1]):
+            continue
+        try:
+            bundle = json.loads(storage.read_bytes(key))
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if isinstance(bundle, dict) and bundle.get("processing_fingerprint") == fingerprint:
+            matching.append(key)
+    if not matching:
+        return None
+    if len(matching) > 1:
+        raise ValueError("ambiguous_cached_candidates")
+    state_key = matching[0]
+    bundle = json.loads(storage.read_bytes(state_key))
+    payload = bundle.get("payload")
+    version = bundle.get("version")
+    if not isinstance(payload, dict) or not isinstance(version, str):
+        raise ValueError("cached_first_candidate_invalid")
+    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+    objects = payload.get("objects", {})
+    verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version, fingerprint, identity,
+                            payload.get("source_record_sha256"), payload.get("source_schema_sha256"), objects,
+                            payload.get("capture_receipts", {}))
+    audit_object = objects.get("metadata/source_audit.json")
+    if not isinstance(audit_object, dict):
+        raise ValueError("cached_first_candidate_invalid")
+    audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
+    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+            "feature_count": audit.get("source_feature_count"),
+            "source_null_geometry_count": audit.get("null_geometry_count"),
+            "source_nan_string_geometry_count": audit.get("nan_string_geometry_count"),
+            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
+            "source_release_accepted": False, "source_freshness_accepted": False,
+            "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
+            "mapping_approved": False, "release_accepted": False}
+
+
+def _capture_input_provenance(capture_root: Path, products: list[dict[str, str]]) -> list[dict[str, object]]:
+    """Provenance for both listing brackets and every captured product zip."""
+    inputs: list[dict[str, object]] = []
+    for bracket in ("listing_before", "listing_after"):
+        receipt = _product_zip_receipt(capture_root, bracket)
+        if receipt is None or receipt.get("complete_body") is not True:
+            raise ValueError("source_raw_evidence_missing_for_staging:" + bracket)
+        inputs.append({
+            "input_id": f"nfhl_db_{bracket}", "producer": PUBLISHER,
+            "host": urlsplit(receipt["url"]).hostname, "role": "producer_publication",
+            "canonical_url": LISTING_URL, "retrieval_url": receipt["url"],
+            "observed_final_url": receipt.get("final_url"),
+            "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
+            "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+            "release_date": None,
+            "release_date_unknown_reason": "FEMA's NFHL Database search page publishes no "
+                                           "listing release date; product update dates are "
+                                           "recorded per product below.",
+            "license": "Not stated by the captured endpoint; rights review pending.",
+            "attribution": "FEMA National Flood Hazard Layer; formal attribution terms "
+                           "require maintainer review."})
+    for product in products:
+        receipt = _product_zip_receipt(capture_root, product["item_id"])
+        if receipt is None or receipt.get("complete_body") is not True:
+            raise ValueError("source_raw_evidence_missing_for_staging:" + product["item_id"])
+        inputs.append({
+            "input_id": product["item_id"], "producer": PUBLISHER,
+            "host": urlsplit(receipt["url"]).hostname, "role": "producer_publication",
+            "canonical_url": LISTING_URL, "retrieval_url": _servlet_url(product),
+            "observed_final_url": receipt.get("final_url"),
+            "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
+            "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+            "product_state": product["state"], "product_county": product["county"],
+            "product_file_name": product["file_name"],
+            "product_size_label": product["size_label"],
+            "product_update_date": _update_date_iso(product),
+            "product_listing_update_date": product["update_date_java"],
+            "release_date": _update_date_iso(product),
+            "license": "Not stated by the captured endpoints; rights review pending.",
+            "attribution": "FEMA National Flood Hazard Layer; formal attribution terms "
+                           "require maintainer review."})
+    return inputs
 
 
 def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version: str,
@@ -843,47 +848,30 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    docs: dict[str, object] = {}
-    doc_bodies: dict[str, bytes] = {}
     try:
         with httpx.Client(follow_redirects=False, timeout=300,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-flood-hazard-zones-draft"}) as client:
-            stats_body, _ = _capture_with_retry(
-                client, _stats_query(), capture_root, "ids_stats", max_bytes=DOC_CAPTURE_MAX_BYTES,
-                attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            stats_features = json.loads(stats_body).get("features")
-            stats_attrs = stats_features[0].get("attributes") \
-                if isinstance(stats_features, list) and stats_features and isinstance(stats_features[0], dict) else None
-            stats_attrs = stats_attrs if isinstance(stats_attrs, dict) else {}
-            min_oid, max_oid = stats_attrs.get("MIN_OBJECTID"), stats_attrs.get("MAX_OBJECTID")
-            if type(min_oid) is not int or type(max_oid) is not int or max_oid < min_oid:
-                raise ValueError("source_oid_stats_drift")
-            ids = _capture_roster(client, capture_root, "ids_seed", min_oid, max_oid)
-            for name, url in _doc_urls():
-                body, _ = _capture_with_retry(client, url, capture_root, name,
-                                              max_bytes=DOC_CAPTURE_MAX_BYTES,
-                                              attempts=DOC_CAPTURE_ATTEMPTS,
-                                              base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                doc_bodies[name] = body
-            ids_before = _capture_roster(client, capture_root, "ids_before", min_oid, max_oid)
-            accepted = _acquire_segments(client, capture_root, len(ids))
-            page_bodies = _DiskPageBodies(capture_root, [_segment_name(offset, count)
-                                                         for offset, count in accepted])
-            for name, url in _after_doc_urls():
-                body, _ = _capture_with_retry(client, url, capture_root, name,
-                                              max_bytes=DOC_CAPTURE_MAX_BYTES,
-                                              attempts=DOC_CAPTURE_ATTEMPTS,
-                                              base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                doc_bodies[name] = body
-            ids_after = _capture_roster(client, capture_root, "ids_after", min_oid, max_oid)
-        for name in ("service_before", "layer_before", "count_before",
-                     "layer_after", "service_after", "count_after"):
-            docs[name] = json.loads(doc_bodies[name])
-        docs["ids_before"] = {"objectIdFieldName": "OBJECTID", "objectIds": ids_before}
-        docs["ids_after"] = {"objectIdFieldName": "OBJECTID", "objectIds": ids_after}
-        docs["service_doc"] = doc_bodies["service_doc"]
+            listing_before_body = _capture_listing(client, capture_root, "listing_before")
+            products = _parse_listing(listing_before_body)
+            if EXPECTED_PRODUCT_ROSTER_SHA256 is not None:
+                if product_roster_sha256(products) != EXPECTED_PRODUCT_ROSTER_SHA256 \
+                        or (EXPECTED_PRODUCT_COUNT is not None and len(products) != EXPECTED_PRODUCT_COUNT):
+                    raise ValueError("source_product_roster_drift")
+            (capture_root / "products.json").write_bytes(_manifest_body({
+                "product_count": len(products), "products": products}))
+            reused = _reusable_cached_candidate(storage)
+            if reused is not None:
+                return reused
+            for product in products:
+                if shutil.disk_usage(capture_root).free < MIN_FREE_BYTES:
+                    raise ValueError("disk_floor_before_acquisition")
+                _capture_product_zip(client, product, capture_root,
+                                     attempts=ZIP_ATTEMPTS, base_delay=ZIP_BASE_DELAY_SECONDS)
+            listing_after_body = _capture_listing(client, capture_root, "listing_after")
+        if _parse_listing(listing_after_body) != products:
+            raise ValueError("source_listing_changed_during_capture")
         parquet_path = capture_root / f"{DATASET_SLUG}.parquet"
-        layer, source_fields, extracted = _validate_captures(page_bodies, docs, ids, parquet_path=parquet_path)
+        computed = _stream_validate(products, capture_root, parquet_path)
     except ValueError as exc:
         receipts = {}
         for path in sorted(capture_root.glob("*.receipt.json")):
@@ -896,72 +884,135 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
              "staged": False, "error_code": type(exc).__name__,
              "error_text": str(exc), "resumable": True, "receipt_names": sorted(receipts)}))
         raise
-    audit = dict(extracted["audit"])
-    identity = _code_identity()
-    if not audit["source_feature_count"] or audit["source_feature_count"] != len(extracted["ids"]):
+    counters = computed["counters"]
+    bounds = computed["bounds"]
+    computed_bounds = None
+    if bounds[0] is not None:
+        computed_bounds = {"xmin": bounds[0], "ymin": bounds[1], "xmax": bounds[2], "ymax": bounds[3]}
+    audit = {"source_feature_count": counters["features"],
+             "source_product_count": len(products),
+             "source_products_with_feature_class": counters["products"],
+             "source_products_without_polygon_feature_class":
+                 counters["products_without_polygon_feature_class"],
+             "source_product_roster_sha256": product_roster_sha256(products),
+             "source_id_sha256": computed["id_sha256"],
+             "source_record_sha256": computed["record_sha256"],
+             "source_geometry_sha256": computed["geometry_sha256"],
+             "source_schema_sha256": computed["schema_sha256"],
+             "source_crs_epsg": SOURCE_CRS_WKID,
+             "geometry_type": "Polygon", "null_geometry_count": counters["null_geometry"],
+             "nan_string_geometry_count": counters["nan_geometry"],
+             "observed_bounds": computed_bounds,
+             "unique_source_id_count": computed["id_count"],
+             "source_release_date": None,
+             "source_release_date_unknown_reason":
+                 "FEMA updates the NFHL continuously and publishes no single release date; "
+                 "each product's own update date is recorded in the source manifest inputs."}
+    if not audit["source_feature_count"] or audit["source_feature_count"] != computed["id_count"]:
         raise ValueError("source_feature_count_roster_mismatch")
     if EXPECTED_COUNT is None:
         (capture_root / "population_pins.json").write_bytes(_manifest_body({
             "established_by": "live-mode complete capture (pins unset at capture time)",
             "captured_at": datetime.now(timezone.utc).isoformat(),
-            "layer_id": LAYER_ID, "layer_name": LAYER_NAME, **extracted["contract"]}))
+            "source": "FEMA NFHL county/community databases (bulk distribution)",
+            "expected_product_count": len(products),
+            "expected_product_roster_sha256": audit["source_product_roster_sha256"],
+            "expected_count": counters["features"],
+            "expected_id_sha256": audit["source_id_sha256"],
+            "expected_schema_sha256": audit["source_schema_sha256"],
+            "expected_record_sha256": audit["source_record_sha256"],
+            "expected_geometry_sha256": audit["source_geometry_sha256"],
+            "expected_observed_bounds": computed_bounds,
+            "expected_null_geometry_count": counters["null_geometry"],
+            "expected_nan_geometry_count": counters["nan_geometry"]}))
         (capture_root / "capture_manifest.json").write_bytes(_manifest_body(
             {"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True, "staged": False,
              "reason_code": "source_population_pins_not_established",
              "source_feature_count": audit["source_feature_count"]}))
         raise _PinsPendingError("source_population_pins_not_established")
+    if counters["features"] != EXPECTED_COUNT:
+        raise ValueError("source_feature_count_drift")
+    if audit["source_product_roster_sha256"] != EXPECTED_PRODUCT_ROSTER_SHA256 \
+            or len(products) != EXPECTED_PRODUCT_COUNT:
+        raise ValueError("source_product_roster_drift")
+    if computed["id_sha256"] != EXPECTED_ID_SHA256:
+        raise ValueError("source_id_roster_drift")
+    if computed["geometry_sha256"] != EXPECTED_GEOMETRY_SHA256:
+        raise ValueError("source_geometry_or_coverage_drift")
+    if computed["record_sha256"] != EXPECTED_RECORD_SHA256:
+        raise ValueError("source_record_value_drift")
+    if computed["schema_sha256"] != EXPECTED_SCHEMA_SHA256:
+        raise ValueError("source_schema_contract_drift")
+    if (counters["null_geometry"] != EXPECTED_NULL_GEOMETRY_COUNT
+            or counters["nan_geometry"] != EXPECTED_NAN_GEOMETRY_COUNT):
+        raise ValueError("source_geometry_null_or_nan_count_drift")
+    if EXPECTED_OBSERVED_BOUNDS is not None and computed_bounds != EXPECTED_OBSERVED_BOUNDS:
+        raise ValueError("source_observed_coverage_drift")
+    audit = dict(audit)
+    identity = _code_identity()
     parquet_rel = f"geoparquet/{DATASET_SLUG}.parquet"
-    source_objects = {parquet_rel: {"bytes": parquet_path.stat().st_size, "sha256": _file_sha256(parquet_path)}}
+    source_objects = {parquet_rel: {"bytes": parquet_path.stat().st_size,
+                                    "sha256": _file_sha256(parquet_path)}}
     manifest = {
         "schema_version": 1, "approved": False, "title": "Flood Hazard Zones (FEMA NFHL)",
-        "description": "FEMA National Flood Hazard Layer (NFHL) MapServer layer 28 'Flood Hazard Zones', captured "
-                       "completely from the producer's own REST publication. Complete source attributes and NAD83 "
-                       "polygon geometry are represented in the candidate. The NFHL is continuously updated and "
-                       "publishes no per-snapshot release date; freshness, rights, public schema/ID contract, and "
-                       "release acceptance remain unresolved and unapproved.",
-        "publisher": PUBLISHER, "agency": "Federal Emergency Management Agency", "source_url": LAYER_URL,
+        "description": "FEMA National Flood Hazard Layer county/community NFHL Databases, captured "
+                       "completely from FEMA's own bulk distribution: every product FEMA's NFHL "
+                       "Database search page lists, each product's S_FLD_HAZ_AR 'Flood Hazard Area' "
+                       "polygon feature class extracted and retained. Complete source attributes and "
+                       "NAD83 polygon geometry are represented in the candidate. The NFHL is "
+                       "continuously updated and publishes no per-snapshot release date; freshness, "
+                       "rights, public schema/ID contract, and release acceptance remain unresolved "
+                       "and unapproved.",
+        "publisher": PUBLISHER, "agency": "Federal Emergency Management Agency",
+        "source_url": LISTING_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
-        "inputs": [{"input_id": name, "producer": PUBLISHER, "host": urlsplit(receipt["url"]).hostname,
-                    "role": "producer_publication",
-                    "canonical_url": SERVICE_DOC_URL if name == "service_doc" else LAYER_URL,
-                    "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
-                    "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
-                    "bytes": receipt["bytes"], "sha256": receipt["sha256"],
-                    "release_date": None,
-                    "release_date_unknown_reason": "The NFHL is continuously updated; the service and its "
-                                                   "documentation page publish no per-snapshot release date.",
-                    "license": "Not stated by the captured endpoints; rights review pending.",
-                    "attribution": "FEMA National Flood Hazard Layer; formal attribution terms require maintainer "
-                                   "review."}
-                   for name, receipt in sorted(receipt_index(capture_root).items())],
-        "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
-                             "parameters": {"layer_id": LAYER_ID,
-                                            "source_fields": "all producer fields retained in producer order and "
-                                                             "physical types, including the producer's derived "
-                                                             "SHAPE.STArea() and SHAPE.STLength() doubles; SHAPE is "
-                                                             "the original geometry field represented as WKB",
-                                            "source_ids": "Preserve producer OBJECTID, GFID, GlobalID, FLD_AR_ID "
-                                                          "and all source attribute values unchanged; no "
-                                                          "substitute IDs, casts, trimming, or joins",
-                                            "geometry": "Source NAD83 (EPSG:4269) polygon rings retained as WKB "
-                                                        "without projection under the producer's verified ring "
-                                                        "semantics (closed rings; clockwise exteriors, "
-                                                        "counter-clockwise holes; holes join their smallest "
-                                                        "containing exterior); null source geometry retained as "
-                                                        "null; string-'NaN' ordinate rows retained as records "
-                                                        "with null candidate geometry, raw evidence intact",
-                                            "candidate_status": "unapproved; publication blocked pending freshness, "
-                                                                "schema/ID contract, attribution and release "
+        "inputs": _capture_input_provenance(capture_root, products),
+        "transformations": [{"operation": "native_nfhl_database_to_geoparquet_candidate",
+                             "parameters": {"feature_class": FEATURE_CLASS,
+                                            "source_fields": "all S_FLD_HAZ_AR producer fields "
+                                                             "retained in producer order and "
+                                                             "physical types (unset numeric values "
+                                                             "are the producer's -9999 sentinel, "
+                                                             "retained verbatim); SHAPE is the "
+                                                             "original shapefile geometry as WKB",
+                                            "source_ids": "Preserve producer DFIRM_ID, FLD_AR_ID "
+                                                          "and all source attribute values "
+                                                          "unchanged; no substitute IDs, casts, "
+                                                          "trimming, or joins",
+                                            "geometry": "Source NAD83 (EPSG:4269) shapefile polygon "
+                                                        "geometry retained as WKB without projection: "
+                                                        "verbatim vertices, the shapefile's explicit "
+                                                        "part structure (first ring of each part "
+                                                        "exterior, following rings holes), and the "
+                                                        "shapefile's implicit ring closure made "
+                                                        "explicit as WKB requires; null source "
+                                                        "geometry retained as null; features with "
+                                                        "NaN ordinates retained as records with null "
+                                                        "candidate geometry, raw evidence intact",
+                                            "candidate_status": "unapproved; publication blocked "
+                                                                "pending freshness, schema/ID "
+                                                                "contract, attribution and release "
                                                                 "acceptance"}}],
-        "lineage": "FEMA publishes the NFHL as its own geospatial database (fema.gov/flood-maps/national-flood-"
-                   "hazard-layer). FEMA's MSC page 'GIS Web Services for the FEMA National Flood Hazard Layer "
-                   "(NFHL)' documents this exact REST URL (https://hazards.fema.gov/arcgis/rest/services/public/"
-                   "NFHL/MapServer) as the ArcGIS REST service for effective NFHL data; its HTML is captured as "
-                   "'service_doc' evidence. This candidate is exactly layer 28 'Flood Hazard Zones' of that "
-                   "producer service. The HIFLD Open inventory lists this dataset as nfhl/flood-hazard-zones-1 "
-                   "with DataLumos project 239971; that ICPSR archive copy and the 2024-10-31 archive "
-                   "modification date are identification and comparison context only, never pipeline inputs.",
+        "lineage": "FEMA publishes the National Flood Hazard Layer (NFHL) as its own geospatial "
+                   "database (fema.gov/flood-maps/national-flood-hazard-layer) and distributes "
+                   "state- and county/community-level NFHL Database extracts through the FEMA Map "
+                   "Service Center: FEMA's NFHL Database search page "
+                   "(https://hazards.fema.gov/femaportal/NFHL/searchResult.action) lists every "
+                   "county/community product with its update date and download link, and each link "
+                   "serves the product zip from FEMA's own host. This candidate is the S_FLD_HAZ_AR "
+                   "'Flood Hazard Area' polygon feature class of every listed product — the "
+                   "producer's bulk publication of the same NFHL flood hazard zone data the MSC GIS "
+                   "Web Services page documents behind its public REST service (layer 28 'Flood "
+                   "Hazard Zones'). The REST layer was not used as the capture surface because its "
+                   "query endpoint permanently refuses to serve one roster feature's "
+                   "full-resolution geometry (roster offset 1328, OBJECTID 1886, complete HTTP 200 "
+                   "Esri 500 error documents on every faithful request shape, 2026-11-12) while the "
+                   "same feature is present complete in this bulk distribution (Winston County NFHL "
+                   "Database 01133C_20110916.zip). The HIFLD Open inventory lists this dataset as "
+                   "nfhl/flood-hazard-zones-1 with DataLumos project 239971; that ICPSR archive "
+                   "copy and the 2024-10-31 archive modification date are identification and "
+                   "comparison context only, never pipeline inputs.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "Complete native source fields, IDs, values, physical nulls, and geometry retained in the "
                       "producer CRS; all release and compatibility approvals remain pending.",
@@ -972,8 +1023,8 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
     }
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
-    audit.update({"source_fields": [_plain_field(f) for f in source_fields],
-                  "official_layer_name": LAYER_NAME, "layer_id": LAYER_ID, "service_url": SERVICE_URL,
+    audit.update({"source_fields": [list(field) for field in computed["schema_signature"]],
+                  "official_dataset_name": "Flood Hazard Zones", "source_url": LISTING_URL,
                   "release_date_unknown": True, "freshness_accepted": False, "schema_contract_accepted": False,
                   "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False,
                   "release_accepted": False})
@@ -1015,22 +1066,47 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
         if snapshot is None or snapshot.size != len(body) or storage.sha256_key(f"{prefix}/{name}") != _sha(body):
             raise ValueError("candidate_output_physical_readback_failed:" + name)
     _upload_immutable_file(storage, f"{prefix}/{parquet_rel}", parquet_path, source_objects[parquet_rel])
-    capture_receipts = {}
+    # Only the two listing brackets carry body+wire capture receipts in the
+    # construction payload (the shared candidate verifier reads those two
+    # evidence shapes); every product zip's integrity is enforced through its
+    # raw object descriptor readback in the same verifier.
+    capture_receipts = {name: _product_zip_receipt(capture_root, name)
+                        for name in ("listing_before", "listing_after")}
+    if any(receipt is None or receipt.get("complete_body") is not True for receipt in capture_receipts.values()):
+        raise ValueError("source_raw_evidence_missing_for_staging:listing")
     raw_descriptors = {}
-    for name in sorted(page_bodies):
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-        capture_receipts[name] = receipt
-        raw_descriptors[f"raw/{name}.body"] = {"bytes": receipt["bytes"], "sha256": receipt["sha256"]}
-        raw_descriptors[f"raw/{name}.wire"] = {"bytes": receipt["wire_bytes"],
-                                               "sha256": receipt["wire_sha256"]}
+    staged_names = [name for name in ("listing_before", "listing_after")
+                    + tuple(product["item_id"] for product in products)]
+    for name in staged_names:
+        receipt = _product_zip_receipt(capture_root, name)
+        if receipt is None or receipt.get("complete_body") is not True:
+            raise ValueError("source_raw_evidence_missing_for_staging:" + name)
+        is_zip = name not in ("listing_before", "listing_after")
+        body_suffix = ".zip" if is_zip else ".body"
+        raw_descriptors[f"raw/{name}{body_suffix}"] = {"bytes": receipt["bytes"],
+                                                       "sha256": receipt["sha256"]}
+        if not is_zip:
+            raw_descriptors[f"raw/{name}.wire"] = {"bytes": receipt["wire_bytes"],
+                                                   "sha256": receipt["wire_sha256"]}
         raw_descriptors[f"raw/{name}.receipt.json"] = {"bytes": len(_manifest_body(receipt)),
                                                        "sha256": _sha(_manifest_body(receipt))}
-    for name in sorted(page_bodies):
-        _upload_immutable_file(storage, f"{prefix}/raw/{name}.body", capture_root / f"{name}.body",
-                               raw_descriptors[f"raw/{name}.body"], consume_source=True)
-        _upload_immutable_file(storage, f"{prefix}/raw/{name}.wire", capture_root / f"{name}.wire",
-                               raw_descriptors[f"raw/{name}.wire"], consume_source=True)
-        write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _manifest_body(capture_receipts[name]))
+    for name in staged_names:
+        is_zip = name not in ("listing_before", "listing_after")
+        receipt = _product_zip_receipt(capture_root, name)
+        if receipt is None or receipt.get("complete_body") is not True:
+            raise ValueError("source_raw_evidence_missing_for_staging:" + name)
+        if is_zip:
+            _upload_immutable_file(storage, f"raw/{name}.zip", capture_root / f"{name}.zip",
+                                   {"bytes": receipt["bytes"], "sha256": receipt["sha256"]},
+                                   consume_source=True)
+        else:
+            _upload_immutable_file(storage, f"raw/{name}.body", capture_root / f"{name}.body",
+                                   {"bytes": receipt["bytes"], "sha256": receipt["sha256"]},
+                                   consume_source=True)
+            _upload_immutable_file(storage, f"raw/{name}.wire", capture_root / f"{name}.wire",
+                                   {"bytes": receipt["wire_bytes"], "sha256": receipt["wire_sha256"]},
+                                   consume_source=True)
+        write_immutable(storage, f"raw/{name}.receipt.json", _manifest_body(receipt))
     descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in metadata_objects.items()}
     descriptors[parquet_rel] = source_objects[parquet_rel]
     descriptors.update(raw_descriptors)
@@ -1054,36 +1130,7 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
             "release_accepted": False, "capture_directory": str(capture_root)}
 
 
-def receipt_index(capture_root: Path) -> dict[str, dict[str, object]]:
-    receipts = {}
-    for path in sorted(capture_root.glob("*.receipt.json")):
-        name = path.name.removesuffix(".receipt.json")
-        if name.startswith("page_") or name in ("ids_seed", "service_doc", "service_before", "layer_before",
-                                                "count_before", "ids_before", "layer_after", "service_after",
-                                                "count_after", "ids_after"):
-            try:
-                receipts[name] = json.loads(path.read_bytes())
-            except (ValueError, OSError):
-                continue
-    return receipts
-
-
-def _upload_immutable_file(storage: StagingStorageResource, key: str, source: Path,
-                           descriptor: Mapping[str, object], *, consume_source: bool = False) -> None:
-    snapshot = storage.object_snapshot(key)
-    if snapshot is None:
-        if not source.exists():
-            raise ValueError("source_raw_evidence_missing_for_staging:" + source.name)
-        storage.upload_local_file(source, key)
-        snapshot = storage.object_snapshot(key)
-    if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
-        raise ValueError("candidate_output_physical_readback_failed:" + key)
-    if consume_source and storage.use_local:
-        # The staged object is now the verified durable copy of this raw
-        # evidence (the local backend stages by copying), and the raw
-        # descriptors come from the receipts, so a staging run interrupted
-        # after some uploads resumes from the already-staged objects without
-        # re-acquiring their segments; releasing each capture-directory source
-        # as it is staged keeps this layer's tens-of-GB raw staging within one
-        # disk.
-        source.unlink()
+def _code_identity() -> dict[str, object]:
+    identity = processing_identity(Path(__file__).parents[3])
+    identity["gdal"] = __import__("pyogrio").__gdal_version_string__
+    return identity

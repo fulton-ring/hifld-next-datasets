@@ -22,10 +22,10 @@ class NfhlFloodHazardZonesConfig(Config):
     group_name="fema",
     compute_kind="http",
     description=(
-        "FEMA NFHL MapServer layer 28 'Flood Hazard Zones' from the producer's own REST publication. "
-        "Resumable lossless capture; fails closed while the population pins are unestablished, and once "
-        "pinned stages an unapproved candidate only (release date, freshness, rights, and schema/ID "
-        "acceptance remain pending)."
+        "FEMA NFHL county/community NFHL Databases 'Flood Hazard Zones' (S_FLD_HAZ_AR) from the "
+        "producer's own bulk distribution. Resumable lossless capture; fails closed while the "
+        "population pins are unestablished, and once pinned stages an unapproved candidate only "
+        "(release date, freshness, rights, and schema/ID acceptance remain pending)."
     ),
 )
 def fema_nfhl_flood_hazard_zones(context, config: NfhlFloodHazardZonesConfig,
