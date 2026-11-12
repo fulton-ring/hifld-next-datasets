@@ -16,7 +16,6 @@ from dagster import (
 
 from dagster_hifld.assets.discovery import discovered, unique
 from dagster_hifld.assets import hifld_dataset_assets
-from dagster_hifld.assets.healthcare_dialysis import dialysis_source_integrity_job, dialysis_source_integrity_schedule, dialysis_source_locations
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals_draft_refresh_job, bts_ferry_terminals_draft_refresh_schedule
 from dagster_hifld.assets.smithsonian_holocene import holocene_source_integrity_job, holocene_source_integrity_schedule
 from dagster_hifld.assets.historical_tsunami_events import (
@@ -76,10 +75,6 @@ from dagster_hifld.assets.arc_regions import (
     arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
 )
 
-from dagster_hifld.assets.usgs import (
-    usgs_aquifers_draft_refresh_job,
-    usgs_aquifers_draft_refresh_schedule,
-)
 
 from dagster_hifld.assets.epa_frs_naics_powerplants import (
     epa_frs_naics_complete,
@@ -313,11 +308,6 @@ from dagster_hifld.assets.sloped_ground_lines_usace_ienc import (
     sloped_ground_lines_usace_ienc_complete,
     sloped_ground_lines_usace_ienc_draft_job,
     sloped_ground_lines_usace_ienc_draft_schedule,
-)
-from dagster_hifld.assets.child_care_centers import (
-    child_care_centers_complete,
-    child_care_centers_draft_job,
-    child_care_centers_draft_schedule,
 )
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
@@ -685,10 +675,6 @@ from dagster_hifld.assets.usace_depth_areas import (
     usace_depth_areas_draft_job,
     usace_depth_areas_draft_schedule,
 )
-from dagster_hifld.assets.construction_minerals import (
-    construction_minerals_draft_job,
-    construction_minerals_draft_schedule,
-)
 from dagster_hifld.assets.census_county_subdivisions import (
     county_subdivisions_draft_refresh_job,
     county_subdivisions_draft_refresh_schedule,
@@ -706,11 +692,6 @@ from dagster_hifld.assets.usace_floating_docks import (
     usace_floating_docks_draft_job,
     usace_floating_docks_draft_schedule,
 )
-from dagster_hifld.assets.ferrous_metal_mines import (
-    ferrous_metal_mines_draft_job,
-    ferrous_metal_mines_draft_schedule,
-    ferrous_metal_mines_population_complete,
-)
 
 from dagster_hifld.assets.docks import (
     docks_draft_job,
@@ -718,16 +699,6 @@ from dagster_hifld.assets.docks import (
     docks_source_population_complete,
     docks_source_geometry_quality,
     docks_release_acceptance_pending,
-)
-from dagster_hifld.assets.epa_facilities import (
-    epa_facilities_full_quality,
-    epa_facilities_draft_job,
-    epa_facilities_draft_schedule,
-)
-from dagster_hifld.assets.epa_facilities_labels import (
-    epa_facilities_labels_full_quality,
-    epa_facilities_labels_draft_job,
-    epa_facilities_labels_draft_schedule,
 )
 from dagster_hifld.assets.epa_frs_tri import (
     epa_frs_toxic_release_inventory_complete,
@@ -1174,7 +1145,6 @@ defs = Definitions(
             shoreline_construction_lines_usace_ienc_complete,
             small_craft_facility_areas_usace_ienc_complete,
             sloped_ground_lines_usace_ienc_complete,
-            child_care_centers_complete,
             usace_caution_areas_complete,
             usace_berths_areas_complete,
             usace_dry_docks_complete,
@@ -1212,7 +1182,6 @@ defs = Definitions(
             usace_crane_locations_quality,
             usace_crane_locations_release,
             usace_floating_docks_complete,
-            ferrous_metal_mines_population_complete,
             usace_data_coverage_areas_complete,
             epa_emergency_response_rmp_facilities_complete,
             epa_frs_sic_complete,
@@ -1222,8 +1191,6 @@ defs = Definitions(
             docks_source_population_complete,
             docks_source_geometry_quality,
             docks_release_acceptance_pending,
-            epa_facilities_full_quality,
-            epa_facilities_labels_full_quality,
             epa_eez_full_quality,
             epa_regions_with_eez_full_quality,
             epa_frs_toxic_release_inventory_complete,
@@ -1235,7 +1202,6 @@ defs = Definitions(
             bts_intermodal_freight_air_to_truck_complete,
             fema_nfhl_nodes_complete,
             fema_nfhl_hydrologic_reaches_complete,
-            dialysis_source_locations,
             usace_fuds_munitions_response_sites_complete,
             usace_fuds_public_properties_complete,
             bts_national_transit_map_agencies_candidate_complete,
@@ -1257,7 +1223,6 @@ defs = Definitions(
             elsd_source_integrity_job,
             epa_disaster_debris_draft_job,
             colleges_source_integrity_job,
-            usgs_aquifers_draft_refresh_job,
             tsunami_events_draft_job,
             bts_air_truck_draft_job,
             census_tracts_draft_job,
@@ -1288,7 +1253,6 @@ defs = Definitions(
             shoreline_construction_lines_usace_ienc_draft_job,
             small_craft_facility_areas_usace_ienc_draft_job,
             sloped_ground_lines_usace_ienc_draft_job,
-            child_care_centers_draft_job,
             usace_obstruction_lines_draft_job,
             usace_mooring_facility_lines_draft_job,
             usace_obstruction_locations_draft_job,
@@ -1350,18 +1314,14 @@ defs = Definitions(
             concity_source_integrity_job,
             usace_conveyor_areas_draft_job,
             usace_depth_areas_draft_job,
-            construction_minerals_draft_job,
             county_subdivisions_draft_refresh_job,
             usace_crane_locations_draft_job,
             usace_floating_docks_draft_job,
-            ferrous_metal_mines_draft_job,
             usace_data_coverage_areas_draft_job,
             epa_rmp_facilities_draft_job,
             epa_frs_sic_draft_job,
             epa_rcra_tsd_draft_job,
             docks_draft_job,
-            epa_facilities_draft_job,
-            epa_facilities_labels_draft_job,
             epa_eez_draft_job,
             epa_regions_with_eez_draft_job,
             epa_frs_tri_draft_job,
@@ -1369,7 +1329,6 @@ defs = Definitions(
             epa_frs_interests_draft_job,
             fdic_locations_draft_job,
             fema_regions_draft_job,
-            dialysis_source_integrity_job,
             bts_national_transit_map_agencies_draft_job,
         ],
         discovered("JOBS"),
@@ -1392,7 +1351,6 @@ defs = Definitions(
             elsd_source_integrity_schedule,
             epa_disaster_debris_draft_schedule,
             colleges_source_integrity_schedule,
-            usgs_aquifers_draft_refresh_schedule,
             quaternary_fault_lines_draft_schedule,
             courthouses_draft_schedule,
             census_primary_roads_draft_schedule,
@@ -1424,7 +1382,6 @@ defs = Definitions(
             shoreline_construction_lines_usace_ienc_draft_schedule,
             small_craft_facility_areas_usace_ienc_draft_schedule,
             sloped_ground_lines_usace_ienc_draft_schedule,
-            child_care_centers_draft_schedule,
             usace_obstruction_lines_draft_schedule,
             usace_mooring_facility_lines_draft_schedule,
             usace_obstruction_locations_draft_schedule,
@@ -1492,19 +1449,15 @@ defs = Definitions(
             concity_source_integrity_schedule,
             usace_conveyor_areas_draft_schedule,
             usace_depth_areas_draft_schedule,
-            construction_minerals_draft_schedule,
             county_subdivisions_draft_refresh_schedule,
             usace_crane_locations_draft_schedule,
             usace_floating_docks_draft_schedule,
-            ferrous_metal_mines_draft_schedule,
             usace_data_coverage_areas_draft_schedule,
             epa_rmp_facilities_draft_schedule,
             epa_frs_sic_draft_schedule,
             epa_frs_interest_contact_draft_schedule,
             epa_rcra_tsd_draft_schedule,
             docks_draft_schedule,
-            epa_facilities_draft_schedule,
-            epa_facilities_labels_draft_schedule,
             epa_eez_draft_schedule,
             epa_regions_with_eez_draft_schedule,
             epa_frs_tri_draft_schedule,
@@ -1516,7 +1469,6 @@ defs = Definitions(
             fuds_district_boundaries_draft_schedule,
             tsunami_events_draft_schedule,
             bts_air_truck_draft_schedule,
-            dialysis_source_integrity_schedule,
             fuds_mrs_draft_schedule,
             fuds_public_properties_draft_schedule,
             bts_national_transit_map_agencies_draft_schedule,
