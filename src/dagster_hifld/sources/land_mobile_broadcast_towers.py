@@ -602,7 +602,6 @@ def capture_land_mobile_broadcast_towers(storage: StagingStorageResource, *, ver
         "publisher": PUBLISHER,
         "agency": "Federal Communications Commission",
         "source_url": SOURCE_URL,
-        "documentation_url": LANDING,
         "license": None,
         "date_issued": audit["uls_file_creation_date_iso"],
         "processor": "HIFLD Next",
