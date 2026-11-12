@@ -364,6 +364,48 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
                                                        capture_directory=str(root / "captures"))
             self.assertEqual(set(storage.list_prefix()), set())
 
+    def test_oversized_or_refused_wide_segment_is_bisected(self):
+        # Regression for the 2026-11-12 live session: this layer's dense head
+        # region makes wide pages exceed the module's capture cap, and the
+        # producer refuses them, so a wide segment whose capture is refused
+        # must bisect instead of aborting the session.
+        import tempfile
+        from pathlib import Path
+        fields, features, docs, schema, geom, bodies = _bodies_from_fixture()
+        wide_bodies = dict(bodies)
+
+        def single(feature):
+            return json.dumps({"features": [feature],
+                               "spatialReference": {"wkid": 4269, "latestWkid": 4269},
+                               "exceededTransferLimit": True},
+                              separators=(",", ":"), ensure_ascii=False).encode()
+
+        wide_bodies["page_0000000_0001"] = single(features[0])
+        wide_bodies["page_0000001_0001"] = single(features[1])
+
+        def refused_wide(_client, url, capture_root, name, *, max_bytes):
+            if name == "page_0000000_0002":
+                raise ValueError("incomplete_source_capture:" + name)
+            return _fake_capture_get(wide_bodies)[0](_client, url, capture_root, name, max_bytes=max_bytes)
+
+        pins = dict(_pins(features, schema, geom), SEGMENT_START_RECORDS=2,
+                    SEGMENT_PROBE_ATTEMPTS=1, SEGMENT_PROBE_BASE_DELAY_SECONDS=0.01,
+                    DOC_CAPTURE_BASE_DELAY_SECONDS=0.01)
+        with tempfile.TemporaryDirectory(prefix="fhz-bisect-") as temporary, \
+                patch.multiple(source, **pins), \
+                patch.object(source, "capture_get", side_effect=refused_wide), \
+                patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
+            root = Path(temporary)
+            storage = source.StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            candidate = source.capture_nfhl_flood_hazard_zones(storage, version="vfixture",
+                                                               capture_directory=str(root / "captures"))
+            attempt = next(path for path in (root / "captures").iterdir()
+                           if path.name.startswith("vfixture-"))
+            plan = json.loads((attempt / "segments.json").read_bytes())
+            self.assertEqual([list(pair) for pair in plan["accepted"]],
+                             [[0, 1], [1, 1], [2, 1]])
+            self.assertEqual(candidate["feature_count"], 3)
+
     def test_resume_reuses_cached_segment_bodies(self):
         import tempfile
         from pathlib import Path

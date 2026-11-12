@@ -425,11 +425,29 @@ def _acquire_segments(client: httpx.Client, capture_root: Path, total: int) -> l
         name = _segment_name(offset, count)
         if (offset, count) in accepted_set:
             continue
-        body, receipt = _capture_with_retry(
-            client, _segment_query(offset, count), capture_root, name,
-            max_bytes=MAX_CAPTURE_BYTES,
-            attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-            base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
+        try:
+            body, receipt = _capture_with_retry(
+                client, _segment_query(offset, count), capture_root, name,
+                max_bytes=MAX_CAPTURE_BYTES,
+                attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
+                base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
+        except ValueError as exc:
+            # A segment the producer keeps refusing or that cannot be served
+            # within this module's capture cap (this layer's dense head region
+            # makes 2000-record pages far larger than the sibling layers', both
+            # observed 2026-11-12) is bisected; its refused attempts stay on
+            # disk as evidence under the segment's name. A single-record
+            # segment that still fails ends the capture explicitly. Smaller
+            # requests are also more likely to survive the producer's transient
+            # connection resets, and correctness never depends on why a segment
+            # was refused: every served segment is verified against the pinned
+            # roster slice.
+            if count == 1 or not str(exc).startswith("incomplete_source_capture:"):
+                raise
+            middle = count // 2
+            queue.insert(0, (offset + middle, count - middle))
+            queue.insert(0, (offset, middle))
+            continue
         if _producer_error_doc(body):
             if count == 1:
                 raise ValueError("source_single_feature_unservable")
