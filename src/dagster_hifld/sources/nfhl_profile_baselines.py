@@ -152,9 +152,15 @@ _SEED_DOC = "ids_seed"
 _DOC_NAMES = ("service_doc", "service_before", "layer_before", "count_before", "ids_before")
 _AFTER_DOC_NAMES = ("layer_after", "service_after", "count_after", "ids_after")
 
-_ISO_LINESTRING_ZM = 3002
-_ISO_MULTILINESTRING_ZM = 3005
-
+# PostGIS EWKB dimension flags. The candidate WKB carries Z and M in the EWKB
+# flavor because it is the one XYZM polyline form the installed shapely/GEOS
+# stack parses for both LineString and MultiLineString (ISO type 3005 nested
+# headers are rejected by GEOS), and GDAL reads it interchangeably.
+EWKB_Z_FLAG = 0x80000000
+EWKB_M_FLAG = 0x40000000
+EWKB_ZM_FLAGS = EWKB_Z_FLAG | EWKB_M_FLAG
+EWKB_LINESTRING_ZM = 2 | EWKB_ZM_FLAGS
+EWKB_MULTILINESTRING_ZM = 5 | EWKB_ZM_FLAGS
 
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -422,6 +428,26 @@ def _validate_after_docs(docs_after: Mapping[str, object], contract: Mapping[str
         raise ValueError("source_id_field_changed")
 
 
+class _ItemDigest:
+    """Streamed sha256 over the canonical JSON array of added items."""
+
+    def __init__(self) -> None:
+        self._digest = hashlib.sha256()
+        self._digest.update(b"[")
+        self._first = True
+
+    def add(self, item: object) -> None:
+        if not self._first:
+            self._digest.update(b",")
+        self._digest.update(_canonical(item))
+        self._first = False
+
+    def hexdigest(self) -> str:
+        digest = self._digest.copy()
+        digest.update(b"]")
+        return digest.hexdigest()
+
+
 class _StreamStats:
     """Streamed full-record/geometry digests and population tallies.
 
@@ -432,11 +458,8 @@ class _StreamStats:
     """
 
     def __init__(self) -> None:
-        self._record_digest = hashlib.sha256()
-        self._record_digest.update(b"[")
-        self._geometry_digest = hashlib.sha256()
-        self._geometry_digest.update(b"[")
-        self._first = True
+        self._records = _ItemDigest()
+        self._geometries = _ItemDigest()
         self.feature_count = 0
         self.null_geometry_count = 0
         self.nan_geometry_count = 0
@@ -448,11 +471,6 @@ class _StreamStats:
         self.xmin = self.ymin = self.xmax = self.ymax = None
         self.geometry_types: set[str] = set()
 
-    def _digest_item(self, digest, item: object) -> None:
-        if not self._first:
-            digest.update(b",")
-        digest.update(_canonical(item))
-
     def add(self, feature: object, attr_names: list[str]) -> None:
         if not isinstance(feature, dict):
             raise ValueError("source_record_invalid")
@@ -460,14 +478,13 @@ class _StreamStats:
         if not isinstance(attrs, dict) or list(attrs) != attr_names:
             raise ValueError("source_record_attribute_schema_drift")
         oid = attrs["OBJECTID"]
-        self._digest_item(self._record_digest, feature)
-        self._first = False
+        self._records.add(feature)
         self.feature_count += 1
         geom = feature.get("geometry")
         if geom is None:
             self.null_geometry_count += 1
             self.null_geometry_ids.append(oid)
-            self._digest_item(self._geometry_digest, [oid, None])
+            self._geometries.add([oid, None])
             return
         if not isinstance(geom, dict) or not (set(geom) == {"paths"}
                                               or (set(geom) == {"hasZ", "hasM", "paths"}
@@ -518,7 +535,7 @@ class _StreamStats:
                     self.null_m_vertex_count += 1
                 elif type(m) not in (int, float):
                     raise ValueError("source_line_geometry_invalid")
-        self._digest_item(self._geometry_digest, [oid, geom["paths"]])
+        self._geometries.add([oid, geom["paths"]])
         if nan_paths:
             self.nan_geometry_count += 1
         else:
@@ -526,15 +543,11 @@ class _StreamStats:
 
     @property
     def record_sha256(self) -> str:
-        digest = self._record_digest.copy()
-        digest.update(b"]")
-        return digest.hexdigest()
+        return self._records.hexdigest()
 
     @property
     def geometry_sha256(self) -> str:
-        digest = self._geometry_digest.copy()
-        digest.update(b"]")
-        return digest.hexdigest()
+        return self._geometries.hexdigest()
 
     @property
     def observed_bounds(self) -> dict[str, object] | None:
@@ -675,20 +688,35 @@ def _usable_paths(geom: object) -> list | None:
     return paths
 
 
+def _path_vertices(path: list) -> bytes:
+    out = bytearray(struct.pack("<I", len(path)))
+    for x, y, z, m in path:
+        z_value = float("nan") if (z is None or z == "NaN") else float(z)
+        m_value = float("nan") if (m is None or m == "NaN") else float(m)
+        out += struct.pack("<dddd", float(x), float(y), z_value, m_value)
+    return bytes(out)
+
+
 def _polyline_wkb_xyzm(type_code: int, paths: list) -> bytes:
+    """PostGIS EWKB XYZM for one LineString or MultiLineString.
+
+    A LineString body is the vertex count plus the vertices; a MultiLineString
+    body is the part count plus one full nested LineString (byte-order marker,
+    dimension-flagged type code, vertex count, vertices) per part, as the EWKB
+    flavor requires.
+    """
+    if type_code == EWKB_LINESTRING_ZM:
+        return b"\x01" + struct.pack("<I", type_code) + _path_vertices(paths[0])
     out = bytearray(b"\x01")
     out += struct.pack("<II", type_code, len(paths))
     for path in paths:
-        out += struct.pack("<I", len(path))
-        for x, y, z, m in path:
-            z_value = float("nan") if (z is None or z == "NaN") else float(z)
-            m_value = float("nan") if (m is None or m == "NaN") else float(m)
-            out += struct.pack("<dddd", float(x), float(y), z_value, m_value)
+        out += b"\x01" + struct.pack("<I", EWKB_LINESTRING_ZM)
+        out += _path_vertices(path)
     return bytes(out)
 
 
 def _line_wkb(geom: object) -> bytes | None:
-    """ISO WKB XYZM for a producer polyline geometry, or ``None`` when unusable.
+    """EWKB XYZM for a producer polyline geometry, or ``None`` when unusable.
 
     ``None`` is reserved for null source geometry and X/Y ``"NaN"`` planar
     ordinates; producer ``null``/``"NaN"`` Z/M ordinates map to WKB NaN (the
@@ -699,8 +727,8 @@ def _line_wkb(geom: object) -> bytes | None:
     if paths is None:
         return None
     if len(paths) == 1:
-        return _polyline_wkb_xyzm(_ISO_LINESTRING_ZM, [paths[0]])
-    return _polyline_wkb_xyzm(_ISO_MULTILINESTRING_ZM, paths)
+        return _polyline_wkb_xyzm(EWKB_LINESTRING_ZM, [paths[0]])
+    return _polyline_wkb_xyzm(EWKB_MULTILINESTRING_ZM, paths)
 
 
 def _parquet_from_pages(capture_root: Path, segments: list[tuple[int, int]],
