@@ -87,6 +87,7 @@ from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_are
 from dagster_hifld.assets.usace_dumping_ground_areas import usace_dumping_ground_areas_usace_ienc
 from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
 from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
+from dagster_hifld.assets.eia_biodiesel_plants import eia_biodiesel_plants
 from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_24
 from dagster_hifld.assets.gcca_warehouse_directory import gcca_warehouses_current
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
@@ -225,6 +226,7 @@ hifld_ingest_assets = [
     usace_dumping_ground_areas_usace_ienc,
     plate_boundaries_usgs,
     eia_power_plants_historical,
+    eia_biodiesel_plants,
     epa_frs_eia_860_power_generation_facilities_by_source,
     epa_icis_wastewater_treatment_plants,
     fuds_irm_property_point_ingest,
