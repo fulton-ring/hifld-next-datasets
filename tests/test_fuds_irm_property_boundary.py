@@ -7,7 +7,7 @@ import unittest
 import pyarrow as pa
 import pyarrow.parquet as pq
 from shapely import from_wkb, is_valid
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.sources.fuds_irm_property_boundary import (
     DATASET_SLUG, EXPECTED_COUNT, LAYER_ID, LAYER_NAME, _parquet_bytes,
@@ -62,6 +62,21 @@ class IrmPropertyBoundaryTests(unittest.TestCase):
         result = _source_polygon_geometry([bowtie])
         self.assertIsInstance(result, Polygon)
         self.assertFalse(is_valid(result))
+
+    def test_nested_island_holes_attach_to_immediate_shell(self):
+        def clockwise_square(low, high):
+            return [[low, low], [low, high], [high, high], [high, low], [low, low]]
+
+        result = _source_polygon_geometry([
+            clockwise_square(0, 10), clockwise_square(1, 9)[::-1],
+            clockwise_square(2, 8), clockwise_square(3, 7)[::-1],
+        ])
+        self.assertIsInstance(result, MultiPolygon)
+        self.assertTrue(is_valid(result))
+        by_area = sorted(result.geoms, key=lambda polygon: polygon.area)
+        self.assertEqual([polygon.bounds for polygon in by_area],
+                         [(2.0, 2.0, 8.0, 8.0), (0.0, 0.0, 10.0, 10.0)])
+        self.assertEqual([len(polygon.interiors) for polygon in by_area], [1, 1])
 
 
 if __name__ == "__main__":

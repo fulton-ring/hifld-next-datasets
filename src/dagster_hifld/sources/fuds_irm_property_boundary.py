@@ -131,10 +131,16 @@ def _source_polygon_geometry(rings: list[list[list[object]]]):
     holes_by_shell: list[list[list[list[object]]]] = [[] for _ in shells]
     for ring in holes:
         polygon = Polygon([[*coordinate[:3]] for coordinate in ring])
-        containing = [i for i, shell in enumerate(shell_polygons) if shell.covers(polygon.representative_point())]
+        # Assign a hole to its immediate shell: the smallest shell that
+        # contains the entire ring. Point containment only resolves rings no
+        # shell fully covers; the invalid result stays for quality checks.
+        containing = [i for i, shell in enumerate(shell_polygons) if shell.covers(polygon)]
+        if not containing:
+            containing = [i for i, shell in enumerate(shell_polygons)
+                          if shell.covers(polygon.representative_point())]
         if not containing:
             raise ValueError("source_orphan_interior_ring")
-        owner = max(containing, key=lambda i: shell_polygons[i].area)
+        owner = min(containing, key=lambda i: shell_polygons[i].area)
         holes_by_shell[owner].append([[*coordinate[:3]] for coordinate in ring])
     polygons = [Polygon([[*coordinate[:3]] for coordinate in ring], holes_by_shell[i])
                 for i, ring in enumerate(shells)]
