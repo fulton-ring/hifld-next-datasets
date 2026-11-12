@@ -97,6 +97,8 @@ EXPECTED_ACTIVE_ID_SHA256 = "3763b3226296ed4f8a549628072deb2b575f3330d809d2204e4
 EXPECTED_STATE_ROSTER_SHA256 = "85a1495cb39eae5ee5d48f5e8daf99251523463c3ae279686acac695864c195d"
 EXPECTED_EMPTY_CALLSIGN_ROWS = 2
 EXPECTED_OUT_OF_RANGE_COORDINATE_ROWS = 1
+EXPECTED_LAT_DIRECTION_COUNTS = {"": 5, "0": 2, "N": 603774, "S": 9}
+EXPECTED_LON_DIRECTION_COUNTS = {"": 6, "3": 2, "E": 96, "N": 1, "W": 603683, "w": 2}
 EXPECTED_EXTRA_FIELD_ROWS = {"HD": 1, "EN": 2, "LO": 0}
 EXPECTED_BOUNDS = [-179.999972222, -14.3295, 174.099444444, 93.0]
 HD_CALLSIGN, HD_STATUS, HD_SERVICE = 4, 5, 6
@@ -231,14 +233,16 @@ def _decimal(value: str, label: str) -> float | None:
 
 
 def _decimal_degrees(degrees: float, minutes: float | None, seconds: float | None,
-                     direction: str, negative_direction: str) -> float:
-    value = degrees + (minutes or 0.0) / 60 + (seconds or 0.0) / 3600
-    if direction == negative_direction:
-        value = -value
+                     sign: int) -> float:
     # The historical published layer derived latdec/londec from its own DMS
     # components with this formula at 12 significant digits (605289 of its
-    # 605297 rows agree with their own DMS columns).
-    return float(f"{value:.12g}")
+    # 605297 rows agree with their own DMS columns). Only "S" marks southern
+    # latitude and only "E" marks eastern longitude: missing or non-canonical
+    # direction components default to north/west, matching the historical
+    # extract's convention (frozen rows whose source direction is empty carry
+    # positive latdec and negative londec with identical DMS).
+    value = degrees + (minutes or 0.0) / 60 + (seconds or 0.0) / 3600
+    return float(f"{sign * value:.12g}")
 
 
 def _point_wkb(longitude: float, latitude: float) -> bytes:
@@ -317,6 +321,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
     lo_extra_field_rows = 0
     lo_rows = 0
     active_location_rows = 0
+    lat_direction_counts = {}
+    lon_direction_counts = {}
     try:
         raw_lo = archive.read("LO.dat")
     except (zipfile.BadZipFile, OSError, EOFError, RuntimeError) as exc:
@@ -366,22 +372,26 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         lon_min = _decimal(row[LO_LON_MIN], "longitude_minutes")
         lat_sec = _decimal(row[LO_LAT_SEC], "latitude_seconds")
         lon_sec = _decimal(row[LO_LON_SEC], "longitude_seconds")
-        lat_dir, lon_dir = row[LO_LAT_DIR].strip(), row[LO_LON_DIR].strip()
-        if lat_dir not in {"N", "S"}:
-            raise ValueError("source_latitude_direction_drift")
-        if lon_dir not in {"E", "W"}:
-            raise ValueError("source_longitude_direction_drift")
-        # Raw DMS components are preserved verbatim; the FCC's own layer
-        # description warns of coordinate errors in the licensing data, and
-        # the pinned edition contains one filed latitude (93 degrees) whose
-        # derived decimal leaves the nominal range. It is published as filed
-        # and pinned by count instead of being clamped or dropped.
-        lat_dec = _decimal_degrees(lat_deg, lat_min, lat_sec, lat_dir, "S")
-        lon_dec = _decimal_degrees(lon_deg, lon_min, lon_sec, lon_dir, "W")
+        lat_dir, lon_dir = row[LO_LAT_DIR], row[LO_LON_DIR]
+        # Raw DMS components and direction strings are preserved verbatim; the
+        # FCC's own layer description warns of coordinate errors in the
+        # licensing data. The pinned edition contains one filed latitude
+        # (93 degrees) whose derived decimal leaves the nominal range and a
+        # handful of rows whose direction components are empty or non-canonical
+        # ("0", "3", lowercase "w"); all are published as filed — with the
+        # derived columns following the historical extract's hemisphere
+        # convention — and pinned by count instead of being clamped, dropped or
+        # hard-failed.
+        lat_sign = -1 if lat_dir == "S" else 1
+        lon_sign = 1 if lon_dir == "E" else -1
+        lat_dec = _decimal_degrees(lat_deg, lat_min, lat_sec, lat_sign)
+        lon_dec = _decimal_degrees(lon_deg, lon_min, lon_sec, lon_sign)
         if not -90 <= lat_dec <= 90 or not -180 <= lon_dec <= 180:
             out_of_range_rows += 1
         if identifier not in licensees:
             raise ValueError("source_licensee_join_drift")
+        lat_direction_counts[lat_dir] = lat_direction_counts.get(lat_dir, 0) + 1
+        lon_direction_counts[lon_dir] = lon_direction_counts.get(lon_dir, 0) + 1
         published.append({
             "UniqSysID": identifier, "Licensee": licensees[identifier],
             "Callsign": row[LO_CALLSIGN], "LocNum": location_number,
@@ -413,6 +423,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         raise ValueError("source_missing_coordinate_row_count_drift")
     if out_of_range_rows != EXPECTED_OUT_OF_RANGE_COORDINATE_ROWS:
         raise ValueError("source_out_of_range_coordinate_row_count_drift")
+    if lat_direction_counts != EXPECTED_LAT_DIRECTION_COUNTS:
+        raise ValueError("source_latitude_direction_distribution_drift")
+    if lon_direction_counts != EXPECTED_LON_DIRECTION_COUNTS:
+        raise ValueError("source_longitude_direction_distribution_drift")
     if len(published) != EXPECTED_ACTIVE_LOCATIONS:
         raise ValueError("source_active_population_drift")
     if duplicate_keys != EXPECTED_DUPLICATE_LOCATION_KEY_COUNT:
@@ -449,6 +463,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         "source_empty_callsign_rows": empty_callsign_rows,
         "source_missing_coordinate_rows": missing_coordinates,
         "source_out_of_range_coordinate_rows": out_of_range_rows,
+        "source_latitude_direction_counts": lat_direction_counts,
+        "source_longitude_direction_counts": lon_direction_counts,
         "source_extra_field_rows": {"HD": hd_extra_field_rows, "EN": en_extra_field_rows,
                                     "LO": lo_extra_field_rows},
         "source_duplicate_location_key_count": duplicate_keys,
@@ -460,11 +476,13 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                         "tolerated, radio service and license status distributions, unique license and licensee "
                         "identities, LO/HD callsign join, unique USID join, active coordinate-bearing population "
                         "count, full active ID roster digest (duplicate location keys preserved as distinct filed "
-                        "records), state roster digest, DMS direction codes, bounds, empty-callsign, "
-                        "missing-coordinate, out-of-range-coordinate and extra-field row counts are checked; "
-                        "counts drift fails closed. Raw DMS components are preserved verbatim, including the "
-                        "pinned out-of-range filed latitude (93 degrees) that the FCC's layer description "
-                        "anticipates."),
+                        "records), state roster digest, latitude/longitude direction distributions with the "
+                        "historical hemisphere default (only S marks southern latitude and only E marks eastern "
+                        "longitude; missing or non-canonical direction components default to north/west), bounds, "
+                        "empty-callsign, missing-coordinate, out-of-range-coordinate and extra-field row counts are "
+                        "checked; counts drift fails closed. Raw DMS components and direction strings are preserved "
+                        "verbatim, including the pinned out-of-range filed latitude (93 degrees) that the FCC's "
+                        "layer description anticipates."),
     }
     return published, audit
 
@@ -599,7 +617,9 @@ def capture_land_mobile_private_transmission_towers(storage: StagingStorageResou
             "source_values": "all published attribute strings retained verbatim including empty fields; TowReg kept as the source string (the frozen copy typed it int64 with 0 for unregistered records and the source also carries N/A values); SupStruc/AllStruc typed float with null for empty source fields (the frozen copy stored 0.0 there); DMS degree/minute components typed float to match the frozen contract",
             "derived_columns": ("latdec/londec are DMS-to-decimal conversions of the raw components formatted "
                                 "to 12 significant digits, matching the historical published layer's derived-"
-                                "column convention (missing minutes or seconds contribute zero); url "
+                                "column convention (missing minutes or seconds contribute zero; only S marks "
+                                "southern latitude and only E marks eastern longitude, so missing or non-canonical "
+                                "direction components default to north/west as in the historical extract); url "
                                 "embeds UniqSysID as the ULS license-location key"),
             "geometry": "WKB Point (londec, latdec) in EPSG:4326, no reprojection, repair or geocoding",
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
@@ -614,7 +634,7 @@ def capture_land_mobile_private_transmission_towers(storage: StagingStorageResou
                     "comparison-only context: its (UniqSysID, LocNum) roster overlaps this candidate's coordinate-"
                     "bearing keys on 545011 of 605297; 60284 frozen-only keys no longer carry coordinates in this "
                     "edition (84 of them remain filed without coordinates, the rest are absent from the current "
-                    "file), 58752 current-only keys were filed or re-coordinated since, and 1983 overlapping rows "
+                    "file), 58752 current-only keys were filed or re-coordinated since, and 1976 overlapping rows "
                     "have source-edited coordinates while stable rows agree field-for-field. Frozen-copy "
                     "artifacts (TowReg typed int64 with 0 for unregistered records, single-space placeholders for "
                     "empty strings, one bbox column, and 8 rows whose stored latdec/londec carry more precision "

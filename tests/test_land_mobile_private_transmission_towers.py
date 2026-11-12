@@ -70,9 +70,15 @@ def _documents():
         # out-of-nominal filed latitude preserved verbatim and published
         _lo(103, "KNKA103", 1, lat_deg="93", lat_min="0", lat_sec=".0", lon_deg="93",
             lon_min="36", lon_sec="51.8", state="MO", supstruc="", allstruc=""),
+        # southern/eastern hemisphere directions are honored
+        _lo(103, "KNKA103", 2, lat_deg="14", lat_min="0", lat_sec="0", lat_dir="S",
+            lon_deg="145", lon_min="20", lon_sec="0", lon_dir="E", state="GU"),
         # empty callsign on both HD and LO: joined and published verbatim
         _lo(104, "", 1, lat_deg="36", lat_min="0", lat_sec="0", lon_deg="115",
             lon_min="0", lon_sec="0", state="NV"),
+        # empty direction components default to north/west in the derived columns
+        _lo(104, "", 2, lat_deg="45", lat_min="0", lat_sec=".0", lat_dir="",
+            lon_deg="123", lon_min="0", lon_sec=".0", lon_dir="", state="NV"),
     ]
     return hd, en, lo
 
@@ -90,8 +96,8 @@ def _members(hd, en, lo, extra=()):
             content[name] = (b"File Creation Date: Sun Nov  8 09:16:00 EST 2026\r\n"
                              b"    4 /home/pubacc/scripts/licweekzipdata/HD.dat\r\n"
                              b"    5 /home/pubacc/scripts/licweekzipdata/EN.dat\r\n"
-                             b"    6 /home/pubacc/scripts/licweekzipdata/LO.dat\r\n"
-                             b"   15 total\r\n")
+                             b"    8 /home/pubacc/scripts/licweekzipdata/LO.dat\r\n"
+                             b"   17 total\r\n")
         else:
             content[name] = b""
     stream = io.BytesIO()
@@ -108,20 +114,22 @@ def _capture(body):
 
 class LandMobilePrivateTowersTests(unittest.TestCase):
     def _pins(self, hd, en, lo):
-        roster = sorted([[101, 1], [101, 1], [103, 1], [104, 1]])
-        states = sorted({"CA", "MO", "NV"})
+        roster = sorted([[101, 1], [101, 1], [103, 1], [103, 2], [104, 1], [104, 2]])
+        states = sorted({"CA", "MO", "NV", "GU"})
         return {
             "EXPECTED_COUNTS_FILE": {"HD.dat": len(hd), "EN.dat": len(en), "LO.dat": len(lo)},
             "EXPECTED_HD_RECORDS": len(hd), "EXPECTED_EN_RECORDS": len(en), "EXPECTED_LO_RECORDS": len(lo),
             "EXPECTED_RADIO_SERVICE_COUNTS": {"IG": 2, "PW": 1, "YG": 1},
             "EXPECTED_LICENSE_STATUS_COUNTS": {"A": 3, "C": 1}, "EXPECTED_LICENSEE_ROWS": 4,
-            "EXPECTED_ACTIVE_LOCATION_ROWS": 5, "EXPECTED_MISSING_COORDINATE_ROWS": 1,
-            "EXPECTED_ACTIVE_LOCATIONS": 4, "EXPECTED_DUPLICATE_LOCATION_KEY_COUNT": 1,
-            "EXPECTED_EMPTY_CALLSIGN_ROWS": 1, "EXPECTED_OUT_OF_RANGE_COORDINATE_ROWS": 1,
+            "EXPECTED_ACTIVE_LOCATION_ROWS": 7, "EXPECTED_MISSING_COORDINATE_ROWS": 1,
+            "EXPECTED_ACTIVE_LOCATIONS": 6, "EXPECTED_DUPLICATE_LOCATION_KEY_COUNT": 1,
+            "EXPECTED_EMPTY_CALLSIGN_ROWS": 2, "EXPECTED_OUT_OF_RANGE_COORDINATE_ROWS": 1,
+            "EXPECTED_LAT_DIRECTION_COUNTS": {"N": 4, "S": 1, "": 1},
+            "EXPECTED_LON_DIRECTION_COUNTS": {"W": 4, "E": 1, "": 1},
             "EXPECTED_EXTRA_FIELD_ROWS": {"HD": 0, "EN": 0, "LO": 0},
             "EXPECTED_ACTIVE_ID_SHA256": _sha(_canonical(roster)),
             "EXPECTED_STATE_ROSTER_SHA256": _sha(_canonical(states)),
-            "EXPECTED_BOUNDS": [-121.758333333, 36.0, -93.6143888889, 93.0],
+            "EXPECTED_BOUNDS": [-123.0, -14.0, 145.333333333, 93.0],
         }
 
     def _validate(self, hd, en, lo, pins=None):
@@ -151,20 +159,22 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
         hd, en, lo = _documents()
         published, audit = self._validate(hd, en, lo)
         self.assertEqual([(row["UniqSysID"], row["LocNum"]) for row in published],
-                         [(101, 1), (101, 1), (103, 1), (104, 1)])
+                         [(101, 1), (101, 1), (103, 1), (103, 2), (104, 1), (104, 2)])
         self.assertTrue(all(row["LicStatus"] == "A" for row in published))
-        self.assertEqual(audit["source_feature_count"], 4)
+        self.assertEqual(audit["source_feature_count"], 6)
         self.assertEqual(audit["source_license_status_counts"], {"A": 3, "C": 1})
         self.assertEqual(audit["source_radio_service_codes"], ["IG", "PW", "YG"])
-        self.assertEqual(audit["source_state_count"], 3)
-        self.assertEqual(audit["source_empty_callsign_rows"], 1)
+        self.assertEqual(audit["source_state_count"], 4)
+        self.assertEqual(audit["source_empty_callsign_rows"], 2)
         self.assertEqual(audit["source_missing_coordinate_rows"], 1)
         self.assertEqual(audit["source_out_of_range_coordinate_rows"], 1)
+        self.assertEqual(audit["source_latitude_direction_counts"], {"N": 4, "S": 1, "": 1})
+        self.assertEqual(audit["source_longitude_direction_counts"], {"W": 4, "E": 1, "": 1})
         self.assertEqual(audit["source_extra_field_rows"], {"HD": 0, "EN": 0, "LO": 0})
         self.assertEqual(audit["source_duplicate_location_key_count"], 1)
         self.assertEqual(audit["source_file_creation_date"], "Sun Nov  8 09:16:00 EST 2026")
-        self.assertEqual(audit["source_counts_file"], {"HD.dat": 4, "EN.dat": 5, "LO.dat": 6})
-        self.assertEqual(audit["source_bounds"], [-121.758333333, 36.0, -93.6143888889, 93.0])
+        self.assertEqual(audit["source_counts_file"], {"HD.dat": 4, "EN.dat": 5, "LO.dat": 8})
+        self.assertEqual(audit["source_bounds"], [-123.0, -14.0, 145.333333333, 93.0])
         self.assertIn("not a census of physical towers", audit["source_coverage_scope"])
         duplicate_rows = [row for row in published if (row["UniqSysID"], row["LocNum"]) == (101, 1)]
         self.assertEqual(len(duplicate_rows), 2)
@@ -186,10 +196,20 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
         self.assertIsNotNone(out_of_range["geometry"])
         self.assertIsNone(out_of_range["SupStruc"])
         self.assertIsNone(out_of_range["AllStruc"])
-        empty_callsign = published[3]
+        southern = published[3]
+        self.assertEqual(southern["latdec"], -14.0)
+        self.assertEqual(southern["londec"], 145.333333333)
+        self.assertEqual(southern["LatDir"], "S")
+        self.assertEqual(southern["LonDir"], "E")
+        empty_callsign = published[4]
         self.assertEqual(empty_callsign["Callsign"], "")
         self.assertEqual(empty_callsign["latdec"], 36.0)
         self.assertEqual(empty_callsign["londec"], -115.0)
+        empty_directions = published[5]
+        self.assertEqual(empty_directions["LatDir"], "")
+        self.assertEqual(empty_directions["LonDir"], "")
+        self.assertEqual(empty_directions["latdec"], 45.0)
+        self.assertEqual(empty_directions["londec"], -123.0)
 
     def test_parquet_candidate_preserves_columns_types_and_verbatim_values(self):
         hd, en, lo = _documents()
@@ -197,14 +217,18 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
         body = source._parquet_bytes(published)
         table = pq.read_table(io.BytesIO(body))
         self.assertEqual(table.schema.names, [name for name, _ in source.PUBLISHED_SCHEMA])
-        self.assertEqual(table.num_rows, 4)
+        self.assertEqual(table.num_rows, 6)
         rows = table.to_pylist()
         self.assertEqual(rows[0]["UniqSysID"], 101)
         self.assertEqual(rows[0]["TowReg"], "1023448")
         self.assertEqual(rows[1]["TowReg"], "N/A")
         self.assertIsNone(rows[2]["SupStruc"])
         self.assertEqual(rows[2]["latdec"], 93.0)
-        self.assertEqual(rows[3]["londec"], -115.0)
+        self.assertEqual(rows[3]["latdec"], -14.0)
+        self.assertEqual(rows[3]["londec"], 145.333333333)
+        self.assertEqual(rows[4]["londec"], -115.0)
+        self.assertEqual(rows[5]["LatDir"], "")
+        self.assertEqual(rows[5]["londec"], -123.0)
         self.assertEqual(rows[0]["LatDeg"], 38.0)
         self.assertEqual(rows[0]["LocNum"], 1)
         geometry_meta = json.loads(table.schema.metadata[b"geo"])
@@ -221,7 +245,7 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
         quirky_hd = [hd[0] + "|", *hd[1:]]
         published, audit = self._validate(quirky_hd, en, lo, pins)
         self.assertEqual(audit["source_extra_field_rows"], {"HD": 1, "EN": 0, "LO": 0})
-        self.assertEqual(audit["source_feature_count"], 4)
+        self.assertEqual(audit["source_feature_count"], 6)
         pins = self._pins(hd, en, lo)
         pins["EXPECTED_EXTRA_FIELD_ROWS"] = {"HD": 0, "EN": 2, "LO": 0}
         quirky_en = [en[0] + "|", en[1] + "|", *en[2:]]
@@ -265,17 +289,23 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
              "source_location_number_invalid"),
             ("state roster", lambda hd, en, lo: (hd, en, [lo[0].replace("|CA|", "|ZZ|"), *lo[1:]]),
              "source_state_roster_drift"),
-            ("latitude direction", lambda hd, en, lo: (hd, en, [lo[0], _lo(101, "KNKA101", 1, address="2 TOWER ROAD", lat_dir="X"), *lo[2:]]),
-             "source_latitude_direction_drift"),
-            ("longitude direction", lambda hd, en, lo: (hd, en, [lo[0], _lo(101, "KNKA101", 1, address="2 TOWER ROAD", lon_dir="X"), *lo[2:]]),
-             "source_longitude_direction_drift"),
+            ("latitude direction distribution", lambda hd, en, lo: (
+                hd, en, [_lo(104, "", 2, lat_deg="45", lat_min="0", lat_sec=".0", lat_dir="X",
+                             lon_deg="123", lon_min="0", lon_sec=".0", lon_dir="", state="NV")
+                         if index == 7 else row for index, row in enumerate(lo)]),
+             "source_latitude_direction_distribution_drift"),
+            ("longitude direction distribution", lambda hd, en, lo: (
+                hd, en, [_lo(104, "", 2, lat_deg="45", lat_min="0", lat_sec=".0", lat_dir="",
+                             lon_deg="123", lon_min="0", lon_sec=".0", lon_dir="X", state="NV")
+                         if index == 7 else row for index, row in enumerate(lo)]),
+             "source_longitude_direction_distribution_drift"),
             ("counts file", lambda hd, en, lo: (hd, en, lo), "source_counts_file_drift"),
         ]
         for label, mutate, expected in cases:
             with self.subTest(label=label):
                 pins = self._pins(*_documents())
                 if label == "counts file":
-                    pins["EXPECTED_COUNTS_FILE"] = {"HD.dat": 4, "EN.dat": 5, "LO.dat": 8}
+                    pins["EXPECTED_COUNTS_FILE"] = {"HD.dat": 4, "EN.dat": 5, "LO.dat": 9}
                 hd, en, lo = mutate(*_documents())
                 with self.assertRaisesRegex(ValueError, expected):
                     self._validate(hd, en, lo, pins)
@@ -307,7 +337,7 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_state_roster_drift"):
             self._validate(hd, en, lo, pins)
         pins = self._pins(hd, en, lo)
-        pins["EXPECTED_EMPTY_CALLSIGN_ROWS"] = 2
+        pins["EXPECTED_EMPTY_CALLSIGN_ROWS"] = 3
         with self.assertRaisesRegex(ValueError, "source_empty_callsign_row_count_drift"):
             self._validate(hd, en, lo, pins)
         pins = self._pins(hd, en, lo)

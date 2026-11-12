@@ -38,12 +38,16 @@ roster digest, state roster digest (60 values, including the verbatim `$`,
 empty-callsign rows (2, one license with no callsign filed), out-of-range
 derived coordinates (1) and extra-field row counts. Raw DMS components are
 preserved verbatim; the pinned edition contains one filed latitude (93 degrees,
-Grundy County MO) whose derived decimal leaves the nominal range — it is
-published as filed, by the same 12-significant-digit formula the historical
-layer used, and pinned by count instead of being clamped or dropped, because
-the FCC's own layer description anticipates exactly such errors ("It is known
-that there are some errors in the licensing information - Latitude, Longitude
-and Ground Elevation data"). The weekly refresh schedule is stopped.
+Grundy County MO) whose derived decimal leaves the nominal range and 16 rows
+whose direction components are empty or non-canonical (`''`, `0`, `3`, lowercase
+`w`) — all are published as filed, with the derived columns following the
+historical extract's hemisphere convention (only `S` marks southern latitude
+and only `E` marks eastern longitude, so missing or non-canonical direction
+components default to north/west, exactly as the frozen layer's own rows for
+the same keys show), and pinned by count instead of being clamped or dropped,
+because the FCC's own layer description anticipates exactly such errors ("It is
+known that there are some errors in the licensing information - Latitude,
+Longitude and Ground Elevation data"). The weekly refresh schedule is stopped.
 
 Column contract relative to the frozen copy: the published HIFLD Next v1.0.0
 frozen copy (605297 point features, issued 2024-01-24) types `TowReg` as int64
@@ -62,7 +66,7 @@ The frozen copy is retained as comparison-only context: its roster overlaps the
 candidate's coordinate-bearing keys on 545011 of 605297; 60284 frozen-only keys
 no longer carry coordinates in this edition (84 remain filed without
 coordinates, the rest are absent from the current file), 58752 current-only
-keys were filed or re-coordinated since, and 1983 overlapping rows have
+keys were filed or re-coordinated since, and 1976 overlapping rows have
 source-edited coordinates while stable rows agree field-for-field. Source
 edition, baseline, schema/ID/coverage contracts, rights and release approval
 remain unaccepted.
