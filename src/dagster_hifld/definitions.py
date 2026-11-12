@@ -78,6 +78,7 @@ from dagster_hifld.assets.epa_power_generation import (
 )
 from dagster_hifld.assets.fhwa_tunnel_inventory import (
     fhwa_national_tunnel_inventory_release_gate,
+    fhwa_tunnel_inventory_draft_job,
     fhwa_tunnel_inventory_draft_schedule,
 )
 
