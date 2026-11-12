@@ -67,3 +67,8 @@ noaa_nautical_navaids_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [noaa_nautical_navaids_draft]
+ASSET_CHECKS = [noaa_nautical_navaids_complete]
+JOBS = [noaa_nautical_navaids_draft_job]
+SCHEDULES = [noaa_nautical_navaids_draft_schedule]

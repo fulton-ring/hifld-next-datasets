@@ -38,8 +38,9 @@ from dagster_hifld.sources.epa_frs_common import (
 
 DATASET_SLUG = "berths-areas-usace-ienc"
 FILE_SLUG = DATASET_SLUG
-BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
+PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson"
 SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/BERTHS_AREA/MapServer"
 LAYER_ID = 98
@@ -391,7 +392,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "source_feature_source_date_max": max(source_dates),
         "source_wkid": 4326, "source_geometry_type": "esriGeometryPolygon",
         "source_coverage_scope": "Complete observed BERTHS_AREA MapServer layer; only the returned IENC chart coverage area is represented.",
-        "drift_guard": "Exact producer service/layer, schema, count, complete ID roster, all native attributes, geometry content, CRS and extent are pinned.",
+        "prior_bts_item_id": PRIOR_BTS_ITEM_ID,
+        "prior_bts_item_status": "earlier pinned BTS map-service item used by the original 2026-10-20 capture returned anonymous-access denial (HTTP 200 carrying ArcGIS 403 GWM_0003) on 2026-10-21, reconfirmed 2026-11-08; retained as prior evidence only, never fetched",
+        "bts_item_succession_claimed": False,
+        "drift_guard": "BTS " + BTS_ITEM_ID + " distribution/delegation link (the prior BTS item " + PRIOR_BTS_ITEM_ID + " returned anonymous-access denial during 2026-10-21 extraction and is recorded in docs, not validated here), exact producer service/layer identity, schema, count, complete ID roster, all native attributes, geometry content, CRS and extent are pinned.",
     }
     return fields, features, audit
 
@@ -528,6 +532,9 @@ def capture_usace_berths_areas(storage: StagingStorageResource, *, version: str,
                 "bts_item_url": BTS_ITEM_URL, "bts_item_id": BTS_ITEM_ID,
                 "bts_item_owner": "USDOT_BTS", "official_service_directory": SERVICE_DIRECTORY_URL,
                 "linked_feature_classes_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
+                "prior_bts_item_id": PRIOR_BTS_ITEM_ID,
+                "prior_bts_item_status": "anonymous-access denial observed 2026-10-21; prior evidence only, never fetched, no succession or historical equivalence claimed",
+                "bts_item_succession_claimed": False,
                 "basis": "Captured BTS item identifies the IENC program and links the official service and native GDB; the service publishes copyright USACE IENC.",
             }} if distributor else {}),
         })
@@ -543,7 +550,7 @@ def capture_usace_berths_areas(storage: StagingStorageResource, *, version: str,
                            "source_ids": "OBJECTID and duplicate-capable Feature_ID both retained unchanged",
                            "geometry": "all XY ring coordinates, ring order, and winding retained without reprojection, reorientation, repair, or simplification",
                            "candidate_status": "unapproved; source release, baseline, ID/schema, coverage, and rights decisions remain pending"}}],
-        "lineage": "BTS IENC item 3607d485a9854d6fa458bf507058ceae links the official USACE IENC Feature Classes service and master GDB; this candidate is exactly BERTHS_AREA MapServer layer 98.",
+        "lineage": "USDOT BTS item " + BTS_ITEM_ID + " documents bi-monthly USACE/AGC IENC updates and links the official IENCCloud feature-class service and master file geodatabase. The earlier pinned BTS map-service item " + PRIOR_BTS_ITEM_ID + " used by the original 2026-10-20 berths capture returned anonymous-access denial (HTTP 403 GWM_0003) on 2026-10-21; it is retained as prior evidence only, is never fetched, and no succession or historical equivalence between the two items is claimed. This candidate is the exact published BERTHS_AREA MapServer layer 98, not the entire IENC archive.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "All native attributes, OBJECTID, duplicate-capable Feature_ID values, and source-order polygon rings are retained; release and compatibility decisions remain pending.",
             "objects": [{"path": f"geoparquet/{FILE_SLUG}.parquet", "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
