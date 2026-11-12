@@ -14,9 +14,13 @@ Producer polygon semantics follow the Esri JSON convention verified on the
 clockwise rings are exteriors while counter-clockwise rings are holes, so
 candidate WKB geometry is built by that rule (one exterior per feature in the
 observed population) without dropping, adding, or reordering any source vertex.
-Null source geometries (the producer's 292 rows with no SHAPE, observed with
-the same capture) are retained as null candidate geometry, never coerced to a
-location.
+The producer publishes 2,518 rings across 1,647 features that GEOS/OGC
+validity rules call self-intersecting (Esri topology tolerates self-touching
+rings); candidate WKB retains them verbatim, the counts are pinned, and the
+technical geometry quality acceptance stays unapproved for the maintainer
+decision. Null source geometries (the producer's 292 rows with no SHAPE,
+observed with the same capture) are retained as null candidate geometry, never
+coerced to a location.
 
 Pages are bounded OBJECTID windows aligned to the sorted source id roster
 instead of deep ``resultOffset`` offsets: the producer's MapServer
@@ -101,6 +105,13 @@ EXPECTED_GEOMETRY_SHA256 = "8d69d05c5456564a0c0e056cb206492b8083f6b1919884873314
 EXPECTED_SCHEMA_SHA256 = "01b1e90652867538ffceef925822b01f4902dc76757a6bb7288a6610c4c4a955"
 EXPECTED_NULL_GEOMETRY_COUNT = 292
 EXPECTED_NAN_GEOMETRY_COUNT = 0
+# GEOS/OGC self-intersecting source rings are retained verbatim in candidate
+# WKB (no vertex dropped, added, or reordered); these pins are the observed
+# 2026-11-12 complete-layer population contract, and the technical geometry
+# quality acceptance stays unapproved for the maintainer decision.
+EXPECTED_SELF_INTERSECTING_RING_COUNT = 2518
+EXPECTED_SELF_INTERSECTING_RING_FEATURE_COUNT = 1647
+EXPECTED_ZERO_AREA_RING_COUNT = 5
 EXPECTED_OBSERVED_BOUNDS = {"xmin": -170.84698891836925, "ymin": -14.373782300647008,
                             "xmax": 145.83077660155834, "ymax": 66.61058213599716}
 EXPECTED_LAYER_EXTENT = {"xmin": -170.84698891836925, "ymin": -14.373782300647008,
@@ -420,6 +431,10 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
     null_geometry = 0
     nan_geometry = 0
+    self_intersecting_ring_feature_count = 0
+    self_intersecting_ring_count = 0
+    zero_area_ring_feature_count = 0
+    zero_area_ring_count = 0
     geometry_records = []
     observed_bounds: list[float] = []
     for feature in features:
@@ -459,8 +474,30 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         geometry_records.append([attrs["OBJECTID"], validated_rings])
         if nan_rings:
             nan_geometry += 1
-        elif feature_bounds:
-            observed_bounds.extend(feature_bounds)
+        else:
+            # GEOS/OGC validity is counted, never enforced as a rewrite: the
+            # producer publishes self-intersecting rings (pinned counts below)
+            # and candidate WKB keeps every source vertex verbatim.
+            invalid_rings = 0
+            zero_area_rings = 0
+            for ring in validated_rings:
+                polygon = shapely.Polygon(ring)
+                if not shapely.is_valid(polygon):
+                    invalid_rings += 1
+                if _signed_area(ring) == 0:
+                    zero_area_rings += 1
+            if invalid_rings:
+                self_intersecting_ring_feature_count += 1
+                self_intersecting_ring_count += invalid_rings
+            if zero_area_rings:
+                zero_area_ring_feature_count += 1
+                zero_area_ring_count += zero_area_rings
+            if feature_bounds:
+                observed_bounds.extend(feature_bounds)
+    if self_intersecting_ring_count != EXPECTED_SELF_INTERSECTING_RING_COUNT \
+            or self_intersecting_ring_feature_count != EXPECTED_SELF_INTERSECTING_RING_FEATURE_COUNT \
+            or zero_area_ring_count != EXPECTED_ZERO_AREA_RING_COUNT:
+        raise ValueError("source_ring_validity_count_drift")
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     record_sha = _sha(_canonical(features))
     geometry_records.sort(key=lambda row: row[0])
@@ -480,6 +517,16 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "source_schema_sha256": schema_sha, "source_crs_epsg": SOURCE_CRS_WKID,
              "geometry_type": "Polygon", "null_geometry_count": null_geometry,
              "nan_string_geometry_count": nan_geometry,
+             "self_intersecting_ring_feature_count": self_intersecting_ring_feature_count,
+             "self_intersecting_ring_count": self_intersecting_ring_count,
+             "zero_area_ring_feature_count": zero_area_ring_feature_count,
+             "zero_area_ring_count": zero_area_ring_count,
+             "self_intersecting_ring_note":
+                 "GEOS/OGC validity rules call these producer rings self-intersecting; candidate WKB retains "
+                 "every source vertex verbatim and the technical geometry quality acceptance remains unapproved.",
+             "zero_area_ring_note":
+                 "The producer also publishes collapsed zero-area rings (pinned count); candidate WKB retains "
+                 "their vertices verbatim as degenerate exterior parts pending the technical quality decision.",
              "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
              "unique_source_id_count": len(ids),
              "source_release_date": None,
@@ -533,14 +580,21 @@ def _polygon_wkb(geom: object) -> bytes | None:
     for ring in rings:
         area = _signed_area(ring)
         if area == 0:
-            raise ValueError("source_polygon_ring_degenerate")
+            # Producer zero-area (collapsed) rings (5 on the pinned capture) are
+            # retained verbatim as degenerate exterior parts: their vertices are
+            # kept, the pinned count and the unapproved technical quality gate
+            # carry the decision, and no hole-assignment semantics are invented.
+            exteriors.append(ring)
+            continue
         (exteriors if area < 0 else holes).append(ring)
     if not exteriors:
         raise ValueError("source_polygon_exterior_missing")
     shells = [(Polygon(ring), _signed_area(ring), index) for index, ring in enumerate(exteriors)]
-    for shell, _, _ in shells:
-        if not shell.is_valid:
-            raise ValueError("source_polygon_ring_self_intersecting")
+    # Note: the producer publishes rings that GEOS/OGC validity rules call
+    # self-intersecting (2,518 rings in 1,647 features on the pinned capture).
+    # They are represented verbatim in WKB with no vertex dropped, added, or
+    # reordered; the pinned count and the false technical_geometry_quality
+    # acceptance gate carry the quality decision, never a silent rewrite.
     assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
     for hole in holes:
         polygon = Polygon(hole)
@@ -691,7 +745,10 @@ def capture_nfhl_political_jurisdictions(storage: StagingStorageResource, *, ver
                                                         "without projection under the producer's verified Esri "
                                                         "ring semantics (closed rings; clockwise exteriors, "
                                                         "counter-clockwise holes); no vertex dropped, added, or "
-                                                        "reordered; null source geometry retained as null",
+                                                        "reordered; GEOS/OGC self-intersecting source rings "
+                                                        "(2,518 rings in 1,647 features on the pinned capture) "
+                                                        "retained verbatim pending the technical quality "
+                                                        "decision; null source geometry retained as null",
                                             "candidate_status": "unapproved; publication blocked pending freshness, "
                                                                 "schema/ID contract, attribution and release "
                                                                 "acceptance"}}],

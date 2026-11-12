@@ -53,6 +53,16 @@ RING_B = [[-116.02, 33.40], [-116.02, 33.41], [-116.01, 33.41], [-116.02, 33.40]
 HOLE_B = [[-116.017, 33.407], [-116.017, 33.406], [-116.016, 33.406], [-116.017, 33.407]]
 # Counter-clockwise hole lying inside no exterior of its feature.
 HOLE_OUTSIDE = [[-110.0, 40.0], [-110.0, 39.0], [-109.0, 39.0], [-110.0, 40.0]]
+# Closed clockwise bowtie with unequal lobes: GEOS/OGC calls it
+# self-intersecting and its signed area is nonzero; the producer publishes
+# such rings and candidate WKB retains every vertex.
+RING_BOWTIE = [[-116.05, 33.40], [-116.02, 33.40], [-116.06, 33.42],
+               [-116.02, 33.42], [-116.05, 33.40]]
+# Real producer collapsed ring (NFHL OBJECTID 2923 ring 0, verbatim): GEOS
+# calls it valid while the shoelace signed area is exactly zero; candidate
+# WKB retains the vertices verbatim as a degenerate exterior part.
+RING_SPIKE = [[-87.1434550694591, 33.229325508808586], [-87.14345490182097, 33.229325339860736],
+              [-87.1434550694591, 33.229325172222616], [-87.1434550694591, 33.229325508808586]]
 
 
 def _attrs(oid, **overrides):
@@ -84,22 +94,25 @@ def _fixture():
         {"attributes": _attrs(12), "geometry": None},
         {"attributes": _attrs(13), "geometry": {"rings": [[["NaN", "NaN"], ["NaN", "NaN"], ["NaN", "NaN"]]]}},
         {"attributes": _attrs(14), "geometry": {"rings": [RING_B, HOLE_B]}},
+        {"attributes": _attrs(15, POL_AR_ID="41011C_BOWTIE"), "geometry": {"rings": [RING_BOWTIE]}},
+        {"attributes": _attrs(16, POL_AR_ID="41011C_SPIKE"), "geometry": {"rings": [RING_SPIKE]}},
     ]
-    ids = [10, 11, 12, 13, 14]
+    ids = [10, 11, 12, 13, 14, 15, 16]
     schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f} for f in fields]
     geom_records = [[10, [RING_A]], [11, [RING_A, HOLE_A]], [12, None],
                     [13, [[["NaN", "NaN"], ["NaN", "NaN"], ["NaN", "NaN"]]]],
-                    [14, [RING_B, HOLE_B]]]
+                    [14, [RING_B, HOLE_B]], [15, [RING_BOWTIE]], [16, [RING_SPIKE]]]
     crs = {"wkid": 4269, "latestWkid": 4269}
-    pages = [features[0:2], features[2:4], features[4:5]]
+    pages = [features[0:2], features[2:4], features[4:6], features[6:7]]
     page_docs = [{"features": page, "spatialReference": crs}
                  for index, page in enumerate(pages)]
     docs = {"service_before": service, "service_after": service, "layer_before": layer, "layer_after": layer,
-            "count_before": {"count": 5}, "count_after": {"count": 5},
+            "count_before": {"count": 7}, "count_after": {"count": 7},
             "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_seed": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
-            "page_000": page_docs[0], "page_001": page_docs[1], "page_002": page_docs[2]}
+            "page_000": page_docs[0], "page_001": page_docs[1], "page_002": page_docs[2],
+            "page_003": page_docs[3]}
     captures = {name: (json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode(), {"status": 200})
                 for name, doc in docs.items()}
     captures["service_doc"] = (SERVICE_DOC_BODY, {"status": 200})
@@ -121,9 +134,12 @@ def _bounds(features):
 
 
 def _pins(features, schema, geom_records):
-    return dict(EXPECTED_COUNT=5, PAGE_SIZE=2, EXPECTED_NULL_GEOMETRY_COUNT=1,
+    return dict(EXPECTED_COUNT=7, PAGE_SIZE=2, EXPECTED_NULL_GEOMETRY_COUNT=1,
                 EXPECTED_NAN_GEOMETRY_COUNT=1,
-                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),
+                EXPECTED_SELF_INTERSECTING_RING_COUNT=1,
+                EXPECTED_SELF_INTERSECTING_RING_FEATURE_COUNT=1,
+                EXPECTED_ZERO_AREA_RING_COUNT=1,
+                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14, 15, 16])).hexdigest(),
                 EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(sorted(features,
                                                                          key=lambda row: row["attributes"]["OBJECTID"]))).hexdigest(),
                 EXPECTED_GEOMETRY_SHA256=hashlib.sha256(_canonical(sorted(geom_records))).hexdigest(),
@@ -144,12 +160,13 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
             stream.write(body)
             stream.flush()
             table = pq.read_table(stream.name)
-        self.assertEqual(table.num_rows, 5)
-        self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12, 13, 14])
+        self.assertEqual(table.num_rows, 7)
+        self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12, 13, 14, 15, 16])
         self.assertEqual(table.column("POL_AR_ID").to_pylist(),
-                         ["41011C_10", "41011C_11", "41011C_12", "41011C_13", "41011C_14"])
-        self.assertEqual(table.column("CO_FIPS").to_pylist(), ["011"] * 5)
-        self.assertEqual(table.column("ST_FIPS").to_pylist(), ["41"] * 5)
+                         ["41011C_10", "41011C_11", "41011C_12", "41011C_13", "41011C_14", "41011C_BOWTIE",
+                          "41011C_SPIKE"])
+        self.assertEqual(table.column("CO_FIPS").to_pylist(), ["011"] * 7)
+        self.assertEqual(table.column("ST_FIPS").to_pylist(), ["41"] * 7)
         self.assertEqual(table.column("SHAPE.STArea()").type.__str__(), "double")
         self.assertEqual(table.column("SHAPE").null_count, 2)
         polygon_10 = shapely.from_wkb(table.column("SHAPE").to_pylist()[0])
@@ -162,6 +179,12 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
         self.assertIsNone(table.column("SHAPE").to_pylist()[2])
         self.assertIsNone(table.column("SHAPE").to_pylist()[3])
         self.assertEqual(table.column("POL_AR_ID").to_pylist()[3], "41011C_13")
+        bowtie = shapely.from_wkb(table.column("SHAPE").to_pylist()[5])
+        self.assertEqual(list(bowtie.exterior.coords), [tuple(vertex) for vertex in RING_BOWTIE])
+        self.assertFalse(shapely.is_valid(bowtie))
+        spike = shapely.from_wkb(table.column("SHAPE").to_pylist()[6])
+        self.assertEqual(list(spike.exterior.coords), [tuple(vertex) for vertex in RING_SPIKE])
+        self.assertLess(abs(spike.area), 1e-9)
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"]["code"], 4269)
         self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["Polygon", "MultiPolygon"])
@@ -179,8 +202,8 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
                          [[tuple(vertex) for vertex in HOLE_B]])
         with self.assertRaisesRegex(ValueError, "source_polygon_hole_unassigned"):
             source._polygon_wkb({"rings": [RING_B, HOLE_OUTSIDE]})
-        with self.assertRaisesRegex(ValueError, "source_polygon_ring_degenerate"):
-            source._polygon_wkb({"rings": [[[-116.0, 33.0], [-116.0, 33.0], [-116.0, 33.0]]]})
+        zero_area = shapely.from_wkb(source._polygon_wkb({"rings": [RING_SPIKE]}))
+        self.assertEqual(list(zero_area.exterior.coords), [tuple(vertex) for vertex in RING_SPIKE])
         with self.assertRaisesRegex(ValueError, "source_polygon_exterior_missing"):
             source._polygon_wkb({"rings": [HOLE_A, HOLE_B]})
 
@@ -201,11 +224,11 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
         tile_b = {"features": page_doc["features"][1:], "spatialReference": page_doc["spatialReference"]}
         captures["page_000_o00000_c0001"] = (json.dumps(tile_a, separators=(",", ":")).encode(), {"status": 200})
         captures["page_000_o00001_c0001"] = (json.dumps(tile_b, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for name in ("page_000_o00000_c0001", "page_000_o00001_c0001", "page_001", "page_002")
+        features = [row for name in ("page_000_o00000_c0001", "page_000_o00001_c0001", "page_001", "page_002", "page_003")
                     for row in json.loads(captures[name][0])["features"]]
         _, _, extracted = self._validated(features, captures, schema, geom)
-        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14])
-        self.assertEqual(extracted["audit"]["source_feature_count"], 5)
+        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14, 15, 16])
+        self.assertEqual(extracted["audit"]["source_feature_count"], 7)
 
     def test_tiled_page_gap_is_rejected(self):
         fields, features, captures, schema, geom = _fixture()
@@ -213,7 +236,7 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
         del captures["page_000"]
         tile_b = {"features": page_doc["features"][1:], "spatialReference": page_doc["spatialReference"]}
         captures["page_000_o00001_c0001"] = (json.dumps(tile_b, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for name in ("page_000_o00001_c0001", "page_001", "page_002")
+        features = [row for name in ("page_000_o00001_c0001", "page_001", "page_002", "page_003")
                     for row in json.loads(captures[name][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_page_tile_gap_or_overlap"):
             self._validated(features, captures, schema, geom)
@@ -225,21 +248,21 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
         tile_a = {"features": page_doc["features"][:1], "spatialReference": page_doc["spatialReference"]}
         captures["page_000_o00000_c0001"] = (json.dumps(tile_a, separators=(",", ":")).encode(), {"status": 200})
         captures["page_000_o00001_c0001"] = (json.dumps(tile_a, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for name in ("page_000_o00000_c0001", "page_000_o00001_c0001", "page_001", "page_002")
+        features = [row for name in ("page_000_o00000_c0001", "page_000_o00001_c0001", "page_001", "page_002", "page_003")
                     for row in json.loads(captures[name][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_reordered"):
             self._validated(features, captures, schema, geom)
 
     def test_id_roster_response_order_is_not_population_drift(self):
         _, _, captures, schema, geom = _fixture()
-        for name, ids in (("ids_seed", [12, 10, 11, 14, 13]), ("ids_before", [11, 12, 10, 13, 14]),
-                          ("ids_after", [10, 11, 12, 13, 14])):
+        for name, ids in (("ids_seed", [12, 10, 11, 14, 13, 15, 16]), ("ids_before", [11, 12, 10, 13, 14, 16, 15]),
+                          ("ids_after", [10, 11, 12, 13, 14, 15, 16])):
             doc = json.loads(captures[name][0])
             doc["objectIds"] = ids
             captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         _, _, extracted = self._validated(features, captures, schema, geom)
-        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14])
+        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14, 15, 16])
         self.assertEqual(extracted["audit"]["null_geometry_count"], 1)
         self.assertEqual(extracted["audit"]["nan_string_geometry_count"], 1)
 
@@ -250,7 +273,7 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
     def test_missing_service_documentation_link_is_rejected(self):
         _, features, captures, schema, geom = _fixture()
         captures["service_doc"] = (b"<html>unrelated</html>", {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "fema_service_documentation_link_drift"):
             self._validated(features, captures, schema, geom)
 
@@ -259,7 +282,7 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
         page = json.loads(captures["page_000"][0])
         page["spatialReference"] = {"wkid": 4326, "latestWkid": 4326}
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_page_000_crs_drift"):
             self._validated(features, captures, schema, geom)
 
@@ -268,7 +291,7 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
         layer = json.loads(captures["layer_before"][0])
         layer["geometryType"] = "esriGeometryPoint"
         captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "exact_nfhl_political_jurisdictions_layer_metadata_drift"):
             self._validated(features, captures, schema, geom)
 
@@ -277,7 +300,7 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
         final = json.loads(captures["page_002"][0])
         final["exceededTransferLimit"] = True
         captures["page_002"] = (json.dumps(final, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_page_unexpected_exceeded_transfer_limit"):
             self._validated(features, captures, schema, geom)
 
@@ -286,7 +309,7 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
         layer = json.loads(captures["layer_before"][0])
         layer["fields"].append({"name": "SURPRISE", "type": "esriFieldTypeString"})
         captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_schema_contract_drift"):
             self._validated(features, captures, schema, geom)
 
@@ -295,7 +318,7 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
         page = json.loads(captures["page_000"][0])
         page["features"] = page["features"][:1]
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
+        features = [row for i in range(4) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_reordered"):
             self._validated(features, captures, schema, geom)
 
@@ -310,7 +333,7 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
     def test_vertex_change_is_detected(self):
         _, features, captures, schema, geom = _fixture()
         page = json.loads(captures["page_000"][0])
-        page["features"][0]["geometry"]["rings"][0][1] = [-116.061, 33.42]
+        page["features"][0]["geometry"]["rings"][0][2] = [-116.049, 33.43]
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
         with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
             self._validated(features, captures, schema, geom)
@@ -549,7 +572,7 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_political_jurisdictions(storage, version="vfixture",
                                                                         capture_directory=str(root / "captures"))
-                self.assertEqual(candidate["feature_count"], 5)
+                self.assertEqual(candidate["feature_count"], 7)
                 self.assertEqual(candidate["source_null_geometry_count"], 1)
                 self.assertEqual(candidate["source_nan_string_geometry_count"], 1)
                 prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
