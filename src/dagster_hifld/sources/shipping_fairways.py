@@ -525,7 +525,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
     receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
     inputs = [{"input_id": name, "producer": PUBLISHER,
         "host": urlsplit(receipt["url"]).hostname,
-        "role": "producer_metadata_record" if name == "inport_item" else "producer_publication",
+        "role": "producer_publication",
         "canonical_url": INPORT_URL if name == "inport_item" else LAYER_URL,
         "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
         "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
