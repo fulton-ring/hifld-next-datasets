@@ -113,6 +113,24 @@ class _PinsPendingError(Exception):
     """Raised when a live-mode capture completes but population pins are unset."""
 
 
+def _stable_layer(doc: object) -> object:
+    """Layer document without the producer's volatile display symbology.
+
+    The layer JSON's ``drawingInfo`` (renderer/labeling symbology) changed
+    between the 2026-11-12 before/after layer documents of one unchanged
+    capture window (observed on the live LOMAs layer); it is cosmetic display
+    state, not data. Every data-bearing part of the layer contract — fields,
+    geometry type, extent, count, pagination — is still compared, and the
+    published schema/ID contract remains pinned separately, so a symbology
+    edit cannot mask real drift.
+    """
+    if not isinstance(doc, dict):
+        return doc
+    stable = dict(doc)
+    stable.pop("drawingInfo", None)
+    return stable
+
+
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
@@ -262,7 +280,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     if docs["layer_after"].get("fields") is None or [_plain_field(x) for x in docs["layer_after"]["fields"]] != fields:
         raise ValueError("source_field_schema_changed_during_capture")
     for name in ("layer_before", "layer_after"):
-        if docs[name] != layer:
+        if _stable_layer(docs[name]) != _stable_layer(layer):
             raise ValueError("source_layer_metadata_changed_during_capture")
     if docs["service_after"] != service:
         raise ValueError("source_service_metadata_changed_during_capture")
