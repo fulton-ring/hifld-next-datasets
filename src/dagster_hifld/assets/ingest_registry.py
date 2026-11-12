@@ -1,8 +1,11 @@
-"""Explicit ingest asset registry.
+"""Ingest asset registry.
 
-Keep source-specific ingest assets explicit. Downstream catalog/publish/check
+New datasets declare ``INGEST_ASSETS`` in their own asset module (see
+``discovery.py``) rather than adding entries here. Downstream catalog/publish/check
 assets are derived automatically from this registry.
 """
+
+from dagster_hifld.assets.discovery import discovered, unique
 
 from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volcanoes
 from dagster_hifld.assets.usgs import usgs_aquifers
@@ -301,3 +304,5 @@ hifld_ingest_assets = [
     usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,
 ]
+
+hifld_ingest_assets = unique(hifld_ingest_assets, discovered("INGEST_ASSETS"))
