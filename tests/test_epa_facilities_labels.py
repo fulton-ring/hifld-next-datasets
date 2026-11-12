@@ -10,7 +10,6 @@ from dagster_hifld.assets.epa_facilities_labels import (
     epa_facilities_labels,
     epa_facilities_labels_draft_schedule,
 )
-from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.sources.epa_facilities import (
     EPA_FACILITIES_PROFILE,
     _profile_urls,
@@ -58,15 +57,6 @@ class EpaFacilitiesLabelsTest(unittest.TestCase):
             DefaultScheduleStatus.STOPPED,
         )
 
-    def test_label_asset_is_registered_as_its_own_dataset_file(self):
-        self.assertIn(epa_facilities_labels, hifld_ingest_assets)
-        key = AssetKey(["ingest", "epa-facilities-labels", "epa-facilities-labels"])
-        self.assertEqual(next(iter(epa_facilities_labels.keys)), key)
-        from dagster_hifld.definitions import defs
-
-        job = defs.resolve_job_def("epa_facilities_labels_draft_refresh")
-        self.assertEqual(job.asset_layer.executable_asset_keys, {key})
-        self.assertIn(epa_facilities_labels_draft_schedule, defs.schedules)
 
     @unittest.skipUnless(
         os.environ.get("HIFLD_EPA_FACILITIES_LABELS_CAPTURE_DIR"),

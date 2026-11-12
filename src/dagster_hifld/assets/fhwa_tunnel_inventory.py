@@ -66,3 +66,8 @@ fhwa_tunnel_inventory_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [fhwa_national_tunnel_inventory]
+ASSET_CHECKS = [fhwa_national_tunnel_inventory_release_gate]
+JOBS = [fhwa_tunnel_inventory_draft_job]
+SCHEDULES = [fhwa_tunnel_inventory_draft_schedule]
