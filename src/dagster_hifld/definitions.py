@@ -301,6 +301,11 @@ from dagster_hifld.assets.sloped_ground_lines_usace_ienc import (
     sloped_ground_lines_usace_ienc_draft_job,
     sloped_ground_lines_usace_ienc_draft_schedule,
 )
+from dagster_hifld.assets.child_care_centers import (
+    child_care_centers_complete,
+    child_care_centers_draft_job,
+    child_care_centers_draft_schedule,
+)
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
     usace_overhead_cables_draft_schedule,
@@ -1129,6 +1134,7 @@ defs = Definitions(
         shoreline_construction_areas_usace_ienc_complete,
         small_craft_facility_areas_usace_ienc_complete,
         sloped_ground_lines_usace_ienc_complete,
+        child_care_centers_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         usace_dry_docks_complete,
@@ -1237,6 +1243,7 @@ defs = Definitions(
         shoreline_construction_areas_usace_ienc_draft_job,
         small_craft_facility_areas_usace_ienc_draft_job,
         sloped_ground_lines_usace_ienc_draft_job,
+        child_care_centers_draft_job,
         usace_obstruction_lines_draft_job,
         usace_mooring_facility_lines_draft_job,
         floodwalls_usace_ienc_draft_job,
@@ -1363,6 +1370,7 @@ defs = Definitions(
         shoreline_construction_areas_usace_ienc_draft_schedule,
         small_craft_facility_areas_usace_ienc_draft_schedule,
         sloped_ground_lines_usace_ienc_draft_schedule,
+        child_care_centers_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         usace_mooring_facility_lines_draft_schedule,
         floodwalls_usace_ienc_draft_schedule,
