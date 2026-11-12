@@ -8,7 +8,7 @@ import os
 import sqlite3
 import tempfile
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -19,7 +19,7 @@ from dagster import DagsterInstance, Field, Out, job, op
 from pyproj import CRS, Transformer
 from shapely import from_wkb, total_bounds
 
-from dagster_hifld.assets.publish import run_local_version_pipeline
+from dagster_hifld.assets.publish import run_local_version_pipeline, _copy_version_files
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
 from dagster_hifld.release_approval import _storage_identity, require_generated_object_approval, verifier_implementation_sha256
 from dagster_hifld.evidence_io import validate_evidence_directory, write_json_atomic
@@ -47,7 +47,7 @@ from .pmtiles import extract_vector_layer_ids
 from .provenance import (attach_published_provenance, prepared_asset_dependencies,
                          verify_prepared_asset_dependencies, verify_prepared_metadata_dependencies,
                          verify_sqlite_asset_projection)
-from .release import ReleasePointer
+from .release import ReleasePointer, read_staged_release, require_current_baseline, semantic_version_key
 from .thumbnail import render_geoparquet_thumbnail
 from .validation import normalize_candidate_tree, validate_candidate_tree
 
@@ -583,13 +583,8 @@ def publish_portolan_record(
         raise ValueError("Legacy in-place catalog publication is disabled; use an independently reviewed immutable release plan")
     staging_storage = staging or StagingStorageResource.from_env()
     published_base = published or PublishedStorageResource.from_env()
-    record = _prepare_portolan_record(
-        request,
-        staging_storage,
-        published_base,
-        convert=not catalog_only,
-        promote=not catalog_only,
-    )
+    record = _prepare_approved_portolan_record(request, staging_storage, published_base, catalog_only=catalog_only)
+    request = replace(request, version=record.version_label)
     return _publish_catalog(
         (record,), request, published_base, use_release_pointer=use_release_pointer
     )
@@ -1050,6 +1045,19 @@ def prepare_promoted_portolan_catalog(request: PortolanPublishRequest, staging: 
     replace the supplied physical storage prefix.
     """
     _plan_outside_storage(plan_dir, staging, published)
+    document, prefix = read_staged_release(published, f"{request.dataset_slug}/{request.file_slug}/{request.version}")
+    if document["id"] != f"{request.collection_slug}/{prefix}":
+        raise ValueError("Promoted STAC identity differs from catalog selection")
+    key = f"{prefix}/collection.json"
+    approval = require_generated_object_approval(published, key, published.read_key(key))
+    require_current_baseline(published, document, approval["baseline"])
+    record = _catalog_record_from_storage(request, published)
+    return prepare_portolan_release_bundle((record,), request, published, plan_dir,
+                                          execution_binding=catalog_execution_binding(request, staging, published))
+
+
+def _catalog_record_from_storage(request: PortolanPublishRequest, published: StagingStorageResource) -> CatalogRecord:
+    """Inspect prepared bytes without conversion, promotion, or metadata writes."""
     version = f"{request.dataset_slug}/{request.file_slug}/{request.version}"
     dictionary = json.loads(published.read_key(version + "/metadata/data_dictionary.json"))
     quality = json.loads(published.read_key(version + "/metadata/quality_manifest.json"))
@@ -1071,12 +1079,82 @@ def prepare_promoted_portolan_catalog(request: PortolanPublishRequest, staging: 
         collection_title=request.collection_title, columns=columns, native_crs=facts.native_crs,
         geometry_column=facts.geometry_column, geometry_type=facts.geometry_type,
         feature_id_column=facts.feature_id_column, native_bbox=facts.native_bbox, crs84_bbox=facts.crs84_bbox,
-        provider=dictionary.get("publisher"), agency=dictionary.get("agency"), office=dictionary.get("office"),
+        provider=dictionary.get("publisher") or request.provider, agency=dictionary.get("agency"), office=dictionary.get("office"),
         source_url=dictionary.get("source_url"), license_id=request.resolved_license[0], license_href=request.resolved_license[1],
         quality_passed=True, invalid_geometry_count=0, null_geometry_count=quality.get("null_geometry_count", 0))
-    record = attach_published_provenance(record, published, version, request.public_root)
-    return prepare_portolan_release_bundle((record,), request, published, plan_dir,
-                                          execution_binding=catalog_execution_binding(request, staging, published))
+    return attach_published_provenance(record, published, version, request.public_root)
+
+
+def _prepare_approved_portolan_record(request: PortolanPublishRequest, staging: StagingStorageResource,
+                                      published: PublishedStorageResource, *, catalog_only: bool) -> CatalogRecord:
+    prefix = f"{request.dataset_slug}/{request.file_slug}/{request.version}"
+    document, target = read_staged_release(published if catalog_only else staging, prefix)
+    if document["id"] != f"{request.collection_slug}/{target}":
+        raise ValueError("Staged STAC collection differs from selected catalog")
+    if not catalog_only:
+        _copy_version_files(staging, published, request.dataset_slug, request.file_slug, request.version)
+    return _catalog_record_from_storage(replace(request, version=target.rsplit("/", 1)[1]), published)
+
+
+def prepare_staged_release(request: PortolanPublishRequest, staging: StagingStorageResource,
+                           published: PublishedStorageResource, *, staged_version: str) -> dict:
+    """Prepare the standard STAC version and final URLs; never approve or publish."""
+    semantic_version_key(request.version)
+    source_prefix = f"{request.dataset_slug}/{request.file_slug}/{staged_version}"
+    target_prefix = f"{request.dataset_slug}/{request.file_slug}/{request.version}"
+    source_root = staging._ensure_prefixed(source_prefix)
+    target_root = published._ensure_prefixed(target_prefix)
+    # Styles are staged artifacts too. Regenerate their own data URLs when a
+    # release version is overridden; provenance/custody evidence stays verbatim.
+    def style_url(url: str) -> str:
+        scheme = "pmtiles://" if url.startswith("pmtiles://") else ""
+        bare = url.removeprefix(scheme) if scheme else url
+        marker = f"/{request.dataset_slug}/{request.file_slug}/"
+        if not bare.startswith(request.public_root.rstrip("/") + "/") or marker not in bare:
+            return url
+        tail = bare.split(marker, 1)[1].split("/", 1)
+        return f"{scheme}{request.public_root.rstrip('/')}/{target_root}/{tail[1]}" if len(tail) == 2 else url
+
+    for key in staging.list_prefix(f"{source_prefix}/styles"):
+        if key.endswith(".json"):
+            document = json.loads(staging.read_key(key))
+            for style_source in document.get("sources", {}).values():
+                if isinstance(style_source, dict) and isinstance(style_source.get("url"), str):
+                    style_source["url"] = style_url(style_source["url"])
+            staging.write_key(key, json.dumps(document, sort_keys=True, separators=(",", ":")).encode())
+    record = _catalog_record_from_storage(replace(request, version=staged_version), staging)
+
+    def final_asset(asset: AssetRecord) -> AssetRecord:
+        key = asset.object_key
+        if not key or not key.startswith(source_root + "/"):
+            raise ValueError("Staged asset is outside the selected candidate")
+        target = target_root + "/" + key.removeprefix(source_root + "/")
+        return replace(asset, href=f"{request.public_root.rstrip('/')}/{target}", object_key=target,
+                       storage_slug=request.storage_slug, storage_revision=None)
+
+    record = replace(record, version_label=request.version, assets=tuple(map(final_asset, record.assets)),
+                     metadata_assets=tuple(map(final_asset, record.metadata_assets)))
+    with tempfile.TemporaryDirectory(prefix="hifld-staged-release-") as directory:
+        root = Path(directory).resolve()
+        render_portolan_tree(root, (record,), public_root=request.public_root)
+        normalize_candidate_tree(root)
+        validate_candidate_tree(root)
+        for name in ("collection.json", "README.md", "AGENTS.md"):
+            contents = (root / record.version_path / name).read_bytes()
+            if name == "collection.json":
+                document = json.loads(contents)
+                # This is also a standalone Collection beside canonical data.
+                # Discovery-tree parent/root links are assigned by the separately
+                # reviewed catalog bundle, whose generation is not known yet.
+                document["links"] = [link for link in document["links"] if link["rel"] not in {"root", "parent"}]
+                filenames = {"self": "collection.json", "agents": "AGENTS.md", "describedby": "README.md"}
+                for link in document["links"]:
+                    if link["rel"] in filenames:
+                        link["href"] = f"{request.public_root.rstrip('/')}/{target_root}/{filenames[link['rel']]}"
+                contents = json.dumps(document, sort_keys=True, indent=2).encode() + b"\n"
+            staging.write_key(f"{source_prefix}/{name}", contents)
+    document, _ = read_staged_release(staging, source_prefix)
+    return document
 
 
 def apply_selected_portolan_catalog(request: PortolanPublishRequest, staging: StagingStorageResource,
@@ -1386,9 +1464,17 @@ def _seed_release_bundle(
             if previous_pointer is None
             else source_key.removeprefix(f"releases/{previous_pointer.generation}/")
         )
+        body = published.read_key(source_key)
+        if previous_pointer is None and Path(relative_key).name == "collection.json":
+            # A release descriptor copied beside canonical data is not a legacy
+            # discovery tree when its logical collection root is elsewhere.
+            identifier = json.loads(body).get("id", "")
+            parent = Path(relative_key).parent.as_posix()
+            if (isinstance(identifier, str) and len(identifier.split("/")) == 4
+                    and identifier != parent and parent.endswith("/".join(identifier.split("/")[1:]))):
+                continue
         destination = root / relative_key
         destination.parent.mkdir(parents=True, exist_ok=True)
-        body = published.read_key(source_key)
         destination.write_bytes(body)
         if destination.suffix == ".json":
             value = json.loads(body)
@@ -1583,12 +1669,11 @@ def publish_portolan_manifest(
     staging = StagingStorageResource.from_env()
     published = PublishedStorageResource.from_env()
     records = tuple(
-        _prepare_portolan_record(
+        _prepare_approved_portolan_record(
             request,
             staging,
             published,
-            convert=not catalog_only,
-            promote=not catalog_only,
+            catalog_only=catalog_only,
         )
         for request in requests
     )
