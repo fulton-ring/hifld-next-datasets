@@ -363,3 +363,9 @@ epa_icis_wastewater_naics_draft_job = define_asset_job("epa_icis_wastewater_naic
 epa_icis_wastewater_naics_draft_schedule = ScheduleDefinition(name="epa_icis_wastewater_naics_draft_refresh_schedule",
     job=epa_icis_wastewater_naics_draft_job, cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [epa_icis_wastewater_naics_codes]
+ASSET_CHECKS = [epa_icis_wastewater_naics_complete, epa_icis_wastewater_naics_release_approved,
+                epa_icis_wastewater_naics_published_membership_compatible]
+JOBS = [epa_icis_wastewater_naics_draft_job]
+SCHEDULES = [epa_icis_wastewater_naics_draft_schedule]
