@@ -29,3 +29,8 @@ def bts_intermodal_passenger_connectivity_database_ipcd_complete(candidate: dict
 
 bts_ipcd_frozen_snapshot_job = define_asset_job("bts_ipcd_frozen_snapshot_manual_capture", selection=AssetSelection.assets(bts_intermodal_passenger_connectivity_database_ipcd))
 bts_ipcd_frozen_snapshot_schedule = ScheduleDefinition(name="bts_ipcd_frozen_snapshot_schedule", job=bts_ipcd_frozen_snapshot_job, cron_schedule="0 8 1 * *", execution_timezone="America/New_York", default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [bts_intermodal_passenger_connectivity_database_ipcd]
+ASSET_CHECKS = [bts_intermodal_passenger_connectivity_database_ipcd_complete]
+JOBS = [bts_ipcd_frozen_snapshot_job]
+SCHEDULES = [bts_ipcd_frozen_snapshot_schedule]
