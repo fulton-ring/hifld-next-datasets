@@ -48,6 +48,10 @@ RING_B = [[-116.02, 33.40], [-116.02, 33.41], [-116.01, 33.41], [-116.02, 33.40]
 HOLE_B = [[-116.017, 33.407], [-116.017, 33.406], [-116.016, 33.406], [-116.017, 33.407]]
 # Counter-clockwise hole lying inside no exterior of its feature.
 HOLE_OUTSIDE = [[-110.0, 40.0], [-110.0, 39.0], [-109.0, 39.0], [-110.0, 40.0]]
+# Clockwise closed self-intersecting (bowtie) exterior, verbatim source ring
+# shape observed on the pinned live capture (NFHL OBJECTIDs 784 and 185347).
+RING_BOWTIE = [[-116.0, 33.0], [-116.0, 33.04], [-116.01, 33.0 - 0.01], [-116.04, 33.04],
+               [-116.04, 33.0], [-116.0, 33.0]]
 
 
 def _attrs(oid, **overrides):
@@ -85,19 +89,22 @@ def _fixture():
         # Producer-observed shape (NFHL OBJECTID 3987 on the 2026-11-12 capture):
         # a geometry value that holds no rings at all.
         {"attributes": _attrs(15), "geometry": {"rings": []}},
+        # Producer-observed shape (NFHL OBJECTIDs 784, 185347): a closed
+        # clockwise exterior that self-intersects; serialized verbatim.
+        {"attributes": _attrs(16), "geometry": {"rings": [RING_BOWTIE]}},
     ]
-    ids = [10, 11, 12, 13, 14, 15]
+    ids = [10, 11, 12, 13, 14, 15, 16]
     schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f} for f in fields]
     geom_records = [[10, [RING_A]], [11, [RING_A, HOLE_A]], [12, None],
                     [13, [[["NaN", "NaN"], ["NaN", "NaN"], ["NaN", "NaN"]]]],
-                    [14, [RING_B, HOLE_B]], [15, []]]
+                    [14, [RING_B, HOLE_B]], [15, []], [16, [RING_BOWTIE]]]
     crs = {"wkid": 4269, "latestWkid": 4269}
-    pages = [features[0:2], features[2:4], features[4:6]]
+    pages = [features[0:2], features[2:4], features[4:6], features[6:7]]
     page_docs = [{"features": page, "spatialReference": crs,
                   **({"exceededTransferLimit": True} if index < len(pages) - 1 else {})}
                  for index, page in enumerate(pages)]
     docs = {"service_before": service, "service_after": service, "layer_before": layer, "layer_after": layer,
-            "count_before": {"count": 6}, "count_after": {"count": 6},
+            "count_before": {"count": 7}, "count_after": {"count": 7},
             "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
             "ids_seed": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
@@ -123,9 +130,10 @@ def _bounds(features):
 
 
 def _pins(features, schema, geom_records):
-    return dict(EXPECTED_COUNT=6, PAGE_SIZE=2, EXPECTED_NULL_GEOMETRY_COUNT=1,
+    return dict(EXPECTED_COUNT=7, PAGE_SIZE=2, EXPECTED_NULL_GEOMETRY_COUNT=1,
                 EXPECTED_NAN_GEOMETRY_COUNT=1, EXPECTED_EMPTY_RINGS_GEOMETRY_COUNT=1,
-                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14, 15])).hexdigest(),
+                EXPECTED_SELF_INTERSECTING_GEOMETRY_COUNT=1,
+                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14, 15, 16])).hexdigest(),
                 EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(sorted(features,
                                                                          key=lambda row: row["attributes"]["OBJECTID"]))).hexdigest(),
                 EXPECTED_GEOMETRY_SHA256=hashlib.sha256(_canonical(sorted(geom_records))).hexdigest(),
@@ -140,18 +148,19 @@ class NfhlLomrsTests(unittest.TestCase):
         fields, features, captures, schema, geom = _fixture()
         with patch.multiple(source, **_pins(features, schema, geom)):
             _, original_fields, extracted = source._validate_captures(captures)
-            body = source._parquet_bytes(original_fields, extracted["features"])
+            body, self_intersecting = source._parquet_bytes(original_fields, extracted["features"])
+        self.assertEqual(self_intersecting, 1)
         import tempfile
         with tempfile.NamedTemporaryFile(suffix=".parquet") as stream:
             stream.write(body)
             stream.flush()
             table = pq.read_table(stream.name)
-        self.assertEqual(table.num_rows, 6)
-        self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12, 13, 14, 15])
+        self.assertEqual(table.num_rows, 7)
+        self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12, 13, 14, 15, 16])
         self.assertEqual(table.column("LOMR_ID").to_pylist(),
-                         ["01003C_10", "01003C_11", "01003C_12", "01003C_13", "01003C_14", "01003C_15"])
+                         ["01003C_10", "01003C_11", "01003C_12", "01003C_13", "01003C_14", "01003C_15", "01003C_16"])
         self.assertEqual(table.column("EFF_DATE").type.__str__(), "int64")
-        self.assertEqual(table.column("EFF_DATE").to_pylist(), [1601251200000] * 6)
+        self.assertEqual(table.column("EFF_DATE").to_pylist(), [1601251200000] * 7)
         self.assertEqual(table.column("SHAPE.STArea()").type.__str__(), "double")
         self.assertEqual(table.column("SHAPE").null_count, 3)
         polygon_10 = shapely.from_wkb(table.column("SHAPE").to_pylist()[0])
@@ -167,6 +176,11 @@ class NfhlLomrsTests(unittest.TestCase):
         self.assertEqual(table.column("LOMR_ID").to_pylist()[3], "01003C_13")
         self.assertEqual(table.column("CASE_NO").to_pylist()[3], "19-04-0013P")
         self.assertEqual(table.column("CASE_NO").to_pylist()[5], "19-04-0015P")
+        # The self-intersecting source exterior is serialized verbatim: every
+        # source vertex is present in order, no topological repair applied.
+        bowtie = shapely.from_wkb(table.column("SHAPE").to_pylist()[6])
+        self.assertFalse(bowtie.is_valid)
+        self.assertEqual(list(bowtie.exterior.coords), [tuple(vertex) for vertex in RING_BOWTIE])
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"]["code"], 4269)
         self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["Polygon", "MultiPolygon"])
@@ -191,14 +205,15 @@ class NfhlLomrsTests(unittest.TestCase):
 
     def test_id_roster_response_order_is_not_population_drift(self):
         _, _, captures, schema, geom = _fixture()
-        for name, ids in (("ids_seed", [12, 10, 11, 14, 13, 15]), ("ids_before", [11, 12, 10, 13, 14, 15]),
-                          ("ids_after", [10, 11, 12, 13, 14, 15])):
+        for name, ids in (("ids_seed", [12, 10, 11, 14, 13, 15, 16]),
+                          ("ids_before", [11, 12, 10, 13, 14, 16, 15]),
+                          ("ids_after", [10, 11, 12, 13, 14, 15, 16])):
             doc = json.loads(captures[name][0])
             doc["objectIds"] = ids
             captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
         features = [row for i in range(3) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         _, _, extracted = self._validated(features, captures, schema, geom)
-        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14, 15])
+        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14, 15, 16])
         self.assertEqual(extracted["audit"]["null_geometry_count"], 1)
         self.assertEqual(extracted["audit"]["nan_string_geometry_count"], 1)
         self.assertEqual(extracted["audit"]["empty_rings_geometry_count"], 1)
@@ -378,10 +393,11 @@ class NfhlLomrsTests(unittest.TestCase):
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_lomrs(storage, version="vfixture",
                                                       capture_directory=str(root / "captures"))
-                self.assertEqual(candidate["feature_count"], 6)
+                self.assertEqual(candidate["feature_count"], 7)
                 self.assertEqual(candidate["source_null_geometry_count"], 1)
                 self.assertEqual(candidate["source_nan_string_geometry_count"], 1)
                 self.assertEqual(candidate["source_empty_rings_geometry_count"], 1)
+                self.assertEqual(candidate["source_self_intersecting_geometry_count"], 1)
                 prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
                 state_key = f"_construction-state/{source.DATASET_SLUG}/{candidate['version']}.json"
                 self.assertTrue(storage.object_snapshot(state_key))

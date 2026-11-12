@@ -15,9 +15,11 @@ clockwise rings are exteriors while counter-clockwise rings are holes, so
 candidate WKB geometry is built by that rule (single-exterior features keep
 their source ring order; the five multi-exterior features become MultiPolygons
 with holes joined to their smallest containing exterior) without dropping,
-adding, or reordering any source vertex. 37 source features have null geometry
-and one more (NFHL OBJECTID 3987) records a geometry value holding no rings;
-both are retained verbatim, counted separately, and never coerced to a location.
+adding, or reordering any source vertex. 37 source features have null geometry,
+one more (NFHL OBJECTID 3987) records a geometry value holding no rings, and
+two (NFHL OBJECTIDs 784 and 185347) record closed exteriors that self-intersect;
+all three states are retained verbatim, counted separately, and never coerced
+or topologically repaired.
 """
 from __future__ import annotations
 
@@ -84,6 +86,11 @@ EXPECTED_NAN_GEOMETRY_COUNT = 0
 # at all (observed verbatim on the pinned capture: NFHL OBJECTID 3987 serves
 # {"rings": []}); the value is retained losslessly and counted, never coerced.
 EXPECTED_EMPTY_RINGS_GEOMETRY_COUNT = 1
+# Producer-observed closed clockwise exteriors that self-intersect (NFHL
+# OBJECTIDs 784 and 185347 on the pinned capture). They are serialized WKB
+# verbatim with no topological repair; technical geometry quality acceptance
+# remains pending and the catalog quality gate fails on them by design.
+EXPECTED_SELF_INTERSECTING_GEOMETRY_COUNT = 2
 EXPECTED_OBSERVED_BOUNDS = {"xmin": -157.9016097476065, "ymin": 18.036626896474615,
                             "xmax": -65.68982948447291, "ymax": 64.84674939130537}
 EXPECTED_LAYER_EXTENT = {"xmin": -158.20976380790182, "ymin": 18.036626896474615,
@@ -415,7 +422,9 @@ def _polygon_wkb(geom: object) -> bytes | None:
     Esri JSON (verified on the pinned capture): every ring is explicitly closed,
     clockwise rings are exteriors, counter-clockwise rings are holes. Vertices
     are passed to shapely verbatim; exteriors with no claimable hole keep their
-    ring order and holes join their smallest containing exterior.
+    ring order and holes join their smallest containing exterior. Source
+    exteriors that self-intersect are serialized exactly as served, with no
+    repair and no vertex change; the caller counts them for the audit.
     """
     rings = _usable_rings(geom)
     if rings is None:
@@ -429,9 +438,6 @@ def _polygon_wkb(geom: object) -> bytes | None:
     if not exteriors:
         raise ValueError("source_polygon_exterior_missing")
     shells = [(Polygon(ring), _signed_area(ring), index) for index, ring in enumerate(exteriors)]
-    for shell, _, _ in shells:
-        if not shell.is_valid:
-            raise ValueError("source_polygon_ring_self_intersecting")
     assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
     for hole in holes:
         polygon = Polygon(hole)
@@ -445,26 +451,31 @@ def _polygon_wkb(geom: object) -> bytes | None:
     return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
 
 
-def _parquet_bytes(fields: list[dict[str, object]], features: list[dict[str, object]]) -> bytes:
+def _parquet_bytes(fields: list[dict[str, object]],
+                   features: list[dict[str, object]]) -> tuple[bytes, int]:
     columns = {}
     schema_fields = []
+    geometries = []
     for field in fields:
         name = field["name"]
         typ = pa.binary() if name == "SHAPE" else _arrow_type(field)
         if name == "SHAPE":
-            values = [_polygon_wkb(row.get("geometry")) for row in features]
+            wkbs = [_polygon_wkb(row.get("geometry")) for row in features]
+            geometries = [shapely.from_wkb(wkb) if wkb is not None else None for wkb in wkbs]
+            values = wkbs
             schema_fields.append(pa.field(name, typ, nullable=True))
         else:
             values = [row["attributes"].get(name) for row in features]
             schema_fields.append(pa.field(name, typ, nullable=True))
         columns[name] = pa.array(values, type=typ)
+    self_intersecting = sum(1 for geometry in geometries if geometry is not None and not geometry.is_valid)
     geo = {"version": "1.1.0", "primary_column": "SHAPE", "columns": {"SHAPE": {
         "encoding": "WKB", "geometry_types": ["Polygon", "MultiPolygon"],
         "crs": pyproj.CRS.from_epsg(SOURCE_CRS_WKID).to_json_dict(), "edges": "planar"}}}
     table = pa.Table.from_pydict(columns, schema=pa.schema(schema_fields).with_metadata({b"geo": _canonical(geo)}))
     sink = pa.BufferOutputStream()
     pq.write_table(table, sink, compression="zstd")
-    return sink.getvalue().to_pybytes()
+    return sink.getvalue().to_pybytes(), self_intersecting
 
 
 def _code_identity() -> dict[str, object]:
@@ -536,16 +547,18 @@ def capture_nfhl_lomrs(storage: StagingStorageResource, *, version: str,
             quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, retained, type(exc).__name__)
         raise
     identity = _code_identity()
-    parquet_body = _parquet_bytes(source_fields, extracted["features"])
+    parquet_body, self_intersecting = _parquet_bytes(source_fields, extracted["features"])
+    audit["self_intersecting_geometry_count"] = self_intersecting
     rel = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {rel: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
     manifest = {
         "schema_version": 1, "approved": False, "title": "LOMRs (FEMA NFHL)",
         "description": "FEMA National Flood Hazard Layer (NFHL) MapServer layer 1 'LOMRs', captured "
                        "completely from the producer's own REST publication. Complete source attributes and NAD83 "
-                       "polygon geometry are represented in the candidate. 37 source features have null geometry "
-                       "and one more records a geometry value holding no rings; both are retained verbatim and "
-                       "counted. The NFHL is continuously updated and "
+                       "polygon geometry are represented in the candidate. 37 source features have null geometry, "
+                       "one more records a geometry value holding no rings, and two record self-intersecting "
+                       "exteriors; all are retained verbatim and counted, with no topological repair. The NFHL is "
+                       "continuously updated and "
                        "publishes no per-snapshot release date; freshness, rights, public schema/ID contract, and "
                        "release acceptance remain unresolved and unapproved.",
         "publisher": PUBLISHER, "agency": "Federal Emergency Management Agency", "source_url": LAYER_URL,
@@ -641,6 +654,7 @@ def capture_nfhl_lomrs(storage: StagingStorageResource, *, version: str,
                 "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
                 "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
                 "source_empty_rings_geometry_count": audit["empty_rings_geometry_count"],
+                "source_self_intersecting_geometry_count": audit["self_intersecting_geometry_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_release_accepted": False, "source_freshness_accepted": False,
                 "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
@@ -665,6 +679,7 @@ def capture_nfhl_lomrs(storage: StagingStorageResource, *, version: str,
             "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
             "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
             "source_empty_rings_geometry_count": audit["empty_rings_geometry_count"],
+            "source_self_intersecting_geometry_count": audit["self_intersecting_geometry_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False,
