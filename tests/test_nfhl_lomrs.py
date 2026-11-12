@@ -69,9 +69,8 @@ def _fixture():
              "drawingInfo": {"renderer": {"type": "uniqueValue", "field1": "STATUS",
                                           "uniqueValueInfos": [{"value": "Effective", "label": "Effective"}],
                                           "authoringInfo": {"colorRamp": {"type": "multipart", "colorRamps": [
-                                              {"type": "multiPartColorRamp", "colorRamps": [
-                                                  {"type": "algorithmicColorRamp", "fromColor": [242, 204, 189, 255],
-                                                   "toColor": [252, 187, 219, 255]}]}]}}}},
+                                              {"fromColor": [242, 204, 189, 255], "toColor": [252, 187, 219, 255]},
+                                              {"fromColor": [184, 179, 210, 255], "toColor": [184, 179, 210, 255]}]}}}},
              "extent": {"xmin": -160.0, "ymin": 20.0, "xmax": -60.0, "ymax": 65.0,
                         "spatialReference": {"wkid": 4269, "latestWkid": 4269}},
              "fields": fields}
