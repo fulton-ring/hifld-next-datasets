@@ -86,6 +86,7 @@ EXPECTED_RECORD_SHA256 = "pending-dated-complete-capture"
 EXPECTED_GEOMETRY_SHA256 = "pending-dated-complete-capture"
 EXPECTED_NULL_GEOMETRY_COUNT = None
 EXPECTED_NAN_GEOMETRY_COUNT = None
+EXPECTED_UNUSABLE_GEOMETRY_FEATURE_COUNTS = None
 EXPECTED_OBSERVED_BOUNDS = None
 EXPECTED_LAYER_EXTENT = {"xmin": -166.16706527995404, "ymin": 25.23236613772616,
                          "xmax": -80.03142500030742, "ymax": 66.61058213599716}
@@ -390,6 +391,12 @@ def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
             "esriFieldTypeDate": pa.int64()}[str(field["type"])]
 
 
+UNUSABLE_GEOMETRY_MODES = frozenset({
+    "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
+    "source_polygon_ring_self_intersecting", "source_polygon_hole_unassigned",
+})
+
+
 class _PageStream:
     """Streaming per-page validator: digests, coverage and candidate parquet."""
 
@@ -406,6 +413,7 @@ class _PageStream:
         self.geometry_digest = _StreamDigest()
         self.null_geometry = 0
         self.nan_geometry = 0
+        self.unusable_geometry: dict[str, int] = {}
         self.feature_count = 0
         self._bounds: list[float] = []
 
@@ -421,7 +429,19 @@ class _PageStream:
             geometry_records.append([attrs["OBJECTID"], _validated_rings(feature.get("geometry"))])
             for name in self.attr_names:
                 columns[name].append(attrs.get(name))
-            shapes.append(_polygon_wkb(feature.get("geometry")))
+            try:
+                shapes.append(_polygon_wkb(feature.get("geometry")))
+            except ValueError as exc:
+                if str(exc) not in UNUSABLE_GEOMETRY_MODES:
+                    raise
+                # The producer publishes a small number of features whose rings
+                # cannot form a valid OGC polygon (zero/signed-zero area slivers,
+                # unassignable holes). The row and its raw rings are retained
+                # verbatim; the candidate geometry is explicitly gated to null
+                # and the failure mode is counted and pinned, never silently
+                # coerced into an invented polygon.
+                shapes.append(None)
+                self.unusable_geometry[str(exc)] = self.unusable_geometry.get(str(exc), 0) + 1
             geometry = feature.get("geometry")
             if geometry is None:
                 self.null_geometry += 1
@@ -452,6 +472,7 @@ class _PageStream:
                 "geometry_type": "Polygon",
                 "null_geometry_count": self.null_geometry,
                 "nan_string_geometry_count": self.nan_geometry,
+                "unusable_geometry_feature_counts": dict(sorted(self.unusable_geometry.items())),
                 "observed_bounds": self.observed_bounds()}
 
 
@@ -598,6 +619,9 @@ def capture_nfhl_plss(storage: StagingStorageResource, *, version: str,
             if EXPECTED_NAN_GEOMETRY_COUNT is not None \
                     and audit_stream["nan_string_geometry_count"] != EXPECTED_NAN_GEOMETRY_COUNT:
                 raise ValueError("source_nan_geometry_count_drift")
+            if EXPECTED_UNUSABLE_GEOMETRY_FEATURE_COUNTS is not None \
+                    and audit_stream["unusable_geometry_feature_counts"] != EXPECTED_UNUSABLE_GEOMETRY_FEATURE_COUNTS:
+                raise ValueError("source_unusable_geometry_count_drift")
             if EXPECTED_OBSERVED_BOUNDS is not None \
                     and audit_stream["observed_bounds"] != EXPECTED_OBSERVED_BOUNDS:
                 raise ValueError("source_observed_coverage_drift")

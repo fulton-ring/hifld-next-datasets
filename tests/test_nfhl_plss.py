@@ -180,6 +180,22 @@ class NfhlPlssTests(unittest.TestCase):
         self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"]["code"], 4269)
         self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["Polygon", "MultiPolygon"])
 
+    def test_unusable_geometry_is_gated_null_and_counted(self):
+        degenerate = [[[-116.0, 33.0], [-116.0, 33.0], [-116.0, 33.0]]]
+        page = {"features": [{"attributes": _attrs(20), "geometry": {"rings": degenerate}},
+                             {"attributes": _attrs(21), "geometry": {"rings": [RING_A]}}],
+                "spatialReference": {"wkid": 4269, "latestWkid": 4269}}
+        with tempfile.TemporaryDirectory() as temporary:
+            stream = source._PageStream(FIELDS, Path(temporary) / "candidate.geoparquet")
+            stream.process(page, [20, 21], 0, 0)
+            audit = stream.finish()
+            table = pq.read_table(str(Path(temporary) / "candidate.geoparquet"))
+        self.assertEqual(audit["unusable_geometry_feature_counts"], {"source_polygon_ring_degenerate": 1})
+        self.assertEqual(table.column("OBJECTID").to_pylist(), [20, 21])
+        self.assertIsNone(table.column("SHAPE").to_pylist()[0])
+        self.assertEqual(table.column("PLSS_AR_ID").to_pylist()[0], "01003C_20")
+        self.assertIsNotNone(table.column("SHAPE").to_pylist()[1])
+
     def test_hole_joins_smallest_containing_exterior_as_multipolygon(self):
         multipolygon = shapely.from_wkb(source._polygon_wkb({"rings": [RING_A, RING_B, HOLE_B]}))
         self.assertIsInstance(multipolygon, shapely.MultiPolygon)
