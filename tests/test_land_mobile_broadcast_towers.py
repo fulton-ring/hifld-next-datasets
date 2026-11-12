@@ -184,15 +184,20 @@ class LandMobileBroadcastTowersContractTests(unittest.TestCase):
         self.assertEqual(source.EN_ENTITY_TYPE_INDEX, 5)
 
     def test_dms_to_decimal_matches_fcc_native_values(self):
-        self.assertAlmostEqual(source._dms_to_decimal(38, 57, 35.4, "N"),
+        self.assertAlmostEqual(source._dms_to_decimal(38, 57, 35.4, "N", max_degrees=90),
                                38 + 57 / 60 + 35.4 / 3600)
-        self.assertAlmostEqual(source._dms_to_decimal(77, 26, 47.0, "W"),
+        self.assertAlmostEqual(source._dms_to_decimal(77, 26, 47.0, "W", max_degrees=180),
                                -(77 + 26 / 60 + 47 / 3600))
-        self.assertAlmostEqual(source._dms_to_decimal(13, 28, 0.0, "S"), -(13 + 28 / 60))
-        self.assertIsNone(source._dms_to_decimal(38, 57, 70.0, "N"))
-        self.assertIsNone(source._dms_to_decimal(38, 60, 0.0, "N"))
-        self.assertIsNone(source._dms_to_decimal(38, 57, 35.4, "X"))
-        self.assertIsNone(source._dms_to_decimal(None, 57, 35.4, "N"))
+        self.assertAlmostEqual(source._dms_to_decimal(170, 39, 44.9, "E", max_degrees=180),
+                               170 + 39 / 60 + 44.9 / 3600)
+        self.assertAlmostEqual(source._dms_to_decimal(13, 28, 0.0, "S", max_degrees=90),
+                               -(13 + 28 / 60))
+        self.assertIsNone(source._dms_to_decimal(38, 57, 70.0, "N", max_degrees=90))
+        self.assertIsNone(source._dms_to_decimal(38, 60, 0.0, "N", max_degrees=90))
+        self.assertIsNone(source._dms_to_decimal(38, 57, 35.4, "X", max_degrees=90))
+        self.assertIsNone(source._dms_to_decimal(91, 0, 0.0, "N", max_degrees=90))
+        self.assertIsNone(source._dms_to_decimal(181, 0, 0.0, "W", max_degrees=180))
+        self.assertIsNone(source._dms_to_decimal(None, 57, 35.4, "N", max_degrees=90))
 
     def test_point_wkb_is_little_endian_point(self):
         self.assertEqual(source._point_wkb(1.5, -2.25).hex(),
