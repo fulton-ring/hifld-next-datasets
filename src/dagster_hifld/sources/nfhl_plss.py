@@ -75,19 +75,26 @@ DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 PAGE_CAPTURE_ATTEMPTS = 3
 PAGE_CAPTURE_BASE_DELAY_SECONDS = 5.0
-# Pins below are the observed 2026-11-12 complete-layer population contract.
-# The record/geometry/null-geometry/NaN/observed-bounds pins are provisional
-# pending this run's dated complete capture; a live capture failing any pin
+# Pins below are the observed population contract of the dated complete 822-page
+# producer capture finished 2026-11-12T18:32Z: every page was validated against
+# its exact sorted OBJECTID roster slice on arrival, the before/after metadata
+# brackets were stable, and the record/geometry digests were streamed in
+# roster-slice order over all 1,643,556 features. A live capture failing any pin
 # quarantines and reports the exact drift instead of accepting stale values.
 EXPECTED_COUNT = 1643556
 EXPECTED_ID_SHA256 = "9db0d786ba0e857a81bc02e3dac04767eb674d840ec96b10f44b9ddd0d532449"
 EXPECTED_SCHEMA_SHA256 = "85e698d7079536f49599b9d7ac1b4b34ac969d679ea45cd8c9dacf8a03da1470"
-EXPECTED_RECORD_SHA256 = "pending-dated-complete-capture"
-EXPECTED_GEOMETRY_SHA256 = "pending-dated-complete-capture"
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_NAN_GEOMETRY_COUNT = None
-EXPECTED_UNUSABLE_GEOMETRY_FEATURE_COUNTS = None
-EXPECTED_OBSERVED_BOUNDS = None
+EXPECTED_RECORD_SHA256 = "14ee62eabce0e8bdb65a153f5bfae5b35c769ff6c55dfc36fb28f3ef05476936"
+EXPECTED_GEOMETRY_SHA256 = "d6242c48e2200a69bc8da3c681cdbde68ac07e9c237721fc47589bf53eedf0ce"
+EXPECTED_NULL_GEOMETRY_COUNT = 14
+EXPECTED_NAN_GEOMETRY_COUNT = 0
+EXPECTED_UNUSABLE_GEOMETRY_FEATURE_COUNTS = {
+    "source_polygon_hole_unassigned": 4,
+    "source_polygon_ring_degenerate": 30,
+    "source_polygon_ring_self_intersecting": 73,
+}
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -165.51601141942217, "ymin": 25.23236613772616,
+                            "xmax": -80.03142507888776, "ymax": 66.61058213599716}
 EXPECTED_LAYER_EXTENT = {"xmin": -166.16706527995404, "ymin": 25.23236613772616,
                          "xmax": -80.03142500030742, "ymax": 66.61058213599716}
 EXPECTED_SERVICE_LAYER_ROSTER = [

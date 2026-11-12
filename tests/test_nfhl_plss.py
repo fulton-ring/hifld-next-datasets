@@ -116,7 +116,7 @@ def _bounds(features):
 
 def _pins(features, schema, geom_records):
     return dict(EXPECTED_COUNT=5, PAGE_SIZE=2, EXPECTED_NULL_GEOMETRY_COUNT=1,
-                EXPECTED_NAN_GEOMETRY_COUNT=1,
+                EXPECTED_NAN_GEOMETRY_COUNT=1, EXPECTED_UNUSABLE_GEOMETRY_FEATURE_COUNTS={},
                 EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),
                 EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(sorted(features,
                                                                          key=lambda row: row["attributes"]["OBJECTID"]))).hexdigest(),
