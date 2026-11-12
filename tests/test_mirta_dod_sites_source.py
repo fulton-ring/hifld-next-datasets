@@ -63,8 +63,8 @@ def _structural_curve_wkb() -> bytes:
 
 
 def _arc_curve_wkb() -> bytes:
-    """MultiSurface -> CurvePolygon -> CompoundCurve -> one CircularString."""
-    points = [(1.5, 1.5), (2.0, 2.4), (2.5, 1.5), (3.0, 0.6), (3.5, 1.5)]
+    """MultiSurface -> CurvePolygon -> CompoundCurve -> one closed CircularString."""
+    points = [(1.5, 1.5), (2.0, 2.4), (2.5, 1.5), (2.0, 0.6), (1.5, 1.5)]
     circular = b'\x01' + struct.pack('<I', 8) + struct.pack('<I', len(points))
     circular += b''.join(struct.pack('<dd', x, y) for x, y in points)
     compound = b'\x01' + struct.pack('<I', 9) + struct.pack('<I', 1) + circular
@@ -300,10 +300,10 @@ class MirtaMechanicsTests(unittest.TestCase):
     def test_tls_context_loads_pinned_intermediate_and_detects_tamper(self):
         context = s.tls_context()
         self.assertIsInstance(context, ssl.SSLContext)
-        self.assertIn('TrustID Server CA O1', s.TRUSTID_INTERMEDIATE_PEM)
         der = base64.b64decode(''.join(line for line in s.TRUSTID_INTERMEDIATE_PEM.splitlines()
                                        if '-----' not in line))
         self.assertEqual(hashlib.sha256(der).hexdigest(), s.PINNED_INTERMEDIATE_SHA256)
+        self.assertEqual(ssl.DER_cert_to_PEM_cert(der).strip(), s.TRUSTID_INTERMEDIATE_PEM.strip())
         with patch.object(s, 'PINNED_INTERMEDIATE_SHA256', '0' * 64):
             with self.assertRaisesRegex(ValueError, 'pinned_tls_intermediate_digest_drift'):
                 s.tls_context()

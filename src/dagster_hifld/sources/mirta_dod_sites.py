@@ -392,7 +392,18 @@ def _control_documents(captures: dict) -> dict:
 
 
 def walk_wkb(w: bytes, offset: int = 0) -> tuple[int, set[int], int]:
-    """Count stored coordinate pairs and collect ISO 2D subtype codes."""
+    """Count stored coordinate pairs and collect ISO 2D subtype codes.
+
+    The top-level call requires the walk to consume exactly the whole buffer;
+    recursive member walks return their end offset for the parent to check.
+    """
+    count, subtypes, end = _walk_wkb(w, offset)
+    if offset == 0 and end != len(w):
+        raise MirtaQuarantineError('wkb_trailing_bytes')
+    return count, subtypes, end
+
+
+def _walk_wkb(w: bytes, offset: int) -> tuple[int, set[int], int]:
     if w[offset] not in (0, 1):
         raise MirtaQuarantineError('wkb_byte_order_marker_invalid')
     endian = '<' if w[offset] == 1 else '>'
@@ -416,7 +427,7 @@ def walk_wkb(w: bytes, offset: int = 0) -> tuple[int, set[int], int]:
         members, offset = struct.unpack(endian + 'I', w[offset:offset + 4])[0], offset + 4
         total, subtypes = 0, {base}
         for _ in range(members):
-            count, codes, offset = walk_wkb(w, offset)
+            count, codes, offset = _walk_wkb(w, offset)
             total += count
             subtypes |= codes
         return total, subtypes, offset
@@ -424,7 +435,7 @@ def walk_wkb(w: bytes, offset: int = 0) -> tuple[int, set[int], int]:
         members, offset = struct.unpack(endian + 'I', w[offset:offset + 4])[0], offset + 4
         total, subtypes = 0, {base}
         for _ in range(members):
-            count, codes, offset = walk_wkb(w, offset)
+            count, codes, offset = _walk_wkb(w, offset)
             total += count
             subtypes |= codes
         return total, subtypes, offset
