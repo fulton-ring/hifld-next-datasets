@@ -163,7 +163,7 @@ class NfhlAlluvialFansTests(unittest.TestCase):
                          [[tuple(vertex) for vertex in HOLE_A]])
         self.assertIsNone(table.column("SHAPE").to_pylist()[2])
         self.assertIsNone(table.column("SHAPE").to_pylist()[3])
-        self.assertEqual(table.column("ALLUVL_ID").to_pylist()[13], "06025C_13")
+        self.assertEqual(table.column("ALLUVL_ID").to_pylist()[3], "06025C_13")
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"]["code"], 4269)
         self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["Polygon", "MultiPolygon"])
@@ -172,7 +172,9 @@ class NfhlAlluvialFansTests(unittest.TestCase):
         _, features, _, _, _ = _fixture()
         multipolygon = shapely.from_wkb(source._polygon_wkb({"rings": [RING_A, RING_B, HOLE_B]}))
         self.assertIsInstance(multipolygon, shapely.MultiPolygon)
-        self.assertEqual(sum(len(list(geom.coords)) for geom in shapely.get_parts(multipolygon)),
+        self.assertEqual(sum(len(list(geom.exterior.coords)) + sum(len(list(interior.coords))
+                                                                  for interior in geom.interiors)
+                             for geom in multipolygon.geoms),
                          len(RING_A) + len(RING_B) + len(HOLE_B))
         second = list(multipolygon.geoms)[1]
         self.assertEqual([list(interior.coords) for interior in second.interiors],
@@ -180,7 +182,7 @@ class NfhlAlluvialFansTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_polygon_hole_unassigned"):
             source._polygon_wkb({"rings": [RING_B, HOLE_OUTSIDE]})
         with self.assertRaisesRegex(ValueError, "source_polygon_ring_degenerate"):
-            source._polygon_wkb({"rings": [[-116.0, 33.0], [-116.0, 33.0], [-116.0, 33.0]]})
+            source._polygon_wkb({"rings": [[[-116.0, 33.0], [-116.0, 33.0], [-116.0, 33.0]]]})
         with self.assertRaisesRegex(ValueError, "source_polygon_exterior_missing"):
             source._polygon_wkb({"rings": [HOLE_A, HOLE_B]})
 
