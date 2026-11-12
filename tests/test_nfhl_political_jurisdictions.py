@@ -429,6 +429,61 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
             self.assertEqual(len(calls), 3)
             self.assertEqual((root / "probe.attempt-01.receipt.json").read_bytes(), b'{"status": null}\n')
 
+    def test_persistent_full_window_transport_failure_falls_through_to_tiling(self):
+        import tempfile
+        from pathlib import Path
+
+        ids = list(range(100, 164))
+
+        def fake_capture_with_retry(_client, url, capture_root, name, *, max_bytes, attempts, base_delay):
+            if name in ("page_000", "page_000_o00000_c0064"):
+                raise ValueError(f"incomplete_source_capture:{name}")
+            bodies = {}
+            for offset, count in ((0, 32), (32, 32)):
+                tile_name = f"page_000_o{offset:05d}_c{count:04d}"
+                tile = {"features": [{"attributes": {"OBJECTID": oid}} for oid in ids[offset:offset + count]]}
+                bodies[tile_name] = json.dumps(tile).encode()
+            body = bodies[name]
+            digest = hashlib.sha256(body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                       "complete_body": True, "bytes": len(body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            calls = []
+            real_preserve = source._preserve_failed_attempt
+
+            def tracking_preserve(capture_root, name, attempt):
+                calls.append((name, attempt))
+                return real_preserve(capture_root, name, attempt)
+
+            with patch.object(source, "_capture_with_retry", side_effect=fake_capture_with_retry), \
+                 patch.object(source, "_preserve_failed_attempt", side_effect=tracking_preserve), \
+                 patch.object(source.time, "sleep"):
+                parts = source._capture_page(None, root, 0, ids)
+            self.assertEqual([name for name, _body, _receipt in parts],
+                             ["page_000_o00000_c0032", "page_000_o00032_c0032"])
+            self.assertEqual(calls[:3], [("page_000", 1), ("page_000", 2), ("page_000", 3)])
+
+    def test_persistent_tile_failure_at_floor_raises_window_error(self):
+        import tempfile
+        from pathlib import Path
+
+        def fake_capture_with_retry(_client, url, capture_root, name, *, max_bytes, attempts, base_delay):
+            raise ValueError(f"incomplete_source_capture:{name}")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(source, "_capture_with_retry", side_effect=fake_capture_with_retry), \
+                 patch.object(source.time, "sleep"), \
+                 patch.multiple(source, PAGE_FULL_ATTEMPTS=1, TILE_ATTEMPTS=1):
+                with self.assertRaisesRegex(ValueError, "source_page_window_persistent_error:page_000_o00000_c0002"):
+                    source._capture_page(None, root, 0, [10, 11])
+
     def test_missing_approval_preserves_populated_accepted_inventory(self):
         import os
         import tempfile

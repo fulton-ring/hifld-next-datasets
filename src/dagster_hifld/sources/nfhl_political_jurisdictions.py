@@ -199,9 +199,14 @@ def _capture_page(client: httpx.Client, capture_root: Path, page: int,
                 return [(f"page_{page:03d}", body, receipt)]
             _preserve_failed_attempt(capture_root, f"page_{page:03d}", attempt)
         except ValueError as exc:
-            if attempt >= PAGE_FULL_ATTEMPTS or not str(exc).startswith("incomplete_source_capture:"):
-                raise
             _preserve_failed_attempt(capture_root, f"page_{page:03d}", attempt)
+            if attempt >= PAGE_FULL_ATTEMPTS:
+                # The producer's transient transport failures and complete-200
+                # error documents both fall through to bounded sub-tiling of
+                # the same roster slice; only non-transient failures surface.
+                if not str(exc).startswith("incomplete_source_capture:"):
+                    raise
+                break
         time.sleep(PAGE_CAPTURE_BASE_DELAY_SECONDS * (2 ** (attempt - 1)))
     captured: list[tuple[str, bytes, dict[str, object]]] = []
     segments = [(0, len(slice_ids))]
@@ -221,6 +226,7 @@ def _capture_page(client: httpx.Client, capture_root: Path, page: int,
                     break
                 last_error = "producer_error_document"
             except ValueError as exc:
+                _preserve_failed_attempt(capture_root, name, attempt)
                 if not str(exc).startswith("incomplete_source_capture:"):
                     raise
                 last_error = str(exc)
