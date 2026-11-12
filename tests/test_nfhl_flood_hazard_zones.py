@@ -212,29 +212,39 @@ class NfhlFloodHazardZonesValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
                 source._validate_captures(*_split(docs), [10, 11, 12])
 
+    def _docs_with_rotating_colorramp(self, docs, rotate: bool):
+        """Mirror the live layer-28 renderer: both bracket docs carry the full
+        drawingInfo; only authoringInfo.colorRamp.colorRamps palette colors
+        rotate between fetches."""
+        renderer = {"type": "uniqueValue", "field1": "FLD_ZONE", "field2": "ZONE_SUBTY",
+                    "fieldDelimiter": ";", "uniqueValueInfos": [{"symbol": {"color": [9, 9, 9, 255]}}],
+                    "authoringInfo": {"colorRamp": {"type": "multipart", "colorRamps": [
+                        {"fromColor": [252, 242, 204, 255], "toColor": [211, 228, 252, 255],
+                         "algorithm": "esriCIELabAlgorithm", "type": "algorithmic"}]}}}
+        docs["layer_before"] = json.loads(json.dumps(dict(docs["layer_before"], drawingInfo={"renderer": renderer})))
+        rotated = json.loads(json.dumps(renderer))
+        if rotate:
+            rotated["authoringInfo"]["colorRamp"]["colorRamps"] = [
+                {"fromColor": [207, 220, 252, 255], "toColor": [207, 220, 252, 255],
+                 "algorithm": "esriCIELabAlgorithm", "type": "algorithmic"}]
+        docs["layer_after"] = json.loads(json.dumps(dict(docs["layer_after"], drawingInfo={"renderer": rotated})))
+        return docs
+
     def test_rotating_colorramp_palette_between_layer_fetches_is_not_metadata_drift(self):
         # Regression for the 2026-11-12 live probe of layer 28: every layer
         # fetch rotates drawingInfo.renderer.authoringInfo.colorRamp palette
         # colors; only that palette may differ between the before/after
         # brackets (the merged sibling LOMRs module observed the same quirk).
         _, features, docs, schema, geom = _fixture()
-        docs["layer_after"] = json.loads(json.dumps(docs["layer_after"]))
-        ramp = docs["layer_after"].setdefault("drawingInfo", {}).setdefault(
-            "renderer", {}).setdefault("authoringInfo", {})["colorRamp"] = {
-            "colorRamps": [{"fromColor": [1, 2, 3, 255], "toColor": [4, 5, 6, 255],
-                            "algorithm": "esriCIELabAlgorithm", "type": "algorithmic"}],
-            "name": "Custom"}
-        self.assertNotIn("drawingInfo", docs["layer_before"])
+        self._docs_with_rotating_colorramp(docs, rotate=True)
         with patch.multiple(source, **_pins(features, schema, geom)):
             _, _, extracted = source._validate_captures(*_split(docs), [10, 11, 12])
             self.assertEqual(extracted["audit"]["source_feature_count"], 3)
 
     def test_other_layer_metadata_change_is_still_rejected(self):
         _, features, docs, schema, geom = _fixture()
-        docs["layer_after"] = json.loads(json.dumps(docs["layer_after"]))
-        docs["layer_after"]["drawingInfo"]["renderer"]["authoringInfo"]["colorRamp"]["colorRamps"] = [
-            {"fromColor": [1, 2, 3, 255], "toColor": [4, 5, 6, 255]}]
-        docs["layer_after"]["drawingInfo"]["renderer"]["type"] = "uniqueValue"
+        self._docs_with_rotating_colorramp(docs, rotate=True)
+        docs["layer_after"]["drawingInfo"]["renderer"]["type"] = "classBreaks"
         with patch.multiple(source, **_pins(features, schema, geom)):
             with self.assertRaisesRegex(ValueError, "source_layer_metadata_changed_during_capture"):
                 source._validate_captures(*_split(docs), [10, 11, 12])
