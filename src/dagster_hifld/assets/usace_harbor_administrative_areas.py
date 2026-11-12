@@ -64,3 +64,8 @@ usace_harbor_administrative_areas_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [usace_harbor_administrative_areas_usace_ienc]
+ASSET_CHECKS = [usace_harbor_administrative_areas_complete]
+JOBS = [usace_harbor_administrative_areas_draft_job]
+SCHEDULES = [usace_harbor_administrative_areas_draft_schedule]
