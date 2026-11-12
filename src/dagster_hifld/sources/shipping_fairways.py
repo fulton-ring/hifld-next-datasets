@@ -54,7 +54,7 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = ("NOAA National Ocean Service, Office of Coast Survey; ENCDirect "
              "NavigationChartData MarineTransportation map service")
 SERVICE_COPYRIGHT = ("Department of Commerce (DOC), National Oceanic and Atmospheric "
-                     "Administration (NOAA), National Ocean Service (NOS), Office Coast Survey (OCS)")
+                     "Administration (NOAA), National Ocean Service (NOS), Office Coast Survey (OCS) ")
 EXPECTED_COUNT = 346
 EXPECTED_IDS = [144533, 144534, 144535, 144536, 144537, 144538, 144539, 144540, 144541,
     144542, 144543, 144544, 144833, 144834, 144835, 144836, 144837, 144838, 144839, 144840,
