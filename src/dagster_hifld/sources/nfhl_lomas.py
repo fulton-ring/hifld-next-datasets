@@ -567,8 +567,8 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
                    "documents this exact REST URL (https://hazards.fema.gov/arcgis/rest/services/public/NFHL/"
                    "MapServer) as the ArcGIS REST service for effective NFHL data; its HTML is captured as "
                    "'service_doc' evidence. This candidate is exactly layer 34 'LOMAs' of that producer "
-                   "service. The HIFLD Open inventory lists this dataset as nfhl/coastal-gages-1 with DataLumos "
-                   "project 239797; that ICPSR archive copy and the 2024-10-31 archive modification date are "
+                   "service. The HIFLD Open inventory lists this dataset as nfhl/lomas-1 with DataLumos "
+                   "project 239978; that ICPSR archive copy and the 2024-10-31 archive modification date are "
                    "identification and comparison context only, never pipeline inputs.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "Complete native source fields, IDs, values, physical nulls, and geometry retained in the "

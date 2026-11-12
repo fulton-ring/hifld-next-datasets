@@ -334,6 +334,35 @@ class NfhlLomasCaptureTests(unittest.TestCase):
                 self.assertTrue(reused["reused"])
                 self.assertEqual(reused["version"], candidate["version"])
 
+    def test_generated_source_manifest_identifies_the_lomas_inventory(self):
+        import tempfile
+        from pathlib import Path
+
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.source_manifest import load_resolved_source_manifest
+
+        _, features, fixture_captures, schema, geom = _fixture()
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+        fake, _ = _fake_capture_get(bodies)
+
+        with tempfile.TemporaryDirectory(prefix="lomas-identity-") as temporary:
+            root = Path(temporary)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            with patch.multiple(source, **_pins(features, schema, geom)), \
+                 patch.object(source, "capture_get", side_effect=fake), \
+                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
+                candidate = source.capture_nfhl_lomas(storage, version="vfixture",
+                                                      capture_directory=str(root / "captures"))
+            manifest = load_resolved_source_manifest(storage, source.DATASET_SLUG, source.FILE_SLUG,
+                                                     candidate["version"]).metadata
+            serialized = _canonical(manifest).decode()
+            self.assertIn("LOMAs", manifest["title"])
+            self.assertIn("layer 34 'LOMAs'", manifest["lineage"])
+            self.assertIn("nfhl/lomas-1", manifest["lineage"])
+            self.assertIn("DataLumos project 239978", manifest["lineage"])
+            self.assertNotIn("coastal-gages", serialized)
+            self.assertNotIn("239797", serialized)
+
     def test_missing_approval_preserves_populated_accepted_inventory(self):
         import os
         import tempfile
