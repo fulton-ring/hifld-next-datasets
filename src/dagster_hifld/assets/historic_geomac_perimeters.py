@@ -66,3 +66,9 @@ def historic_geomac_perimeters_draft_refresh_schedule(context):
     require_local(context.resources.staging_storage)
     return RunRequest(run_config={'ops': {
         historic_geomac_perimeters.op.name: {'config': {'capture_dir': ''}}}})
+
+
+INGEST_ASSETS = [historic_geomac_perimeters]
+ASSET_CHECKS = [historic_geomac_perimeters_complete]
+JOBS = [historic_geomac_perimeters_draft_job]
+SCHEDULES = [historic_geomac_perimeters_draft_refresh_schedule]
