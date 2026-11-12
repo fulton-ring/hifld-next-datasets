@@ -81,3 +81,8 @@ eia_natural_gas_pipelines_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [eia_natural_gas_interstate_intrastate_pipelines]
+ASSET_CHECKS = [eia_natural_gas_interstate_intrastate_pipelines_complete]
+JOBS = [eia_natural_gas_pipelines_draft_job]
+SCHEDULES = [eia_natural_gas_pipelines_draft_schedule]

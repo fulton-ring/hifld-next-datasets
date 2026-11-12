@@ -81,7 +81,7 @@ def _load_retained_capture(directory: Path) -> tuple[bytes, bytes, dict[str, obj
     keys = {"method", "url", "final_url", "observed_at", "status", "complete_body",
             "wire_bytes", "wire_sha256", "bytes", "sha256", "content_encoding",
             "content_length", "error_code"}
-    if (not isinstance(receipt, dict) or set(receipt) != keys
+    if (not isinstance(receipt, dict) or set(receipt) not in (keys, keys | {"error_type"})
             or receipt_bytes != _canonical(receipt) + b"\n"
             or receipt["method"] != "GET" or receipt["url"] != SOURCE_URL
             or receipt["final_url"] != SOURCE_URL or receipt["status"] != 200

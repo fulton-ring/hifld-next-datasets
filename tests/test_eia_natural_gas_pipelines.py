@@ -87,6 +87,15 @@ class EiaNaturalGasPipelinesTests(unittest.TestCase):
             self.assertEqual((replay_body, replay_wire), (body, wire))
             self.assertEqual(replay_receipt["observed_at"], receipt["observed_at"])
             self.assertEqual((root / "eia_source_zip.receipt.json").read_bytes(), receipt_bytes)
+            captured_receipt = {**receipt, "error_type": None}
+            (root / "eia_source_zip.receipt.json").write_bytes(_canonical(captured_receipt) + b"\n")
+            replayed = _load_retained_capture(root)
+            self.assertEqual(replayed[2]["error_type"], None)
+            unexpected = {**captured_receipt, "note": "unexpected"}
+            (root / "eia_source_zip.receipt.json").write_bytes(_canonical(unexpected) + b"\n")
+            with self.assertRaisesRegex(ValueError, "retained_capture_receipt_integrity_failed"):
+                _load_retained_capture(root)
+            (root / "eia_source_zip.receipt.json").write_bytes(receipt_bytes)
             fresh = {**receipt, "observed_at": "2026-10-19T12:35:00+00:00"}
             self.assertEqual(
                 _sealed_receipt_for_same_capture(receipt, fresh, body, wire)["observed_at"],
