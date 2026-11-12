@@ -14,10 +14,16 @@ both true, ``sourceHeightModelInfo`` gravity-related NAVD88 heights in US
 survey feet), so the capture requests ``returnZ=true&returnM=true`` and every
 vertex is taken as the producer's four-ordinate ``[x, y, z, m]`` form; a
 two-ordinate vertex would silently drop the elevation and measure ordinates.
-Candidate geometry is ISO WKB LineString ZM (3002) / MultiLineString ZM (3005):
-producer JSON ``null`` or string-``"NaN"`` Z/M ordinates map to WKB NaN, the
-OGC "no value" measure convention, with every such vertex counted in the audit
-while the raw paths in the record digest keep the producer's original values.
+Candidate geometry is PostGIS EWKB XYZM (the one four-ordinate polyline flavor
+the installed shapely/GEOS stack parses for both LineString and MultiLineString,
+and interchangeably readable by GDAL): producer JSON ``null`` or string-``"NaN"``
+Z/M ordinates map to WKB NaN, the OGC "no value" measure convention, with every
+such vertex counted in the audit while the raw paths in the record digest keep
+the producer's original values. The GeoParquet ``geo`` metadata declares the
+advisory types "LineString Z"/"MultiLineString Z" - the maximal declaration the
+shared native-GeoParquet catalog machinery validates - while the WKB bytes
+themselves carry the full ZM ordinates and the audit records the source's
+hasZ/hasM contract and per-ordinate null/NaN counts.
 X/Y ``"NaN"`` string vertices gate the record's candidate geometry to null
 (never a coerced location), raw evidence intact.
 
@@ -539,7 +545,11 @@ class _StreamStats:
         if nan_paths:
             self.nan_geometry_count += 1
         else:
-            self.geometry_types.add("MultiLineString ZM" if len(geom["paths"]) > 1 else "LineString ZM")
+            # Catalog-derivation labels: every candidate geometry carries the
+            # Z dimension by layer contract (M rides in the EWKB and is
+            # audited via the null/NaN vertex counts, not the advisory
+            # GeoParquet geometry_types hint).
+            self.geometry_types.add("MultiLineString Z" if len(geom["paths"]) > 1 else "LineString Z")
 
     @property
     def record_sha256(self) -> str:
@@ -926,7 +936,9 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                        "completely from the producer's own REST publication with returnZ/returnM so every vertex "
                        "carries the producer's four ordinates. Complete source attributes and NAD83 (EPSG:4269) "
                        "polyline geometry with NAVD88 ftUS heights (Z) and route measures (M) are represented in "
-                       "the candidate. The NFHL is continuously updated and publishes no per-snapshot release "
+                       "the candidate (EWKB XYZM bytes; the advisory GeoParquet geometry_types declare the "
+                       "catalog-supported ' Z' labels). The NFHL is continuously updated and publishes no "
+                       "per-snapshot release "
                        "date; freshness, rights, public schema/ID contract, and release acceptance remain "
                        "unresolved and unapproved.",
         "publisher": PUBLISHER, "agency": "Federal Emergency Management Agency", "source_url": LAYER_URL,

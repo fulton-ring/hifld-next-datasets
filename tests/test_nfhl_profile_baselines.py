@@ -396,7 +396,7 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"]["code"], 4269)
         self.assertEqual(sorted(geo["columns"]["SHAPE"]["geometry_types"]),
-                         ["LineString ZM", "MultiLineString ZM"])
+                         ["LineString Z", "MultiLineString Z"])
 
     def test_missing_approval_preserves_populated_accepted_inventory(self):
         import os
