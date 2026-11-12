@@ -61,7 +61,7 @@ EXPECTED_GLOBALIDS = [
 ]
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 2_500_000
-MAX_CAPTURE_BYTES = 6_000_000
+MAX_CAPTURE_BYTES = 10_000_000
 EXPECTED_FIELDS = [
     ("Name", "esriFieldTypeString"), ("DistanceMeters", "esriFieldTypeDouble"),
     ("DistanceFeet", "esriFieldTypeDouble"), ("DistanceKilometers", "esriFieldTypeDouble"),
@@ -153,6 +153,7 @@ def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[i
     body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
     for path in (body_path, wire_path):
         path.unlink(missing_ok=True)
+        path.touch()
     hashes = {"body": hashlib.sha256(), "wire": hashlib.sha256()}
     sizes = {"body": 0, "wire": 0}
     budget_start = budget[0]
