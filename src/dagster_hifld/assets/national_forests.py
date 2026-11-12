@@ -538,3 +538,12 @@ national_forests_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [usgs_national_forests]
+ASSET_CHECKS = [
+    usgs_national_forests_complete,
+    usgs_national_forests_source_drift,
+    usgs_national_forests_release_refusal,
+]
+JOBS = [national_forests_draft_job]
+SCHEDULES = [national_forests_draft_schedule]
