@@ -157,6 +157,7 @@ from dagster_hifld.assets.epa_eez import epa_eez
 from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 from dagster_hifld.assets.bts_air_truck import bts_intermodal_freight_air_to_truck
+from dagster_hifld.assets.national_transit_map_routes import national_transit_map_routes
 
 from dagster_hifld.assets.epa_sems import epa_sems_interests
 from dagster_hifld.assets.national_bridge_inventory import national_bridge_inventory
@@ -311,6 +312,7 @@ hifld_ingest_assets = [
     epa_frs_toxic_substances_control_act_tsca,
     epa_frs_interests,
     bts_intermodal_freight_air_to_truck,
+    national_transit_map_routes,
     fema_nfhl_nodes,
     fema_nfhl_hydrologic_reaches,
     building_locations_usace_ienc,
