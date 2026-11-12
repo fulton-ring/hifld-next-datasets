@@ -360,6 +360,34 @@ def _control_documents(captures: dict) -> dict:
     return docs
 
 
+def _control_identity_projection(name: str, body: bytes) -> object:
+    """Project the pinned identity fields of one control capture for cache reuse.
+
+    The ArcGIS item documents carry mutable portal counters (e.g. numViews) that
+    must not quarantine an otherwise valid sealed candidate, so only the pinned
+    identity fields are compared. Count and spotcheck responses are source data
+    and must match exactly. The archive body is never projected here:
+    validate_receipt pins its size and sha256.
+    """
+    doc = strict_json(body)
+    if name == 'gdb_item':
+        return {field: doc.get(field) for field in ('id', 'owner', 'orgId', 'name', 'type', 'size')}
+    if name == 'service_item':
+        return {field: doc.get(field) for field in ('id', 'owner', 'orgId', 'url', 'type')}
+    if name == 'layer':
+        spatial = doc.get('extent', {}).get('spatialReference', {})
+        return {'name': doc.get('name'), 'geometryType': doc.get('geometryType'),
+                'serviceItemId': doc.get('serviceItemId'),
+                'extent_spatial_reference': {key: spatial.get(key) for key in ('wkid', 'latestWkid')},
+                'fields': [{key: value for key, value in field.items() if key in ('name', 'type', 'length')}
+                           for field in doc.get('fields', [])]}
+    if name in ('count', 'spotcheck'):
+        return doc
+    if name == 'archive':
+        return None
+    raise GeoMACQuarantineError('unknown_capture_name:' + name)
+
+
 def inspect_source(captures: dict, workdir: Path) -> tuple[dict, dict]:
     """Census the pinned combined layer from the retained archive bytes."""
     _control_documents(captures)
@@ -698,7 +726,15 @@ def commit_complete_candidate(storage: StagingStorageResource, prefix: str, payl
 
 def reconcile_cached_candidate(storage: StagingStorageResource, prefix: str, ready: dict,
                                data: dict, audit: dict, captures: dict, identity: dict) -> None:
-    """Re-derive the source census and compare against the sealed first build."""
+    """Re-derive the source census and compare against the sealed first build.
+
+    The sealed candidate is judged against its own original captures: their
+    receipts are re-validated and the sealed manifest/audit are re-derived from
+    them. Fresh captures must carry the same pinned source identity — item and
+    layer documents are compared on the pinned identity fields, so mutable
+    portal metadata such as numViews reuses the existing candidate, while count,
+    spotcheck and archive drift fails closed and quarantines the candidate.
+    """
     root = local_candidate_path(storage, prefix)
     manifest_body = (root / 'metadata/source_manifest.json').read_bytes()
     authored_snapshot = 'metadata/source/version_' + sha(manifest_body) + '_source_manifest.json'
@@ -729,10 +765,12 @@ def reconcile_cached_candidate(storage: StagingStorageResource, prefix: str, rea
     cached = {name: ((root / f'raw/captures/{name}.body').read_bytes(),
                      strict_json((root / f'raw/captures/{name}.receipt.json').read_bytes()))
               for name in URLS}
+    _control_documents(cached)
     for name in URLS:
-        if cached[name][0] != captures[name][0]:
-            raise GeoMACQuarantineError('cached_capture_differs_from_fresh_source')
         validate_receipt(*cached[name], URLS[name])
+        if _control_identity_projection(name, cached[name][0]) != \
+                _control_identity_projection(name, captures[name][0]):
+            raise GeoMACQuarantineError('cached_capture_differs_from_fresh_source')
     if ready.get('source_record_sha256') != audit['source_record_sha256'] \
             or ready.get('source_geometry_sha256') != audit['source_geometry_sha256'] \
             or ready.get('source_schema_sha256') != audit['source_schema_sha256'] \

@@ -268,6 +268,51 @@ class GeoMACMechanicsTests(unittest.TestCase):
             self.assertEqual({**result, 'reused': True}, replay)
             self.assertEqual(len(list((Path(store.local_dir) / s.SLUG / s.SLUG).glob('v*'))), 1)
 
+    def test_reuse_tolerates_portal_view_counter_change(self):
+        with scenario() as (case, store):
+            result = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
+            self.assertFalse(result['reused'])
+            root = Path(store.local_dir) / s.SLUG / s.SLUG / result['version']
+            before = {str(path.relative_to(root)): s.sha(path.read_bytes())
+                      for path in root.rglob('*') if path.is_file()}
+            for name in ('gdb_item', 'service_item'):
+                doc = json.loads((case.capture / f'{name}.body').read_bytes())
+                doc['numViews'] = 4242
+                case.rewrite_capture(name, s.encode(doc))
+            replay = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
+            self.assertEqual({**result, 'reused': True}, replay)
+            self.assertFalse(list((Path(store.local_dir) / '_quarantine').rglob('*')))
+            self.assertEqual(before, {str(path.relative_to(root)): s.sha(path.read_bytes())
+                                      for path in root.rglob('*') if path.is_file()})
+
+    def test_reuse_fails_closed_on_real_source_drift(self):
+        def drifted_spotcheck_with_view_counters(case):
+            for name in ('gdb_item', 'service_item'):
+                doc = json.loads((case.capture / f'{name}.body').read_bytes())
+                doc['numViews'] = 99
+                case.rewrite_capture(name, s.encode(doc))
+            spot = case.spotcheck()
+            spot['features'][0]['attributes']['unexpected_field'] = 'x'
+            case.rewrite_capture('spotcheck', s.encode(spot))
+
+        def renamed_gdb_owner(case):
+            doc = json.loads((case.capture / 'gdb_item.body').read_bytes())
+            doc['owner'] = 'some_other_account'
+            case.rewrite_capture('gdb_item', s.encode(doc))
+
+        for mutate, quarantined in [(drifted_spotcheck_with_view_counters, True),
+                                    (renamed_gdb_owner, False)]:
+            with scenario() as (case, store):
+                first = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
+                self.assertFalse(first['reused'])
+                root = Path(store.local_dir) / s.SLUG / s.SLUG / first['version']
+                mutate(case)
+                with self.assertRaises(ValueError):
+                    s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
+                self.assertEqual(root.exists(), not quarantined)
+                self.assertEqual(quarantined, bool(
+                    list((Path(store.local_dir) / '_quarantine' / s.SLUG).glob('invalid-cache-*'))))
+
     def test_registered_catalog_metadata_then_replay(self):
         with scenario() as (case, store):
             result = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
