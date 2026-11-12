@@ -136,7 +136,7 @@ class _Scenario:
                       'serviceItemId': s.SERVICE_ITEM_ID,
                       'extent': {'xmin': 1.0, 'ymin': 2.0, 'xmax': 3.0, 'ymax': 4.0,
                                  'spatialReference': {'wkid': 102100, 'latestWkid': 3857}},
-                      'fields': s.SERVICE_FIELDS},
+                      'fields': [dict(field) for field in s.SERVICE_FIELDS]},
             'count': {'count': self.features},
         }
 
@@ -422,8 +422,10 @@ class GeoMACMechanicsTests(unittest.TestCase):
 
     def test_concurrent_install_winner_is_preserved(self):
         with scenario() as (case, store):
+            install = s.commit_complete_candidate
+
             def competing(storage, prefix, payloads, ready):
-                s.commit_complete_candidate(storage, prefix, payloads, ready)
+                install(storage, prefix, payloads, ready)
                 raise s.GeoMACQuarantineError('simulated_concurrent_install_winner')
             with patch.object(s, 'commit_complete_candidate', side_effect=competing), \
                     self.assertRaisesRegex(ValueError, 'simulated_concurrent_install_winner'):
