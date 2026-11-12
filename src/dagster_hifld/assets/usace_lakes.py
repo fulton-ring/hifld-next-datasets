@@ -98,3 +98,8 @@ usace_lakes_draft_schedule = ScheduleDefinition(
     run_config={"ops": {usace_lakes_usace_ienc.op.name: {"config": {"max_capture_bytes": 80_000_000}}}},
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [usace_lakes_usace_ienc]
+ASSET_CHECKS = [usace_lakes_complete]
+JOBS = [usace_lakes_draft_job]
+SCHEDULES = [usace_lakes_draft_schedule]
