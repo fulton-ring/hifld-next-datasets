@@ -100,6 +100,7 @@ from dagster_hifld.assets.fws import fws_cbrs_buffer_zone
 from dagster_hifld.assets.fws_map_panels import fws_cbrs_map_panels
 from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
 from dagster_hifld.assets.fws_units import fws_cbrs_units
+from dagster_hifld.assets.historic_geomac_perimeters import historic_geomac_perimeters
 from dagster_hifld.assets.census_designated_places import census_designated_places
 from dagster_hifld.assets.state_capitols import state_capitols_usgs
 from dagster_hifld.assets.colleges_universities import nces_colleges_universities
@@ -279,4 +280,5 @@ hifld_ingest_assets = [
     building_locations_usace_ienc,
     usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,
+    historic_geomac_perimeters,
 ]

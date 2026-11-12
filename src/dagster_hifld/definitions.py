@@ -254,6 +254,12 @@ from dagster_hifld.assets.proposed_critical_habitat import (
     proposed_critical_habitat_draft_schedule,
 )
 
+from dagster_hifld.assets.historic_geomac_perimeters import (
+    historic_geomac_perimeters_complete,
+    historic_geomac_perimeters_draft_job,
+    historic_geomac_perimeters_draft_schedule,
+)
+
 from dagster_hifld.assets.usace_dam_lines import (
     usace_dam_lines_complete,
     usace_dam_lines_draft_job,
@@ -1107,6 +1113,7 @@ defs = Definitions(
         plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
         proposed_critical_habitat_complete,
+        historic_geomac_perimeters_complete,
         usace_pile_locations_complete,
         usace_daymark_locations_complete,
         usace_dynamic_buoys_complete,
@@ -1220,6 +1227,7 @@ defs = Definitions(
         gcca_warehouses_draft_job,
         bsee_ocs_platforms_draft_job,
         proposed_critical_habitat_draft_job,
+        historic_geomac_perimeters_draft_job,
         usace_pile_locations_draft_job,
         usace_daymark_locations_draft_job,
         usace_dynamic_buoys_draft_job,
@@ -1348,6 +1356,7 @@ defs = Definitions(
         gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
         proposed_critical_habitat_draft_schedule,
+        historic_geomac_perimeters_draft_schedule,
         usace_pile_locations_draft_schedule,
         usace_daymark_locations_draft_schedule,
         usace_dynamic_buoys_draft_schedule,
