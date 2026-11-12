@@ -65,12 +65,15 @@ PAGE_CAPTURE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-12 complete-layer population contract
 # (complete 16,333-feature capture across 9 producer pages: 8 pages of 2,000
 # features plus the final 333-record page; every accepted page returned
-# exactly its expected sorted-OBJECTID slice).
+# exactly its expected sorted-OBJECTID slice; all 1,064,843 vertices are
+# numeric x/y pairs on single-path features, with no null geometry and no
+# string-"NaN" ordinates; the observed feature bounds equal the layer's
+# declared extent).
 EXPECTED_COUNT = 16333
-EXPECTED_ID_SHA256 = "PENDING_ID_SHA256"
-EXPECTED_RECORD_SHA256 = "PENDING_RECORD_SHA256"
-EXPECTED_GEOMETRY_SHA256 = "PENDING_GEOMETRY_SHA256"
-EXPECTED_SCHEMA_SHA256 = "PENDING_SCHEMA_SHA256"
+EXPECTED_ID_SHA256 = "2025fc0fd42d094e232ba0013f9696860f4fe7103a53c77102b6ad1e36802c7c"
+EXPECTED_RECORD_SHA256 = "fb3e37076a6823919083154445193cf402a43d1f73b5f079954503ae32ad87c2"
+EXPECTED_GEOMETRY_SHA256 = "a0965b4c0b805f0137a80aaeb779f04b79ed4ca779212a7e38ff10c29d931711"
+EXPECTED_SCHEMA_SHA256 = "5b1a80c124e66b53c237bd8105b107f17cdb2fbd5a9ef2a513ea327c1b7f0ffa"
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_NAN_GEOMETRY_COUNT = 0
 EXPECTED_OBSERVED_BOUNDS = {"xmin": -159.75996201049398, "ymin": 13.397741645418364,
