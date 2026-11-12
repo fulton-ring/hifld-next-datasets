@@ -290,10 +290,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         if identifier not in header or row[LO_CALLSIGN] != header[identifier][0]:
             raise ValueError("source_callsign_join_drift")
         location_number = _integer(row[LO_LOCATION_NUMBER], "location_number")
-        keys[(identifier, location_number)] += 1
         _callsign, status, service = header[identifier]
         if status != "A":
             continue
+        keys[(identifier, location_number)] += 1
         service_row_counts[service] += 1
         lat_deg_text, lon_deg_text = row[LO_LAT_DEG].strip(), row[LO_LON_DEG].strip()
         if bool(lat_deg_text) != bool(lon_deg_text):
