@@ -55,6 +55,16 @@ class MineralsTests(unittest.TestCase):
         self.assertEqual(ids['published_shapefile_fid'].to_pylist(),[int(x)-1 for x in ids['published_geopackage_storage_fid'].to_pylist()])
         self.assertNotEqual(table['source_fid'].to_pylist(),ids['published_shapefile_fid'].to_pylist())
 
+    def test_explicit_package_required_and_remote_or_linked_storage_rejected_before_acquire(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError,'explicit_unapproved'):s.acquire(StagingStorageResource(local_dir=tmp),None,None)
+            with self.assertRaisesRegex(ValueError,'explicit_unapproved'):s.acquire(StagingStorageResource(local_dir=tmp),str(self.package),'usgs-mrdata-mineplant-2003-v1-wrong-selection-id')
+            for resource in [PublishedStorageResource(local_dir=tmp),StagingStorageResource(bucket='forbidden',use_local=False),StagingStorageResource(local_dir=tmp+'/../unsafe')]:
+                with patch.object(s,'acquire') as acquire,self.assertRaises(ValueError):s.stage_construction_minerals(resource,capture_dir=str(self.package),package_id=s.PACKAGE)
+                acquire.assert_not_called()
+            root=Path(tmp)/'linked';root.symlink_to(self.package,target_is_directory=True)
+            with self.assertRaisesRegex(ValueError,'aliased'):self.stage(StagingStorageResource(local_dir=str(root)))
+
     def test_successor_fidelity_drift_fails_closed(self):
         captures=self.captures()
         real=s.decode_dbf
