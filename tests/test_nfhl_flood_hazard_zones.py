@@ -139,6 +139,16 @@ class NfhlFloodHazardZonesValidationTests(unittest.TestCase):
             self.assertEqual(polygon.geom_type, "Polygon")
             self.assertEqual(len(polygon.interiors), 1)
 
+    def test_live_mode_observed_bounds_use_bounded_running_box(self):
+        # The ~5.8M-feature population carries order 10^9 vertices; the observed
+        # coverage box must come from a bounded running min/max, not from
+        # collecting every ordinate, so validation memory stays bounded.
+        _, _, docs, _, _ = _fixture()
+        with patch.multiple(source, EXPECTED_SERVICE_LAYER_ROSTER=[(28, "Flood Hazard Zones", "Feature Layer")]):
+            _, _, extracted = source._validate_captures(*_split(docs), [10, 11, 12])
+        self.assertEqual(extracted["contract"]["expected_observed_bounds"],
+                         {"xmin": -86.5, "ymin": 34.0, "xmax": -85.9, "ymax": 34.1})
+
     def test_hole_joins_smallest_containing_exterior_as_multipolygon(self):
         exterior_a = [[0.0, 0.0], [0.0, 10.0], [10.0, 10.0], [10.0, 0.0], [0.0, 0.0]]
         exterior_b = [[20.0, 0.0], [20.0, 10.0], [30.0, 10.0], [30.0, 0.0], [20.0, 0.0]]

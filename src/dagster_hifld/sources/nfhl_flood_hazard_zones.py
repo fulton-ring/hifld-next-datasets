@@ -463,7 +463,7 @@ def _acquire_segments(client: httpx.Client, capture_root: Path, total: int) -> l
 
 
 def _classify_geometries_streaming(features: list[dict[str, object]], attr_names: list[str],
-                                   bounds: list[float], counters: dict[str, int]) -> list:
+                                   bounds: list, counters: dict[str, int]) -> list:
     """Validate one segment's features and return their geometry records.
 
     Each feature's geometry is validated and returned as ``[OBJECTID, rings]``
@@ -499,7 +499,19 @@ def _classify_geometries_streaming(features: list[dict[str, object]], attr_names
                 if type(x) in (int, float) and type(y) in (int, float):
                     if not (-180 <= x <= 180 and -90 <= y <= 90):
                         raise ValueError("source_coordinate_range_drift")
-                    bounds.extend((x, y))
+                    # Bounded running box ([xmin, ymin, xmax, ymax], leading
+                    # None until the first vertex): this layer's ~5.8M-feature
+                    # population carries order 10^9 vertices in total, so
+                    # collecting every ordinate in a list would exhaust agent
+                    # memory long before validation finished.
+                    if bounds[0] is None or x < bounds[0]:
+                        bounds[0] = x
+                    if bounds[1] is None or y < bounds[1]:
+                        bounds[1] = y
+                    if bounds[2] is None or x > bounds[2]:
+                        bounds[2] = x
+                    if bounds[3] is None or y > bounds[3]:
+                        bounds[3] = y
                 elif x == "NaN" and y == "NaN":
                     nan_rings = True
                 else:
@@ -666,7 +678,7 @@ def _validate_captures(page_bodies: Mapping[str, bytes], docs: Mapping[str, obje
     record_digest.update(b"[")
     geometry_digest.update(b"[")
     counters = {"null_geometry": 0, "nan_geometry": 0, "features": 0}
-    bounds: list[float] = []
+    bounds: list = [None, None, None, None]
     writer = None
     arrow_schema = None
     first_feature_index = 0
@@ -728,9 +740,9 @@ def _validate_captures(page_bodies: Mapping[str, bytes], docs: Mapping[str, obje
     record_sha = record_digest.hexdigest()
     geometry_sha = geometry_digest.hexdigest()
     computed_bounds = None
-    if bounds:
-        computed_bounds = {"xmin": min(bounds[0::2]), "ymin": min(bounds[1::2]),
-                           "xmax": max(bounds[0::2]), "ymax": max(bounds[1::2])}
+    if bounds[0] is not None:
+        computed_bounds = {"xmin": bounds[0], "ymin": bounds[1],
+                           "xmax": bounds[2], "ymax": bounds[3]}
     audit = {"source_feature_count": counters["features"], "source_id_sha256": _sha(_canonical(ids)),
              "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
              "source_schema_sha256": schema_sha, "source_crs_epsg": SOURCE_CRS_WKID,
