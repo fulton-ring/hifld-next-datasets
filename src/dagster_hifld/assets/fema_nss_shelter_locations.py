@@ -82,3 +82,8 @@ fema_nss_shelter_locations_draft_schedule = ScheduleDefinition(
         "config": {"max_capture_bytes": MAX_CAPTURE_BYTES}
     }}},
 )
+
+INGEST_ASSETS = [fema_nss_shelter_locations]
+ASSET_CHECKS = [fema_nss_shelter_locations_capture_complete]
+JOBS = [fema_nss_shelter_locations_draft_job]
+SCHEDULES = [fema_nss_shelter_locations_draft_schedule]
