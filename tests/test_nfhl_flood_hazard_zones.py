@@ -44,9 +44,9 @@ def _fixture():
                 "GlobalID": "{9585E72B-E15E-4949-8B7A-6D7D29569B64}", "SHAPE.STArea()": 12.5,
                 "SHAPE.STLength()": 30.25}
 
-    exterior = [[-86.0, 34.0], [-85.9, 34.0], [-85.9, 34.1], [-86.0, 34.1], [-86.0, 34.0]]
-    hole = [[-85.98, 34.04], [-85.96, 34.04], [-85.96, 34.06], [-85.98, 34.06], [-85.98, 34.04]]
-    exterior2 = [[-86.5, 34.0], [-86.4, 34.0], [-86.4, 34.05], [-86.5, 34.05], [-86.5, 34.0]]
+    exterior = [[-86.0, 34.0], [-86.0, 34.1], [-85.9, 34.1], [-85.9, 34.0], [-86.0, 34.0]]
+    hole = [[-85.98, 34.04], [-85.98, 34.06], [-85.96, 34.06], [-85.96, 34.04], [-85.98, 34.04]]
+    exterior2 = [[-86.5, 34.0], [-86.5, 34.05], [-86.4, 34.05], [-86.4, 34.0], [-86.5, 34.0]]
     features = [
         {"attributes": attrs(10), "geometry": {"rings": [exterior, hole]}},
         {"attributes": attrs(11), "geometry": None},
@@ -81,7 +81,8 @@ def _pins(features, schema, geom):
 
 def _split(docs):
     """Return (page_bodies, complete_docs) for validation calls."""
-    pages = {name: doc for name, doc in docs.items() if name.startswith("page_")}
+    pages = {name: json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode()
+             for name, doc in docs.items() if name.startswith("page_")}
     complete = dict(docs)
     complete["service_doc"] = SERVICE_DOC_BODY
     return pages, complete
@@ -114,16 +115,16 @@ class NfhlFloodHazardZonesValidationTests(unittest.TestCase):
             self.assertEqual(len(polygon.interiors), 1)
 
     def test_hole_joins_smallest_containing_exterior_as_multipolygon(self):
-        exterior_a = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [0.0, 0.0]]
-        exterior_b = [[20.0, 0.0], [30.0, 0.0], [30.0, 10.0], [20.0, 10.0], [20.0, 0.0]]
-        hole_b = [[21.0, 1.0], [22.0, 1.0], [22.0, 2.0], [21.0, 2.0], [21.0, 1.0]]
+        exterior_a = [[0.0, 0.0], [0.0, 10.0], [10.0, 10.0], [10.0, 0.0], [0.0, 0.0]]
+        exterior_b = [[20.0, 0.0], [20.0, 10.0], [30.0, 10.0], [30.0, 0.0], [20.0, 0.0]]
+        hole_b = [[21.0, 1.0], [21.0, 2.0], [22.0, 2.0], [22.0, 1.0], [21.0, 1.0]]
         wkb = source._polygon_wkb({"rings": [exterior_a, exterior_b, hole_b]})
         import shapely
         multipolygon = shapely.from_wkb(wkb)
         self.assertEqual(multipolygon.geom_type, "MultiPolygon")
         self.assertEqual(len(multipolygon.geoms), 2)
-        self.assertEqual(len(multipolygon.geoms[1].interiors), 1)
         self.assertEqual(len(multipolygon.geoms[0].interiors), 0)
+        self.assertEqual(len(multipolygon.geoms[1].interiors), 1)
 
     def test_nan_rings_never_become_geometry(self):
         self.assertIsNone(source._polygon_wkb({"rings": [[["NaN", "NaN"]]]}))
@@ -247,8 +248,10 @@ def _fake_capture_get(bodies):
 
 def _bodies_from_fixture():
     fields, features, docs, schema, geom = _fixture()
+    pages, complete = _split(docs)
     bodies = {name: json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode()
-              for name, doc in _docs_with_service_doc(docs).items()}
+              for name, doc in complete.items()}
+    bodies.update(pages)
     bodies["ids_seed"] = bodies["ids_before"]
     return fields, features, docs, schema, geom, bodies
 
@@ -442,18 +445,17 @@ class NfhlFloodHazardZonesWiringTests(unittest.TestCase):
     def test_module_lists_and_definitions_are_registered(self):
         from dagster_hifld.assets import nfhl_flood_hazard_zones as wiring
 
-        self.assertEqual([asset.name for asset in wiring.INGEST_ASSETS], ["fema_nfhl_flood_hazard_zones"])
+        self.assertEqual([asset.key.to_user_string() for asset in wiring.INGEST_ASSETS],
+                         [f"ingest/{source.DATASET_SLUG}/{source.FILE_SLUG}"])
         self.assertEqual(len(wiring.ASSET_CHECKS), 1)
         self.assertEqual(wiring.nfhl_flood_hazard_zones_draft_schedule.default_status,
                          wiring.DefaultScheduleStatus.STOPPED)
-        key = wiring.fema_nfhl_flood_hazard_zones.key
-        self.assertEqual(key.to_user_string(), f"ingest/{source.DATASET_SLUG}/{source.FILE_SLUG}")
 
     def test_discovery_collects_the_dataset(self):
         from dagster_hifld.assets.discovery import discovered
 
-        names = [asset.name for asset in discovered("INGEST_ASSETS")]
-        self.assertIn("fema_nfhl_flood_hazard_zones", names)
+        names = [asset.key.to_user_string() for asset in discovered("INGEST_ASSETS")]
+        self.assertIn(f"ingest/{source.DATASET_SLUG}/{source.FILE_SLUG}", names)
 
 
 if __name__ == "__main__":

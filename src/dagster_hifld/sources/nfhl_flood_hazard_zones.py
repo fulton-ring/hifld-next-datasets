@@ -397,17 +397,18 @@ def _acquire_segments(client: httpx.Client, capture_root: Path, total: int) -> l
 
 
 def _classify_geometries_streaming(features: list[dict[str, object]], attr_names: list[str],
-                                   geometry_digest: "hashlib._Hash", bounds: list[float],
-                                   counters: dict[str, int]) -> None:
-    """Validate and digest one segment's features incrementally.
+                                   bounds: list[float], counters: dict[str, int]) -> list:
+    """Validate one segment's features and return their geometry records.
 
-    Every feature's canonical record is folded into ``record digest`` by the
-    caller (which owns ordering); here each feature's geometry is validated,
-    folded into ``geometry_digest`` as ``[OBJECTID, rings]``, and the bounds
-    and null/NaN counters are accumulated. String-"NaN" ordinates (seen on
-    FEMA's sibling NFHL layers) are retained verbatim in the record/raw
-    evidence and gated as unusable geometry, never silently coerced.
+    Each feature's geometry is validated and returned as ``[OBJECTID, rings]``
+    (``[OBJECTID, None]`` for null geometry) aligned with the feature order;
+    the caller folds them, in roster order and with the same list separators
+    as the record digest, into the geometry digest. Bounds and null/NaN
+    counters accumulate here. String-"NaN" ordinates (seen on FEMA's sibling
+    NFHL layers) are retained verbatim in the record/raw evidence and gated as
+    unusable geometry, never silently coerced.
     """
+    geometry_records = []
     for feature in features:
         attrs = feature.get("attributes")
         if not isinstance(attrs, dict) or list(attrs) != attr_names:
@@ -415,7 +416,7 @@ def _classify_geometries_streaming(features: list[dict[str, object]], attr_names
         geom = feature.get("geometry")
         if geom is None:
             counters["null_geometry"] += 1
-            geometry_digest.update(_canonical([attrs["OBJECTID"], None]))
+            geometry_records.append([attrs["OBJECTID"], None])
             continue
         if not isinstance(geom, dict) or set(geom) != {"rings"} or not isinstance(geom["rings"], list) \
                 or not geom["rings"]:
@@ -438,7 +439,7 @@ def _classify_geometries_streaming(features: list[dict[str, object]], attr_names
                 else:
                     raise ValueError("source_polygon_geometry_invalid")
             validated_rings.append(ring)
-        geometry_digest.update(_canonical([attrs["OBJECTID"], validated_rings]))
+        geometry_records.append([attrs["OBJECTID"], validated_rings])
         if nan_rings:
             counters["nan_geometry"] += 1
 
@@ -613,11 +614,13 @@ def _validate_captures(page_bodies: Mapping[str, bytes], docs: Mapping[str, obje
                 if previous_oid is not None and oid is not None and oid <= previous_oid:
                     raise ValueError("source_page_objectid_not_ascending")
                 previous_oid = oid
-            _classify_geometries_streaming(rows, attr_names, geometry_digest, bounds, counters)
-            for feature in rows:
+            geometry_records = _classify_geometries_streaming(rows, attr_names, bounds, counters)
+            for feature, geometry_record in zip(rows, geometry_records):
                 if first_feature_index:
                     record_digest.update(b",")
+                    geometry_digest.update(b",")
                 record_digest.update(_canonical(feature))
+                geometry_digest.update(_canonical(geometry_record))
                 first_feature_index += 1
             counters["features"] += len(rows)
             if parquet_path is not None:
@@ -668,10 +671,10 @@ def _validate_captures(page_bodies: Mapping[str, bytes], docs: Mapping[str, obje
             raise ValueError("source_feature_count_drift")
         if _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
             raise ValueError("source_id_roster_drift")
-        if record_sha != EXPECTED_RECORD_SHA256:
-            raise ValueError("source_record_value_drift")
         if geometry_sha != EXPECTED_GEOMETRY_SHA256:
             raise ValueError("source_geometry_or_coverage_drift")
+        if record_sha != EXPECTED_RECORD_SHA256:
+            raise ValueError("source_record_value_drift")
         if (counters["null_geometry"] != EXPECTED_NULL_GEOMETRY_COUNT
                 or counters["nan_geometry"] != EXPECTED_NAN_GEOMETRY_COUNT):
             raise ValueError("source_geometry_null_or_nan_count_drift")
