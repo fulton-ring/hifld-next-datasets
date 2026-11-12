@@ -1356,7 +1356,7 @@ defs = Definitions(
         gcca_warehouses_draft_schedule,
         bsee_ocs_platforms_draft_schedule,
         proposed_critical_habitat_draft_schedule,
-        historic_geomac_perimeters_draft_schedule,
+        historic_geomac_perimeters_draft_refresh_schedule,
         usace_pile_locations_draft_schedule,
         usace_daymark_locations_draft_schedule,
         usace_dynamic_buoys_draft_schedule,
