@@ -6,10 +6,13 @@ at `https://data.fcc.gov/download/pub/uls/complete/l_LMpriv.zip`, the official
 bulk distribution to which the FCC moved ULS downloads in July 2021. The
 published population is every location (`LO`) record whose license header (`HD`)
 status is `A` (active) and whose LO record carries both latitude and longitude
-degree components — 603790 coordinate-bearing locations of 861663 licenses
+degree components — 603778 coordinate-bearing locations of 861663 licenses
 (925853 active location rows; 322063 active filed locations without a complete
 coordinate pair are excluded, matching the historical layer, whose 605297 rows
-all carry geometry) — under the historical HIFLD Land Mobile Private
+all carry geometry; a further 12 active coordinate-bearing filings in the FCC
+do-not-convert local-datum territories are excluded from the published
+coordinate-bearing population and preserved in the audit, see the datum
+paragraph below) — under the historical HIFLD Land Mobile Private
 Transmission Towers column contract (`UniqSysID`, `Licensee`, `Callsign`,
 `LocNum`, DMS coordinates, address fields, `Nepa`, `QZone`, `TowReg`,
 `SupStruc`, `AllStruc`, `StrucType`, `LicStatus`, derived `latdec`/`londec`,
@@ -60,7 +63,17 @@ territorial conversion table, American Samoa and Guam filings were converted to
 NAD83 with the FCC's specified shifts, while the do-not-convert Pacific island
 areas (Baker, Howland, Jarvis, Johnston, Kingman Reef, Midway, the Northern
 Mariana Islands, Palmyra and Wake) remain referenced to their applicable local
-datum; such rows are published exactly as filed and are not filtered or shifted.
+datum — the FCC publishes neither the local datum nor a conversion for those
+areas, and a GeoParquet column declares one CRS for every row, so their filed
+coordinates cannot be represented accurately under the published contract.
+Those filings (identified by the ULS location state codes of the do-not-convert
+territories: `MP` = Northern Mariana Islands, `UM` = the aggregated U.S. Minor
+Outlying Islands containing the do-not-convert islands) are excluded from the
+published coordinate-bearing population — 12 rows in the pinned edition, all
+`MP` — and preserved in full (all filed attributes plus their derived
+`latdec`/`londec`) in the source audit (`source_local_datum_quarantined_records`,
+pinned by count and record digest), never silently removed, shifted or
+mislabeled NAD83; they are not re-labeled NAD83 in the geometry column.
 
 Column contract relative to the frozen copy: the published HIFLD Next v1.0.0
 frozen copy (605297 point features, issued 2024-01-24) types `TowReg` as int64

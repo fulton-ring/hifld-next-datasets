@@ -93,11 +93,13 @@ def _members(hd, en, lo, extra=()):
         elif name == "LO.dat":
             content[name] = ("\r\n".join(lo) + "\r\n").encode()
         elif name == "counts":
-            content[name] = (b"File Creation Date: Sun Nov  8 09:16:00 EST 2026\r\n"
-                             b"    4 /home/pubacc/scripts/licweekzipdata/HD.dat\r\n"
-                             b"    5 /home/pubacc/scripts/licweekzipdata/EN.dat\r\n"
-                             b"    8 /home/pubacc/scripts/licweekzipdata/LO.dat\r\n"
-                             b"   17 total\r\n")
+            total = len(hd) + len(en) + len(lo)
+            content[name] = ("\r\n".join([
+                "File Creation Date: Sun Nov  8 09:16:00 EST 2026",
+                f"{len(hd):4d} /home/pubacc/scripts/licweekzipdata/HD.dat",
+                f"{len(en):4d} /home/pubacc/scripts/licweekzipdata/EN.dat",
+                f"{len(lo):4d} /home/pubacc/scripts/licweekzipdata/LO.dat",
+                f"{total:4d} total"]) + "\r\n").encode()
         else:
             content[name] = b""
     stream = io.BytesIO()
@@ -124,6 +126,8 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
             "EXPECTED_ACTIVE_LOCATION_ROWS": 7, "EXPECTED_MISSING_COORDINATE_ROWS": 1,
             "EXPECTED_ACTIVE_LOCATIONS": 6, "EXPECTED_DUPLICATE_LOCATION_KEY_COUNT": 1,
             "EXPECTED_PUBLISHED_DUPLICATE_LOCATION_KEY_COUNT": 1,
+            "EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS": 0,
+            "EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256": _sha(_canonical([])),
             "EXPECTED_EMPTY_CALLSIGN_ROWS": 2, "EXPECTED_OUT_OF_RANGE_COORDINATE_ROWS": 1,
             "EXPECTED_LAT_DIRECTION_COUNTS": {"N": 4, "S": 1, "": 1},
             "EXPECTED_LON_DIRECTION_COUNTS": {"W": 4, "E": 1, "": 1},
@@ -261,6 +265,75 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
         # filed values exactly (38°30'15"N, 121°45'30"W), with no datum shift applied.
         self.assertEqual(struct.unpack("<BIdd", table.to_pylist()[0]["geometry"]),
                          (1, 1, -121.758333333, 38.5041666667))
+
+    def test_do_not_convert_local_datum_filings_are_quarantined_fail_closed(self):
+        hd, en, lo = _documents()
+        hd = [*hd, _hd(105, "KNKA105", "A", service="PA")]
+        en = [*en, _en(105, "KNKA105", "L", "Licensee Five")]
+        # A Northern Mariana Islands (MP) filing: FCC do-not-convert territory, so
+        # the filed coordinates remain in the applicable local datum with no
+        # FCC-published conversion to NAD83.
+        mp_row = _lo(105, "KNKA105", 1, lat_deg="15", lat_min="7", lat_sec="25.6",
+                     lon_deg="179", lon_min="43", lon_sec="28.9", state="MP")
+        lo = [*lo, mp_row]
+        quarantined = {
+            "UniqSysID": 105, "Licensee": "Licensee Five", "Callsign": "KNKA105", "LocNum": 1,
+            "LatDeg": 15.0, "LatMin": 7.0, "LatSec": 25.6, "LatDir": "N",
+            "LonDeg": 179.0, "LonMin": 43.0, "LonSec": 28.9, "LonDir": "W",
+            "LocAdd": "1 TOWER ROAD", "LocCity": "TOWNSVILLE", "LocCounty": "EXAMPLE",
+            "LocState": "MP", "Nepa": "N", "QZone": "", "TowReg": "1023448",
+            "SupStruc": 91.4, "AllStruc": 99.0, "StrucType": "TOWER", "LicStatus": "A",
+            "latdec": source._decimal_degrees(15.0, 7.0, 25.6, 1),
+            "londec": source._decimal_degrees(179.0, 43.0, 28.9, -1),
+            "url": source.LICENSE_URL_TEMPLATE.format(105),
+        }
+        pins = self._pins(hd, en, lo)
+        pins.update({
+            "EXPECTED_RADIO_SERVICE_COUNTS": {"IG": 2, "PW": 1, "YG": 1, "PA": 1},
+            "EXPECTED_LICENSE_STATUS_COUNTS": {"A": 4, "C": 1},
+            "EXPECTED_LICENSEE_ROWS": 5,
+            "EXPECTED_ACTIVE_LOCATION_ROWS": 8,
+            "EXPECTED_ACTIVE_LOCATIONS": 6,
+            "EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS": 1,
+            "EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256": _sha(_canonical([quarantined])),
+        })
+        published, audit = self._validate(hd, en, lo, pins)
+        self.assertNotIn((105, 1), [(row["UniqSysID"], row["LocNum"]) for row in published])
+        self.assertEqual(audit["source_feature_count"], 6)
+        self.assertEqual(audit["source_local_datum_quarantined_rows"], 1)
+        self.assertEqual(audit["source_local_datum_quarantined_state_codes"], ["MP"])
+        self.assertEqual(audit["source_local_datum_quarantined_records"], [quarantined])
+        # The MP filing does not join the published state roster or bounds pin
+        # (its 179.7E longitude would otherwise extend the published bounds).
+        self.assertEqual(audit["source_state_count"], 4)
+        self.assertEqual(audit["source_bounds"], [-123.0, -14.0, 145.333333333, 93.0])
+        parquet = pq.read_table(io.BytesIO(source._parquet_bytes(published)))
+        self.assertEqual(parquet.num_rows, 6)
+        self.assertTrue(all(row["geometry"] is not None for row in parquet.to_pylist()))
+        pins = self._pins(hd, en, lo)
+        pins.update({
+            "EXPECTED_RADIO_SERVICE_COUNTS": {"IG": 2, "PW": 1, "YG": 1, "PA": 1},
+            "EXPECTED_LICENSE_STATUS_COUNTS": {"A": 4, "C": 1},
+            "EXPECTED_LICENSEE_ROWS": 5,
+            "EXPECTED_ACTIVE_LOCATION_ROWS": 8,
+            "EXPECTED_ACTIVE_LOCATIONS": 6,
+            "EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS": 2,
+            "EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256": _sha(_canonical([quarantined])),
+        })
+        with self.assertRaisesRegex(ValueError, "source_local_datum_quarantined_row_count_drift"):
+            self._validate(hd, en, lo, pins)
+        pins = self._pins(hd, en, lo)
+        pins.update({
+            "EXPECTED_RADIO_SERVICE_COUNTS": {"IG": 2, "PW": 1, "YG": 1, "PA": 1},
+            "EXPECTED_LICENSE_STATUS_COUNTS": {"A": 4, "C": 1},
+            "EXPECTED_LICENSEE_ROWS": 5,
+            "EXPECTED_ACTIVE_LOCATION_ROWS": 8,
+            "EXPECTED_ACTIVE_LOCATIONS": 6,
+            "EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS": 1,
+            "EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256": "0" * 64,
+        })
+        with self.assertRaisesRegex(ValueError, "source_local_datum_quarantined_records_drift"):
+            self._validate(hd, en, lo, pins)
 
     def test_trailing_extra_field_quirk_rows_are_pinned(self):
         hd, en, lo = _documents()

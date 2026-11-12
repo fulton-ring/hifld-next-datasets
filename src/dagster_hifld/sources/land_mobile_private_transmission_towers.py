@@ -88,10 +88,17 @@ EXPECTED_LICENSEE_ROWS = 861663
 # status is A (active) and whose LO record carries both latitude and longitude
 # degree components; the historical layer likewise contains only coordinate-
 # bearing filed sites (its 605297 rows all carry geometry). Location records
-# without coordinates are excluded and pinned by count below.
+# without coordinates are excluded and pinned by count below. Location records
+# in the FCC do-not-convert territories (DO_NOT_CONVERT_STATE_CODES) carry
+# local-datum coordinates with no FCC-published conversion to NAD83, so they
+# are also excluded from the published coordinate-bearing population and
+# preserved in the audit with their filed attributes, pinned by count and
+# digest.
 EXPECTED_ACTIVE_LOCATION_ROWS = 925853
 EXPECTED_MISSING_COORDINATE_ROWS = 322063
-EXPECTED_ACTIVE_LOCATIONS = 603790
+EXPECTED_ACTIVE_LOCATIONS = 603778
+EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS = 12
+EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256 = "0" * 64
 EXPECTED_DUPLICATE_LOCATION_KEY_COUNT = 42
 EXPECTED_PUBLISHED_DUPLICATE_LOCATION_KEY_COUNT = 27
 EXPECTED_ACTIVE_ID_SHA256 = "3763b3226296ed4f8a549628072deb2b575f3330d809d2204e46643bca27e7de"
@@ -130,7 +137,11 @@ COVERAGE_SCOPE = (
     "{Private} licenses file, including mainland, Alaska, Hawaii, offshore and "
     "US territories. Location records whose latitude or longitude degree "
     "components are absent are excluded (the historical layer likewise contains "
-    "only coordinate-bearing filed sites). Private land mobile licensing is "
+    "only coordinate-bearing filed sites), as are location records in the FCC "
+    "do-not-convert territories whose ULS coordinates remain in an applicable "
+    "local datum with no FCC-published conversion to NAD83 (excluded from the "
+    "published coordinate-bearing population and preserved in the audit with "
+    "their filed attributes). Private land mobile licensing is "
     "site-specific; ULS carries only the site locations licensees filed, so "
     "this is the filed-site population the FCC publishes, not a census of "
     "physical towers."
@@ -155,10 +166,21 @@ SOURCE_COORDINATE_DATUM = {
         "American Samoa and Guam filings were converted to NAD83 with the FCC's specified shifts, while "
         "coordinates for the Pacific island areas the FCC marks do-not-convert (Baker, Howland, Jarvis, "
         "Johnston, Kingman Reef, Midway, the Northern Mariana Islands, Palmyra and Wake) remain referenced "
-        "to their applicable local datum; such rows are published exactly as filed and are not filtered or "
-        "shifted."
+        "to their applicable local datum. The FCC publishes neither the local datum nor a conversion for "
+        "those areas, so their filed coordinates cannot be represented accurately under the geometry "
+        "column's single declared CRS; such rows are excluded from the published coordinate-bearing "
+        "population and preserved in the audit (source_local_datum_quarantined_records) with all filed "
+        "attributes, never silently removed, filtered or shifted."
     ),
 }
+# ULS state codes of the FCC do-not-convert territories. MP is the ANSI/USPS
+# code for the Commonwealth of the Northern Mariana Islands (FIPS 69). UM is
+# the code for the aggregated U.S. Minor Outlying Islands (FIPS 74), which
+# contains the do-not-convert islands Baker, Howland, Jarvis, Johnston,
+# Kingman Reef, Midway, Palmyra and Wake (plus Navassa, which is not on the
+# FCC's list but cannot be distinguished from a do-not-convert island by the
+# ULS state field alone, so the aggregate code is quarantined conservatively).
+DO_NOT_CONVERT_STATE_CODES = ("MP", "UM")
 
 
 def _capture_budget(root: Path) -> None:
@@ -340,9 +362,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
     keys = set()
     duplicate_keys = 0
     published = []
+    quarantined_records = []
     missing_coordinates = 0
     empty_callsign_rows = 0
     out_of_range_rows = 0
+    local_datum_quarantined_rows = 0
     lo_extra_field_rows = 0
     lo_rows = 0
     active_location_rows = 0
@@ -411,13 +435,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         lon_sign = 1 if lon_dir == "E" else -1
         lat_dec = _decimal_degrees(lat_deg, lat_min, lat_sec, lat_sign)
         lon_dec = _decimal_degrees(lon_deg, lon_min, lon_sec, lon_sign)
-        if not -90 <= lat_dec <= 90 or not -180 <= lon_dec <= 180:
-            out_of_range_rows += 1
         if identifier not in licensees:
             raise ValueError("source_licensee_join_drift")
-        lat_direction_counts[lat_dir] = lat_direction_counts.get(lat_dir, 0) + 1
-        lon_direction_counts[lon_dir] = lon_direction_counts.get(lon_dir, 0) + 1
-        published.append({
+        record = {
             "UniqSysID": identifier, "Licensee": licensees[identifier],
             "Callsign": row[LO_CALLSIGN], "LocNum": location_number,
             "LatDeg": lat_deg, "LatMin": lat_min, "LatSec": lat_sec, "LatDir": row[LO_LAT_DIR],
@@ -429,8 +449,25 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
             "StrucType": row[LO_STRUCTURE_TYPE], "LicStatus": "A",
             "latdec": lat_dec, "londec": lon_dec,
             "url": LICENSE_URL_TEMPLATE.format(identifier),
-            "geometry": _point_wkb(lon_dec, lat_dec),
-        })
+        }
+        if row[LO_STATE] in DO_NOT_CONVERT_STATE_CODES:
+            # FCC do-not-convert territory: the filed coordinates remain in the
+            # applicable local datum, the FCC publishes neither the local datum
+            # nor a conversion to NAD83, and a GeoParquet column declares one
+            # CRS for every row, so these filings cannot be represented
+            # accurately under the published geometry contract. They are
+            # excluded from the published coordinate-bearing population and
+            # preserved in full in the audit, pinned by count and digest —
+            # never silently removed, shifted or mislabeled NAD83.
+            local_datum_quarantined_rows += 1
+            quarantined_records.append(record)
+            continue
+        if not -90 <= lat_dec <= 90 or not -180 <= lon_dec <= 180:
+            out_of_range_rows += 1
+        lat_direction_counts[lat_dir] = lat_direction_counts.get(lat_dir, 0) + 1
+        lon_direction_counts[lon_dir] = lon_direction_counts.get(lon_dir, 0) + 1
+        record["geometry"] = _point_wkb(lon_dec, lat_dec)
+        published.append(record)
     if lo_rows != EXPECTED_LO_RECORDS:
         raise ValueError("source_record_population_drift")
     if lo_extra_field_rows != EXPECTED_EXTRA_FIELD_ROWS["LO"]:
@@ -446,6 +483,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         raise ValueError("source_active_location_row_count_drift")
     if missing_coordinates != EXPECTED_MISSING_COORDINATE_ROWS:
         raise ValueError("source_missing_coordinate_row_count_drift")
+    if local_datum_quarantined_rows != EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS:
+        raise ValueError("source_local_datum_quarantined_row_count_drift")
+    quarantined_sha = _sha(_canonical(quarantined_records))
+    if quarantined_sha != EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256:
+        raise ValueError("source_local_datum_quarantined_records_drift")
     if out_of_range_rows != EXPECTED_OUT_OF_RANGE_COORDINATE_ROWS:
         raise ValueError("source_out_of_range_coordinate_row_count_drift")
     if lat_direction_counts != EXPECTED_LAT_DIRECTION_COUNTS:
@@ -491,6 +533,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         "source_empty_callsign_rows": empty_callsign_rows,
         "source_missing_coordinate_rows": missing_coordinates,
         "source_out_of_range_coordinate_rows": out_of_range_rows,
+        "source_local_datum_quarantined_rows": local_datum_quarantined_rows,
+        "source_local_datum_quarantined_sha256": quarantined_sha,
+        "source_local_datum_quarantined_state_codes": sorted({record["LocState"] for record in quarantined_records}),
+        "source_local_datum_quarantined_records": quarantined_records,
         "source_latitude_direction_counts": lat_direction_counts,
         "source_longitude_direction_counts": lon_direction_counts,
         "source_extra_field_rows": {"HD": hd_extra_field_rows, "EN": en_extra_field_rows,
@@ -513,7 +559,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                         "empty-callsign, missing-coordinate, out-of-range-coordinate and extra-field row counts are "
                         "checked; counts drift fails closed. Raw DMS components and direction strings are preserved "
                         "verbatim, including the pinned out-of-range filed latitude (93 degrees) that the FCC's "
-                        "layer description anticipates."),
+                        "layer description anticipates. Location records in the FCC do-not-convert territories "
+                        "(state codes MP, UM; coordinates remain in their applicable local datum with no "
+                        "FCC-published conversion to NAD83) are excluded from the published coordinate-bearing "
+                        "population and preserved in full in the audit, pinned by count and record digest; "
+                        "counts drift fails closed."),
     }
     return published, audit
 
@@ -635,8 +685,10 @@ def capture_land_mobile_private_transmission_towers(storage: StagingStorageResou
         "description": ("Location records with filed coordinates of active private land mobile radio licenses from "
                         "the FCC ULS weekly public access complete Land Mobile {Private} licenses file, republished "
                         "under the historical HIFLD Land Mobile Private Transmission Towers column contract. "
-                        "Unapproved candidate; source edition, baseline, schema/ID contract, rights and release "
-                        "decisions remain pending."),
+                        "Location records without a complete coordinate pair and location records in the FCC "
+                        "do-not-convert local-datum territories (coordinates with no FCC-published conversion to "
+                        "NAD83, preserved in the audit) are excluded. Unapproved candidate; source edition, "
+                        "baseline, schema/ID contract, rights and release decisions remain pending."),
         "publisher": PUBLISHER, "agency": "Federal Communications Commission", "source_url": L_LMPRIV_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
@@ -646,7 +698,11 @@ def capture_land_mobile_private_transmission_towers(storage: StagingStorageResou
             "population": ("one published row per LO location record whose HD license status is A (active) and "
                            "whose LO record carries both latitude and longitude degree components; location "
                            "records without a complete coordinate pair are excluded (322063 rows in the pinned "
-                           "edition) to match the historical layer's coordinate-bearing population"),
+                           "edition) to match the historical layer's coordinate-bearing population, and location "
+                           "records in the FCC do-not-convert territories (state codes MP, UM; coordinates remain "
+                           "in their applicable local datum with no FCC-published conversion to NAD83) are also "
+                           "excluded and preserved in the audit with all filed attributes (12 rows in the pinned "
+                           "edition, all MP), never silently removed, shifted or mislabeled NAD83"),
             "source_ids": "UniqSysID (HD/EN/LO unique system identifier) and LocNum (LO location number) retained unchanged; duplicate (UniqSysID, LocNum) filed records are preserved as distinct rows as in the historical layer",
             "source_values": "all published attribute strings retained verbatim including empty fields; TowReg kept as the source string (the frozen copy typed it int64 with 0 for unregistered records and the source also carries N/A values); SupStruc/AllStruc typed float with null for empty source fields (the frozen copy stored 0.0 there); DMS degree/minute components typed float to match the frozen contract",
             "derived_columns": ("latdec/londec are DMS-to-decimal conversions of the raw components formatted "
@@ -663,7 +719,10 @@ def capture_land_mobile_private_transmission_towers(storage: StagingStorageResou
                         "converted to NAD83 with the FCC's specified shifts, while the do-not-convert "
                         "Pacific island areas (Baker, Howland, Jarvis, Johnston, Kingman Reef, Midway, the "
                         "Northern Mariana Islands, Palmyra and Wake) remain in their applicable local datum "
-                        "and are published exactly as filed."),
+                        "with no FCC-published conversion; those filings are excluded from the published "
+                        "coordinate-bearing population and preserved in the audit with all filed attributes, "
+                        "because a GeoParquet column declares one CRS for every row and their datum cannot be "
+                        "represented accurately."),
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
         "lineage": ("The FCC moved ULS daily and weekly public access downloads from wireless2.fcc.gov to "
                     "data.fcc.gov/download/pub/uls/ in July 2021; the weekly complete Land Mobile {Private} "
