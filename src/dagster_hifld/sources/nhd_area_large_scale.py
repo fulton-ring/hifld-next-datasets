@@ -643,10 +643,10 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
             if (not isinstance(seed, list) or len(seed) != EXPECTED_COUNT
                     or any(type(value) is not int for value in seed) or len(set(seed)) != EXPECTED_COUNT):
                 raise ValueError("source_seed_id_population_drift")
+            captures.update(_capture_windows(client, sorted(seed), capture_root, budget))
             for name, url in doc_urls[2:]:
                 after_name = name.replace("_before", "_after")
                 captures[after_name] = _capture_doc(client, url, capture_root, after_name, budget)
-            captures.update(_capture_windows(client, sorted(seed), capture_root, budget))
         fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}
