@@ -12,3 +12,7 @@ def noaa_significant_volcanic_events(context,staging_storage:StagingStorageResou
 
 significant_volcanic_source_integrity_job=define_asset_job('significant_volcanic_source_integrity',selection=AssetSelection.assets(noaa_significant_volcanic_events))
 significant_volcanic_source_integrity_schedule=ScheduleDefinition(name='significant_volcanic_source_integrity_monthly',job=significant_volcanic_source_integrity_job,cron_schedule='0 9 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS=[noaa_significant_volcanic_events]
+JOBS=[significant_volcanic_source_integrity_job]
+SCHEDULES=[significant_volcanic_source_integrity_schedule]
