@@ -22,6 +22,7 @@ import pyproj
 from shapely.geometry import Point
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -316,16 +317,32 @@ def capture_fhwa_tunnel_inventory(storage: StagingStorageResource, *, version: s
         "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
         "rights_accepted":False,"mapping_approved":False,"release_accepted":False})+b"\n"
     fingerprint=_sha(_canonical(identity))
-    descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
     if storage.object_snapshot(state_key) is not None:
+        # A fresh acquisition of unchanged source content carries newly
+        # timestamped receipts; the sealed candidate keeps its original
+        # immutable provenance. Reuse verifies the re-acquired bytes against
+        # the staged originals instead of the new receipts.
+        original=json.loads(load_first_construction(storage,state_key,version,fingerprint)).get("payload")
+        if not isinstance(original,dict) or not isinstance(original.get("capture_receipts"),dict):
+            raise ValueError("cached_first_candidate_receipts_missing")
+        original_receipts=original["capture_receipts"]
+        if set(original_receipts)!=set(captures):
+            raise ValueError("cached_candidate_capture_roster_changed")
+        for name in captures:
+            if (storage.read_key(f"{prefix}/raw/{name}.body")!=captures[name][0]
+                    or storage.read_key(f"{prefix}/raw/{name}.wire")
+                        !=(capture_root/f"{name}.wire").read_bytes()):
+                raise ValueError("cached_source_evidence_changed:"+name)
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,
-            audit["source_record_sha256"],audit["source_schema_sha256"],descriptors,
-            {name:receipt for name,(_,receipt) in captures.items()})
+            audit["source_record_sha256"],audit["source_schema_sha256"],
+            original.get("objects",{}),original_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
             "source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
+            "capture_directory":str(capture_root),
             "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,
             "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,
             "quality_check_passed":False}
+    descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
     for name,body in outputs.items():
         write_immutable(storage,f"{prefix}/{name}",body)
     for name,descriptor in descriptors.items():
@@ -340,6 +357,7 @@ def capture_fhwa_tunnel_inventory(storage: StagingStorageResource, *, version: s
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
         "source_null_geometry_count":0,"source_invalid_geometry_count":0,
         "candidate_ready":prefix+"/metadata/candidate_ready.json","capture_directory":str(capture_root),
+        "reused":False,
         "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,
         "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,
         "release_accepted":False,"quality_check_passed":False}
