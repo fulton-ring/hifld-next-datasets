@@ -16,10 +16,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from shapely.geometry import Point
 
-from dagster_hifld.assets.eia_biodiesel_plants import eia_biodiesel_plants_draft_schedule
+from dagster_hifld.assets.eia_biodiesel_plants import (
+    eia_biodiesel_plants_complete, eia_biodiesel_plants_draft_schedule,
+)
 from dagster_hifld.sources.eia_biodiesel_plants import (
     CAPACITY_REPORT_URL, DATASET_SLUG, EXPECTED_COUNT, EXPECTED_FIELDS, EXPECTED_LAYER,
-    EXPECTED_ZIP_BYTES, EXPECTED_ZIP_SHA256, ID_SHA, MEMBERS, SOURCE_RELEASE, SOURCE_URL,
+    EXPECTED_ZIP_BYTES, EXPECTED_ZIP_SHA256, FILE_SLUG, ID_SHA, MEMBERS, SOURCE_RELEASE, SOURCE_URL,
     _decode, _load_capture, _point_wkb, _sha, _canonical,
 )
 
@@ -245,6 +247,26 @@ class EiaBiodieselPlantsSourceContractTest(unittest.TestCase):
                     (root / f"{name}.receipt.json").write_text(json.dumps(receipt))
             with self.assertRaisesRegex(ValueError, "unexpected_source_capture_name"):
                 _load_capture("unknown", root)
+
+
+class EiaBiodieselPlantsRegistrationTest(unittest.TestCase):
+    def test_ingest_asset_job_check_and_schedule_registered_in_defs(self):
+        from dagster import AssetKey, DefaultScheduleStatus
+
+        from dagster_hifld.definitions import defs
+
+        key = AssetKey(["ingest", DATASET_SLUG, FILE_SLUG])
+        graph = defs.resolve_asset_graph()
+        self.assertIn(key, set(graph.get_all_asset_keys()))
+        repo = defs.get_repository_def()
+        job = repo.get_job("eia_biodiesel_plants_draft_refresh")
+        self.assertEqual(set(job.asset_layer.executable_asset_keys), {key})
+        check_keys = {str(check_key) for check_key in graph.asset_check_keys}
+        self.assertTrue(any("eia_biodiesel_plants_complete" in check_key for check_key in check_keys))
+        self.assertTrue(next(iter(eia_biodiesel_plants_complete.check_specs)).blocking)
+        schedule = repo.get_schedule_def("eia_biodiesel_plants_draft_refresh_schedule")
+        self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
+        self.assertEqual(schedule.cron_schedule, "0 8 1 * *")
 
 
 if __name__ == "__main__":

@@ -43,3 +43,8 @@ eia_biodiesel_plants_draft_schedule = ScheduleDefinition(name="eia_biodiesel_pla
                                                          job=eia_biodiesel_plants_draft_job,
                                                          cron_schedule="0 8 1 * *",
                                                          default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [eia_biodiesel_plants]
+ASSET_CHECKS = [eia_biodiesel_plants_complete]
+JOBS = [eia_biodiesel_plants_draft_job]
+SCHEDULES = [eia_biodiesel_plants_draft_schedule]
