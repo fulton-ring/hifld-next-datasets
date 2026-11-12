@@ -9,6 +9,11 @@ the EPA_GEO-hosted ArcGIS Online FeatureServer (table 2, item
 ``returnIdsOnly`` responses at 1,000,000 IDs, so the native server is the
 capture source. All producer responses are retained verbatim; the Parquet
 candidate is an unapproved preservation candidate pending contract review.
+
+The table is nonspatial, so the candidate Parquet lives under ``unknown/``
+like the other FRS code-table drafts: the shared catalog summarizes it with
+the tabular path (``non_spatial_source``) instead of the native GeoParquet
+path, which requires a real WKB geometry column. No geometry is invented.
 """
 from __future__ import annotations
 
@@ -45,7 +50,7 @@ AGOL_ITEM_ID = "cdff193a3e3743a5bc770e2743f215b3"
 AGOL_TABLE_URL = f"{AGOL_SERVICE_URL}/2"
 DATASET_SLUG = "epa-frs-sic-codes"
 FILE_SLUG = DATASET_SLUG
-NATIVE_PATH = f"geoparquet/{FILE_SLUG}.parquet"
+NATIVE_PATH = f"unknown/{FILE_SLUG}.parquet"
 PUBLISHER = "U.S. Environmental Protection Agency, Facility Registry Service (OEI native ArcGIS Server)"
 EPA_FRS_URL = "https://www.epa.gov/frs"
 GEOSPATIAL_DOWNLOAD_URL = "https://www.epa.gov/frs/geospatial-data-download-service"
@@ -65,6 +70,11 @@ FIELD_NAMES = tuple(field[0] for field in FIELDS)
 
 class EpaFrsSicCaptureError(ValueError):
     """The source table is incomplete, malformed, or has drifted."""
+
+
+def _require_disk_space(base: Path) -> None:
+    if shutil.disk_usage(base).free < 4_000_000_000:
+        raise ValueError("disk_floor_before_acquisition")
 
 
 def _canonical(value: object) -> bytes:
@@ -247,8 +257,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
     if ".." in base.parts or any(parent.is_symlink() for parent in (base, *base.parents)):
         raise ValueError("unsafe_local_staging_root")
     base.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(base).free < 4_000_000_000:
-        raise ValueError("disk_floor_before_acquisition")
+    _require_disk_space(base)
     capture_base = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/103/captures")
     capture_root = (capture_base / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
@@ -330,9 +339,6 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
                     "EPA FRS geospatial data download service also publishes SIC classifications: "
                     + GEOSPATIAL_DOWNLOAD_URL,
                     "Facility Registry Service: " + EPA_FRS_URL],
-        "prebuilt_output_policy": {"schema_version": 1,
-                                   "formats": {"geoparquet": {"reason": "Native Esri fields, IDs and declared types retained; no geometry source exists and none is invented; approvals pending.",
-                                                              "objects": [{"path": NATIVE_PATH, **source_objects[NATIVE_PATH]}]}}},
         "unsupported_output_formats": {"geopackage": "No approved source-to-public schema mapping.",
                                        "pmtiles": "No geometry source is available."},
     }

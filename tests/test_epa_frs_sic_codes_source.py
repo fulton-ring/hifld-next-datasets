@@ -5,14 +5,32 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
+import dagster
 import pyarrow as pa
 import pyarrow.parquet as pq
+from dagster import DagsterInstance, DefaultScheduleStatus, build_schedule_context, materialize
 
+from dagster_hifld.assets import epa_frs_sic as assets_module
+from dagster_hifld.assets.catalog import publish_catalog
+from dagster_hifld.assets.epa_frs_sic import (
+    epa_frs_sic_codes,
+    epa_frs_sic_codes_complete,
+    epa_frs_sic_codes_draft_schedule,
+    epa_frs_sic_codes_publication_gates_pending,
+)
+from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.sources import epa_frs_sic as sic
 from dagster_hifld.sources.epa_frs_common import candidate_prefix
 
 
 class EpaFrsSicCodesSourceTests(unittest.TestCase):
+    def setUp(self):
+        # Unit fixtures exercise capture policy with tiny responses; the real
+        # capture keeps the production disk floor (disk_floor_before_acquisition).
+        self.disk_guard = patch.object(sic, "_require_disk_space", lambda base: None)
+        self.disk_guard.start()
+        self.addCleanup(self.disk_guard.stop)
+
     def _fields(self):
         fields = []
         for name, kind, nullable, length in sic.FIELDS:
@@ -160,6 +178,77 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
                     sic.processing_identity(Path(sic.__file__).parents[3])))))
             self.assertEqual(bundle["payload"]["source_record_sha256"], first["source_record_sha256"])
             self.assertIn("raw/service.body", bundle["payload"]["objects"])
+
+    def test_draft_schedule_is_stopped_and_emits_run_config_valid_for_the_job(self):
+        defs = dagster.Definitions(
+            assets=[assets_module.epa_frs_sic_codes],
+            jobs=[assets_module.epa_frs_sic_codes_draft_job],
+            resources={"staging_storage": dagster.ResourceDefinition.mocked()},
+        )
+        job = defs.get_job_def("epa_frs_sic_codes_draft_refresh")
+        self.assertEqual(epa_frs_sic_codes_draft_schedule.default_status,
+                         DefaultScheduleStatus.STOPPED)
+        tick = epa_frs_sic_codes_draft_schedule.evaluate_tick(build_schedule_context())
+        run_requests = tick.run_requests
+        self.assertEqual(len(run_requests), 1)
+        self.assertEqual(run_requests[0].job_name, "epa_frs_sic_codes_draft_refresh")
+        dagster.validate_run_config(job, run_requests[0].run_config or {})
+
+    def test_dagster_ingest_catalog_and_cached_reuse_materialize(self):
+        docs = self._docs(self._fields(), self._features())
+        check_fn = epa_frs_sic_codes_complete.op.compute_fn.decorated_fn
+        gates_fn = epa_frs_sic_codes_publication_gates_pending.op.compute_fn.decorated_fn
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = sic.StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            instance_dir = Path(tmp) / "dagster"
+            instance_dir.mkdir()
+            (instance_dir / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
+            with patch.object(sic, "EXPECTED_ROWS", len(docs["pages"])), \
+                    patch.object(sic, "capture_get", side_effect=self._fake_get(docs)):
+                with DagsterInstance.from_config(str(instance_dir)) as instance:
+                    run = materialize([epa_frs_sic_codes],
+                                      resources={"staging_storage": storage}, instance=instance)
+                    self.assertTrue(run.success)
+                    version = None
+                    for event in run.all_events:
+                        if event.event_type_value == "ASSET_MATERIALIZATION" and event.asset_key:
+                            version = event.materialization.metadata["version"].value
+                    self.assertIsNotNone(version)
+                    partition = build_publish_partition_key(sic.DATASET_SLUG, sic.FILE_SLUG, version)
+                    instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [partition])
+                    catalog = materialize([publish_catalog],
+                                          resources={"staging_storage": storage},
+                                          instance=instance, partition_key=partition)
+                    self.assertTrue(catalog.success)
+                    prefix = candidate_prefix(sic.DATASET_SLUG, sic.FILE_SLUG, version)
+                    quality = json.loads(
+                        storage.read_key(f"{prefix}/metadata/quality_manifest.json"))
+                    self.assertEqual(quality["feature_count"], len(docs["pages"]))
+                    self.assertEqual(quality["spatial_status"], "non_spatial_source")
+                    self.assertEqual(quality["geometry_type"], None)
+                    self.assertTrue(quality["quality_check_passed"])
+                    dictionary = json.loads(
+                        storage.read_key(f"{prefix}/metadata/data_dictionary.json"))
+                    self.assertEqual(dictionary["columns"][0]["name"], "OBJECTID")
+                    self.assertEqual([column["name"] for column in dictionary["columns"]],
+                                     list(sic.FIELD_NAMES))
+                    audit = json.loads(
+                        storage.read_key(f"{prefix}/metadata/source_audit.json"))
+                    self.assertFalse(audit["release_accepted"])
+                    self.assertEqual(audit["refresh_status"], "STOPPED")
+                    cached = sic.capture_epa_frs_sic(storage, version="catalog-reuse-v1",
+                                                     capture_directory=str(Path(tmp) / "captures"))
+                    self.assertTrue(cached["reused"])
+                    self.assertEqual(cached["version"], version)
+                    self.assertTrue(check_fn(cached).passed)
+                    self.assertTrue(gates_fn(cached).passed)
+                    self.assertTrue(check_fn({
+                        "source_population_complete": True, "row_count": len(docs["pages"]),
+                        "source_record_sha256": cached["source_record_sha256"],
+                        "source_schema_sha256": cached["source_schema_sha256"]}).passed)
+                    ready = json.loads(storage.read_key(cached["candidate_ready"]))
+                    self.assertEqual(ready["version"], version)
+                    self.assertIn(sic.NATIVE_PATH, ready["objects"])
 
 
 def _storage(tmp):
