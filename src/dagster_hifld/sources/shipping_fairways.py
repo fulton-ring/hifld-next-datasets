@@ -315,7 +315,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         raise ValueError("source_layer_identity_extent_or_limit_drift")
     if layer.get("hasZ") or layer.get("hasM"):
         raise ValueError("source_layer_dimensional_drift")
-    _validate_spatial_reference(layer.get("spatialReference"), "source_layer", required=False)
+    if layer.get("spatialReference") is not None:
+        _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
     extent_reference = layer.get("extent", {}).get("spatialReference")
     if extent_reference is not None:
         _validate_spatial_reference(extent_reference, "source_layer_extent")
