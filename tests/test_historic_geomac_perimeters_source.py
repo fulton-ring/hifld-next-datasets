@@ -25,7 +25,7 @@ from shapely.geometry import MultiPolygon, Polygon, mapping
 from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.historic_geomac_perimeters import (
     historic_geomac_perimeters as historic_geomac_perimeters_asset,
-    historic_geomac_perimeters_draft_schedule,
+    historic_geomac_perimeters_draft_refresh_schedule,
 )
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
@@ -237,7 +237,7 @@ def scenario(mutate=None):
 class GeoMACMechanicsTests(unittest.TestCase):
     def test_registry_schedule_and_remote_rejected(self):
         self.assertIn(historic_geomac_perimeters_asset, hifld_ingest_assets)
-        self.assertEqual(historic_geomac_perimeters_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
+        self.assertEqual(historic_geomac_perimeters_draft_refresh_schedule.default_status, DefaultScheduleStatus.STOPPED)
         for storage in [PublishedStorageResource(local_dir='/tmp/no-write'),
                         StagingStorageResource(bucket='never', use_local=False)]:
             with patch.object(s, 'acquire') as acquire, self.assertRaises(ValueError):
