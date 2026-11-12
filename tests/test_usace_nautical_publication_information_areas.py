@@ -1,6 +1,13 @@
 import json
 import unittest
 
+from dagster import DefaultScheduleStatus
+
+from dagster_hifld.assets.usace import (
+    usace_nautical_publication_information_areas_usace_ienc,
+    usace_nautical_publication_information_areas_draft_schedule,
+)
+from dagster_hifld.definitions import defs
 from dagster_hifld.sources.usace_nautical_publication_information_areas import (
     CURRENT_BTS_ITEM_ID, DATASET_SLUG, EXPECTED_COUNT, EXPECTED_FIELD_DECLARATIONS,
     EXPECTED_FIELDS, LAYER_URL, _validate,
@@ -37,6 +44,14 @@ class UsaceNauticalPublicationInformationAreasTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "current_bts_ienc_item_or_pdf_drift"):
             captures = self._build_captures(bts_pdf=b"not-a-pdf")
             _validate(captures)
+
+    def test_dagster_registry_contains_candidate_check_and_stopped_refresh(self):
+        keys = {key for asset_definition in defs.assets for key in asset_definition.keys}
+        self.assertIn(next(iter(usace_nautical_publication_information_areas_usace_ienc.keys)), keys)
+        self.assertEqual(
+            usace_nautical_publication_information_areas_draft_schedule.default_status,
+            DefaultScheduleStatus.STOPPED,
+        )
 
     def _build_captures(self, bts_item_overrides=None, bts_pdf=b"%PDF-1.7\nretained PDF bytes"):
         ids = list(range(1, EXPECTED_COUNT + 1))
