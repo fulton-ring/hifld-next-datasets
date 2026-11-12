@@ -59,28 +59,28 @@ class PublishedProvenanceTests(unittest.TestCase):
             version["inputs"][0].update(input_id="covariate", producer="Another Synthetic Agency")
             version.update(transformations=[], code_commit="downstream-fixture-code")
             storage.write_key("dataset/metadata/source_manifest.json", json.dumps(parent).encode())
-            storage.write_key("dataset/file/vtest/metadata/source_manifest.json", json.dumps(version).encode())
-            snapshot_source_metadata(storage, "dataset", "file", "vtest")
-            resolved = load_resolved_source_manifest(storage, "dataset", "file", "vtest")
+            storage.write_key("dataset/file/v1.0.0/metadata/source_manifest.json", json.dumps(version).encode())
+            snapshot_source_metadata(storage, "dataset", "file", "v1.0.0")
+            resolved = load_resolved_source_manifest(storage, "dataset", "file", "v1.0.0")
             dictionary = generate_data_dictionary(pd.DataFrame({"id": [1]}), "fixture", source_metadata=resolved.metadata)
             self.assertEqual(dictionary["transformations"], [])
             self.assertEqual([item["input_id"] for item in dictionary["inputs"]], ["producer", "covariate"])
-            write_catalog_metadata(storage, "dataset", "file", "vtest", {"quality_check_passed": True}, dictionary)
-            captured = json.loads(storage.read_key("dataset/file/vtest/metadata/resolved_provenance.json"))
+            write_catalog_metadata(storage, "dataset", "file", "v1.0.0", {"quality_check_passed": True}, dictionary)
+            captured = json.loads(storage.read_key("dataset/file/v1.0.0/metadata/resolved_provenance.json"))
             self.assertEqual(captured["inputs"], dictionary["inputs"])
             self.assertEqual(captured["code_commit"], version["code_commit"])
             self.assertEqual([layer["code_commit"] for layer in captured["manifest_layers"]], [parent["code_commit"], version["code_commit"]])
             self.assertEqual(captured["manifest_layers"][0]["transformations"], parent["transformations"])
             for layer in captured["manifest_layers"]:
-                self.assertEqual(storage.sha256_key("dataset/file/vtest/" + layer["snapshot"]), layer["sha256"])
+                self.assertEqual(storage.sha256_key("dataset/file/v1.0.0/" + layer["snapshot"]), layer["sha256"])
 
     def test_repinned_dictionary_input_loss_cannot_promote(self):
         with tempfile.TemporaryDirectory() as d:
             source, target, registry = accepted_fixture(Path(d))
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
-                _copy_version_files(source, target, "synthetic", "points", "vtest")
+                _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 before = {key: target.object_snapshot(key) for key in target.list_prefix()}
-                key = "synthetic/points/vtest/metadata/data_dictionary.json"
+                key = "synthetic/points/v1.0.0/metadata/data_dictionary.json"
                 value = json.loads(source.read_key(key)); value["inputs"] = []
                 source.write_key(key, json.dumps(value).encode())
                 approvals = json.loads(registry.read_text())
@@ -88,7 +88,7 @@ class PublishedProvenanceTests(unittest.TestCase):
                     approvals["releases"][0][name][key] = source.sha256_key(key)
                 registry.write_text(json.dumps(approvals))
                 with self.assertRaisesRegex(ReleaseApprovalError, "resolved_provenance_metadata"):
-                    _copy_version_files(source, target, "synthetic", "points", "vtest")
+                    _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
                 self.assertEqual(before, {key: target.object_snapshot(key) for key in target.list_prefix()})
 
     def test_rendered_processor_roles_and_each_input_link_are_checked(self):
@@ -96,9 +96,9 @@ class PublishedProvenanceTests(unittest.TestCase):
             root = Path(d)
             source, target, registry = accepted_fixture(root)
             with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": str(registry)}):
-                _copy_version_files(source, target, "synthetic", "points", "vtest")
-            record = CatalogRecord("synthetic", "synthetic", "points", "vtest", "Fixture", "Synthetic only", "spatial", 1, ())
-            record = attach_published_provenance(record, target, "synthetic/points/vtest", "https://example.invalid/data")
+                _copy_version_files(source, target, "synthetic", "points", "v1.0.0")
+            record = CatalogRecord("synthetic", "synthetic", "points", "v1.0.0", "Fixture", "Synthetic only", "spatial", 1, ())
+            record = attach_published_provenance(record, target, "synthetic/points/v1.0.0", "https://example.invalid/data")
             tree = root / "tree"
             render_portolan_tree(tree, (record,), public_root="https://example.invalid/catalog")
             normalize_candidate_tree(tree)
@@ -121,10 +121,10 @@ class PublishedProvenanceTests(unittest.TestCase):
             root = Path(d)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "stage"))
             original = root / "capture.gpkg"; original.write_bytes(b"original captured source bytes")
-            metadata = root / "stage/dataset/file/vtest/metadata"; metadata.mkdir(parents=True)
+            metadata = root / "stage/dataset/file/v1.0.0/metadata"; metadata.mkdir(parents=True)
             alias = metadata / "resolved_provenance.json"; alias.symlink_to(original)
             with self.assertRaisesRegex(ValueError, "link"):
-                write_catalog_metadata(storage, "dataset", "file", "vtest", {"quality_check_passed": True}, provenance_fixture())
+                write_catalog_metadata(storage, "dataset", "file", "v1.0.0", {"quality_check_passed": True}, provenance_fixture())
             self.assertEqual(original.read_bytes(), b"original captured source bytes")
             self.assertEqual(list(metadata.iterdir()), [alias])
 
@@ -135,8 +135,8 @@ class PublishedProvenanceTests(unittest.TestCase):
             original = root / "capture.bin"; original.write_bytes(b"preserved original")
             plan = root / "plan"; plan.mkdir()
             (plan / "bundle_plan.json").symlink_to(original)
-            record = CatalogRecord("synthetic", "synthetic", "points", "vtest", "Fixture", "Synthetic only", "spatial", 1, ())
-            request = PortolanPublishRequest("synthetic", "synthetic", "points", "vtest", "Fixture", "Synthetic only", "Agency")
+            record = CatalogRecord("synthetic", "synthetic", "points", "v1.0.0", "Fixture", "Synthetic only", "spatial", 1, ())
+            request = PortolanPublishRequest("synthetic", "synthetic", "points", "v1.0.0", "Fixture", "Synthetic only", "Agency")
             with self.assertRaisesRegex(ValueError, "link"):
                 prepare_portolan_release_bundle((record,), request, target, plan)
             self.assertEqual(original.read_bytes(), b"preserved original")
