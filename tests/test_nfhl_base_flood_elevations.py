@@ -115,6 +115,27 @@ class NfhlBaseFloodElevationsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_capture_roster_incomplete_or_unexpected"):
             source._parse_segment_name("page_abc_00002")
 
+    def test_mixed_width_segment_names_sort_numerically_not_lexicographically(self):
+        # Regression: "page_1000000_02000" sorts lexicographically BEFORE
+        # "page_998000_02000", which falsely failed the tiling proof on the
+        # live 2026-11-12 capture; segment order must be numeric.
+        names = [source._segment_name(offset, count) for offset, count in
+                 ((998000, 2000), (1000000, 2000), (0, 2000), (1002000, 2000))]
+        segments = sorted(source._parse_segment_name(name) for name in names)
+        self.assertEqual(segments, [(0, 2000), (998000, 2000), (1000000, 2000), (1002000, 2000)])
+
+    def test_seven_digit_roster_passes_tiling_then_fails_roster_completeness(self):
+        # A captures roster that tiles a 1,000,005-feature population across
+        # the six/seven-digit offset boundary must get past the tiling proof
+        # (failing later, on the missing documentation evidence) — the old
+        # lexicographic sort failed tiling first.
+        segments = [(offset, 2000) for offset in range(0, 1000000, 2000)] + [(1000000, 5)]
+        captures = {source._segment_name(offset, count): (b"{}", {"status": 200})
+                    for offset, count in segments}
+        with patch.multiple(source, EXPECTED_COUNT=1000005):
+            with self.assertRaisesRegex(ValueError, "source_capture_roster_incomplete_or_unexpected"):
+                source._validate_captures(captures)
+
     def test_id_roster_response_order_is_not_population_drift(self):
         _, _, captures, schema, geom, counts, bounds = _fixture()
         for name, ids in (("ids_seed", [13, 10, 12, 11]), ("ids_before", [11, 12, 10, 13])):

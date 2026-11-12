@@ -281,8 +281,13 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     docs = {name: json.loads(body) for name, (body, _) in captures.items()
             if name != "service_doc" and not name.startswith("page_")}
-    page_names = sorted(name for name in captures if name.startswith("page_"))
-    segments = [_parse_segment_name(name) for name in page_names]
+    # Sort segment names by their parsed numeric (offset, count), never
+    # lexicographically: this layer's roster spans more than one million
+    # OBJECTIDs, so segment names mix six- and seven-digit offsets and a
+    # lexicographic sort would mis-order them ("page_1000000..." sorts before
+    # "page_998000..."), falsely failing the tiling proof.
+    segments = sorted((_parse_segment_name(name) for name in captures if name.startswith("page_")))
+    page_names = [_segment_name(offset, count) for offset, count in segments]
     position = 0
     for offset, count in segments:
         if offset != position:
