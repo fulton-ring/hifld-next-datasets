@@ -682,7 +682,13 @@ def capture_land_mobile_broadcast_towers(storage: StagingStorageResource, *, ver
                                 schema_sha, original["objects"], original.get("capture_receipts", {}))
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": candidate_version,
                 "feature_count": len(features), "source_population_complete": True,
-                "record_sha256": record_sha, "schema_sha256": schema_sha,
+                "record_sha256": record_sha, "geometry_sha256": geometry_sha,
+                "schema_sha256": schema_sha,
+                "fixed_location_count": audit["fixed_location_count"],
+                "null_geometry_count": audit["null_geometry_count"],
+                "invalid_coordinate_record_count": audit["invalid_coordinate_record_count"],
+                "missing_coordinate_record_count": audit["missing_coordinate_record_count"],
+                "service_code_counts": audit["service_code_counts"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_capture_evidence_sha256": evidence_sha, "capture_directory": str(root),
                 "release_accepted": False}
