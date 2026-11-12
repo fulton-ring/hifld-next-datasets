@@ -23,7 +23,6 @@ from dagster_hifld.assets.fuds_public_properties import usace_fuds_public_proper
 from dagster_hifld.assets.fuds_property_boundaries import fuds_property_boundaries_ingest
 from dagster_hifld.assets.epa_small_scale import epa_small_scale_regions
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
-from dagster_hifld.assets.crushed_stone import usgs_crushed_stone_preservation
 from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
     noaa_200nm_eez_and_maritime_boundaries,
@@ -35,7 +34,6 @@ from dagster_hifld.assets.census_primary_roads import census_bureau_primary_road
 from dagster_hifld.assets.census_block_groups import census_bureau_block_groups
 from dagster_hifld.assets.census_tracts import census_bureau_tracts
 from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_assets
-from dagster_hifld.assets.red_cross import red_cross_american_red_cross_divisions
 from dagster_hifld.assets.arc_regions import arc_regions
 from dagster_hifld.assets.red_cross_headquarters import red_cross_headquarters
 from dagster_hifld.assets.faa import faa_airspace_boundaries, faa_aviation_facilities
@@ -44,11 +42,9 @@ from dagster_hifld.assets.bts_rail_tofc_cofc import bts_intermodal_freight_rail_
 from dagster_hifld.assets.bts_marine_roro import bts_intermodal_freight_marine_roll_on_roll_off
 from dagster_hifld.assets.national_transit_map_stops import national_transit_map_stops
 from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
-from dagster_hifld.assets.dhs_hifld import dhs_hifld_above_ground_lng_storage_facilities
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.fdic_locations import fdic_locations_official
 from dagster_hifld.assets.fema_regions import fema_regions_official
-from dagster_hifld.assets.ferc_regions import ferc_historical_preservation
 from dagster_hifld.assets.fuds_division_boundaries import fuds_program_division_boundaries
 from dagster_hifld.assets.epa_frs_naics_powerplants import epa_frs_naics_powerplants
 from dagster_hifld.assets.epa_regions import epa_regions
@@ -108,7 +104,6 @@ from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
 from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
 from dagster_hifld.assets.usace_airport_area import usace_airport_area_ienc
-from dagster_hifld.assets.campus_preservation import ornl_campus_historical_preservation
 
 from dagster_hifld.assets.ibc import ibc_canada_us_border
 from dagster_hifld.assets.fws import fws_cbrs_buffer_zone
@@ -135,9 +130,6 @@ from dagster_hifld.assets.land_region_areas_usace_ienc import (
     land_region_areas_usace_ienc_candidate,
 )
 from dagster_hifld.assets.building_locations_usace_ienc import building_locations_usace_ienc
-from dagster_hifld.assets.ferrous_metal_processing_plants import (
-    ferrous_metal_processing_plants_usgs,
-)
 from dagster_hifld.assets.ferrous_metal_mines import ferrous_metal_mines_candidate
 from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
@@ -153,7 +145,6 @@ from dagster_hifld.assets.epa_frs_tri import epa_frs_toxic_release_inventory
 from dagster_hifld.assets.epa_tsca import epa_frs_toxic_substances_control_act_tsca
 from dagster_hifld.assets.epa_frs_interests import epa_frs_interests
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
-from dagster_hifld.assets.electric_retail_service_territories import electric_retail_service_territories_preservation_candidate
 from dagster_hifld.assets.epa_eez import epa_eez
 from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
@@ -176,7 +167,6 @@ hifld_ingest_assets = [
     bts_ferry_routes,
     fdic_locations_official,
     fema_regions_official,
-    ferc_historical_preservation,
     fuds_program_division_boundaries,
     fema_regional_offices,
     epa_sems_interests,
@@ -186,7 +176,6 @@ hifld_ingest_assets = [
     epa_large_scale_regions,
     census_elementary_districts,
     noaa_current_dart,
-    usgs_crushed_stone_preservation,
     nces_colleges_universities,
     usgs_aquifers,
     usgs_ems_stations,
@@ -202,7 +191,6 @@ hifld_ingest_assets = [
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
     noaa_24nm_contiguous_zone,
-    red_cross_american_red_cross_divisions,
     arc_regions,
     red_cross_headquarters,
     faa_airspace_boundaries,
@@ -212,7 +200,6 @@ hifld_ingest_assets = [
     bts_intermodal_freight_marine_roll_on_roll_off,
     national_transit_map_stops,
     bts_alternative_fueling_stations,
-    dhs_hifld_above_ground_lng_storage_facilities,
     usace_administrative_areas_usace_ienc,
     epa_frs_naics_powerplants,
     epa_regions,
@@ -285,7 +272,6 @@ hifld_ingest_assets = [
     fws_cbrs_units,
     census_designated_places,
     state_capitols_usgs,
-    ornl_campus_historical_preservation,
     census_combined_statistical_areas,
     census_consolidated_cities,
     usace_conveyor_areas_usace_ienc,
@@ -297,13 +283,11 @@ hifld_ingest_assets = [
     harbor_facility_locations_usace_ienc,
     land_region_areas_usace_ienc_candidate,
     hf_areas_usace_ienc_candidate,
-    ferrous_metal_processing_plants_usgs,
     ferrous_metal_mines_candidate,
     courthouses_usgs,
     usace_data_coverage_areas_usace_ienc,
     docks_usace_bts,
     usace_depth_areas_usace_ienc,
-    electric_retail_service_territories_preservation_candidate,
     epa_emergency_response_rmp_facilities,
     epa_frs_sic_powerplants,
     epa_frs_interest_contact,
