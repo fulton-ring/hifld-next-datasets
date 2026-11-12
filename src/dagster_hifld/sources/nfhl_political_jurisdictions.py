@@ -16,9 +16,10 @@ candidate WKB geometry is built by that rule (one exterior per feature in the
 observed population) without dropping, adding, or reordering any source vertex.
 The producer publishes 2,518 rings across 1,647 features that GEOS/OGC
 validity rules call self-intersecting (Esri topology tolerates self-touching
-rings); candidate WKB retains them verbatim, the counts are pinned, and the
-technical geometry quality acceptance stays unapproved for the maintainer
-decision. Null source geometries (the producer's 292 rows with no SHAPE,
+rings) plus 9 collapsed sub-millimeter sliver rings whose shoelace areas are
+zero or float noise; candidate WKB retains them verbatim, the counts are
+pinned, and the technical geometry quality acceptance stays unapproved for
+the maintainer decision. Null source geometries (the producer's 292 rows with no SHAPE,
 observed with the same capture) are retained as null candidate geometry, never
 coerced to a location.
 
@@ -111,7 +112,12 @@ EXPECTED_NAN_GEOMETRY_COUNT = 0
 # quality acceptance stays unapproved for the maintainer decision.
 EXPECTED_SELF_INTERSECTING_RING_COUNT = 2518
 EXPECTED_SELF_INTERSECTING_RING_FEATURE_COUNT = 1647
-EXPECTED_ZERO_AREA_RING_COUNT = 5
+EXPECTED_ZERO_AREA_RING_COUNT = 9
+# Collapsed producer rings (sub-millimeter slivers) carry shoelace areas that
+# are exactly zero or float noise within this epsilon of zero; geometry with
+# meaningful jurisdiction area is orders of magnitude larger, so the epsilon
+# only classifies producer slivers, never real boundaries.
+DEGENERATE_AREA_EPSILON = 1e-12
 EXPECTED_OBSERVED_BOUNDS = {"xmin": -170.84698891836925, "ymin": -14.373782300647008,
                             "xmax": 145.83077660155834, "ymax": 66.61058213599716}
 EXPECTED_LAYER_EXTENT = {"xmin": -170.84698891836925, "ymin": -14.373782300647008,
@@ -484,7 +490,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
                 polygon = shapely.Polygon(ring)
                 if not shapely.is_valid(polygon):
                     invalid_rings += 1
-                if _signed_area(ring) == 0:
+                if abs(_signed_area(ring)) <= DEGENERATE_AREA_EPSILON:
                     zero_area_rings += 1
             if invalid_rings:
                 self_intersecting_ring_feature_count += 1
@@ -525,8 +531,9 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
                  "GEOS/OGC validity rules call these producer rings self-intersecting; candidate WKB retains "
                  "every source vertex verbatim and the technical geometry quality acceptance remains unapproved.",
              "zero_area_ring_note":
-                 "The producer also publishes collapsed zero-area rings (pinned count); candidate WKB retains "
-                 "their vertices verbatim as degenerate exterior parts pending the technical quality decision.",
+                 "The producer also publishes collapsed sub-millimeter sliver rings (9 on the pinned capture, "
+                 "shoelace areas zero or float noise within 1e-12); candidate WKB retains their vertices "
+                 "verbatim as degenerate exterior parts pending the technical quality decision.",
              "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
              "unique_source_id_count": len(ids),
              "source_release_date": None,
@@ -579,11 +586,12 @@ def _polygon_wkb(geom: object) -> bytes | None:
     exteriors, holes = [], []
     for ring in rings:
         area = _signed_area(ring)
-        if area == 0:
-            # Producer zero-area (collapsed) rings (5 on the pinned capture) are
-            # retained verbatim as degenerate exterior parts: their vertices are
-            # kept, the pinned count and the unapproved technical quality gate
-            # carry the decision, and no hole-assignment semantics are invented.
+        if abs(area) <= DEGENERATE_AREA_EPSILON:
+            # Producer collapsed rings (9 on the pinned capture, including
+            # float-noise slivers) are retained verbatim as degenerate exterior
+            # parts: their vertices are kept, the pinned count and the
+            # unapproved technical quality gate carry the decision, and no
+            # hole-assignment semantics are invented.
             exteriors.append(ring)
             continue
         (exteriors if area < 0 else holes).append(ring)
