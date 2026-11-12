@@ -131,28 +131,12 @@ class SyntheticObservationBehaviorTests(SyntheticCaptureFixture):
         self.assertEqual(table.column('DATE_STRING').to_pylist(),['-1610/??/??','2000/01/02']);self.assertEqual(table.column('AREA').to_pylist(),['0007','0007'])
         self.assertEqual(table.column('ObjectId').to_pylist(),[1001,1002]);self.assertEqual(table.column('ID').to_pylist(),[5001,5002]);self.assertEqual(table.column('TSEVENT_ID').to_pylist(),[9001,9001])
         self.assertEqual(table.column('RUNUP_HT').null_count,1);self.assertEqual(json.loads(self.page)['features'][0]['attributes']['RUNUP_HT'],0.1)
-    def _dump_snapshot_diff(self,label,root,actual,expected):
-        import platform as _platform
-        differing=[k for k in sorted(set(actual)&set(expected)) if actual[k]!=expected[k]]
-        payload={'label':label,'platform':_platform.platform(),'python':_platform.python_version(),
-                 'added':sorted(set(actual)-set(expected)),'removed':sorted(set(expected)-set(actual)),
-                 'changed':differing}
-        print('TSUNAMI_SNAPSHOT_DIAGNOSTIC:'+json.dumps(payload),flush=True)
-        for k in differing[:8]:
-            body=(root/k).read_bytes()
-            print('TSUNAMI_DIFF_ENTRY:'+json.dumps({'path':k,'expected_sha':expected.get(k),'actual_sha':actual[k],
-                'size':len(body),'head':body[:240].decode('utf-8','replace'),'tail':body[-120:].decode('utf-8','replace')}),flush=True)
-        for k in (sorted(set(actual)-set(expected))+sorted(set(expected)-set(actual)))[:8]:
-            print('TSUNAMI_ROSTER_ENTRY:'+json.dumps({'path':k,'in_actual':k in actual}),flush=True)
-
     def test_newer_receipts_whole_quarantine_and_original_cold_recovery(self):
         out=self.stage();root=self.root(out);before=self.snap(root);new=Path(self.tmp.name)/'synthetic-newer';self.write_fixture(new,True)
         self.assertEqual(self.stage(new),out);self.assertEqual(self.snap(root),before)
         (root/'metadata/observations_candidate_ready.json').unlink()
         with self.assertRaisesRegex(s.ObservationQuarantineError,'missing_candidate_ready'):self.stage(new)
-        self.assertFalse(root.exists());self.assertEqual(self.stage(new),out);snap_after=self.snap(root)
-        if snap_after!=before:self._dump_snapshot_diff('newer_receipts_recovery',root,snap_after,before)
-        self.assertEqual(snap_after,before)
+        self.assertFalse(root.exists());self.assertEqual(self.stage(new),out);self.assertEqual(self.snap(root),before)
 
     def test_missing_anchor_second_attempt_cannot_bootstrap_after_detach(self):
         out=self.stage();root=self.root(out);key,marker,_=s.trust_keys(out['version']);original=self.storage.read_key(key);first=self.storage.read_key(marker);Path(self.tmp.name,key).unlink()
@@ -224,9 +208,7 @@ class SyntheticObservationBehaviorTests(SyntheticCaptureFixture):
                     self.assertEqual(self.storage.read_key(retained),bad)
                 self.storage.write_key(marker,original)  # Explicit operator restoration only.
                 self.assertEqual(self.stage(),out)
-                snap_after=self.snap(root)
-                if snap_after!=original_candidate:self._dump_snapshot_diff('first_marker_restore',root,snap_after,original_candidate)
-                self.assertEqual(snap_after,original_candidate)
+                self.assertEqual(self.snap(root),original_candidate)
         self.assertEqual(self.stage(),out)
         self.assertEqual(self.storage.read_key(marker),original)
 
