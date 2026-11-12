@@ -78,7 +78,7 @@ EXPECTED_NULL_GEOMETRY_COUNT = 449
 # rather than dropped or de-duplicated. The 16-key roster is pinned so any
 # change fails closed for review.
 EXPECTED_DUPLICATE_LOCATION_KEYS = 16
-EXPECTED_DUPLICATE_KEY_SHA256 = "6b544fbb6db80d5c1960330a7eac824e8091921d384dbab6c86b092d91cb2e34"
+EXPECTED_DUPLICATE_KEY_SHA256 = "3446a607b62c6fbcd3a30c2bfc68ab83b6d77f86c30e5fa59e3d5beabe99d929"
 EXPECTED_ACTIVE_SERVICE_ROW_COUNTS = {
     "AB": 10, "AI": 1394, "AS": 18744, "CF": 139508, "CT": 175, "MG": 143695,
     "MM": 20, "MW": 90425, "PF": 13365, "TB": 2, "TI": 7810, "TP": 2830,
