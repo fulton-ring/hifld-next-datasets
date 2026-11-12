@@ -507,6 +507,12 @@ from dagster_hifld.assets.usace_navigation_lights import (
     usace_navigation_lights_draft_schedule,
 )
 
+from dagster_hifld.assets.usace_notice_marks import (
+    usace_notice_marks_complete,
+    usace_notice_marks_draft_job,
+    usace_notice_marks_draft_schedule,
+)
+
 from dagster_hifld.assets.plate_boundaries import (
     plate_boundaries_draft_job,
     plate_boundaries_draft_schedule,
@@ -1153,6 +1159,7 @@ defs = Definitions(
             usace_administrative_areas_complete,
             usace_navigation_marks_areas_complete,
             usace_navigation_lights_complete,
+            usace_notice_marks_complete,
             puerto_rico_subbarrios_source_complete,
             principal_ports_source_complete,
             usace_overhead_cables_complete,
@@ -1290,6 +1297,7 @@ defs = Definitions(
             usace_administrative_areas_draft_job,
             usace_navigation_marks_areas_draft_job,
             usace_navigation_lights_draft_job,
+            usace_notice_marks_draft_job,
             secondary_school_districts_draft_refresh_job,
             unified_school_districts_draft_refresh_job,
             usace_pontoon_areas_draft_job,
@@ -1425,6 +1433,7 @@ defs = Definitions(
             usace_administrative_areas_draft_schedule,
             usace_navigation_marks_areas_draft_schedule,
             usace_navigation_lights_draft_schedule,
+            usace_notice_marks_draft_schedule,
             secondary_school_districts_draft_refresh_schedule,
             principal_ports_draft_schedule,
             usace_berths_areas_draft_schedule,
