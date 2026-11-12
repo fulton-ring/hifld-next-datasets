@@ -15,6 +15,7 @@ from dagster import (
 )
 
 from dagster_hifld.assets import hifld_dataset_assets
+from dagster_hifld.assets.healthcare_dialysis import dialysis_source_integrity_job, dialysis_source_integrity_schedule, dialysis_source_locations
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals_draft_refresh_job, bts_ferry_terminals_draft_refresh_schedule
 from dagster_hifld.assets.smithsonian_holocene import holocene_source_integrity_job, holocene_source_integrity_schedule
 from dagster_hifld.assets.historical_tsunami_events import (
@@ -34,6 +35,7 @@ from dagster_hifld.assets.epa_large_scale import (
 )
 from dagster_hifld.assets.fema_regional_offices import fema_offices_draft_job, fema_offices_draft_schedule
 from dagster_hifld.assets.epa_sems import epa_sems_source_integrity_job, epa_sems_source_integrity_schedule
+from dagster_hifld.assets.national_bridge_inventory import nbi_source_integrity_job, nbi_source_integrity_schedule
 from dagster_hifld.assets.fdic_locations import (
     fdic_locations_draft_job,
     fdic_locations_draft_schedule,
@@ -130,6 +132,11 @@ from dagster_hifld.assets.eia_biodiesel_plants import (
     eia_biodiesel_plants_complete,
     eia_biodiesel_plants_draft_job,
     eia_biodiesel_plants_draft_schedule,
+)
+from dagster_hifld.assets.eia_ethanol_plants import (
+    eia_ethanol_plants_complete,
+    eia_ethanol_plants_draft_job,
+    eia_ethanol_plants_draft_schedule,
 )
 from dagster_hifld.assets.epa_power_generation import (
     epa_frs_eia_860_power_generation_complete,
@@ -289,10 +296,20 @@ from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import (
     shoreline_construction_areas_usace_ienc_draft_job,
     shoreline_construction_areas_usace_ienc_draft_schedule,
 )
+from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import (
+    small_craft_facility_areas_usace_ienc_complete,
+    small_craft_facility_areas_usace_ienc_draft_job,
+    small_craft_facility_areas_usace_ienc_draft_schedule,
+)
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import (
     sloped_ground_lines_usace_ienc_complete,
     sloped_ground_lines_usace_ienc_draft_job,
     sloped_ground_lines_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.child_care_centers import (
+    child_care_centers_complete,
+    child_care_centers_draft_job,
+    child_care_centers_draft_schedule,
 )
 from dagster_hifld.assets.usace_overhead_cables import (
     usace_overhead_cables_complete,
@@ -427,6 +444,11 @@ from dagster_hifld.assets.epa_frs_sic_powerplants import (
     epa_frs_sic_published_membership_compatible,
 )
 
+from dagster_hifld.assets.epa_frs_interest_contact import (
+    epa_frs_interest_contact_complete,
+    epa_frs_interest_contact_draft_schedule,
+)
+
 from dagster_hifld.assets.usace_caution_areas import (
     usace_caution_areas_complete,
     usace_caution_areas_draft_schedule,
@@ -458,6 +480,12 @@ from dagster_hifld.assets.usace import (
     usace_navigation_marks_areas_complete,
     usace_navigation_marks_areas_draft_job,
     usace_navigation_marks_areas_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_navigation_lights import (
+    usace_navigation_lights_complete,
+    usace_navigation_lights_draft_job,
+    usace_navigation_lights_draft_schedule,
 )
 
 from dagster_hifld.assets.plate_boundaries import (
@@ -544,6 +572,12 @@ from dagster_hifld.assets.ibc import (
 from dagster_hifld.assets.fws import (
     fws_cbrs_buffer_draft_refresh_job,
     fws_cbrs_buffer_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.fws_cmt_locations import (
+    fws_cmt_locations_complete,
+    fws_cmt_locations_draft_refresh_job,
+    fws_cmt_locations_draft_refresh_schedule,
 )
 
 from dagster_hifld.assets.fws_map_panels import (
@@ -680,6 +714,11 @@ from dagster_hifld.assets.epa_tsca import (
     epa_frs_tsca_complete,
     epa_tsca_draft_job,
     epa_tsca_draft_schedule,
+)
+from dagster_hifld.assets.epa_frs_interests import (
+    epa_frs_interests_complete,
+    epa_frs_interests_draft_job,
+    epa_frs_interests_draft_schedule,
 )
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
@@ -1063,6 +1102,7 @@ defs = Definitions(
         arc_regions_full_quality,
         eia_power_plants_complete,
         eia_biodiesel_plants_complete,
+        eia_ethanol_plants_complete,
         epa_frs_eia_860_power_generation_complete,
         epa_icis_wastewater_capture_complete,
         fuds_irm_property_point_complete,
@@ -1092,6 +1132,7 @@ defs = Definitions(
         harbor_facility_locations_usace_ienc_complete,
         usace_administrative_areas_complete,
         usace_navigation_marks_areas_complete,
+        usace_navigation_lights_complete,
         puerto_rico_subbarrios_source_complete,
         principal_ports_source_complete,
         usace_overhead_cables_complete,
@@ -1102,7 +1143,9 @@ defs = Definitions(
         sea_area_locations_usace_ienc_complete,
         sea_areas_usace_ienc_complete,
         shoreline_construction_areas_usace_ienc_complete,
+        small_craft_facility_areas_usace_ienc_complete,
         sloped_ground_lines_usace_ienc_complete,
+        child_care_centers_complete,
         usace_caution_areas_complete,
         usace_berths_areas_complete,
         usace_dry_docks_complete,
@@ -1114,6 +1157,7 @@ defs = Definitions(
         bsee_ocs_platforms_complete,
         proposed_critical_habitat_complete,
         usace_pile_locations_complete,
+        fws_cmt_locations_complete,
         usace_daymark_locations_complete,
         usace_dynamic_buoys_complete,
         usace_pipeline_areas_complete,
@@ -1143,6 +1187,7 @@ defs = Definitions(
         epa_emergency_response_rmp_facilities_complete,
         epa_frs_sic_complete,
         epa_frs_sic_published_membership_compatible,
+        epa_frs_interest_contact_complete,
         epa_rcra_tsd_complete,
         docks_source_population_complete,
         docks_source_geometry_quality,
@@ -1156,6 +1201,7 @@ defs = Definitions(
         epa_regions_with_eez_full_quality,
         epa_frs_toxic_release_inventory_complete,
         epa_frs_tsca_complete,
+        epa_frs_interests_complete,
         fdic_locations_full_quality,
         fema_regions_full_quality,
         ferc_historical_full_quality,
@@ -1163,6 +1209,7 @@ defs = Definitions(
         bts_intermodal_freight_air_to_truck_complete,
         fema_nfhl_nodes_complete,
         fema_nfhl_hydrologic_reaches_complete,
+        dialysis_source_locations,
         usace_fuds_munitions_response_sites_complete,
         usace_fuds_public_properties_complete,
     ],
@@ -1175,6 +1222,7 @@ defs = Definitions(
         epa_small_scale_source_integrity_job,
         fema_offices_draft_job,
         epa_sems_source_integrity_job,
+        nbi_source_integrity_job,
         elsd_source_integrity_job,
         epa_disaster_debris_draft_job,
         colleges_source_integrity_job,
@@ -1205,13 +1253,16 @@ defs = Definitions(
         sea_area_locations_usace_ienc_draft_job,
         sea_areas_usace_ienc_draft_job,
         shoreline_construction_areas_usace_ienc_draft_job,
+        small_craft_facility_areas_usace_ienc_draft_job,
         sloped_ground_lines_usace_ienc_draft_job,
+        child_care_centers_draft_job,
         usace_obstruction_lines_draft_job,
         usace_mooring_facility_lines_draft_job,
         floodwalls_usace_ienc_draft_job,
         harbor_facility_locations_usace_ienc_draft_job,
         usace_administrative_areas_draft_job,
         usace_navigation_marks_areas_draft_job,
+        usace_navigation_lights_draft_job,
         secondary_school_districts_draft_refresh_job,
         unified_school_districts_draft_refresh_job,
         usace_pontoon_areas_draft_job,
@@ -1221,6 +1272,7 @@ defs = Definitions(
         plate_boundaries_draft_job,
         eia_power_plants_draft_job,
         eia_biodiesel_plants_draft_job,
+        eia_ethanol_plants_draft_job,
         epa_power_generation_draft_job,
         epa_icis_wastewater_draft_job,
         epa_frs_naics_draft_job,
@@ -1248,6 +1300,7 @@ defs = Definitions(
         faa_aviation_draft_refresh_job,
         ibc_boundary_draft_refresh_job,
         fws_cbrs_buffer_draft_refresh_job,
+        fws_cmt_locations_draft_refresh_job,
         fws_cbrs_map_panels_draft_refresh_job,
         fws_cbrs_prohibitions_draft_refresh_job,
         fws_cbrs_units_draft_refresh_job,
@@ -1278,9 +1331,11 @@ defs = Definitions(
         epa_regions_with_eez_draft_job,
         epa_frs_tri_draft_job,
         epa_tsca_draft_job,
+        epa_frs_interests_draft_job,
         fdic_locations_draft_job,
         fema_regions_draft_job,
         ferc_historical_reconstruction_job,
+        dialysis_source_integrity_job,
     ],
     schedules=[
         bts_ferry_terminals_draft_refresh_schedule,
@@ -1295,6 +1350,7 @@ defs = Definitions(
         epa_small_scale_source_integrity_schedule,
         fema_offices_draft_schedule,
         epa_sems_source_integrity_schedule,
+        nbi_source_integrity_schedule,
         elsd_source_integrity_schedule,
         epa_disaster_debris_draft_schedule,
         colleges_source_integrity_schedule,
@@ -1326,13 +1382,16 @@ defs = Definitions(
         sea_area_locations_usace_ienc_draft_schedule,
         sea_areas_usace_ienc_draft_schedule,
         shoreline_construction_areas_usace_ienc_draft_schedule,
+        small_craft_facility_areas_usace_ienc_draft_schedule,
         sloped_ground_lines_usace_ienc_draft_schedule,
+        child_care_centers_draft_schedule,
         usace_obstruction_lines_draft_schedule,
         usace_mooring_facility_lines_draft_schedule,
         floodwalls_usace_ienc_draft_schedule,
         harbor_facility_locations_usace_ienc_draft_schedule,
         usace_administrative_areas_draft_schedule,
         usace_navigation_marks_areas_draft_schedule,
+        usace_navigation_lights_draft_schedule,
         secondary_school_districts_draft_refresh_schedule,
         principal_ports_draft_schedule,
         usace_berths_areas_draft_schedule,
@@ -1347,6 +1406,7 @@ defs = Definitions(
         plate_boundaries_draft_schedule,
         eia_power_plants_draft_schedule,
         eia_biodiesel_plants_draft_schedule,
+        eia_ethanol_plants_draft_schedule,
         epa_power_generation_draft_schedule,
         epa_icis_wastewater_draft_schedule,
         fuds_projects_points_draft_schedule,
@@ -1376,6 +1436,7 @@ defs = Definitions(
         faa_aviation_draft_refresh_schedule,
         ibc_boundary_draft_refresh_schedule,
         fws_cbrs_buffer_draft_refresh_schedule,
+        fws_cmt_locations_draft_refresh_schedule,
         fws_cbrs_map_panels_draft_refresh_schedule,
         fws_cbrs_prohibitions_draft_refresh_schedule,
         fws_cbrs_units_draft_refresh_schedule,
@@ -1397,6 +1458,7 @@ defs = Definitions(
         usace_data_coverage_areas_draft_schedule,
         epa_rmp_facilities_draft_schedule,
         epa_frs_sic_draft_schedule,
+        epa_frs_interest_contact_draft_schedule,
         epa_rcra_tsd_draft_schedule,
         docks_draft_schedule,
         epa_facilities_draft_schedule,
@@ -1405,6 +1467,7 @@ defs = Definitions(
         epa_regions_with_eez_draft_schedule,
         epa_frs_tri_draft_schedule,
         epa_tsca_draft_schedule,
+        epa_frs_interests_draft_schedule,
         fdic_locations_draft_schedule,
         fema_regions_draft_schedule,
         ferc_historical_integrity_schedule,
@@ -1412,6 +1475,7 @@ defs = Definitions(
         fuds_district_boundaries_draft_schedule,
         tsunami_events_draft_schedule,
         bts_air_truck_draft_schedule,
+        dialysis_source_integrity_schedule,
         fuds_mrs_draft_schedule,
         fuds_public_properties_draft_schedule,
     ],
