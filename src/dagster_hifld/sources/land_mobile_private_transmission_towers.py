@@ -92,7 +92,8 @@ EXPECTED_LICENSEE_ROWS = 861663
 EXPECTED_ACTIVE_LOCATION_ROWS = 925853
 EXPECTED_MISSING_COORDINATE_ROWS = 322063
 EXPECTED_ACTIVE_LOCATIONS = 603790
-EXPECTED_DUPLICATE_LOCATION_KEY_COUNT = 27
+EXPECTED_DUPLICATE_LOCATION_KEY_COUNT = 42
+EXPECTED_PUBLISHED_DUPLICATE_LOCATION_KEY_COUNT = 27
 EXPECTED_ACTIVE_ID_SHA256 = "3763b3226296ed4f8a549628072deb2b575f3330d809d2204e46643bca27e7de"
 EXPECTED_STATE_ROSTER_SHA256 = "85a1495cb39eae5ee5d48f5e8daf99251523463c3ae279686acac695864c195d"
 EXPECTED_EMPTY_CALLSIGN_ROWS = 2
@@ -431,6 +432,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         raise ValueError("source_active_population_drift")
     if duplicate_keys != EXPECTED_DUPLICATE_LOCATION_KEY_COUNT:
         raise ValueError("source_duplicate_location_key_count_drift")
+    published_duplicate_keys = len(published) - len({(item["UniqSysID"], item["LocNum"]) for item in published})
+    if published_duplicate_keys != EXPECTED_PUBLISHED_DUPLICATE_LOCATION_KEY_COUNT:
+        raise ValueError("source_published_duplicate_location_key_count_drift")
     published.sort(key=lambda item: (item["UniqSysID"], item["LocNum"]))
     roster = [[item["UniqSysID"], item["LocNum"]] for item in published]
     if _sha(_canonical(roster)) != EXPECTED_ACTIVE_ID_SHA256:
@@ -468,6 +472,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         "source_extra_field_rows": {"HD": hd_extra_field_rows, "EN": en_extra_field_rows,
                                     "LO": lo_extra_field_rows},
         "source_duplicate_location_key_count": duplicate_keys,
+        "source_published_duplicate_location_key_count": published_duplicate_keys,
         "source_bounds": bounds, "source_state_count": len(states),
         "source_coverage_scope": COVERAGE_SCOPE,
         "drift_guard": ("Exact capture roster, HTTP status/completeness/length/hash receipt, zip member roster, "
@@ -476,7 +481,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                         "tolerated, radio service and license status distributions, unique license and licensee "
                         "identities, LO/HD callsign join, unique USID join, active coordinate-bearing population "
                         "count, full active ID roster digest (duplicate location keys preserved as distinct filed "
-                        "records), state roster digest, latitude/longitude direction distributions with the "
+                        "records: 42 duplicate occurrences across all filed rows, 27 within the published "
+                        "coordinate-bearing population), state roster digest, latitude/longitude direction distributions with the "
                         "historical hemisphere default (only S marks southern latitude and only E marks eastern "
                         "longitude; missing or non-canonical direction components default to north/west), bounds, "
                         "empty-callsign, missing-coordinate, out-of-range-coordinate and extra-field row counts are "

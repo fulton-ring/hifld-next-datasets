@@ -123,6 +123,7 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
             "EXPECTED_LICENSE_STATUS_COUNTS": {"A": 3, "C": 1}, "EXPECTED_LICENSEE_ROWS": 4,
             "EXPECTED_ACTIVE_LOCATION_ROWS": 7, "EXPECTED_MISSING_COORDINATE_ROWS": 1,
             "EXPECTED_ACTIVE_LOCATIONS": 6, "EXPECTED_DUPLICATE_LOCATION_KEY_COUNT": 1,
+            "EXPECTED_PUBLISHED_DUPLICATE_LOCATION_KEY_COUNT": 1,
             "EXPECTED_EMPTY_CALLSIGN_ROWS": 2, "EXPECTED_OUT_OF_RANGE_COORDINATE_ROWS": 1,
             "EXPECTED_LAT_DIRECTION_COUNTS": {"N": 4, "S": 1, "": 1},
             "EXPECTED_LON_DIRECTION_COUNTS": {"W": 4, "E": 1, "": 1},
@@ -172,6 +173,7 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
         self.assertEqual(audit["source_longitude_direction_counts"], {"W": 4, "E": 1, "": 1})
         self.assertEqual(audit["source_extra_field_rows"], {"HD": 0, "EN": 0, "LO": 0})
         self.assertEqual(audit["source_duplicate_location_key_count"], 1)
+        self.assertEqual(audit["source_published_duplicate_location_key_count"], 1)
         self.assertEqual(audit["source_file_creation_date"], "Sun Nov  8 09:16:00 EST 2026")
         self.assertEqual(audit["source_counts_file"], {"HD.dat": 4, "EN.dat": 5, "LO.dat": 8})
         self.assertEqual(audit["source_bounds"], [-123.0, -14.0, 145.333333333, 93.0])
