@@ -36,6 +36,24 @@ def _write_page_files(capture_root: Path, index: int, page: dict) -> dict:
     return {"name": name, "body": body, "receipt": receipt}
 
 
+def _write_roster_windows(capture_root: Path, stage: str, ids: list[int]) -> list[dict]:
+    """Persist one stage's roster windows at the fixture's ROSTER_WINDOW of 2."""
+    windows = []
+    for index, low in enumerate(range(min(ids), max(ids) + 1, 2)):
+        name = f"ids_{stage}_r{index:03d}"
+        chunk = [value for value in ids if low <= value < low + 2]
+        body = json.dumps({"objectIdFieldName": "OBJECTID", "objectIds": chunk},
+                          separators=(",", ":")).encode()
+        (capture_root / f"{name}.body").write_bytes(body)
+        (capture_root / f"{name}.wire").write_bytes(body)
+        receipt = {"method": "GET", "url": source._roster_range_url(low, min(low + 2, max(ids) + 1)),
+                   "final_url": None, "status": 200, "complete_body": True,
+                   "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
+        (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+        windows.append({"name": name, "body": body, "receipt": receipt})
+    return windows
+
+
 def _audited(features):
     """Digests/bounds for the fixture population, via the module's own accumulator."""
     attr_names = [f["name"] for f in FIXTURE_FIELDS if f["name"] != "SHAPE"]
@@ -45,7 +63,7 @@ def _audited(features):
 
 
 def _pins(schema, audited, ids):
-    return dict(EXPECTED_COUNT=len(ids), SEGMENT_START_RECORDS=2,
+    return dict(EXPECTED_COUNT=len(ids), SEGMENT_START_RECORDS=2, ROSTER_WINDOW=2,
                 EXPECTED_NULL_GEOMETRY_COUNT=audited["null_geometry_count"],
                 EXPECTED_NAN_GEOMETRY_COUNT=audited["nan_string_geometry_count"],
                 EXPECTED_ID_SHA256=hashlib.sha256(_canonical(ids)).hexdigest(),
@@ -119,18 +137,24 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
         ]
         self.page_files = [_write_page_files(self.root, index, page)
                            for index, page in enumerate(self.pages)]
+        self.stats_doc = {"features": [{"attributes": {"MIN_OBJECTID": 10, "MAX_OBJECTID": 13}}]}
+        self.window_files = {stage: _write_roster_windows(self.root, stage, self.ids)
+                             for stage in ("seed", "before", "after")}
         docs = {"service_before": service, "service_after": service, "layer_before": layer,
                 "layer_after": layer,
                 "count_before": {"count": 4}, "count_after": {"count": 4},
-                "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": self.ids},
-                "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": self.ids},
-                "ids_seed": {"objectIdFieldName": "OBJECTID", "objectIds": self.ids}}
+                "ids_stats": self.stats_doc}
         self.doc_bodies = {name: json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode()
                            for name, doc in docs.items()}
         self.captures = {name: (body, {"status": 200}) for name, body in self.doc_bodies.items()}
         for page_file in self.page_files:
             self.captures[page_file["name"]] = (None, page_file["receipt"])
+        for windows in self.window_files.values():
+            for window in windows:
+                self.captures[window["name"]] = (None, window["receipt"])
         self.captures["service_doc"] = (SERVICE_DOC_BODY, {"status": 200})
+        self.roster_windows = {f"ids_{stage}": [w["name"] for w in windows]
+                               for stage, windows in self.window_files.items()}
         self.pins = _pins(self.schema, self.audited, self.ids)
 
     def _bodies_for_capture(self):
@@ -138,6 +162,9 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
         bodies["service_doc"] = SERVICE_DOC_BODY
         for page_file in self.page_files:
             bodies[page_file["name"]] = page_file["body"]
+        for windows in self.window_files.values():
+            for window in windows:
+                bodies[window["name"]] = window["body"]
         return bodies
 
     def _fake_capture_get(self, bodies, calls):
@@ -160,7 +187,7 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
         pins = dict(self.pins)
         pins.update(pin_overrides)
         with patch.multiple(source, **pins):
-            return source._validate_captures(self.root, self.captures)
+            return source._validate_captures(self.root, self.captures, self.roster_windows)
 
     def test_streamed_list_sha_matches_canonical_digest(self):
         self.assertEqual(source._list_sha(self.features), source._sha(_canonical(self.features)))
@@ -192,7 +219,7 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
                     for offset, count in segments}
         with patch.multiple(source, EXPECTED_COUNT=15000005):
             with self.assertRaisesRegex(ValueError, "source_capture_roster_incomplete_or_unexpected"):
-                source._validate_captures(self.root, captures)
+                source._validate_captures(self.root, captures, {"ids_seed": [], "ids_before": [], "ids_after": []})
 
     def test_valid_fixture_stream_validates(self):
         _, _, extracted = self._validate()
@@ -201,12 +228,26 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
         self.assertEqual(extracted["audit"]["nan_string_geometry_count"], 1)
 
     def test_id_roster_response_order_is_not_population_drift(self):
-        for name, ids in (("ids_seed", [13, 10, 12, 11]), ("ids_before", [11, 12, 10, 13])):
-            doc = json.loads(self.captures[name][0])
-            doc["objectIds"] = ids
-            self.captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), self.captures[name][1])
+        window = self.root / "ids_before_r000.body"
+        doc = json.loads(window.read_bytes())
+        doc["objectIds"] = list(reversed(doc["objectIds"]))
+        window.write_bytes(json.dumps(doc, separators=(",", ":")).encode())
         _, _, extracted = self._validate()
         self.assertEqual(extracted["ids"], [10, 11, 12, 13])
+
+    def test_missing_roster_window_is_rejected(self):
+        del self.captures["ids_before_r001"]
+        self.roster_windows["ids_before"].remove("ids_before_r001")
+        (self.root / "ids_before_r001.body").unlink()
+        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+            self._validate()
+
+    def test_malformed_oid_stats_are_rejected(self):
+        self.captures["ids_stats"] = (json.dumps(
+            {"features": [{"attributes": {"MIN_OBJECTID": "10", "MAX_OBJECTID": 13}}]},
+            separators=(",", ":")).encode(), self.captures["ids_stats"][1])
+        with self.assertRaisesRegex(ValueError, "source_oid_stats_drift"):
+            self._validate()
 
     def test_missing_service_documentation_link_is_rejected(self):
         self.captures["service_doc"] = (b"<html>unrelated</html>", {"status": 200})

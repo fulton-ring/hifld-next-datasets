@@ -10,16 +10,25 @@ no per-snapshot release date; source freshness, rights, and public-schema
 compatibility are not accepted by this draft.
 
 Scale and resumability: the producer reported 15,270,272 features for this
-layer on 2026-11-12 (returnCountOnly, cross-checked against the complete
-returnIdsOnly roster), roughly ten times the sibling Base Flood Elevations
-layer, so the capture is deliberately resumable. Every served roster segment
-is persisted under the capture directory with its wire copy and hash-pinned
-receipt; a restarted capture re-verifies and reuses each complete segment
-instead of refetching it, and never treats a stale or mismatched segment as
-evidence. The capture still proves completeness the same way as the sibling
-NFHL adapters: pinned count and sorted OBJECTID roster, exact segment tiling,
+layer on 2026-11-12 (returnCountOnly, observed twice in agreement), roughly
+ten times the sibling Base Flood Elevations layer, so the capture is
+deliberately resumable. Every served roster segment is persisted under the
+capture directory with its wire copy and hash-pinned receipt; a restarted
+capture re-verifies and reuses each complete segment instead of refetching
+it, and never treats a stale or mismatched segment as evidence. The capture
+still proves completeness the same way as the sibling NFHL adapters: pinned
+count and the complete sorted OBJECTID roster, exact segment tiling,
 per-page id-slice equality, before/after count/id/metadata brackets, and
 full-record digests.
+
+Roster assembly: the producer refuses a whole-layer ``returnIdsOnly``
+request for this population with its complete HTTP 200 Esri 500 error
+document (observed 2026-11-12, retried in the prior session and again in
+this one), but serves OBJECTID-range id queries, so the roster is assembled
+from disjoint OBJECTID windows exactly like the sibling Flood Hazard Zones
+capture; every window is its own captured, digest-pinned request, and the
+validation re-assembles all three rosters (seed, before, after) from the
+persisted window evidence.
 
 Population digest pins (record, geometry, null/nan counts, observed bounds)
 are established only by a first complete capture; they are ``None`` in this
@@ -96,14 +105,25 @@ DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 SEGMENT_PROBE_ATTEMPTS = 2
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
+# Roster windows: the producer refuses a whole-layer returnIdsOnly request
+# for this population with its complete HTTP 200 Esri 500 error document
+# (observed 2026-11-12: ~40 s to produce the 80-byte error document, after
+# ten refusals in the prior session's probes), but it serves OBJECTID-range
+# id queries: 1,000,000-wide windows returned 155,786 ids / 1,031,989 bytes
+# over OBJECTID 3414..1003414, 53,607 / 482,509 over 30000000..31000000, and
+# 822,806 / 7,405,300 over the dense 70000000..71308225 span (all ascending),
+# so the roster is assembled from disjoint windows of this width, the same
+# established pattern as the sibling Flood Hazard Zones capture.
+DOC_CAPTURE_MAX_BYTES = 256 * 1024 * 1024
+ROSTER_WINDOW = 1_000_000
 # Structural pins below are the observed 2026-11-12 producer contract,
 # established by dated anonymous queries of the producer's own endpoints
-# (returnCountOnly agreed twice, the complete returnIdsOnly roster, and the
-# layer/service metadata documents); the module's own capture must reproduce
-# every pin. The population digest pins (record, geometry, null/nan counts,
-# observed bounds) are None until a first complete capture establishes them;
-# see the module docstring. They fail closed, so the capture can never stage
-# an unverified candidate.
+# (returnCountOnly agreed twice, the complete OBJECTID roster assembled from
+# range-window id queries, and the layer/service metadata documents); the
+# module's own capture must reproduce every pin. The population digest pins
+# (record, geometry, null/nan counts, observed bounds) are None until a first
+# complete capture establishes them; see the module docstring. They fail
+# closed, so the capture can never stage an unverified candidate.
 EXPECTED_COUNT = 15270272
 EXPECTED_ID_SHA256: str | None = None
 EXPECTED_SCHEMA_SHA256 = "3218e41168e49ca448b3e782a7eee571f24ef33996afd64f6f4e6736959ec1a5"
@@ -198,6 +218,42 @@ def _parse_segment_name(name: str) -> tuple[int, int]:
     return int(match.group(1)), int(match.group(2))
 
 
+_ROSTER_WINDOW_NAME_PATTERN = re.compile(r"ids_(seed|before|after)_r([0-9]{3,})$")
+
+
+def _parse_roster_window_name(name: str) -> tuple[str, int]:
+    match = _ROSTER_WINDOW_NAME_PATTERN.fullmatch(name)
+    if match is None:
+        raise ValueError("source_capture_roster_incomplete_or_unexpected")
+    return match.group(1), int(match.group(2))
+
+
+def _assemble_roster(capture_root: Path, window_names: list[str]) -> list[int]:
+    """Re-assemble one stage's OBJECTID roster from its persisted window evidence.
+
+    Every window body is parsed from the capture directory, must carry the
+    producer's ``OBJECTID`` id field with integer ids, and the assembled
+    roster must be non-empty and unique. This is the validation-side proof
+    that the persisted window evidence itself reproduces the roster the
+    capture assembled in memory.
+    """
+    ids: list[int] = []
+    for name in window_names:
+        body = (capture_root / f"{name}.body").read_bytes()
+        if _producer_error_doc(body):
+            raise ValueError("source_ids_roster_window_refused")
+        doc = json.loads(body)
+        if not isinstance(doc, dict) or doc.get("objectIdFieldName") != "OBJECTID":
+            raise ValueError("source_id_field_changed")
+        chunk = doc.get("objectIds")
+        if not isinstance(chunk, list) or any(type(value) is not int for value in chunk):
+            raise ValueError("source_id_population_drift")
+        ids.extend(chunk)
+    if not ids or len(set(ids)) != len(ids):
+        raise ValueError("source_id_population_drift")
+    return sorted(ids)
+
+
 def _segment_query(offset: int, count: int) -> str:
     return _query({"where": "1=1", "outFields": "*", "returnGeometry": "true",
                    "orderByFields": "OBJECTID ASC", "resultOffset": offset,
@@ -210,7 +266,6 @@ def _doc_urls() -> list[tuple[str, str]]:
         ("service_before", SERVICE_URL + "?f=pjson"),
         ("layer_before", LAYER_URL + "?f=pjson"),
         ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-        ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
     ]
 
 
@@ -219,8 +274,57 @@ def _after_doc_urls() -> list[tuple[str, str]]:
         ("layer_after", LAYER_URL + "?f=pjson"),
         ("service_after", SERVICE_URL + "?f=pjson"),
         ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-        ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
     ]
+
+
+def _stats_query() -> str:
+    return _query({"where": "1=1",
+                   "outStatistics": json.dumps([
+                       {"statisticType": "min", "onStatisticField": "OBJECTID",
+                        "outStatisticFieldName": "MIN_OBJECTID"},
+                       {"statisticType": "max", "onStatisticField": "OBJECTID",
+                        "outStatisticFieldName": "MAX_OBJECTID"}]),
+                   "returnGeometry": "false", "f": "json"})
+
+
+def _roster_range_url(low: int, high: int) -> str:
+    return _query({"where": f"OBJECTID>={low} AND OBJECTID<{high}", "returnIdsOnly": "true", "f": "json"})
+
+
+def _capture_roster(client: httpx.Client, capture_root: Path, stage: str,
+                    captures: dict[str, tuple[bytes | None, dict[str, object]]],
+                    min_oid: int, max_oid: int) -> list[int]:
+    """Capture the complete OBJECTID roster as range-window returnIdsOnly requests.
+
+    The producer refuses a whole-layer ``returnIdsOnly`` request for this
+    layer's population with its complete HTTP 200 Esri 500 error document
+    (observed 2026-11-12), but serves constrained OBJECTID ranges, so the
+    roster is assembled from disjoint windows covering [min_oid, max_oid],
+    each window's response captured as its own digest-pinned request. The
+    assembled roster must be unique and integer-valued; window bodies stay
+    in the resumable capture directory, and the capture's roster validation
+    re-assembles every stage's roster from that persisted evidence.
+    """
+    ids: list[int] = []
+    for index, low in enumerate(range(min_oid, max_oid + 1, ROSTER_WINDOW)):
+        name = f"ids_{stage}_r{index:03d}"
+        body, receipt = _capture_with_retry(
+            client, _roster_range_url(low, min(low + ROSTER_WINDOW, max_oid + 1)),
+            capture_root, name, max_bytes=DOC_CAPTURE_MAX_BYTES,
+            attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+        if _producer_error_doc(body):
+            raise ValueError("source_ids_roster_window_refused")
+        doc = json.loads(body)
+        if not isinstance(doc, dict) or doc.get("objectIdFieldName") != "OBJECTID":
+            raise ValueError("source_id_field_changed")
+        chunk = doc.get("objectIds")
+        if not isinstance(chunk, list) or any(type(value) is not int for value in chunk):
+            raise ValueError("source_id_population_drift")
+        ids.extend(chunk)
+        captures[name] = (None, receipt)
+    if not ids or len(set(ids)) != len(ids):
+        raise ValueError("source_id_population_drift")
+    return sorted(ids)
 
 
 def _validate_spatial_reference(value: object, label: str) -> None:
@@ -504,35 +608,58 @@ def _validate_docs_and_service(captures: dict[str, tuple[bytes, dict[str, object
         raise ValueError("source_service_metadata_changed_during_capture")
     if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
         raise ValueError("source_count_drift")
-    rosters = [docs[name].get("objectIds") for name in ("ids_before", "ids_seed", "ids_after")]
-    if any(not isinstance(roster, list) or len(roster) != EXPECTED_COUNT
-           or any(type(value) is not int for value in roster) or len(set(roster)) != EXPECTED_COUNT
-           for roster in rosters):
-        raise ValueError("source_id_population_drift")
-    if any(sorted(roster) != sorted(rosters[0]) for roster in rosters[1:]):
-        raise ValueError("source_id_population_drift")
-    ids = sorted(rosters[0])
-    if EXPECTED_ID_SHA256 is not None and _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_drift")
-    if any(docs[name].get("objectIdFieldName") != "OBJECTID" for name in ("ids_before", "ids_after", "ids_seed")):
-        raise ValueError("source_id_field_changed")
     if docs["count_before"] != docs["count_after"]:
         raise ValueError("source_count_changed_during_capture")
-    return layer, fields_value, ids
+    return layer, fields_value
 
 
-def _validate_captures(capture_root: Path, captures: dict[str, tuple[bytes | None, dict[str, object]]]):
+def _validate_rosters(capture_root: Path, docs: dict[str, object],
+                     roster_windows: dict[str, list[str]]) -> list[int]:
+    """Re-assemble every stage's OBJECTID roster from its persisted windows.
+
+    The window plan must exactly cover the captured min/max OBJECTID span at
+    ROSTER_WINDOW width; each stage's roster is re-assembled from disk, must
+    have the pinned count, be unique, and match the seed roster, and the
+    pinned id-roster digest must reproduce. Returns the sorted seed roster.
+    """
+    stats_features = docs["ids_stats"].get("features")
+    stats_attrs = stats_features[0].get("attributes") \
+        if isinstance(stats_features, list) and stats_features and isinstance(stats_features[0], dict) else None
+    stats_attrs = stats_attrs if isinstance(stats_attrs, dict) else {}
+    min_oid, max_oid = stats_attrs.get("MIN_OBJECTID"), stats_attrs.get("MAX_OBJECTID")
+    if type(min_oid) is not int or type(max_oid) is not int or max_oid < min_oid:
+        raise ValueError("source_oid_stats_drift")
+    expected_windows = list(range((max_oid - min_oid + 1 + ROSTER_WINDOW - 1) // ROSTER_WINDOW))
+    for stage in ("ids_seed", "ids_before", "ids_after"):
+        indices = sorted(_parse_roster_window_name(name)[1] for name in roster_windows.get(stage, []))
+        if indices != expected_windows:
+            raise ValueError("source_id_population_drift")
+    ids = _assemble_roster(capture_root, roster_windows["ids_seed"])
+    if len(ids) != EXPECTED_COUNT:
+        raise ValueError("source_id_population_drift")
+    for stage in ("ids_before", "ids_after"):
+        if _assemble_roster(capture_root, roster_windows[stage]) != ids:
+            raise ValueError("source_id_population_drift")
+    if EXPECTED_ID_SHA256 is not None and _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
+        raise ValueError("source_id_roster_drift")
+    return ids
+
+
+def _validate_captures(capture_root: Path, captures: dict[str, tuple[bytes | None, dict[str, object]]],
+                       roster_windows: dict[str, list[str]]):
     """Validate the complete capture without holding the layer in memory.
 
     Streams every segment body once from the capture directory, enforcing the
     exact segment tiling, per-page id slices, attribute schema, geometry
     validity and coordinate range, ascending OBJECTID order, and the pinned
-    metadata contracts, while accumulating the whole-population digests.
-    Population digest pins are enforced when set and reported as pending
-    otherwise (fails closed; see the module docstring).
+    metadata contracts, while accumulating the whole-population digests. The
+    three OBJECTID rosters are re-assembled from their persisted window
+    evidence. Population digest pins are enforced when set and reported as
+    pending otherwise (fails closed; see the module docstring).
     """
     docs = {name: json.loads(body) for name, (body, _) in captures.items()
-            if name != "service_doc" and body is not None and not name.startswith("page_")}
+            if name != "service_doc" and body is not None and not name.startswith("page_")
+            and not _ROSTER_WINDOW_NAME_PATTERN.fullmatch(name)}
     # Sort segment names by their parsed numeric (offset, count), never
     # lexicographically: this layer's roster spans more than fifteen million
     # OBJECTIDs, so segment names mix six-, seven- and eight-digit offsets and
@@ -540,6 +667,7 @@ def _validate_captures(capture_root: Path, captures: dict[str, tuple[bytes | Non
     # proof.
     segments = sorted((_parse_segment_name(name) for name in captures if name.startswith("page_")))
     page_names = [_segment_name(offset, count) for offset, count in segments]
+    window_names = [name for name in captures if _ROSTER_WINDOW_NAME_PATTERN.fullmatch(name)]
     position = 0
     for offset, count in segments:
         if offset != position:
@@ -547,9 +675,10 @@ def _validate_captures(capture_root: Path, captures: dict[str, tuple[bytes | Non
         position += count
     if position != EXPECTED_COUNT:
         raise ValueError("source_page_tiling_incomplete_or_overlapped")
-    if set(captures) != set(docs) | {"service_doc", *page_names}:
+    if set(captures) != set(docs) | {"service_doc", *window_names, *page_names}:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    layer, fields_value, ids = _validate_docs_and_service(captures, docs)
+    layer, fields_value = _validate_docs_and_service(captures, docs)
+    ids = _validate_rosters(capture_root, docs, roster_windows)
 
     attr_names = [field["name"] for field in fields_value if field["name"] != "SHAPE"]
     accumulator = _SegmentAccumulator(attr_names)
@@ -716,27 +845,42 @@ def capture_nfhl_flood_hazard_boundaries(storage: StagingStorageResource, *, ver
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-flood-hazard-boundaries-draft"}) as client:
-            seed_body, seed_receipt = _capture_with_retry(
-                client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
+            stats_body, stats_receipt = _capture_with_retry(
+                client, _stats_query(), capture_root, "ids_stats",
+                max_bytes=DOC_CAPTURE_MAX_BYTES,
                 attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or len(seed) != EXPECTED_COUNT
-                    or any(type(value) is not int for value in seed) or len(set(seed)) != EXPECTED_COUNT):
+            if _producer_error_doc(stats_body):
+                raise ValueError("source_oid_stats_refused")
+            stats_features = json.loads(stats_body).get("features")
+            stats_attrs = stats_features[0].get("attributes") \
+                if isinstance(stats_features, list) and stats_features and isinstance(stats_features[0], dict) else None
+            stats_attrs = stats_attrs if isinstance(stats_attrs, dict) else {}
+            min_oid, max_oid = stats_attrs.get("MIN_OBJECTID"), stats_attrs.get("MAX_OBJECTID")
+            if type(min_oid) is not int or type(max_oid) is not int or max_oid < min_oid:
+                raise ValueError("source_oid_stats_drift")
+            captures["ids_stats"] = (stats_body, stats_receipt)
+            ids = _capture_roster(client, capture_root, "seed", captures, min_oid, max_oid)
+            if len(ids) != EXPECTED_COUNT:
                 raise ValueError("source_seed_id_population_drift")
-            captures["ids_seed"] = (seed_body, seed_receipt)
             for name, url in _doc_urls():
                 body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 captures[name] = (body, receipt)
+            ids_before = _capture_roster(client, capture_root, "before", captures, min_oid, max_oid)
             captures.update(_capture_segments(client, capture_root, EXPECTED_COUNT))
             for name, url in _after_doc_urls():
                 body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 captures[name] = (body, receipt)
-        layer, source_fields, extracted = _validate_captures(capture_root, captures)
+            ids_after = _capture_roster(client, capture_root, "after", captures, min_oid, max_oid)
+        roster_windows = {stage: sorted(name for name in captures
+                                        if _ROSTER_WINDOW_NAME_PATTERN.fullmatch(name)
+                                        and _parse_roster_window_name(name)[0] == stage)
+                          for stage in ("seed", "before", "after")}
+        roster_windows = {f"ids_{stage}": names for stage, names in roster_windows.items()}
+        layer, source_fields, extracted = _validate_captures(capture_root, captures, roster_windows)
     except PopulationDigestPinsPending as pending:
         receipts = {}
         for path in sorted(capture_root.glob("*.receipt.json")):
@@ -759,10 +903,16 @@ def capture_nfhl_flood_hazard_boundaries(storage: StagingStorageResource, *, ver
                         "pending_pins": pending.audit["pending_pins"],
                         "capture_directory": str(capture_root),
                         "receipts": receipts}) + b"\n")
-        retained = {name: value for name, value in captures.items() if not name.startswith("page_")}
+        retained = {name: value for name, value in captures.items()
+                    if not name.startswith("page_") and not _ROSTER_WINDOW_NAME_PATTERN.fullmatch(name)}
         for receipt_path in capture_root.glob("*.receipt.json"):
             name = receipt_path.name.removesuffix(".receipt.json")
-            if name in retained or name.startswith("page_"):
+            if name in retained or name.startswith("page_") \
+                    or _ROSTER_WINDOW_NAME_PATTERN.fullmatch(name):
+                # Segment bodies and roster windows are kept only in the
+                # resumable capture directory; this failure is not a source
+                # drift, so only the bounded document evidence is copied into
+                # staging quarantine.
                 continue
             try:
                 retained[name] = ((capture_root / f"{name}.body").read_bytes(), json.loads(receipt_path.read_bytes()))
@@ -785,10 +935,16 @@ def capture_nfhl_flood_hazard_boundaries(storage: StagingStorageResource, *, ver
         (capture_root / "capture_manifest.json").write_bytes(
             _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                         "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        retained = {name: value for name, value in captures.items() if not name.startswith("page_")}
+        retained = {name: value for name, value in captures.items()
+                    if not name.startswith("page_") and not _ROSTER_WINDOW_NAME_PATTERN.fullmatch(name)}
         for receipt_path in capture_root.glob("*.receipt.json"):
             name = receipt_path.name.removesuffix(".receipt.json")
-            if name in retained or name.startswith("page_"):
+            if name in retained or name.startswith("page_") \
+                    or _ROSTER_WINDOW_NAME_PATTERN.fullmatch(name):
+                # Segment bodies and roster windows are kept only in the
+                # resumable capture directory; this failure is not a source
+                # drift, so only the bounded document evidence is copied into
+                # staging quarantine.
                 continue
             try:
                 retained[name] = ((capture_root / f"{name}.body").read_bytes(), json.loads(receipt_path.read_bytes()))
