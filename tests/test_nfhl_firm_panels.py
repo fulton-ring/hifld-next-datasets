@@ -539,7 +539,7 @@ class NfhlFirmPanelsTests(unittest.TestCase):
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_firm_panels(storage, version="vfixture",
                                                             capture_directory=str(root / "captures"))
-                self.assertEqual(candidate["feature_count"], 5)
+                self.assertEqual(candidate["feature_count"], 6)
                 self.assertEqual(candidate["source_null_geometry_count"], counts[0])
                 self.assertEqual(candidate["source_nan_string_geometry_count"], counts[1])
                 prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
