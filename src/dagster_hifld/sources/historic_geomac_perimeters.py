@@ -257,10 +257,16 @@ def _live_capture(storage: StagingStorageResource, url: str) -> tuple[bytes, dic
                 receipt.update(status=response.status_code,
                                content_length_header=response.headers.get('content-length'))
                 final_url = str(response.url)
-                redacted, query_sha = _redact_final_url(final_url)
-                receipt.update(final_url=redacted)
-                if query_sha is not None:
-                    receipt['final_url_query_sha256'] = query_sha
+                if url == DOWNLOAD_URL:
+                    # Only the archive download redirects; its short-lived
+                    # signed CDN query is dropped while pinning its hash.
+                    final_url, query_sha = _redact_final_url(final_url)
+                    receipt.update(final_url=final_url)
+                    if query_sha is not None:
+                        receipt['final_url_query_sha256'] = query_sha
+                else:
+                    # Pinned control URLs carry the requested query verbatim.
+                    receipt.update(final_url=final_url)
                 chunks = []
                 for block in response.iter_bytes(chunk_size=1 << 20):
                     chunks.append(block)
