@@ -85,7 +85,7 @@ def _fixture():
 
 def _pins(features, schema, geom, counts, bounds):
     null_count, nan_count, empty_count = counts
-    return dict(EXPECTED_COUNT=4, PAGE_SIZE=2,
+    return dict(EXPECTED_COUNT=4, SEGMENT_START_RECORDS=2,
                 EXPECTED_NULL_GEOMETRY_COUNT=null_count, EXPECTED_NAN_GEOMETRY_COUNT=nan_count,
                 EXPECTED_EMPTY_GEOMETRY_COUNT=empty_count,
                 EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13])).hexdigest(),
@@ -372,18 +372,18 @@ class NfhlBaseIndexTests(unittest.TestCase):
             self.assertEqual(len(calls), 3)
             self.assertEqual((root / "probe.attempt-01.receipt.json").read_bytes(), b'{"status": null}\n')
 
-    def test_persistent_page_error_doc_fails_capture_and_quarantines(self):
+    def test_adaptive_bisection_splits_producer_cap_failures(self):
         import tempfile
         from pathlib import Path
 
-        from dagster_hifld.resources import StagingStorageResource
-
-        _, features, fixture_captures, schema, geom, counts, bounds = _fixture()
+        _, features, fixture_captures, _, _, _, _ = _fixture()
         bodies = {name: body for name, (body, _) in fixture_captures.items()}
         error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+        calls = []
 
         def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
-            body = error_body if name.startswith("page_") else bodies.get(name, error_body)
+            calls.append(name)
+            body = error_body if name == "page_000000_00004" else bodies[name]
             digest = hashlib.sha256(body).hexdigest()
             receipt = {"method": "GET", "url": url, "final_url": url, "observed_at":
                        "2026-11-12T00:00:00+00:00", "status": 200, "complete_body": True,
@@ -396,20 +396,41 @@ class NfhlBaseIndexTests(unittest.TestCase):
             return body, receipt
 
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
-            with patch.multiple(source, **_pins(_page_features(fixture_captures), schema, geom, counts, bounds),
-                                PAGE_CAPTURE_ATTEMPTS=1), \
+            root = Path(temporary) / "captures"
+            root.mkdir()
+            with patch.multiple(source, SEGMENT_START_RECORDS=4,
+                                SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
-                with self.assertRaisesRegex(ValueError, "source_page_error"):
-                    source.capture_nfhl_base_index(storage, version="vfixture",
-                                                   capture_directory=str(root / "captures"))
-            manifests = list((root / "staging" / "_quarantine").rglob("failure.json"))
-            self.assertEqual(len(manifests), 1)
-            failure = json.loads(manifests[0].read_text())
-            self.assertEqual(failure["reason_code"], "ValueError")
-            self.assertIn("page_000000_00002", failure["captured_names"])
+                segments = source._capture_segments(None, root, 4)
+            self.assertEqual(sorted(segments), ["page_000000_00002", "page_000002_00002"])
+            self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
+            self.assertEqual(calls.count("page_000000_00004"), 1)
+
+    def test_unservable_single_feature_fails_explicitly(self):
+        import tempfile
+        from pathlib import Path
+
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            digest = hashlib.sha256(error_body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                       "complete_body": True, "bytes": len(error_body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(error_body)
+            (capture_root / f"{name}.wire").write_bytes(error_body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return error_body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            root.mkdir()
+            with patch.multiple(source, SEGMENT_START_RECORDS=4,
+                                SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
+                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
+                    source._capture_segments(None, root, 4)
 
     def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
         import tempfile

@@ -10,16 +10,25 @@ source freshness, rights, and public-schema compatibility are not accepted by
 this draft.
 
 Each record is a base map index polygon (the imagery/source sheet that backs a
-DFIRM study), so serialized feature density is small and uniform and fixed
-2000-record pagination (the producer's maxRecordCount) serves the complete
-layer. The producer's MapServer does intermittently answer valid requests with
+DFIRM study), but serialized feature density varies from a few hundred bytes to
+tens of kilobytes per record, and the producer's REST query refuses with a
+complete HTTP 200 Esri error document whenever one response approaches roughly
+36 MB (dated 2026-11-12 probes: a 1000-record slice served 3.9 MB where its
+2000-record parent was refused; a 200-record slice served 11.6 MB where its
+500-record parent was refused). Fixed pagination therefore cannot serve the
+complete layer, so it is captured as adaptively bisected segments of the sorted
+OBJECTID roster: each accepted segment must return exactly its expected id
+slice, the accepted segments must tile the complete roster without gaps or
+overlaps, and the before/after count/id/metadata brackets plus full-record
+digests prove that nothing was skipped, duplicated, or reordered.
+
+The producer's MapServer also intermittently answers valid requests with
 complete HTTP 200 Esri error documents and resets connections (observed while
 probing this service on 2026-11-12); every request retries a bounded number of
 times for those transient modes, failed attempts are preserved on disk under
 ``<name>.attempt-NN`` evidence names, and a retry re-issues the exact same
-request, so the pinned before/after id rosters, counts, metadata brackets,
-exact per-page id slices, and full-record digests prove retries can never mask
-drift.
+request, so retries can never mask drift. A single-record segment the producer
+still refuses ends the capture explicitly rather than guessing.
 """
 from __future__ import annotations
 
@@ -28,6 +37,7 @@ import json
 import re
 import shutil
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -61,13 +71,16 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "Base Index"
 PUBLISHER = "Federal Emergency Management Agency (FEMA)"
 SOURCE_CRS_WKID = 4269
-PAGE_SIZE = 2000
+# Initial segment width, capped by the producer's maxRecordCount (2000). Any
+# segment whose response would approach the producer's ~36 MB transfer cap is
+# bisected until the producer serves it; see the module docstring.
+SEGMENT_START_RECORDS = 2000
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MIN_FREE_BYTES = 6_000_000_000
 DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
-PAGE_CAPTURE_ATTEMPTS = 3
-PAGE_CAPTURE_BASE_DELAY_SECONDS = 5.0
+SEGMENT_PROBE_ATTEMPTS = 2
+SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-12 complete-layer population contract.
 EXPECTED_COUNT = 327459
 EXPECTED_ID_SHA256 = "PENDING_PROBE"
@@ -517,6 +530,41 @@ def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name
     raise AssertionError("unreachable_retry_state")
 
 
+def _capture_segments(client: httpx.Client, capture_root: Path,
+                      total: int) -> dict[str, tuple[bytes, dict[str, object]]]:
+    """Capture the complete layer as adaptively bisected roster segments.
+
+    Segments start at SEGMENT_START_RECORDS. A segment the producer keeps
+    refusing with an error document (its response would exceed the producer's
+    transfer cap) is bisected until the producer serves both halves; the
+    refused segment's final body and receipts stay on disk as evidence under
+    its own name. A single-record segment that still fails ends the capture
+    explicitly.
+    """
+    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    segments: deque[tuple[int, int]] = deque(
+        (offset, min(SEGMENT_START_RECORDS, total - offset))
+        for offset in range(0, total, SEGMENT_START_RECORDS)
+    )
+    while segments:
+        offset, count = segments.popleft()
+        name = _segment_name(offset, count)
+        body, receipt = _capture_with_retry(
+            client, _segment_query(offset, count), capture_root, name,
+            max_bytes=MAX_CAPTURE_BYTES,
+            attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
+            base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
+        if _producer_error_doc(body):
+            if count == 1:
+                raise ValueError("source_single_feature_unservable")
+            middle = count // 2
+            segments.appendleft((offset + middle, count - middle))
+            segments.appendleft((offset, middle))
+            continue
+        captures[name] = (body, receipt)
+    return captures
+
+
 def capture_nfhl_base_index(storage: StagingStorageResource, *, version: str,
                             capture_directory: str | None = None) -> dict[str, object]:
     """Capture, verify, and stage a complete unapproved NFHL Base Index candidate."""
@@ -554,16 +602,7 @@ def capture_nfhl_base_index(storage: StagingStorageResource, *, version: str,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 captures[name] = (body, receipt)
-            for offset in range(0, EXPECTED_COUNT, PAGE_SIZE):
-                count = min(PAGE_SIZE, EXPECTED_COUNT - offset)
-                name = _segment_name(offset, count)
-                body, receipt = _capture_with_retry(
-                    client, _segment_query(offset, count), capture_root, name,
-                    max_bytes=MAX_CAPTURE_BYTES, attempts=PAGE_CAPTURE_ATTEMPTS,
-                    base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS)
-                if _producer_error_doc(body):
-                    raise ValueError("source_page_error")
-                captures[name] = (body, receipt)
+            captures.update(_capture_segments(client, capture_root, EXPECTED_COUNT))
             for name, url in _after_doc_urls():
                 body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
