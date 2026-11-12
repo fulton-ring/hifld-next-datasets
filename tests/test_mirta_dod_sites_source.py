@@ -487,7 +487,8 @@ class MirtaCompleteSourceTests(unittest.TestCase):
             self.assertEqual(parquet.schema.names,
                              ['OBJECTID', *s.EXPECTED_FIELDS, 'SHAPE_Length', 'SHAPE_Area', 'shape'])
             audit = json.loads((root / 'metadata/source_audit.json').read_bytes())
-            self.assertEqual(audit['source_wkb_subtype_census'], s.EXPECTED_SOURCE_WKB_SUBTYPES)
+            self.assertEqual({int(key): value for key, value in audit['source_wkb_subtype_census'].items()},
+                             s.EXPECTED_SOURCE_WKB_SUBTYPES)
             self.assertEqual(audit['source_vertices'], s.EXPECTED_SOURCE_VERTICES)
             self.assertEqual(audit['linearization']['linearized_features'], s.EXPECTED_CURVED_FEATURES)
             self.assertEqual(audit['linearization']['kept_exact_features'], s.EXPECTED_LINEAR_FEATURES)
