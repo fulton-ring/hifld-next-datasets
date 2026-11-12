@@ -103,5 +103,40 @@
     "tests": "tests/test_shipping_fairways.py",
     "schedule": "STOPPED",
     "candidate_only": true
+  },
+  "materialization_evidence": {
+    "observed_at": "2026-11-12",
+    "code_head": "2cf4a69a7c82c8f2ed64ff2042b8fb88269283ff",
+    "candidate_version": "ve578464fb5dde69bc5922bde2abf6b08",
+    "live_ingest_run_success": true,
+    "replay_reused_retained_capture": true,
+    "replay_parquet_byte_identical": true,
+    "geoparquet_bytes": 2542817,
+    "geoparquet_sha256_prefix": "5613e4e90c7b64bd",
+    "live_observed": {
+      "source_feature_count": 346,
+      "source_vertex_count": 182286,
+      "geometry_valid_count": 341,
+      "geometry_invalid_count": 5,
+      "geometry_empty_count": 0,
+      "geometry_bounds": [-180.0, 9.356176100000027, 180.0, 66.566622],
+      "source_capture_evidence_sha256": "fbd7f1b31fd2b9e0f32ef1912721f86a19cd41d48b554bbe0c21d13c3a4052b3",
+      "invalid_geometry_note": "Five source-native polygons fail shapely validity; they are preserved unrepaired and the catalog quality gate refuses promotion on them, which is the intended quarantine behavior pending maintainer review."
+    },
+    "catalog_quality_manifest": {
+      "catalog_mode": "native_geoparquet_full_population",
+      "feature_count": 346,
+      "invalid_geometry_count": 5,
+      "empty_geometry_count": 0,
+      "quality_check_passed": false,
+      "note": "Blocking catalog check truthfully fails on the 5 source-native invalid geometries; no check was weakened."
+    },
+    "verify_refusal": {
+      "refusal_reason": "missing_independent_release_approval_registry",
+      "publish_promote_started": false,
+      "published_inventory_unchanged": true,
+      "schedule": "STOPPED",
+      "production_publication": false
+    }
   }
 }
