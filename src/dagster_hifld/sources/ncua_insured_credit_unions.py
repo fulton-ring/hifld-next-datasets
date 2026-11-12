@@ -724,5 +724,8 @@ def capture_ncua_candidate(storage: StagingStorageResource, *, version: str,
     payload={"processing_identity":identity,"source_record_sha256":source_record_sha,
         "source_schema_sha256":source_schema_sha,"capture_receipts":receipts,"objects":descriptors}
     seal_ready_candidate(storage,state_key,version,fingerprint,payload)
-    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
+    # Forward the complete identity so a packaged runtime (no Git metadata)
+    # validates through the installed-package branch instead of failing
+    # Git-only commit checks; the shared cache verifier already does this.
+    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
     return _candidate_result(version,audit,rows,roster,capture_root)

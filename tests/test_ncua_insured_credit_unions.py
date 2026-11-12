@@ -1,6 +1,10 @@
 import hashlib
 import json
 import csv
+import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -78,6 +82,36 @@ def _branch(charter: str, site: str) -> dict[str, str]:
 def _workload():
     return _analyze(["100", "200"], [_branch("100", "7")],
                     [_page("100", [_feature(100, 7)]), _page("200", [])])
+
+
+# Runtime image layout: /app/src, pyproject.toml and uv.lock with no Git
+# metadata, exactly as the Dockerfile copies them. The subprocess imports the
+# adapter from that copy so the first construction and the replay both use the
+# installed-package identity branch, not the repository checkout.
+_PACKAGED_RUNTIME_SCRIPT = """
+import json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[3])
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import processing_identity
+import dagster_hifld.sources.ncua_insured_credit_unions as module
+identity = processing_identity(Path(module.__file__).resolve().parents[3])
+result = module.capture_ncua_candidate(StagingStorageResource(local_dir=sys.argv[1], use_local=True),
+                                       version="vtest", capture_directory=sys.argv[2])
+print(json.dumps({"identity_scheme": identity["code_identity_scheme"],
+                  "code_commit": identity["code_commit"], "result": result}))
+"""
+
+
+def _run_packaged_capture(runtime: Path, staging: Path, capture: Path) -> dict:
+    completed = subprocess.run(
+        [sys.executable, "-c", _PACKAGED_RUNTIME_SCRIPT, str(staging), str(capture), str(runtime / "src")],
+        capture_output=True, text=True, timeout=300,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": str(runtime / "src")},
+    )
+    if completed.returncode != 0:
+        raise AssertionError(f"packaged runtime capture failed:\n{completed.stderr[-2000:]}")
+    return json.loads([line for line in completed.stdout.splitlines() if line.startswith("{")][-1])
 
 
 def _retained_fixture(root: Path) -> Path:
@@ -247,3 +281,28 @@ class NcuaCandidateTests(unittest.TestCase):
         collection = next(x for x in metadata["inputs"] if x["input_id"] == "locator_response_collection")
         self.assertEqual(collection["response_count"], 2)
         self.assertEqual(collection["query_count"], 2)
+
+ def test_packaged_runtime_first_construction_then_replay(self):
+    with tempfile.TemporaryDirectory() as temp:
+        base = Path(temp)
+        runtime = base / "packaged-runtime"
+        (runtime / "src").mkdir(parents=True)
+        repo = Path(__file__).resolve().parents[1]
+        shutil.copytree(repo / "src" / "dagster_hifld", runtime / "src" / "dagster_hifld",
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        for name in ("pyproject.toml", "uv.lock"):
+            shutil.copyfile(repo / name, runtime / name)
+        self.assertFalse((runtime / ".git").exists())
+        capture = _retained_fixture(base / "capture")
+        first = _run_packaged_capture(runtime, base / "staging", capture)
+        self.assertEqual(first["identity_scheme"], "sha256-packaged-dagster-hifld-v1")
+        self.assertRegex(first["code_commit"], r"^packaged-sha256:[0-9a-f]{64}$")
+        self.assertFalse(first["result"]["reused"])
+        self.assertTrue(first["result"]["capture_complete"])
+        self.assertEqual(first["result"]["feature_count"], 1)
+        replay = _run_packaged_capture(runtime, base / "staging", capture)
+        self.assertEqual(replay["identity_scheme"], first["identity_scheme"])
+        self.assertEqual(replay["result"]["version"], first["result"]["version"])
+        self.assertTrue(replay["result"]["reused"])
+        self.assertTrue(replay["result"]["capture_complete"])
+        self.assertEqual(replay["result"]["feature_count"], 1)
