@@ -70,3 +70,7 @@ natural_gas_trading_hubs_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [natural_gas_trading_hubs_ingest]
+ASSET_CHECKS = [natural_gas_trading_hubs_historical_candidate_complete]
+SCHEDULES = [natural_gas_trading_hubs_draft_schedule]
