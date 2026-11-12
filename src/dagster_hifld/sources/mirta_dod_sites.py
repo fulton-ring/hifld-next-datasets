@@ -579,7 +579,7 @@ def _linearize_curved(data: dict, workdir: Path) -> tuple[list[bytes], dict]:
                 or invalid_linearized != EXPECTED_LINEARIZED_INVALID_GEOMETRY_COUNT):
             raise MirtaQuarantineError('linearization_census_drift')
         geometry = shapely.from_wkb(candidate)
-        if any(geometry.geom_type != 'MultiPolygon'):
+        if any(geom.geom_type != 'MultiPolygon' for geom in geometry):
             raise MirtaQuarantineError('candidate_geometry_type_drift')
         digest = hashlib.sha256()
         for index in range(BOUNDARY_FEATURES):

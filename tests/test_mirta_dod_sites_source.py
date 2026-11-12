@@ -187,15 +187,15 @@ class _Scenario:
             'OBJECTID': self.objectid,
             'countryName': ['usa'] * self.FEATURES,
             'featureDescription': ['na'] * self.FEATURES,
-            'featureName': ['Site A', 'Bowtie Site', 'Site C', 'Site D', 'Curve Site', 'Arc Site'],
+            'featureName': ['Shared Site', 'Shared Site', 'Site C', 'Site D', 'Curve Site', 'Arc Site'],
             'isCui': ['no'] * self.FEATURES,
             'isFirrmaSite': ['no', 'no', 'no', 'no', 'no', 'yes'],
             'isJointBase': ['no'] * self.FEATURES,
             'mediaId': ['na'] * self.FEATURES,
             'mirtaLocationsIdpk': [' '] * self.FEATURES,
-            'sdsId': [self.GUID, self.GUID, None, 'C28FC90D-1A11-4B2F-9E4F-000000000001',
-                      'C28FC90D-1A11-4B2F-9E4F-000000000002', None],
-            'siteName': ['Site A', 'Bowtie Site', 'Site C', 'Site D', 'Curve Site', 'Arc Site'],
+            'sdsId': [self.GUID, self.GUID, None, '{C28FC90D-1A11-4B2F-9E4F-000000000001}',
+                      '{C28FC90D-1A11-4B2F-9E4F-000000000002}', '{C28FC90D-1A11-4B2F-9E4F-000000000003}'],
+            'siteName': ['Shared Site', 'Shared Site', 'Site C', 'Site D', 'Curve Site', 'Arc Site'],
             'siteOperationalStatus': ['act', 'act', 'act', 'act', 'act', 'clsd'],
             'siteReportingComponent': ['usa', 'usa', 'usa', 'usa', 'usn', 'usn'],
             'stateNameCode': ['ca', 'ca', 'ca', 'tx', 'tx', 'tx'],
@@ -406,11 +406,10 @@ class MirtaScenarioTests(unittest.TestCase):
                 self.stage(case, storage, capture_dir=case.capture)
 
     def test_sibling_point_layer_census_drift_is_quarantined(self):
-        def mutate(case):
-            case.pins['POINT_FEATURES'] = 8
-        with scenario(mutate) as (case, storage):
-            with self.assertRaisesRegex(ValueError, 'sibling_point_layer_census_drift'):
-                self.stage(case, storage, capture_dir=case.capture)
+        with scenario() as (case, storage):
+            with patch.object(s, 'POINT_FEATURES', 9):
+                with self.assertRaisesRegex(ValueError, 'sibling_point_layer_census_drift'):
+                    self.stage(case, storage, capture_dir=case.capture)
 
     def test_null_census_drift_is_quarantined(self):
         def mutate(case):
@@ -437,11 +436,10 @@ class MirtaScenarioTests(unittest.TestCase):
                 self.stage(case, storage, capture_dir=case.capture)
 
     def test_source_geometry_census_drift_is_quarantined(self):
-        def mutate(case):
-            case.pins['EXPECTED_CURVED_FEATURES'] = 3
-        with scenario(mutate) as (case, storage):
-            with self.assertRaisesRegex(ValueError, 'source_geometry_census_drift'):
-                self.stage(case, storage, capture_dir=case.capture)
+        with scenario() as (case, storage):
+            with patch.object(s, 'EXPECTED_CURVED_FEATURES', 3):
+                with self.assertRaisesRegex(ValueError, 'source_geometry_census_drift'):
+                    self.stage(case, storage, capture_dir=case.capture)
 
     def test_field_width_drift_is_quarantined(self):
         def mutate(case):
