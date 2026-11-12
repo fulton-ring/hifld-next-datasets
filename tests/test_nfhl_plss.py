@@ -472,6 +472,83 @@ class NfhlPlssTests(unittest.TestCase):
             self.assertTrue(any(key.endswith("raw/page_001.body") for key in keys))
             self.assertFalse(any(key.startswith(source.DATASET_SLUG + "/") for key in keys))
 
+    def test_late_page_drift_quarantine_is_memory_bounded_and_closes_writer(self):
+        """Late page drift with megabyte-scale bodies: quarantine must stream.
+
+        The complete PLSS corpus is gigabytes, so a failure after many captured
+        pages must not retain every body in memory before quarantine; evidence
+        is preserved one capture at a time from the capture paths, the coverage
+        extrema are running values, and the abandoned parquet writer is closed
+        so the partial candidate is finalized and readable.
+        """
+        import tracemalloc
+
+        from dagster_hifld.resources import StagingStorageResource
+
+        count = 12
+        padding = 768 * 1024
+        ids = [100 + index for index in range(count)]
+        features = [{"attributes": _attrs(object_id), "geometry": {"rings": [RING_A]}} for object_id in ids]
+        schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f} for f in FIELDS]
+        layer = {"id": 5, "name": "PLSS", "type": "Feature Layer", "geometryType": "esriGeometryPolygon",
+                 "maxRecordCount": 2000, "advancedQueryCapabilities": {"supportsPagination": True},
+                 "sourceSpatialReference": {"wkid": 4269, "latestWkid": 4269},
+                 "extent": {"xmin": -160.0, "ymin": 20.0, "xmax": -60.0, "ymax": 65.0,
+                            "spatialReference": {"wkid": 4269, "latestWkid": 4269}},
+                 "fields": FIELDS}
+        service = {"mapName": "NFHL", "layers": [{"id": 5, "name": "PLSS", "type": "Feature Layer"}]}
+        pins = _pins(features, schema, [[object_id, [RING_A]] for object_id in ids])
+        pins.update(EXPECTED_COUNT=count,
+                    EXPECTED_ID_SHA256=hashlib.sha256(_canonical(ids)).hexdigest(),
+                    EXPECTED_NULL_GEOMETRY_COUNT=0, EXPECTED_NAN_GEOMETRY_COUNT=0)
+        ids_doc = {"objectIdFieldName": "OBJECTID", "objectIds": ids}
+        # Drift on the final page (one feature short) raises with the parquet
+        # writer still open, after five megabyte-scale pages are captured.
+        page_size = 2
+        pages = [_page_doc(features[index * page_size:(index + 1) * page_size
+                                        - (1 if index == count // page_size - 1 else 0)],
+                          last=index == count // page_size - 1)
+                 for index in range(count // page_size)]
+        docs = {"service_before": service, "service_after": service, "layer_before": layer,
+                "layer_after": layer, "count_before": {"count": count}, "count_after": {"count": count},
+                "ids_before": ids_doc, "ids_after": ids_doc, "ids_seed": ids_doc}
+        for index, page in enumerate(pages):
+            docs[source._page_name(index)] = page
+        bodies = {name: json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode() + b" " * padding
+                  for name, doc in docs.items()}
+        bodies["service_doc"] = SERVICE_DOC_BODY + b" " * padding
+        with tempfile.TemporaryDirectory(prefix="nfhl-plss-late-drift-") as temporary:
+            root = Path(temporary)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            with patch.multiple(source, **pins), \
+                 patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies)), \
+                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: self._EmptyClient()):
+                tracemalloc.start()
+                try:
+                    with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_reordered"):
+                        source.capture_nfhl_plss(storage, version="vfixture",
+                                                 capture_directory=str(root / "captures"))
+                finally:
+                    peak = tracemalloc.get_traced_memory()[1]
+                    tracemalloc.stop()
+            # Eager retention would hold every captured padded body
+            # simultaneously at quarantine (peak >= corpus); streaming stays far
+            # below it.
+            captured = [name for name in bodies if name not in
+                        ("service_after", "layer_after", "count_after", "ids_after")]
+            corpus = sum(len(bodies[name]) for name in captured)
+            self.assertGreater(corpus, 8 * padding)
+            self.assertLess(peak, corpus)
+            keys = set(storage.list_prefix())
+            self.assertEqual(len([key for key in keys if key.endswith("metadata/failure.json")]), 1)
+            for name in captured:
+                self.assertTrue(any(key.endswith(f"raw/{name}.body") for key in keys), name)
+                self.assertTrue(any(key.endswith(f"raw/{name}.wire") for key in keys), name)
+            self.assertFalse(any(key.startswith(source.DATASET_SLUG + "/") for key in keys))
+            attempt_root = next((root / "captures").iterdir())
+            table = pq.read_table(str(attempt_root / "candidate.geoparquet"))
+            self.assertEqual(table.num_rows, count - page_size)
+
 
 if __name__ == "__main__":
     unittest.main()

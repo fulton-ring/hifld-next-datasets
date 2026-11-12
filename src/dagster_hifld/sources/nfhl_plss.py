@@ -21,7 +21,10 @@ sorted record order the pins are computed over. Producer polygon semantics
 JSON convention verified on the merged sibling NFHL polygon adapters and
 re-verified here by the pinned record/geometry digests of the dated complete
 capture; null or string-"NaN" geometry is retained as evidence and gated, never
-silently coerced.
+silently coerced. Memory stays bounded through late failures too: coverage
+extrema are running values, the abandoned parquet writer is closed, and
+quarantine preserves each capture's evidence from its capture path one body at
+a time instead of materializing the gigabyte-scale corpus.
 """
 from __future__ import annotations
 
@@ -422,7 +425,10 @@ class _PageStream:
         self.nan_geometry = 0
         self.unusable_geometry: dict[str, int] = {}
         self.feature_count = 0
-        self._bounds: list[float] = []
+        # Running extrema only: retaining every ordinate of the complete layer
+        # (~28 million vertices) would hold ~1.8 GB through any late failure.
+        self._xmin = self._ymin = self._xmax = self._ymax = None
+        self._writer_closed = False
 
     def process(self, page: object, ids: list[int], index: int, offset: int) -> None:
         rows = _validate_page(page, ids, index, offset)
@@ -458,7 +464,15 @@ class _PageStream:
                 for ring in geometry["rings"]:
                     for vertex in ring:
                         if type(vertex[0]) in (int, float) and type(vertex[1]) in (int, float):
-                            self._bounds.extend(vertex)
+                            x, y = vertex
+                            if self._xmin is None or x < self._xmin:
+                                self._xmin = x
+                            if self._ymin is None or y < self._ymin:
+                                self._ymin = y
+                            if self._xmax is None or x > self._xmax:
+                                self._xmax = x
+                            if self._ymax is None or y > self._ymax:
+                                self._ymax = y
         self.feature_count += len(rows)
         self.record_digest.update(rows)
         self.geometry_digest.update(geometry_records)
@@ -466,13 +480,18 @@ class _PageStream:
             {**columns, "SHAPE": pa.array(shapes, type=pa.binary())}, schema=self.schema))
 
     def observed_bounds(self) -> dict[str, float] | None:
-        if not self._bounds:
+        if self._xmin is None:
             return None
-        return {"xmin": min(self._bounds[0::2]), "ymin": min(self._bounds[1::2]),
-                "xmax": max(self._bounds[0::2]), "ymax": max(self._bounds[1::2])}
+        return {"xmin": self._xmin, "ymin": self._ymin, "xmax": self._xmax, "ymax": self._ymax}
+
+    def close_writer(self) -> None:
+        """Finalize the candidate parquet once, whether or not the capture succeeds."""
+        if not self._writer_closed:
+            self._writer_closed = True
+            self._writer.close()
 
     def finish(self) -> dict[str, object]:
-        self._writer.close()
+        self.close_writer()
         return {"source_feature_count": self.feature_count,
                 "source_record_sha256": self.record_digest.hexdigest(),
                 "source_geometry_sha256": self.geometry_digest.hexdigest(),
@@ -548,6 +567,32 @@ def _code_identity() -> dict[str, object]:
     return identity
 
 
+class _QuarantineCaptureBodies(Mapping[str, tuple[bytes, dict[str, object]]]):
+    """Path-backed quarantine evidence view that materializes one body at a time.
+
+    The complete PLSS corpus is gigabytes, so quarantine must never build an
+    in-memory ``{name: body}`` dict over every capture: the shared quarantine
+    helper reads each item exactly once while writing it, and this mapping
+    reads the body from its capture path on that single access. Names without
+    a retained body (failed retry attempts) are excluded, matching the
+    evidence-preservation contract of the shared helper.
+    """
+
+    def __init__(self, capture_root: Path, receipts: Mapping[str, dict[str, object]]) -> None:
+        self._capture_root = capture_root
+        self._receipts = receipts
+        self._names = sorted(name for name in receipts if (capture_root / f"{name}.body").exists())
+
+    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
+        return (self._capture_root / f"{name}.body").read_bytes(), self._receipts[name]
+
+    def __iter__(self):
+        return iter(self._names)
+
+    def __len__(self) -> int:
+        return len(self._names)
+
+
 def capture_nfhl_plss(storage: StagingStorageResource, *, version: str,
                       capture_directory: str | None = None) -> dict[str, object]:
     """Capture, verify, and stage a complete unapproved NFHL PLSS candidate."""
@@ -569,6 +614,7 @@ def capture_nfhl_plss(storage: StagingStorageResource, *, version: str,
     capture_root.mkdir(parents=True, exist_ok=True)
     receipts: dict[str, dict[str, object]] = {}
     parquet_path = capture_root / "candidate.geoparquet"
+    stream: _PageStream | None = None
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-plss-draft"}) as client:
@@ -642,14 +688,18 @@ def capture_nfhl_plss(storage: StagingStorageResource, *, version: str,
         (capture_root / "capture_manifest.json").write_bytes(
             _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                         "error_code": type(exc).__name__, "receipts": quarantine_receipts}) + b"\n")
-        retained: dict[str, tuple[bytes, dict[str, object]]] = {}
-        for name, receipt in quarantine_receipts.items():
+        if stream is not None:
             try:
-                retained[name] = ((capture_root / f"{name}.body").read_bytes(), receipt)
-            except (OSError, ValueError):
-                continue
-        if retained:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, retained, type(exc).__name__)
+                stream.close_writer()
+            except Exception:
+                # Best-effort finalization of the abandoned parquet; quarantine
+                # and the original drift error must survive even if it cannot close.
+                pass
+        # Evidence is preserved one capture at a time from the capture paths; the
+        # gigabyte-scale complete corpus is never materialized in memory here.
+        quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
+                                      _QuarantineCaptureBodies(capture_root, quarantine_receipts),
+                                      type(exc).__name__)
         raise
     if set(receipts) != {"ids_seed", "service_doc", "service_before", "layer_before", "count_before", "ids_before",
                          *(_page_name(i) for i in range(_page_count())),
