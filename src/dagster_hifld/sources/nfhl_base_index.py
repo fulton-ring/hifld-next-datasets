@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import shutil
 import time
@@ -213,10 +214,21 @@ def _collect_segment(offset: int, count: int, page: object, ids: list[int],
 
 
 def _signed_area(ring: list) -> float:
-    closed = ring[1:] + [ring[0]] if ring[0] != ring[-1] else ring
-    area = 0.0
-    for (x1, y1), (x2, y2) in zip(closed, closed[1:]):
-        area += x1 * y2 - x2 * y1
+    """Signed area of a planar ring (positive counterclockwise), translated origin.
+
+    The shoelace sum is taken around the first vertex instead of the global
+    origin: per-edge terms then scale with the ring's own extent, so a tiny
+    exterior ring next to global lon/lat coordinates keeps its sign. The raw
+    global sum loses such rings to cancellation — live FEMA layer 4 ring
+    (OBJECTID 49181, 2026-11-12) summed to exactly 0.0 despite a true signed
+    area of about -1.5e-15, which misclassified that clockwise exterior as a
+    hole. Vertices are only read to measure orientation; stored geometry is
+    never translated.
+    """
+    closed = ring if ring[0] == ring[-1] else ring + [ring[0]]
+    x0, y0 = closed[0]
+    area = math.fsum((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+                     for (x1, y1), (x2, y2) in zip(closed, closed[1:]))
     return area / 2.0
 
 
