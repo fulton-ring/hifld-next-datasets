@@ -614,6 +614,15 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
                                                                capture_directory=str(root / "captures"))
             self.assertEqual(candidate["feature_count"], 3)
             self.assertEqual(candidate["source_null_geometry_count"], 1)
+            # Local staging consumes each raw evidence file as it is staged
+            # (verified against its descriptor first): the sealed candidate
+            # holds the durable copies, and this layer's tens-of-GB raw
+            # staging stays within one disk.
+            capture_dirs = list((root / "captures").glob("vfixture-*"))
+            self.assertEqual(len(capture_dirs), 1)
+            self.assertFalse(list(capture_dirs[0].glob("page_*.body")))
+            self.assertFalse(list(capture_dirs[0].glob("page_*.wire")))
+            self.assertTrue(list(capture_dirs[0].glob("page_*.receipt.json")))
             prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
             snapshot_source_metadata(storage, source.DATASET_SLUG, source.FILE_SLUG, candidate["version"])
             manifest = load_resolved_source_manifest(storage, source.DATASET_SLUG, source.FILE_SLUG,

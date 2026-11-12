@@ -1016,25 +1016,24 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
             raise ValueError("candidate_output_physical_readback_failed:" + name)
     _upload_immutable_file(storage, f"{prefix}/{parquet_rel}", parquet_path, source_objects[parquet_rel])
     capture_receipts = {}
+    raw_descriptors = {}
     for name in sorted(page_bodies):
         receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
         capture_receipts[name] = receipt
+        raw_descriptors[f"raw/{name}.body"] = {"bytes": receipt["bytes"], "sha256": receipt["sha256"]}
+        raw_descriptors[f"raw/{name}.wire"] = {"bytes": receipt["wire_bytes"],
+                                               "sha256": receipt["wire_sha256"]}
+        raw_descriptors[f"raw/{name}.receipt.json"] = {"bytes": len(_manifest_body(receipt)),
+                                                       "sha256": _sha(_manifest_body(receipt))}
+    for name in sorted(page_bodies):
         _upload_immutable_file(storage, f"{prefix}/raw/{name}.body", capture_root / f"{name}.body",
-                               {"bytes": (capture_root / f"{name}.body").stat().st_size,
-                                "sha256": receipt["sha256"]})
+                               raw_descriptors[f"raw/{name}.body"], consume_source=True)
         _upload_immutable_file(storage, f"{prefix}/raw/{name}.wire", capture_root / f"{name}.wire",
-                               {"bytes": (capture_root / f"{name}.wire").stat().st_size,
-                                "sha256": _file_sha256(capture_root / f"{name}.wire")})
-        write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _manifest_body(receipt))
+                               raw_descriptors[f"raw/{name}.wire"], consume_source=True)
+        write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _manifest_body(capture_receipts[name]))
     descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in metadata_objects.items()}
     descriptors[parquet_rel] = source_objects[parquet_rel]
-    for name in sorted(page_bodies):
-        descriptors[f"raw/{name}.body"] = {"bytes": (capture_root / f"{name}.body").stat().st_size,
-                                           "sha256": capture_receipts[name]["sha256"]}
-        descriptors[f"raw/{name}.wire"] = {"bytes": (capture_root / f"{name}.wire").stat().st_size,
-                                           "sha256": _file_sha256(capture_root / f"{name}.wire")}
-        descriptors[f"raw/{name}.receipt.json"] = {"bytes": len(_manifest_body(capture_receipts[name])),
-                                                   "sha256": _sha(_manifest_body(capture_receipts[name]))}
+    descriptors.update(raw_descriptors)
     payload = {"processing_identity": identity,
                "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
@@ -1070,10 +1069,21 @@ def receipt_index(capture_root: Path) -> dict[str, dict[str, object]]:
 
 
 def _upload_immutable_file(storage: StagingStorageResource, key: str, source: Path,
-                           descriptor: Mapping[str, object]) -> None:
+                           descriptor: Mapping[str, object], *, consume_source: bool = False) -> None:
     snapshot = storage.object_snapshot(key)
     if snapshot is None:
+        if not source.exists():
+            raise ValueError("source_raw_evidence_missing_for_staging:" + source.name)
         storage.upload_local_file(source, key)
         snapshot = storage.object_snapshot(key)
     if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
         raise ValueError("candidate_output_physical_readback_failed:" + key)
+    if consume_source and storage.use_local:
+        # The staged object is now the verified durable copy of this raw
+        # evidence (the local backend stages by copying), and the raw
+        # descriptors come from the receipts, so a staging run interrupted
+        # after some uploads resumes from the already-staged objects without
+        # re-acquiring their segments; releasing each capture-directory source
+        # as it is staged keeps this layer's tens-of-GB raw staging within one
+        # disk.
+        source.unlink()
