@@ -210,15 +210,16 @@ class LandMobileBroadcastTowersDecodeTests(unittest.TestCase):
         self.features, self.audit, self.parquet = source._decode(self.zip_body)
 
     def test_fixed_locations_become_tower_features_and_mobiles_are_excluded(self):
-        self.assertEqual(len(self.features), 152)
+        self.assertEqual(len(self.features), 151)
         uids = [feature["unique_system_identifier"] for feature in self.features]
-        self.assertEqual(uids[:2], [1100664, 1102015])
+        self.assertEqual(uids[0], 1100664)
+        self.assertNotIn(1102015, uids)
         self.assertEqual(self.audit["lo_record_count"], 153)
         self.assertEqual(self.audit["fixed_location_count"], 152)
         self.assertEqual(self.audit["mobile_location_count"], 1)
         self.assertEqual(self.audit["invalid_coordinate_record_count"], 0)
         self.assertEqual(self.audit["missing_coordinate_record_count"], 1)
-        self.assertEqual(self.audit["null_geometry_count"], 1)
+        self.assertEqual(self.audit["null_geometry_count"], 0)
         self.assertEqual(self.audit["service_code_counts"], {"LP": 1, "RP": 151})
         self.assertEqual(self.audit["uls_file_creation_date"], CREATION_DATE)
         self.assertTrue(self.audit["counts_completeness_verified"])
@@ -249,29 +250,31 @@ class LandMobileBroadcastTowersDecodeTests(unittest.TestCase):
         self.assertAlmostEqual(first["_longitude"], -(77 + 26 / 60 + 47 / 3600))
         self.assertAlmostEqual(first["_latitude"], 38 + 57 / 60 + 35.4 / 3600)
         second = self.features[1]
-        self.assertEqual(second["call_sign"], "DKQA998")
+        self.assertEqual(second["call_sign"], "BLT00000")
         self.assertEqual(second["radio_service_code"], "RP")
-        self.assertIsNone(second["_longitude"])
-        self.assertIsNone(second["_latitude"])
+        self.assertAlmostEqual(second["_longitude"], -(100 + 0 / 60))
+        self.assertAlmostEqual(second["_latitude"], 45.0)
 
     def test_parquet_preserves_columns_values_and_null_geometry(self):
         table = pq.read_table(pa.BufferReader(self.parquet))
         expected_names = [name for name, _ in source.OUTPUT_FIELD_TYPES]
         self.assertEqual(table.column_names, expected_names)
-        self.assertEqual(table.num_rows, 152)
-        self.assertEqual(table["call_sign"].to_pylist()[:2], ["BLN00751", "DKQA998"])
+        self.assertEqual(table.num_rows, 151)
+        self.assertEqual(table["call_sign"].to_pylist()[:2], ["BLN00751", "BLT00000"])
+        self.assertEqual(table["licensee_name"].to_pylist()[:2],
+                         ["FIXTURE BROADCASTER", "FIXTURE BROADCASTER"])
         self.assertEqual(table["license_status"].to_pylist()[:2], ["A", "A"])
-        self.assertIsNone(table[source.GEOMETRY_COLUMN][1].as_py())
+        self.assertEqual(table["ground_elevation"].to_pylist()[:2], [12.5, 12.5])
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"][source.GEOMETRY_COLUMN]["crs"]["id"]["code"], 4269)
         self.assertEqual(geo["columns"][source.GEOMETRY_COLUMN]["geometry_types"], ["Point"])
         first = self.features[0]
         first_wkb = table[source.GEOMETRY_COLUMN][0].as_py()
         self.assertEqual(source._point_wkb(first["_longitude"], first["_latitude"]), first_wkb)
-        longitude = self.features[2]["_longitude"]
+        longitude = self.features[1]["_longitude"]
         self.assertAlmostEqual(longitude, -(100 + 0 / 60))
-        self.assertEqual(table[source.GEOMETRY_COLUMN][2].as_py(),
-                         source._point_wkb(longitude, self.features[2]["_latitude"]))
+        self.assertEqual(table[source.GEOMETRY_COLUMN][1].as_py(),
+                         source._point_wkb(longitude, self.features[1]["_latitude"]))
 
     def test_counts_manifest_mismatch_is_rejected(self):
         tables = _fixture_tables(
@@ -341,7 +344,7 @@ class LandMobileBroadcastTowersDecodeTests(unittest.TestCase):
         tables = _fixture_tables(
             [_hd_line(1100664, "BLN00751")], [_en_line(1100664, "BLN00751")],
             [_lo_line(1100664, "BLN00751", "F")])
-        with self.assertRaisesRegex(ValueError, "uls_excessive_null_geometry"):
+        with self.assertRaisesRegex(ValueError, "uls_excessive_unmappable_fixed_locations"):
             source._decode(_fixture_zip(tables))
 
 
@@ -360,9 +363,10 @@ class LandMobileBroadcastTowersLifecycleTests(unittest.TestCase):
                 candidate = source.capture_land_mobile_broadcast_towers(
                     storage, version="vfixture", capture_directory=str(root / "captures"))
                 self.assertFalse(candidate["reused"])
-                self.assertEqual(candidate["feature_count"], 152)
+                self.assertEqual(candidate["feature_count"], 151)
+                self.assertEqual(candidate["fixed_location_count"], 152)
                 self.assertEqual(candidate["source_population_complete"], True)
-                self.assertEqual(candidate["null_geometry_count"], 1)
+                self.assertEqual(candidate["null_geometry_count"], 0)
                 prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
                 state_key = f"_construction-state/{source.DATASET_SLUG}/{candidate['version']}.json"
                 self.assertTrue(storage.object_snapshot(state_key))
@@ -380,8 +384,8 @@ class LandMobileBroadcastTowersLifecycleTests(unittest.TestCase):
                 summary = summarize_staged_catalog(storage, source.DATASET_SLUG, source.FILE_SLUG,
                                                    candidate["version"], source.DATASET_SLUG,
                                                    source_metadata=manifest)
-                self.assertEqual(summary.quality_manifest["feature_count"], 152)
-                self.assertEqual(summary.quality_manifest["null_geometry_count"], 1)
+                self.assertEqual(summary.quality_manifest["feature_count"], 151)
+                self.assertEqual(summary.quality_manifest["null_geometry_count"], 0)
                 self.assertTrue(summary.quality_manifest["quality_check_passed"])
                 write_catalog_metadata(storage, dataset_slug=source.DATASET_SLUG,
                                        file_slug=source.FILE_SLUG, version=candidate["version"],

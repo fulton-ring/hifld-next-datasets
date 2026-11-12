@@ -328,14 +328,14 @@ def _join_features(tables: Mapping[str, bytes], counts: Mapping[str, object]) ->
             licensees[uid] = fields
 
     locations = _records(tables["LO.dat"], "LO", LO_EXPECTED_FIELD_COUNT)
+    fixed_records = [fields for fields in locations
+                     if fields[LOCATION_TYPE_INDEX] == FIXED_LOCATION_TYPE]
     features = []
     invalid_coordinates: list[int] = []
     missing_coordinates: list[int] = []
     missing_header: list[int] = []
     callsign_disagreements: list[int] = []
-    for fields in locations:
-        if fields[LOCATION_TYPE_INDEX] != FIXED_LOCATION_TYPE:
-            continue
+    for fields in fixed_records:
         record = {name: _cast(fields[index], kind)
                   for index, (name, kind) in enumerate(LOCATION_FIELDS)}
         uid = record["unique_system_identifier"]
@@ -357,10 +357,14 @@ def _join_features(tables: Mapping[str, bytes], counts: Mapping[str, object]) ->
                                     record["longitude_seconds"], record["longitude_direction"],
                                     max_degrees=180)
         if latitude is None or longitude is None:
+            # The FCC states the licensing data contain known coordinate errors:
+            # unmappable fixed locations are excluded from candidate features but
+            # fully accounted here, with raw DMS values still staged under raw/.
             if record["latitude_degrees"] is None and record["longitude_degrees"] is None:
                 missing_coordinates.append(uid)
             else:
                 invalid_coordinates.append(uid)
+            continue
         record["_latitude"], record["_longitude"] = latitude, longitude
         features.append(record)
     if missing_header:
@@ -374,8 +378,8 @@ def _join_features(tables: Mapping[str, bytes], counts: Mapping[str, object]) ->
         "service_code_counts": dict(sorted(service_codes.items())),
         "entity_type_counts": dict(sorted(entity_counts.items())),
         "lo_record_count": len(locations),
-        "fixed_location_count": len(features),
-        "mobile_location_count": len(locations) - len(features),
+        "fixed_location_count": len(fixed_records),
+        "mobile_location_count": len(locations) - len(fixed_records),
         "invalid_coordinate_record_count": len(invalid_coordinates),
         "invalid_coordinate_unique_system_identifiers": sorted(invalid_coordinates)[:50],
         "missing_coordinate_record_count": len(missing_coordinates),
@@ -393,14 +397,13 @@ def _parquet(features: list[dict]) -> bytes:
     columns.extend((name, "string", [feature.get(name) for feature in features])
                    for name, _ in JOINED_COLUMNS)
     columns.append((GEOMETRY_COLUMN, "binary", [
-        None if feature["_longitude"] is None else _point_wkb(feature["_longitude"], feature["_latitude"])
-        for feature in features]))
+        _point_wkb(feature["_longitude"], feature["_latitude"]) for feature in features]))
     arrays, fields = [], []
     for name, kind, values in columns:
         arrow_type = (pa.string() if kind == "string" else pa.int64() if kind == "int64"
                       else pa.float64() if kind == "float64" else pa.binary())
         arrays.append(pa.array(values, type=arrow_type, safe=True))
-        fields.append(pa.field(name, arrow_type, nullable=True))
+        fields.append(pa.field(name, arrow_type, nullable=kind != "binary"))
     geo_metadata = {
         "version": "1.1.0", "primary_column": GEOMETRY_COLUMN,
         "columns": {GEOMETRY_COLUMN: {"encoding": "WKB", "geometry_types": ["Point"],
@@ -446,18 +449,23 @@ def _decode(body: bytes) -> tuple[list[dict], dict, bytes]:
     features, audit = _join_features(tables, counts)
     audit.update({
         "feature_count": len(features),
-        "null_geometry_count": sum(1 for feature in features if feature["_longitude"] is None),
+        "null_geometry_count": 0,
         "counts_completeness_verified": True,
         "lo_field_count": LO_EXPECTED_FIELD_COUNT,
         "hd_field_count": HD_EXPECTED_FIELD_COUNT,
         "en_field_count": EN_EXPECTED_FIELD_COUNT,
         "fixed_location_scope": "Location Type Code F (Fixed) per FCC ULS code definitions",
+        "feature_scope_note": ("Candidate features are fixed locations with parseable "
+                               "coordinates; fixed locations without coordinates or with "
+                               "invalid DMS values are excluded and counted, never silently "
+                               "dropped, and remain staged in the raw tables."),
         "crs_declaration_basis": CRS_DECLARATION_BASIS,
         "known_errors_note": KNOWN_ERRORS_NOTE,
     })
-    if audit["null_geometry_count"] > 0.01 * max(len(features), 1):
+    excluded = audit["missing_coordinate_record_count"] + audit["invalid_coordinate_record_count"]
+    if excluded > 0.01 * max(audit["fixed_location_count"], 1):
         raise ULSDraftError(
-            f"uls_excessive_null_geometry:{audit['null_geometry_count']}")
+            f"uls_excessive_unmappable_fixed_locations:{excluded}")
     parquet = _parquet(features)
     return features, audit, parquet
 
@@ -697,8 +705,10 @@ def capture_land_mobile_broadcast_towers(storage: StagingStorageResource, *, ver
             "feature_count": len(features), "source_population_complete": True,
             "record_sha256": record_sha, "geometry_sha256": geometry_sha,
             "schema_sha256": schema_sha,
+            "fixed_location_count": audit["fixed_location_count"],
             "null_geometry_count": audit["null_geometry_count"],
             "invalid_coordinate_record_count": audit["invalid_coordinate_record_count"],
+            "missing_coordinate_record_count": audit["missing_coordinate_record_count"],
             "service_code_counts": audit["service_code_counts"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
             "source_capture_evidence_sha256": evidence_sha, "capture_directory": str(root),

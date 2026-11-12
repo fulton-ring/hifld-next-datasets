@@ -35,14 +35,17 @@ def land_mobile_broadcast_towers_ingest(context, config: LandMobileBroadcastTowe
 
 @asset_check(asset=land_mobile_broadcast_towers_ingest, blocking=True)
 def land_mobile_broadcast_towers_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count", 0) > 0
+    feature_count = candidate.get("feature_count", 0)
+    expected = (candidate.get("fixed_location_count", 0)
+                - candidate.get("invalid_coordinate_record_count", 0)
+                - candidate.get("missing_coordinate_record_count", 0))
+    passed = (feature_count > 0
               and candidate.get("source_population_complete") is True
-              and candidate.get("null_geometry_count", 0)
-              == candidate.get("invalid_coordinate_record_count", 0)
-              + candidate.get("missing_coordinate_record_count", 0))
+              and candidate.get("null_geometry_count", 0) == 0
+              and feature_count == expected)
     return AssetCheckResult(passed=passed, metadata={
-        "feature_count": candidate.get("feature_count", 0),
-        "null_geometry_count": candidate.get("null_geometry_count", 0),
+        "feature_count": feature_count,
+        "fixed_location_count": candidate.get("fixed_location_count", 0),
         "invalid_coordinate_record_count": candidate.get("invalid_coordinate_record_count", 0),
         "missing_coordinate_record_count": candidate.get("missing_coordinate_record_count", 0),
         "service_code_counts": candidate.get("service_code_counts", {}),
