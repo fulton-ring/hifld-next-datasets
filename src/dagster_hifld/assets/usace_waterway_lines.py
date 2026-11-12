@@ -29,3 +29,8 @@ def usace_navigable_waterway_network_lines_complete(candidate: dict) -> AssetChe
 usace_waterway_lines_draft_job = define_asset_job("usace_waterway_lines_draft_refresh", selection=AssetSelection.assets(usace_navigable_waterway_network_lines))
 usace_waterway_lines_draft_schedule = ScheduleDefinition(name="usace_waterway_lines_draft_refresh_schedule", job=usace_waterway_lines_draft_job,
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York", default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [usace_navigable_waterway_network_lines]
+ASSET_CHECKS = [usace_navigable_waterway_network_lines_complete]
+JOBS = [usace_waterway_lines_draft_job]
+SCHEDULES = [usace_waterway_lines_draft_schedule]
