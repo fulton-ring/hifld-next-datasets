@@ -140,3 +140,12 @@ land_surface_areas_usace_ienc_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+INGEST_ASSETS = [land_surface_areas_usace_ienc_candidate]
+ASSET_CHECKS = [
+    land_surface_areas_usace_ienc_complete,
+    land_surface_areas_usace_ienc_geometry_quality,
+]
+JOBS = [land_surface_areas_usace_ienc_draft_job]
+SCHEDULES = [land_surface_areas_usace_ienc_draft_schedule]
