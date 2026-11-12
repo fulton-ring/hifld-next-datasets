@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import logging
@@ -10,7 +11,7 @@ import os
 import tempfile
 import zipfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +41,12 @@ from dagster_hifld.conversion import (
 )
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
-from dagster_hifld.release_approval import require_release_approval
+from dagster_hifld.release_approval import require_release_approval, _registry as load_release_approvals
+from dagster_hifld.sources.usace_pylon_locations import (
+    DATASET_SLUG as USACE_PYLON_LOCATIONS_DATASET_SLUG,
+    compare_generated_geoparquet as compare_usace_pylon_locations_geoparquet,
+)
+from dagster_hifld.portolan.release import read_staged_release
 from dagster_hifld.resources import (
     PublishedStorageResource,
     StagingStorageResource,
@@ -214,6 +220,8 @@ def _copy_version_files(
     file_slug: str,
     version: str,
 ) -> list[str]:
+    load_release_approvals(staging_storage, published_storage)
+    _, destination_prefix = read_staged_release(staging_storage, f"{dataset_slug}/{file_slug}/{version}")
     keys = staging_storage.list_keys(dataset_slug, file_slug, version)
     legacy = _legacy_unknown_shapefile_archive(
         staging_storage, dataset_slug, file_slug, version, keys
@@ -235,10 +243,10 @@ def _copy_version_files(
         staging_storage,
         published_storage,
         [
-            (key, _logical_version_key(dataset_slug, file_slug, version, relative_key))
+            (key, f"{destination_prefix}/{relative_key}")
             for key, relative_key in selected_pairs
         ],
-        version_prefix=f"{dataset_slug}/{file_slug}/{version}",
+        version_prefix=destination_prefix,
     )
     return sorted(copied)
 
@@ -1287,13 +1295,30 @@ def run_local_version_pipeline(
         file_slug,
         version,
     )
+    source_metadata = dict(resolved_manifest.metadata)
+    if dataset_slug == USACE_PYLON_LOCATIONS_DATASET_SLUG:
+        capture_key = staging_storage.build_target_location(
+            dataset_slug, file_slug, version, "metadata/native_capture.json"
+        )
+        capture_bytes = staging_storage.read_key(capture_key)
+        capture_evidence = json.loads(capture_bytes)
+        source_metadata["capture_evidence"] = {
+            "metadata_key": capture_key,
+            "metadata_sha256": hashlib.sha256(capture_bytes).hexdigest(),
+            "source_layer": capture_evidence["source_layer"],
+            "feature_count": capture_evidence["feature_count"],
+            "source_record_sha256": capture_evidence["source_record_sha256"],
+            "code_identity": capture_evidence["code_identity"],
+            "release_accepted": False,
+            "refresh_semantics": "Each run captures a fresh source snapshot; retained captures are evidence and are not replayed as a cache.",
+        }
     summary = summarize_staged_catalog(
         staging_storage,
         dataset_slug,
         file_slug,
         version,
         dataset_slug,
-        source_metadata=resolved_manifest.metadata,
+        source_metadata=source_metadata,
     )
     write_catalog_metadata(
         staging_storage,
@@ -1316,10 +1341,15 @@ def run_local_version_pipeline(
     outputs.extend(_write_and_publish_geoparquet(staging_storage, dataset_slug, file_slug, version))
     outputs.extend(_write_and_publish_pmtiles(staging_storage, dataset_slug, file_slug, version))
     outputs.extend(_write_and_publish_shapefile_zip(staging_storage, dataset_slug, file_slug, version))
+    _, destination_prefix = read_staged_release(staging_storage, f"{dataset_slug}/{file_slug}/{version}")
+    candidate_prefix = staging_storage._ensure_prefixed(f"{dataset_slug}/{file_slug}/{version}") + "/"
+    published_prefix = published_storage._ensure_prefixed(destination_prefix) + "/"
+    outputs = [replace(output, path=published_prefix + output.path.removeprefix(candidate_prefix))
+               if output.path else output for output in outputs]
     promoted = _published_outputs_from_keys(
         dataset_slug,
         file_slug,
-        version,
+        destination_prefix.rsplit("/", 1)[1],
         _copy_version_files(
             staging_storage,
             published_storage,
@@ -1368,6 +1398,7 @@ def _output_for_partition(
     partitions_def=PUBLISH_PARTITIONS,
     group_name="publish",
     deps=[
+        AssetKey(["publish", "release_metadata"]),
         AssetKey(["publish", "catalog"]),
         AssetKey(["publish", "formats", "geopackage"]),
         AssetKey(["publish", "formats", "geoparquet"]),
@@ -1381,14 +1412,16 @@ def verify_release(
     staging_storage: StagingStorageResource,
     published_storage: PublishedStorageResource,
 ) -> Output[dict]:
+    load_release_approvals(staging_storage, published_storage)
     dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
     prefix = f"{dataset_slug}/{file_slug}/{version}"
-    pairs = [(key, _logical_version_key(dataset_slug, file_slug, version, relative))
+    _, destination_prefix = read_staged_release(staging_storage, prefix)
+    pairs = [(key, f"{destination_prefix}/{relative}")
              for key, relative in _archive_only_pairs(staging_storage, dataset_slug, file_slug, version,
                                                      staging_storage.list_keys(dataset_slug, file_slug, version))
              if Path(relative).parts[0] != "unknown"]
     require_release_approval(staging_storage, published_storage, pairs)
-    return Output({"version": version, "verified_inventory": prefix}, metadata={"acceptance": "exact_manual_release_decision"})
+    return Output({"version": destination_prefix.rsplit("/", 1)[1], "verified_inventory": prefix}, metadata={"acceptance": "exact_manual_release_decision"})
 
 
 @asset(
@@ -1418,15 +1451,17 @@ def publish_version(
         file_slug,
         version,
     )
+    _, destination_prefix = read_staged_release(staging_storage, f"{dataset_slug}/{file_slug}/{version}")
     outputs = [
         PublishedFormatOutput(
             file_slug,
-            Path(key.removeprefix(f"{dataset_slug}/{file_slug}/{version}/")).parts[0],
+            Path(key.removeprefix(published_storage._ensure_prefixed(destination_prefix) + "/")).parts[0],
             key,
         )
         for key in copied
     ]
-    return _output_for_partition(context, outputs, "version")
+    output = _output_for_partition(context, outputs, "version")
+    return Output({**output.value, "version": destination_prefix.rsplit("/", 1)[1]}, metadata=output.metadata)
 
 
 @asset(
@@ -1468,7 +1503,11 @@ def publish_geoparquet(
         file_slug,
         version,
     )
-    return _output_for_partition(context, outputs, "geoparquet")
+    output = _output_for_partition(context, outputs, "geoparquet")
+    if dataset_slug == USACE_PYLON_LOCATIONS_DATASET_SLUG:
+        parity = compare_usace_pylon_locations_geoparquet(staging_storage, version)
+        return Output(output.value, metadata={**output.metadata, "native_parity": parity})
+    return output
 
 
 @asset(
@@ -1522,6 +1561,6 @@ publish_assets = [
     publish_shapefile_zip,
 ]
 
-from dagster_hifld.assets.portolan import publish_portolan_catalog
+from dagster_hifld.assets.portolan import publish_portolan_catalog, prepare_release_metadata
 
-publish_assets.append(publish_portolan_catalog)
+publish_assets.extend([prepare_release_metadata, publish_portolan_catalog])

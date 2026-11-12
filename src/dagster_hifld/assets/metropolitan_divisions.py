@@ -17,3 +17,7 @@ def census_metropolitan_divisions(context,staging_storage:StagingStorageResource
 
 metdiv_source_integrity_job=define_asset_job('metdiv_source_integrity',selection=AssetSelection.assets(census_metropolitan_divisions))
 metdiv_source_integrity_schedule=ScheduleDefinition(name='metdiv_source_integrity_monthly',job=metdiv_source_integrity_job,cron_schedule='0 7 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS=[census_metropolitan_divisions]
+JOBS=[metdiv_source_integrity_job]
+SCHEDULES=[metdiv_source_integrity_schedule]
