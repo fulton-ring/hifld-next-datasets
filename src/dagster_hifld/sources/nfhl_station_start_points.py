@@ -14,6 +14,11 @@ for a flood study reach; OBJECTID is the physical row key, while START_ID and
 GlobalID are the producer's business identifiers and GFID is a producer
 bookkeeping key that may be reused across rows. All ten producer fields (nine
 attributes plus SHAPE) are retained verbatim in the candidate.
+
+The 2026-11-12 complete capture observed 93,551 features with 82 rows whose
+ordinates are Esri string-"NaN" values; those values are retained verbatim in
+the record/raw evidence and gated as unusable candidate geometry rather than
+silently coerced to a location.
 """
 from __future__ import annotations
 
@@ -71,12 +76,13 @@ PAGE_CAPTURE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-12 complete-layer population contract.
 EXPECTED_COUNT = 93551
 EXPECTED_ID_SHA256 = "6820bd6e658f755a6000cf0208e59a54bf0b8130bbdaab7cf2aa7435de9d7209"
-EXPECTED_RECORD_SHA256 = "PENDING_RECORD_SHA256"
-EXPECTED_GEOMETRY_SHA256 = "PENDING_GEOMETRY_SHA256"
-EXPECTED_SCHEMA_SHA256 = "PENDING_SCHEMA_SHA256"
+EXPECTED_RECORD_SHA256 = "8dc76b42733eb706eab802b11a560b993d15906d5a6dc4ae792eef6f620cb491"
+EXPECTED_GEOMETRY_SHA256 = "55bb89748d0f27df6964c64c4f895daf89ee02080faa4697075edabcf754f448"
+EXPECTED_SCHEMA_SHA256 = "4de7e5e930d856397559d14c1207c4c7b4fe3b0b77f8bc71ac2f0e7f3e91a0e4"
 EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_NAN_GEOMETRY_COUNT = 0
-EXPECTED_OBSERVED_BOUNDS = {"xmin": None, "ymin": None, "xmax": None, "ymax": None}
+EXPECTED_NAN_GEOMETRY_COUNT = 82
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -170.8292763401772, "ymin": -14.33191409268818,
+                            "xmax": 145.1430221884042, "ymax": 64.85226210225812}
 EXPECTED_LAYER_EXTENT = {"xmin": -170.8292763401772, "ymin": -14.33191409268818,
                          "xmax": 145.1430221884042, "ymax": 64.85226210225812}
 EXPECTED_SERVICE_LAYER_ROSTER = [
