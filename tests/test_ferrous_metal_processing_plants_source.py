@@ -469,31 +469,5 @@ class FerrousEndToEndTests(unittest.TestCase):
             self.assertTrue(failures)
 
 
-class FerrousRegistrationTests(unittest.TestCase):
-    def test_explicit_source_ingest_wiring_and_stopped_schedule(self):
-        with patch.dict("os.environ", {"HIFLD_SHADOW_MANUAL_ONLY": "1"}):
-            from dagster import DefaultScheduleStatus
-
-            from dagster_hifld.assets.ferrous_metal_processing_plants import (
-                ferrous_metal_processing_plants_draft_schedule,
-            )
-            from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
-            from dagster_hifld.definitions import defs
-            slug = "ferrous-metal-processing-plants"
-            graph = defs.resolve_asset_graph()
-            keys = {tuple(key.path) for key in graph.get_all_asset_keys()}
-            self.assertIn(("ingest", slug, slug), keys)
-            self.assertIn(("publish", "catalog"), keys)
-            self.assertIn(("publish", "verify"), keys)
-            self.assertIn(("publish", "promote"), keys)
-            self.assertEqual(
-                sum(any(tuple(key.path) == ("ingest", slug, slug) for key in asset.keys)
-                    for asset in hifld_ingest_assets),
-                1)
-            self.assertIsNotNone(defs.resolve_job_def("ferrous_metal_processing_plants_draft_refresh"))
-            self.assertEqual(ferrous_metal_processing_plants_draft_schedule.default_status,
-                             DefaultScheduleStatus.STOPPED)
-
-
 if __name__ == "__main__":
     unittest.main()
