@@ -79,7 +79,22 @@ EXPECTED_LICENSEE_ROWS = 81081
 EXPECTED_ACTIVE_LOCATIONS = 25501
 EXPECTED_ACTIVE_ID_SHA256 = "566a66503eee03c00f8cc31b3e4a8bbf5a2fd9f37cc73337e1011ab3c1d1073c"
 EXPECTED_STATE_ROSTER_SHA256 = "db7a9f190bfc75658d2f989b38a5a5e95b3e90992234d039262d439f6802056a"
-EXPECTED_NULL_GEOMETRY_COUNT = 7530
+EXPECTED_NULL_GEOMETRY_COUNT = 7547
+# FCC ULS datum policy (https://www.fcc.gov/wireless/systems-utilities/
+# north-american-datum-1983-coordinates): ULS geographic coordinates must be
+# referenced to NAD83 - converted with NCAT for CONUS, Alaska, Hawaii, Puerto
+# Rico and the U.S. Virgin Islands, and with the FCC's specialized methods for
+# American Samoa (Method #1) and Guam (Method #2). For the policy's "Do Not
+# Convert" areas (Baker, Howland, Jarvis, Johnston, Kingman Reef, Midway,
+# Northern Mariana Islands, Palmyra and Wake) the coordinates "remain in local
+# datum": the FCC does not name that local datum and ULS records carry no
+# per-record datum, so it is unresolved. ULS state codes classify the pinned
+# population; Northern Mariana Islands files as MP and is the only Do-Not-
+# Convert area it reaches. Rows in these areas are published without geometry
+# rather than labeled NAD83, with their raw DMS components and derived decimal
+# coordinates retained unchanged as evidence.
+DATUM_DO_NOT_CONVERT_STATES = frozenset({"MP"})
+EXPECTED_DO_NOT_CONVERT_WITHHELD_COUNT = 17
 HD_CALLSIGN, HD_STATUS, HD_SERVICE = 4, 5, 6
 EN_CALLSIGN, EN_ENTITY_TYPE, EN_NAME = 4, 5, 7
 LO_UNIQUE_SYSTEM_IDENTIFIER, LO_CALLSIGN, LO_LOCATION_NUMBER = 1, 4, 8
@@ -111,14 +126,23 @@ COVERAGE_SCOPE = (
     "service group (FCC public access files documentation): ULS carries the site locations "
     "licensees filed, so this is the filed-site population the FCC publishes, not a census of "
     "physical towers. The pinned population includes 7530 active location records filed without "
-    "latitude/longitude components (published with null geometry, coordinates retained as null)."
+    "latitude/longitude components (published with null geometry, coordinates retained as null) and 17 "
+    "active locations in the FCC Do-Not-Convert datum area Northern Mariana Islands (ULS state code MP), "
+    "published without geometry with raw coordinates retained because the FCC leaves those coordinates "
+    "in their unrecorded local datum."
 )
 # FCC policy requires ULS geographic coordinates to be referenced to the North
 # American Datum of 1983 (https://www.fcc.gov/wireless/systems-utilities/
-# north-american-datum-1983-coordinates). The published WKB points carry the
-# DMS-derived decimal values unchanged, so the GeoParquet geometry is declared
-# in the native EPSG:4269 datum; no datum transformation, reprojection, repair
-# or geocoding is applied.
+# north-american-datum-1983-coordinates), with territorial exceptions: the
+# policy's "Do Not Convert" list (Baker, Howland, Jarvis, Johnston, Kingman
+# Reef, Midway, Northern Mariana Islands, Palmyra, Wake) keeps those
+# coordinates in their applicable local datum, which the FCC does not name and
+# ULS records do not record. The published WKB points carry the DMS-derived
+# decimal values unchanged, so GeoParquet geometry is declared in the native
+# EPSG:4269 datum; rows classified into a Do-Not-Convert area (ULS state code
+# MP, Northern Mariana Islands, in the pinned file) are published without
+# geometry rather than mislabeled NAD83; no datum transformation, reprojection,
+# repair or geocoding is applied.
 GEOMETRY_CRS = {
     "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
     "type": "GeographicCRS",
@@ -131,7 +155,11 @@ GEOMETRY_CRS = {
     "id": {"authority": "EPSG", "code": 4269},
 }
 GEOMETRY_PROVENANCE = ("WKB Point (londec, latdec) in EPSG:4269 (NAD83), the datum the FCC requires for "
-                       "ULS location coordinates; the DMS-derived decimal values are written unchanged, "
+                       "ULS location coordinates in its converted areas (NCAT areas, American Samoa via FCC "
+                       "Method #1, Guam via FCC Method #2); rows in the FCC Do-Not-Convert areas keep their "
+                       "local datum (unrecorded in ULS), so they are published without geometry with raw "
+                       "DMS and decimal coordinates retained (the pinned file reaches only Northern Mariana "
+                       "Islands, ULS state code MP); the DMS-derived decimal values are written unchanged, "
                        "with no datum transformation, reprojection, repair or geocoding")
 
 
@@ -294,6 +322,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
     keys = set()
     published = []
     null_geometry = 0
+    do_not_convert = 0
     for row in tables["LO"]:
         identifier = _integer(row[LO_UNIQUE_SYSTEM_IDENTIFIER], "unique_system_identifier")
         if identifier not in header or row[LO_CALLSIGN] != header[identifier][0]:
@@ -334,7 +363,17 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
             lon_dec = _decimal_degrees(lon_deg, lon_min or 0, lon_sec, lon_dir, "W")
             if not -90 <= lat_dec <= 90 or not -180 <= lon_dec <= 180:
                 raise ValueError("source_coordinate_out_of_range")
-            geometry = _point_wkb(lon_dec, lat_dec)
+            # FCC "Do Not Convert" areas keep their coordinates in an
+            # applicable local datum that the FCC does not name and ULS does
+            # not record; publishing them under the file's NAD83 declaration
+            # would mislabel them, so their geometry is withheld and their
+            # raw components and derived decimals remain as evidence.
+            if row[LO_STATE].strip() in DATUM_DO_NOT_CONVERT_STATES:
+                null_geometry += 1
+                do_not_convert += 1
+                geometry = None
+            else:
+                geometry = _point_wkb(lon_dec, lat_dec)
         if identifier not in licensees:
             raise ValueError("source_licensee_join_drift")
         published.append({
@@ -353,6 +392,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         })
     if null_geometry != EXPECTED_NULL_GEOMETRY_COUNT:
         raise ValueError("source_null_geometry_count_drift")
+    if do_not_convert != EXPECTED_DO_NOT_CONVERT_WITHHELD_COUNT:
+        raise ValueError("source_do_not_convert_geometry_withheld_drift")
     if len(published) != EXPECTED_ACTIVE_LOCATIONS:
         raise ValueError("source_active_population_drift")
     published.sort(key=lambda item: (item["UniqSysID"], item["LocNum"]))
@@ -385,8 +426,13 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         "source_radio_service_codes": sorted(EXPECTED_HD_RADIO_SERVICES),
         "source_file_creation_date": creation_date,
         "source_null_geometry_count": null_geometry,
-        "source_geometry_datum": "NAD83 (EPSG:4269), the FCC-required ULS location-coordinate datum; "
-                                 "coordinates are written unchanged with no datum transformation",
+        "source_do_not_convert_geometry_withheld_count": do_not_convert,
+        "source_geometry_datum": ("NAD83 (EPSG:4269), the FCC-required ULS datum in its converted areas "
+                                  "(NCAT areas, American Samoa via FCC Method #1, Guam via FCC Method #2); "
+                                  "FCC Do-Not-Convert area rows (Northern Mariana Islands, ULS state code MP, "
+                                  "in the pinned file) are published without geometry because their local "
+                                  "datum is not recorded; coordinates are written unchanged with no datum "
+                                  "transformation"),
         "source_incomplete_seconds_count": sum(1 for item in published if item["LatSec"] is None or item["LonSec"] is None),
         "source_bounds": bounds, "source_state_count": len(states),
         "source_coverage_scope": COVERAGE_SCOPE,
@@ -398,9 +444,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                         "active-location count, full active ID roster digest, state roster digest, DMS direction "
                         "codes, derived-decimal coordinate range and null-geometry count are checked; duplicate "
                         "location keys fail closed. Raw DMS components are preserved verbatim even when out of "
-                        "nominal range, and the 7530 pinned coordinate-less active location records are published "
-                        "with null geometry. Published geometry is declared in the FCC-required native NAD83 "
-                        "datum (EPSG:4269) with no datum transformation."),
+                        "nominal range, and the 7547 pinned active location records published without geometry "
+                        "(7530 filed without latitude/longitude components plus 17 in the FCC Do-Not-Convert "
+                        "area Northern Mariana Islands, whose local datum ULS does not record, so their "
+                        "geometry is withheld and raw evidence retained). Published geometry is declared in "
+                        "the FCC-required native NAD83 datum (EPSG:4269) with no datum transformation."),
     }
     return published, audit
 
@@ -538,12 +586,15 @@ def capture_land_mobile_commercial_transmission_towers(storage: StagingStorageRe
                                 "19148 published rows of the frozen HIFLD Next v1.0.0 copy match this formula "
                                 "computed from that copy's own DMS components); url embeds UniqSysID as the "
                                 "ULS license-location key"),
-            "null_geometry": ("active location records filed without latitude/longitude components (7530 in "
-                              "the pinned file) are published with null geometry and null latdec/londec; the "
-                              "frozen historical copy holds no null-geometry rows, so the coordinate-less "
-                              "population difference is flagged for the maintainer compatibility decision"),
-            "geometry": GEOMETRY_PROVENANCE + " (FCC ULS NAD83 datum policy: "
-                        "https://www.fcc.gov/wireless/systems-utilities/north-american-datum-1983-coordinates)",
+            "null_geometry": ("active location records published without geometry (7547 in the pinned file: "
+                              "7530 filed without latitude/longitude components with null latdec/londec, plus "
+                              "17 active locations in the FCC Do-Not-Convert area Northern Mariana Islands "
+                              "(ULS state code MP) whose applicable local datum the FCC does not name and ULS "
+                              "does not record - their raw DMS components and derived decimals are retained; "
+                              "the frozen historical copy holds no null-geometry rows, so both differences are "
+                              "flagged for the maintainer compatibility decision)"),
+            "geometry": GEOMETRY_PROVENANCE + " (FCC ULS NAD83 datum policy with its territorial Do-Not-Convert "
+                        "exceptions: https://www.fcc.gov/wireless/systems-utilities/north-american-datum-1983-coordinates)",
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
         "lineage": ("The FCC moved ULS daily and weekly public access downloads from wireless2.fcc.gov to "
                     "data.fcc.gov/download/pub/uls/ in July 2021; the weekly complete Land Mobile - Commercial "
@@ -563,7 +614,12 @@ def capture_land_mobile_commercial_transmission_towers(storage: StagingStorageRe
                     "keys are new (405 with coordinates, 7530 coordinate-less location records on 4406 "
                     "licenses with DMS components entirely or partly empty - the frozen copy has no "
                     "null-geometry rows, a coverage difference flagged for the maintainer compatibility "
-                    "decision rather than silently dropped). Land Mobile - Commercial is a site-based ULS "
+                    "decision rather than silently dropped). The FCC ULS datum policy requires NAD83 "
+                    "coordinates in its converted areas but leaves its Do-Not-Convert areas (Northern "
+                    "Mariana Islands is the only one in this population, 17 active locations with "
+                    "coordinates) in an applicable local datum the FCC does not name and ULS does not "
+                    "record, so those rows are published without geometry pending an authoritative datum "
+                    "decision, with raw coordinates retained. Land Mobile - Commercial is a site-based ULS "
                     "service group: ULS location records are the sites licensees filed, so this candidate "
                     "publishes the FCC's filed-site population, not a census of physical towers. No "
                     "publication or acceptance is implied; runtime approval flags remain false."),

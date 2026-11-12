@@ -23,9 +23,13 @@ LN, LW, NC, QD, QO, QT, YK, YM, YS, YX; GL and YL have no records). 7530
 active location records are filed without latitude/longitude components
 (7429 with all DMS components empty, 97 with only the direction codes, 4 with
 only the longitude direction) and are published with null geometry rather than
-dropped. Land Mobile - Commercial is a site-based ULS service group (FCC public
-access files documentation), so this is the FCC's filed-site population, not a
-census of physical towers.
+dropped. A further 17 active locations in the FCC Do-Not-Convert datum area
+Northern Mariana Islands (ULS state code MP) are also published without
+geometry, with their raw DMS components and derived decimal coordinates
+retained, because the FCC ULS datum policy leaves those coordinates in their
+applicable local datum. Land Mobile - Commercial is a site-based ULS service
+group (FCC public access files documentation), so this is the FCC's filed-site
+population, not a census of physical towers.
 
 The capture retains the complete zip body, wire body and request receipt; the
 payload's own `counts` file creation date and the HTTP receipt provide dated
@@ -43,7 +47,14 @@ information - Latitude, Longitude and Ground Elevation data"). The derived
 formatted to 12 significant digits); all 19148 published rows of the frozen
 HIFLD Next v1.0.0 copy match this formula computed from that copy's own DMS
 components. Coordinates are declared in the FCC-required native NAD83 datum
-(EPSG:4269) with no transformation. The weekly refresh schedule is stopped. The
+(EPSG:4269) with no transformation: the FCC ULS datum policy requires NAD83 in
+its converted areas (CONUS, Alaska, Hawaii, Puerto Rico, the U.S. Virgin
+Islands via NCAT; American Samoa and Guam via its specialized Methods #1 and
+#2), while its Do-Not-Convert areas (Baker, Howland, Jarvis, Johnston, Kingman
+Reef, Midway, Northern Mariana Islands, Palmyra, Wake) keep coordinates in an
+applicable local datum the FCC does not name and ULS does not record, so
+geometry is withheld for those rows rather than mislabeled NAD83. The weekly
+refresh schedule is stopped. The
 archived HIFLD OPEN layer (DataLumos project 239395, the inventory's download
 location) and the DHS crosswalk DOI 10.3886/E241367V1 return HTTP 403
 anonymously, so archive identity remains unverified; the existing published

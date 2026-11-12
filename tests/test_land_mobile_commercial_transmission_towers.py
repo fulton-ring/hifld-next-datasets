@@ -99,6 +99,7 @@ class LandMobileCommercialTowersTests(unittest.TestCase):
             "EXPECTED_HD_RADIO_SERVICES": ["GS", "IK", "YM", "YX"],
             "EXPECTED_LICENSE_STATUS_COUNTS": {"A": 2, "C": 1, "E": 1}, "EXPECTED_LICENSEE_ROWS": 4,
             "EXPECTED_ACTIVE_LOCATIONS": 5, "EXPECTED_NULL_GEOMETRY_COUNT": 1,
+            "EXPECTED_DO_NOT_CONVERT_WITHHELD_COUNT": 0,
             "EXPECTED_ACTIVE_ID_SHA256": _sha(_canonical(roster)),
             "EXPECTED_STATE_ROSTER_SHA256": _sha(_canonical(states)),
         }
@@ -125,7 +126,9 @@ class LandMobileCommercialTowersTests(unittest.TestCase):
         self.assertEqual(source.EXPECTED_LICENSE_STATUS_COUNTS, {"A": 8096, "C": 59916, "E": 11450, "T": 1619})
         self.assertEqual(source.EXPECTED_LICENSEE_ROWS, 81081)
         self.assertEqual(source.EXPECTED_ACTIVE_LOCATIONS, 25501)
-        self.assertEqual(source.EXPECTED_NULL_GEOMETRY_COUNT, 7530)
+        self.assertEqual(source.EXPECTED_NULL_GEOMETRY_COUNT, 7547)
+        self.assertEqual(source.EXPECTED_DO_NOT_CONVERT_WITHHELD_COUNT, 17)
+        self.assertEqual(source.DATUM_DO_NOT_CONVERT_STATES, frozenset({"MP"}))
         self.assertIn("l_LMcomm.zip", source.L_LMCOMM_URL)
 
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
@@ -239,6 +242,9 @@ class LandMobileCommercialTowersTests(unittest.TestCase):
         self.assertIn("EPSG:4269", source.GEOMETRY_PROVENANCE)
         self.assertIn("no datum transformation", source.GEOMETRY_PROVENANCE)
         self.assertNotIn("EPSG:4326", source.GEOMETRY_PROVENANCE)
+        self.assertIn("Do-Not-Convert", source.GEOMETRY_PROVENANCE)
+        self.assertIn("Northern Mariana", source.GEOMETRY_PROVENANCE)
+        self.assertIn("local datum", source.GEOMETRY_PROVENANCE)
 
     def test_drift_guards_fail_closed(self):
         cases = [
@@ -300,6 +306,37 @@ class LandMobileCommercialTowersTests(unittest.TestCase):
         self.assertEqual((row["LonDeg"], row["LonMin"], row["LonSec"], row["LonDir"]), (None, None, None, ""))
         self.assertEqual(audit["source_null_geometry_count"], 2)
 
+    def test_northern_mariana_local_datum_rows_publish_without_geometry(self):
+        hd, en, lo = _documents()
+        # Mirrors the pinned-file Northern Mariana Islands sample
+        # (UniqSysID, LocNum) = (1129323, 1): 15 11 10.0 N / 145 44 35.0 E.
+        lo = [lo[0], _lo(101, "WQNZ101", 2, lat_deg="15", lat_min="11", lat_sec="10.0", lat_dir="N",
+                         lon_deg="145", lon_min="44", lon_sec="35.0", lon_dir="E", state="MP"), *lo[2:]]
+        pins = self._pins(hd, en, lo)
+        pins["EXPECTED_NULL_GEOMETRY_COUNT"] = 2
+        pins["EXPECTED_DO_NOT_CONVERT_WITHHELD_COUNT"] = 1
+        pins["EXPECTED_STATE_ROSTER_SHA256"] = _sha(_canonical(sorted({"CA", "LA", "GU", "GM", "MP"})))
+        published, audit = self._validate(hd, en, lo, pins)
+        mariana = published[1]
+        self.assertIsNone(mariana["geometry"])
+        # The FCC leaves Do-Not-Convert coordinates in their applicable local
+        # datum, which ULS does not record; raw DMS components and derived
+        # decimals are retained unchanged as evidence, only the datum-labeled
+        # geometry column is withheld.
+        self.assertEqual((mariana["LatDeg"], mariana["LatMin"], mariana["LatSec"], mariana["LatDir"]),
+                         (15, 11, 10.0, "N"))
+        self.assertEqual((mariana["latdec"], mariana["londec"]), (15.1861111111, 145.743055556))
+        self.assertEqual(audit["source_do_not_convert_geometry_withheld_count"], 1)
+        self.assertEqual(audit["source_null_geometry_count"], 2)
+        body = source._parquet_bytes(published)
+        rows = pq.read_table(io.BytesIO(body)).to_pylist()
+        self.assertIsNone(rows[1]["geometry"])
+        self.assertEqual((rows[1]["latdec"], rows[1]["londec"]), (15.1861111111, 145.743055556))
+        # Converted-area rows (Guam, FCC Method #2) keep their NAD83 geometry.
+        guam = published[3]
+        self.assertIsNotNone(guam["geometry"])
+        self.assertEqual(struct.unpack("<BIdd", guam["geometry"])[2:], (145.333333333, -14.0))
+
     def test_population_pins_fail_closed(self):
         hd, en, lo = _documents()
         pins = self._pins(hd, en, lo)
@@ -317,6 +354,10 @@ class LandMobileCommercialTowersTests(unittest.TestCase):
         pins = self._pins(hd, en, lo)
         pins["EXPECTED_NULL_GEOMETRY_COUNT"] = 2
         with self.assertRaisesRegex(ValueError, "source_null_geometry_count_drift"):
+            self._validate(hd, en, lo, pins)
+        pins = self._pins(hd, en, lo)
+        pins["EXPECTED_DO_NOT_CONVERT_WITHHELD_COUNT"] = 1
+        with self.assertRaisesRegex(ValueError, "source_do_not_convert_geometry_withheld_drift"):
             self._validate(hd, en, lo, pins)
 
     def test_zip_container_and_capture_receipts_fail_closed(self):
