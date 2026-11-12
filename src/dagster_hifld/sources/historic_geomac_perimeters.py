@@ -649,6 +649,7 @@ def local_candidate_path(storage: StagingStorageResource, prefix: str) -> Path:
     return target
 
 
+@contextmanager
 def candidate_lock(storage: StagingStorageResource, prefix: str):
     target = local_candidate_path(storage, prefix)
     target.parent.mkdir(parents=True, exist_ok=True)
