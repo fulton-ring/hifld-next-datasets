@@ -236,9 +236,31 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
         geometry_meta = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geometry_meta["primary_column"], "geometry")
         self.assertEqual(geometry_meta["columns"]["geometry"]["geometry_types"], ["Point"])
-        self.assertEqual(geometry_meta["columns"]["geometry"]["crs"]["id"]["code"], 4326)
+        self.assertEqual(geometry_meta["columns"]["geometry"]["crs"]["id"]["code"], 4269)
         self.assertEqual(audit["source_record_sha256"], _sha(_canonical(
             [{key: row[key] for key, _ in source.PUBLISHED_SCHEMA if key != "geometry"} for row in published])))
+
+    def test_geometry_declares_fcc_nad83_source_datum_without_transformation(self):
+        hd, en, lo = _documents()
+        published, audit = self._validate(hd, en, lo)
+        body = source._parquet_bytes(published)
+        table = pq.read_table(io.BytesIO(body))
+        crs = json.loads(table.schema.metadata[b"geo"])["columns"]["geometry"]["crs"]
+        self.assertEqual(crs["type"], "GeographicCRS")
+        self.assertEqual(crs["name"], "NAD83")
+        self.assertEqual(crs["id"], {"authority": "EPSG", "code": 4269})
+        self.assertEqual(crs["datum"]["name"], "North American Datum 1983")
+        self.assertEqual(crs["datum"]["ellipsoid"]["name"], "GRS 1980")
+        self.assertEqual(crs["datum"]["ellipsoid"]["semi_major_axis"], 6378137)
+        self.assertEqual(crs["datum"]["ellipsoid"]["inverse_flattening"], 298.257222101)
+        self.assertEqual(audit["source_coordinate_datum"], source.SOURCE_COORDINATE_DATUM)
+        self.assertEqual(audit["source_coordinate_datum"]["crs"], "EPSG:4269")
+        self.assertIn("north-american-datum-1983-coordinates", audit["source_coordinate_datum"]["fcc_policy_url"])
+        self.assertIn("no datum transformation", audit["source_coordinate_datum"]["statement"])
+        # The declared-NAD83 WKB coordinates are the DMS-to-decimal conversion of the
+        # filed values exactly (38°30'15"N, 121°45'30"W), with no datum shift applied.
+        self.assertEqual(struct.unpack("<BIdd", table.to_pylist()[0]["geometry"]),
+                         (1, 1, -121.758333333, 38.5041666667))
 
     def test_trailing_extra_field_quirk_rows_are_pinned(self):
         hd, en, lo = _documents()

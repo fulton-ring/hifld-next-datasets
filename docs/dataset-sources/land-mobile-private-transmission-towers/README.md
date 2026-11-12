@@ -49,6 +49,19 @@ because the FCC's own layer description anticipates exactly such errors ("It is
 known that there are some errors in the licensing information - Latitude,
 Longitude and Ground Elevation data"). The weekly refresh schedule is stopped.
 
+The geometry column declares the FCC ULS source datum, NAD83 (EPSG:4269), not
+WGS 84: FCC policy requires that "geographic coordinates provided to the
+Commission via the Universal Licensing System must be referenced to the North
+American Datum of 1983"
+(https://www.fcc.gov/wireless/systems-utilities/north-american-datum-1983-coordinates),
+so the filed DMS components and derived `latdec`/`londec` are published
+unchanged with no datum transformation or reprojection. Per the FCC's
+territorial conversion table, American Samoa and Guam filings were converted to
+NAD83 with the FCC's specified shifts, while the do-not-convert Pacific island
+areas (Baker, Howland, Jarvis, Johnston, Kingman Reef, Midway, the Northern
+Mariana Islands, Palmyra and Wake) remain referenced to their applicable local
+datum; such rows are published exactly as filed and are not filtered or shifted.
+
 Column contract relative to the frozen copy: the published HIFLD Next v1.0.0
 frozen copy (605297 point features, issued 2024-01-24) types `TowReg` as int64
 with 0 for unregistered records and stores 0.0 for empty `SupStruc`/`AllStruc`

@@ -135,6 +135,30 @@ COVERAGE_SCOPE = (
     "this is the filed-site population the FCC publishes, not a census of "
     "physical towers."
 )
+# FCC ULS policy (https://www.fcc.gov/wireless/systems-utilities/north-american-datum-1983-coordinates):
+# "Geographic coordinates provided to the Commission via the Universal Licensing
+# System must be referenced to the North American Datum of 1983 (NAD83)", with
+# the FCC's territorial conversion table marking American Samoa and Guam as
+# converted to NAD83 by specified shifts and certain other Pacific island areas
+# as do-not-convert (coordinates remain in the applicable local datum). The
+# filed DMS values are therefore published unchanged under an NAD83 (EPSG:4269)
+# declaration instead of being relabeled WGS 84; no datum transformation is
+# applied and none is available for the do-not-convert areas.
+SOURCE_COORDINATE_DATUM = {
+    "crs": "EPSG:4269",
+    "datum": "NAD83 (North American Datum of 1983)",
+    "fcc_policy_url": "https://www.fcc.gov/wireless/systems-utilities/north-american-datum-1983-coordinates",
+    "statement": (
+        "FCC ULS geographic coordinates must be referenced to the North American Datum of 1983 (NAD83), so "
+        "the published geometry declares NAD83 (EPSG:4269) and the filed DMS components and derived "
+        "latdec/londec are carried unchanged with no datum transformation or reprojection. Per FCC policy, "
+        "American Samoa and Guam filings were converted to NAD83 with the FCC's specified shifts, while "
+        "coordinates for the Pacific island areas the FCC marks do-not-convert (Baker, Howland, Jarvis, "
+        "Johnston, Kingman Reef, Midway, the Northern Mariana Islands, Palmyra and Wake) remain referenced "
+        "to their applicable local datum; such rows are published exactly as filed and are not filtered or "
+        "shifted."
+    ),
+}
 
 
 def _capture_budget(root: Path) -> None:
@@ -475,6 +499,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         "source_published_duplicate_location_key_count": published_duplicate_keys,
         "source_bounds": bounds, "source_state_count": len(states),
         "source_coverage_scope": COVERAGE_SCOPE,
+        "source_coordinate_datum": SOURCE_COORDINATE_DATUM,
         "drift_guard": ("Exact capture roster, HTTP status/completeness/length/hash receipt, zip member roster, "
                         "counts-file totals cross-checked against parsed HD/EN/LO records, per-record-type field "
                         "counts and record-type prefixes with only the pinned empty-trailing-field artifact rows "
@@ -496,13 +521,16 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
 def _parquet_bytes(published: list[dict]) -> bytes:
     arrays = [pa.array([item[name] for item in published], type=kind) for name, kind in PUBLISHED_SCHEMA]
     table = pa.Table.from_arrays(arrays, names=[name for name, _ in PUBLISHED_SCHEMA])
-    crs = {"$schema": "https://proj.org/schemas/v0.7/projjson.schema.json", "type": "GeographicCRS", "name": "WGS 84",
-           "datum": {"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984",
-                     "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137, "inverse_flattening": 298.257223563},
-                     "id": {"authority": "EPSG", "code": 6326}},
+    # FCC ULS coordinates are NAD83 by FCC policy (with the documented local-datum
+    # exceptions in SOURCE_COORDINATE_DATUM), so the geometry column declares
+    # EPSG:4269; the WKB coordinates themselves are the unchanged DMS conversions.
+    crs = {"$schema": "https://proj.org/schemas/v0.7/projjson.schema.json", "type": "GeographicCRS", "name": "NAD83",
+           "datum": {"type": "GeodeticReferenceFrame", "name": "North American Datum 1983",
+                     "ellipsoid": {"name": "GRS 1980", "semi_major_axis": 6378137, "inverse_flattening": 298.257222101},
+                     "id": {"authority": "EPSG", "code": 6269}},
            "coordinate_system": {"subtype": "ellipsoidal", "axis": [{"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"},
                                                                     {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}]},
-           "id": {"authority": "EPSG", "code": 4326}}
+           "id": {"authority": "EPSG", "code": 4269}}
     metadata = {b"geo": _canonical({"version": "1.1.0", "primary_column": "geometry",
                                    "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"], "crs": crs}}})}
     sink = io.BytesIO()
@@ -627,7 +655,15 @@ def capture_land_mobile_private_transmission_towers(storage: StagingStorageResou
                                 "southern latitude and only E marks eastern longitude, so missing or non-canonical "
                                 "direction components default to north/west as in the historical extract); url "
                                 "embeds UniqSysID as the ULS license-location key"),
-            "geometry": "WKB Point (londec, latdec) in EPSG:4326, no reprojection, repair or geocoding",
+            "geometry": ("WKB Point (londec, latdec) declared in the FCC ULS source datum NAD83 (EPSG:4269); "
+                        "the filed DMS components and derived decimals are published unchanged with no datum "
+                        "transformation, reprojection, repair or geocoding. FCC policy requires ULS "
+                        "coordinates in NAD83 (https://www.fcc.gov/wireless/systems-utilities/"
+                        "north-american-datum-1983-coordinates): American Samoa and Guam filings were "
+                        "converted to NAD83 with the FCC's specified shifts, while the do-not-convert "
+                        "Pacific island areas (Baker, Howland, Jarvis, Johnston, Kingman Reef, Midway, the "
+                        "Northern Mariana Islands, Palmyra and Wake) remain in their applicable local datum "
+                        "and are published exactly as filed."),
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
         "lineage": ("The FCC moved ULS daily and weekly public access downloads from wireless2.fcc.gov to "
                     "data.fcc.gov/download/pub/uls/ in July 2021; the weekly complete Land Mobile {Private} "
