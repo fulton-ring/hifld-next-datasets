@@ -102,3 +102,8 @@ mooring_facility_areas_usace_ienc_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [mooring_facility_areas_usace_ienc]
+ASSET_CHECKS = [mooring_facility_areas_usace_ienc_complete]
+JOBS = [mooring_facility_areas_usace_ienc_draft_job]
+SCHEDULES = [mooring_facility_areas_usace_ienc_draft_schedule]
