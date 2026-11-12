@@ -177,7 +177,14 @@ def _untyped(value: Any) -> Any:
 
 
 def _key_is_null(key: bytes) -> bool:
-    return any(member == ["null"] for member in json.loads(key)) if key != _UNKEYED else False
+    """A typed array key is null when any typed component is a null value."""
+    if key == _UNKEYED:
+        return False
+    typed = json.loads(key)
+    if (not isinstance(typed, list) or len(typed) != 2 or typed[0] != "array"
+            or not isinstance(typed[1], list)):
+        raise ValueError("Malformed typed key")
+    return any(component == ["null"] for component in typed[1])
 
 
 def _validate_plan(plan: dict, stream_names: set[str], limits: AccountingLimits) -> None:

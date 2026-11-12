@@ -15,7 +15,8 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest, snapsho
 from dagster_hifld.transformation_accounting import (
     AccountingLimits, ADAPTER, ADAPTER as ACCOUNTING_ADAPTER,
     _code_digest as _accounting_code_digest, _digest as _accounting_digest,
-    _json_bytes, _untyped, account_construction, sha256_file,
+    _json_bytes, _key_is_null, _UNKEYED as ACCOUNTING_UNKEYED, _untyped,
+    account_construction, sha256_file,
 )
 from dagster_hifld.validation import compare_full_rows
 from test_full_verification import accepted_fixture, feature as accepted_feature
@@ -295,6 +296,107 @@ class TransformationAccountingTests(unittest.TestCase):
             self.assertEqual(join["unmatched_left_rows"], 1)
             self.assertEqual(join["unmatched_right_rows"], 1)
             self.assertEqual(join["fan_out"]["one_to_one_keys"], 1)
+
+    def test_null_missing_and_composite_null_keys_are_counted_in_join_receipt(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
+            self.assertTrue(_key_is_null(_json_bytes([None])))
+            self.assertTrue(_key_is_null(_json_bytes(["PA", None])))
+            self.assertFalse(_key_is_null(_json_bytes(["PA", "OH"])))
+            self.assertFalse(_key_is_null(ACCOUNTING_UNKEYED))
+            streams = root / "streams"
+            write_jsonl(streams / "places.jsonl", [
+                {"id": "p1", "state": "PA", "name": "Alpha"},
+                {"id": "p2", "state": None, "name": "Ghost"},
+                {"id": "p3", "other": "x"},
+                {"id": "p4", "state": "OH", "name": None},
+                {"id": "p5", "state": "TX", "name": "Solo"},
+            ])
+            write_jsonl(streams / "regions.jsonl", [
+                {"state": "PA", "label": "Alpha"},
+                {"state": "OH", "label": None},
+                {"state": None, "label": "NullRegion"},
+                {"state": "TX", "label": "South"},
+            ])
+            plan = {"schema_version": 1, "steps": [
+                {"op": "join", "left_stream": "places", "right_stream": "regions", "join_type": "left",
+                 "left_keys": [["state"], ["name"]], "right_keys": [["state"], ["label"]],
+                 "output_stream": "joined"}], "output": "joined"}
+            expected = [
+                {"left": {"id": "p1", "state": "PA", "name": "Alpha"},
+                 "right": {"state": "PA", "label": "Alpha"}},
+                {"left": {"id": "p2", "state": None, "name": "Ghost"}, "right": None},
+                {"left": {"id": "p3", "other": "x"}, "right": None},
+                {"left": {"id": "p4", "state": "OH", "name": None},
+                 "right": {"state": "OH", "label": None}},
+                {"left": {"id": "p5", "state": "TX", "name": "Solo"}, "right": None},
+            ]
+            write_jsonl(streams / "joined.jsonl", expected)
+            spec = {"schema_version": 1, "root": str(root), "roster_prefix": "streams", "streams": [
+                {"name": "places", "path": "streams/places.jsonl", **pin(streams / "places.jsonl"), "rows": 5},
+                {"name": "regions", "path": "streams/regions.jsonl", **pin(streams / "regions.jsonl"), "rows": 4},
+            ]}
+            candidate = {"path": "streams/joined.jsonl", **pin(streams / "joined.jsonl"), "rows": 5}
+            receipt = account_construction(spec, plan, candidate, evidence)
+            self.assertEqual(receipt["status"], "pass")
+            # p2 null state, p3 missing both paths, p4 null name; the right
+            # side carries null components in r2 and r3.
+            self.assertEqual(receipt["null_keys"], {"places": 3, "regions": 2})
+            join = receipt["steps"][0]
+            self.assertEqual(join["null_left_keys"], 3)
+            self.assertEqual(join["null_right_keys"], 2)
+            self.assertEqual(join["left_rows"], 5)
+            self.assertEqual(join["right_rows"], 4)
+            self.assertEqual(join["matched_left_rows"], 2)
+            self.assertEqual(join["unmatched_left_rows"], 3)
+            self.assertEqual(join["matched_right_rows"], 2)
+            self.assertEqual(join["unmatched_right_rows"], 2)
+            self.assertEqual(join["distinct_matched_keys"], 2)
+            self.assertEqual(join["fan_out"]["one_to_one_keys"], 2)
+
+    def test_null_keys_are_counted_for_dedup_and_aggregate_receipts(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
+            root, evidence = Path(d), Path(e)
+            streams = root / "streams"
+            candidates = root / "candidates"
+            write_jsonl(streams / "readings.jsonl", [
+                {"station": "S1", "value": 1},
+                {"station": "S1", "value": 2},
+                {"station": None, "value": 3},
+                {"station": None, "value": 4},
+                {"value": 5},
+            ])
+            write_jsonl(candidates / "unique.jsonl", [
+                {"station": "S1", "value": 1}, {"station": None, "value": 3}])
+            spec = {"schema_version": 1, "root": str(root), "roster_prefix": "streams", "streams": [
+                {"name": "readings", "path": "streams/readings.jsonl", **pin(streams / "readings.jsonl"), "rows": 5}]}
+            candidate = {"path": "candidates/unique.jsonl", **pin(candidates / "unique.jsonl"), "rows": 2}
+            dedup_plan = {"schema_version": 1, "steps": [
+                {"op": "deduplicate", "input_stream": "readings", "key_paths": [["station"]],
+                 "rule": "first", "output_stream": "unique"}], "output": "unique"}
+            receipt = account_construction(spec, dedup_plan, candidate, evidence)
+            self.assertEqual(receipt["status"], "pass")
+            # Rows 3, 4 and the missing-station row 5 all carry null keys.
+            self.assertEqual(receipt["null_keys"], {"readings": 3})
+            dedup = receipt["steps"][0]
+            self.assertEqual(dedup["distinct_keys"], 2)
+            self.assertEqual(dedup["keys_with_duplicates"], 2)
+            self.assertEqual(dedup["dropped_rows"], 3)
+
+            write_jsonl(candidates / "totals.jsonl", [
+                {"key": ["S1"], "rows": 2, "total": 3, "counted": 2},
+                {"key": [None], "rows": 3, "total": 12, "counted": 3}])
+            candidate = {"path": "candidates/totals.jsonl", **pin(candidates / "totals.jsonl"), "rows": 2}
+            aggregate_plan = {"schema_version": 1, "steps": [
+                {"op": "aggregate", "input_stream": "readings", "key_paths": [["station"]],
+                 "aggregations": [{"name": "total", "function": "sum", "field_path": ["value"]},
+                                  {"name": "counted", "function": "count"}],
+                 "output_stream": "totals"}], "output": "totals"}
+            receipt = account_construction(spec, aggregate_plan, candidate, evidence)
+            self.assertEqual(receipt["status"], "pass")
+            self.assertEqual(receipt["null_keys"], {"readings": 3})
+            aggregate = receipt["steps"][0]
+            self.assertEqual(aggregate["groups"], 2)
 
     def test_aggregation_type_and_decimal_accounting(self):
         with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
