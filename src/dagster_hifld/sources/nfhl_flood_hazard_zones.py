@@ -442,6 +442,7 @@ def _classify_geometries_streaming(features: list[dict[str, object]], attr_names
         geometry_records.append([attrs["OBJECTID"], validated_rings])
         if nan_rings:
             counters["nan_geometry"] += 1
+    return geometry_records
 
 
 def _arrow_type(field: Mapping[str, object]) -> pa.DataType:

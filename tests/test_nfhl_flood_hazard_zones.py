@@ -44,9 +44,9 @@ def _fixture():
                 "GlobalID": "{9585E72B-E15E-4949-8B7A-6D7D29569B64}", "SHAPE.STArea()": 12.5,
                 "SHAPE.STLength()": 30.25}
 
-    exterior = [[-86.0, 34.0], [-86.0, 34.1], [-85.9, 34.1], [-85.9, 34.0], [-86.0, 34.0]]
+    exterior = [[-86.0, 34.0], [-85.9, 34.0], [-85.9, 34.1], [-86.0, 34.1], [-86.0, 34.0]]
     hole = [[-85.98, 34.04], [-85.98, 34.06], [-85.96, 34.06], [-85.96, 34.04], [-85.98, 34.04]]
-    exterior2 = [[-86.5, 34.0], [-86.5, 34.05], [-86.4, 34.05], [-86.4, 34.0], [-86.5, 34.0]]
+    exterior2 = [[-86.5, 34.0], [-86.4, 34.0], [-86.4, 34.05], [-86.5, 34.05], [-86.5, 34.0]]
     features = [
         {"attributes": attrs(10), "geometry": {"rings": [exterior, hole]}},
         {"attributes": attrs(11), "geometry": None},
@@ -115,8 +115,8 @@ class NfhlFloodHazardZonesValidationTests(unittest.TestCase):
             self.assertEqual(len(polygon.interiors), 1)
 
     def test_hole_joins_smallest_containing_exterior_as_multipolygon(self):
-        exterior_a = [[0.0, 0.0], [0.0, 10.0], [10.0, 10.0], [10.0, 0.0], [0.0, 0.0]]
-        exterior_b = [[20.0, 0.0], [20.0, 10.0], [30.0, 10.0], [30.0, 0.0], [20.0, 0.0]]
+        exterior_a = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [0.0, 0.0]]
+        exterior_b = [[20.0, 0.0], [30.0, 0.0], [30.0, 10.0], [20.0, 10.0], [20.0, 0.0]]
         hole_b = [[21.0, 1.0], [21.0, 2.0], [22.0, 2.0], [22.0, 1.0], [21.0, 1.0]]
         wkb = source._polygon_wkb({"rings": [exterior_a, exterior_b, hole_b]})
         import shapely
@@ -250,8 +250,9 @@ def _bodies_from_fixture():
     fields, features, docs, schema, geom = _fixture()
     pages, complete = _split(docs)
     bodies = {name: json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode()
-              for name, doc in complete.items()}
+              for name, doc in complete.items() if not isinstance(doc, bytes)}
     bodies.update(pages)
+    bodies["service_doc"] = SERVICE_DOC_BODY
     bodies["ids_seed"] = bodies["ids_before"]
     return fields, features, docs, schema, geom, bodies
 
