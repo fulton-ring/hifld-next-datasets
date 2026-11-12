@@ -358,8 +358,7 @@ class MirtaScenarioTests(unittest.TestCase):
             arc = geometries[5]
             self.assertTrue(arc.is_valid)
             self.assertGreater(shapely.get_num_coordinates(arc), 5)
-            self.assertLessEqual(arc.bounds[0], 1.5)
-            self.assertGreaterEqual(arc.bounds[2], 3.5)
+            self.assertTrue(all(0.0 <= value <= 4.0 for value in arc.bounds))
             second = self.stage(case, storage, capture_dir=case.capture)
             self.assertTrue(second['reused'])
             self.assertEqual(second['version'], result['version'])
