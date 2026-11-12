@@ -68,6 +68,7 @@ from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pi
 from dagster_hifld.assets.usace_overhead_cables import usace_overhead_cables_usace_ienc
 from dagster_hifld.assets.usace_dam_lines import usace_dam_lines_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
+from dagster_hifld.assets.usace_obstruction_locations import usace_obstruction_locations_usace_ienc
 from dagster_hifld.assets.usace_mooring_facility_lines import usace_mooring_facility_lines_usace_ienc
 from dagster_hifld.assets.river_areas_usace_ienc import river_areas_usace_ienc
 from dagster_hifld.assets.shoreline_construction_locations_usace_ienc import shoreline_construction_locations_usace_ienc
@@ -88,6 +89,7 @@ from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_i
 from dagster_hifld.assets.nces_public_schools import nces_public_schools
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.usace_daymark_locations import usace_daymark_locations_usace_ienc
+from dagster_hifld.assets.usace_landmark_locations import usace_landmark_locations_usace_ienc
 from dagster_hifld.assets.usace_dynamic_buoys import usace_dynamic_buoys_usace_ienc
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_areas_usace_ienc
@@ -224,6 +226,7 @@ hifld_ingest_assets = [
     usace_overhead_cables_usace_ienc,
     usace_dam_lines_usace_ienc,
     usace_obstruction_lines_usace_ienc,
+    usace_obstruction_locations_usace_ienc,
     usace_mooring_facility_lines_usace_ienc,
     river_areas_usace_ienc,
     shoreline_construction_locations_usace_ienc,
@@ -240,6 +243,7 @@ hifld_ingest_assets = [
     usace_caution_areas_usace_ienc,
     usace_pile_locations_usace_ienc,
     usace_daymark_locations_usace_ienc,
+    usace_landmark_locations_usace_ienc,
     usace_dynamic_buoys_usace_ienc,
     usace_pipeline_areas_usace_ienc,
     usace_data_quality_areas_usace_ienc,
