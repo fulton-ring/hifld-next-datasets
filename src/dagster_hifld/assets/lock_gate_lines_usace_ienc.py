@@ -103,3 +103,8 @@ lock_gate_lines_usace_ienc_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [lock_gate_lines_usace_ienc_candidate]
+ASSET_CHECKS = [lock_gate_lines_usace_ienc_complete]
+JOBS = [lock_gate_lines_usace_ienc_draft_job]
+SCHEDULES = [lock_gate_lines_usace_ienc_draft_schedule]
