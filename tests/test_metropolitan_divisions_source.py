@@ -124,6 +124,9 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
                 source.reconcile_cached_native_outputs(root, self.table)
 
     def test_shared_cache_verifier_accepts_catalog_metadata_but_rejects_unknown_objects(self):
+        from dagster_hifld.catalog import summarize_staged_catalog
+        from dagster_hifld.source_manifest import load_resolved_source_manifest
+
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp)
             version = "v152-test"
@@ -131,14 +134,29 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
             fingerprint = "a" * 64
             state_key = f"_construction-state/{source.SLUG}/{version}.json"
             identity = {"code_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(), "files": {}}
-            object_body = b"{}\n"
-            storage.write_key(f"{prefix}/metadata/source_manifest.json", object_body)
-            for relative in ("metadata/quality_manifest.json", "metadata/data_dictionary.json", "metadata/source/source_manifest.json"):
-                storage.write_key(f"{prefix}/{relative}", b"{}\n")
-            objects = {"metadata/source_manifest.json": {"bytes": len(object_body), "sha256": source.digest(object_body)}}
+            manifest_body = b"{}\n"
+            scratch = Path(tmp) / "scratch.gpkg"
+            source.write_native_gpkg(self.table, scratch)
+            gpkg_body = scratch.read_bytes()
+            scratch.unlink()
+            gpkg_name = f"geopackage/{source.SLUG}.gpkg"
+            storage.write_key(f"{prefix}/{gpkg_name}", gpkg_body)
+            storage.write_key(f"{prefix}/metadata/source_manifest.json", manifest_body)
+            for relative in ("metadata/source/source_manifest.json",
+                             f"metadata/source/version_{source.digest(manifest_body)}_source_manifest.json"):
+                storage.write_key(f"{prefix}/{relative}", manifest_body)
+            objects = {
+                gpkg_name: {"bytes": len(gpkg_body), "sha256": source.digest(gpkg_body)},
+                "metadata/source_manifest.json": {"bytes": len(manifest_body), "sha256": source.digest(manifest_body)},
+            }
             payload = {"processing_identity": identity, "source_record_sha256": "b" * 64,
                        "source_schema_sha256": "c" * 64, "capture_receipts": {}, "objects": objects}
             seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+            resolved_manifest = load_resolved_source_manifest(storage, source.SLUG, source.SLUG, version)
+            summary = summarize_staged_catalog(storage, source.SLUG, source.SLUG, version, source.SLUG,
+                source_metadata=resolved_manifest.metadata)
+            storage.write_key(f"{prefix}/metadata/quality_manifest.json", json.dumps(summary.quality_manifest).encode())
+            storage.write_key(f"{prefix}/metadata/data_dictionary.json", json.dumps(summary.data_dictionary).encode())
             with patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
                 result = verify_cached_candidate(storage, Path(__file__).parents[1], state_key, prefix, version,
                     fingerprint, identity, "b" * 64, "c" * 64, objects, {})
