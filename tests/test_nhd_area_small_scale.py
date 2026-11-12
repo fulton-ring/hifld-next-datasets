@@ -117,6 +117,8 @@ def _pins(features, schema, geom, counts, bounds):
                 EXPECTED_NAN_GEOMETRY_COUNT=nan_count,
                 EXPECTED_UNASSEMBLED_COUNT=len(source._unassembled_object_ids(
                     sorted(features, key=lambda row: row["attributes"]["OBJECTID"]))),
+                EXPECTED_UNASSEMBLED_ID_SAMPLE=source._unassembled_object_ids(
+                    sorted(features, key=lambda row: row["attributes"]["OBJECTID"])),
                 EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14, 15])).hexdigest(),
                 EXPECTED_RECORD_SHA256=source._list_sha(sorted(features, key=lambda row: row["attributes"]["OBJECTID"])),
                 EXPECTED_GEOMETRY_SHA256=hashlib.sha256(_canonical(geom)).hexdigest(),
