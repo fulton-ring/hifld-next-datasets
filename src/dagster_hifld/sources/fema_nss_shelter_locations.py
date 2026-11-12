@@ -447,8 +447,43 @@ def _arrow_type(field: dict) -> pa.DataType:
             "esriFieldTypeDate": pa.int64()}[kind]
 
 
+_INTEGER_FIELD_TYPES = frozenset({"esriFieldTypeOID", "esriFieldTypeInteger",
+                                  "esriFieldTypeSmallInteger", "esriFieldTypeDate"})
+_FLOAT_FIELD_TYPES = frozenset({"esriFieldTypeDouble", "esriFieldTypeSingle"})
+
+
+def _validate_attribute_values(fields: list[dict], features: list[dict]) -> None:
+    """Refuse attribute values whose declared-type conversion would not be lossless.
+
+    Integer, OID and epoch-millisecond date fields must arrive as exact JSON integers
+    (booleans are not integers), float fields as finite numbers and string fields as
+    strings; anything else is source drift and aborts instead of being coerced.
+    """
+    for field in fields:
+        kind, name = field["type"], field["name"]
+        if kind in _INTEGER_FIELD_TYPES:
+            def accepted(value): return value is None or type(value) is int
+        elif kind in _FLOAT_FIELD_TYPES:
+            def accepted(value): return value is None or (type(value) in (int, float) and math.isfinite(value))
+        elif kind == "esriFieldTypeString":
+            def accepted(value): return value is None or type(value) is str
+        else:
+            raise ValueError("source_attribute_field_type_unsupported:" + kind)
+        for value in (row["attributes"][name] for row in features):
+            if not accepted(value):
+                raise ValueError("source_attribute_value_type_drift:" + name)
+
+
 def _native_parquet(fields: list[dict], features: list[dict]) -> bytes:
-    cols = {f["name"]: pa.array([x["attributes"][f["name"]] for x in features], type=_arrow_type(f)) for f in fields}
+    _validate_attribute_values(fields, features)
+    cols: dict[str, pa.Array] = {}
+    for f in fields:
+        name = f["name"]
+        values = [x["attributes"][name] for x in features]
+        col = pa.array(values, type=_arrow_type(f))
+        if col.to_pylist() != values:
+            raise ValueError("source_attribute_value_lossy_conversion:" + name)
+        cols[name] = col
     cols["geometry"] = pa.array([None if x["geometry"] is None else Point(x["geometry"]["x"], x["geometry"]["y"]).wkb for x in features], type=pa.binary())
     schema = pa.schema([pa.field(f["name"], _arrow_type(f), nullable=f.get("nullable", True)) for f in fields] + [pa.field("geometry", pa.binary(), nullable=True)])
     geo = {"version":"1.1.0", "primary_column":"geometry", "columns":{"geometry":{"encoding":"WKB", "geometry_types":["Point"], "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"planar"}}}
@@ -635,6 +670,7 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
         features.sort(key=lambda x:x["attributes"][oid_name])
         if offline_receipts is not None and set(captures) != set(offline_receipts):
             raise ValueError("retained_capture_request_roster_mismatch")
+        native = _native_parquet(fields, features)
     except Exception as exc:
         if captures: quarantine_incomplete_capture(storage,capture_root,DATASET_SLUG,version,captures,type(exc).__name__)
         raise
@@ -647,7 +683,7 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
         raise ValueError("capture_manifest_request_roster_mismatch")
     record_sha=_sha(_canonical(features)); geom_sha=_sha(_canonical([[x["attributes"][oid_name],None if x["geometry"] is None else x["geometry"]] for x in features]))
     identity=processing_identity(Path(__file__).parents[3]); schema_sha=SCHEMA_SHA256
-    native=_native_parquet(fields,features); version=content_derived_version(record_sha,geom_sha,schema_sha,identity); prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
+    version=content_derived_version(record_sha,geom_sha,schema_sha,identity); prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     null_geometry_count=sum(x["geometry"] is None for x in features)
     native_name=f"geoparquet/{DATASET_SLUG}.parquet"
     audit={"feature_count":count,"source_id_sha256":_sha(_canonical(seed)),"source_record_sha256":record_sha,"source_geometry_sha256":geom_sha,"source_schema_sha256":schema_sha,"source_crs_epsg":4326,"geometry_type":"Point","null_geometry_count":null_geometry_count,"all_ids_captured_once":True,"ids_equal_before_after":True,"portal_item_id":ITEM_ID,"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_geometry_dimensions":{"hasZ":has_z,"hasM":has_m,"declared_by":"same-service MapServer queryDataElements dataset declaration for the requested layer","layer_catalog_declared_hasZ":("hasZ" in layer),"layer_catalog_declared_hasM":("hasM" in layer)},"source_vintage":None,"source_vintage_note":"FEMA exposes no source data release timestamp; portal item modified time is not a row vintage."}

@@ -404,6 +404,53 @@ class FemaNssShelterLocationsTests(unittest.TestCase):
                 staged = sorted(p.name for p in (tmp / "staging").iterdir())
                 self.assertEqual(staged, ["_quarantine"])
 
+    def test_retained_replay_rejects_lossy_or_typed_attribute_drift_and_retains_raw_evidence(self):
+        cases = [
+            ("shelter_id", 9001.75, "source_attribute_value_type_drift:shelter_id", b'"shelter_id":9001.75'),
+            ("shelter_open_date", 1767225600000.75,
+             "source_attribute_value_type_drift:shelter_open_date", b'"shelter_open_date":1767225600000.75'),
+            ("shelter_id", 9001.0, "source_attribute_value_type_drift:shelter_id", b'"shelter_id":9001.0'),
+            ("incident_id", "7", "source_attribute_value_type_drift:incident_id", b'"incident_id":"7"'),
+            ("score", True, "source_attribute_value_type_drift:score", b'"score":true'),
+        ]
+        for field, value, expected, raw_bytes in cases:
+            with self.subTest(field=field, value=value), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                features = synthetic_features([{"x": -77.04, "y": 38.90}, {"x": -122.33, "y": 47.61}])
+                features[0]["attributes"][field] = value
+                bodies = full_capture_bodies(synthetic_layer(), data_elements_body(), features=features)
+                with self.assertRaisesRegex(ValueError, expected):
+                    replay_retained_capture(tmp, bodies)
+                quarantined = quarantine_raw_bodies(tmp)
+                self.assertIn(raw_bytes, quarantined["page_000.body"])
+                staged = sorted(p.name for p in (tmp / "staging").iterdir())
+                self.assertEqual(staged, ["_quarantine"])
+
+    def test_retained_replay_rejects_fractional_objectid_during_paging_and_retains_raw_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            bodies = full_capture_bodies(synthetic_layer(), data_elements_body())
+            bodies["page_000"][2]["features"][0]["attributes"]["objectid"] = 101.5
+            with self.assertRaisesRegex(ValueError, "source_page_id_slice_mismatch"):
+                replay_retained_capture(tmp, bodies)
+            quarantined = quarantine_raw_bodies(tmp)
+            self.assertIn(b'"objectid":101.5', quarantined["page_000.body"])
+            staged = sorted(p.name for p in (tmp / "staging").iterdir())
+            self.assertEqual(staged, ["_quarantine"])
+
+    def test_native_parquet_refuses_out_of_range_integer_without_truncating(self):
+        fields = [f for f in source.FIELD_DECLARATIONS if f["name"] == "evacuation_capacity"]
+        features = [{"attributes": {"evacuation_capacity": 2 ** 31}, "geometry": None}]
+        with self.assertRaisesRegex(ValueError, "too large"):
+            source._native_parquet(fields, features)
+
+    def test_native_parquet_refuses_lossy_single_precision_conversion(self):
+        fields = [{"name": "scale", "type": "esriFieldTypeSingle", "alias": "SCALE", "length": None}]
+        for value in (1e40, 1.1):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "source_attribute_value_lossy_conversion:scale"):
+                    source._native_parquet(fields, [{"attributes": {"scale": value}, "geometry": None}])
+
     def test_retained_replay_missing_declaration_receipt_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
