@@ -254,7 +254,15 @@ def _bodies_from_fixture():
               for name, doc in complete.items() if not isinstance(doc, bytes)}
     bodies.update(pages)
     bodies["service_doc"] = SERVICE_DOC_BODY
-    bodies["ids_seed"] = bodies["ids_before"]
+    # The producer refuses a whole-layer returnIdsOnly request (observed
+    # 2026-11-12), so the capture assembles the roster from OBJECTID-range
+    # chunks; the fixture roster [10, 11, 12] spans one window [10, 13).
+    bodies["ids_stats"] = json.dumps({"features": [{"attributes": {"MIN_OBJECTID": 10, "MAX_OBJECTID": 12}}]},
+                                     separators=(",", ":")).encode()
+    range_body = json.dumps({"objectIdFieldName": "OBJECTID", "objectIds": [10, 11, 12]},
+                            separators=(",", ":")).encode()
+    for prefix in ("ids_seed", "ids_before", "ids_after"):
+        bodies[f"{prefix}_r000"] = range_body
     return fields, features, docs, schema, geom, bodies
 
 
@@ -264,6 +272,45 @@ class EmptyClient:
 
     def __exit__(self, *_args):
         return False
+
+
+class NfhlFloodHazardZonesRosterTests(unittest.TestCase):
+    """The producer refuses whole-layer returnIdsOnly; the roster is range-chunked."""
+
+    def _roster(self, bodies, min_oid, max_oid, **extra_pins):
+        import tempfile
+        from pathlib import Path
+        fake, requested = _fake_capture_get(bodies)
+        pins = {"ROSTER_WINDOW": 5, "DOC_CAPTURE_BASE_DELAY_SECONDS": 0.01,
+                "DOC_CAPTURE_ATTEMPTS": 1, **extra_pins}
+        with tempfile.TemporaryDirectory(prefix="fhz-roster-") as temporary, \
+                patch.multiple(source, **pins), \
+                patch.object(source, "capture_get", side_effect=fake):
+            return source._capture_roster(None, Path(temporary), "ids_seed", min_oid, max_oid), requested
+
+    def test_roster_assembles_from_disjoint_windows_sorted(self):
+        bodies = {
+            "ids_seed_r000": json.dumps({"objectIdFieldName": "OBJECTID", "objectIds": [14, 10, 11, 12]}).encode(),
+            "ids_seed_r001": json.dumps({"objectIdFieldName": "OBJECTID", "objectIds": [16, 15]}).encode(),
+        }
+        ids, requested = self._roster(bodies, 10, 16)
+        self.assertEqual(ids, [10, 11, 12, 14, 15, 16])
+        self.assertEqual(requested, ["ids_seed_r000", "ids_seed_r001"])
+
+    def test_roster_range_with_wrong_id_field_is_rejected(self):
+        bodies = {"ids_seed_r000": json.dumps({"objectIdFieldName": "FID", "objectIds": [10]}).encode()}
+        with self.assertRaisesRegex(ValueError, "source_id_field_changed"):
+            self._roster(bodies, 10, 12)
+
+    def test_roster_range_with_non_integer_ids_is_rejected(self):
+        bodies = {"ids_seed_r000": json.dumps({"objectIdFieldName": "OBJECTID", "objectIds": [10, "11"]}).encode()}
+        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+            self._roster(bodies, 10, 12)
+
+    def test_roster_range_with_duplicate_ids_is_rejected(self):
+        bodies = {"ids_seed_r000": json.dumps({"objectIdFieldName": "OBJECTID", "objectIds": [10, 10]}).encode()}
+        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+            self._roster(bodies, 10, 12)
 
 
 class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
@@ -295,6 +342,27 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
             manifest = json.loads((attempt / "capture_manifest.json").read_bytes())
             self.assertTrue(manifest["complete"])
             self.assertFalse(manifest["staged"])
+
+    def test_oid_stats_drift_fails_closed(self):
+        import tempfile
+        from pathlib import Path
+        fields, features, docs, schema, geom, bodies = _bodies_from_fixture()
+        bodies["ids_stats"] = json.dumps({"features": [{"attributes": {"MIN_OBJECTID": 12, "MAX_OBJECTID": 10}}]},
+                                         separators=(",", ":")).encode()
+        fake, _ = _fake_capture_get(bodies)
+        pins = {"SEGMENT_START_RECORDS": 2,
+                "EXPECTED_SERVICE_LAYER_ROSTER": [(28, "Flood Hazard Zones", "Feature Layer")],
+                "DOC_CAPTURE_BASE_DELAY_SECONDS": 0.01, "SEGMENT_PROBE_BASE_DELAY_SECONDS": 0.01}
+        with tempfile.TemporaryDirectory(prefix="fhz-stats-") as temporary, \
+                patch.multiple(source, **pins), \
+                patch.object(source, "capture_get", side_effect=fake), \
+                patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
+            root = Path(temporary)
+            storage = source.StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            with self.assertRaisesRegex(ValueError, "source_oid_stats_drift"):
+                source.capture_nfhl_flood_hazard_zones(storage, version="vfixture",
+                                                       capture_directory=str(root / "captures"))
+            self.assertEqual(set(storage.list_prefix()), set())
 
     def test_resume_reuses_cached_segment_bodies(self):
         import tempfile

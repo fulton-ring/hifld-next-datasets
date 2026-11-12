@@ -94,6 +94,11 @@ MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 # Roster (returnIdsOnly) documents for this layer span several tens of
 # megabytes, larger than the sibling layers' rosters; they use their own cap.
 DOC_CAPTURE_MAX_BYTES = 256 * 1024 * 1024
+# The producer refuses a whole-layer returnIdsOnly request with its 500 error
+# document (observed 2026-11-12), but serves OBJECTID-range queries: a
+# one-million-OBJECTID window returned ~2.6 MB / 385,763 ids, so the roster
+# is assembled from disjoint windows of this width.
+ROSTER_WINDOW = 1_000_000
 MIN_FREE_BYTES = 24_000_000_000
 # The producer's MapServer also intermittently answers valid requests with
 # complete HTTP 200 Esri error documents or transient connection resets
@@ -197,7 +202,6 @@ def _doc_urls() -> list[tuple[str, str]]:
         ("service_before", SERVICE_URL + "?f=pjson"),
         ("layer_before", LAYER_URL + "?f=pjson"),
         ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-        ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
     ]
 
 
@@ -206,8 +210,51 @@ def _after_doc_urls() -> list[tuple[str, str]]:
         ("layer_after", LAYER_URL + "?f=pjson"),
         ("service_after", SERVICE_URL + "?f=pjson"),
         ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-        ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
     ]
+
+
+def _stats_query() -> str:
+    return _query({"where": "1=1",
+                   "outStatistics": json.dumps([
+                       {"statisticType": "min", "onStatisticField": "OBJECTID",
+                        "outStatisticFieldName": "MIN_OBJECTID"},
+                       {"statisticType": "max", "onStatisticField": "OBJECTID",
+                        "outStatisticFieldName": "MAX_OBJECTID"}]),
+                   "returnGeometry": "false", "f": "json"})
+
+
+def _roster_range_url(low: int, high: int) -> str:
+    return _query({"where": f"OBJECTID>={low} AND OBJECTID<{high}", "returnIdsOnly": "true", "f": "json"})
+
+
+def _capture_roster(client: httpx.Client, capture_root: Path, name_prefix: str,
+                    min_oid: int, max_oid: int) -> list[int]:
+    """Capture the complete OBJECTID roster as range-chunked returnIdsOnly requests.
+
+    The producer refuses a whole-layer ``returnIdsOnly`` request for this
+    layer's population (observed 2026-11-12: a complete HTTP 200 Esri error
+    document of 80 bytes, retried four times), but serves constrained
+    OBJECTID ranges; the roster is therefore assembled from disjoint windows
+    covering [min_oid, max_oid], each window's response captured as its own
+    evidence. The assembled roster must be unique and integer-valued.
+    """
+    ids: list[int] = []
+    for index, low in enumerate(range(min_oid, max_oid + 1, ROSTER_WINDOW)):
+        name = f"{name_prefix}_r{index:03d}"
+        body, _receipt = _capture_with_retry(
+            client, _roster_range_url(low, min(low + ROSTER_WINDOW, max_oid + 1)),
+            capture_root, name, max_bytes=DOC_CAPTURE_MAX_BYTES,
+            attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+        doc = json.loads(body)
+        if not isinstance(doc, dict) or doc.get("objectIdFieldName") != "OBJECTID":
+            raise ValueError("source_id_field_changed")
+        chunk = doc.get("objectIds")
+        if not isinstance(chunk, list) or any(type(value) is not int for value in chunk):
+            raise ValueError("source_id_population_drift")
+        ids.extend(chunk)
+    if not ids or len(set(ids)) != len(ids):
+        raise ValueError("source_id_population_drift")
+    return sorted(ids)
 
 
 def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
@@ -742,21 +789,24 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
     try:
         with httpx.Client(follow_redirects=False, timeout=300,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-flood-hazard-zones-draft"}) as client:
-            seed_body, _ = _capture_with_retry(
-                client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                capture_root, "ids_seed", max_bytes=DOC_CAPTURE_MAX_BYTES,
+            stats_body, _ = _capture_with_retry(
+                client, _stats_query(), capture_root, "ids_stats", max_bytes=DOC_CAPTURE_MAX_BYTES,
                 attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or any(type(value) is not int for value in seed)
-                    or len(set(seed)) != len(seed)):
-                raise ValueError("source_seed_id_population_drift")
-            ids = sorted(seed)
+            stats_features = json.loads(stats_body).get("features")
+            stats_attrs = stats_features[0].get("attributes") \
+                if isinstance(stats_features, list) and stats_features and isinstance(stats_features[0], dict) else None
+            stats_attrs = stats_attrs if isinstance(stats_attrs, dict) else {}
+            min_oid, max_oid = stats_attrs.get("MIN_OBJECTID"), stats_attrs.get("MAX_OBJECTID")
+            if type(min_oid) is not int or type(max_oid) is not int or max_oid < min_oid:
+                raise ValueError("source_oid_stats_drift")
+            ids = _capture_roster(client, capture_root, "ids_seed", min_oid, max_oid)
             for name, url in _doc_urls():
                 body, _ = _capture_with_retry(client, url, capture_root, name,
                                               max_bytes=DOC_CAPTURE_MAX_BYTES,
                                               attempts=DOC_CAPTURE_ATTEMPTS,
                                               base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 doc_bodies[name] = body
+            ids_before = _capture_roster(client, capture_root, "ids_before", min_oid, max_oid)
             accepted = _acquire_segments(client, capture_root, len(ids))
             page_bodies = _DiskPageBodies(capture_root, [_segment_name(offset, count)
                                                          for offset, count in accepted])
@@ -766,9 +816,12 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
                                               attempts=DOC_CAPTURE_ATTEMPTS,
                                               base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 doc_bodies[name] = body
-        for name in ("service_before", "layer_before", "count_before", "ids_before",
-                     "layer_after", "service_after", "count_after", "ids_after"):
+            ids_after = _capture_roster(client, capture_root, "ids_after", min_oid, max_oid)
+        for name in ("service_before", "layer_before", "count_before",
+                     "layer_after", "service_after", "count_after"):
             docs[name] = json.loads(doc_bodies[name])
+        docs["ids_before"] = {"objectIdFieldName": "OBJECTID", "objectIds": ids_before}
+        docs["ids_after"] = {"objectIdFieldName": "OBJECTID", "objectIds": ids_after}
         docs["service_doc"] = doc_bodies["service_doc"]
         parquet_path = capture_root / f"{DATASET_SLUG}.parquet"
         layer, source_fields, extracted = _validate_captures(page_bodies, docs, ids, parquet_path=parquet_path)
