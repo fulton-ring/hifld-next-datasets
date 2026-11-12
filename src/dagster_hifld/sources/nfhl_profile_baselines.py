@@ -114,8 +114,14 @@ MIN_FREE_BYTES = 80_000_000_000
 # single-record segment that keeps failing fails the capture explicitly.
 DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
-SEGMENT_PROBE_ATTEMPTS = 2
-SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
+SEGMENT_PROBE_ATTEMPTS = 3
+SEGMENT_PROBE_BASE_DELAY_SECONDS = 10.0
+# The producer serves the same roster range without refusing minutes later
+# (verified 2026-11-12 at the dense roster region the first capture pass had
+# bisected down to 15-record segments), so refusals are throttling bursts, not
+# hard caps. A cooldown after every bisection decision keeps the halving from
+# compounding the load that triggered it.
+SEGMENT_BISECT_COOLDOWN_SECONDS = 20.0
 # Pins below are the observed 2026-11-12 complete-layer population contract,
 # established by one dated complete capture (before/after count/id/metadata
 # brackets unchanged; every page validated against the sorted OBJECTID roster;
@@ -618,6 +624,7 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
                 middle = count // 2
                 segments.appendleft((offset + middle, count - middle))
                 segments.appendleft((offset, middle))
+                time.sleep(SEGMENT_BISECT_COOLDOWN_SECONDS)
                 continue
             raise
         if _body_is_producer_error_doc(capture_root, name):
@@ -626,6 +633,7 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
             middle = count // 2
             segments.appendleft((offset + middle, count - middle))
             segments.appendleft((offset, middle))
+            time.sleep(SEGMENT_BISECT_COOLDOWN_SECONDS)
             continue
         page = _read_doc(capture_root, name)
         _validate_page(offset, count, page, ids, attr_names, stats)
