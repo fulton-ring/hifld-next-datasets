@@ -32,3 +32,8 @@ def eia_hgl_pipelines_complete(candidate: dict) -> AssetCheckResult:
 eia_hgl_pipelines_draft_job = define_asset_job("eia_hgl_pipelines_draft_refresh", selection=AssetSelection.assets(eia_hgl_pipelines_historical))
 eia_hgl_pipelines_draft_schedule = ScheduleDefinition(name="eia_hgl_pipelines_draft_refresh_schedule", job=eia_hgl_pipelines_draft_job,
     cron_schedule="0 8 1 * *", default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [eia_hgl_pipelines_historical]
+ASSET_CHECKS = [eia_hgl_pipelines_complete]
+JOBS = [eia_hgl_pipelines_draft_job]
+SCHEDULES = [eia_hgl_pipelines_draft_schedule]
