@@ -38,3 +38,8 @@ def eia_lng_import_export_terminals_release_gate(candidate: dict) -> AssetCheckR
 
 eia_lng_draft_job = define_asset_job("eia_lng_draft_refresh", selection=AssetSelection.assets(eia_lng_import_export_terminals))
 eia_lng_draft_schedule = ScheduleDefinition(name="eia_lng_draft_refresh_schedule", job=eia_lng_draft_job, cron_schedule="0 9 1 * *", execution_timezone="America/New_York", default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [eia_lng_import_export_terminals]
+ASSET_CHECKS = [eia_lng_import_export_terminals_release_gate]
+JOBS = [eia_lng_draft_job]
+SCHEDULES = [eia_lng_draft_schedule]
