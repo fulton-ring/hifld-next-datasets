@@ -75,6 +75,7 @@ from dagster_hifld.assets.shoreline_construction_locations_usace_ienc import sho
 from dagster_hifld.assets.sea_area_locations_usace_ienc import sea_area_locations_usace_ienc
 from dagster_hifld.assets.sea_areas_usace_ienc import sea_areas_usace_ienc
 from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import shoreline_construction_areas_usace_ienc
+from dagster_hifld.assets.shoreline_construction_lines_usace_ienc import shoreline_construction_lines_usace_ienc
 from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
 from dagster_hifld.assets.child_care_centers import child_care_centers
@@ -233,6 +234,7 @@ hifld_ingest_assets = [
     sea_area_locations_usace_ienc,
     sea_areas_usace_ienc,
     shoreline_construction_areas_usace_ienc,
+    shoreline_construction_lines_usace_ienc,
     small_craft_facility_areas_usace_ienc,
     sloped_ground_lines_usace_ienc,
     child_care_centers,
