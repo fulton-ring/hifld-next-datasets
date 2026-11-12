@@ -17,7 +17,7 @@ import fiona
 from dagster_hifld.assets.mirta_dod_sites_points import mirta_dod_sites_points_draft_schedule
 from dagster_hifld.sources.mirta_dod_sites_points import (
     DATASET_SLUG, EXPECTED_COUNT, EXPECTED_FIELDS, FIELD_ORDER, ID_SHA, RECORD_SHA,
-    RELEASE_NOTES_URL, SOURCE_RELEASE, SOURCE_URL, _canonical, _decode, _load_capture,
+    RELEASE_NOTES_URL, SOURCE_RELEASE, SOURCE_URL, _canonical, _load_capture,
     _parquet, _sha,
 )
 
