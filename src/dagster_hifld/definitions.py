@@ -257,7 +257,7 @@ from dagster_hifld.assets.proposed_critical_habitat import (
 from dagster_hifld.assets.historic_geomac_perimeters import (
     historic_geomac_perimeters_complete,
     historic_geomac_perimeters_draft_job,
-    historic_geomac_perimeters_draft_schedule,
+    historic_geomac_perimeters_draft_refresh_schedule,
 )
 
 from dagster_hifld.assets.usace_dam_lines import (

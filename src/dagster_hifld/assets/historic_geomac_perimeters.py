@@ -61,7 +61,7 @@ historic_geomac_perimeters_draft_job = define_asset_job(
           execution_timezone='America/New_York',
           default_status=DefaultScheduleStatus.STOPPED,
           required_resource_keys={'staging_storage'})
-def historic_geomac_perimeters_draft_schedule(context):
+def historic_geomac_perimeters_draft_refresh_schedule(context):
     # Monthly integrity poll of a frozen historical archive; the schedule stays STOPPED.
     require_local(context.resources.staging_storage)
     return RunRequest(run_config={'ops': {
