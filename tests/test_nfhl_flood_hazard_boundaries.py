@@ -619,7 +619,8 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
                                                    candidate["version"], source.DATASET_SLUG,
                                                    source_metadata=manifest)
                 self.assertEqual(summary.quality_manifest["null_geometry_count"],
-                                 self.audited["null_geometry_count"])
+                                 self.audited["null_geometry_count"]
+                                 + self.audited["nan_string_geometry_count"])
                 self.assertFalse(summary.quality_manifest["quality_check_passed"])
                 write_catalog_metadata(storage, dataset_slug=source.DATASET_SLUG, file_slug=source.FILE_SLUG,
                                        version=candidate["version"], quality_dict=summary.quality_manifest,
