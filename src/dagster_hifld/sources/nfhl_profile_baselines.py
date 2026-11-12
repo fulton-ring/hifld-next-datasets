@@ -834,7 +834,8 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                 receipts[name] = _ensure_captured(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                   attempts=DOC_CAPTURE_ATTEMPTS,
                                                   base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            docs = {name: _read_doc(capture_root, name) for name in (_SEED_DOC, *_DOC_NAMES)}
+            docs = {name: _read_doc(capture_root, name)
+                    for name in (_SEED_DOC, "service_before", "layer_before", "count_before", "ids_before")}
             docs["service_doc"] = (capture_root / "service_doc.body").read_bytes()
             contract = _contract_from_docs(docs)
             ids = contract["ids"]
