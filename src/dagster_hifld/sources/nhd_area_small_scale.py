@@ -101,19 +101,30 @@ PRODUCER_USER_AGENT = "hifld-next-datasets/nhd-area-small-scale-draft"
 DOC_USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
                   "Chrome/124.0 Safari/537.36")
 # Pins below are the observed 2026-11-12 complete-layer population contract,
-# established by one dated complete capture (segments tiling the sorted
-# OBJECTID roster 1..17020 at the producer's observed working width).
+# established by one dated complete capture (18 segments of the observed
+# working width tiling the sorted OBJECTID roster 1..17020 exactly).  The
+# producer served every 1000-record native-SR segment without retry; the
+# observed 2026-11-12 total wire+decoded capture is 223,441,735 bytes.
 EXPECTED_COUNT = 17020
-EXPECTED_ID_SHA256 = "__PIN_ID__"
-EXPECTED_SCHEMA_SHA256 = "__PIN_SCHEMA__"
-EXPECTED_RECORD_SHA256 = "__PIN_RECORD__"
-EXPECTED_GEOMETRY_SHA256 = "__PIN_GEOMETRY__"
-EXPECTED_OBSERVED_BOUNDS = {"xmin": None, "ymin": None, "xmax": None, "ymax": None}
+EXPECTED_ID_SHA256 = "453caac9fa47edb9b2f0ab338b0f5ad97a57ac97ac25d92b91d1ae277eac1e44"
+EXPECTED_SCHEMA_SHA256 = "5917b81aa1c28f744bb7a222cb795b4bdf8251fabce3d6ebb33772512f7edf0f"
+EXPECTED_RECORD_SHA256 = "0e3b654b62736040c1952e01e519fd3aa88af4a8e9561fa195218068c7619c27"
+EXPECTED_GEOMETRY_SHA256 = "2f88adb6370d5d9088741af694138eb48bd10d855ea6162d58141f4815341155"
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -13915075.1152, "ymin": 2814506.6827999987,
+                            "xmax": -7445613.017899999, "ymax": 6339002.0427}
 EXPECTED_LAYER_EXTENT = {"xmin": -13915075.1152, "ymin": 2814506.6827999987,
                          "xmax": -7445613.017899999, "ymax": 6339002.042699996}
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_NAN_GEOMETRY_COUNT = None
-EXPECTED_UNASSEMBLED_COUNT = None
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_NAN_GEOMETRY_COUNT = 0
+# Producer rows whose served rings cannot be assembled into a valid OGC
+# Polygon/MultiPolygon container (self-intersecting or overlapping parts) are
+# retained verbatim with null candidate geometry and gated here; the observed
+# object IDs below are the first 40 of the 99 such rows (2026-11-12 capture).
+EXPECTED_UNASSEMBLED_COUNT = 99
+EXPECTED_UNASSEMBLED_ID_SAMPLE = [108, 141, 248, 308, 334, 603, 745, 870, 879, 1176,
+                                  1622, 1636, 1863, 2008, 2010, 2085, 2369, 2418, 2425, 2446,
+                                  2666, 2802, 2827, 2948, 3077, 3109, 3158, 3276, 3334, 3547,
+                                  3751, 4479, 4873, 5406, 5527, 5620, 5673, 5756, 5758, 5786]
 EXPECTED_SERVICE_LAYER_ROSTER = [
     (0, "Point", "Feature Layer"), (1, "Point Event", "Feature Layer"),
     (2, "Line - Large Scale ", "Feature Layer"), (3, "Flow Direction", "Feature Layer"),
@@ -125,13 +136,17 @@ EXPECTED_SERVICE_LAYER_ROSTER = [
     (11, "Waterbody - Small Scale (HI, PR, VI, Pacific Territories)", "Feature Layer"),
     (12, "Waterbody - Large Scale", "Feature Layer"),
 ]
-EXPECTED_RESOLUTION_VALUES = None
-EXPECTED_FTYPE_VALUES = None
-EXPECTED_FCODE_VALUES = None
-EXPECTED_ONOFFNET_VALUES = None
-EXPECTED_PURPCODE_VALUES = None
-EXPECTED_GNIS_ID_LENGTHS = None
-EXPECTED_COMID_DUPLICATE_COUNT = None
+EXPECTED_RESOLUTION_VALUES = ["Medium"]
+EXPECTED_FTYPE_VALUES = ["Area of Complex Channels", "Area to be Submerged", "BayInlet", "CanalDitch",
+                         "DamWeir", "Foreshore", "Inundation Area", "Lock Chamber", "Rapids", "SeaOcean",
+                         "Special Use Zone", "Spillway", "StreamRiver", "Submerged Stream", "Wash"]
+EXPECTED_FCODE_VALUES = [30700, 31200, 33600, 33601, 34306, 36400, 39009, 39800, 40307, 40308, 40309,
+                         43100, 44500, 45401, 45402, 45403, 45404, 45500, 46000, 46003, 46006, 46100,
+                         48400, 53700]
+EXPECTED_ONOFFNET_VALUES = [0, 1, None]
+EXPECTED_PURPCODE_VALUES = [" ", "5", None]
+EXPECTED_GNIS_ID_LENGTHS = [1, 4, 5, 6, 7]
+EXPECTED_COMID_DUPLICATE_COUNT = 69
 
 
 def _sha(data: bytes) -> str:
@@ -504,6 +519,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_null_or_nan_geometry_count_drift")
     if len(unassembled_ids) != EXPECTED_UNASSEMBLED_COUNT:
         raise ValueError("source_unassembled_polygon_count_drift")
+    if unassembled_ids[:len(EXPECTED_UNASSEMBLED_ID_SAMPLE)] != EXPECTED_UNASSEMBLED_ID_SAMPLE:
+        raise ValueError("source_unassembled_polygon_ids_drift")
     value_contracts = _validate_value_contracts(features)
     audit = {"source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids)),
              "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
