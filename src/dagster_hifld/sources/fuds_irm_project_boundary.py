@@ -111,7 +111,13 @@ def _ring_signed_area(ring: list[list[object]]) -> float:
 
 
 def _source_polygon_geometry(rings: list[list[list[object]]]):
-    """Decode Esri clockwise shells/counter-clockwise holes without repair."""
+    """Decode Esri clockwise shells/counter-clockwise holes without repair.
+
+    Each interior ring is attached to its immediate enclosing shell: the
+    smallest shell that fully contains the hole ring, so nested-island
+    topology (a shell sitting inside another shell's hole) keeps one hole
+    per shell instead of collapsing holes onto the largest shell.
+    """
     shells: list[list[list[object]]] = []
     holes: list[list[list[object]]] = []
     for ring in rings:
@@ -130,10 +136,18 @@ def _source_polygon_geometry(rings: list[list[list[object]]]):
     holes_by_shell: list[list[list[list[object]]]] = [[] for _ in shells]
     for ring in holes:
         polygon = Polygon([[*coordinate[:3]] for coordinate in ring])
-        containing = [i for i, shell in enumerate(shell_polygons) if shell.covers(polygon.representative_point())]
+        containing = [i for i, shell in enumerate(shell_polygons) if shell.covers(polygon)]
         if not containing:
-            raise ValueError("source_orphan_interior_ring")
-        owner = max(containing, key=lambda i: shell_polygons[i].area)
+            # No shell fully encloses the ring, which already indicates broken
+            # source topology. Fall back to shells containing a representative
+            # point so the feature is staged as a deterministic invalid
+            # candidate for the blocking quality gate instead of failing the
+            # whole capture; grouping such a ring is never a repair.
+            containing = [i for i, shell in enumerate(shell_polygons)
+                          if shell.covers(polygon.representative_point())]
+            if not containing:
+                raise ValueError("source_orphan_interior_ring")
+        owner = min(containing, key=lambda i: shell_polygons[i].area)
         holes_by_shell[owner].append([[*coordinate[:3]] for coordinate in ring])
     polygons = [Polygon([[*coordinate[:3]] for coordinate in ring], holes_by_shell[i])
                 for i, ring in enumerate(shells)]

@@ -6,7 +6,7 @@ import unittest
 
 import pyarrow.parquet as pq
 from shapely import from_wkb, is_valid
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.sources.fuds_irm_project_boundary import (
     _parquet_bytes,
@@ -56,6 +56,46 @@ class IrmProjectBoundaryGeometryTests(unittest.TestCase):
         converted = _source_polygon_geometry([bowtie])
         self.assertIsInstance(converted, Polygon)
         self.assertFalse(is_valid(converted))
+
+    def test_nested_island_holes_attach_to_immediate_shell(self) -> None:
+        outer_shell = [[0.0, 0.0, 0.0], [0.0, 10.0, 0.0], [10.0, 10.0, 0.0],
+                       [10.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+        island_shell = [[3.0, 3.0, 0.0], [3.0, 7.0, 0.0], [7.0, 7.0, 0.0],
+                        [7.0, 3.0, 0.0], [3.0, 3.0, 0.0]]
+        outer_hole = [[2.0, 2.0, 0.0], [8.0, 2.0, 0.0], [8.0, 8.0, 0.0],
+                      [2.0, 8.0, 0.0], [2.0, 2.0, 0.0]]
+        island_hole = [[4.0, 4.0, 0.0], [6.0, 4.0, 0.0], [6.0, 6.0, 0.0],
+                       [4.0, 6.0, 0.0], [4.0, 4.0, 0.0]]
+        for rings in ([outer_shell, island_shell, outer_hole, island_hole],
+                      [island_shell, island_hole, outer_hole, outer_shell]):
+            with self.subTest(ring_order=len(rings)):
+                geometry = _source_polygon_geometry(rings)
+                self.assertIsInstance(geometry, MultiPolygon)
+                self.assertTrue(is_valid(geometry))
+                by_bounds = {tuple(round(value) for value in polygon.exterior.bounds): polygon
+                             for polygon in geometry.geoms}
+                self.assertEqual(sorted(by_bounds), [(0, 0, 10, 10), (3, 3, 7, 7)])
+                outer_polygon = by_bounds[(0, 0, 10, 10)]
+                island_polygon = by_bounds[(3, 3, 7, 7)]
+                self.assertEqual(len(outer_polygon.interiors), 1)
+                self.assertEqual(len(island_polygon.interiors), 1)
+                self.assertEqual(tuple(round(value) for value in outer_polygon.interiors[0].bounds),
+                                 (2, 2, 8, 8))
+                self.assertEqual(tuple(round(value) for value in island_polygon.interiors[0].bounds),
+                                 (4, 4, 6, 6))
+
+    def test_hole_without_fully_containing_shell_stays_deterministically_invalid(self) -> None:
+        shell = [[0.0, 0.0, 0.0], [0.0, 4.0, 0.0], [4.0, 4.0, 0.0],
+                 [4.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+        overlapping_hole = [[2.0, 2.0, 0.0], [6.0, 2.0, 0.0], [6.0, 6.0, 0.0],
+                            [2.0, 6.0, 0.0], [2.0, 2.0, 0.0]]
+        geometry = _source_polygon_geometry([shell, overlapping_hole])
+        self.assertIsInstance(geometry, Polygon)
+        self.assertFalse(is_valid(geometry))
+        with self.assertRaises(ValueError):
+            _source_polygon_geometry([shell, [[8.0, 8.0, 0.0], [9.0, 8.0, 0.0],
+                                              [9.0, 9.0, 0.0], [8.0, 9.0, 0.0],
+                                              [8.0, 8.0, 0.0]]])
 
     def test_null_geometry_remains_as_a_null_native_feature(self) -> None:
         feature = {"attributes": {"OBJECTID": 1, "SDSFEATURENAME": "source-null"},
