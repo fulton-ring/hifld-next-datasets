@@ -16,6 +16,7 @@ from uuid import uuid4
 import fiona,httpx,pyarrow as pa,pyarrow.parquet as pq,pyogrio,pyogrio.raw,pyproj,shapely
 from shapely.geometry import shape,mapping
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.release_approval import validate_release_provenance,verifier_implementation_sha256
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.validation import compare_full_rows,sha256_file
@@ -408,8 +409,10 @@ def normalized_rows(rows: list[dict]) -> bytes:
 
 
 def write_canonical_geopackage(destination: Path,table: pa.Table) -> None:
-    pyogrio.raw.write_arrow(table,destination,layer=SLUG,driver='GPKG',geometry_name='geometry',geometry_type='Point',crs='EPSG:3857',
-        layer_options={'GEOMETRY_NAME':'geometry','FID':'__storage_fid'},dataset_options={'VERSION':'1.3'})
+    """Deterministic native container; GDAL creation time pinned, ambient dates excluded."""
+    with with_geopackage_creation_time('2000-01-01T00:00:00.000Z'):
+        pyogrio.raw.write_arrow(table,destination,layer=SLUG,driver='GPKG',geometry_name='geometry',geometry_type='Point',crs='EPSG:3857',
+            layer_options={'GEOMETRY_NAME':'geometry','FID':'__storage_fid'},dataset_options={'VERSION':'1.3'})
     with sqlite3.connect(destination) as db:db.execute("UPDATE gpkg_contents SET last_change='2000-01-01T00:00:00.000Z'")
 
 

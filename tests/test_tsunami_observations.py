@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import copy, gzip, io, json, os, fcntl, sqlite3, tempfile, zipfile
 
 import pyarrow.parquet as pq
+import pyogrio
 from dagster_hifld.resources import StagingStorageResource, PublishedStorageResource
 from dagster_hifld.sources import tsunami_observations as s
 
@@ -123,6 +124,22 @@ class SyntheticObservationBehaviorTests(SyntheticCaptureFixture):
                     with self.assertRaises(s.ObservationQuarantineError):s.validate_complete_bundle(changed)
         changed=dict(http);j=json.loads(changed['authority_http:source_item'][0]);j['owner']='an_unrelated_mirror';changed['authority_http:source_item']=(s.encode(j),changed['authority_http:source_item'][1])
         with self.assertRaisesRegex(s.ObservationQuarantineError,'official_noaa_owner'):s.provenance(changed)
+
+    def test_geopackage_writer_bytes_do_not_depend_on_ambient_gdal_date(self):
+        out=self.stage();root=self.root(out);table=pq.read_table(root/'candidate/typed-source.parquet')
+        snapshots=[]
+        for ambient in ('2000-01-01T00:00:00.000Z','2099-12-31T23:59:59.999Z'):
+            with tempfile.TemporaryDirectory() as directory:
+                gp=Path(directory)/'ambient.gpkg';previous=pyogrio.get_gdal_config_option('OGR_CURRENT_DATE')
+                try:
+                    pyogrio.set_gdal_config_options({'OGR_CURRENT_DATE':ambient})
+                    s.write_canonical_geopackage(gp,table)
+                finally:
+                    pyogrio.set_gdal_config_options({'OGR_CURRENT_DATE':previous})
+                with sqlite3.connect(gp) as db:
+                    self.assertEqual(db.execute('SELECT last_change FROM gpkg_contents').fetchall(),[('2000-01-01T00:00:00.000Z',)])
+                    snapshots.append((s.sha(gp.read_bytes()),tuple(db.iterdump())))
+        self.assertEqual(snapshots[0][0],snapshots[1][0]);self.assertEqual(snapshots[0][1],snapshots[1][1])
 
     def test_native_synthetic_behavior_idempotent_with_original_widths(self):
         out=self.stage();root=self.root(out);before=self.snap(root);self.assertEqual(self.stage(),out);self.assertEqual(self.snap(root),before)
