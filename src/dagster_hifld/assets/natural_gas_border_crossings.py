@@ -12,3 +12,7 @@ def natural_gas_border_crossings(context,staging_storage:StagingStorageResource)
 
 natural_gas_crossings_draft_job=define_asset_job('nacei_natural_gas_border_crossings_draft_refresh',selection=AssetSelection.assets(natural_gas_border_crossings))
 natural_gas_crossings_draft_schedule=ScheduleDefinition(name='nacei_natural_gas_border_crossings_draft_monthly',job=natural_gas_crossings_draft_job,cron_schedule='0 6 1 * *',execution_timezone='UTC',default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS=[natural_gas_border_crossings]
+JOBS=[natural_gas_crossings_draft_job]
+SCHEDULES=[natural_gas_crossings_draft_schedule]
