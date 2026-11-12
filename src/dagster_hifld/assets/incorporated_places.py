@@ -12,3 +12,7 @@ def incorporated_places(context,staging_storage:StagingStorageResource):
 
 incorporated_places_source_integrity_job=define_asset_job('incorporated_places_source_integrity',selection=AssetSelection.assets(incorporated_places))
 incorporated_places_source_integrity_schedule=ScheduleDefinition(name='incorporated_places_source_integrity_monthly',job=incorporated_places_source_integrity_job,cron_schedule='0 10 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [incorporated_places]
+JOBS = [incorporated_places_source_integrity_job]
+SCHEDULES = [incorporated_places_source_integrity_schedule]
