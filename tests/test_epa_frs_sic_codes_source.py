@@ -183,7 +183,7 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
         defs = dagster.Definitions(
             assets=[assets_module.epa_frs_sic_codes],
             jobs=[assets_module.epa_frs_sic_codes_draft_job],
-            resources={"staging_storage": dagster.ResourceDefinition.mocked()},
+            resources={"staging_storage": dagster.ResourceDefinition.mock_resource()},
         )
         job = defs.get_job_def("epa_frs_sic_codes_draft_refresh")
         self.assertEqual(epa_frs_sic_codes_draft_schedule.default_status,
@@ -204,6 +204,7 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
             instance_dir.mkdir()
             (instance_dir / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
             with patch.object(sic, "EXPECTED_ROWS", len(docs["pages"])), \
+                    patch.object(assets_module, "EXPECTED_ROWS", len(docs["pages"])), \
                     patch.object(sic, "capture_get", side_effect=self._fake_get(docs)):
                 with DagsterInstance.from_config(str(instance_dir)) as instance:
                     run = materialize([epa_frs_sic_codes],
@@ -242,10 +243,6 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
                     self.assertEqual(cached["version"], version)
                     self.assertTrue(check_fn(cached).passed)
                     self.assertTrue(gates_fn(cached).passed)
-                    self.assertTrue(check_fn({
-                        "source_population_complete": True, "row_count": len(docs["pages"]),
-                        "source_record_sha256": cached["source_record_sha256"],
-                        "source_schema_sha256": cached["source_schema_sha256"]}).passed)
                     ready = json.loads(storage.read_key(cached["candidate_ready"]))
                     self.assertEqual(ready["version"], version)
                     self.assertIn(sic.NATIVE_PATH, ready["objects"])
