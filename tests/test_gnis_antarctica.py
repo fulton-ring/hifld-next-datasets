@@ -40,10 +40,10 @@ NAMES_COORDS = [(-74.5, 66.5), (-74.5, 66.55), (-74.55, 66.6)]
 # sourceurl, publicationdate, seriesname, seriesissue, ending_date, date_created,
 # citation, feature_name_official_desc, sourcereftype_desc.
 ALLNAMES_ROWS = [
-    (2814090, "Aagaard Glacier", 1, None, "USGS", 4, "ACAN decisions", None, None, None,
-     None, None, None, None, "cite-a", "Official", "Text"),
+    (2814090, "Aagaard Glacier", 1, None, "USGS", 4, "ACAN decisions", None, None,
+     "2022-07-19T00:00:00", None, None, None, None, "cite-a", "Official", "Text"),
     (2814090, "Aagard Fiord", 2, None, "USGS", 4, "Variant doc", None, None, None,
-     None, None, None, None, "cite-b", "Not Official", "Text"),
+     None, None, None, "2023-04-18T00:00:00", "cite-b", "Not Official", "Text"),
     (2814091, "Aircraft Glacier", 1, None, "USGS", 4, "ACAN decisions", None, None, None,
      None, None, None, None, "cite-c", "Official", "Text"),
     (2814092, "Brien Glacier", 1, None, "USGS", 4, "ACAN decisions", None, None, None,
@@ -52,6 +52,7 @@ ALLNAMES_ROWS = [
 
 BGN_TYPE_TEXT = {2: "Official"}
 BGN_AUTHORITY_TEXT = {1: "Board Decision"}
+SOURCE_REF_TYPE_TEXT = {4: "Text"}
 
 
 def _canonical(value):
@@ -115,12 +116,12 @@ def _names_text_rows(rows):
 
 
 def _allnames_text_rows(rows):
-    return [[row[0], row[1], row[15], "" if row[3] is None else str(row[3]), row[4],
-             str(row[5]), row[6], "" if row[7] is None else str(row[7]),
-             "" if row[8] is None else str(row[8]), "" if row[9] is None else str(row[9]),
+    return [[str(row[0]), row[1], row[15], "" if row[3] is None else str(row[3]), row[4],
+             "" if row[5] is None else SOURCE_REF_TYPE_TEXT[row[5]], row[6],
+             "" if row[7] is None else str(row[7]), "" if row[8] is None else str(row[8]),
+             _iso_to_text(row[9]),
              "" if row[10] is None else str(row[10]), "" if row[11] is None else str(row[11]),
-             "" if row[12] is None else str(row[12]), "" if row[13] is None else str(row[13]),
-             row[14] or ""] for row in rows]
+             _iso_to_text(row[12]), _iso_to_text(row[13]), row[14] or ""] for row in rows]
 
 
 def _build_gpkg(names_rows, allnames_rows, coords=NAMES_COORDS) -> bytes:
@@ -198,12 +199,12 @@ def _receipt(name, body):
 
 
 def _build_captures(gpkg_body, names_rows=NAMES_ROWS, allnames_rows=ALLNAMES_ROWS,
-                    text_names_rows=None, download_page=None, gpkg_members=None,
-                    s3_after=None, pubdate=PUBDATE):
+                    text_names_rows=None, allnames_text_rows=None, download_page=None,
+                    gpkg_members=None, s3_after=None, pubdate=PUBDATE):
     names_text = _pipe_document(list(source.DATA_COLUMNS[:16]),
                                 text_names_rows or _names_text_rows(names_rows))
     allnames_text = _pipe_document(list(source.ALLNAMES_COLUMNS[:15]),
-                                   _allnames_text_rows(allnames_rows))
+                                   allnames_text_rows or _allnames_text_rows(allnames_rows))
     gpkg_zip = _zip_bytes(gpkg_members or {
         "Gazetteer_Antarctica_GPKG.gpkg": gpkg_body,
         "Gazetteer_Antarctica_GPKG.jpg": b"jpg-bytes",
@@ -476,6 +477,33 @@ class GnisAntarcticaSourceTests(unittest.TestCase):
         with patch.multiple(source, **_pins()):
             with self.assertRaisesRegex(ValueError, "text_field_drift"):
                 source._validate_captures(_build_captures(gpkg_body, text_names_rows=rows))
+
+    def test_allnames_duplicate_substitution_is_rejected(self):
+        gpkg_body = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
+        text_rows = _allnames_text_rows(ALLNAMES_ROWS)
+        text_rows[1] = text_rows[0]
+        with patch.multiple(source, **_pins()):
+            with self.assertRaisesRegex(ValueError, "text_allnames_field_drift"):
+                source._validate_captures(
+                    _build_captures(gpkg_body, allnames_text_rows=text_rows))
+
+    def test_allnames_unchecked_field_drift_is_rejected(self):
+        gpkg_body = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
+        text_rows = _allnames_text_rows(ALLNAMES_ROWS)
+        text_rows[2][6] = "CORRUPTED TITLE"
+        with patch.multiple(source, **_pins()):
+            with self.assertRaisesRegex(ValueError, "text_allnames_field_drift"):
+                source._validate_captures(
+                    _build_captures(gpkg_body, allnames_text_rows=text_rows))
+
+    def test_allnames_date_drift_is_rejected(self):
+        gpkg_body = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
+        text_rows = _allnames_text_rows(ALLNAMES_ROWS)
+        text_rows[0][9] = "07/20/2022"
+        with patch.multiple(source, **_pins()):
+            with self.assertRaisesRegex(ValueError, "text_allnames_field_drift"):
+                source._validate_captures(
+                    _build_captures(gpkg_body, allnames_text_rows=text_rows))
 
     def test_publication_change_during_capture_is_rejected(self):
         gpkg_body = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)

@@ -43,6 +43,7 @@ import sqlite3
 import struct
 import zipfile
 import xml.etree.ElementTree as ET
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -104,6 +105,7 @@ ALLNAMES_COLUMNS = ("feature_id", "feature_name", "feature_name_official",
 TEXT_TO_BGN_TYPE = {"Official": 2}
 TEXT_TO_BGN_AUTHORITY = {"Board Decision": 1}
 TEXT_TO_NAME_STATUS = {"Official": 1, "Not Official": 2}
+TEXT_TO_SOURCE_REF_TYPE = {"Text": 4}
 ISO_DATETIME_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\Z")
 TEXT_DATE_PATTERN = re.compile(r"\d{2}/\d{2}/\d{4}\Z")
 GPKG_ZIP_MEMBERS = ("Gazetteer_Antarctica_GPKG.gpkg", "Gazetteer_Antarctica_GPKG.jpg",
@@ -439,6 +441,41 @@ def _extract_gpkg_population(gpkg_body: bytes) -> dict[str, object]:
             "allnames_nulls": allnames_nulls, "schema_sha256": _sha(_canonical(schema))}
 
 
+def _text_date(text_date: str) -> str:
+    """Canonical ISO date part of a pipe-format MM/DD/YYYY value ('' for null)."""
+    if text_date == "":
+        return ""
+    if not TEXT_DATE_PATTERN.fullmatch(text_date):
+        raise ValueError("text_allnames_field_drift")
+    month, day, year = text_date.split("/")
+    return f"{year}-{month}-{day}"
+
+
+def _text_allnames_row(feature_id: int, row: list[str]) -> tuple:
+    """One pipe-format variant row normalized into the GeoPackage row value space.
+
+    The text product stores the domain descriptors (feature_name_official,
+    sourcereftype), MM/DD/YYYY dates and empty fields for nulls; they are
+    converted to the coded values, ISO date parts and None of the GeoPackage
+    table, whose derived desc columns compare against the raw text values.
+    """
+    return (feature_id, row[1], TEXT_TO_NAME_STATUS.get(row[2]),
+            row[3] or None, row[4] or None, TEXT_TO_SOURCE_REF_TYPE.get(row[5]),
+            row[6] or None, row[7] or None, row[8] or None,
+            _text_date(row[9]), row[10] or None, row[11] or None,
+            _text_date(row[12]), _text_date(row[13]), row[14] or None,
+            row[2], row[5])
+
+
+def _gpkg_allnames_row(row: list) -> tuple:
+    """The GeoPackage variant row (all 17 columns) in the text product's value space."""
+    return (row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8],
+            "" if row[9] is None else row[9][:10], row[10], row[11],
+            "" if row[12] is None else row[12][:10],
+            "" if row[13] is None else row[13][:10],
+            row[14] or None, row[15], row[16])
+
+
 def _cross_verify_text(text_zip_body: bytes, gpkg_population: dict[str, object]) -> None:
     """Verify the pipe-delimited product carries the same population and values."""
     names_header, names_rows = _parse_pipe_table(_zip_member(text_zip_body,
@@ -493,19 +530,18 @@ def _cross_verify_text(text_zip_body: bytes, gpkg_population: dict[str, object])
     gpkg_allnames: dict[int, list] = {}
     for row in gpkg_population["allnames_records"]:
         gpkg_allnames.setdefault(row[0], []).append(row)
-    text_ids: set[int] = set()
+    text_allnames: dict[int, list[tuple]] = {}
     for row in allnames_rows:
         try:
             feature_id = int(row[0])
         except ValueError as exc:
             raise ValueError("text_allnames_id_drift") from exc
-        text_ids.add(feature_id)
-        if not any(candidate[1] == row[1]
-                   and candidate[2] == TEXT_TO_NAME_STATUS.get(row[2])
-                   and candidate[14] == (row[14] or "")
-                   for candidate in gpkg_allnames.get(feature_id, [])):
+        text_allnames.setdefault(feature_id, []).append(_text_allnames_row(feature_id, row))
+    for feature_id, gpkg_rows in gpkg_allnames.items():
+        expected = Counter(_gpkg_allnames_row(row) for row in gpkg_rows)
+        if Counter(text_allnames.get(feature_id, [])) != expected:
             raise ValueError("text_allnames_field_drift")
-    if sorted(text_ids) != sorted(gpkg_allnames):
+    if sorted(text_allnames) != sorted(gpkg_allnames):
         raise ValueError("text_allnames_id_roster_drift")
 
 
