@@ -69,3 +69,8 @@ cellular_towers_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [cellular_towers]
+ASSET_CHECKS = [cellular_towers_complete]
+JOBS = [cellular_towers_draft_job]
+SCHEDULES = [cellular_towers_draft_schedule]
