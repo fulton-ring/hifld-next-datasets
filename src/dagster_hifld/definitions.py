@@ -35,6 +35,7 @@ from dagster_hifld.assets.epa_large_scale import (
 )
 from dagster_hifld.assets.fema_regional_offices import fema_offices_draft_job, fema_offices_draft_schedule
 from dagster_hifld.assets.epa_sems import epa_sems_source_integrity_job, epa_sems_source_integrity_schedule
+from dagster_hifld.assets.national_bridge_inventory import nbi_source_integrity_job, nbi_source_integrity_schedule
 from dagster_hifld.assets.fdic_locations import (
     fdic_locations_draft_job,
     fdic_locations_draft_schedule,
@@ -1177,6 +1178,7 @@ defs = Definitions(
         epa_small_scale_source_integrity_job,
         fema_offices_draft_job,
         epa_sems_source_integrity_job,
+        nbi_source_integrity_job,
         elsd_source_integrity_job,
         epa_disaster_debris_draft_job,
         colleges_source_integrity_job,
@@ -1298,6 +1300,7 @@ defs = Definitions(
         epa_small_scale_source_integrity_schedule,
         fema_offices_draft_schedule,
         epa_sems_source_integrity_schedule,
+        nbi_source_integrity_schedule,
         elsd_source_integrity_schedule,
         epa_disaster_debris_draft_schedule,
         colleges_source_integrity_schedule,

@@ -143,6 +143,7 @@ from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 from dagster_hifld.assets.bts_air_truck import bts_intermodal_freight_air_to_truck
 
 from dagster_hifld.assets.epa_sems import epa_sems_interests
+from dagster_hifld.assets.national_bridge_inventory import national_bridge_inventory
 from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
 from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
@@ -160,6 +161,7 @@ hifld_ingest_assets = [
     fuds_program_division_boundaries,
     fema_regional_offices,
     epa_sems_interests,
+    national_bridge_inventory,
     epa_eez,
     epa_regions_with_eez,
     epa_large_scale_regions,
