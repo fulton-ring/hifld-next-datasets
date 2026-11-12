@@ -212,6 +212,33 @@ class NfhlFloodHazardZonesValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
                 source._validate_captures(*_split(docs), [10, 11, 12])
 
+    def test_rotating_colorramp_palette_between_layer_fetches_is_not_metadata_drift(self):
+        # Regression for the 2026-11-12 live probe of layer 28: every layer
+        # fetch rotates drawingInfo.renderer.authoringInfo.colorRamp palette
+        # colors; only that palette may differ between the before/after
+        # brackets (the merged sibling LOMRs module observed the same quirk).
+        _, features, docs, schema, geom = _fixture()
+        docs["layer_after"] = json.loads(json.dumps(docs["layer_after"]))
+        ramp = docs["layer_after"].setdefault("drawingInfo", {}).setdefault(
+            "renderer", {}).setdefault("authoringInfo", {})["colorRamp"] = {
+            "colorRamps": [{"fromColor": [1, 2, 3, 255], "toColor": [4, 5, 6, 255],
+                            "algorithm": "esriCIELabAlgorithm", "type": "algorithmic"}],
+            "name": "Custom"}
+        self.assertNotIn("drawingInfo", docs["layer_before"])
+        with patch.multiple(source, **_pins(features, schema, geom)):
+            _, _, extracted = source._validate_captures(*_split(docs), [10, 11, 12])
+            self.assertEqual(extracted["audit"]["source_feature_count"], 3)
+
+    def test_other_layer_metadata_change_is_still_rejected(self):
+        _, features, docs, schema, geom = _fixture()
+        docs["layer_after"] = json.loads(json.dumps(docs["layer_after"]))
+        docs["layer_after"]["drawingInfo"]["renderer"]["authoringInfo"]["colorRamp"]["colorRamps"] = [
+            {"fromColor": [1, 2, 3, 255], "toColor": [4, 5, 6, 255]}]
+        docs["layer_after"]["drawingInfo"]["renderer"]["type"] = "uniqueValue"
+        with patch.multiple(source, **_pins(features, schema, geom)):
+            with self.assertRaisesRegex(ValueError, "source_layer_metadata_changed_during_capture"):
+                source._validate_captures(*_split(docs), [10, 11, 12])
+
     def test_descending_objectid_order_is_rejected(self):
         _, features, docs, schema, geom = _fixture()
         docs["page_0000000_0002"] = json.loads(json.dumps(docs["page_0000000_0002"]))

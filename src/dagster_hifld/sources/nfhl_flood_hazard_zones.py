@@ -630,7 +630,7 @@ def _validate_captures(page_bodies: Mapping[str, bytes], docs: Mapping[str, obje
     if docs["layer_after"].get("fields") is None or [_plain_field(x) for x in docs["layer_after"]["fields"]] != fields:
         raise ValueError("source_field_schema_changed_during_capture")
     for name in ("layer_before", "layer_after"):
-        if docs[name] != layer:
+        if _stable_layer(docs[name]) != _stable_layer(layer):
             raise ValueError("source_layer_metadata_changed_during_capture")
     if docs["service_after"] != service:
         raise ValueError("source_service_metadata_changed_during_capture")
@@ -756,6 +756,23 @@ def _validate_captures(page_bodies: Mapping[str, bytes], docs: Mapping[str, obje
                     "expected_nan_geometry_count": counters["nan_geometry"],
                     "expected_layer_extent": audit["declared_layer_extent"]}
     return layer, fields_value, {"audit": audit, "ids": ids, "contract": contract}
+
+
+def _stable_layer(doc: dict) -> dict:
+    """Layer document without the producer's per-request volatile symbology.
+
+    Verified live 2026-11-12 on this layer (and previously on the sibling NFHL
+    polygon layer): every layer fetch rotates
+    ``drawingInfo.renderer.authoringInfo.colorRamp.colorRamps`` palette colors;
+    everything else in the layer document is stable. Only that palette is
+    excluded from before/after equality; the rest of the renderer and the whole
+    layer document are still compared.
+    """
+    copy = json.loads(json.dumps(doc))
+    ramp = copy.get("drawingInfo", {}).get("renderer", {}).get("authoringInfo", {}).get("colorRamp", {})
+    if isinstance(ramp, dict) and "colorRamps" in ramp:
+        del ramp["colorRamps"]
+    return copy
 
 
 def _validate_spatial_reference(value: object, label: str) -> None:
