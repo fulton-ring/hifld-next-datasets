@@ -49,6 +49,7 @@ from dagster_hifld.assets.fuds_division_boundaries import fuds_program_division_
 from dagster_hifld.assets.epa_frs_naics_powerplants import epa_frs_naics_powerplants
 from dagster_hifld.assets.epa_regions import epa_regions
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
+from dagster_hifld.assets.usace_navigation_lights import usace_navigation_lights_usace_ienc
 from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms
 from dagster_hifld.assets.proposed_critical_habitat import proposed_critical_habitat_features
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
@@ -198,6 +199,7 @@ hifld_ingest_assets = [
     bsee_ocs_platforms,
     proposed_critical_habitat_features,
     usace_navigation_marks_areas_usace_ienc,
+    usace_navigation_lights_usace_ienc,
     usace_berths_areas_usace_ienc,
     usace_dry_docks_usace_ienc,
     quaternary_fault_lines_usgs,
