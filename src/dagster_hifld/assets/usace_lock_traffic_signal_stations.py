@@ -71,3 +71,8 @@ usace_lock_traffic_signal_stations_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [usace_lock_traffic_signal_stations_usace_ienc]
+ASSET_CHECKS = [usace_lock_traffic_signal_stations_complete]
+JOBS = [usace_lock_traffic_signal_stations_draft_job]
+SCHEDULES = [usace_lock_traffic_signal_stations_draft_schedule]
