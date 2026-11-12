@@ -1,8 +1,11 @@
-"""Explicit ingest asset registry.
+"""Ingest asset registry.
 
-Keep source-specific ingest assets explicit. Downstream catalog/publish/check
+New datasets declare ``INGEST_ASSETS`` in their own asset module (see
+``discovery.py``) rather than adding entries here. Downstream catalog/publish/check
 assets are derived automatically from this registry.
 """
+
+from dagster_hifld.assets.discovery import discovered, unique
 
 from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volcanoes
 from dagster_hifld.assets.usgs import usgs_aquifers
@@ -79,6 +82,7 @@ from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
 from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
 from dagster_hifld.assets.usace_hulke_areas import usace_hulke_areas_usace_ienc
+from dagster_hifld.assets.usace_landmark_areas import usace_landmark_areas_usace_ienc
 from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 from dagster_hifld.assets.nces_public_schools import nces_public_schools
@@ -90,7 +94,6 @@ from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_are
 from dagster_hifld.assets.usace_dumping_ground_areas import usace_dumping_ground_areas_usace_ienc
 from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
 from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
-from dagster_hifld.assets.eia_biodiesel_plants import eia_biodiesel_plants
 from dagster_hifld.assets.eia_ethanol_plants import eia_ethanol_plants
 from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_24
 from dagster_hifld.assets.gcca_warehouse_directory import gcca_warehouses_current
@@ -186,6 +189,7 @@ hifld_ingest_assets = [
     census_bureau_tracts,
     usace_pontoon_areas_usace_ienc,
     usace_hulke_areas_usace_ienc,
+    usace_landmark_areas_usace_ienc,
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
     noaa_24nm_contiguous_zone,
@@ -241,7 +245,6 @@ hifld_ingest_assets = [
     usace_dumping_ground_areas_usace_ienc,
     plate_boundaries_usgs,
     eia_power_plants_historical,
-    eia_biodiesel_plants,
     eia_ethanol_plants,
     epa_frs_eia_860_power_generation_facilities_by_source,
     epa_icis_wastewater_treatment_plants,
@@ -301,3 +304,5 @@ hifld_ingest_assets = [
     usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,
 ]
+
+hifld_ingest_assets = unique(hifld_ingest_assets, discovered("INGEST_ASSETS"))
