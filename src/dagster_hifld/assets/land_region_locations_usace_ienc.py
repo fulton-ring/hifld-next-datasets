@@ -65,3 +65,8 @@ land_region_locations_usace_ienc_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [land_region_locations_usace_ienc]
+ASSET_CHECKS = [land_region_locations_usace_ienc_complete]
+JOBS = [land_region_locations_usace_ienc_draft_job]
+SCHEDULES = [land_region_locations_usace_ienc_draft_schedule]
