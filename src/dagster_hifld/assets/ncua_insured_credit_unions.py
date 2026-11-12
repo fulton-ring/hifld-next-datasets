@@ -85,3 +85,11 @@ ncua_insured_credit_unions_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [ncua_insured_credit_unions_source]
+ASSET_CHECKS = [
+    ncua_insured_credit_unions_capture_complete,
+    ncua_insured_credit_unions_release_gates,
+]
+JOBS = [ncua_insured_credit_unions_draft_job]
+SCHEDULES = [ncua_insured_credit_unions_draft_schedule]
