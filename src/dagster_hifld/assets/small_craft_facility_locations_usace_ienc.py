@@ -65,3 +65,8 @@ small_craft_facility_locations_usace_ienc_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [small_craft_facility_locations_usace_ienc]
+ASSET_CHECKS = [small_craft_facility_locations_usace_ienc_complete]
+JOBS = [small_craft_facility_locations_usace_ienc_draft_job]
+SCHEDULES = [small_craft_facility_locations_usace_ienc_draft_schedule]
