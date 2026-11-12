@@ -822,7 +822,7 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
                     "license": "Not stated by the captured endpoints; rights review pending.",
                     "attribution": "FEMA National Flood Hazard Layer; formal attribution terms require maintainer "
                                    "review."}
-                   for name, (_, receipt) in sorted(receipt_index(capture_root).items())],
+                   for name, receipt in sorted(receipt_index(capture_root).items())],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "source_fields": "all producer fields retained in producer order and "
