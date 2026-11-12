@@ -745,7 +745,7 @@ def _reusable_cached_candidate(storage: StagingStorageResource) -> dict[str, obj
         if not re.fullmatch(r"v[0-9a-f]{32}\.json", key.rsplit("/", 1)[-1]):
             continue
         try:
-            bundle = json.loads(storage.read_bytes(key))
+            bundle = json.loads(storage.read_key(key))
         except (OSError, RuntimeError, ValueError):
             continue
         if isinstance(bundle, dict) and bundle.get("processing_fingerprint") == fingerprint:
@@ -755,7 +755,7 @@ def _reusable_cached_candidate(storage: StagingStorageResource) -> dict[str, obj
     if len(matching) > 1:
         raise ValueError("ambiguous_cached_candidates")
     state_key = matching[0]
-    bundle = json.loads(storage.read_bytes(state_key))
+    bundle = json.loads(storage.read_key(state_key))
     payload = bundle.get("payload")
     version = bundle.get("version")
     if not isinstance(payload, dict) or not isinstance(version, str):
