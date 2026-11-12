@@ -34,6 +34,10 @@ PAGE_SIZE = 250
 # Live transfer limit observed 2026-11-12 on services7.arcgis.com: objectIds GET
 # queries of 500+ IDs return HTTP 404 text/html gateway errors, while 250-ID
 # pages return 200; the page size is pinned below the observed limit.
+# The canonical GeoJSON copy keeps native EPSG:4269 coordinates (no reprojection),
+# so it carries the legacy GeoJSON crs member; CRS-free FeatureCollections are
+# silently defaulted to EPSG:4326 by the catalog's readers.
+NATIVE_GEOJSON_CRS = {"type": "name", "properties": {"name": "urn:ogc:def:crs:EPSG::4269"}}
 FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"),
     ("name", "esriFieldTypeInteger"),
@@ -492,7 +496,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
         if distribution_chain and ids_digest != EXPECTED_ID_SHA256:
             raise ValueError("source_id_roster_digest_drift")
         parquet = _make_parquet(metadata, features)
-        geojson = _json_bytes({"type": "FeatureCollection", "features": [
+        geojson = _json_bytes({"type": "FeatureCollection", "crs": NATIVE_GEOJSON_CRS, "features": [
             {"type": "Feature", "id": f["attributes"]["OBJECTID"], "properties": f["attributes"],
              "geometry": {"type": "Point", "coordinates": [f["geometry"]["x"], f["geometry"]["y"]]}}
             for f in features

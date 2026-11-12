@@ -7,7 +7,9 @@ import unittest
 import httpx
 import pyarrow.parquet as pq
 
+from dagster_hifld.catalog import load_staged_geodata, summarize_staged_catalog
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.sources import usace_river_mile_markers as source
 
 
@@ -213,6 +215,28 @@ class RiverMileMarkerCaptureTests(unittest.TestCase):
         self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
         self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4269)
         self.assertEqual(geo["primary_column"], "geometry")
+
+    def test_staged_geojson_preserves_native_crs_through_catalog_reads(self):
+        """The catalog consumes the canonical GeoJSON, not the native_candidate
+        Parquet, so the GeoJSON must carry the native CRS: CRS-free readers
+        silently assign EPSG:4326 to the EPSG:4269 coordinates (regression)."""
+        storage, _result = self._capture(ArcGISFixture())
+        version = "v20261112T000000Z"
+        self.assertEqual(source.NATIVE_GEOJSON_CRS["properties"]["name"], "urn:ogc:def:crs:EPSG::4269")
+        staged = load_staged_geodata(storage, source.DATASET_SLUG, source.FILE_SLUG, version)
+        self.assertEqual(len(staged), source.EXPECTED_COUNT)
+        self.assertEqual(staged.crs.to_epsg(), 4269)
+        snapshot_source_metadata(storage, source.DATASET_SLUG, source.FILE_SLUG, version)
+        resolved = load_resolved_source_manifest(storage, source.DATASET_SLUG, source.FILE_SLUG, version)
+        summary = summarize_staged_catalog(
+            storage, source.DATASET_SLUG, source.FILE_SLUG, version,
+            source.DATASET_SLUG, source_metadata=resolved.metadata,
+        )
+        quality = summary.quality_manifest
+        self.assertEqual(quality["feature_count"], source.EXPECTED_COUNT)
+        self.assertEqual(quality["catalog_mode"], "streaming_geospatial")
+        self.assertTrue(quality["quality_check_passed"])
+        self.assertEqual(quality["bounds"], [-92.69999, 31.4525, -92.58611, 31.4525])
 
     def test_transient_page_failure_is_retained_before_bounded_retry(self):
         storage, result = self._capture(ArcGISFixture(fail_page_once=4001))
