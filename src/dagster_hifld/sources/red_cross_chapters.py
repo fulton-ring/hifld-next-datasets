@@ -56,7 +56,7 @@ OWNER_URL = 'https://www.arcgis.com/sharing/rest/community/users/NHQRedCrossGIS?
 PAGE_SIZE = 2000
 EXPECTED_IDS = tuple(range(1, 227))
 # Frozen only after complete original geometry is audited. Empty refuses staging.
-GEOMETRY_SHA256 = ''
+GEOMETRY_SHA256 = '6eb687388f61a7e1efc7a0881326b7f7efbe45c8f852ecf4742f9de4a5b2af10'
 FIELDS = [('OBJECTID', 'esriFieldTypeOID', False, None)] + [
     (name, 'esriFieldTypeString', True, width) for name, width in
     (('ECODE', 254), ('Chapter', 254), ('Region_Type', 255), ('RCODE', 254), ('Region', 254),
