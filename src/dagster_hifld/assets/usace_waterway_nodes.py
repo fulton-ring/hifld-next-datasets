@@ -79,3 +79,8 @@ usace_waterway_nodes_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [usace_waterway_network_nodes]
+ASSET_CHECKS = [usace_waterway_network_nodes_candidate_complete]
+JOBS = [usace_waterway_nodes_draft_job]
+SCHEDULES = [usace_waterway_nodes_draft_schedule]
