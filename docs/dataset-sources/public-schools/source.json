@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "inventory_id": "public-schools",
+  "title": "Public School Locations (NCES EDGE 2024-25)",
+  "agency": "National Center for Education Statistics, U.S. Department of Education",
+  "publisher": "National Center for Education Statistics (NCES), U.S. Department of Education",
+  "source_url": "https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_PUBLICSCH_2425.zip",
+  "official_description_url": "https://nces.ed.gov/programs/edge/Geographic/SchoolLocations",
+  "source_relationship": "Official NCES EDGE annual public-school location distribution, based on the 2024-25 Common Core of Data. The HIFLD/DataLumos archive describes its public-school inventory as 2022-23 CCD data. A common producer does not establish row-level historical equivalence.",
+  "source_observation": {
+    "observed_at": "2026-10-20T03:50:42.902339+00:00",
+    "http_status": 200,
+    "last_modified": "Fri, 19 Dec 2025 23:56:44 GMT",
+    "last_modified_is_release_date": false,
+    "bytes": 30448565,
+    "sha256": "9dc51ecd5cdf6e38bdb679f7ac95e2bf73ee3fb48718b8612cf830800cffb288",
+    "hifld_archive": "https://www.datalumos.org/datalumos/project/240580/version/V3/view",
+    "hifld_archive_vintage": "2022-23 CCD according to DataLumos metadata; historical row-level crosswalk not established"
+  },
+  "observed_layer": {
+    "archive_filename": "EDGE_GEOCODE_PUBLICSCH_2425.zip",
+    "nested_shapefile": "Shapefile_SCH.zip/EDGE_GEOCODE_PUBLICSCH_2425.shp",
+    "school_year": "2024-2025",
+    "feature_count": 102178,
+    "native_geometry": "Point",
+    "native_crs": "EPSG:4326",
+    "native_identifier": "NCESSCH",
+    "native_identifier_type": "12-character string",
+    "native_identifier_sha256_canonical_json": "2fa37754051a457c280f089eba68d6b42b54dd680780e00f6d56bd103e6c02a3",
+    "bounds": [-174.198594, -14.348924, 145.78443, 71.300337],
+    "attributes": ["NCESSCH", "LEAID", "NAME", "OPSTFIPS", "STREET", "CITY", "STATE", "ZIP", "STFIP", "CNTY", "NMCNTY", "LOCALE", "LAT", "LON", "CBSA", "NMCBSA", "CBSATYPE", "CSA", "NMCSA", "CD", "SLDL", "SLDU", "SCHOOLYEAR"],
+    "text_member_crosschecked": "All 102,178 rows and 23 values per row match the shapefile attributes; coordinate text values differ only within 1e-12 decimal rounding tolerance."
+  },
+  "license_claim": "The NCES layer description states that all information in the 2024-25 public-school locations layer is in the public domain. HIFLD reuse and downstream rights/attribution decisions remain pending.",
+  "acceptance": {
+    "source_release": false,
+    "source_freshness": false,
+    "historical_hifld_equivalence": false,
+    "baseline_comparison": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "mapping": false,
+    "release": false
+  },
+  "evidence": "local-materialization.json"
+}
