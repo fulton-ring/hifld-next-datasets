@@ -589,10 +589,25 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
     while segments:
         offset, count = segments.popleft()
         name = _segment_name(offset, count)
-        _ensure_captured(client, _segment_query(offset, count), capture_root, name,
-                         max_bytes=MAX_CAPTURE_BYTES,
-                         attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                         base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
+        try:
+            _ensure_captured(client, _segment_query(offset, count), capture_root, name,
+                             max_bytes=MAX_CAPTURE_BYTES,
+                             attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
+                             base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
+        except ValueError as exc:
+            # The producer's transfer cap can also surface as a persistent
+            # mid-stream reset/oversized-response (observed 2026-11-12 on this
+            # layer: 2000-record pages of the densest baselines never complete
+            # while the bisected halves serve immediately), so a segment wider
+            # than one record that keeps failing to transport completely is
+            # bisected exactly like a refused error document; the retained
+            # partial evidence stays on disk under the refused segment's name.
+            if str(exc).startswith("incomplete_source_capture:") and count > 1:
+                middle = count // 2
+                segments.appendleft((offset + middle, count - middle))
+                segments.appendleft((offset, middle))
+                continue
+            raise
         if _body_is_producer_error_doc(capture_root, name):
             if count == 1:
                 raise ValueError("source_single_feature_unservable")

@@ -685,3 +685,57 @@ class RetryAndResumeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BisectionOnTransportTests(unittest.TestCase):
+    def _fixture_bodies(self):
+        fields, features, docs, schema, stats, attr_names, ids = _fixture()
+        return _docs_to_bodies(docs), schema, stats, ids, attr_names
+
+    def test_persistent_incomplete_transport_is_bisected(self):
+        bodies, schema, stats, ids, attr_names = self._fixture_bodies()
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            if name == "page_000000_00004":
+                # Retained partial evidence: incomplete transport every time.
+                capture_root.mkdir(parents=True, exist_ok=True)
+                (capture_root / f"{name}.body").write_bytes(b'{"partial":')
+                (capture_root / f"{name}.wire").write_bytes(b'{"partial":')
+                (capture_root / f"{name}.receipt.json").write_bytes(_canonical(
+                    {"complete_body": False, "status": 200, "bytes": 11, "sha256": "x" * 64}) + b"\n")
+                raise ValueError(f"incomplete_source_capture:{name}")
+            _write_evidence(capture_root, name, bodies[name])
+            return bodies[name], _receipt(bodies[name])
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            with patch.multiple(source, SEGMENT_START_RECORDS=4, SEGMENT_PROBE_ATTEMPTS=2,
+                                DOC_CAPTURE_ATTEMPTS=1, EXPECTED_COUNT=4), \
+                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                settled = source._capture_segments(None, root, sorted(ids), attr_names,
+                                                   source._StreamStats(), {})
+            self.assertEqual(sorted(settled), [(0, 2), (2, 2)])
+            self.assertEqual(calls.count("page_000000_00004"), 2)
+            self.assertIn("page_000000_00002", calls)
+
+    def test_single_record_incomplete_transport_fails_explicitly(self):
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            capture_root.mkdir(parents=True, exist_ok=True)
+            (capture_root / f"{name}.body").write_bytes(b'{"partial":')
+            (capture_root / f"{name}.wire").write_bytes(b'{"partial":')
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(
+                {"complete_body": False, "status": 200, "bytes": 11, "sha256": "x" * 64}) + b"\n")
+            raise ValueError(f"incomplete_source_capture:{name}")
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            with patch.multiple(source, SEGMENT_START_RECORDS=2, SEGMENT_PROBE_ATTEMPTS=1,
+                                DOC_CAPTURE_ATTEMPTS=2, EXPECTED_COUNT=2), \
+                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                with self.assertRaisesRegex(ValueError, "incomplete_source_capture"):
+                    source._capture_segments(None, root, [10, 11], ["OBJECTID"],
+                                             source._StreamStats(), {})
