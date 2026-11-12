@@ -1,0 +1,32 @@
+{
+  "classification": "SYNTHETIC structural behavior fixture; not source authority, complete geography or acceptance",
+  "properties": {
+    "BUFF_DIST": 20.0,
+    "Shape_Leng": 1.0,
+    "Shape_Area": 0.5,
+    "__source_fid": "0"
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -70.0,
+          40.0
+        ],
+        [
+          -70.0,
+          41.0
+        ],
+        [
+          -69.0,
+          40.0
+        ],
+        [
+          -70.0,
+          40.0
+        ]
+      ]
+    ]
+  }
+}
