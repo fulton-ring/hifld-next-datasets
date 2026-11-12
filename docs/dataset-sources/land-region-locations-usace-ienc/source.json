@@ -1,0 +1,104 @@
+{
+  "inventory_id": "land-region-locations-usace-ienc",
+  "inventory_title": "Land Region Locations (USACE IENC)",
+  "inventory_publisher": "US Army Corps of Engineers",
+  "inventory_archive": {
+    "url": "https://www.datalumos.org/datalumos/project/239405/version/V1/view",
+    "doi": "https://doi.org/10.3886/E239405V1",
+    "archive_title": "HIFLD OPEN Land Region Locations (USACE IENC)",
+    "archive_files": ["land-region-locations-usace-ienc-geojson.zip (99.4 KB)", "land-region-locations-usace-ienc-shapefile.zip (115.6 KB)", "metadata.xml (7.5 KB)"],
+    "archive_release_date": "2025-10-29",
+    "archive_modified_date": "2025-04-08",
+    "date_meaning": "Inventory archive modification date; not a current source release date",
+    "http_audit_2026_11_07": "Anonymous direct download/view returned HTTP 403 from this environment; study metadata was retrieved through an alternate fetch path. Third-party rescue copy of retired HIFLD Open, research context only, never a pipeline input."
+  },
+  "research_status": "official USACE IENC service verified; source-specific draft pipeline implemented; publication remains contract-gated",
+  "crosswalk": {
+    "dhs_crosswalk_doi": "https://doi.org/10.3886/E241367V1",
+    "crosswalk_study": "HIFLD OPEN GIS Data Index and Crosswalk (DataLumos project 241367; hifld_open_crosswalk_geoplatform.xlsx, hifld_open_datalumos_index.xlsx)",
+    "prior_audit": "https://github.com/fulton-ring/agent-content-demos/issues/40",
+    "match_status": "Study verified at the catalog level 2026-11-07; the exact crosswalk row could not be inspected anonymously (HTTP 403), so the match to this inventory entry is by exact inventory ID/title and IENC layer description. Prior audit found USACE IENC crosswalk REST links answering at the service level with changed layer IDs.",
+    "source_relationship": "The inventory description is the shared USACE IENC coverage statement; the official IENCCloud service publishes the LAND_REGION_POINT feature class whose layer description (an area of natural scenery on land, defined by geographical characteristics and possibly a proper name) matches the S-57 LNDREG land region object. The polygon LAND_REGION_AREA feature class is the sibling inventory entry land-region-areas-usace-ienc-2."
+  },
+  "producer": {
+    "name": "US Army Corps of Engineers (USACE), Army Geospatial Center (AGC), Inland Electronic Navigational Charts (IENC) Program",
+    "official_landing_page": "https://ienccloud.us/",
+    "landing_page_statement_2026_11_07": "Landing page self-identifies as the official public website of the USACE IENC Program, links the Army Geospatial Center, and lists AGC-IENC@usace.army.mil for contact; inventory POC is IENC_POC@usace.army.mil.",
+    "upstream_lineage": "Service metadata states the S-57 IENC database is extracted to an Esri File Geodatabase for publication; the master service (100 layers) lists the same LAND_REGION_POINT feature class at layer 12. Per-record lineage is represented by Source_Indication and Source_Dataset values.",
+    "official_release_date": null,
+    "freshness_fields": "Layer-level Source_Date strings observed from 20010117 through 20260115 (146 distinct values); feature source-date coverage, not a uniform dataset release date."
+  },
+  "primary_source": {
+    "role": "official USACE IENC public service",
+    "landing_page": "https://ienccloud.us/",
+    "landing_page_service_link": "https://ienccloud.us/arcgis/rest/services/IENC/USACE_IENC_Master_Service/MapServer",
+    "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LAND_REGION_POINT/MapServer/12",
+    "metadata_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LAND_REGION_POINT/MapServer/12?f=pjson",
+    "count_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LAND_REGION_POINT/MapServer/12/query?where=1%3D1&returnCountOnly=true&f=json",
+    "query_parameters": {
+      "where": "1=1",
+      "outFields": "*",
+      "returnGeometry": true,
+      "orderByFields": "OBJECTID",
+      "resultOffset": "bounded 250-OBJECTID pages (page_000..page_015)",
+      "resultRecordCount": 250,
+      "outSR": 4326,
+      "f": "json; complete native Esri JSON response bodies retained with HTTP wire artifacts; output uses direct typed GeoParquet"
+    },
+    "retrieved_at_utc": "2026-11-07 (research probes); complete extraction evidence retained by the pipeline capture under raw/ with checksummed receipts",
+    "service_release_label": "No single source release date in layer metadata. The captured BTS item describes bi-monthly USACE/AGC updates with partial deliveries on the 1st and 15th business day of a month; service/layer edit timestamps are portal events and are not treated as release dates.",
+    "completeness": "The service reported 3,816 records. Sixteen bounded 250-OBJECTID page queries returned all 3,816 features (pages 0-14 with 250 rows, page 15 with 66). All 3,816 OBJECTID values are unique non-null integers 1..3816 in server order; before/after count and ID rosters matched; every feature has 2D point geometry; observed point bounds equal the declared layer extent."
+  },
+  "secondary_distribution": {
+    "role": "USDOT BTS NTAD catalog item; recorded delegation evidence, not selected as source of truth",
+    "item_id": "7ec34864c8804468a9cf52d437fe4b6c",
+    "owner": "USDOT_BTS",
+    "item_url": "https://www.arcgis.com/home/item.html?id=7ec34864c8804468a9cf52d437fe4b6c",
+    "observed_2026_11_07": "Public PDF item titled 'Inland Electronic Navigational Charts' describing bi-monthly USACE/AGC IENC updates and linking the IENC_Feature_Classes service and USACE_IENC_Master_Service_gdb.zip.",
+    "prior_item_id": "3607d485a9854d6fa458bf507058ceae",
+    "prior_item_status": "Returned anonymous-access denial (HTTP 403 GWM_0003) during sibling IENC research on 2026-10-21; succession continuity unverified and not accepted."
+  },
+  "audit": {
+    "runtime_evidence_directory": "Staged with the candidate under raw/ (wire bodies, decoded bodies and receipts with SHA-256 manifests); raw downloads stay out of Git",
+    "geometry_type": "esriGeometryPoint",
+    "spatial_reference": "EPSG:4326",
+    "extent_wgs84": [-93.76136799999995, 29.703279000000066, -79.48334619999997, 45.116077500000074],
+    "field_schema": [
+      {"name": "OBJECTID", "source_type": "esriFieldTypeOID", "role": "service ObjectID; only observed source ID, not assumed stable across refreshes"},
+      {"name": "Category_of_Land_Region", "source_type": "esriFieldTypeString", "length": 254, "observed_values": "3749 empty strings, 27 'Unknown', 40 'Park Land'; empty strings preserved, not coerced to null"},
+      {"name": "Object_Name", "source_type": "esriFieldTypeString", "length": 254},
+      {"name": "Information", "source_type": "esriFieldTypeString", "length": 254, "observed_values": "1406 empty strings in this snapshot"},
+      {"name": "Scale_Minimum", "source_type": "esriFieldTypeInteger", "observed_values": "10000, 45000, 60000"},
+      {"name": "Source_Date", "source_type": "esriFieldTypeString", "length": 254, "observed_values": "YYYYMMDD strings 20010117-20260115"},
+      {"name": "Source_Indication", "source_type": "esriFieldTypeString", "length": 254},
+      {"name": "Source_Dataset", "source_type": "esriFieldTypeString", "length": 254},
+      {"name": "Feature_ID", "source_type": "esriFieldTypeString", "length": 254, "observed_values": "3,816 distinct non-null values in this snapshot; e.g. 'U3 0000008978 00011'"}
+    ],
+    "service_nullability": "The MapServer schema does not declare per-field nullability. In this snapshot no attribute is null; empty strings are preserved as source-provided values. Nulls, duplicates and empty strings would be preserved, never repaired.",
+    "release_date": null,
+    "freshness_conclusion": "Source_Date values through 2026-01-15 and a live service retrieval on 2026-11-07 support that the endpoint is populated with recent IENC source data. They do not establish a uniform refresh cadence or one release date."
+  },
+  "pipeline_validation": {
+    "draft_asset": "src/dagster_hifld/assets/land_region_locations_usace_ienc.py::land_region_locations_usace_ienc",
+    "implementation": "src/dagster_hifld/sources/land_region_locations_usace_ienc.py captures the BTS delegation item, official service directory, service and layer metadata, count and before/after ID rosters, and complete 250-ID pages. Every Esri JSON body, wire body and request receipt is sealed and checksum verified; replay is bound to the exact named GET URLs.",
+    "native_types_and_geometry": "The candidate GeoParquet is constructed from ArcGIS field declarations: OBJECTID int64, Scale_Minimum int32, source strings UTF-8 (including empty strings), and WKB Point geometry at source EPSG:4326. Exact native XY numbers and every source attribute are retained without GeoJSON normalization or inferred-type coercion.",
+    "local_validation": "Complete anonymous extraction probe 2026-11-07: 3,816 of 3,816 IDs retrieved in 16 pages, 0 invalid/empty geometries, observed bounds equal the declared extent, all Feature_ID values distinct and non-null. Pipeline capture, validation and catalog runs recorded separately in MEMORY.md.",
+    "promotion_policy": "The candidate and asset check remain unapproved. Only typed GeoParquet is prebuilt; GeoPackage and PMTiles are explicitly unsupported while mapping/generalization policy is pending. Baseline, rights, ID stability, coverage and release contracts remain pending maintainer decisions."
+  },
+  "proposed_raw_schema_contract": {
+    "status": "unapproved; source schema snapshot for review only",
+    "preservation": "Retain all nine non-geometry attributes with exact names, types and values, including empty strings and any future nulls. Retain exact point coordinates and the complete Esri JSON query pages. Do not generate row IDs. OBJECTID is a service identity key only; cross-refresh stability is unverified. Feature_ID is a source-provided feature identifier and is retained unchanged.",
+    "drift_policy": "Missing, renamed, added, or retyped columns; changed null/empty behavior; unstable/missing OBJECTID; geometry, coverage, count, page or completeness changes require quarantine and maintainer review."
+  },
+  "published_contract": {
+    "status": "pending maintainer approval and accepted-baseline comparison",
+    "baseline": "No accepted HIFLD Next dataset/file/version or checksums were verified in this source research.",
+    "release_gate": "Block catalog promotion/publication until an approved raw/published schema, ID identity rules, baseline mapping, provenance, and compatibility plan are recorded."
+  },
+  "refresh": {
+    "cadence": "Draft STOPPED schedule mirrors the BTS-described partial delivery cycle (1st and 15th of the month); enabling requires maintainer approval.",
+    "idempotency": "Record source query timestamps, full payload hashes and service metadata; detect identical content by hash. Do not interpret service edit time or portal item modification time as a producer release date.",
+    "completeness_gate": "Compare pre/post query counts with returned records, require all page requests to succeed, require exactly the reported record count, unique non-null OBJECTID values matching the seeded roster, and complete geometry before staging.",
+    "quarantine": "Preserve the previous accepted release if source access, count, schema, ID, or geometry checks fail; retain raw candidate evidence for review."
+  }
+}

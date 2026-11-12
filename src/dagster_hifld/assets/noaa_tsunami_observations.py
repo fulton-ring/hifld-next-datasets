@@ -25,3 +25,8 @@ def noaa_tsunami_observations_draft_refresh_schedule(context):
     # Proposed availability/integrity poll, not a declaration of data-release cadence.
     require_local(context.resources.staging_storage)
     return RunRequest(run_config={'ops':{noaa_tsunami_observations.op.name:{'config':{'capture_dir':''}}}})
+
+
+INGEST_ASSETS = [noaa_tsunami_observations]
+JOBS = [noaa_tsunami_observations_draft_refresh_job]
+SCHEDULES = [noaa_tsunami_observations_draft_refresh_schedule]
