@@ -217,3 +217,8 @@ usace_nautical_publication_information_areas_draft_schedule = ScheduleDefinition
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [usace_nautical_publication_information_areas_usace_ienc]
+ASSET_CHECKS = [usace_nautical_publication_information_areas_complete]
+JOBS = [usace_nautical_publication_information_areas_draft_job]
+SCHEDULES = [usace_nautical_publication_information_areas_draft_schedule]
