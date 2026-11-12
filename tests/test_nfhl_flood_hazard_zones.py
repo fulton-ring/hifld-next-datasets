@@ -18,6 +18,31 @@ def _canonical(value):
 SERVICE_DOC_BODY = (b"<html>FEMA MSC GIS Web Services page: effective NFHL data at "
                     b"https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer</html>")
 
+# Verbatim producer geometry: FEMA NFHL MapServer layer 4 (Base Index) OBJECTID
+# 49181 (BASE_ID 12007C_421), captured anonymously from the producer's own
+# service on 2026-11-12. Its second ring is a ~5.6e-8 by ~2.9e-8 degree sliver
+# whose global-origin shoelace sum cancels to exactly 0.0; the true signed area
+# is about -1.5128447588e-15 (50-digit decimal ground truth), so it is a
+# clockwise exterior and the feature is a two-shell MultiPolygon, not one
+# polygon with a hole lying outside its shell. This layer shares the service's
+# global lon/lat coordinate scale and ring conventions.
+TINY_SHELL_FEATURE_RINGS = [[[-82.03333484264579, 29.75000298614185], [-82.0371347907523, 29.750002987451523],
+                             [-82.03713477634591, 29.75000358073339], [-82.03687580553589, 29.76046269741437],
+                             [-82.03653537699432, 29.77420835336011], [-82.03619485546596, 29.787954001447872],
+                             [-82.03585423833147, 29.801699642987217], [-82.03558646782858, 29.812502860532845],
+                             [-82.03333490027143, 29.81250284612645], [-82.02916823717652, 29.812502850055466],
+                             [-82.02500157146233, 29.81250285136514], [-82.02083490967715, 29.812502855294156],
+                             [-82.0166682439629, 29.812502856603828], [-82.01250157955837, 29.812502860532845],
+                             [-82.00833491646353, 29.81250286315219], [-82.00416825336862, 29.812502864461862],
+                             [-82.00000159420279, 29.81250286839088], [-82.00000153002878, 29.750003017573988],
+                             [-82.00416819050434, 29.75000301364497], [-82.0083348535992, 29.750003009715954],
+                             [-82.01250151931339, 29.750003005786937], [-82.01666818371797, 29.75000300185792],
+                             [-82.02083484943216, 29.750002997928902], [-82.02500151383668, 29.750002993999885],
+                             [-82.02916817824126, 29.750002988761196], [-82.03333484264579, 29.75000298614185]],
+                            [[-82.06250143978099, 29.75000295863873], [-82.06250149478728, 29.75000295732906],
+                             [-82.06250149609696, 29.75000298614185], [-82.06250144109066, 29.75000298483218],
+                             [-82.06250143978099, 29.75000295863873]]]
+
 
 def _fixture():
     fields = [
@@ -125,6 +150,42 @@ class NfhlFloodHazardZonesValidationTests(unittest.TestCase):
         self.assertEqual(len(multipolygon.geoms), 2)
         self.assertEqual(len(multipolygon.geoms[0].interiors), 0)
         self.assertEqual(len(multipolygon.geoms[1].interiors), 1)
+
+    def test_tiny_producer_exterior_ring_is_not_lost_to_cancellation(self):
+        rings = TINY_SHELL_FEATURE_RINGS
+
+        def naive_global_shoelace(ring):
+            area = 0.0
+            for (x1, y1), (x2, y2) in zip(ring, ring[1:] + [ring[0]]):
+                area += x1 * y2 - x2 * y1
+            return area / 2.0
+
+        self.assertEqual(naive_global_shoelace(rings[1]), 0.0)
+        self.assertLess(source._signed_area(rings[1]), 0.0)
+        self.assertLess(source._signed_area(rings[0]), 0.0)
+        import shapely
+        geometry = shapely.from_wkb(source._polygon_wkb({"rings": rings}))
+        self.assertEqual(geometry.geom_type, "MultiPolygon")
+        self.assertEqual(len(geometry.geoms), 2)
+        self.assertTrue(all(part.is_valid for part in geometry.geoms))
+        self.assertTrue(geometry.is_valid)
+        self.assertEqual(len(geometry.geoms[0].interiors), 0)
+        self.assertEqual(len(geometry.geoms[1].interiors), 0)
+        self.assertEqual(list(geometry.geoms[1].exterior.coords), [tuple(v) for v in rings[1]])
+        self.assertEqual(list(geometry.geoms[0].exterior.coords), [tuple(v) for v in rings[0]])
+
+    def test_signed_area_matches_decimal_ground_truth_at_global_scale(self):
+        from decimal import Decimal, getcontext
+
+        getcontext().prec = 60
+        ring = TINY_SHELL_FEATURE_RINGS[1]
+        total = Decimal(0)
+        closed = ring + [ring[0]]
+        for (x1, y1), (x2, y2) in zip(closed, closed[1:]):
+            total += Decimal(x1) * Decimal(y2) - Decimal(x2) * Decimal(y1)
+        exact = total / 2
+        self.assertLess(float(exact), 0.0)
+        self.assertLess(abs(source._signed_area(ring) - float(exact)), 1e-30)
 
     def test_nan_rings_never_become_geometry(self):
         self.assertIsNone(source._polygon_wkb({"rings": [[["NaN", "NaN"]]]}))
