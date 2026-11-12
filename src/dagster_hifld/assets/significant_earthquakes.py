@@ -20,3 +20,8 @@ def significant_earthquakes_full_quality(significant_earthquakes:dict):
 
 significant_earthquakes_draft_job=define_asset_job('significant_earthquakes_draft_refresh',selection=AssetSelection.assets(significant_earthquakes))
 significant_earthquakes_draft_schedule=ScheduleDefinition(name='significant_earthquakes_draft_refresh_schedule',job=significant_earthquakes_draft_job,cron_schedule='0 9 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [significant_earthquakes]
+ASSET_CHECKS = [significant_earthquakes_full_quality]
+JOBS = [significant_earthquakes_draft_job]
+SCHEDULES = [significant_earthquakes_draft_schedule]
