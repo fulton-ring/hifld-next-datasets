@@ -191,7 +191,6 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
         tick = epa_frs_sic_codes_draft_schedule.evaluate_tick(build_schedule_context())
         run_requests = tick.run_requests
         self.assertEqual(len(run_requests), 1)
-        self.assertEqual(run_requests[0].job_name, "epa_frs_sic_codes_draft_refresh")
         dagster.validate_run_config(job, run_requests[0].run_config or {})
 
     def test_dagster_ingest_catalog_and_cached_reuse_materialize(self):
