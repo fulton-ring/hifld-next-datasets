@@ -127,6 +127,11 @@ from dagster_hifld.assets.ornl_power_plants import (
     eia_power_plants_draft_job,
     eia_power_plants_draft_schedule,
 )
+from dagster_hifld.assets.eia_ethanol_plants import (
+    eia_ethanol_plants_complete,
+    eia_ethanol_plants_draft_job,
+    eia_ethanol_plants_draft_schedule,
+)
 from dagster_hifld.assets.epa_power_generation import (
     epa_frs_eia_860_power_generation_complete,
     epa_power_generation_draft_job,
@@ -1058,6 +1063,7 @@ defs = Definitions(
         epa_disaster_debris_complete,
         arc_regions_full_quality,
         eia_power_plants_complete,
+        eia_ethanol_plants_complete,
         epa_frs_eia_860_power_generation_complete,
         epa_icis_wastewater_capture_complete,
         fuds_irm_property_point_complete,
@@ -1216,6 +1222,7 @@ defs = Definitions(
         usace_caution_areas_draft_job,
         plate_boundaries_draft_job,
         eia_power_plants_draft_job,
+        eia_ethanol_plants_draft_job,
         epa_power_generation_draft_job,
         epa_icis_wastewater_draft_job,
         epa_frs_naics_draft_job,
@@ -1342,6 +1349,7 @@ defs = Definitions(
         usace_caution_areas_draft_schedule,
         plate_boundaries_draft_schedule,
         eia_power_plants_draft_schedule,
+        eia_ethanol_plants_draft_schedule,
         epa_power_generation_draft_schedule,
         epa_icis_wastewater_draft_schedule,
         fuds_projects_points_draft_schedule,
