@@ -557,7 +557,7 @@ class _StreamStats:
 
 
 def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], attr_names: list[str],
-                      stats: "_StreamStats") -> list[tuple[int, int]]:
+                      stats: "_StreamStats", receipts: dict[str, dict[str, object]]) -> list[tuple[int, int]]:
     """Capture and stream-validate the complete layer as bisected roster segments.
 
     Segments start at SEGMENT_START_RECORDS. A segment the producer keeps
@@ -567,7 +567,8 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
     its own name. A single-record segment that still fails ends the capture
     explicitly. Each served page is validated against its sorted roster slice
     and fed to the streamed tallies immediately, so memory stays bounded by
-    one page regardless of layer size.
+    one page regardless of layer size; each settled page's receipt is recorded
+    in ``receipts`` for the candidate evidence roster.
     """
     total = len(ids)
     segments: deque[tuple[int, int]] = deque(
@@ -592,6 +593,7 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
         page = _read_doc(capture_root, name)
         _validate_page(offset, count, page, ids, attr_names, stats)
         settled.append((offset, count))
+        receipts[name] = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
     return settled
 
 
@@ -875,7 +877,7 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
             ids = contract["ids"]
             attr_names = [field["name"] for field in contract["fields"] if field["name"] != "SHAPE"]
             stats = _StreamStats()
-            segments = _capture_segments(client, capture_root, ids, attr_names, stats)
+            segments = _capture_segments(client, capture_root, ids, attr_names, stats, receipts)
             for name, url in _after_doc_urls():
                 receipts[name] = _ensure_captured(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                   attempts=DOC_CAPTURE_ATTEMPTS,

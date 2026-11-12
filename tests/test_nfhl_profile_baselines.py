@@ -369,9 +369,10 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
                     (root / f"{name}.body").write_bytes(
                         json.dumps(docs[name], separators=(",", ":")).encode())
                 parquet = source._parquet_from_pages(root, [(0, 2), (2, 2)], schema)
+                parquet_body = Path(parquet["path"]).read_bytes()
         import tempfile
         with tempfile.NamedTemporaryFile(suffix=".parquet") as stream:
-            stream.write((Path(str(parquet["path"]))).read_bytes())
+            stream.write(parquet_body)
             stream.flush()
             table = pq.read_table(stream.name)
         self.assertEqual(table.num_rows, 4)
@@ -385,7 +386,9 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
         first = shapely.from_wkb(shapes[0])
         self.assertIsInstance(first, LineString)
         self.assertTrue(first.has_z and first.has_m)
-        self.assertEqual(list(first.coords)[0], (-85.89851338304294, 34.51201594594227, 0.0, float("nan")))
+        first_coord = list(first.coords)[0]
+        self.assertEqual(first_coord[:3], (-85.89851338304294, 34.51201594594227, 0.0))
+        self.assertTrue(first_coord[3] != first_coord[3])
         self.assertIsNone(shapes[1])
         third = shapely.from_wkb(shapes[2])
         self.assertIsInstance(third, MultiLineString)
@@ -581,7 +584,7 @@ class RetryAndResumeTests(unittest.TestCase):
                                 DOC_CAPTURE_ATTEMPTS=1, EXPECTED_COUNT=4), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
-                settled = source._capture_segments(None, root, sorted(ids), attr_names, source._StreamStats())
+                settled = source._capture_segments(None, root, sorted(ids), attr_names, source._StreamStats(), {})
             self.assertEqual(sorted(settled), [(0, 2), (2, 2)])
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), ERROR_BODY)
             self.assertEqual(calls.count("page_000000_00004"), 1)
@@ -601,7 +604,7 @@ class RetryAndResumeTests(unittest.TestCase):
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
-                    source._capture_segments(None, root, [10, 11, 12, 13], attr_names, source._StreamStats())
+                    source._capture_segments(None, root, [10, 11, 12, 13], attr_names, source._StreamStats(), {})
 
     def test_resumed_capture_reuses_completed_pages(self):
         bodies, schema, stats, ids, attr_names = self._fixture_bodies()
@@ -620,7 +623,7 @@ class RetryAndResumeTests(unittest.TestCase):
                                 DOC_CAPTURE_ATTEMPTS=2, MIN_FREE_BYTES=0, EXPECTED_COUNT=4), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
-                segments = source._capture_segments(None, root, sorted(ids), attr_names, source._StreamStats())
+                segments = source._capture_segments(None, root, sorted(ids), attr_names, source._StreamStats(), {})
             self.assertEqual(sorted(segments), [(0, 2), (2, 2)])
             self.assertEqual(calls, ["page_000002_00002"])
 
