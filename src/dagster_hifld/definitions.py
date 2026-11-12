@@ -550,6 +550,11 @@ from dagster_hifld.assets.usace_hulke_areas import (
     usace_hulke_areas_draft_job,
     usace_hulke_areas_draft_schedule,
 )
+from dagster_hifld.assets.usace_landmark_areas import (
+    usace_landmark_areas_complete,
+    usace_landmark_areas_draft_job,
+    usace_landmark_areas_draft_schedule,
+)
 
 from dagster_hifld.assets.usace_airport_area import (
     usace_airport_area_complete,
@@ -1147,6 +1152,7 @@ defs = Definitions(
         us_state_boundaries_source_complete,
         usace_pontoon_areas_complete,
         usace_hulke_areas_complete,
+        usace_landmark_areas_complete,
         plate_boundaries_population_complete,
         bsee_ocs_platforms_complete,
         proposed_critical_habitat_complete,
@@ -1261,6 +1267,7 @@ defs = Definitions(
         unified_school_districts_draft_refresh_job,
         usace_pontoon_areas_draft_job,
         usace_hulke_areas_draft_job,
+        usace_landmark_areas_draft_job,
         puerto_rico_subbarrios_draft_job,
         usace_caution_areas_draft_job,
         plate_boundaries_draft_job,
@@ -1394,6 +1401,7 @@ defs = Definitions(
         unified_school_districts_draft_refresh_schedule,
         usace_pontoon_areas_draft_schedule,
         usace_hulke_areas_draft_schedule,
+        usace_landmark_areas_draft_schedule,
         puerto_rico_subbarrios_draft_schedule,
         usace_caution_areas_draft_schedule,
         plate_boundaries_draft_schedule,
