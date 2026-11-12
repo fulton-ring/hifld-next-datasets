@@ -235,6 +235,12 @@ class NfhlFirmPanelsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_polygon_island_in_hole_unsupported"):
             source._assemble_polygons(rings)
 
+    def test_self_intersecting_ring_is_gated_not_repaired(self):
+        self_touching = [[-81.0, 38.0], [-80.0, 37.0], [-80.0, 38.0], [-81.0, 37.0], [-81.0, 38.0]]
+        feature = {"attributes": {"OBJECTID": 99}, "geometry": {"rings": [self_touching]}}
+        self.assertIsNone(source._polygon_wkb(feature["geometry"]))
+        self.assertEqual(source._unassembled_object_ids([feature]), [99])
+
     def test_ring_hole_and_multipart_containers_are_assembled(self):
         single = source._assemble_polygons([SHELL_A])
         self.assertEqual(len(single), 1)

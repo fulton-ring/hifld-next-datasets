@@ -11,8 +11,6 @@ from dagster_hifld.sources.nfhl_firm_panels import (
     FILE_SLUG,
     capture_nfhl_firm_panels,
 )
-
-
 class NfhlFirmPanelsConfig(Config):
     capture_directory: str = ""
 
@@ -52,6 +50,7 @@ def fema_nfhl_firm_panels_complete(candidate: dict) -> AssetCheckResult:
             "complete_source_population": candidate.get("feature_count", 0),
             "source_null_geometry_count": candidate.get("source_null_geometry_count", 0),
             "source_nan_string_geometry_count": candidate.get("source_nan_string_geometry_count", 0),
+            "source_unassembled_polygon_count": candidate.get("source_unassembled_polygon_count", 0),
             "technical_geometry_quality_accepted": False,
             "source_release_accepted": False,
             "source_freshness_accepted": False,

@@ -8,8 +8,10 @@ the producer's own publication of this HIFLD inventory dataset
 identification only). The layer is continuously updated and publishes no
 per-snapshot release date; source freshness, rights, and public-schema
 compatibility are not accepted by this draft. Twenty-nine producer rows
-publish null geometry; they are retained as records with null candidate
-geometry, raw evidence intact, and never silently coerced to a location.
+publish null geometry and a handful publish rings that cannot be assembled
+into a valid OGC polygon container (self-intersecting or overlapping rings);
+all of those records are retained with null candidate geometry, raw evidence
+and audit object IDs intact, and never silently coerced to a location.
 
 Like the sibling NFHL line layer, this layer is captured as adaptively
 bisected segments of the sorted OBJECTID roster: the producer's MapServer
@@ -333,11 +335,37 @@ def _assemble_polygons(rings: list) -> list:
 
 
 def _polygon_wkb(geom: object) -> bytes | None:
+    """WKB for a producer polygon geometry, or ``None`` when it is unusable.
+
+    ``None`` covers null geometry, string-"NaN" ordinates, and producer rings
+    that cannot be assembled into a valid OGC Polygon/MultiPolygon container
+    (self-intersecting rings, overlapping parts); the raw rings remain in the
+    record digest and audit either way, and such records are gated with null
+    candidate geometry, never repaired or coerced.
+    """
     rings = _usable_rings(geom)
     if rings is None:
         return None
-    polygons = _assemble_polygons(rings)
+    try:
+        polygons = _assemble_polygons(rings)
+    except ValueError:
+        return None
     return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
+
+
+def _unassembled_object_ids(features: list[dict[str, object]]) -> list[int]:
+    """Object IDs whose geometry is usable but cannot be assembled faithfully."""
+    unassembled = []
+    for feature in features:
+        attrs = feature.get("attributes", {})
+        geom = feature.get("geometry")
+        if geom is None or _usable_rings(geom) is None:
+            continue
+        try:
+            _assemble_polygons(_usable_rings(geom))
+        except ValueError:
+            unassembled.append(attrs["OBJECTID"])
+    return sorted(unassembled)
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
@@ -417,6 +445,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         _collect_segment(offset, count, json.loads(captures[name][0]), ids, features)
     attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
     geometry_records, null_geometry, nan_geometry, bounds = _classify_geometries(features, attr_names)
+    unassembled_ids = _unassembled_object_ids(sorted(features, key=lambda row: row["attributes"]["OBJECTID"]))
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     record_sha = _list_sha(features)
     geometry_sha = _list_sha(geometry_records)
@@ -431,6 +460,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "source_schema_sha256": schema_sha, "source_crs_epsg": SOURCE_CRS_WKID,
              "geometry_type": "Polygon", "null_geometry_count": null_geometry,
              "nan_string_geometry_count": nan_geometry,
+             "unassembled_polygon_count": len(unassembled_ids),
+             "unassembled_polygon_object_ids": unassembled_ids,
              "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
              "unique_source_id_count": len(ids), "source_segment_count": len(segments),
              "source_release_date": None,
@@ -665,10 +696,11 @@ def capture_nfhl_firm_panels(storage: StagingStorageResource, *, version: str,
                                             "geometry": "Source NAD83 (EPSG:4269) polygon rings retained as WKB "
                                                         "without projection or repair; multi-ring features are "
                                                         "grouped into Polygon/MultiPolygon containers by producer "
-                                                        "ring nesting (containment, largest shell first) and any "
-                                                        "unsupported nesting fails the capture explicitly; null "
-                                                        "or string-'NaN' source geometry is retained as a null "
-                                                        "candidate geometry with raw evidence intact",
+                                                        "ring nesting (containment, largest shell first); null, "
+                                                        "string-'NaN', or rings that cannot assemble into a valid "
+                                                        "OGC container (self-intersecting/overlapping) are "
+                                                        "retained as records with null candidate geometry, raw "
+                                                        "evidence and audit object IDs intact",
                                             "candidate_status": "unapproved; publication blocked pending freshness, "
                                                                 "schema/ID contract, attribution and release "
                                                                 "acceptance"}}],
@@ -730,6 +762,7 @@ def capture_nfhl_firm_panels(storage: StagingStorageResource, *, version: str,
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
                 "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
                 "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
+                "source_unassembled_polygon_count": audit["unassembled_polygon_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_release_accepted": False, "source_freshness_accepted": False,
                 "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
@@ -753,6 +786,7 @@ def capture_nfhl_firm_panels(storage: StagingStorageResource, *, version: str,
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
             "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
+            "source_unassembled_polygon_count": audit["unassembled_polygon_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False,
