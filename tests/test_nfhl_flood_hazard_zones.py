@@ -532,12 +532,18 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
             self.assertFalse(first.get("reused"))
             attempt = next(path for path in (root / "captures").iterdir()
                            if path.name.startswith("vfixture-"))
-            # Seed a second, resumable attempt from the first one's page evidence.
+            # Seed a second, resumable attempt from the first one's page
+            # evidence: after sealing, the durable raw copies live in the
+            # staged candidate (the capture-directory sources were consumed),
+            # and the receipt json remains in the attempt directory.
             resume_root = root / "captures" / "vfixture2-resume"
             resume_root.mkdir()
+            staged_raw = root / "staging" / source.DATASET_SLUG / source.FILE_SLUG \
+                / first["version"] / "raw"
             for name in ("page_0000000_0002",):
-                for suffix in (".body", ".wire", ".receipt.json"):
-                    (resume_root / f"{name}{suffix}").write_bytes((attempt / f"{name}{suffix}").read_bytes())
+                for suffix in (".body", ".wire"):
+                    (resume_root / f"{name}{suffix}").write_bytes((staged_raw / f"{name}{suffix}").read_bytes())
+                (resume_root / f"{name}.receipt.json").write_bytes((attempt / f"{name}.receipt.json").read_bytes())
             (resume_root / "segments.json").write_bytes(_canonical({"accepted": [[0, 2]]}))
             fake2, requested2 = _fake_capture_get(bodies)
             with patch.object(source, "capture_get", side_effect=fake2):
