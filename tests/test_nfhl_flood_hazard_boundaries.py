@@ -467,6 +467,45 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
             self.assertTrue(all(key.startswith("_quarantine/") for key in keys))
             self.assertFalse(any("candidate_ready" in key for key in keys))
 
+    def test_whole_layer_roster_request_is_never_issued(self):
+        # The producer refuses the whole-layer returnIdsOnly request with its
+        # 500 error document, so the capture must only ever issue
+        # OBJECTID-range roster windows plus the other documented inputs.
+        from dagster_hifld.resources import StagingStorageResource
+
+        bodies = self._bodies_for_capture()
+        urls = []
+
+        class EmptyClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            urls.append(url)
+            return self._fake_capture_get(bodies, [])(_client, url, capture_root, name, max_bytes=max_bytes)
+
+        with tempfile.TemporaryDirectory(prefix="nfhl-fhb-roster-") as temporary:
+            storage = StagingStorageResource(use_local=True, local_dir=str(temporary), prefix="")
+            pending = {**self.pins}
+            for name in ("EXPECTED_RECORD_SHA256", "EXPECTED_GEOMETRY_SHA256", "EXPECTED_OBSERVED_BOUNDS",
+                         "EXPECTED_NULL_GEOMETRY_COUNT", "EXPECTED_NAN_GEOMETRY_COUNT"):
+                pending[name] = None
+            with patch.multiple(source, **pending), \
+                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
+                with self.assertRaisesRegex(ValueError, "population_digest_pins_not_established"):
+                    source.capture_nfhl_flood_hazard_boundaries(storage, version="vfixture",
+                                                                capture_directory=str(Path(temporary) / "captures"))
+        forbidden = source._query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
+        self.assertNotIn(forbidden, urls)
+        roster_urls = [url for url in urls if "returnIdsOnly" in url]
+        self.assertTrue(roster_urls)
+        self.assertTrue(all("OBJECTID%3E%3D" in url for url in roster_urls),
+                        "every roster request must be OBJECTID-range constrained")
+
     def test_transient_producer_error_doc_is_retried_with_evidence(self):
         ok_body = b'{"objectIds": []}'
         error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
