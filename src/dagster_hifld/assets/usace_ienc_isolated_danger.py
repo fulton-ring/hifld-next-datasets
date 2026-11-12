@@ -93,3 +93,7 @@ usace_ienc_isolated_danger_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [usace_ienc_isolated_danger_buoy_point]
+ASSET_CHECKS = [usace_ienc_isolated_danger_buoy_point_complete]
+SCHEDULES = [usace_ienc_isolated_danger_draft_schedule]
