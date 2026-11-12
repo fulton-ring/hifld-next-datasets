@@ -66,3 +66,8 @@ usace_special_purpose_buoys_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [usace_special_purpose_buoys_usace_ienc]
+ASSET_CHECKS = [usace_special_purpose_buoys_complete]
+JOBS = [usace_special_purpose_buoys_draft_job]
+SCHEDULES = [usace_special_purpose_buoys_draft_schedule]
