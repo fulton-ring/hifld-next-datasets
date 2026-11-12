@@ -237,6 +237,8 @@ class NfhlLomasCaptureTests(unittest.TestCase):
         fake, requested = _fake_capture_get(bodies)
         pins = {"PAGE_SIZE": 2, "DOC_CAPTURE_BASE_DELAY_SECONDS": 0.01, "PAGE_CAPTURE_BASE_DELAY_SECONDS": 0.01,
                 "EXPECTED_SERVICE_LAYER_ROSTER": [(34, "LOMAs", "Feature Layer")],
+                "EXPECTED_COUNT": None, "EXPECTED_ID_SHA256": None, "EXPECTED_RECORD_SHA256": None,
+                "EXPECTED_GEOMETRY_SHA256": None, "EXPECTED_SCHEMA_SHA256": None,
                 "EXPECTED_LAYER_EXTENT": {"xmin": -100.0, "ymin": 20.0, "xmax": -60.0, "ymax": 45.0},
                 "EXPECTED_OBSERVED_BOUNDS": {"xmin": -86.41197568433415, "ymin": 34.148463868949534,
                                              "xmax": -86.41197568433415, "ymax": 34.148463868949534}}
@@ -270,6 +272,8 @@ class NfhlLomasCaptureTests(unittest.TestCase):
         fake, _ = _fake_capture_get(bodies)
         pins = {"PAGE_SIZE": 2, "DOC_CAPTURE_BASE_DELAY_SECONDS": 0.01, "PAGE_CAPTURE_BASE_DELAY_SECONDS": 0.01,
                 "EXPECTED_SERVICE_LAYER_ROSTER": [(34, "LOMAs", "Feature Layer")],
+                "EXPECTED_COUNT": None, "EXPECTED_ID_SHA256": None, "EXPECTED_RECORD_SHA256": None,
+                "EXPECTED_GEOMETRY_SHA256": None, "EXPECTED_SCHEMA_SHA256": None,
                 "EXPECTED_LAYER_EXTENT": {"xmin": -100.0, "ymin": 20.0, "xmax": -60.0, "ymax": 45.0},
                 "EXPECTED_OBSERVED_BOUNDS": {"xmin": -86.41197568433415, "ymin": 34.148463868949534,
                                              "xmax": -86.41197568433415, "ymax": 34.148463868949534}}
