@@ -100,6 +100,28 @@ COVERAGE_SCOPE = (
     "locations licensees filed: this is the filed-site population the FCC publishes, not a "
     "census of physical transmitters."
 )
+# FCC policy requires ULS geographic coordinates to be referenced to the North
+# American Datum of 1983 (https://www.fcc.gov/wireless/systems-utilities/
+# north-american-datum-1983-coordinates; the BRS/EBS license-search help states
+# location coordinates are "referenced in NAD83",
+# https://wireless2.fcc.gov/helpfiles/licenseSearch/helpBrsEbs.html). The
+# published WKB points carry the DMS-derived decimal values unchanged, so the
+# GeoParquet geometry is declared in the native EPSG:4269 datum; no datum
+# transformation, reprojection, repair or geocoding is applied.
+GEOMETRY_CRS = {
+    "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+    "type": "GeographicCRS",
+    "name": "NAD83",
+    "datum": {"type": "GeodeticReferenceFrame", "name": "North American Datum 1983",
+              "ellipsoid": {"name": "GRS 1980", "semi_major_axis": 6378137, "inverse_flattening": 298.257222101},
+              "id": {"authority": "EPSG", "code": 6269}},
+    "coordinate_system": {"subtype": "ellipsoidal", "axis": [{"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"},
+                                                             {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}]},
+    "id": {"authority": "EPSG", "code": 4269},
+}
+GEOMETRY_PROVENANCE = ("WKB Point (londec, latdec) in EPSG:4269 (NAD83), the datum the FCC requires for "
+                       "ULS location coordinates; the DMS-derived decimal values are written unchanged, "
+                       "with no datum transformation, reprojection, repair or geocoding")
 
 
 def _capture_budget(root: Path) -> None:
@@ -352,6 +374,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         "source_radio_service_codes": sorted(EXPECTED_HD_RADIO_SERVICES),
         "source_file_creation_date": creation_date,
         "source_null_geometry_count": null_geometry,
+        "source_geometry_datum": "NAD83 (EPSG:4269), the FCC-required ULS location-coordinate datum; "
+                                 "coordinates are written unchanged with no datum transformation",
         "source_incomplete_seconds_count": sum(1 for item in published if item["LatSec"] is None or item["LonSec"] is None),
         "source_bounds": bounds, "source_state_count": len(states),
         "source_coverage_scope": COVERAGE_SCOPE,
@@ -363,7 +387,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                         "active-location count, full active ID roster digest, state roster digest, DMS direction "
                         "codes, derived-decimal coordinate range and null-geometry count are checked; duplicate "
                         "location keys fail closed. Raw DMS components are preserved verbatim even when out of "
-                        "nominal range."),
+                        "nominal range. Published geometry is declared in the FCC-required native NAD83 datum "
+                        "(EPSG:4269) with no datum transformation."),
     }
     return published, audit
 
@@ -372,15 +397,8 @@ def _parquet_bytes(published: list[dict]) -> bytes:
     import io
     arrays = [pa.array([item[name] for item in published], type=kind) for name, kind in PUBLISHED_SCHEMA]
     table = pa.Table.from_arrays(arrays, names=[name for name, _ in PUBLISHED_SCHEMA])
-    crs = {"$schema": "https://proj.org/schemas/v0.7/projjson.schema.json", "type": "GeographicCRS", "name": "WGS 84",
-           "datum": {"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984",
-                     "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137, "inverse_flattening": 298.257223563},
-                     "id": {"authority": "EPSG", "code": 6326}},
-           "coordinate_system": {"subtype": "ellipsoidal", "axis": [{"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"},
-                                                                    {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}]},
-           "id": {"authority": "EPSG", "code": 4326}}
     metadata = {b"geo": _canonical({"version": "1.1.0", "primary_column": "geometry",
-                                   "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"], "crs": crs}}})}
+                                   "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"], "crs": GEOMETRY_CRS}}})}
     sink = io.BytesIO()
     pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd", use_dictionary=False)
     return sink.getvalue()
@@ -504,7 +522,9 @@ def capture_brs_ebs_transmitters(storage: StagingStorageResource, *, version: st
                                 "identity against the archived 2024 HIFLD layer is unverified because the "
                                 "DataLumos archive returns HTTP 403 anonymously); url embeds UniqSysID as the "
                                 "ULS license-location key"),
-            "geometry": "WKB Point (londec, latdec) in EPSG:4326, no reprojection, repair or geocoding",
+            "geometry": GEOMETRY_PROVENANCE + " (FCC ULS NAD83 datum policy: "
+                        "https://www.fcc.gov/wireless/systems-utilities/north-american-datum-1983-coordinates; "
+                        "BRS/EBS license-search help: https://wireless2.fcc.gov/helpfiles/licenseSearch/helpBrsEbs.html)",
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
         "lineage": ("The FCC moved ULS daily and weekly public access downloads from wireless2.fcc.gov to "
                     "data.fcc.gov/download/pub/uls/ in July 2021; the weekly complete MDS/ITFS licenses file "
@@ -520,7 +540,7 @@ def capture_brs_ebs_transmitters(storage: StagingStorageResource, *, version: st
                     "coordination, environmental assessment under 1.1307, radio quiet zones under 1.924); ULS "
                     "location records are the sites licensees filed, so this candidate publishes the FCC's "
                     "filed-site population for the 2.5 GHz band, not a census of physical transmitters. The "
-                    "published population spans 17 states plus Puerto Rico including Alaska and Hawaii bounds; "
+                    "published population spans 16 states plus Puerto Rico including Alaska and Hawaii bounds; "
                     "84 of its filed sites carry antenna structure registration numbers. No publication or "
                     "acceptance is implied; runtime approval flags remain false."),
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {

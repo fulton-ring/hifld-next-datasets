@@ -17,7 +17,14 @@ weekly file (creation date `Sun Nov  8 10:07:38 EST 2026`), radio services
 `QZone`, `TowReg`, `SupStruc`, `AllStruc`, `StrucType`, `LicStatus`, derived
 `latdec`/`londec`, `url`). `UniqSysID` and `LocNum` are retained unchanged and
 jointly unique; `TowReg` is preserved as the source string. 84 published filed
-sites carry antenna structure registration numbers.
+sites carry antenna structure registration numbers. Published geometry is
+declared in the native NAD83 datum (EPSG:4269) — the datum the FCC requires for
+ULS location coordinates
+(https://www.fcc.gov/wireless/systems-utilities/north-american-datum-1983-coordinates;
+the BRS/EBS license-search help states location coordinates are referenced in
+NAD83, https://wireless2.fcc.gov/helpfiles/licenseSearch/helpBrsEbs.html) — with
+the DMS-derived decimal values written unchanged and no datum transformation,
+reprojection, repair or geocoding.
 
 Scope caveat (documented in the source lineage): BRS and EBS licenses are
 geographic area licenses (47 CFR 27.1208); a blanket license covers all fixed
@@ -36,7 +43,7 @@ C 3568, E 1296, T 386), licensee and callsign joins (verbatim; a blank LO
 callsign is tolerated only when the header callsign is blank, and every
 published row must carry a callsign), duplicate `(UniqSysID, LocNum)` keys,
 active-population count, full active ID roster digest, state roster digest
-(17 states plus Puerto Rico, including Alaska and Hawaii bounds), DMS direction
+(16 states plus Puerto Rico, including Alaska and Hawaii bounds), DMS direction
 codes, derived-decimal coordinate range and null-geometry count (3 filed rows
 without usable coordinates are retained with null geometry). Raw DMS components
 are preserved verbatim even when out of nominal range. The weekly refresh

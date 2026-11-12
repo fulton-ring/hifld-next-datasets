@@ -198,9 +198,30 @@ class BrsEbsTransmittersTests(unittest.TestCase):
         geometry_meta = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geometry_meta["primary_column"], "geometry")
         self.assertEqual(geometry_meta["columns"]["geometry"]["geometry_types"], ["Point"])
-        self.assertEqual(geometry_meta["columns"]["geometry"]["crs"]["id"]["code"], 4326)
+        self.assertEqual(geometry_meta["columns"]["geometry"]["crs"]["id"]["code"], 4269)
         self.assertEqual(audit["source_record_sha256"], _sha(_canonical(
             [{key: row[key] for key, _ in source.PUBLISHED_SCHEMA if key != "geometry"} for row in published])))
+
+    def test_geometry_declares_native_nad83_datum_without_transformation(self):
+        hd, en, lo = _documents()
+        published, _audit = self._validate(hd, en, lo)
+        # WKB points carry the DMS-derived decimal values unchanged; the
+        # GeoParquet metadata must label them with the FCC-required native
+        # ULS datum (NAD83, EPSG:4269), not WGS84.
+        for row in published:
+            if row["geometry"] is None:
+                continue
+            _byte_order, _type, londec, latdec = struct.unpack("<BIdd", row["geometry"])
+            self.assertEqual((londec, latdec), (row["londec"], row["latdec"]))
+        body = source._parquet_bytes(published)
+        crs = json.loads(pq.read_table(io.BytesIO(body)).schema.metadata[b"geo"])["columns"]["geometry"]["crs"]
+        self.assertEqual(crs["id"], {"authority": "EPSG", "code": 4269})
+        self.assertEqual(crs["name"], "NAD83")
+        self.assertEqual(crs["datum"]["name"], "North American Datum 1983")
+        self.assertEqual(crs["datum"]["ellipsoid"]["name"], "GRS 1980")
+        self.assertIn("EPSG:4269", source.GEOMETRY_PROVENANCE)
+        self.assertIn("no datum transformation", source.GEOMETRY_PROVENANCE)
+        self.assertNotIn("EPSG:4326", source.GEOMETRY_PROVENANCE)
 
     def test_drift_guards_fail_closed(self):
         cases = [
