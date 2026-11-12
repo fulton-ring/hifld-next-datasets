@@ -11,16 +11,18 @@ this draft.
 
 Each record is a base map index polygon (the imagery/source sheet that backs a
 DFIRM study), but serialized feature density varies from a few hundred bytes to
-tens of kilobytes per record, and the producer's REST query refuses with a
-complete HTTP 200 Esri error document whenever one response approaches roughly
-36 MB (dated 2026-11-12 probes: a 1000-record slice served 3.9 MB where its
-2000-record parent was refused; a 200-record slice served 11.6 MB where its
-500-record parent was refused). Fixed pagination therefore cannot serve the
-complete layer, so it is captured as adaptively bisected segments of the sorted
-OBJECTID roster: each accepted segment must return exactly its expected id
-slice, the accepted segments must tile the complete roster without gaps or
-overlaps, and the before/after count/id/metadata brackets plus full-record
-digests prove that nothing was skipped, duplicated, or reordered.
+tens of kilobytes per record, and the producer's REST query refuses a response
+that approaches roughly 36 MB (dated 2026-11-12 probes: a 1000-record slice
+served 3.9 MB where its 2000-record parent was refused; a 200-record slice
+served 11.6 MB where its 500-record parent was refused). The refusal appears
+either as a complete HTTP 200 Esri error document or as a truncated/reset
+connection (the identical refused request showed both modes seconds apart at
+offset 209000). Fixed pagination therefore cannot serve the complete layer, so
+it is captured as adaptively bisected segments of the sorted OBJECTID roster:
+each accepted segment must return exactly its expected id slice, the accepted
+segments must tile the complete roster without gaps or overlaps, and the
+before/after count/id/metadata brackets plus full-record digests prove that
+nothing was skipped, duplicated, or reordered.
 
 The producer's MapServer also intermittently answers valid requests with
 complete HTTP 200 Esri error documents and resets connections (observed while
@@ -79,7 +81,7 @@ MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MIN_FREE_BYTES = 6_000_000_000
 DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
-SEGMENT_PROBE_ATTEMPTS = 2
+SEGMENT_PROBE_ATTEMPTS = 3
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-12 complete-layer population contract.
 EXPECTED_COUNT = 327459
@@ -535,11 +537,11 @@ def _capture_segments(client: httpx.Client, capture_root: Path,
     """Capture the complete layer as adaptively bisected roster segments.
 
     Segments start at SEGMENT_START_RECORDS. A segment the producer keeps
-    refusing with an error document (its response would exceed the producer's
-    transfer cap) is bisected until the producer serves both halves; the
-    refused segment's final body and receipts stay on disk as evidence under
-    its own name. A single-record segment that still fails ends the capture
-    explicitly.
+    refusing is bisected until the producer serves both halves, whether the
+    refusal is a persistent error document or a persistent incomplete transport
+    capture (the cap's truncation/reset mode); the refused segment's final body
+    and receipts stay on disk as evidence under its own name. A single-record
+    segment that still fails ends the capture explicitly.
     """
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
     segments: deque[tuple[int, int]] = deque(
@@ -549,11 +551,25 @@ def _capture_segments(client: httpx.Client, capture_root: Path,
     while segments:
         offset, count = segments.popleft()
         name = _segment_name(offset, count)
-        body, receipt = _capture_with_retry(
-            client, _segment_query(offset, count), capture_root, name,
-            max_bytes=MAX_CAPTURE_BYTES,
-            attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-            base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
+        try:
+            body, receipt = _capture_with_retry(
+                client, _segment_query(offset, count), capture_root, name,
+                max_bytes=MAX_CAPTURE_BYTES,
+                attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
+                base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
+        except ValueError as exc:
+            # The producer cap can also manifest as truncation/connection reset
+            # instead of a clean error document (dated 2026-11-12 probe:
+            # page_209000_01000 answered the cap error document, then the
+            # identical request died on connect). A multi-record segment whose
+            # attempts were still incomplete is therefore bisected like an
+            # error document; a single-record segment keeps failing explicitly.
+            if count > 1 and str(exc).startswith("incomplete_source_capture:"):
+                middle = count // 2
+                segments.appendleft((offset + middle, count - middle))
+                segments.appendleft((offset, middle))
+                continue
+            raise
         if _producer_error_doc(body):
             if count == 1:
                 raise ValueError("source_single_feature_unservable")

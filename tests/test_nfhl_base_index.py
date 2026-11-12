@@ -407,6 +407,42 @@ class NfhlBaseIndexTests(unittest.TestCase):
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
             self.assertEqual(calls.count("page_000000_00004"), 1)
 
+    def test_persistent_incomplete_transport_bisects_oversized_segments(self):
+        import tempfile
+        from pathlib import Path
+
+        _, features, fixture_captures, _, _, _, _ = _fixture()
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            if name == "page_000000_00004":
+                (capture_root / f"{name}.body").write_bytes(b"")
+                (capture_root / f"{name}.wire").write_bytes(b"")
+                (capture_root / f"{name}.receipt.json").write_bytes(b'{"status": null}\n')
+                raise ValueError(f"incomplete_source_capture:{name}")
+            body = bodies[name]
+            digest = hashlib.sha256(body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                       "complete_body": True, "bytes": len(body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            root.mkdir()
+            with patch.multiple(source, SEGMENT_START_RECORDS=4,
+                                SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
+                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                segments = source._capture_segments(None, root, 4)
+            self.assertEqual(sorted(segments), ["page_000000_00002", "page_000002_00002"])
+            self.assertEqual(calls.count("page_000000_00004"), 1)
+            self.assertEqual((root / "page_000000_00004.receipt.json").read_bytes(), b'{"status": null}\n')
+
     def test_unservable_single_feature_fails_explicitly(self):
         import tempfile
         from pathlib import Path
