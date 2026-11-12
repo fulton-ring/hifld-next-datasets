@@ -56,6 +56,37 @@ manifest blocks the same downstream check. Raw captures, receipts, staging,
 Dagster home and proof records are retained on the factory task sandbox disk
 (`/workspace/evidence`).
 
+Re-verified 2026-11-12 at the reconciled head `f03ba1b5` (merge of current
+main, including its comparator identity resolution). Focused suites pass:
+74 tests OK with 1 opt-in real-capture skip (`test_generalized_units_source`,
+`test_full_verification`, `test_native_verification`, `test_dynamic_partitions`).
+Live fetch again returned the pinned page byte-identical
+(`19869fa6…3298ea`, 19,137,445 bytes). Dagster runs (isolated local
+`DAGSTER_HOME`/staging): live ingests `761b6d04-bd2f-4bf4-ab21-0057c780e833`
+→ candidate `v0.0.0-draft-generalizedunits-e2571de277f6d1c9-…` (942 features,
+0 invalid, coverage 592/350) and `1139e243-b355-4810-a83e-0cbfcd17af2f` (its
+own observation version; the two varying captures are the FWS landing page
+and the ArcGIS item document, which change per fetch); capture-dir replay
+`229a3682-b3c5-4b2d-ab11-9e6f858fcbfe` reused the cached candidate with no
+new version; catalog `6c6eb393-ed90-4927-acf2-cd78623fbc82` with the blocking
+`quality_manifest` check passed. The publish flow changed on main since the
+previous lifecycle: `publish/verify` now reads a staged STAC collection, so a
+complete refusal run needs `publish/formats/*` + `publish/release_metadata`
+first. With `HIFLD_PORTOLAN_PUBLIC_ROOT=https://example.test/catalog` (the
+same fixture pattern as `tests/test_portolan_workflow.py`; local defaults
+render `http://localhost:8333` hrefs that fail the https-only Portolan
+profile) the run `4619ad91-8b39-42ce-926d-67172b787241` staged
+collection/README/AGENTS metadata, generated geopackage+geoparquet formats
+(pmtiles and shapefile_zip skipped per the manifest's declared unsupported
+reasons), then `publish/verify` raised
+`ReleaseApprovalError: missing_or_ambiguous_exact_object_approval` and
+promoted nothing; the published inventory stayed empty and a populated
+three-object published fixture was preserved byte-for-byte under a direct
+`_copy_version_files` refusal with a valid empty approval registry. Approval
+flags remain false in the ready marker, source manifest and proposed
+contract; the schedule stays STOPPED. Unresolved maintainer-acceptance
+blockers are unchanged (see below).
+
 Unresolved (blockers, requires maintainer decision): DHS crosswalk match
 (https://doi.org/10.3886/E241367V1 is Cloudflare-blocked for anonymous access),
 historical HIFLD baseline equivalence (DataLumos V1 page is also
