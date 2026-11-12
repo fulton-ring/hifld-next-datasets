@@ -6,13 +6,13 @@ at `https://data.fcc.gov/download/pub/uls/complete/l_LMpriv.zip`, the official
 bulk distribution to which the FCC moved ULS downloads in July 2021. The
 published population is every location (`LO`) record whose license header (`HD`)
 status is `A` (active) and whose LO record carries both latitude and longitude
-degree components — 603778 coordinate-bearing locations of 861663 licenses
+degree components — 603775 coordinate-bearing locations of 861663 licenses
 (925853 active location rows; 322063 active filed locations without a complete
 coordinate pair are excluded, matching the historical layer, whose 605297 rows
-all carry geometry; a further 12 active coordinate-bearing filings in the FCC
-do-not-convert local-datum territories are excluded from the published
-coordinate-bearing population and preserved in the audit, see the datum
-paragraph below) — under the historical HIFLD Land Mobile Private
+all carry geometry; a further 15 active coordinate-bearing filings in the FCC
+do-not-convert local-datum territories (12 MP, 3 UM) are excluded from the
+published coordinate-bearing population and preserved in the audit, see the
+datum paragraph below) — under the historical HIFLD Land Mobile Private
 Transmission Towers column contract (`UniqSysID`, `Licensee`, `Callsign`,
 `LocNum`, DMS coordinates, address fields, `Nepa`, `QZone`, `TowReg`,
 `SupStruc`, `AllStruc`, `StrucType`, `LicStatus`, derived `latdec`/`londec`,
@@ -36,7 +36,7 @@ LO anomalies fail closed), the full 35-member counts-file map, radio service
 distribution (30 codes, IG 609503 … SP 2) and license status distribution
 (A 332080, E 420397, C 66936, T 42250), unique license and licensee identities,
 LO/HD callsign join, the coordinate-bearing population count, the full active ID
-roster digest, state roster digest (60 values, including the verbatim `$`,
+roster digest, state roster digest (58 values, including the verbatim `$`,
 `US` and lowercase `ca` source values), DMS direction codes, bounds,
 empty-callsign rows (2, one license with no callsign filed), out-of-range
 derived coordinates (1) and extra-field row counts. Raw DMS components are
@@ -69,8 +69,9 @@ coordinates cannot be represented accurately under the published contract.
 Those filings (identified by the ULS location state codes of the do-not-convert
 territories: `MP` = Northern Mariana Islands, `UM` = the aggregated U.S. Minor
 Outlying Islands containing the do-not-convert islands) are excluded from the
-published coordinate-bearing population — 12 rows in the pinned edition, all
-`MP` — and preserved in full (all filed attributes plus their derived
+published coordinate-bearing population — 15 rows in the pinned edition (12
+`MP`, 3 `UM`: Palmyra Atoll and Wake Island) — and preserved in full (all filed
+attributes plus their derived
 `latdec`/`londec`) in the source audit (`source_local_datum_quarantined_records`,
 pinned by count and record digest), never silently removed, shifted or
 mislabeled NAD83; they are not re-labeled NAD83 in the geometry column.

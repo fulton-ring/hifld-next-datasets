@@ -96,17 +96,17 @@ EXPECTED_LICENSEE_ROWS = 861663
 # digest.
 EXPECTED_ACTIVE_LOCATION_ROWS = 925853
 EXPECTED_MISSING_COORDINATE_ROWS = 322063
-EXPECTED_ACTIVE_LOCATIONS = 603778
-EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS = 12
-EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256 = "0" * 64
+EXPECTED_ACTIVE_LOCATIONS = 603775
+EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS = 15
+EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256 = "2cc2aeaf177775b5fdc485a8ab3fd2a244b054b2c3770a37025801f556472b86"
 EXPECTED_DUPLICATE_LOCATION_KEY_COUNT = 42
 EXPECTED_PUBLISHED_DUPLICATE_LOCATION_KEY_COUNT = 27
-EXPECTED_ACTIVE_ID_SHA256 = "3763b3226296ed4f8a549628072deb2b575f3330d809d2204e46643bca27e7de"
-EXPECTED_STATE_ROSTER_SHA256 = "85a1495cb39eae5ee5d48f5e8daf99251523463c3ae279686acac695864c195d"
+EXPECTED_ACTIVE_ID_SHA256 = "79d0162517b0ccefa27bf0f3151fdc9ee3ad760ebc495e974e2c7de2b7cb57b7"
+EXPECTED_STATE_ROSTER_SHA256 = "a0614b1f389cb264f8313538e1422b4adf4618806081a4d3ea1cf9c49f1fa813"
 EXPECTED_EMPTY_CALLSIGN_ROWS = 2
 EXPECTED_OUT_OF_RANGE_COORDINATE_ROWS = 1
-EXPECTED_LAT_DIRECTION_COUNTS = {"": 5, "0": 2, "N": 603774, "S": 9}
-EXPECTED_LON_DIRECTION_COUNTS = {"": 6, "3": 2, "E": 96, "N": 1, "W": 603683, "w": 2}
+EXPECTED_LAT_DIRECTION_COUNTS = {"": 5, "0": 2, "N": 603759, "S": 9}
+EXPECTED_LON_DIRECTION_COUNTS = {"": 6, "3": 2, "E": 82, "N": 1, "W": 603682, "w": 2}
 EXPECTED_EXTRA_FIELD_ROWS = {"HD": 1, "EN": 2, "LO": 0}
 EXPECTED_BOUNDS = [-179.999972222, -14.3295, 174.099444444, 93.0]
 HD_CALLSIGN, HD_STATUS, HD_SERVICE = 4, 5, 6
@@ -701,8 +701,8 @@ def capture_land_mobile_private_transmission_towers(storage: StagingStorageResou
                            "edition) to match the historical layer's coordinate-bearing population, and location "
                            "records in the FCC do-not-convert territories (state codes MP, UM; coordinates remain "
                            "in their applicable local datum with no FCC-published conversion to NAD83) are also "
-                           "excluded and preserved in the audit with all filed attributes (12 rows in the pinned "
-                           "edition, all MP), never silently removed, shifted or mislabeled NAD83"),
+                           "excluded and preserved in the audit with all filed attributes (15 rows in the pinned "
+                           "edition: 12 MP, 3 UM), never silently removed, shifted or mislabeled NAD83"),
             "source_ids": "UniqSysID (HD/EN/LO unique system identifier) and LocNum (LO location number) retained unchanged; duplicate (UniqSysID, LocNum) filed records are preserved as distinct rows as in the historical layer",
             "source_values": "all published attribute strings retained verbatim including empty fields; TowReg kept as the source string (the frozen copy typed it int64 with 0 for unregistered records and the source also carries N/A values); SupStruc/AllStruc typed float with null for empty source fields (the frozen copy stored 0.0 there); DMS degree/minute components typed float to match the frozen contract",
             "derived_columns": ("latdec/londec are DMS-to-decimal conversions of the raw components formatted "
