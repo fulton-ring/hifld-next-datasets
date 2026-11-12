@@ -65,3 +65,8 @@ sloped_ground_areas_usace_ienc_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [sloped_ground_areas_usace_ienc]
+ASSET_CHECKS = [sloped_ground_areas_usace_ienc_complete]
+JOBS = [sloped_ground_areas_usace_ienc_draft_job]
+SCHEDULES = [sloped_ground_areas_usace_ienc_draft_schedule]
