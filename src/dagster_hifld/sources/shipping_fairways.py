@@ -94,8 +94,8 @@ PAGE_MAX_BYTES = 8_000_000
 MAX_CAPTURE_BYTES = 192_000_000
 EXPECTED_LAYER_NAME = "Shipping Lanes and Regulations"
 EXPECTED_SERVICE_LAYERS = [
-    {"id": 0, "name": "Shipping Lanes and Regulations", "geometryType": "esriGeometryPolygon"},
-    {"id": 1, "name": "Coastal Maintained Channels", "geometryType": "esriGeometryPolygon"},
+    (0, "Shipping Lanes and Regulations", "esriGeometryPolygon"),
+    (1, "Coastal Maintained Channels", "esriGeometryPolygon"),
 ]
 EXPECTED_FIELD_DECLARATIONS = [
     {"name": "OBJECTID", "type": "esriFieldTypeOID", "alias": "OBJECTID", "domain": None},
@@ -301,9 +301,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                and service.get("type") == "MapServer" for service in directory.get("services", [])):
         raise ValueError("official_encdirect_service_directory_drift")
     service = docs["service_before"]
+    advertised = [(layer.get("id"), layer.get("name"), layer.get("geometryType"))
+                  for layer in service.get("layers", [])]
     if (service.get("mapName") != "MarineTransportation" or service.get("copyrightText") != SERVICE_COPYRIGHT
-            or service.get("maxRecordCount") != 10000
-            or service.get("layers") != EXPECTED_SERVICE_LAYERS):
+            or service.get("maxRecordCount") != 10000 or advertised != EXPECTED_SERVICE_LAYERS):
         raise ValueError("official_encdirect_service_drift")
     layer = docs["layer_before"]
     if layer.get("fields") != EXPECTED_FIELD_DECLARATIONS:

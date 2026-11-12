@@ -27,7 +27,9 @@ class ShippingFairwaysTests(unittest.TestCase):
 
     def _documents(self):
         service = {"mapName": "MarineTransportation", "copyrightText": source.SERVICE_COPYRIGHT,
-                   "maxRecordCount": 10000, "layers": source.EXPECTED_SERVICE_LAYERS}
+                   "maxRecordCount": 10000,
+                   "layers": [{"id": layer_id, "name": name, "geometryType": geometry}
+                              for layer_id, name, geometry in source.EXPECTED_SERVICE_LAYERS]}
         layer = {"id": 0, "name": source.EXPECTED_LAYER_NAME,
                  "geometryType": "esriGeometryPolygon", "maxRecordCount": 10000,
                  "spatialReference": {"wkid": 4326, "latestWkid": 4326},
