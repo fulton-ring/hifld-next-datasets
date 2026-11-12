@@ -78,8 +78,13 @@ current official feed.
 
 ## Status
 
-Draft pipeline implementation (source adapter, ingest asset, focused tests, isolated Dagster
-verification against the real weekly bytes) is the immediate next work, using the established
-ULS-family module pattern; this file records the source, evidence, and proposed contract for
-that work. No source, baseline, schema/ID/coverage/rights, release, merge, or production
-approval is granted or implied.
+Draft pipeline implemented at the source-adapter level: `src/dagster_hifld/sources/antenna_structure_registration_asr.py`
+captures and validates the complete weekly `r_tower.zip`, publishes one GeoParquet candidate row per CO
+coordinate row (verbatim `ra_`/`co_`/`en_`-prefixed declared fields plus derived `latdec`/`londec` and WKB
+Point geometry in EPSG:4269), and registers the stopped-refresh ingest asset, blocking completeness check,
+draft job and schedule through `src/dagster_hifld/assets/antenna_structure_registration_asr.py`. The joined
+EN fields come from the registration's unique EN owner (`entity_type` O) row; the 15 published rows whose
+registration carries no EN owner row keep null joined EN fields, and the 124 coordinate rows without
+parsable degrees and directions keep null geometry, matching the proposed contract above. This file records
+the source, evidence, and proposed contract for that work. No source, baseline, schema/ID/coverage/rights,
+release, merge, or production approval is granted or implied.
