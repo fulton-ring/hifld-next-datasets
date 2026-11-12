@@ -54,7 +54,7 @@ L_LMCOMM_URL = "https://data.fcc.gov/download/pub/uls/complete/l_LMcomm.zip"
 PUBLISHER = ("Federal Communications Commission Wireless Telecommunications Bureau; "
              "official ULS weekly public access complete database files")
 CAPTURE_NAMES = {"l_LMcomm"}
-MAX_CAPTURE_BYTES = 256_000_000
+MAX_CAPTURE_BYTES = 320_000_000
 CAPTURE_BODY_LIMIT = 128 * 1024 * 1024
 DISK_FLOOR = 800_000_000
 ZIP_MEMBER_ROSTER = [
