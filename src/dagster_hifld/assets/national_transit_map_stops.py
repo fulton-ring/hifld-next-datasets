@@ -78,3 +78,8 @@ national_transit_map_stops_draft_schedule = ScheduleDefinition(
         "config": {"max_capture_bytes": MAX_CAPTURE_BYTES}
     }}},
 )
+
+INGEST_ASSETS = [national_transit_map_stops]
+ASSET_CHECKS = [national_transit_map_stops_source_complete]
+JOBS = [national_transit_map_stops_draft_job]
+SCHEDULES = [national_transit_map_stops_draft_schedule]
