@@ -434,6 +434,11 @@ from dagster_hifld.assets.epa_frs_sic_powerplants import (
     epa_frs_sic_published_membership_compatible,
 )
 
+from dagster_hifld.assets.epa_frs_interest_contact import (
+    epa_frs_interest_contact_complete,
+    epa_frs_interest_contact_draft_schedule,
+)
+
 from dagster_hifld.assets.usace_caution_areas import (
     usace_caution_areas_complete,
     usace_caution_areas_draft_schedule,
@@ -1165,6 +1170,7 @@ defs = Definitions(
         epa_emergency_response_rmp_facilities_complete,
         epa_frs_sic_complete,
         epa_frs_sic_published_membership_compatible,
+        epa_frs_interest_contact_complete,
         epa_rcra_tsd_complete,
         docks_source_population_complete,
         docks_source_geometry_quality,
@@ -1429,6 +1435,7 @@ defs = Definitions(
         usace_data_coverage_areas_draft_schedule,
         epa_rmp_facilities_draft_schedule,
         epa_frs_sic_draft_schedule,
+        epa_frs_interest_contact_draft_schedule,
         epa_rcra_tsd_draft_schedule,
         docks_draft_schedule,
         epa_facilities_draft_schedule,
