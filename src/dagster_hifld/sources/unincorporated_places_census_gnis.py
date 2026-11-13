@@ -137,21 +137,24 @@ EXPECTED_LAYER_EXTENT = {"xmin": -19936672.2315, "ymin": -1636427.9285999984,
 # bounds are pinned from the dated complete capture (captured 2026-11-13 in the
 # task sandbox, capture root /workspace/captures243); unpinned values ("", None)
 # are checked only once pinned.
-EXPECTED_IDS_SHA256 = ""
+EXPECTED_IDS_SHA256 = "0049757ed9f30d111b07efc1cc75b3552c6cbbafff712c0ae3d0e00315b991bd"
 EXPECTED_SCHEMA_SHA256 = "125c6f6982d87bb339a539257aa9a7f77dd90a8401a9a5e7eb9813d160063522"
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_EMPTY_GEOMETRY_COUNT = None
-EXPECTED_TOTAL_POINT_COUNT = None
+EXPECTED_RECORD_SHA256 = "db896c5d01cb697efbca406a152c474b12ea71bfcb51408dddce81d9dab13a07"
+EXPECTED_GEOMETRY_SHA256 = "0c34947e5edcdfbe20fe0ff10c748293463eeb9370780e4959343db86f79006f"
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_EMPTY_GEOMETRY_COUNT = 0
+EXPECTED_TOTAL_POINT_COUNT = 23_420
 # GNIS gazetteer per-feature value histograms observed via grouped counts on
 # 2026-11-13 (sum 29,557); every feature must carry one of these values.
 EXPECTED_FEATURECLASS_DISTRIBUTION = {"Census": 13_535}
 EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION = {2: 13_535}
 # Points per multipoint pinned from the complete capture.
-EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION = None
-EXPECTED_Z_ORDINATE_DISTRIBUTION = None
-EXPECTED_OBSERVED_BOUNDS = None
+EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION = {
+    1: 7249, 2: 4472, 3: 663, 4: 947, 5: 70, 6: 59, 7: 23, 8: 16, 9: 9,
+    10: 6, 11: 2, 12: 2, 13: 4, 14: 6, 15: 1, 17: 3, 21: 1, 23: 1, 24: 1}
+EXPECTED_Z_ORDINATE_DISTRIBUTION = {0: 23_420}
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -18818435.4042, "ymin": 1490607.2296000011,
+                            "xmax": 19381517.2254, "ymax": 11244434.817599997}
 BASELINE_PENDING_NOTE = (
     "The record and geometry baseline digests, geometry gate counts and "
     "observed bounds are pinned from a completed resumable capture directory "
