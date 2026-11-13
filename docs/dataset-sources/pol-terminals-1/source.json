@@ -1,0 +1,94 @@
+{
+  "inventory_id": "pol-terminals-1",
+  "title": "POL Terminals",
+  "research_status": "no_public_maintained_source; DHS crosswalk row resolved: layer migrated to secure GII; open endpoints verified dead 2026-11-13; successor-product and access-grant decisions recorded in handoff",
+  "researched_at": "2026-10-20; updated 2026-11-13",
+  "summary": "POL Terminals is an ORNL/Argonne (+NGA HSIP) curated compilation (crude oil and refined products, per-row SOURCE curation, TERM_ID identity; last public update 2,302 terminals, data period ending 2024-10-11). DHS's August 2025 HIFLD Open crosswalk row (retrieved and inspected 2026-11-13) marks the layer 'Migrated' to the 'GII Portal' with 'GII Access Required: Yes' and agency 'Oak Ridge National Laboratory (ORNL)'; its listed Open REST Service and Open item were both verified dead on 2026-11-13. No ORNL/DOE public endpoint publishes the compilation. The only public copy is the DataLumos rescue archive (never a pipeline input). Maintained but materially different successor products exist (EIA-815 petroleum product terminals on EIA's own ArcGIS org; ORNL IFAC mirrors the EIA-based CSV). Choosing a successor, requesting a GII access grant, or parking/retiring the dataset requires a maintainer decision.",
+  "crosswalk_match": {
+    "dataset": "HIFLD OPEN GIS Data Index and Crosswalk",
+    "doi": "https://doi.org/10.3886/E241367V1",
+    "record_match": "resolved 2026-11-13",
+    "canonical_access": "DataLumos project 241367 (https://www.datalumos.org/datalumos/project/241367/version/V1/view) is Cloudflare-challenged and returns HTTP 403 from this environment (re-checked 2026-11-13); row-level inspection used a public byte-copy of hifld_open_crosswalk_geoplatform.xlsx mirrored at https://atcoordinates.info/wp-content/uploads/2025/08/hifld_open_crosswalk_geoplatform.xlsx (sha256 7f3394fed2712fdcc176b7ce658293fdded656b9b719f0d90154c07dc38772bc, 61,689 bytes, 306 data rows). The copy is a research-convenience mirror of the DHS-published file, not a pipeline input; canonical verification against DataLumos remains possible once the download gate is reachable.",
+    "row": {
+      "Status": "Migrated",
+      "Layer Name": "POL Terminals",
+      "Old Hosting Location": "https://geoplatform.maps.arcgis.com/home/item.html?id=49daa72be7b84767bbb5e5c6f51ab1e8",
+      "New Hosting Location": "GII Portal",
+      "DUA Required": "No",
+      "GII Access Required": "Yes",
+      "Deprecation Justification": "Migrated to GII due to the deprecation of HILFD Open",
+      "Agency": "Oak Ridge National Laboratory (ORNL)",
+      "External Landing Page": null,
+      "Open REST Service": "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/POL_Terminals/FeatureServer",
+      "Open ID": "49daa72be7b84767bbb5e5c6f51ab1e8"
+    }
+  },
+  "source_candidates": [
+    {
+      "name": "DHS GII Portal (secure) hosting of ORNL POL Terminals",
+      "role": "current_official_host_per_crosswalk",
+      "url": "GII Portal (https://gii.dhs.gov/); account required",
+      "crosswalk_evidence": "Status Migrated; New Hosting Location 'GII Portal'; GII Access Required 'Yes'; justification 'Migrated to GII due to the deprecation of HILFD Open'",
+      "observed_access": "Not probed for data; GII requires registered DHS-partner credentials (public signup is restricted), so anonymous machine access is unavailable. An access grant is a human decision.",
+      "decision": "Do not fetch without an explicit access grant; requires credentials the factory cannot obtain itself."
+    },
+    {
+      "name": "Crosswalk Open REST Service and Open item",
+      "role": "dead_open_endpoint",
+      "url": "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/POL_Terminals/FeatureServer",
+      "observed_access": "2026-11-13: FeatureServer root returned ArcGIS error 400 'Invalid URL'; ArcGIS item 49daa72be7b84767bbb5e5c6f51ab1e8 returned error 400 messageCode CONT_0001 'Item does not exist or is inaccessible'. Consistent with the 2026-10-18 finding that the crosswalk's HIFLD-hosted REST links are dead.",
+      "decision": "Dead; never a pipeline input."
+    },
+    {
+      "name": "DataLumos rescue archive of HIFLD OPEN POL Terminals",
+      "role": "historical_archive",
+      "url": "https://www.datalumos.org/datalumos/project/239798/version/V1/view",
+      "lineage": "Citation names DOE Office of Science / ORNL and DHS as authors, ICPSR as distributor (2025-11-07). Final HIFLD Open snapshot: geodatabase/geojson/geopackage/shapefile plus metadata.xml; content describes 2,302 terminals with revalidation of 658 records, +10/-47; time period 2021-11-08 through 2024-10-11.",
+      "observed_access": "Project pages render via remote reader (2026-11-13) but direct fetches are Cloudflare-challenged (HTTP 403) from this environment. Regardless, DataLumos is a rescue archive and is never a pipeline input or refresh source.",
+      "decision": "Archive/baseline research context only."
+    },
+    {
+      "name": "EIA Petroleum Product Terminal (Form EIA-815) on EIA's ArcGIS org",
+      "role": "successor_candidate_materially_different_product",
+      "url": "https://services7.arcgis.com/p4qwkH3IF5hxHqd7/ArcGIS/rest/services/OilGasInfrastructure/FeatureServer/14",
+      "landing": "https://atlas.eia.gov/maps/petroleum-product-terminals-1",
+      "observed_access": "2026-11-13: layer metadata HTTP 200 from this environment; 10 fields (OBJECTID, Company, Site, City, State, PADD, Source, Period, Longitude, Latitude); data last edit 2023-06-27 observed on this endpoint, so refresh cadence must be verified before any use.",
+      "lineage": "Product terminals only (EIA-815 monthly bulk terminal and blender report); no crude-oil-only terminals, no TERM_ID/per-row SOURCE curation; different schema and coverage from the ORNL/Argonne compilation.",
+      "decision": "Materially different source product; substitution for the ORNL compilation requires an explicit maintainer decision, not silent adoption."
+    },
+    {
+      "name": "ORNL IFAC portal (EIA-based Petroleum Product Terminals CSV)",
+      "role": "successor_candidate_distributor",
+      "url": "https://ifac.ornl.gov/dataset/",
+      "observed_access": "ORNL's official IFAC catalog lists an EIA-815-based 'Petroleum Product Terminals' CSV; it is not the ORNL/Argonne POL crude+products compilation.",
+      "decision": "Materially different product; maintainer decision required before any use."
+    },
+    {
+      "name": "Third-party copies (research context only)",
+      "role": "third_party_mirror_candidates",
+      "url": "https://gis.elpasotexas.gov/dev/rest/services/source_HIFLD_Open/MapServer/1 (older 2,338-record edition; El Paso TX host), https://maps.nccs.nasa.gov/mapping/rest/services/hifld_open/energy/MapServer/18 (NASA NCCS May-2019 mirror), PASDA HIFLD_FEMA MapServer (error 500 'not started' on 2026-10-20), Source Cooperative SeerAI parquet route (served HTML)",
+      "decision": "Mirrors; never pipeline inputs. Recorded only as schema/lineage corroboration (TERM_ID...PDN fields, ORNL/ANL/NGA-HSIP copyright)."
+    }
+  ],
+  "producer_and_lineage": {
+    "inventory_publisher": "Oak Ridge National Laboratory",
+    "inventory_agency": "Department of Energy",
+    "archived_metadata_originators": [
+      "Oak Ridge National Laboratory",
+      "Argonne National Laboratory"
+    ],
+    "layer_copyright_evidence": "Third-party HIFLD copy layer copyright names ORNL, Argonne National Laboratory (Decision and Infrastructure Sciences Division), and the NGA Homeland Security Infrastructure Program (HSIP) Team, with a per-row SOURCE field; a curated multi-source compilation, not a single maintained register.",
+    "official_producer_or_delegated_distributor": "ORNL is the producing agency; DHS GII Portal is the crosswalk-designated current host behind secure access. No public maintained distribution was found.",
+    "current_release_date_and_cadence": "None public. Last public-edition data period ended 2024-10-11 (2,302 terminals)."
+  },
+  "release_gate": {
+    "contract": "No maintainer-approved raw/published schema and ID contract is present.",
+    "baseline": "No accepted baseline mapping or compatibility decision is present.",
+    "implementation": "No ingest asset implemented: the only public copy is the DataLumos rescue archive and the crosswalk-designated current host is account-gated GII. An archive-refresh pipeline is prohibited by policy.",
+    "human_decisions_needed": [
+      "GII secure access grant for the ORNL POL Terminals layer (crosswalk: migrated to GII Portal, GII Access Required: Yes), or",
+      "explicit maintainer choice of a materially different successor product (e.g., EIA-815 Petroleum Product Terminals on EIA's ArcGIS org / ORNL IFAC CSV), or",
+      "no maintained public source: park or retire"
+    ]
+  }
+}
