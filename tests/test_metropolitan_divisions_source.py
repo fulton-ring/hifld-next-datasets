@@ -298,7 +298,6 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
         comparison = {"baseline_collection": {}, "baseline_artifacts": {}, "baseline_receipts": {}, "formats": {},
             "comparison_status": "breaking_change_review_required", "source_schema_contract_approved": False,
             "source_id_contract_approved": False, "baseline_approved": False, "release_approved": False}
-        identity = {"test": True, "code_commit": "b" * 40, "files": {}}
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp)
             with patch.object(source, "acquire", return_value=(b"x", receipt)) as acquire, \
@@ -306,12 +305,10 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
                  patch.object(source, "SHA256", source.digest(b"x")), \
                  patch.object(source, "inspect_archive", return_value=({**self.metadata, "native_layer_definition": definition},
                                                                         self.table, {})), \
-                 patch.object(source, "processing_identity", return_value=identity), \
                  patch.object(source, "compare_published_baseline", side_effect=lambda table, blobs: dict(comparison)), \
                  patch.object(source.httpx, "Client", client_factory), \
                  patch.object(source, "BASELINE_COLLECTION", specs), patch.object(source, "BASELINE_ASSETS", assets), \
-                 patch.object(source, "datetime", self.counting_clock()), \
-                 patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                 patch.object(source, "datetime", self.counting_clock()):
                 first = source.stage_metdiv_candidate(storage)
                 second = source.stage_metdiv_candidate(storage)
             self.assertEqual(acquire.call_count, 2)
@@ -319,6 +316,12 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
             self.assertTrue(second["reused"])
             self.assertEqual(first["version"], second["version"])
             self.assertEqual(first["feature_count"], second["feature_count"])
+            # The reuse ran against the real construction-code validator with the
+            # sealed identity; assert that sealed identity is a supported scheme.
+            sealed = source.strict_json((Path(tmp) / source.SLUG / source.SLUG / second["version"]
+                                         / "metadata/processing_identity.json").read_bytes())
+            self.assertIn(sealed.get("code_identity_scheme"),
+                          ("git-commit-blobs-v1", "sha256-packaged-dagster-hifld-v1"))
             baseline_keys = set(storage.list_prefix(f"_raw-captures/{source.SLUG}/baseline/"))
             for key, spec in {**assets, "collection": specs}.items():
                 name = "collection.json" if key == "collection" else spec["name"]
@@ -337,6 +340,14 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
                         self.assertEqual(parsed["generation"], spec["generation"])
                         self.assertEqual(parsed["status"], 200)
                         self.assertTrue(parsed["complete_body"])
+
+    def test_processing_identity_is_supported_by_the_real_construction_validator(self):
+        from dagster_hifld.construction_provenance import validate_construction_code_identity
+        identity = source.processing_identity()
+        self.assertIn(identity.get("code_identity_scheme"),
+                      ("git-commit-blobs-v1", "sha256-packaged-dagster-hifld-v1"))
+        validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
+                                            identity["files"], identity=identity)
 
     def test_cached_outputs_are_rederived_from_original_native_rows(self):
         expected = source.expected_parquet_table(self.table)

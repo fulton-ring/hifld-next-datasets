@@ -9,10 +9,8 @@ migration occurs here.
 from __future__ import annotations
 
 import hashlib
-import importlib.metadata
 import json
 import os
-import platform
 import re
 import shutil
 import sqlite3
@@ -32,11 +30,12 @@ import pyogrio
 import pyproj
 import shapely
 
-from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.sources.epa_frs_common import seal_ready_candidate, verify_cached_candidate
+from dagster_hifld.sources.epa_frs_common import (
+    processing_identity as package_processing_identity, seal_ready_candidate, verify_cached_candidate)
 from dagster_hifld.validation import sha256_file
 
 SLUG = 'metropolitan-divisions-2'
@@ -152,17 +151,8 @@ def manifest_for(body,receipt,identity):
 
 
 def processing_identity():
-    root = Path(__file__).parents[3]
-    # The shared cache verifier binds the first-construction identity to its
-    # creating commit, so retain it alongside the source manifest provenance.
-    return {'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
-        'python':platform.python_version(),'implementation':platform.python_implementation(),'platform':platform.platform(),
-        # The shared first-construction witness accepts canonical JSON types;
-        # use lists instead of tuples so the identity can be sealed losslessly.
-        'distributions':sorted([d.metadata['Name'],d.version] for d in importlib.metadata.distributions()),
-        'gdal':pyogrio.__gdal_version_string__,'geos':shapely.geos_version_string,'proj':pyproj.proj_version_str,
-        'files':{str(p.relative_to(root)):sha256_file(p) for p in sorted(root.joinpath('src/dagster_hifld').rglob('*.py'))+[root/'uv.lock',root/'pyproject.toml']},
-        'verifier_sha256':verifier_implementation_sha256()}
+    """Bind the cached candidate to the shared, validator-supported code identity."""
+    return package_processing_identity(Path(__file__).parents[3])
 
 
 def acquire(storage,archive_path=None,receipt_path=None):
