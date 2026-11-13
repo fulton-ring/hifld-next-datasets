@@ -105,18 +105,24 @@ PRODUCER_USER_AGENT = "hifld-next-datasets/nhd-flowline-small-scale-territories-
 DOC_USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
                   "Chrome/124.0 Safari/537.36")
 # Pins below are the observed 2026-11-13 complete-layer population contract,
-# established by one dated complete capture (17 segments of 2000 records plus a
+# established by one dated complete capture (16 segments of 2000 records plus a
 # final 1273-record segment tiling the sorted OBJECTID roster 1..33273 exactly).
+# The producer served every 2000-record native-SR segment without retry; the
+# observed 2026-11-13 total wire capture is 105,038,192 bytes.
 EXPECTED_COUNT = 33273
-EXPECTED_ID_SHA256 = "PENDING_FULL_CAPTURE"
-EXPECTED_SCHEMA_SHA256 = "PENDING_FULL_CAPTURE"
-EXPECTED_RECORD_SHA256 = "PENDING_FULL_CAPTURE"
-EXPECTED_GEOMETRY_SHA256 = "PENDING_FULL_CAPTURE"
-EXPECTED_OBSERVED_BOUNDS = None
+EXPECTED_ID_SHA256 = "e5d22e4813cd21b3958e42887326ad8ebf16fa8318d3318abb5b158bc93ba4d1"
+EXPECTED_SCHEMA_SHA256 = "a3fb8104cf920ceb4e63bd85fc0919c5bee003bdc195bab05154cf885247362f"
+EXPECTED_RECORD_SHA256 = "f0ff65a062b969f328df6a612159e8e13f30b797dba8b578290135cd48b3b400"
+EXPECTED_GEOMETRY_SHA256 = "680f9a7e70d8a5966bce1421b52e4118da047d191a5477af14abc7a1449db729"
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -19018321.582, "ymin": -1617126.2184000015,
+                            "xmax": 16233793.573700003, "ymax": 2539487.972100001}
 EXPECTED_LAYER_EXTENT = {"xmin": -19018321.582, "ymin": -1617126.2184000015,
                          "xmax": 16233793.5737, "ymax": 2539487.972099999}
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_NAN_GEOMETRY_COUNT = None
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_NAN_GEOMETRY_COUNT = 0
+# Every observed served feature carries exactly one producer path (a single
+# LineString part); multi-path (MultiLineString) coverage is gated here.
+EXPECTED_MULTI_PATH_FEATURE_COUNT = 0
 # The producer's served rows that cannot be represented as a faithful
 # LineString/MultiLineString (null geometry, string-"NaN" ordinates, or
 # structurally degenerate paths) are retained verbatim with null candidate
@@ -139,7 +145,7 @@ EXPECTED_FTYPE_VALUES = ["ArtificialPath", "CanalDitch", "Coastline", "Connector
                          "StreamRiver"]
 EXPECTED_FCODE_VALUES = [33400, 33600, 33601, 33603, 42800, 42801, 42803, 42807, 42809, 42813,
                          42816, 46000, 46003, 46006, 46007, 55800, 56600]
-EXPECTED_GNIS_ID_LENGTHS = None
+EXPECTED_GNIS_ID_LENGTHS = [-1, 6, 7]
 EXPECTED_COMID_DUPLICATE_COUNT = 0
 EXPECTED_PERMANENT_DUPLICATE_COUNT = 10
 
@@ -463,6 +469,11 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_null_or_nan_geometry_count_drift")
     if EXPECTED_NAN_GEOMETRY_COUNT is not None and nan_geometry != EXPECTED_NAN_GEOMETRY_COUNT:
         raise ValueError("source_null_or_nan_geometry_count_drift")
+    multi_path_features = sum(1 for record in geometry_records
+                              if isinstance(record[1], list) and len(record[1]) > 1)
+    if EXPECTED_MULTI_PATH_FEATURE_COUNT is not None \
+            and multi_path_features != EXPECTED_MULTI_PATH_FEATURE_COUNT:
+        raise ValueError("source_multipath_feature_count_drift")
     value_contracts = _validate_value_contracts(features)
     path_counts = {}
     for record in geometry_records:
@@ -475,6 +486,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "geometry_type": "LineString", "null_geometry_count": null_geometry,
              "nan_string_geometry_count": nan_geometry,
              "feature_path_counts": path_counts,
+             "multi_path_feature_count": multi_path_features,
              "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
              "unique_source_id_count": len(ids), "source_segment_count": len(segments),
              **value_contracts,
