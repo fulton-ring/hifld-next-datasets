@@ -199,8 +199,8 @@ def _validate_feature(feature: dict, identifier: str) -> None:
     if props["type"] != "hydrolocation":
         raise ValueError("NLDI feature type drifted")
     name = props["name"]
-    if not isinstance(name, str) or not name:
-        raise ValueError("NLDI feature name missing")
+    if name is not None and not isinstance(name, str):
+        raise ValueError("NLDI feature name is neither a string nor null")
     comid = props["comid"]
     if comid is not None and type(comid) is not int:
         raise ValueError("NLDI comid is neither an integer nor null")
@@ -519,14 +519,19 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
             if receipt["status_code"] != 200 or not receipt["complete"]:
                 _quarantine(staging, capture_version, captures, "nldi_page_http_capture_incomplete")
                 raise ValueError(f"NLDI page at offset {offset} HTTP capture incomplete")
-            document = _load_json(decoded, f"NLDI page {name}")
-            features = _page_collection(document)
-            if len(features) > PAGE_LIMIT:
-                _quarantine(staging, capture_version, captures, "nldi_page_limit_not_honored")
-                raise ValueError("NLDI served more features than the requested page limit")
+            try:
+                document = _load_json(decoded, f"NLDI page {name}")
+                features = _page_collection(document)
+                if len(features) > PAGE_LIMIT:
+                    raise ValueError("NLDI served more features than the requested page limit")
+            except ValueError:
+                _quarantine(staging, capture_version, captures, "nldi_page_limit_not_honored_or_malformed_page")
+                raise
+            # Retain the raw page before per-feature validation so a refused
+            # feature still leaves its page evidence on disk unaccepted.
+            decoded_path = _retain(capture_root, name, wire, decoded, receipt)
             for feature in features:
                 _validate_feature(feature, _feature_identifier(feature))
-            decoded_path = _retain(capture_root, name, wire, decoded, receipt)
             entry = {"name": name, "offset": offset, "count": len(features),
                      "sha256": receipt["decoded_sha256"], "fetched_at": receipt["fetched_at"],
                      "decoded_path": str(decoded_path)}
