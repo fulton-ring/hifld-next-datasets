@@ -122,14 +122,16 @@ EXPECTED_COUNT = 450_345
 EXPECTED_SCHEMA_SHA256 = "4c4ab8e34f34e4705dd04722bc2e4e0c7cacc210c7bf7e0a34741b86cbebf981"
 EXPECTED_IDS_SHA256 = "7d4e83c206bf5aef7506958ff17970ed2b03a69e130149ae2775f05cb9419644"
 # The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (see the module
-# docstring); unpinned values ("", None) are checked only once pinned.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_NAN_GEOMETRY_COUNT = None
-EXPECTED_EMPTY_GEOMETRY_COUNT = None
-EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = None
+# bounds are pinned from the dated complete capture (2026-11-13 06:07-06:11 UTC,
+# 226 accepted roster segments, /workspace/captures223 in the task sandbox);
+# unpinned values ("", None) are checked only once pinned.
+EXPECTED_RECORD_SHA256 = "f3c2b1234560ea1440681fcd020db912f772086fa33d94acd55dffd0bd40e040"
+EXPECTED_GEOMETRY_SHA256 = "62aa18e08e9e9c5d383a079b8813274af2177f31ac96e53fbe3431c0f23582c1"
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_NAN_GEOMETRY_COUNT = 0
+EXPECTED_EMPTY_GEOMETRY_COUNT = 0
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -159.03087330659716, "ymin": 35.62011031851847,
+                            "xmax": -72.58587289898243, "ymax": 68.41197038989377}
 # Per-feature hydrolocation category contract observed via grouped counts on
 # 2026-11-13 (sum 450,345); every feature must carry one of these pairs.
 EXPECTED_FEATURETYPE_DISTRIBUTION = {1: 265_467, 2: 91_929, 4: 1_062, 5: 644, 6: 91_243}
