@@ -156,6 +156,19 @@ EXPECTED_IDS_SHA256 = ""
 # afterwards any change fails closed).
 EXPECTED_NULL_GEOMETRY_COUNT: int | None = None
 EXPECTED_REFUSED_IDS: tuple[int, ...] | None = None
+# Rows whose rings cannot form a valid OGC polygon are gated to null candidate
+# geometry and counted by failure mode instead of being coerced or dropped
+# (observed on the 2026-11-13 full capture: real lake slivers carry zero-area
+# rings). The counts are unknown until the first complete capture; a ``None``
+# pin is checked only once it has been transcribed from
+# ``build_nhd_waterbody_large_scale_baseline``, afterwards any change fails
+# closed.
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] | None = None
+UNUSABLE_GEOMETRY_MODES = frozenset({
+    "source_polygon_ring_degenerate",
+    "source_polygon_exterior_missing",
+    "source_polygon_hole_unassigned",
+})
 EXPECTED_FEATURETYPE_DISTRIBUTION = {3: 7_063_520}
 EXPECTED_FEATURETYPE_LABELS = {3: "Lake"}
 EXPECTED_LAYER_EXTENT = {"xmin": -19951755.6817, "ymin": -1622985.3665999994,
@@ -877,6 +890,7 @@ def fetch_nhd_waterbody_large_scale_pages(capture_root: Path, *,
         "source_max_objectid": extracted["max_objectid"],
         "source_null_geometry_count": extracted["null_geometry_count"],
         "source_refused_null_geometry_count": extracted["refused_null_count"],
+        "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
         "source_refused_ids": sorted(int(key) for key in refused),
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
@@ -1075,6 +1089,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     emitted_last = 0
     null_geometry_count = 0
     refused_null_count = 0
+    unusable_geometry: dict[str, int] = {}
     ring_count = 0
     vertex_count = 0
     featuretype_distribution: dict[object, int] = {}
@@ -1153,8 +1168,23 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                 for ring in rings:
                     for vertex in ring:
                         track_bounds(vertex)
-                geometries.append(_polygon_wkb(geometry))
-                geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
+                try:
+                    wkb = _polygon_wkb(geometry)
+                except NhdWaterbodyLargeScaleError as exc:
+                    # Real producer rows can carry rings that cannot form a
+                    # valid OGC polygon (zero-area sliver rings observed on the
+                    # 2026-11-13 full capture). Such a row is gated to null
+                    # candidate geometry and counted by failure mode instead
+                    # of being coerced or aborting the complete population;
+                    # every other geometry error still fails closed.
+                    if exc.code not in UNUSABLE_GEOMETRY_MODES:
+                        raise
+                    unusable_geometry[exc.code] = \
+                        unusable_geometry.get(exc.code, 0) + 1
+                    geometries.append(None)
+                else:
+                    geometries.append(wkb)
+                    geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
             featuretype = attrs["featuretype"]
             featuretype_distribution[featuretype] = \
                 featuretype_distribution.get(featuretype, 0) + 1
@@ -1197,6 +1227,10 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         if EXPECTED_NULL_GEOMETRY_COUNT is not None \
                 and null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
             raise NhdWaterbodyLargeScaleError("source_null_geometry_count_drift")
+        if EXPECTED_UNUSABLE_GEOMETRY_COUNTS is not None \
+                and dict(sorted(unusable_geometry.items())) \
+                != EXPECTED_UNUSABLE_GEOMETRY_COUNTS:
+            raise NhdWaterbodyLargeScaleError("source_unusable_geometry_counts_drift")
         if featuretype_distribution != EXPECTED_FEATURETYPE_DISTRIBUTION:
             raise NhdWaterbodyLargeScaleError("source_featuretype_distribution_drift")
         if tmp_path is not None:
@@ -1213,6 +1247,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "geometry_sha": geometry_sha, "ids_sha": ids_sha,
             "null_geometry_count": null_geometry_count,
             "refused_null_count": refused_null_count,
+            "unusable_geometry_counts": dict(sorted(unusable_geometry.items())),
             "parquet_path": sink_path,
             "ring_count": ring_count, "vertex_count": vertex_count,
             "featuretype_distribution": featuretype_distribution,
@@ -1323,6 +1358,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "unique_source_id_count": EXPECTED_COUNT,
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
+        "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
         "source_min_objectid": extracted["min_objectid"],
         "source_max_objectid": extracted["max_objectid"],
         "source_featuretype_distribution": extracted["featuretype_distribution"],
@@ -1631,6 +1667,7 @@ def build_nhd_waterbody_large_scale_baseline(capture_root: str) -> dict[str, obj
             "source_max_objectid": extracted["max_objectid"],
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_refused_null_geometry_count": extracted["refused_null_count"],
+            "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
             "source_refused_ids": sorted(int(key) for key in
                                          dict(_load_state(Path(capture_root).absolute())
                                               .get("refused", {}))),

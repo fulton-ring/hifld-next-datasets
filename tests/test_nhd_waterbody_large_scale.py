@@ -220,8 +220,8 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=None,
                  min_objectid=None, max_objectid=None, null_geometry_count=None,
-                 refused_ids=None, record_sha=None, geometry_sha=None, ids_sha=None,
-                 real_identity: bool = False):
+                 refused_ids=None, unusable_geometry_counts=None, record_sha=None,
+                 geometry_sha=None, ids_sha=None, real_identity: bool = False):
     import dagster_hifld.assets.nhd_waterbody_large_scale as asset_module
     contexts = [
         patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
@@ -238,6 +238,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
                      "" if ids_sha is None else ids_sha),
         patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", null_geometry_count),
         patch.object(src, "EXPECTED_REFUSED_IDS", refused_ids),
+        patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", unusable_geometry_counts),
         patch.object(src, "EXPECTED_FEATURETYPE_DISTRIBUTION", {3: FIXTURE_COUNT}),
         patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
         patch.object(src, "_default_client",
@@ -774,6 +775,42 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
                     src.capture_nhd_waterbody_large_scale(
                         _staging(root), version="ftype-run",
                         capture_directory=str(root / "capture"))
+
+    def test_degenerate_ring_row_is_gated_and_counted(self):
+        """A real zero-area sliver ring gates its row's geometry instead of
+        aborting the complete population (observed on the 2026-11-13 full
+        capture); the gate counts are pinned fail-closed once transcribed."""
+        rows = _fixture_rows()
+        rows[1] = {**rows[1], "geometry": {"hasZ": True, "rings": [
+            _ring(FIXTURE_OBJECTIDS[1], 0.0),
+            # A zero-area degenerate spike ring: shoelace area is exactly 0.
+            [[-89.9, 31.9, 5.0], [-89.899, 31.901, 5.0],
+             [-89.898, 31.902, 5.0], [-89.9, 31.9, 5.0]]]}}
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with fixture_mode(schema_sha, transport, page_size=2):
+                result = src.capture_nhd_waterbody_large_scale(
+                    _staging(root), version="gate-run", capture_directory=str(root / "capture"))
+                self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+                baseline = json.loads((root / "capture" / "computed_baseline.json").read_bytes())
+                self.assertEqual(baseline["source_unusable_geometry_counts"],
+                                 {"source_polygon_ring_degenerate": 1})
+                parquet_path = root / "capture" / f"{src.FILE_SLUG}.parquet"
+                geometries = pq.read_table(parquet_path).column("geometry").to_pylist()
+                self.assertIsNone(geometries[1])
+                self.assertIsNotNone(geometries[0])
+            # Once the counts are pinned, a different gate census is refused.
+            with tempfile.TemporaryDirectory() as tmp2:
+                root2 = Path(tmp2)
+                with fixture_mode(schema_sha, make_responder(rows), page_size=2,
+                                  unusable_geometry_counts={"source_polygon_ring_degenerate": 2}):
+                    with self.assertRaisesRegex(src.NhdWaterbodyLargeScaleError,
+                                                "source_unusable_geometry_counts_drift"):
+                        src.capture_nhd_waterbody_large_scale(
+                            _staging(root2), version="gate-drift-run",
+                            capture_directory=str(root2 / "capture"))
 
     def test_served_null_geometry_is_pinned_when_transcribed(self):
         rows = _fixture_rows()
