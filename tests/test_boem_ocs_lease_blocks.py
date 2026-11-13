@@ -460,6 +460,82 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                          ["Polygon", "MultiPolygon"])
         self.assertEqual(geo_metadata["columns"]["geometry"]["crs"].get("name", ""), "NAD83")
 
+    def test_transient_null_roster_answers_are_refetched_with_witnesses(self):
+        import httpx
+
+        class _Stream(httpx.SyncByteStream):
+            def __init__(self, payload):
+                self.body = payload
+
+            def __iter__(self):
+                yield self.body
+
+            def close(self):
+                return None
+
+        null_answer = _body({"objectIdFieldName": "OBJECTID", "objectIds": None})
+        real_answer = _body({"objectIdFieldName": "OBJECTID",
+                             "objectIds": [643213655, 643213656]})
+        url = blocks._query(where="1=1", returnIdsOnly="true")
+        responses = iter([null_answer, real_answer])
+
+        def respond(request):
+            return httpx.Response(200, stream=_Stream(next(responses)),
+                                  headers={"content-type": "application/json"})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            client = httpx.Client(transport=httpx.MockTransport(respond))
+            with patch.object(blocks, "_BRACKET_RETRY_BASE_DELAY_SECONDS", 0.0):
+                body, receipt = blocks._acquire_document(client, root, "ids_after", url)
+            self.assertEqual(json.loads(body)["objectIds"], [643213655, 643213656])
+            self.assertTrue(receipt["complete_body"])
+            witnesses = list(root.glob("ids_after.error-*.body"))
+            self.assertEqual(len(witnesses), 1)
+            self.assertEqual(witnesses[0].read_bytes(), null_answer)
+
+            responses = iter([null_answer] * 4)
+            client = httpx.Client(transport=httpx.MockTransport(respond))
+            with patch.object(blocks, "_BRACKET_RETRY_BASE_DELAY_SECONDS", 0.0):
+                body, _receipt = blocks._acquire_document(client, root, "ids_after", url)
+            self.assertEqual(json.loads(body)["objectIds"], None)
+            self.assertEqual(len(list(root.glob("ids_after.error-*.body"))), 5)
+            with self.assertRaisesRegex(ValueError, "source_id_population_changed_during_capture"):
+                blocks._validate({"ids_before": (_body({"objectIds": [643213655]}), {}),
+                                  "ids_after": (body, {}),
+                                  "count_before": (_body({"count": 1}), {}),
+                                  "count_after": (_body({"count": 1}), {}),
+                                  "service_before": (_body({"layers": []}), {}),
+                                  "service_after": (_body({"layers": []}), {}),
+                                  "layer_before": (_body({"layers": []}), {}),
+                                  "layer_after": (_body({"layers": []}), {})})
+
+    def test_entrypoint_quarantines_acquisition_validation_failures(self):
+        fixture = _fixture()
+        doc = json.loads(fixture["page_000"][0])
+        doc["features"].pop()
+        fixture["page_000"] = (_body(doc), fixture["page_000"][1])
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(use_local=True, local_dir=tmp)
+            with fixture_pins(), patch.object(blocks, "_load_offline", return_value=fixture):
+                with self.assertRaisesRegex(ValueError, "source_feature_population_incomplete"):
+                    blocks.capture_boem_ocs_lease_blocks(storage, offline_capture_directory=tmp)
+            quarantined = sorted(str(path.relative_to(tmp)) for path in Path(tmp).rglob("*")
+                                 if path.is_file())
+            self.assertTrue(quarantined)
+            self.assertTrue(all(name.startswith(f"_quarantine/{blocks.DATASET_SLUG}/")
+                                for name in quarantined), quarantined)
+            token_root = Path(tmp) / "_quarantine" / blocks.DATASET_SLUG
+            tokens = [path for path in token_root.iterdir() if path.is_dir()]
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "source_feature_population_incomplete")
+            self.assertEqual(sorted(failure["captured_names"]), sorted(fixture))
+            for name in fixture:
+                self.assertTrue((tokens[0] / "raw" / f"{name}.body").is_file(), name)
+                self.assertTrue((tokens[0] / "raw" / f"{name}.wire").is_file(), name)
+                self.assertTrue((tokens[0] / "raw" / f"{name}.receipt.json").is_file(), name)
+
 
 if __name__ == "__main__":
     unittest.main()

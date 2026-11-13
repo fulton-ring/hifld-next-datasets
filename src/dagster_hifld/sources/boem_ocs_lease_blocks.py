@@ -39,6 +39,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
+from time import sleep, time_ns
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -181,6 +182,56 @@ def _capture_names(ids: list[int]) -> list[tuple[str, str]]:
     return urls
 
 
+_BRACKET_RETRY_ATTEMPTS = 4
+_BRACKET_RETRY_BASE_DELAY_SECONDS = 5.0
+
+
+def _witness_refused(root: Path, name: str) -> None:
+    """Move a retained refused answer aside so the slot can be refetched."""
+    stamp = time_ns()
+    for suffix in ("body", "wire", "receipt.json"):
+        source = root / f"{name}.{suffix}"
+        if source.exists():
+            source.replace(root / f"{name}.error-{stamp}.{suffix}")
+
+
+def _document_complete(name: str, body: bytes) -> bool:
+    """Distinguish a well-formed capture document from a transient answer.
+
+    ArcGIS Server intermittently answers cheap bracket queries with HTTP 200
+    bodies like ``{"objectIdFieldName": "OBJECTID", "objectIds": null}`` or an
+    error document. Such an answer is a service failure, not a capture result:
+    real drift publishes a valid roster with different identifiers, which the
+    bracket comparison in _validate refuses.
+    """
+    try:
+        document = json.loads(body)
+    except ValueError:
+        return False
+    if not isinstance(document, dict) or "error" in document:
+        return False
+    if name.startswith("ids_"):
+        return isinstance(document.get("objectIds"), list) and bool(document.get("objectIds"))
+    if name.startswith("count_"):
+        return isinstance(document.get("count"), int)
+    return bool(document)
+
+
+def _acquire_document(client: httpx.Client, root: Path, name: str, url: str) -> \
+        tuple[bytes, dict[str, object]]:
+    """Fetch one bracket or page document, refetching transient null/error answers."""
+    body: bytes = b""
+    receipt: dict[str, object] = {}
+    for attempt in range(_BRACKET_RETRY_ATTEMPTS):
+        body, receipt = capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES)
+        if _document_complete(name, body):
+            return body, receipt
+        _witness_refused(root, name)
+        if attempt + 1 < _BRACKET_RETRY_ATTEMPTS:
+            sleep(_BRACKET_RETRY_BASE_DELAY_SECONDS * attempt)
+    return body, receipt
+
+
 def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
     summary = json.loads((root / "capture-summary.json").read_bytes())
     if summary.get("complete") is not True:
@@ -206,8 +257,8 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
     try:
         with httpx.Client(follow_redirects=False, timeout=120,
                           headers={"User-Agent": "hifld-next-datasets/boem-ocs-lease-blocks-draft"}) as client:
-            seed, receipt = capture_get(client, _query(where="1=1", returnIdsOnly="true"), root,
-                                        "ids_before", max_bytes=MAX_BODY_BYTES)
+            seed, receipt = _acquire_document(client, root, "ids_before",
+                                              _query(where="1=1", returnIdsOnly="true"))
             captures["ids_before"] = (seed, receipt)
             ids = json.loads(seed).get("objectIds")
             if not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids) \
@@ -217,7 +268,7 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
                 raise ValueError("source_count_drift")
             urls = [(n, u) for n, u in _capture_names(ids) if n != "ids_before"]
             for name, url in urls:
-                body, receipt = capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES)
+                body, receipt = _acquire_document(client, root, name, url)
                 captures[name] = (body, receipt)
         return captures
     except Exception as exc:
@@ -501,11 +552,22 @@ def capture_boem_ocs_lease_blocks(storage: StagingStorageResource, *, version: s
     capture_root.mkdir(parents=True, exist_ok=True)
     if offline_capture_directory:
         captures = _load_offline(Path(offline_capture_directory))
+        # The offline loader records identity-encoding receipts whose wire
+        # equals the body; materialize the wire evidence so acquisition
+        # failures replayed offline quarantine complete evidence.
+        for name, (body, _receipt) in captures.items():
+            (capture_root / f"{name}.wire").write_bytes(body)
     else:
         captures = _acquire(capture_root, storage)
         (capture_root / "capture-summary.json").write_bytes(_canonical(
             {"complete": True}) + b"\n")
-    layer, fields, features, audit = _validate(captures)
+    try:
+        layer, fields, features, audit = _validate(captures)
+    except Exception as exc:
+        reason = str(exc) if isinstance(exc, ValueError) and str(exc) else type(exc).__name__
+        quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, "invalid",
+                                      captures, reason)
+        raise
     identity = processing_identity(Path(__file__).parents[3])
     fingerprint = _input_fingerprint(captures, identity)
     version = "v" + fingerprint[:32]
