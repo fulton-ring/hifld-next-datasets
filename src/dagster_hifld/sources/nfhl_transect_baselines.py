@@ -84,15 +84,17 @@ DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 SEGMENT_PROBE_ATTEMPTS = 2
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-12 complete-layer population contract,
-# established by one dated complete capture (41 accepted segments tiling the
-# sorted OBJECTID roster without gaps or overlaps; every accepted segment
-# returned exactly its expected sorted-OBJECTID slice, and the observed
-# feature bounds equal the layer's declared extent).
+# established by two dated complete captures (~22:24-23:24 and 23:49-00:15 UTC)
+# that independently produced identical record and geometry digests (41 and 43
+# accepted segments respectively tiling the sorted OBJECTID roster without gaps
+# or overlaps; every accepted segment returned exactly its expected
+# sorted-OBJECTID slice, and the observed feature bounds equal the layer's
+# declared extent).
 EXPECTED_COUNT = 35354
 EXPECTED_ID_SHA256 = "ada1e51820df7ea47e29a7f95395e24d1598774acd2220cfbd5f36720b64ad06"
 EXPECTED_SCHEMA_SHA256 = "e61d8ab957423ddb279009abdcd738128f21f841fed21256636fb280bf692504"
-EXPECTED_RECORD_SHA256 = "cf8952bed6e04650e9732abd77db1ea45527e7081c9f59d960e7e12eb917b856"
-EXPECTED_GEOMETRY_SHA256 = "5a3b601aaa2945e6933352f59ffd2e404416b3b407d2939c202748be51a557f8"
+EXPECTED_RECORD_SHA256 = "45811c38d529544cf148ee94f5db7f05e3c42ae6974c7d758caec1809a655464"
+EXPECTED_GEOMETRY_SHA256 = "68ea3693c494ca23f60118372045909f3ac6687aa6befaa256817bd4d0714a56"
 EXPECTED_OBSERVED_BOUNDS = {"xmin": -159.3340946941904, "ymin": 17.913097380054012,
                             "xmax": -65.22097778353827, "ymax": 61.13791760853883}
 EXPECTED_NULL_GEOMETRY_COUNT = 0
