@@ -279,7 +279,7 @@ class PadUsManagerNameTests(unittest.TestCase):
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPolygon")
         self.assertEqual(src.EXPECTED_COUNT, 655_335)
         self.assertEqual(src.MAX_RECORD_COUNT, 2000)
-        self.assertEqual(src.SEGMENT_START_RECORDS, 2000)
+        self.assertEqual(src.SEGMENT_START_RECORDS, 1000)
         self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
                          "700b505d62ec00dda9ca8bb23a44283f928be1167971bd409a6477b83a4e7510")
         self.assertEqual(src.EXPECTED_IDS_SHA256,
