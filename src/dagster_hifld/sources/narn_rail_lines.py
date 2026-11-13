@@ -102,8 +102,10 @@ DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 PAGE_PROBE_ATTEMPTS = 2
 PAGE_PROBE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-13 complete-layer population contract,
-# established by two dated complete captures (~07:36-07:44 UTC, independent
-# passes) that produced identical record and geometry digests (152 accepted
+# established by four dated complete captures (07:36-07:44, 08:07-08:09,
+# 08:13-08:16, and 08:32-08:45 UTC; their captured page sets are byte-identical)
+# whose record/geometry digests were computed with this module's exact digest
+# implementation (152 accepted
 # pages tiling the sorted OBJECTID roster without gaps or overlaps; every
 # accepted page returned exactly its expected sorted-OBJECTID slice). The
 # observed bounds match the producer's declared extent to within the low-order
@@ -111,8 +113,8 @@ PAGE_PROBE_BASE_DELAY_SECONDS = 5.0
 EXPECTED_COUNT = 302_774
 EXPECTED_ID_SHA256 = "a62f466049897ba78d62c3005dab182900079e840aa1e4d00b76da09181621f7"
 EXPECTED_SCHEMA_SHA256 = "ca04cd7a3790695e2b3cf3de2a7f3400ba1b7cc96a2eb0a93961e3a8a9e74013"
-EXPECTED_RECORD_SHA256 = "cb1115c71f19ca5f7ca399d098dbb5db4ea0dbfacae72fd0756229bcfbbb755e"
-EXPECTED_GEOMETRY_SHA256 = "3162d02451925f6dea35ed2b4ce167710d50bdd87f517c14bf6980e0520a486e"
+EXPECTED_RECORD_SHA256 = "c6f88d09b24ef2ddfb6704ee9f0025a7f68c718870d025a5cceaf71cd4426873"
+EXPECTED_GEOMETRY_SHA256 = "a0930f6e00137a7dd459156729743e2580db3fd97840888eab371fc17a5d42b5"
 EXPECTED_OBSERVED_BOUNDS = {"xmin": -156.689771738104, "ymin": 14.6722580000714,
                             "xmax": -59.9272310002616, "ymax": 64.9261446063806}
 EXPECTED_LAYER_EXTENT = {"xmin": -156.68977173810396, "ymin": 14.672258000071423,
