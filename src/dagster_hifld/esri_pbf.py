@@ -340,7 +340,9 @@ def decode_feature_collection_pbf(data: bytes, *, allow_transfer_limit: bool = F
     ``allow_transfer_limit`` admits pages that declare ``exceededTransferLimit``
     (the normal state of offset/record-count paged queries, where every page by
     definition has successors); windowed ``objectIds`` queries keep the default
-    refusal, which protects them against truncation.
+    refusal, which protects them against truncation. A feature with no geometry
+    submessage decodes as null geometry; a present non-polygon geometry is
+    still refused.
     """
     if not isinstance(data, bytes) or not data:
         raise EsriPbfError("empty_pbf_response")
@@ -378,7 +380,7 @@ def decode_feature_collection_pbf(data: bytes, *, allow_transfer_limit: bool = F
         feature_fields = _wire_fields(feature_data)
         attributes_raw = [value for number, wire, value in feature_fields if number == 1 and wire == 2]
         geometry_raw = [value for number, wire, value in feature_fields if number == 2 and wire == 2]
-        if len(attributes_raw) != len(schema) or len(geometry_raw) != 1:
+        if len(attributes_raw) != len(schema) or len(geometry_raw) > 1:
             raise EsriPbfError("feature_attribute_or_geometry_roster_mismatch")
         attrs: dict[str, Any] = {}
         for declaration, value_data in zip(schema, attributes_raw):
@@ -397,8 +399,16 @@ def decode_feature_collection_pbf(data: bytes, *, allow_transfer_limit: bool = F
             if declaration["type_code"] == 5 and value_kind not in ("sint64_value", "int64_value"):
                 raise EsriPbfError("date_field_value_type_mismatch")
             attrs[declaration["name"]] = value
-        geometry, vertex_count = _geometry(geometry_raw[0], transform)
-        total_vertices += vertex_count
+        if geometry_raw:
+            geometry, vertex_count = _geometry(geometry_raw[0], transform)
+            total_vertices += vertex_count
+        else:
+            # The producer encodes null geometry by omitting the geometry
+            # submessage entirely; PAD-US Manager Name layer 0 serves such rows
+            # (OBJECTID 3651, whose JSON query also returns "geometry": null,
+            # verified 2026-11-13). Downstream null-geometry gates count and
+            # pin these rows.
+            geometry = None
         if total_vertices > _MAX_VERTICES:
             raise EsriPbfError("page_vertex_count_exceeds_limit")
         features.append({"attributes": attrs, "geometry": geometry})
