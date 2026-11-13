@@ -46,7 +46,9 @@ def _fixture():
     geometries = [
         {"rings": [BLOCK_RING]},
         {"rings": [[[ -93.2, 29.6], [ -93.16, 29.6], [ -93.16, 29.57], [ -93.2, 29.57],
-                    [ -93.2, 29.6]]]},
+                    [ -93.2, 29.6]],
+                   [[ -93.1, 29.6], [ -93.05, 29.6], [ -93.05, 29.57], [ -93.1, 29.57],
+                    [ -93.1, 29.6]]]},
         {"rings": [[[ -160.5, 61.0], [ -160.4, 61.0], [ -160.4, 60.9], [ -160.5, 60.9],
                     [ -160.5, 61.0]]]},
         {"rings": []},
@@ -109,7 +111,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
         self.assertEqual(audit["null_counts_by_field"]["BLK_FED_APRV_DT"], 1)
         self.assertEqual(audit["null_counts_by_field"]["Shape__Length"], 1)
         self.assertEqual(audit["null_geometry_count"], 1)
-        self.assertEqual(audit["ring_count_distribution"], {1: 3})
+        self.assertEqual(audit["ring_count_distribution"], {1: 2, 2: 1})
         self.assertEqual(audit["source_crs_epsg"], 4269)
         self.assertEqual(audit["geometry_bounds"][0], -160.5)
         self.assertEqual(audit["geometry_bounds"][3], 61.0)
@@ -206,9 +208,11 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
 
         captures = _fixture()
         doc = json.loads(captures["page_000"][0])
-        doc["features"][0]["geometry"]["rings"] = [BLOCK_RING, BLOCK_RING]
+        inner_ring = [[-93.12, 29.60], [-93.12, 29.59], [-93.11, 29.59], [-93.11, 29.60],
+                      [-93.12, 29.60]]
+        doc["features"][0]["geometry"]["rings"] = [BLOCK_RING, inner_ring]
         captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_multipart_polygon_unexpected"):
+        with self.assertRaisesRegex(ValueError, "source_polygon_nested_rings_unexpected"):
             blocks._validate(captures)
 
         captures = _fixture()
@@ -391,8 +395,13 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
         self.assertEqual([round(c, 7) for c in first_ring[0]],
                          [round(c, 7) for c in first_ring[-1]])
         self.assertEqual(round(first_ring[0][0], 9), -93.109375)
+        multipart = from_wkb(geometries[1])
+        self.assertEqual(multipart.geom_type, "MultiPolygon")
+        self.assertEqual(len(multipart.geoms), 2)
+        self.assertEqual(round(list(multipart.geoms[1].exterior.coords)[0][0], 9), -93.1)
         geo_metadata = json.loads(table.schema.metadata[b"geo"])
-        self.assertEqual(geo_metadata["columns"]["geometry"]["geometry_types"], ["Polygon"])
+        self.assertEqual(geo_metadata["columns"]["geometry"]["geometry_types"],
+                         ["Polygon", "MultiPolygon"])
         self.assertEqual(geo_metadata["columns"]["geometry"]["crs"].get("name", ""), "NAD83")
 
 

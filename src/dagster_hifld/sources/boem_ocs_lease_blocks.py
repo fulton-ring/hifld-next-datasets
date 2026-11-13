@@ -240,9 +240,10 @@ def _validate_rings(rings: object) -> list[list[list[float]]] | None:
     """Validate one Esri JSON polygon geometry; empty rings means null geometry.
 
     Rings are checked structurally (closed, exactly two finite geographic
-    ordinates per vertex) and passed through verbatim; the producer's observed
-    single-ring blocks are the only accepted shape until a capture shows
-    otherwise.
+    ordinates per vertex) and passed through verbatim. Every ring is treated as
+    an outer part: the complete capture (2026-11-13) found only disjoint
+    clockwise outer rings (one- and two-ring features; no ring contained in
+    another), so nested/hole rings fail closed rather than being reassembled.
     """
     if not isinstance(rings, list):
         raise ValueError("source_polygon_geometry_invalid")
@@ -250,8 +251,6 @@ def _validate_rings(rings: object) -> list[list[list[float]]] | None:
         return None
     if any(not isinstance(ring, list) or not ring for ring in rings):
         raise ValueError("source_polygon_ring_invalid")
-    if len(rings) > 1:
-        raise ValueError("source_multipart_polygon_unexpected")
     for ring in rings:
         for vertex in ring:
             if not isinstance(vertex, list) or len(vertex) != 2:
@@ -263,6 +262,15 @@ def _validate_rings(rings: object) -> list[list[list[float]]] | None:
                 raise ValueError("source_polygon_coordinates_invalid")
         if ring[0] != ring[-1]:
             raise ValueError("source_polygon_ring_unclosed")
+    parts = [shapely.geometry.Polygon(ring) for ring in rings]
+    if len(parts) > 1:
+        for index, part in enumerate(parts):
+            point = part.representative_point()
+            for other_index, other in enumerate(parts):
+                if other_index == index:
+                    continue
+                if other.contains(point) and other.area > part.area:
+                    raise ValueError("source_polygon_nested_rings_unexpected")
     return rings
 
 
@@ -421,11 +429,12 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
     return layer, fields, features, audit
 
 
-def _polygon_wkb(rings: list[list[list[float]]]) -> bytes:
-    """Store one validated single-ring block verbatim as Polygon WKB."""
-    if len(rings) != 1:
-        raise ValueError("source_multipart_polygon_unexpected")
-    return shapely.geometry.Polygon(rings[0]).wkb
+def _rings_wkb(rings: list[list[list[float]]]) -> bytes:
+    """Store validated disjoint outer rings verbatim as Polygon/MultiPolygon WKB."""
+    parts = [shapely.geometry.Polygon(ring) for ring in rings]
+    if len(parts) == 1:
+        return parts[0].wkb
+    return shapely.geometry.MultiPolygon([(part.exterior.coords, None) for part in parts]).wkb
 
 
 def _geoparquet(features: list[dict[str, object]], fields: list[dict[str, object]],
@@ -446,11 +455,12 @@ def _geoparquet(features: list[dict[str, object]], fields: list[dict[str, object
         **{name: pa.array([None if f["attributes"][name] is None
                            else float(f["attributes"][name]) for f in features],
                           type=pa.float64()) for name in DOUBLE_FIELDS},
-        "geometry": pa.array([None if rings is None else _polygon_wkb(rings)
+        "geometry": pa.array([None if rings is None else _rings_wkb(rings)
                               for rings in geometry_parts], type=pa.binary()),
     }
     geo = {"version": "1.1.0", "primary_column": "geometry",
-           "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Polygon"],
+           "columns": {"geometry": {"encoding": "WKB",
+                                    "geometry_types": ["Polygon", "MultiPolygon"],
                                     "crs": pyproj.CRS.from_epsg(4269).to_json_dict(),
                                     "edges": "planar"}}}
     sink = pa.BufferOutputStream()
@@ -571,12 +581,15 @@ def capture_boem_ocs_lease_blocks(storage: StagingStorageResource, *, version: s
                                                                      "Shape__Area/Shape__Length "
                                                                      "retain source meaning",
                                                     "geometry": "Esri JSON rings read directly "
-                                                                "into Polygon WKB; EPSG:4269 "
-                                                                "retained without reprojection, "
+                                                                "into Polygon/MultiPolygon "
+                                                                "WKB; EPSG:4269 retained "
+                                                                "without reprojection, "
                                                                 "orientation repair or "
                                                                 "simplification; empty rings "
                                                                 "gated to null geometry and "
-                                                                "counted",
+                                                                "counted; disjoint outer-ring "
+                                                                "multiparts kept as "
+                                                                "MultiPolygon parts",
                                                     "release_status": "unapproved draft"}}],
                 "lineage": "National Scale Marine Mineral Cadastre Map Server served from BOEM's "
                            "own gis.boem.gov ArcGIS Server by BOEM's Office of Strategic "
