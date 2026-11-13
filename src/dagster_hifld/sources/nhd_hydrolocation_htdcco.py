@@ -795,8 +795,12 @@ class _SegmentStream:
             raise NhdHydrolocationHtdccoError("source_page_spatial_reference_drift:" + page_name)
         if page.get("objectIdFieldName") != "OBJECTID":
             raise NhdHydrolocationHtdccoError("source_id_field_changed:" + page_name)
-        if page.get("hasZ") is not True or page.get("hasM") is not False:
-            raise NhdHydrolocationHtdccoError("source_page_z_or_m_flag_missing:" + page_name)
+        if page.get("hasZ") is not True:
+            raise NhdHydrolocationHtdccoError("source_page_z_flag_missing:" + page_name)
+        # The layer's point pages carry hasZ=true and omit hasM entirely
+        # (observed 2026-11-13); a present hasM must still be false.
+        if "hasM" in page and page.get("hasM") is not False:
+            raise NhdHydrolocationHtdccoError("source_page_m_flag_drift:" + page_name)
         features = page.get("features")
         if not isinstance(features, list) or len(features) != count:
             raise NhdHydrolocationHtdccoError("source_page_row_count_incomplete:" + page_name)
