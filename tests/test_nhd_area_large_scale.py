@@ -589,6 +589,27 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
                 self.assertTrue(storage.object_snapshot(state_key))
                 for name, body in bodies.items():
                     self.assertEqual(storage.read_key(f"{prefix}/raw/{name}.body"), body)
+                # The catalog reads source_manifest.json under a bounded 2 MiB
+                # layer limit: the fixture's per-page requests must appear as one
+                # aggregate input whose digest covers their staged receipt roster,
+                # never as one manifest entry per page.
+                raw_manifest = json.loads(storage.read_key(
+                    f"{prefix}/metadata/source_manifest.json").decode())
+                self.assertLess(len(_canonical(raw_manifest)), 2 * 1024 * 1024)
+                page_inputs = [item for item in raw_manifest["inputs"]
+                               if item["input_id"].startswith("page_")]
+                self.assertEqual(page_inputs, [])
+                aggregate = [item for item in raw_manifest["inputs"]
+                             if item["input_id"] == "3dhp_paged_feature_queries"]
+                self.assertEqual(len(aggregate), 1)
+                page_names = sorted(name for name in bodies if name.startswith("page_"))
+                self.assertEqual(aggregate[0]["page_query_count"], len(page_names))
+                self.assertEqual(aggregate[0]["bytes"],
+                                 sum(len(bodies[name]) for name in page_names))
+                self.assertEqual(aggregate[0]["sha256"], hashlib.sha256(_canonical(
+                    [json.loads(storage.read_key(
+                        f"{prefix}/raw/{name}.receipt.json").decode())
+                     for name in page_names])).hexdigest())
                 snapshot_source_metadata(storage, source.DATASET_SLUG, source.FILE_SLUG,
                                          candidate["version"])
                 manifest = load_resolved_source_manifest(storage, source.DATASET_SLUG, source.FILE_SLUG,
