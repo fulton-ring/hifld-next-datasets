@@ -448,9 +448,234 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
             self.assertEqual(refused, {"page_0000007": [7]})
             self.assertEqual(sorted(pages), ["page_0000008"])
             self.assertEqual(calls, [[7, 8], [7], [7], [7], [8]])
-            preserved = sorted(p.name for p in Path(temporary).glob("page_0000007.attempt-*"))
-            self.assertEqual(len(preserved), 6)
-            self.assertTrue(all(name.endswith((".body", ".receipt.json")) for name in preserved))
+            # Collision-free attempt evidence: the parent [7,8] response and all
+            # three single-id [7] responses survive nested bisection (POSIX
+            # rename must never replace a retained attempt).
+            attempt_receipts = {}
+            for path in sorted(Path(temporary).glob("page_0000007.attempt-*.receipt.json")):
+                attempt_receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
+            self.assertEqual(len(attempt_receipts), 4)
+            urls = [receipt["url"] for receipt in attempt_receipts.values()]
+            requested = [tuple(source._window_url_ids(url)) for url in urls]
+            self.assertEqual(requested.count((7, 8)), 1)
+            self.assertEqual(requested.count((7,)), 3)
+            self.assertEqual(sorted(Path(temporary).glob("page_0000007.attempt-*")),
+                             [Path(temporary) / f"page_0000007.attempt-{index:02d}{suffix}"
+                              for index in range(1, 5) for suffix in (".body", ".receipt.json")])
+
+    def _assert_parent_attempt_preserved(self, temporary, parent_ids, error_code):
+        attempt_body = Path(temporary) / "page_0000007.attempt-01.body"
+        attempt_receipt = json.loads(
+            (Path(temporary) / "page_0000007.attempt-01.receipt.json").read_bytes())
+        self.assertEqual(attempt_receipt["error_code"], error_code)
+        self.assertEqual(tuple(source._window_url_ids(attempt_receipt["url"])), tuple(parent_ids))
+        # The child's accepted page owns the base path afterwards.
+        child = json.loads((Path(temporary) / "page_0000007.body").read_bytes())
+        self.assertEqual([row["attributes"]["OBJECTID"] for row in child["features"]], [7])
+
+    def test_terminal_oversized_attempt_is_preserved_before_bisection(self):
+        calls = []
+
+        def fake_capture_get(client, url, capture_root, name, **kwargs):
+            requested = source._window_url_ids(url)
+            calls.append(requested)
+            if len(requested) > 1:
+                (capture_root / f"{name}.body").write_bytes(b"oversized-response")
+                (capture_root / f"{name}.wire").write_bytes(b"oversized-response")
+                (capture_root / f"{name}.receipt.json").write_bytes(
+                    _canonical({"url": url, "status": 200, "error_code": "wire_limit_exceeded"}))
+                raise ValueError("incomplete_source_capture:" + name)
+            body = json.dumps({"features": [{"attributes": _attrs(oid)} for oid in requested],
+                               "spatialReference": {"wkid": 4326}, "hasZ": True,
+                               "exceededTransferLimit": False},
+                              separators=(",", ":")).encode()
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(
+                _canonical({"url": url, "status": 200, "error_code": None}))
+            return body, {"url": url, "status": 200}
+
+        with tempfile.TemporaryDirectory(prefix="nhd-area-oversized-") as temporary:
+            with patch.object(source, "capture_get", fake_capture_get), \
+                    patch.object(source, "PAGE_CAPTURE_BASE_DELAY_SECONDS", 0):
+                pages, refused = source._capture_windows(None, [7, 8], Path(temporary), [0])
+            self.assertEqual(refused, {})
+            self.assertEqual(sorted(pages), ["page_0000007", "page_0000008"])
+            self.assertEqual(calls, [[7, 8], [7], [8]])
+            self.assertEqual((Path(temporary) / "page_0000007.attempt-01.body").read_bytes(),
+                             b"oversized-response")
+            self._assert_parent_attempt_preserved(temporary, [7, 8], "wire_limit_exceeded")
+
+    def test_terminal_truncated_attempt_is_preserved_before_bisection(self):
+        calls = []
+
+        def fake_capture_get(client, url, capture_root, name, **kwargs):
+            requested = source._window_url_ids(url)
+            calls.append(requested)
+            if len(requested) > 1:
+                body = json.dumps({"features": [], "exceededTransferLimit": True,
+                                   "spatialReference": {"wkid": 4326}, "hasZ": True},
+                                  separators=(",", ":")).encode()
+                receipt = {"url": url, "status": 200, "error_code": None}
+            else:
+                body = json.dumps({"features": [{"attributes": _attrs(oid)} for oid in requested],
+                                   "spatialReference": {"wkid": 4326}, "hasZ": True,
+                                   "exceededTransferLimit": False},
+                                  separators=(",", ":")).encode()
+                receipt = {"url": url, "status": 200, "error_code": None}
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt))
+            return body, receipt
+
+        with tempfile.TemporaryDirectory(prefix="nhd-area-truncated-") as temporary:
+            with patch.object(source, "capture_get", fake_capture_get), \
+                    patch.object(source, "PAGE_CAPTURE_BASE_DELAY_SECONDS", 0):
+                pages, refused = source._capture_windows(None, [7, 8], Path(temporary), [0])
+            self.assertEqual(refused, {})
+            self.assertEqual(sorted(pages), ["page_0000007", "page_0000008"])
+            self.assertEqual(calls, [[7, 8], [7], [8]])
+            self.assertIn(b'"exceededTransferLimit":true',
+                          (Path(temporary) / "page_0000007.attempt-01.body").read_bytes())
+            self._assert_parent_attempt_preserved(temporary, [7, 8], None)
+
+    def test_terminal_transport_attempt_is_preserved_before_bisection(self):
+        calls = []
+
+        def fake_capture_get(client, url, capture_root, name, **kwargs):
+            requested = source._window_url_ids(url)
+            calls.append(requested)
+            if len(requested) > 1:
+                (capture_root / f"{name}.body").write_bytes(b"")
+                (capture_root / f"{name}.wire").write_bytes(b"")
+                (capture_root / f"{name}.receipt.json").write_bytes(
+                    _canonical({"url": url, "status": None, "error_code": "request_error"}))
+                raise ValueError("incomplete_source_capture:" + name)
+            body = json.dumps({"features": [{"attributes": _attrs(oid)} for oid in requested],
+                               "spatialReference": {"wkid": 4326}, "hasZ": True,
+                               "exceededTransferLimit": False},
+                              separators=(",", ":")).encode()
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(
+                _canonical({"url": url, "status": 200, "error_code": None}))
+            return body, {"url": url, "status": 200}
+
+        with tempfile.TemporaryDirectory(prefix="nhd-area-transport-") as temporary:
+            with patch.object(source, "capture_get", fake_capture_get), \
+                    patch.object(source, "PAGE_CAPTURE_BASE_DELAY_SECONDS", 0):
+                pages, refused = source._capture_windows(None, [7, 8], Path(temporary), [0])
+            self.assertEqual(refused, {})
+            self.assertEqual(sorted(pages), ["page_0000007", "page_0000008"])
+            self.assertEqual(calls, [[7, 8], [7, 8], [7, 8], [7], [8]])
+            for index in range(1, 4):
+                self.assertEqual(
+                    (Path(temporary) / f"page_0000007.attempt-{index:02d}.body").read_bytes(), b"")
+                receipt = json.loads(
+                    (Path(temporary) / f"page_0000007.attempt-{index:02d}.receipt.json").read_bytes())
+                self.assertEqual(tuple(source._window_url_ids(receipt["url"])), (7, 8))
+
+    def test_refusal_attempt_evidence_is_staged_and_sealed(self):
+        from dagster_hifld.resources import StagingStorageResource
+        from urllib.parse import parse_qs, urlsplit
+
+        fields, features, fixture_captures, schema, windows = _fixture()
+        pins = self._refusal_pins(features, schema)
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+        error_body = (b'{"error":{"code":500,"message":"Error performing query operation",'
+                      b'"details":[]}}')
+        attrs_body = json.dumps({"features": [{"attributes": _attrs(13, id3dhp="NUL0013")}]},
+                                separators=(",", ":")).encode()
+
+        def _full_receipt(url, body):
+            digest = hashlib.sha256(body).hexdigest()
+            return {"method": "GET", "url": url, "final_url": url,
+                    "observed_at": "2026-11-13T00:00:00+00:00", "status": 200,
+                    "complete_body": True,
+                    "wire_bytes": len(body), "wire_sha256": digest,
+                    "bytes": len(body), "sha256": digest,
+                    "content_encoding": None, "content_length": str(len(body)),
+                    "error_code": None, "error_type": None}
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes, before_retain=None):
+            query = parse_qs(urlsplit(url).query)
+            if query.get("returnGeometry") == ["false"]:
+                body = attrs_body
+            elif "objectIds" in query:
+                requested = [int(value) for value in query["objectIds"][0].split(",")]
+                if requested in ([12, 13], [13]):
+                    body = error_body
+                else:
+                    page_features = [feature for feature in features
+                                     if feature["attributes"]["OBJECTID"] in requested]
+                    body = json.dumps({"features": page_features,
+                                       "spatialReference": {"wkid": 4326, "latestWkid": 4326},
+                                       "hasZ": True, "geometryType": "esriGeometryPolygon",
+                                       "exceededTransferLimit": False},
+                                      separators=(",", ":"), ensure_ascii=False).encode()
+            else:
+                body = bodies[name]
+            receipt = _full_receipt(url, body)
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return body, receipt
+
+        class EmptyClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        with tempfile.TemporaryDirectory(prefix="nhd-area-refusal-seal-") as temporary:
+            root = Path(temporary)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            with patch.multiple(source, **pins), \
+                    patch.object(source, "MIN_FREE_BYTES", 0), \
+                    patch.object(source, "PAGE_IDS", 2), \
+                    patch.object(source, "PAGE_CAPTURE_BASE_DELAY_SECONDS", 0), \
+                    patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                    patch.object(source.httpx, "Client",
+                                 side_effect=lambda *args, **kwargs: EmptyClient()):
+                candidate = source.capture_nhd_area_large_scale(
+                    storage, version="vfixture", capture_directory=str(root / "captures"))
+                self.assertEqual(candidate["feature_count"], 5)
+                self.assertEqual(candidate["source_null_geometry_count"], 1)
+                prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
+                # The producer's actual refusal responses are staged verbatim as
+                # hash-pinned attempt evidence (parent [12,13] window plus the
+                # three single-id [13] attempts), not merely claimed in the audit.
+                expected_attempts = ["page_0000012.attempt-01", "page_0000013.attempt-01",
+                                     "page_0000013.attempt-02", "page_0000013.attempt-03"]
+                for attempt_name in expected_attempts:
+                    for suffix in (".body", ".wire", ".receipt.json"):
+                        key = f"{prefix}/raw/{attempt_name}{suffix}"
+                        self.assertIsNotNone(storage.object_snapshot(key), key)
+                self.assertEqual(storage.read_key(f"{prefix}/raw/page_0000012.attempt-01.body"),
+                                 error_body)
+                self.assertEqual(
+                    storage.read_key(f"{prefix}/raw/page_0000013.attempt-03.receipt.json"),
+                    _canonical(_full_receipt(source._window_url([13]), error_body)) + b"\n")
+                # The accepted child page owns the base path, not the parent's refusal.
+                child_page = storage.read_key(f"{prefix}/raw/page_0000012.body")
+                self.assertIn(b'"OBJECTID":12', child_page)
+                self.assertNotIn(b"Error performing query operation", child_page)
+                state_key = f"_construction-state/{source.DATASET_SLUG}/{candidate['version']}.json"
+                self.assertTrue(storage.object_snapshot(state_key))
+                manifests = list((root / "captures").glob("vfixture-*/capture_manifest.json"))
+                self.assertEqual(len(manifests), 1)
+                capture_manifest = json.loads(manifests[0].read_bytes())
+                self.assertTrue(capture_manifest["complete"])
+                self.assertEqual(capture_manifest["failed_attempt_count"], 4)
+                self.assertEqual(sorted(capture_manifest["failed_attempt_receipts"]),
+                                 sorted(expected_attempts))
+                self.assertNotIn("page_0000013", capture_manifest["receipts"])
+                reused = source.capture_nhd_area_large_scale(
+                    storage, version="vfixture", capture_directory=str(root / "captures"))
+                self.assertTrue(reused["reused"])
+                self.assertEqual(reused["version"], candidate["version"])
+
 
     def test_refused_attrs_capture_rejects_wrong_identity(self):
         def fake_capture_doc(client, url, capture_root, name, budget):

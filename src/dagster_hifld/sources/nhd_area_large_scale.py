@@ -224,11 +224,30 @@ def _producer_error_doc(body: bytes) -> bool:
     return isinstance(doc, dict) and "error" in doc
 
 
+_ATTEMPT_SUFFIXES = (".body", ".wire", ".receipt.json")
+
+
 def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
+    """Preserve one failed attempt's body/wire/receipt under a collision-free name.
+
+    Bisection reuses the first-OBJECTID page name for a parent window and its
+    first child, and every window restarts attempt numbering, so a fixed
+    ``attempt-NN`` target would let a child's ``Path.rename`` replace the
+    parent's retained response (POSIX rename overwrites existing files). The
+    preserved index is therefore the next index, starting at this attempt
+    number, for which no evidence file exists yet, so every distinct producer
+    request keeps its response on disk.
+    """
+    paths = [capture_root / f"{name}{suffix}" for suffix in _ATTEMPT_SUFFIXES]
+    if not any(path.exists() for path in paths):
+        return
+    index = attempt
+    while any((capture_root / f"{name}.attempt-{index:02d}{suffix}").exists()
+              for suffix in _ATTEMPT_SUFFIXES):
+        index += 1
+    for path, suffix in zip(paths, _ATTEMPT_SUFFIXES):
         if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
+            path.rename(capture_root / f"{name}.attempt-{index:02d}{suffix}")
 
 
 def _failed_receipt_error_code(capture_root: Path, name: str) -> str | None:
@@ -341,10 +360,14 @@ def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path
                     raise
                 last_error = exc
                 error_code = _failed_receipt_error_code(capture_root, name)
+                # Every failed attempt — including the terminal one before a
+                # bisection — is preserved under its collision-free evidence
+                # name first, so the next child capture cannot overwrite the
+                # producer's actual response at the shared base paths.
+                _preserve_failed_attempt(capture_root, name, attempt)
                 if error_code in ("wire_limit_exceeded", "decoded_limit_exceeded"):
                     break
                 if attempt < PAGE_CAPTURE_ATTEMPTS:
-                    _preserve_failed_attempt(capture_root, name, attempt)
                     time.sleep(PAGE_CAPTURE_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
                     continue
                 break
@@ -360,6 +383,7 @@ def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path
             doc = json.loads(body)
             if doc.get("exceededTransferLimit"):
                 last_error = ValueError("source_window_transfer_truncated")
+                _preserve_failed_attempt(capture_root, name, attempt)
                 break
             pages[name] = (body, receipt)
             accepted = True
@@ -733,8 +757,9 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
                  "publication persistently refuses to serve their geometry (HTTP 200 Esri "
                  "error document code 500 'Error performing query operation' on both "
                  "3dhp.nationalmap.gov and the same-org alias hydro.nationalmap.gov/3DHP_all, "
-                 "single-id and windowed, retried with backoff, attempt evidence retained in "
-                 "the capture). Their attributes are served normally through the "
+                 "single-id and windowed, retried with backoff; the producer's actual "
+                 "refusal responses are staged verbatim as hash-pinned raw attempt "
+                 "evidence). Their attributes are served normally through the "
                  "attributes-only channel and are staged verbatim with explicitly gated null "
                  "candidate geometry; publication stays blocked pending the maintainer "
                  "completeness/coverage decision for these records.",
@@ -854,6 +879,32 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                                           type(exc).__name__)
         raise
     audit = extracted["audit"]
+    # Producer-refusal and producer-fault evidence: every .attempt-NN body/wire/
+    # receipt retained by the capture flow is staged verbatim into the
+    # candidate's raw evidence — never as accepted feature pages — so a sealed
+    # candidate that claims a persistent producer refusal also carries the
+    # producer's actual refusal responses, hash-pinned. Attempt receipts are
+    # listed in the capture manifest but stay out of the bounded
+    # source-manifest input roster.
+    attempt_evidence: dict[str, bytes] = {}
+    attempt_receipts: dict[str, dict[str, object]] = {}
+    attempt_names = sorted({path.name.removesuffix(suffix) for suffix in _ATTEMPT_SUFFIXES
+                            for path in capture_root.glob(f"*.attempt-*{suffix}")})
+    for name in attempt_names:
+        for suffix in _ATTEMPT_SUFFIXES:
+            path = capture_root / f"{name}{suffix}"
+            if not path.is_file():
+                raise ValueError("source_attempt_evidence_incomplete:" + name)
+            body = path.read_bytes()
+            attempt_evidence[f"raw/{name}{suffix}"] = body
+            if suffix == ".receipt.json":
+                try:
+                    receipt = json.loads(body)
+                except ValueError as exc:
+                    raise ValueError("source_attempt_evidence_incomplete:" + name) from exc
+                if not isinstance(receipt, dict) or not isinstance(receipt.get("url"), str):
+                    raise ValueError("source_attempt_evidence_incomplete:" + name)
+                attempt_receipts[name] = receipt
     identity = processing_identity(Path(__file__).parents[3])
     parquet_body = _parquet_bytes(fields, extracted["attributes"], extracted["wkbs"])
     del extracted
@@ -962,8 +1013,10 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                                                         "geometry retained as null; pinned "
                                                         "producer-refused records keep their "
                                                         "captured attributes with explicitly "
-                                                        "gated null candidate geometry; "
-                                                        "producer-served features whose rings "
+                                                        "gated null candidate geometry and the "
+                                                        "producer's actual refusal responses "
+                                                        "are staged verbatim as raw attempt "
+                                                        "evidence; producer-served features whose rings "
                                                         "cannot form a valid OGC polygon are "
                                                         "retained verbatim in the digests with "
                                                         "explicitly gated null candidate "
@@ -1026,6 +1079,8 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                     "source_feature_count": EXPECTED_COUNT,
                     "source_record_sha256": audit["source_record_sha256"],
                     "source_geometry_sha256": audit["source_geometry_sha256"],
+                    "failed_attempt_count": len(attempt_receipts),
+                    "failed_attempt_receipts": attempt_receipts,
                     "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}) + b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {rel: parquet_body, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
@@ -1035,6 +1090,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = (capture_root / f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
+    outputs.update(attempt_evidence)
     outputs["metadata/candidate_ready.json"] = _canonical(
         {"approved": False, "version": version, "objects": source_objects,
          "source_record_sha256": audit["source_record_sha256"], "succession_accepted": False,
