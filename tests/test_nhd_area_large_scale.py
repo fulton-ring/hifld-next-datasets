@@ -173,6 +173,7 @@ def _pins(features, schema, windows):
                                key=lambda f: f["attributes"]["OBJECTID"])]))
     return dict(EXPECTED_COUNT=5, EXPECTED_NULL_GEOMETRY_COUNT=1,
                 EXPECTED_REFUSED_IDS=frozenset(),
+                EXPECTED_UNUSABLE_GEOMETRY_COUNTS={},
                 EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),
                 EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(attrs)).hexdigest(),
                 EXPECTED_GEOMETRY_SHA256=geometry_sha.hexdigest(),
@@ -378,6 +379,7 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
             [14, [RING_B]], [13, None]]))
         return dict(EXPECTED_COUNT=5, EXPECTED_NULL_GEOMETRY_COUNT=1,
                     EXPECTED_REFUSED_IDS=frozenset({13}),
+                    EXPECTED_UNUSABLE_GEOMETRY_COUNTS={},
                     EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),
                     EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(ordered)).hexdigest(),
                     EXPECTED_GEOMETRY_SHA256=geometry_sha.hexdigest(),
@@ -458,6 +460,43 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         with patch.object(source, "_capture_doc", fake_capture_doc):
             with self.assertRaisesRegex(ValueError, "source_refused_attrs_record_drift"):
                 source._capture_refused_attrs(None, Path("."), [0], {}, {"page_0000007": [7]})
+
+    def test_unusable_ring_is_gated_with_null_geometry_and_pinned(self):
+        fields, features, captures, schema, windows = _fixture()
+        degenerate = [[-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0],
+                      [-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0]]
+        features[4]["geometry"]["rings"] = [degenerate]
+        name = _window_name([14])
+        page = json.loads(captures[name][0])
+        page["features"][0]["geometry"]["rings"] = [degenerate]
+        captures[name] = (json.dumps(page, separators=(",", ":"), ensure_ascii=False).encode(),
+                          captures[name][1])
+        pins = _pins(features, schema, windows)
+        pins["EXPECTED_UNUSABLE_GEOMETRY_COUNTS"] = {"source_polygon_ring_degenerate": 1}
+        with patch.multiple(source, **pins):
+            _, extracted = source._validate_captures(captures)
+        audit = extracted["audit"]
+        self.assertEqual(audit["unusable_geometry_feature_counts"],
+                         {"source_polygon_ring_degenerate": 1})
+        self.assertIsNone(extracted["wkbs"][4])
+        self.assertEqual(audit["null_geometry_count"], 1)
+        self.assertEqual(audit["source_feature_count"], 5)
+
+    def test_unusable_ring_count_mismatch_fails_closed(self):
+        fields, features, captures, schema, windows = _fixture()
+        degenerate = [[-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0],
+                      [-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0]]
+        features[4]["geometry"]["rings"] = [degenerate]
+        name = _window_name([14])
+        page = json.loads(captures[name][0])
+        page["features"][0]["geometry"]["rings"] = [degenerate]
+        captures[name] = (json.dumps(page, separators=(",", ":"), ensure_ascii=False).encode(),
+                          captures[name][1])
+        pins = _pins(features, schema, windows)
+        pins["EXPECTED_UNUSABLE_GEOMETRY_COUNTS"] = {}
+        with patch.multiple(source, **pins):
+            with self.assertRaisesRegex(ValueError, "source_unusable_geometry_count_drift"):
+                source._validate_captures(captures)
 
     def test_observed_coverage_drift_is_detected(self):
         _, features, captures, schema, windows = _fixture()

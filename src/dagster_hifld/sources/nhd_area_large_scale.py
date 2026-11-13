@@ -133,6 +133,17 @@ EXPECTED_COUNT = 95423
 # set is pinned and any change fails closed.
 EXPECTED_REFUSED_IDS: frozenset[int] = frozenset({
     1293173, 2520496, 4245000, 4694427, 7059540, 7059541, 7098625, 7135496, 7157221})
+# Producer-served features whose rings cannot form a valid OGC polygon are
+# gated, never silently coerced (dated 2026-11-13 capture: six rows with
+# zero/signed-zero-area degenerate rings). The row and its raw rings are
+# retained verbatim in the record/geometry digests and bounds; the candidate
+# geometry is explicitly set to null and the failure mode is counted and
+# pinned. Structural modes outside this family still fail closed.
+UNUSABLE_GEOMETRY_MODES = frozenset({
+    "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
+    "source_polygon_hole_unassigned",
+})
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {"source_polygon_ring_degenerate": 6}
 EXPECTED_NULL_GEOMETRY_COUNT = 9
 # Observed 2026-11-13 complete non-Lake population contract (featuretype<>3),
 # re-derived from the dated full capture (330 pages, 9.0 GB wire+body under the
@@ -570,6 +581,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     null_geometry = 0
     observed_bounds: list[float] = []
     distribution: dict[int, int] = {}
+    unusable_geometry: dict[str, int] = {}
     id3dhp_seen: set[str] = set()
     ring_count = 0
     vertex_count = 0
@@ -612,7 +624,19 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
                 attributes.append(attrs)
                 id3dhp_seen.add(attrs["id3dhp"])
                 continue
-            wkb = _polygon_wkb(geometry)
+            try:
+                wkb = _polygon_wkb(geometry)
+            except ValueError as exc:
+                if str(exc) not in UNUSABLE_GEOMETRY_MODES:
+                    raise
+                # The producer publishes a small number of features whose rings
+                # cannot form a valid OGC polygon (zero/signed-zero area
+                # slivers). The row and its raw rings are retained verbatim in
+                # the digests and bounds below; the candidate geometry is
+                # explicitly gated to null and the failure mode is counted and
+                # pinned, never silently coerced into an invented polygon.
+                wkb = None
+                unusable_geometry[str(exc)] = unusable_geometry.get(str(exc), 0) + 1
             rings = geometry["rings"]
             ring_count += len(rings)
             vertex_count += sum(len(ring) for ring in rings)
@@ -662,6 +686,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_featuretype_distribution_drift")
     if null_geometry != EXPECTED_NULL_GEOMETRY_COUNT:
         raise ValueError("source_null_geometry_count_drift")
+    if unusable_geometry != EXPECTED_UNUSABLE_GEOMETRY_COUNTS:
+        raise ValueError("source_unusable_geometry_count_drift")
     bounds = None
     if observed_bounds:
         bounds = {"xmin": min(observed_bounds[0::2]), "ymin": min(observed_bounds[1::2]),
@@ -693,6 +719,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "source_featuretype_distribution": distribution,
              "source_crs_epsg": SOURCE_CRS_WKID, "source_layer_native_sr": NATIVE_LAYER_SR,
              "geometry_type": "Polygon Z / MultiPolygon Z", "null_geometry_count": null_geometry,
+             "unusable_geometry_feature_counts": dict(sorted(unusable_geometry.items())),
              "observed_bounds": bounds, "declared_layer_extent_3857": EXPECTED_LAYER_EXTENT,
              "unique_source_id_count": len(set(captured_ids)),
              "id3dhp_distinct_count": len(id3dhp_seen),
@@ -896,7 +923,12 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                                                         "geometry retained as null; pinned "
                                                         "producer-refused records keep their "
                                                         "captured attributes with explicitly "
-                                                        "gated null candidate geometry",
+                                                        "gated null candidate geometry; "
+                                                        "producer-served features whose rings "
+                                                        "cannot form a valid OGC polygon are "
+                                                        "retained verbatim in the digests with "
+                                                        "explicitly gated null candidate "
+                                                        "geometry and pinned failure modes",
                                             "candidate_status": "unapproved; publication blocked "
                                                                 "pending succession, freshness, "
                                                                 "schema/ID contract, coverage, "
