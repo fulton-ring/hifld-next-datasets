@@ -392,9 +392,11 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
     _local_only(storage)
     receipts = {}
     bodies = {}
+    receipt_bodies = {}
     names = ("service", "count", "ids", "features", "page_end", "count_after", "ids_after")
     for name in names:
         receipts[name], bodies[name] = _checked_body(directory, name)
+        receipt_bodies[name] = (directory / f"{name}.json").read_bytes()
         expected_url = _url(name, count=EXPECTED_COUNT)
         if receipts[name].get("url") != expected_url or receipts[name].get("final_url") != expected_url:
             raise ValueError(f"NOAA Overview requested/final source URL drift: {name}")
@@ -412,9 +414,18 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
     rows = validate_snapshot(count_data["count"], _ids(id_data), feature_data, page_end,
                              after_count.get("count"), _ids(after_ids))
     table, geometries = _table_and_geometries(rows, feature_data["fields"])
-    input_digest = hashlib.sha256(b"".join(hashlib.sha256(bodies[name]).digest() for name in names)).hexdigest()
+    # The immutable candidate embeds its capture provenance (per-input receipts
+    # with checked_at values and the capture_prefix quarantine reference), so the
+    # version identity must hash those bytes too. Otherwise a repeat capture of
+    # identical response bodies with a new capture time would reuse this version
+    # prefix while producing different receipt/metadata bytes, and the immutable
+    # write would collide with the already-staged candidate.
+    input_digest = hashlib.sha256(b"".join(
+        hashlib.sha256(bodies[name]).digest() + hashlib.sha256(receipt_bodies[name]).digest()
+        for name in names)).hexdigest()
     recipe = _processing_identity()
-    version_digest = hashlib.sha256((input_digest + json.dumps(recipe, sort_keys=True)).encode()).hexdigest()
+    version_digest = hashlib.sha256(
+        (input_digest + capture_prefix + json.dumps(recipe, sort_keys=True)).encode()).hexdigest()
     version = "v0.0.0-draft." + version_digest
     prefix = f"{SLUG}/{SLUG}/{version}"
     with tempfile.TemporaryDirectory(prefix="noaa-overview-gpkg-") as tmp:
@@ -491,7 +502,7 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
         "metadata/source_manifest.json": json.dumps(provenance, sort_keys=True, indent=2).encode()}
     for name in names:
         outputs[f"raw/{name}.body"] = bodies[name]
-        outputs[f"raw/{name}.json"] = (directory / f"{name}.json").read_bytes()
+        outputs[f"raw/{name}.json"] = receipt_bodies[name]
     _write_immutable(storage, {f"{prefix}/{name}": body for name, body in outputs.items()})
     return {"dataset_slug": SLUG, "file_slug": SLUG, "version": version,
             "feature_count": EXPECTED_COUNT, "staging_prefix": prefix,
