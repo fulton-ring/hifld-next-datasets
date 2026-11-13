@@ -1,102 +1,280 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
+import httpx
 from dagster import DagsterInstance, materialize
 
 from dagster_hifld.assets import usgs_nldi as nldi
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 
+FIXTURE_COUNT = 7
+FIXTURE_PAGE_LIMIT = 3
+ASSET_NAME = "ingest__nhd__usgs_hydro_nldi_streamgage_monitoring_locations"
+
+
+def _fixture_identifier(index: int) -> str:
+    return f"{1000001 + index:09d}"
+
+
+def _fixture_feature(index: int) -> dict:
+    identifier = _fixture_identifier(index)
+    return {"type": "Feature",
+            "properties": {"identifier": identifier,
+                           "navigation": f"{nldi.NLDI_ROOT}/linked-data/ref_gage/{identifier}/navigation",
+                           "name": f"GAGE {index}", "source": "ref_gage",
+                           "sourceName": "geoconnex.us reference gages",
+                           "comid": 17000000 + index,
+                           "type": "hydrolocation",
+                           "uri": f"{nldi.GAGE_URI_PREFIX}{identifier}",
+                           "reachcode": str(13020205000000 + index) if index % 3 else None,
+                           "measure": round(0.001 * (index + 1), 4) if index % 2 else None,
+                           "mainstem": f"{nldi.MAINSTEM_URI_PREFIX}{700000 + index}" if index % 5 == 0 else None},
+            "geometry": {"type": "Point", "coordinates": [-107.0 - 0.001 * index, 35.0 + 0.001 * index]}}
+
+
+def _fixture_rows() -> list[dict]:
+    return [_fixture_feature(index) for index in range(FIXTURE_COUNT)]
+
+
+def _fixture_sources() -> dict:
+    return {"sources": [
+        {"source": "comid", "sourceName": "NHDPlus comid",
+         "features": "https://api.water.usgs.gov/nldi/linked-data/comid"},
+        dict(nldi.EXPECTED_SOURCE_ENTRY),
+        {"source": "nwissite", "sourceName": "NWIS Surface Water Sites",
+         "features": "https://api.water.usgs.gov/nldi/linked-data/nwissite"},
+    ]}
+
+
+def make_transport(rows: list[dict] | None = None, *, sources: dict | None = None,
+                   refuse_at_offset: int | None = None, extra_features: int = 0) -> httpx.MockTransport:
+    rows = list(rows) if rows is not None else _fixture_rows()
+    sources = sources if sources is not None else _fixture_sources()
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        parsed = urlparse(str(request.url))
+        query = parse_qs(parsed.query)
+        if parsed.path.rstrip("/").endswith("/linked-data"):
+            return httpx.Response(200, content=json.dumps(sources).encode(),
+                                  headers={"content-type": "application/json"})
+        if parsed.path.rstrip("/").endswith("/linked-data/ref_gage"):
+            offset = int(query.get("offset", ["0"])[0])
+            limit = int(query.get("limit", ["0"])[0])
+            if refuse_at_offset is not None and offset == refuse_at_offset:
+                return httpx.Response(504, content=b"gateway timeout",
+                                      headers={"content-type": "text/plain"})
+            window = rows[offset:offset + limit] if limit else []
+            if extra_features:
+                window = window + [_fixture_feature(FIXTURE_COUNT + position)
+                                   for position in range(extra_features)]
+            return httpx.Response(200, content=json.dumps(
+                {"type": "FeatureCollection", "features": window}).encode(),
+                headers={"content-type": "application/geo+json"})
+        raise AssertionError(f"unrouted request {request.url}")
+
+    return httpx.MockTransport(respond)
+
+
+@contextmanager
+def fixture_mode():
+    contexts = [
+        patch.object(nldi, "PAGE_LIMIT", FIXTURE_PAGE_LIMIT),
+        patch.object(nldi, "EXPECTED_COUNT", None),
+        patch.object(nldi, "EXPECTED_UNIQUE_ID_COUNT", None),
+        patch.object(nldi, "EXPECTED_IDS_SHA256", ""),
+        patch.object(nldi, "EXPECTED_SCHEMA_SHA256", ""),
+        patch.object(nldi, "EXPECTED_ASSET_SHA256", ""),
+        patch.object(nldi, "EXPECTED_FIRST_ID", None),
+        patch.object(nldi, "EXPECTED_LAST_ID", None),
+        patch.object(nldi, "EXPECTED_NULL_GEOMETRY_COUNT", None),
+        patch.object(nldi, "EXPECTED_OBSERVED_BOUNDS", None),
+    ]
+    for context in contexts:
+        context.start()
+    try:
+        yield
+    finally:
+        for context in reversed(contexts):
+            context.stop()
+
+
+def _staging(root: Path) -> StagingStorageResource:
+    return StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+
+
+def _materialize(staging: StagingStorageResource, capture_directory: str, instance) -> object:
+    return materialize(
+        [nldi.usgs_nldi_streamgage_monitoring_locations],
+        resources={"staging_storage": staging}, instance=instance,
+        run_config={"ops": {ASSET_NAME: {"config": {"capture_directory": capture_directory}}}})
+
 
 class USGSNLDIAssetTests(unittest.TestCase):
     def test_registered_refresh_reuses_content_version_and_partition(self):
-        feature = {"type": "Feature", "properties": {"id": "USGS-00123", "provider_id": "USGS-00123",
-                   "nhdpv2_COMID": 123.0, "mainstem_uri": None},
-                   "geometry": {"type": "Point", "coordinates": [-107.0, 35.0]}}
-        payload = json.dumps({"type": "FeatureCollection", "name": "source", "features": [feature]}, separators=(",", ":")).encode()
-        digest = hashlib.sha256(payload).hexdigest()
-        published_at = "2026-07-16T20:14:57Z"
-        asset_url = f"https://github.com/{nldi.REPOSITORY}/releases/download/v1.7/{nldi.PINNED_ASSET}"
-        def make_capture(folder, download_count, retrieved):
-            metadata = {"tag_name": nldi.PINNED_TAG, "published_at": nldi.PINNED_PUBLISHED_AT,
-                        "draft": False, "prerelease": False, "author": {"login": "maintainer"},
-                        "download_count": download_count,
-                        "assets": [{"name": nldi.PINNED_ASSET, "size": len(payload), "digest": f"sha256:{digest}",
-                                    "browser_download_url": asset_url}]}
-            meta_bytes = json.dumps(metadata).encode()
-            meta_sha = hashlib.sha256(meta_bytes).hexdigest()
-            receipts = [
-                {"request": {"url": nldi.LATEST_RELEASE_URL}, "final_url": nldi.LATEST_RELEASE_URL,
-                 "status_code": 200, "complete": True, "decoded_bytes": len(meta_bytes), "decoded_sha256": meta_sha,
-                 "wire_bytes": len(meta_bytes), "wire_sha256": meta_sha, "fetched_at": retrieved},
-                {"request": {"url": asset_url}, "final_url": "https://release-assets.githubusercontent.com/release/asset",
-                 "status_code": 200, "complete": True, "decoded_bytes": len(payload), "decoded_sha256": digest,
-                 "wire_bytes": len(payload), "wire_sha256": digest, "fetched_at": retrieved},
-            ]
-            cap = Path(folder)
-            (cap / "evidence").mkdir()
-            (cap / "metadata").mkdir()
-            (cap / "evidence" / "release-metadata-test.decoded").write_bytes(meta_bytes)
-            (cap / "evidence" / "release-metadata-test.wire").write_bytes(meta_bytes)
-            (cap / "evidence" / f"{nldi.PINNED_ASSET}.decoded").write_bytes(payload)
-            (cap / "evidence" / f"{nldi.PINNED_ASSET}.wire").write_bytes(payload)
-            (cap / "metadata" / "source_manifest.json").write_text(json.dumps({"source_observation": {"receipts": receipts}}))
-            return meta_bytes, retrieved
-
-        with tempfile.TemporaryDirectory() as capture_one, tempfile.TemporaryDirectory() as capture_two, tempfile.TemporaryDirectory() as root, \
-             patch.object(nldi, "PINNED_ASSET_BYTES", len(payload)), \
-             patch.object(nldi, "PINNED_ASSET_SHA256", digest), \
-             patch.object(nldi, "PINNED_FEATURE_COUNT", 1), \
-             patch.object(nldi, "MAX_CAPTURE_BYTES", len(payload)), \
-             patch.object(nldi, "PINNED_PUBLISHED_AT", published_at):
-            _, retrieved = make_capture(capture_one, 1, "2026-10-19T19:13:16+00:00")
-            make_capture(capture_two, 2, "2026-10-20T19:13:16+00:00")
-            staging = StagingStorageResource(local_dir=root, use_local=True)
-            dagster_home = Path(root) / "dagster-home"
+        transport = make_transport()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            staging = _staging(root)
+            dagster_home = root / "dagster-home"
             dagster_home.mkdir()
-            asset_name = "ingest__nhd__usgs_hydro_nldi_streamgage_monitoring_locations"
-            with patch.dict(os.environ, {"DAGSTER_HOME": str(dagster_home)}), DagsterInstance.local_temp() as instance:
-                first = materialize([nldi.usgs_nldi_streamgage_monitoring_locations],
-                    resources={"staging_storage": staging}, instance=instance,
-                    run_config={"ops": {asset_name: {"config": {"replay_capture_directory": capture_one}}}})
-                result = first.output_for_node(asset_name)
-                prefix = Path(root) / nldi.DATASET_SLUG / nldi.FILE_SLUG / result["version"]
-                original_receipt_sha = hashlib.sha256((prefix / "metadata/release-metadata.receipt.json").read_bytes()).hexdigest()
-                second = materialize([nldi.usgs_nldi_streamgage_monitoring_locations],
-                    resources={"staging_storage": staging}, instance=instance,
-                    run_config={"ops": {asset_name: {"config": {"replay_capture_directory": capture_two}}}})
-                again = second.output_for_node(asset_name)
+            with fixture_mode(), patch.dict(os.environ, {"DAGSTER_HOME": str(dagster_home)}), \
+                 DagsterInstance.local_temp() as instance:
+                first = _materialize(staging, str(capture_root), instance)
+                result = first.output_for_node(ASSET_NAME)
+                prefix = Path(root) / "staging" / nldi.DATASET_SLUG / nldi.FILE_SLUG / result["version"]
+                composed = (prefix / nldi.ASSET_PATH).read_bytes()
+                second = _materialize(staging, str(capture_root), instance)
+                again = second.output_for_node(ASSET_NAME)
                 partition = build_publish_partition_key(nldi.DATASET_SLUG, nldi.FILE_SLUG, result["version"])
                 self.assertIn(partition, instance.get_dynamic_partitions(PUBLISH_PARTITION_NAME))
-            self.assertEqual((prefix / nldi.ASSET_PATH).read_bytes(), payload)
-            self.assertEqual((prefix / "evidence" / f"{nldi.PINNED_ASSET}.wire").read_bytes(), payload)
-            manifest = json.loads((prefix / "metadata/source_manifest.json").read_text())
-            observations = list((Path(root) / "_observations" / nldi.FILE_SLUG / result["version"]).iterdir())
-            self.assertEqual(result["feature_count"], 1)
+            self.assertFalse(result["reused"])
             self.assertTrue(again["reused"])
             self.assertEqual(result["version"], again["version"])
-            self.assertTrue(result["version"].startswith("v"))
-            self.assertEqual(len(observations), 2)
-            self.assertEqual(hashlib.sha256((prefix / "metadata/release-metadata.receipt.json").read_bytes()).hexdigest(), original_receipt_sha)
-            self.assertEqual(manifest["source_observation"]["id_examples"], ["USGS-00123"])
-            self.assertEqual(manifest["source_observation"]["release_tag"], "v1.7")
-            self.assertEqual(manifest["source_observation"]["publication_status"], "STOPPED")
-            self.assertFalse(manifest["source_observation"]["agency_delegation_acceptance"])
-            self.assertEqual(manifest["publisher"], "Internet of Water (maintainer/publisher of the ref_gages compilation)")
-            self.assertEqual(manifest["literal_geojson_catalog"]["sha256"], digest)
-            self.assertEqual(manifest["inputs"][1]["retrieved_at"], retrieved)
-            self.assertTrue((Path(root) / "_construction-state" / nldi.DATASET_SLUG / nldi.FILE_SLUG / f"{result['version']}.json").is_file())
+            self.assertTrue(result["version"].startswith("v0.0.0-candidate."))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            audit = result["source_audit"]
+            self.assertEqual(audit["first_id"], _fixture_identifier(0))
+            self.assertEqual(audit["last_id"], _fixture_identifier(FIXTURE_COUNT - 1))
+            self.assertEqual(audit["unique_id_count"], FIXTURE_COUNT)
+            self.assertEqual(audit["null_geometry_count"], 0)
+            self.assertEqual(audit["asset_sha256"], __import__("hashlib").sha256(composed).hexdigest())
+            collection = json.loads(composed)
+            self.assertEqual(collection["type"], "FeatureCollection")
+            self.assertEqual(len(collection["features"]), FIXTURE_COUNT)
+            self.assertEqual(collection["features"][0]["properties"]["measure"],
+                             _fixture_rows()[0]["properties"]["measure"])
+            self.assertNotIn("crs", collection)
+            manifest = json.loads((prefix / "metadata/source_manifest.json").read_text())
+            self.assertEqual(manifest["publisher"], "U.S. Geological Survey (NLDI)")
+            self.assertEqual(manifest["agency"], "U.S. Geological Survey")
+            self.assertTrue(manifest["inputs"])
+            for entry in manifest["inputs"]:
+                self.assertEqual(entry["host"], "api.water.usgs.gov")
+                self.assertEqual(entry["role"], "producer_publication")
+                self.assertEqual(entry["producer"], "U.S. Geological Survey")
+                self.assertIsNone(entry["release_date"])
+                self.assertTrue(entry["release_date_unknown_reason"])
+            self.assertEqual(manifest["literal_geojson_catalog"]["sha256"], audit["asset_sha256"])
+            self.assertEqual(manifest["literal_geojson_catalog"]["path"], nldi.ASSET_PATH)
+            self.assertNotIn("root_metadata", manifest["literal_geojson_catalog"])
+            observation = manifest["source_observation"]
+            self.assertEqual(observation["registered_source_entry"], nldi.EXPECTED_SOURCE_ENTRY)
+            self.assertEqual(observation["pagination"]["mode"], "limit_offset_walk")
+            self.assertEqual(observation["pagination"]["page_limit"], FIXTURE_PAGE_LIMIT)
+            self.assertTrue(observation["pagination"]["resumable"])
+            self.assertFalse(observation["agency_authority_accepted"])
+            self.assertFalse(observation["compatibility_accepted"])
+            self.assertEqual(observation["publication_status"], "STOPPED")
+            self.assertTrue((prefix / "evidence" / "sources-before.decoded").is_file())
+            self.assertTrue((prefix / "evidence" / "page_000000000.decoded").is_file())
+            self.assertTrue((prefix / "evidence" / "page_000000003.wire").is_file())
+            self.assertTrue((Path(root) / "staging" / "_construction-state" / nldi.DATASET_SLUG
+                             / nldi.FILE_SLUG / f"{result['version']}.json").is_file())
+            self.assertEqual(
+                (capture_root / "page_000000000.decoded").read_bytes(),
+                (prefix / "evidence" / "page_000000000.decoded").read_bytes())
 
-    def test_latest_release_drift_stops_before_asset_selection(self):
-        with self.assertRaisesRegex(ValueError, "differs from pinned v1.7"):
-            nldi._select_release({"tag_name": "v1.8", "published_at": "2026-08-01T00:00:00Z", "draft": False, "prerelease": False, "assets": []})
+    def test_feature_source_registration_drift_stops(self):
+        sources = {"sources": [{"source": "nwissite", "sourceName": "NWIS Surface Water Sites",
+                                "features": "https://api.water.usgs.gov/nldi/linked-data/nwissite"}]}
+        transport = make_transport(sources=sources)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(root / "capture")):
+                with self.assertRaisesRegex(ValueError, "NLDI ref_gage feature source is missing or ambiguous"):
+                    nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+            quarantined = sorted((root / "staging" / "_quarantine" / nldi.DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_text())
+            self.assertEqual(failure["reason_code"], "nldi_feature_source_registration_drift")
+
+    def test_page_drift_cases_are_refused(self):
+        rows = _fixture_rows()
+        cases = {
+            "nldi_page_http_capture_incomplete": dict(refuse_at_offset=3),
+            "NLDI served more features than the requested page limit": dict(extra_features=3),
+            "NLDI feature property roster or order drifted": dict(rows=[
+                {**rows[0], "properties": {"identifier": rows[0]["properties"]["identifier"],
+                                           "name": "no roster", "source": "ref_gage",
+                                           "sourceName": "geoconnex.us reference gages",
+                                           "comid": None, "type": "hydrolocation",
+                                           "uri": rows[0]["properties"]["uri"],
+                                           "reachcode": None, "measure": None, "mainstem": None}},
+                *rows[1:]]),
+            "NLDI feature geometry is not a plain Point": dict(rows=[
+                {**rows[0], "geometry": {"type": "MultiPoint", "coordinates": [[-107.0, 35.0]]}},
+                *rows[1:]]),
+            "NLDI comid is neither an integer nor null": dict(rows=[
+                {**rows[0], "properties": {**rows[0]["properties"], "comid": 17789327.0}},
+                *rows[1:]]),
+            "NLDI feature uri drifted": dict(rows=[
+                {**rows[0], "properties": {**rows[0]["properties"],
+                                           "uri": "https://geoconnex.us/ref/gages/other"}},
+                *rows[1:]]),
+            "NLDI mainstem uri drifted": dict(rows=[
+                {**rows[0], "properties": {**rows[0]["properties"],
+                                           "mainstem": "https://example.com/mainstem/1"}},
+                *rows[1:]]),
+            "NLDI feature coordinates fall outside the geographic degree ranges": dict(rows=[
+                {**rows[0], "geometry": {"type": "Point", "coordinates": [200.0, 35.0]}},
+                *rows[1:]]),
+            "the walked identifier order is not strictly ascending": dict(rows=[
+                rows[0], rows[0], *rows[2:]]),
+            "NLDI feature id/identifier do not match the walk position": dict(rows=[
+                {**rows[0], "id": "000000999"},
+                *rows[1:]]),
+        }
+        for expected_error, kwargs in cases.items():
+            with self.subTest(expected_error):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    transport = make_transport(**kwargs)
+                    with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(root / "capture")):
+                        with self.assertRaisesRegex(ValueError, expected_error):
+                            nldi.fetch_and_stage_nldi(_staging(root),
+                                                      client=httpx.Client(transport=transport))
+
+    def test_walk_reuses_retained_page_evidence_without_transport(self):
+        transport = make_transport()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                first = nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+                second = nldi.fetch_and_stage_nldi(_staging(root))
+            self.assertEqual(first["version"], second["version"])
+            self.assertTrue(second["reused"])
+            self.assertTrue((capture_root / "capture_state.json").exists())
+            state = json.loads((capture_root / "capture_state.json").read_text())
+            self.assertTrue(state["complete"])
+            self.assertEqual(len(state["pages"]), 5)
+
+    def test_pinned_walk_drift_is_refused(self):
+        transport = make_transport()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(root / "capture")):
+                first = nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+                audit = first["source_audit"]
+                with patch.object(nldi, "EXPECTED_COUNT", audit["feature_count"] + 1):
+                    with self.assertRaisesRegex(ValueError, "population count drifted"):
+                        nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+                with patch.object(nldi, "EXPECTED_IDS_SHA256", "0" * 64):
+                    with self.assertRaisesRegex(ValueError, "identifier roster drifted"):
+                        nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+                with patch.object(nldi, "EXPECTED_ASSET_SHA256", "0" * 64):
+                    with self.assertRaisesRegex(ValueError, "candidate asset bytes drifted"):
+                        nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
 
 
 if __name__ == "__main__":

@@ -1,21 +1,40 @@
-"""Internet of Water's published NLDI reference-gage compilation.
+"""USGS NLDI ``ref_gage`` feature listing — the agency's maintained distribution.
 
-The source is pinned to the complete v1.7 release. ``releases/latest`` is
-checked on every run so a new upstream release stops for review rather than
-silently changing the inventory's source. Bytes and GeoJSON number lexemes are
-retained exactly; release/authority/compatibility approval remains blocked.
+The HIFLD inventory entry ``nhd/usgs-hydro-nldi-streamgage-monitoring-locations``
+(agency US Geological Survey) names the NLDI streamgage monitoring locations.
+The pipeline input is the U.S. Geological Survey's own NLDI publication:
+``https://api.water.usgs.gov/nldi/linked-data/ref_gage`` on the official
+``api.water.usgs.gov`` API host, whose registered feature sources and paginated
+complete feature listing are documented by USGS at
+``https://api.water.usgs.gov/docs/nldi/feature-sources/`` ("Requesting a
+feature source with no filters returns all features in that collection...
+supports ``limit`` and ``offset`` query parameters for pagination"). The bulk
+endpoint without pagination was observed failing with a gateway timeout, so the
+capture walks the documented pagination: pages of 1000 features from offset 0
+until a page returns fewer features than the limit, each page retained as raw
+evidence in a resumable capture directory before any candidate is sealed.
+
+The upstream ``internetofwater/ref_gages`` GitHub compilation is the community
+project NLDI indexes; it is named as lineage context only and is never fetched.
+The DataLumos 240397 archive is historical provenance and is not the refresh
+source. The staged candidate recomposes the walked pages into one GeoJSON
+FeatureCollection by slicing each page's raw ``features`` array text, so every
+serialized number lexeme and member order is retained verbatim; the composed
+bytes are re-parsed and every feature re-validated before a candidate is
+sealed. Publication stays blocked pending USGS authority, freshness, schema/ID
+contract, compatibility and release decisions; all runtime approval flags are
+false and the draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
-import os
 import platform
 import re
 import subprocess
-import fcntl
-from datetime import datetime, timezone
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -33,20 +52,40 @@ from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "nhd"
 FILE_SLUG = "usgs-hydro-nldi-streamgage-monitoring-locations"
-REPOSITORY = "internetofwater/ref_gages"
-LATEST_RELEASE_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
-PINNED_TAG = "v1.7"
-PINNED_ASSET = "usgs_nldi_gages.geojson"
-PINNED_PUBLISHED_AT = "2026-07-16T20:14:57Z"
-PINNED_ASSET_BYTES = 132_757_553
-PINNED_ASSET_SHA256 = "b8f14064fa77607921c32492f8beaa83e16870daee57bdde104b31ca2fc52cce"
-PINNED_FEATURE_COUNT = 201_344
-MAX_CAPTURE_BYTES = 128 * 1024 * 1024
+NLDI_ROOT = "https://api.water.usgs.gov/nldi"
+SOURCES_URL = NLDI_ROOT + "/linked-data"
+COLLECTION_URL = NLDI_ROOT + "/linked-data/ref_gage"
+FEATURE_SOURCES_DOC_URL = "https://api.water.usgs.gov/docs/nldi/feature-sources/"
+EXPECTED_SOURCE_ENTRY = {"source": "ref_gage", "sourceName": "geoconnex.us reference gages",
+                         "features": COLLECTION_URL}
+PAGE_LIMIT = 1000
+PAGE_CAPTURE_BYTES = 8 * 1024 * 1024
+SOURCES_CAPTURE_BYTES = 1024 * 1024
+PROPERTY_NAMES = ("identifier", "navigation", "name", "source", "sourceName", "comid",
+                  "type", "uri", "reachcode", "measure", "mainstem")
+GAGE_URI_PREFIX = "https://geoconnex.us/ref/gages/"
+MAINSTEM_URI_PREFIX = "https://geoconnex.us/ref/mainstems/"
 ASSET_PATH = "geojson/usgs_nldi_gages.geojson"
-SOURCE_ROOT_METADATA = {
-    "name": "usgs_nldi_gages",
-    "crs": {"type": "name", "properties": {"name": "urn:ogc:def:crs:EPSG::4269"}},
-}
+DEFAULT_CAPTURE_ROOT = ("/data/workspace/scratch/nhd/"
+                        "usgs-hydro-nldi-streamgage-monitoring-locations/captures/default")
+# Walk-derived content pins from the dated complete capture; unpinned values
+# ("" / None) are checked only once pinned. See BASELINE_NOTE.
+EXPECTED_COUNT = None
+EXPECTED_UNIQUE_ID_COUNT = None
+EXPECTED_IDS_SHA256 = ""
+EXPECTED_SCHEMA_SHA256 = ""
+EXPECTED_ASSET_SHA256 = ""
+EXPECTED_FIRST_ID = None
+EXPECTED_LAST_ID = None
+EXPECTED_NULL_GEOMETRY_COUNT = None
+EXPECTED_OBSERVED_BOUNDS = None
+BASELINE_NOTE = (
+    "The complete-population count, unique-identifier roster digest, property "
+    "schema digest and composed-asset digest are pinned from the dated complete "
+    "resumable pagination walk; unpinned values are checked only once pinned, "
+    "and drift against a pinned value is refused and quarantined.")
+PAGE_NAME_PATTERN = re.compile(r"page_([0-9]{9})$")
+SOURCE_NAMES = ("sources-before", "sources-after")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -59,12 +98,12 @@ def _immutable(staging: StagingStorageResource, key: str, body: bytes) -> None:
     old = staging.object_snapshot(key)
     if old is not None:
         if old.size != len(body) or staging.sha256_key(key) != digest:
-            raise ValueError("pinned Internet of Water release key already has different bytes")
+            raise ValueError("pinned capture key already has different bytes")
         return
     staging.write_key_if_unchanged(key, body, None)
     current = staging.object_snapshot(key)
     if current is None or current.size != len(body) or staging.sha256_key(key) != digest:
-        raise ValueError("Internet of Water capture readback did not match response bytes")
+        raise ValueError("capture readback did not match response bytes")
 
 
 def _redacted_url(url: str) -> str:
@@ -105,66 +144,216 @@ def _load_json(body: bytes, label: str) -> dict:
     return value
 
 
-def _select_release(document: dict) -> tuple[dict, dict]:
-    if document.get("draft") is not False or document.get("prerelease") is not False:
-        raise ValueError("latest upstream release is draft/prerelease; manual source review required")
-    tag = document.get("tag_name")
-    if tag != PINNED_TAG or document.get("published_at") != PINNED_PUBLISHED_AT:
-        raise ValueError("latest upstream release differs from pinned v1.7; manual drift review required")
-    assets = document.get("assets")
-    if type(assets) is not list:
-        raise ValueError("latest upstream release has no asset listing")
-    matches = [a for a in assets if type(a) is dict and a.get("name") == PINNED_ASSET]
-    if len(matches) != 1:
-        raise ValueError("pinned upstream release asset is missing or ambiguous")
-    asset = matches[0]
-    if asset.get("size") != PINNED_ASSET_BYTES or asset.get("digest") != f"sha256:{PINNED_ASSET_SHA256}":
-        raise ValueError("pinned upstream asset size/digest metadata drifted; manual review required")
-    url = asset.get("browser_download_url")
-    if not isinstance(url, str) or not url.startswith(f"https://github.com/{REPOSITORY}/releases/download/{PINNED_TAG}/"):
-        raise ValueError("pinned upstream release has an unexpected download URL")
-    return document, asset
+def _canonical(value: object) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
 
 
-def _check_geojson(body: bytes) -> tuple[int, list[str], dict]:
-    collection = _load_json(body, "pinned release asset")
-    features = collection.get("features")
-    if collection.get("type") != "FeatureCollection" or type(features) is not list:
-        raise ValueError("pinned upstream asset is not a GeoJSON FeatureCollection")
-    if len(features) != PINNED_FEATURE_COUNT:
-        raise ValueError("pinned v1.7 feature count drifted; manual review required")
+def _sources_entry(document: dict) -> dict:
+    sources = document.get("sources") if isinstance(document, dict) else None
+    if type(sources) is not list:
+        raise ValueError("NLDI feature-source listing has no sources array")
+    entries = [entry for entry in sources
+               if type(entry) is dict and entry.get("source") == EXPECTED_SOURCE_ENTRY["source"]]
+    if len(entries) != 1:
+        raise ValueError("NLDI ref_gage feature source is missing or ambiguous")
+    entry = {key: entries[0].get(key) for key in ("source", "sourceName", "features")}
+    if entry != EXPECTED_SOURCE_ENTRY:
+        raise ValueError("NLDI ref_gage feature-source registration drifted")
+    return entry
+
+
+def _feature_identifier(feature: object) -> str:
+    if (type(feature) is not dict or feature.get("type") != "Feature"
+            or not {"type", "properties", "geometry"} <= set(feature)
+            or set(feature) - {"type", "properties", "geometry", "id"}):
+        raise ValueError("NLDI feature is not a plain GeoJSON Feature")
+    identifier = feature.get("id")
+    if type(identifier) is not str or not identifier:
+        raise ValueError("NLDI feature id is not a non-empty string")
+    return identifier
+
+
+def _validate_feature(feature: dict, identifier: str) -> None:
+    props = feature.get("properties")
+    if type(props) is not dict or tuple(props) != PROPERTY_NAMES:
+        raise ValueError("NLDI feature property roster or order drifted")
+    if feature.get("id") != identifier or props["identifier"] != identifier:
+        raise ValueError("NLDI feature id/identifier do not match the walk position")
+    if props["source"] != EXPECTED_SOURCE_ENTRY["source"] or props["sourceName"] != EXPECTED_SOURCE_ENTRY["sourceName"]:
+        raise ValueError("NLDI feature source fields drifted")
+    navigation = props["navigation"]
+    if (not isinstance(navigation, str)
+            or not navigation.startswith(NLDI_ROOT + COLLECTION_PATH + "/" + identifier + "/")):
+        raise ValueError("NLDI navigation link drifted")
+    uri = props["uri"]
+    if not isinstance(uri, str) or uri != GAGE_URI_PREFIX + identifier:
+        raise ValueError("NLDI feature uri drifted")
+    if props["type"] != "hydrolocation":
+        raise ValueError("NLDI feature type drifted")
+    name = props["name"]
+    if not isinstance(name, str) or not name:
+        raise ValueError("NLDI feature name missing")
+    comid = props["comid"]
+    if comid is not None and type(comid) is not int:
+        raise ValueError("NLDI comid is neither an integer nor null")
+    reachcode = props["reachcode"]
+    if reachcode is not None and not isinstance(reachcode, str):
+        raise ValueError("NLDI reachcode is neither a string nor null")
+    measure = props["measure"]
+    if measure is not None and (type(measure) not in (int, float)
+                                or not (measure == measure and -1e308 < measure < 1e308)):
+        raise ValueError("NLDI measure is not a finite number or null")
+    mainstem = props["mainstem"]
+    if mainstem is not None and (not isinstance(mainstem, str)
+                                 or not mainstem.startswith(MAINSTEM_URI_PREFIX)):
+        raise ValueError("NLDI mainstem uri drifted")
+    geometry = feature.get("geometry")
+    if type(geometry) is not dict or geometry.get("type") != "Point" \
+            or set(geometry) != {"type", "coordinates"}:
+        raise ValueError("NLDI feature geometry is not a plain Point")
+    coordinates = geometry.get("coordinates")
+    if (type(coordinates) is not list or len(coordinates) != 2
+            or any(type(value) not in (int, float) for value in coordinates)
+            or any(not (value == value and -1e308 < value < 1e308) for value in coordinates)):
+        raise ValueError("NLDI feature coordinates are not finite numbers")
+    longitude, latitude = coordinates
+    if not (-180.0 <= longitude <= 180.0 and -90.0 <= latitude <= 90.0):
+        raise ValueError("NLDI feature coordinates fall outside the geographic degree ranges")
+
+
+def _page_collection(document: object) -> list:
+    if (type(document) is not dict or document.get("type") != "FeatureCollection"
+            or set(document) != {"type", "features"}
+            or type(document.get("features")) is not list):
+        raise ValueError("NLDI page is not a plain GeoJSON FeatureCollection")
+    return document["features"]
+
+
+def _page_slice(decoded: bytes) -> bytes:
+    """Slice one page's raw ``features`` array interior, proving byte fidelity."""
+    marker = b'"features":['
+    index = decoded.find(marker)
+    if index < 0:
+        raise ValueError("NLDI page does not carry a plain features array envelope")
+    interior = decoded[index + len(marker):decoded.rindex(b"]")]
+    if decoded[:index + len(marker)] + interior + b"]}" != decoded:
+        raise ValueError("NLDI page features slice is not byte-exact")
+    return interior
+
+
+def _page_body(offset: int) -> str:
+    return f"{COLLECTION_URL}?limit={PAGE_LIMIT}&offset={offset}&f=json"
+
+
+def _evidence_path(capture_root: Path, name: str, suffix: str) -> Path:
+    if suffix == "receipt":
+        return capture_root / f"{name}.receipt.json"
+    return capture_root / f"{name}.{suffix}"
+
+
+def _retain(capture_root: Path, name: str, wire: bytes, decoded: bytes, receipt: dict) -> Path:
+    _evidence_path(capture_root, name, "wire").write_bytes(wire)
+    decoded_path = _evidence_path(capture_root, name, "decoded")
+    decoded_path.write_bytes(decoded)
+    _evidence_path(capture_root, name, "receipt").write_bytes(_canonical(receipt) + b"\n")
+    return decoded_path
+
+
+class _CaptureState:
+    """Resumable per-page evidence roster with atomic state persistence."""
+
+    def __init__(self, root: Path):
+        self.root = root
+        self.path = root / "capture_state.json"
+        self.data = {"pages": [], "complete": False}
+        if self.path.exists():
+            loaded = _load_json(self.path.read_bytes(), "capture state")
+            if (type(loaded.get("pages")) is not list
+                    or any(type(entry) is not dict for entry in loaded["pages"])
+                    or loaded.get("complete") not in (True, False)):
+                raise ValueError("capture state is invalid")
+            self.data = loaded
+
+    def accepted(self, name: str) -> dict | None:
+        for entry in self.data["pages"]:
+            if entry.get("name") == name:
+                return entry
+        return None
+
+    def save(self) -> None:
+        tmp = self.root / "capture_state.json.tmp"
+        tmp.write_bytes(_canonical(self.data) + b"\n")
+        tmp.replace(self.path)
+
+    def accept(self, entry: dict) -> None:
+        self.data["pages"].append(entry)
+        self.save()
+
+    def entries(self) -> list[dict]:
+        return sorted(self.data["pages"], key=lambda entry: entry["offset"])
+
+    def page_entries(self) -> list[dict]:
+        return [entry for entry in self.entries() if PAGE_NAME_PATTERN.fullmatch(str(entry.get("name")))]
+
+
+def _validate_walk(pages: list[dict], ids: list[str], features_by_page: dict[int, list]) -> None:
+    """The accepted pages must tile one strictly ascending identifier walk."""
+    offset = 0
+    for entry in pages:
+        if (entry.get("offset") != offset or entry.get("count") != len(features_by_page[offset])
+                or not isinstance(entry.get("sha256"), str) or not entry.get("fetched_at")):
+            raise ValueError("accepted page roster is not a contiguous ascending walk")
+        if entry["count"] > PAGE_LIMIT:
+            raise ValueError("NLDI page exceeded the requested page limit")
+        offset += entry["count"]
+    if offset == 0:
+        raise ValueError("the pagination walk produced no features")
+    for index, identifier in enumerate(ids):
+        if index and not identifier > ids[index - 1]:
+            raise ValueError("the walked identifier order is not strictly ascending")
+    if len(set(ids)) != len(ids):
+        raise ValueError("the walked identifiers contain duplicates")
+
+
+def _compose_asset(pages: list[dict], capture_root: Path, expected_count: int) -> bytes:
+    """Recompose the walked pages, retaining every serialized lexeme verbatim."""
+    interiors = []
+    for entry in pages:
+        decoded_path = entry.get("decoded_path")
+        if not decoded_path or not Path(decoded_path).exists():
+            raise ValueError("retained page evidence is missing at composition time")
+        interiors.append(_page_slice(Path(decoded_path).read_bytes()))
+    body = (b'{"type":"FeatureCollection","features":[' + b",".join(interiors) + b"]}")
+    collection = _load_json(body, "composed candidate asset")
+    if len(_page_collection(collection)) != expected_count:
+        raise ValueError("composed candidate asset does not reproduce the walked feature count")
+    return body
+
+
+def _audit_composed(body: bytes) -> tuple[int, list[str], dict]:
+    collection = _load_json(body, "composed candidate asset")
+    features = _page_collection(collection)
     ids: list[str] = []
     geometry_rows: list[list] = []
-    property_keys: list[str] | None = None
     for feature in features:
-        if type(feature) is not dict or feature.get("type") != "Feature":
-            raise ValueError("pinned source contains a non-Feature member")
-        props, geom = feature.get("properties"), feature.get("geometry")
-        if type(props) is not dict or not isinstance(props.get("id"), str) or not props["id"]:
-            raise ValueError("pinned source feature is missing its original string id")
-        if not isinstance(props.get("provider_id"), str) or not props["provider_id"]:
-            raise ValueError("pinned source feature is missing its original provider_id")
-        if type(geom) is not dict or geom.get("type") != "Point":
-            raise ValueError("pinned source geometry is not a Point")
-        coordinates = geom.get("coordinates")
-        if (type(coordinates) is not list or len(coordinates) != 2
-                or any(type(value) not in (int, float) for value in coordinates)):
-            raise ValueError("pinned source has unsupported Point coordinates")
-        if property_keys is None:
-            property_keys = list(props)
-        elif list(props) != property_keys:
-            raise ValueError("pinned source property roster/order drifted")
-        ids.append(props["id"])
-        geometry_rows.append([props["id"], coordinates])
-    if len(set(ids)) != len(ids):
-        raise ValueError("pinned source contains duplicate original ids")
-    schema = {"root_members": list(collection), "feature_type": "Feature", "property_names_in_source_order": property_keys,
-              "geometry_type": "Point", "coordinate_dimension": 2}
+        identifier = _feature_identifier(feature)
+        _validate_feature(feature, identifier)
+        ids.append(identifier)
+        geometry_rows.append([identifier, feature["geometry"]["coordinates"]])
+    schema = {"feature_type": "Feature", "property_names_in_source_order": list(PROPERTY_NAMES),
+              "geometry_type": "Point", "coordinate_dimension": 2, "root_metadata": {}}
+    bounds = None
+    if geometry_rows:
+        xs = [row[1][0] for row in geometry_rows]
+        ys = [row[1][1] for row in geometry_rows]
+        bounds = {"xmin": min(xs), "ymin": min(ys), "xmax": max(xs), "ymax": max(ys)}
     audit = {"schema_sha256": hashlib.sha256(_canonical(schema)).hexdigest(),
              "id_roster_sha256": hashlib.sha256(_canonical(ids)).hexdigest(),
              "geometry_rows_sha256": hashlib.sha256(_canonical(geometry_rows)).hexdigest(),
-             "source_root_members": list(collection), "source_property_names": property_keys,
-             "unique_id_count": len(set(ids)), "null_geometry_count": 0}
+             "source_property_names": list(PROPERTY_NAMES),
+             "unique_id_count": len(set(ids)), "null_geometry_count": 0,
+             "observed_bounds": bounds, "first_id": ids[0] if ids else None,
+             "last_id": ids[-1] if ids else None, "feature_count": len(features)}
     return len(features), ids, audit
 
 
@@ -180,36 +369,6 @@ def _quarantine(staging: StagingStorageResource, version: str,
         names.append(name)
     _immutable(staging, f"{base}/metadata/failure.json", _canonical({"reason_code": reason, "captures": names}) + b"\n")
     return base
-
-
-def _record_observation(staging: StagingStorageResource, version: str,
-                        release_wire: bytes, release_bytes: bytes,
-                        release_receipt: dict, asset_receipt: dict) -> None:
-    """Preserve each fresh metadata/receipt observation without mutating a candidate."""
-    digest = hashlib.sha256(_canonical([release_receipt, asset_receipt])).hexdigest()
-    base = f"_observations/{FILE_SLUG}/{version}/{digest}"
-    for name, body in (("release-metadata.wire", release_wire), ("release-metadata.decoded", release_bytes),
-                        ("release-metadata.receipt.json", _canonical(release_receipt) + b"\n"),
-                        ("release-asset.receipt.json", _canonical(asset_receipt) + b"\n")):
-        _immutable(staging, f"{base}/{name}", body)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-
-
-def _candidate_version(release: dict, asset: dict, source_sha256: str, audit: dict, identity: dict) -> str:
-    stable_identity = {
-        "release_tag": release["tag_name"], "release_published_at": release["published_at"],
-        "asset_name": asset["name"], "asset_bytes": asset["size"], "asset_digest": asset["digest"],
-        "source_sha256": source_sha256, "source_schema_sha256": audit["schema_sha256"],
-        "source_id_roster_sha256": audit["id_roster_sha256"],
-        "source_geometry_sha256": audit["geometry_rows_sha256"], "processing_identity": identity,
-    }
-    version = "v" + release["tag_name"].removeprefix("v") + ".0-candidate." + hashlib.sha256(_canonical(stable_identity)).hexdigest()[:32]
-    if not SEMVER_VERSION_RE.fullmatch(version):
-        raise ValueError("upstream release tag cannot form a supported content-derived version")
-    return version
 
 
 def _processing_identity() -> dict:
@@ -238,6 +397,19 @@ def _version_lock(staging: StagingStorageResource, version: str):
             fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
+def _candidate_version(audit: dict, asset_sha256: str, identity: dict) -> str:
+    stable_identity = {"distribution": "usgs-nldi-ref_gage-paginated-walk",
+                       "feature_count": audit["feature_count"],
+                       "source_schema_sha256": audit["schema_sha256"],
+                       "source_id_roster_sha256": audit["id_roster_sha256"],
+                       "source_geometry_sha256": audit["geometry_rows_sha256"],
+                       "asset_sha256": asset_sha256, "processing_identity": identity}
+    version = "v0.0.0-candidate." + hashlib.sha256(_canonical(stable_identity)).hexdigest()[:32]
+    if not SEMVER_VERSION_RE.fullmatch(version):
+        raise ValueError("capture cannot form a supported content-derived version")
+    return version
+
+
 def _verify_cached(staging: StagingStorageResource, prefix: str, state_key: str, version: str,
                    identity: dict, cache_inputs: list[dict], descriptors: dict[str, dict], audit: dict) -> dict:
     fingerprint = hashlib.sha256(_canonical(identity)).hexdigest()
@@ -257,187 +429,274 @@ def _verify_cached(staging: StagingStorageResource, prefix: str, state_key: str,
         if snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": staging.sha256_key(key)} or staging.object_snapshot(key) != snapshot:
             raise ValueError("cached_candidate_object_integrity_failed:" + name)
     validate_construction_code_identity(REPO_ROOT, identity["code_commit"], identity["files"])
+    return _result(audit, version, reused=True)
+
+
+def _result(audit: dict, version: str, *, reused: bool) -> dict:
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "release_tag": PINNED_TAG, "feature_count": PINNED_FEATURE_COUNT, "sha256": PINNED_ASSET_SHA256,
-            "byte_count": PINNED_ASSET_BYTES, "source_audit": audit, "reused": True, "publication_status": "STOPPED",
+            "feature_count": audit["feature_count"], "unique_id_count": audit["unique_id_count"],
+            "source_audit": audit, "reused": reused, "publication_status": "STOPPED",
             "source_release_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "compatibility_accepted": False, "release_accepted": False}
 
 
-def _replay_capture(root: Path) -> tuple[dict, dict, bytes, bytes, bytes, bytes, list[dict]]:
-    """Load a prior complete, hash-pinned capture while retaining its timestamps."""
-    evidence = root / "evidence"
-    manifest_path = root / "metadata" / "source_manifest.json"
-    old = _load_json(manifest_path.read_bytes(), "verified replay manifest")
-    receipts = old.get("source_observation", {}).get("receipts")
-    if not isinstance(receipts, list) or len(receipts) != 2:
-        raise ValueError("verified replay requires original release metadata and asset receipts")
-    release_receipt, asset_receipt = receipts
-    metadata_candidates = list(evidence.glob("release-metadata*.decoded"))
-    if len(metadata_candidates) != 1:
-        raise ValueError("verified replay metadata capture is missing or ambiguous")
-    release_bytes = metadata_candidates[0].read_bytes()
-    release_wire = metadata_candidates[0].with_suffix(".wire").read_bytes()
-    asset_bytes = (evidence / f"{PINNED_ASSET}.decoded").read_bytes()
-    asset_wire = (evidence / f"{PINNED_ASSET}.wire").read_bytes()
-    for body, wire, receipt in ((release_bytes, release_wire, release_receipt), (asset_bytes, asset_wire, asset_receipt)):
-        if (receipt.get("complete") is not True or receipt.get("status_code") != 200
-                or receipt.get("decoded_bytes") != len(body) or receipt.get("decoded_sha256") != hashlib.sha256(body).hexdigest()
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != hashlib.sha256(wire).hexdigest()):
-            raise ValueError("verified replay original receipt does not match captured raw bytes")
-    release, asset = _select_release(_load_json(release_bytes, "replayed release metadata"))
-    if asset_receipt.get("request", {}).get("url") != asset.get("browser_download_url"):
-        raise ValueError("verified replay asset receipt URL differs from published release metadata")
-    return release, asset, release_wire, release_bytes, asset_wire, asset_bytes, receipts
-
-
 def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Client | None = None,
-                         replay_capture_directory: str | None = None) -> dict:
-    """Capture pinned release or explicitly replay a hash-verified prior capture."""
-    capture_version = "unresolved-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                         capture_directory: str | None = None) -> dict:
+    """Walk the USGS NLDI ref_gage pagination, verify it completely, and stage one candidate."""
+    capture_root = Path(capture_directory or DEFAULT_CAPTURE_ROOT).absolute()
+    if ".." in capture_root.parts or any(part.is_symlink() for part in (capture_root, *capture_root.parents)):
+        raise ValueError("unsafe_capture_directory")
+    capture_root.mkdir(parents=True, exist_ok=True)
+    state = _CaptureState(capture_root)
+    own_client = client is None
+    session = client or httpx.Client(follow_redirects=True,
+                                     timeout=httpx.Timeout(60.0, read=240.0, write=60.0, pool=60.0))
     captures: list[tuple[str, bytes, bytes, dict]] = []
-    if replay_capture_directory:
-        (release, asset, release_wire, release_bytes, asset_wire, asset_bytes,
-         receipts) = _replay_capture(Path(replay_capture_directory))
-    else:
-        own_client = client is None
-        session = client or httpx.Client(follow_redirects=True, timeout=httpx.Timeout(120.0))
-        try:
-            release_wire, release_bytes, release_receipt = _fetch(
-                session, LATEST_RELEASE_URL, accept="application/vnd.github+json", limit=1024 * 1024,
-            )
-            captures.append(("release-metadata", release_wire, release_bytes, release_receipt))
-            if release_receipt["status_code"] != 200 or not release_receipt["complete"]:
-                _quarantine(staging, capture_version, captures, "release_metadata_http_capture_incomplete")
-                raise ValueError("release metadata HTTP capture incomplete")
-            try:
-                release, asset = _select_release(_load_json(release_bytes, "GitHub latest release metadata"))
-            except ValueError:
-                _quarantine(staging, capture_version, captures, "latest_release_manual_review_required")
-                raise
-            asset_wire, asset_bytes, asset_receipt = _fetch(
-                session, asset["browser_download_url"], accept="application/geo+json", limit=MAX_CAPTURE_BYTES,
-            )
-            captures.append(("release-asset", asset_wire, asset_bytes, asset_receipt))
-            if asset_receipt["status_code"] != 200 or not asset_receipt["complete"]:
-                _quarantine(staging, capture_version, captures, "release_asset_http_capture_incomplete")
-                raise ValueError("pinned release asset HTTP capture incomplete")
-        finally:
-            if own_client:
-                session.close()
-        receipts = [release_receipt, asset_receipt]
-    release_receipt, asset_receipt = receipts
-    digest = hashlib.sha256(asset_bytes).hexdigest()
-    if len(asset_bytes) != PINNED_ASSET_BYTES or digest != PINNED_ASSET_SHA256:
-        if captures: _quarantine(staging, capture_version, captures, "complete_release_asset_hash_or_size_drift")
-        raise ValueError("complete release asset bytes differ from pinned v1.7 size/SHA-256")
+    capture_version = "unresolved-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     try:
-        feature_count, ids, audit = _check_geojson(asset_bytes)
-    except ValueError:
-        if captures: _quarantine(staging, capture_version, captures, "release_geojson_schema_or_coverage_drift")
-        raise
-    metadata_digest = hashlib.sha256(release_bytes).hexdigest()
-    receipt_bytes = [_canonical(receipt) + b"\n" for receipt in receipts]
+        for label in SOURCE_NAMES:
+            entry = state.accepted(label)
+            if entry is not None:
+                document = _load_json(_evidence_path(capture_root, label, "decoded").read_bytes(),
+                                      f"retained NLDI {label} listing")
+                _sources_entry(document)
+                continue
+            wire, decoded, receipt = _fetch(session, SOURCES_URL + "?f=json",
+                                            accept="application/json", limit=SOURCES_CAPTURE_BYTES)
+            captures.append((label, wire, decoded, receipt))
+            if receipt["status_code"] != 200 or not receipt["complete"]:
+                _quarantine(staging, capture_version, captures, "nldi_source_listing_http_capture_incomplete")
+                raise ValueError(f"NLDI {label} HTTP capture incomplete")
+            document = _load_json(decoded, f"NLDI {label} listing")
+            try:
+                _sources_entry(document)
+            except ValueError:
+                _quarantine(staging, capture_version, captures, "nldi_feature_source_registration_drift")
+                raise
+            decoded_path = _retain(capture_root, label, wire, decoded, receipt)
+            state.accept({"name": label, "offset": 0, "count": 0, "sha256": receipt["decoded_sha256"],
+                          "fetched_at": receipt["fetched_at"], "decoded_path": str(decoded_path)})
+            captures.clear()
+        pages: list[dict] = []
+        features_by_page: dict[int, list] = {}
+        offset = 0
+        while True:
+            name = f"page_{offset:09d}"
+            retained = state.accepted(name)
+            if retained is not None:
+                decoded = _evidence_path(capture_root, name, "decoded").read_bytes()
+                document = _load_json(decoded, f"retained NLDI page {name}")
+                features = _page_collection(document)
+                if len(features) != retained["count"]:
+                    raise ValueError("retained NLDI page evidence does not match its accepted roster entry")
+                if features:
+                    for feature in features:
+                        _validate_feature(feature, _feature_identifier(feature))
+                features_by_page[offset] = features
+                pages.append(retained)
+                if retained["count"] < PAGE_LIMIT:
+                    break
+                offset += retained["count"]
+                continue
+            wire, decoded, receipt = _fetch(session, _page_body(offset),
+                                            accept="application/geo+json", limit=PAGE_CAPTURE_BYTES)
+            captures.append((name, wire, decoded, receipt))
+            if receipt["status_code"] != 200 or not receipt["complete"]:
+                _quarantine(staging, capture_version, captures, "nldi_page_http_capture_incomplete")
+                raise ValueError(f"NLDI page at offset {offset} HTTP capture incomplete")
+            document = _load_json(decoded, f"NLDI page {name}")
+            features = _page_collection(document)
+            if len(features) > PAGE_LIMIT:
+                _quarantine(staging, capture_version, captures, "nldi_page_limit_not_honored")
+                raise ValueError("NLDI served more features than the requested page limit")
+            for feature in features:
+                _validate_feature(feature, _feature_identifier(feature))
+            decoded_path = _retain(capture_root, name, wire, decoded, receipt)
+            entry = {"name": name, "offset": offset, "count": len(features),
+                     "sha256": receipt["decoded_sha256"], "fetched_at": receipt["fetched_at"],
+                     "decoded_path": str(decoded_path)}
+            state.accept(entry)
+            features_by_page[offset] = features
+            pages.append(entry)
+            captures.clear()
+            if len(features) < PAGE_LIMIT:
+                break
+            offset += len(features)
+        for entry in state.page_entries():
+            if entry not in pages:
+                raise ValueError("retained page evidence is outside the accepted walk")
+        ids: list[str] = []
+        for offset in sorted(features_by_page):
+            ids.extend(feature["id"] for feature in features_by_page[offset])
+        _validate_walk(pages, ids, features_by_page)
+        body = _compose_asset(pages, capture_root, len(ids))
+        feature_count, ids, audit = _audit_composed(body)
+        asset_sha256 = hashlib.sha256(body).hexdigest()
+        audit["asset_sha256"] = asset_sha256
+        if EXPECTED_COUNT is not None and feature_count != EXPECTED_COUNT:
+            raise ValueError("NLDI ref_gage population count drifted from the pinned complete walk")
+        if EXPECTED_UNIQUE_ID_COUNT is not None and audit["unique_id_count"] != EXPECTED_UNIQUE_ID_COUNT:
+            raise ValueError("NLDI ref_gage unique identifier count drifted from the pinned walk")
+        if EXPECTED_IDS_SHA256 and audit["id_roster_sha256"] != EXPECTED_IDS_SHA256:
+            raise ValueError("NLDI ref_gage identifier roster drifted from the pinned walk")
+        if EXPECTED_SCHEMA_SHA256 and audit["schema_sha256"] != EXPECTED_SCHEMA_SHA256:
+            raise ValueError("NLDI ref_gage property schema drifted from the pinned walk")
+        if EXPECTED_ASSET_SHA256 and asset_sha256 != EXPECTED_ASSET_SHA256:
+            raise ValueError("composed NLDI candidate asset bytes drifted from the pinned walk")
+        if EXPECTED_FIRST_ID is not None and audit["first_id"] != EXPECTED_FIRST_ID:
+            raise ValueError("NLDI ref_gage first identifier drifted from the pinned walk")
+        if EXPECTED_LAST_ID is not None and audit["last_id"] != EXPECTED_LAST_ID:
+            raise ValueError("NLDI ref_gage last identifier drifted from the pinned walk")
+        if EXPECTED_NULL_GEOMETRY_COUNT is not None and audit["null_geometry_count"] != EXPECTED_NULL_GEOMETRY_COUNT:
+            raise ValueError("NLDI ref_gage null-geometry count drifted from the pinned walk")
+        if EXPECTED_OBSERVED_BOUNDS is not None and audit["observed_bounds"] != EXPECTED_OBSERVED_BOUNDS:
+            raise ValueError("NLDI ref_gage observed bounds drifted from the pinned walk")
+        state.data["complete"] = True
+        state.save()
+    finally:
+        if own_client:
+            session.close()
     identity = _processing_identity()
-    derived_version = _candidate_version(release, asset, digest, audit, identity)
-    version = derived_version
+    version = _candidate_version(audit, asset_sha256, identity)
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
-    _record_observation(staging, version, release_wire, release_bytes, release_receipt, asset_receipt)
+    receipts = []
+    inputs = []
+    for entry in state.entries():
+        name = entry["name"]
+        receipt = _load_json(_evidence_path(capture_root, name, "receipt").read_bytes(), f"retained receipt {name}")
+        receipts.append(receipt)
+        if PAGE_NAME_PATTERN.fullmatch(name):
+            canonical_url, retrieval_url = COLLECTION_URL, _page_body(entry["offset"])
+        else:
+            canonical_url = retrieval_url = SOURCES_URL + "?f=json"
+        inputs.append({"input_id": f"usgs-nldi-{name}", "producer": "U.S. Geological Survey",
+                       "host": "api.water.usgs.gov", "role": "producer_publication",
+                       "canonical_url": canonical_url, "retrieval_url": retrieval_url,
+                       "observed_final_url": receipt.get("final_url", retrieval_url),
+                       "retrieved_at": receipt["fetched_at"], "http_status": receipt["status_code"],
+                       "bytes": receipt["decoded_bytes"], "sha256": receipt["decoded_sha256"],
+                       "release_date": None,
+                       "release_date_unknown_reason": "The NLDI feature listing publishes no per-snapshot "
+                                                      "release date; USGS documents the registered feature "
+                                                      "sources and their pagination instead.",
+                       "license": "Public domain (U.S. Government work); NLDI publishes no access constraints",
+                       "attribution": "U.S. Geological Survey Network Linked Data Index (NLDI), ref_gage feature source."})
     manifest = {
         "title": "USGS Hydro Network Linked Data Index (NLDI) Streamgage Monitoring Locations",
-        "description": "Candidate native GeoJSON from Internet of Water's maintained ref_gages v1.7 release. Upstream release is a changed successor to the historical HIFLD v1.0.0 baseline with material identity, schema, and population drift; refresh and publication remain STOPPED pending source delegation and compatibility review.",
-        "publisher": "Internet of Water (maintainer/publisher of the ref_gages compilation)",
-        "agency": "USGS sites are represented in the compilation; USGS agency authority/delegation for this release is unaccepted",
-        "source_url": asset["browser_download_url"], "license": "Unverified; upstream release licensing requires review",
+        "description": "Candidate composed from the complete pagination walk of the USGS NLDI ref_gage feature "
+                       "source on the agency's api.water.usgs.gov host. The upstream internetofwater/ref_gages "
+                       "GitHub compilation is community lineage context and is never fetched. Publication "
+                       "remains STOPPED pending source, compatibility and release review.",
+        "publisher": "U.S. Geological Survey (NLDI)",
+        "agency": "U.S. Geological Survey",
+        "source_url": COLLECTION_URL,
+        "license": "Public domain (U.S. Government work); NLDI publishes no access constraints",
         "schema_version": 1, "processor": "HIFLD Next",
-        "lineage": "Inventory and historical published provenance identify internetofwater/ref_gages. The complete pinned v1.7 release was compared with the complete HIFLD v1.0.0 candidate: it is a changed successor with material population, ID, and schema drift, not a clean continuation. Official NLDI ref_gage distribution is corroborating evidence only. DataLumos 240397 V1 is a historical archive and is not the refresh source. The source declares legacy named CRS urn:ogc:def:crs:EPSG::4269 (NAD83); the original GeoJSON x/y coordinate order is retained as serialized without axis swapping or reprojection, and its semantic compatibility with downstream contracts remains unaccepted.",
-        "inputs": [
-            {"input_id": "internetofwater-ref-gages-release-metadata", "producer": "Internet of Water", "host": "api.github.com", "role": "producer_publication", "canonical_url": f"https://github.com/{REPOSITORY}/releases/tag/{PINNED_TAG}", "retrieval_url": LATEST_RELEASE_URL, "observed_final_url": release_receipt.get("final_url", LATEST_RELEASE_URL), "retrieved_at": release_receipt["fetched_at"], "http_status": 200, "bytes": len(release_bytes), "sha256": metadata_digest, "license": "Upstream release licensing not verified", "attribution": "Internet of Water ref_gages release metadata; agency delegation unaccepted", "release_date": release.get("published_at"), "distributor": "GitHub Releases", "release_date_unknown_reason": None},
-            {"input_id": "internetofwater-ref-gages-v1.7", "producer": "Internet of Water", "host": "github.com", "role": "producer_publication", "canonical_url": f"https://github.com/{REPOSITORY}/releases/tag/{PINNED_TAG}", "retrieval_url": asset["browser_download_url"], "observed_final_url": asset_receipt.get("final_url", asset["browser_download_url"]), "retrieved_at": asset_receipt["fetched_at"], "http_status": 200, "bytes": len(asset_bytes), "sha256": digest, "license": "Upstream release licensing not verified", "attribution": "Internet of Water ref_gages v1.7; USGS agency/delegation acceptance unresolved", "release_date": release.get("published_at"), "distributor": "GitHub Releases"},
-        ],
+        "lineage": "The inventory entry nhd/usgs-hydro-nldi-streamgage-monitoring-locations (agency US Geological "
+                   "Survey) describes the NLDI streamgage monitoring locations. The pipeline input is USGS's own "
+                   "NLDI publication: the ref_gage registered feature source documented by USGS at "
+                   "api.water.usgs.gov/docs/nldi/feature-sources/ with limit/offset pagination, walked completely "
+                   "from offset 0 to the end of the collection. The upstream internetofwater/ref_gages GitHub "
+                   "compilation is the community project NLDI indexes; it is lineage context only and is never "
+                   "fetched. The DataLumos 240397 archive is historical provenance and is not the refresh source. "
+                   "NLDI pages declare no CRS member; the composed candidate retains the source-serialized x/y "
+                   "order without axis swap or reprojection, and its semantic compatibility with legacy "
+                   "declared-CRS contracts remains unaccepted.",
+        "inputs": inputs,
         "code_commit": identity["code_commit"],
-        "transformations": ["Identity preservation: exact published source GeoJSON asset bytes retained as the staged catalog asset; no feature, property, ID, geometry, or number-lexeme transformations."],
-        "literal_geojson_catalog": {"schema_version": 1, "path": ASSET_PATH, "bytes": len(asset_bytes), "sha256": digest,
-                                    "root_metadata": SOURCE_ROOT_METADATA},
+        "transformations": ["Pagination walk recomposition: each page's raw features array text is sliced and "
+                            "concatenated into one FeatureCollection, retaining every serialized number lexeme, "
+                            "member order and feature value verbatim; no feature, property, ID, geometry or "
+                            "number-lexeme transformations are applied."],
+        "literal_geojson_catalog": {"schema_version": 1, "path": ASSET_PATH, "bytes": len(body),
+                                    "sha256": asset_sha256},
         "source_observation": {
             "fetched_at": receipts[0]["fetched_at"], "receipts": receipts,
-            "publisher": "Internet of Water", "repository": f"https://github.com/{REPOSITORY}",
-            "release_tag": PINNED_TAG, "release_published_at": release.get("published_at"),
-            "release_date_is_extraction_date": False, "release_author_login": (release.get("author") or {}).get("login"),
-            "asset_name": PINNED_ASSET, "asset_size": PINNED_ASSET_BYTES,
-            "asset_github_digest": f"sha256:{PINNED_ASSET_SHA256}", "asset_sha256_independent": digest,
-            "feature_count": feature_count, "unique_id_count": len(ids), "id_field": "properties.id",
-            "id_type": "string", "id_examples": ids[:5], "provider_id_field": "properties.provider_id",
-            "geometry_type": "Point", "source_root_metadata": SOURCE_ROOT_METADATA,
-            "source_declared_crs": "urn:ogc:def:crs:EPSG::4269",
+            "publisher": "U.S. Geological Survey (NLDI)", "service_root": NLDI_ROOT,
+            "feature_sources_documentation": FEATURE_SOURCES_DOC_URL,
+            "registered_source_entry": EXPECTED_SOURCE_ENTRY,
+            "pagination": {"mode": "limit_offset_walk", "page_limit": PAGE_LIMIT,
+                           "pages": len(state.page_entries()), "resumable": True,
+                           "documented_at": FEATURE_SOURCES_DOC_URL,
+                           "note": "The bulk endpoint without pagination was observed returning HTTP 504 after a "
+                                   "server-side timeout; the documented limit/offset pagination is used instead."},
+            "feature_count": feature_count, "unique_id_count": audit["unique_id_count"],
+            "id_field": "Feature.id == properties.identifier",
+            "id_type": "string", "id_examples": ids[:5], "first_id": audit["first_id"],
+            "last_id": audit["last_id"],
+            "geometry_type": "Point", "coordinate_dimension": 2,
+            "source_declared_crs": None,
             "coordinate_order_interpretation": "source_serialized_x_y_retained_without_axis_order_reinterpretation_or_swap",
             "complete_capture": True,
             "source_audit": audit,
-            "official_nldi_distribution_evidence": "https://api.water.usgs.gov/nldi/linked-data/ref_gage",
-            "inventory_crosswalk_status": "unverified", "baseline_continuity": "changed-successor-material-drift",
-            "agency_delegation_acceptance": False, "source_contract_accepted": False,
+            "upstream_compilation_context": "https://github.com/internetofwater/ref_gages (community project NLDI "
+                                            "indexes; named context only and never fetched)",
+            "baseline_continuity": "unverified-for-nldi-capture",
+            "agency_authority_accepted": False, "source_contract_accepted": False,
             "compatibility_accepted": False, "publication_status": "STOPPED",
+            "baseline_note": BASELINE_NOTE,
         },
     }
-    manifest["transformations"] = ["Identity preservation: exact published source GeoJSON asset bytes retained as the staged catalog asset; no feature, property, ID, geometry, or number-lexeme transformations."]
-    manifest["unsupported_output_formats"] = {"geoparquet": "No compatibility contract for changed v1.7 schema and IDs.", "geopackage": "No approved mapping for changed source fields/IDs.", "pmtiles": "No approved publication styling or tiling contract."}
+    manifest["unsupported_output_formats"] = {"geoparquet": "No compatibility contract for the NLDI-served schema "
+                                                            "and identifiers.",
+                                              "geopackage": "No approved mapping for the NLDI-served fields/IDs.",
+                                              "pmtiles": "No approved publication styling or tiling contract."}
     validate_provenance(manifest)
-    outputs = {
-        ASSET_PATH: asset_bytes,
-        "evidence/release-metadata.wire": release_wire,
-        "evidence/release-metadata.decoded": release_bytes,
-        f"evidence/{PINNED_ASSET}.wire": asset_wire,
-        f"evidence/{PINNED_ASSET}.decoded": asset_bytes,
-        "metadata/source_manifest.json": _canonical(manifest) + b"\n",
-        "metadata/processing_identity.json": _canonical(identity) + b"\n",
-        "metadata/release-metadata.receipt.json": receipt_bytes[0],
-        f"evidence/{PINNED_ASSET}.receipt.json": receipt_bytes[1],
-    }
-    descriptors = {name: {"bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()} for name, body in outputs.items()}
-    cache_inputs = [{"release_tag": PINNED_TAG, "release_published_at": release.get("published_at"),
-                     "asset_name": PINNED_ASSET, "asset_size": PINNED_ASSET_BYTES,
-                     "asset_digest": f"sha256:{PINNED_ASSET_SHA256}", "asset_sha256": digest,
-                     "asset_bytes": len(asset_bytes), "asset_retrieval_url": asset["browser_download_url"],
-                     "latest_metadata_endpoint": LATEST_RELEASE_URL}]
+    outputs = {ASSET_PATH: body,
+               "metadata/source_manifest.json": _canonical(manifest) + b"\n",
+               "metadata/processing_identity.json": _canonical(identity) + b"\n"}
+    for entry in state.entries():
+        name = entry["name"]
+        for suffix in ("wire", "decoded", "receipt.json"):
+            outputs[f"evidence/{name}.{suffix}"] = _evidence_path(capture_root, name, suffix).read_bytes()
+    descriptors = {name: {"bytes": len(body_), "sha256": hashlib.sha256(body_).hexdigest()}
+                   for name, body_ in outputs.items()}
+    cache_inputs = [{"distribution": "usgs-nldi-ref_gage-paginated-walk", "page_limit": PAGE_LIMIT,
+                     "feature_count": feature_count, "asset_sha256": asset_sha256,
+                     "id_roster_sha256": audit["id_roster_sha256"],
+                     "schema_sha256": audit["schema_sha256"], "capture_root": str(capture_root)}]
     state_key = f"_construction-state/{DATASET_SLUG}/{FILE_SLUG}/{version}.json"
     fingerprint = hashlib.sha256(_canonical(identity)).hexdigest()
     with _version_lock(staging, version):
         if staging.object_snapshot(state_key) is not None:
             result = _verify_cached(staging, prefix, state_key, version, identity, cache_inputs, descriptors, audit)
-            result["written_keys"] = [f"{prefix}/{ASSET_PATH}", f"{prefix}/evidence/", f"{prefix}/metadata/source_manifest.json"]
+            result["written_keys"] = [f"{prefix}/{ASSET_PATH}", f"{prefix}/evidence/",
+                                      f"{prefix}/metadata/source_manifest.json"]
             return result
         if staging.list_prefix(prefix):
             raise ValueError("candidate prefix is nonempty without a valid first-construction witness")
-        for relative, body in outputs.items():
-            _immutable(staging, f"{prefix}/{relative}", body)
+        for relative, body_ in outputs.items():
+            _immutable(staging, f"{prefix}/{relative}", body_)
         for relative, descriptor in descriptors.items():
             key = f"{prefix}/{relative}"
             snapshot = staging.object_snapshot(key)
-            if snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": staging.sha256_key(key)} or staging.object_snapshot(key) != snapshot:
+            if snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": staging.sha256_key(key)} \
+                    or staging.object_snapshot(key) != snapshot:
                 raise ValueError("candidate_output_physical_readback_failed:" + relative)
-        payload = {"processing_identity": identity, "inputs": cache_inputs, "objects": descriptors, "source_audit": audit}
+        payload = {"processing_identity": identity, "inputs": cache_inputs, "objects": descriptors,
+                   "source_audit": audit}
         seal_first_construction(staging, state_key, version, fingerprint,
                                 canonical_construction_bundle(version, fingerprint, payload))
         validate_construction_code_identity(REPO_ROOT, identity["code_commit"], identity["files"])
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "release_tag": PINNED_TAG, "feature_count": feature_count, "sha256": digest,
-            "byte_count": len(asset_bytes), "written_keys": [f"{prefix}/{ASSET_PATH}", f"{prefix}/evidence/", f"{prefix}/metadata/source_manifest.json"],
-            "source_audit": audit, "reused": False, "publication_status": "STOPPED", "source_release_accepted": False,
-            "schema_contract_accepted": False, "id_contract_accepted": False,
-            "compatibility_accepted": False, "release_accepted": False}
+    result = _result(audit, version, reused=False)
+    result["written_keys"] = [f"{prefix}/{ASSET_PATH}", f"{prefix}/evidence/",
+                              f"{prefix}/metadata/source_manifest.json"]
+    return result
 
 
 @asset(
     key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]),
     group_name="usgs_nldi",
     compute_kind="http",
-    description="Complete Internet of Water ref_gages v1.7 release candidate. Latest-release drift stops for review; source, agency, and compatibility approvals remain blocked.",
-    config_schema={"replay_capture_directory": Field(str, default_value="")},
+    description="Complete USGS NLDI ref_gage pagination walk candidate from the agency's api.water.usgs.gov "
+                "publication. Registration drift and pinned-walk drift stop for review; authority, "
+                "compatibility, and release approvals remain blocked.",
+    config_schema={"capture_directory": Field(str, default_value="")},
 )
 def usgs_nldi_streamgage_monitoring_locations(context, staging_storage: StagingStorageResource) -> dict:
     config = context.op_config
     result = fetch_and_stage_nldi(staging_storage,
-                                  replay_capture_directory=config["replay_capture_directory"] or None)
+                                  capture_directory=config["capture_directory"] or None)
     version = result["version"]
     partition_key = build_publish_partition_key(DATASET_SLUG, FILE_SLUG, version)
     if partition_key not in set(context.instance.get_dynamic_partitions(PUBLISH_PARTITION_NAME)):
@@ -448,11 +707,13 @@ def usgs_nldi_streamgage_monitoring_locations(context, staging_storage: StagingS
 
 @asset_check(asset=usgs_nldi_streamgage_monitoring_locations, blocking=True)
 def usgs_nldi_complete_source(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == PINNED_FEATURE_COUNT and candidate.get("sha256") == PINNED_ASSET_SHA256
-    return AssetCheckResult(passed=passed, metadata={
+    count_ok = EXPECTED_COUNT is None or candidate.get("feature_count") == EXPECTED_COUNT
+    audit = candidate.get("source_audit") or {}
+    asset_ok = not EXPECTED_ASSET_SHA256 or audit.get("asset_sha256") == EXPECTED_ASSET_SHA256
+    return AssetCheckResult(passed=count_ok and asset_ok, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "publication_status": "STOPPED", "source_release_accepted": False,
-        "agency_delegation_accepted": False, "schema_contract_accepted": False,
+        "agency_authority_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "compatibility_accepted": False, "release_accepted": False,
     })
 
