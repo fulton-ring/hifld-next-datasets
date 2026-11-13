@@ -293,11 +293,18 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
         self.assertEqual(src.PAGE_SIZE, 2500)
         self.assertEqual(len(src.NATIVE_FIELDS), 12)
         self.assertEqual(src.EXPECTED_FEATURETYPE_LABELS, {3: "Lake"})
-        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, None)
-        self.assertEqual(src.EXPECTED_REFUSED_IDS, None)
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
-        self.assertEqual(src.EXPECTED_IDS_SHA256, "")
+        # Pins transcribed from the complete 2026-11-13 capture
+        # (computed_baseline.json; any later drift fails closed).
+        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 0)
+        self.assertEqual(src.EXPECTED_REFUSED_IDS, ())
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
+                         {"source_polygon_ring_degenerate": 7})
+        self.assertEqual(src.EXPECTED_RECORD_SHA256,
+                         "a3eac7bb769a63a678c96955d96d7fddde54fa4414e4af06a3fbd5bc13b42073")
+        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256,
+                         "9a250fb41717baac97e7000469086bec2d0c13ae61686022818dcd661bfa8eae")
+        self.assertEqual(src.EXPECTED_IDS_SHA256,
+                         "b4c1d549b8a5fb8674d8d8fb6af55077cb8b1db2f00604e1324644e88a135b74")
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]

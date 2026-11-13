@@ -147,15 +147,15 @@ EXPECTED_SCHEMA_SHA256 = "51f11bd107670196d396c0908b3c68a4dce0f37466d3dd179c3df1
 # without a complete capture of the 7,063,520-feature population; they are
 # pinned here as empty (checked only when non-empty) and recorded by the first
 # complete capture for the maintainer to pin.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_IDS_SHA256 = ""
+EXPECTED_RECORD_SHA256 = "a3eac7bb769a63a678c96955d96d7fddde54fa4414e4af06a3fbd5bc13b42073"
+EXPECTED_GEOMETRY_SHA256 = "9a250fb41717baac97e7000469086bec2d0c13ae61686022818dcd661bfa8eae"
+EXPECTED_IDS_SHA256 = "b4c1d549b8a5fb8674d8d8fb6af55077cb8b1db2f00604e1324644e88a135b74"
 # The null-geometry count and the producer-refusal id set are likewise unknown
 # until the first complete capture (a ``None`` pin is checked only once it has
 # been transcribed from ``build_nhd_waterbody_large_scale_baseline``;
 # afterwards any change fails closed).
-EXPECTED_NULL_GEOMETRY_COUNT: int | None = None
-EXPECTED_REFUSED_IDS: tuple[int, ...] | None = None
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_REFUSED_IDS = ()
 # Rows whose rings cannot form a valid OGC polygon are gated to null candidate
 # geometry and counted by failure mode instead of being coerced or dropped
 # (observed on the 2026-11-13 full capture: real lake slivers carry zero-area
@@ -163,7 +163,7 @@ EXPECTED_REFUSED_IDS: tuple[int, ...] | None = None
 # pin is checked only once it has been transcribed from
 # ``build_nhd_waterbody_large_scale_baseline``, afterwards any change fails
 # closed.
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] | None = None
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {'source_polygon_ring_degenerate': 7}
 UNUSABLE_GEOMETRY_MODES = frozenset({
     "source_polygon_ring_degenerate",
     "source_polygon_exterior_missing",
