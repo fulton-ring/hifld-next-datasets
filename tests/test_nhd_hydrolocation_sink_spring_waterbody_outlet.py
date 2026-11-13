@@ -199,6 +199,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
         patch.object(src, "SEGMENT_PROBE_BASE_DELAY_SECONDS", 0.0),
         patch.object(src, "DOC_CAPTURE_BASE_DELAY_SECONDS", 0.0),
         patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
+        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
@@ -244,9 +245,11 @@ class NhdHydrolocationSinkSpringWaterbodyOutletTests(unittest.TestCase):
                          "4c4ab8e34f34e4705dd04722bc2e4e0c7cacc210c7bf7e0a34741b86cbebf981")
         self.assertEqual(src.EXPECTED_IDS_SHA256,
                          "c395557ae10af89ba95f922fd1b2e8f061c5f39a317b862109598b54ce6107b1")
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
-        self.assertIsNone(src.EXPECTED_NULL_GEOMETRY_COUNT)
+        self.assertEqual(src.EXPECTED_RECORD_SHA256,
+                         "4ab6be46b42767f711cc02b1a83030b95775471a6dca96e5ea59998fd211ecea")
+        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256,
+                         "107d55b7fa7acd94e9e4745cac8ed9a59e3d2a55c55d747e6163adfb56e3ac6e")
+        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 0)
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]

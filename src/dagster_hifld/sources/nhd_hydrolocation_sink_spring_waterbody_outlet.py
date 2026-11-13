@@ -25,10 +25,11 @@ reordered. A single-record segment the producer still refuses ends the capture
 explicitly rather than guessing.
 
 The per-value and per-geometry baseline digests, geometry gate counts and
-observed bounds are computed and reported by
-``build_nhd_hydrolocation_sink_spring_waterbody_outlet_baseline`` from a completed
-capture directory and pinned as constants for later drift refusal; pins left empty
-(or ``None``) are checked only once pinned. Publication stays blocked pending the
+observed bounds were computed by
+``build_nhd_hydrolocation_sink_spring_waterbody_outlet_baseline`` from the
+completed capture directory of the dated full extraction (89 roster segments,
+2026-11-13) and are pinned as module constants; every later capture is refused
+when its content drifts from these pins. Publication stays blocked pending the
 succession, freshness, schema/ID contract, rights and release decisions; all
 runtime approval flags are false and the draft refresh schedule is stopped.
 """
@@ -122,14 +123,17 @@ EXPECTED_COUNT = 177_424
 EXPECTED_SCHEMA_SHA256 = "4c4ab8e34f34e4705dd04722bc2e4e0c7cacc210c7bf7e0a34741b86cbebf981"
 EXPECTED_IDS_SHA256 = "c395557ae10af89ba95f922fd1b2e8f061c5f39a317b862109598b54ce6107b1"
 # The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (see the module
-# docstring); unpinned values ("", None) are checked only once pinned.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_NAN_GEOMETRY_COUNT = None
-EXPECTED_EMPTY_GEOMETRY_COUNT = None
-EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = None
+# bounds are pinned from the dated complete capture (see the module docstring):
+# 89 roster segments captured 2026-11-13T06:07:04Z..06:07:58Z, all 177,424
+# features digested with zero null/NaN/empty geometries.
+EXPECTED_RECORD_SHA256 = "4ab6be46b42767f711cc02b1a83030b95775471a6dca96e5ea59998fd211ecea"
+EXPECTED_GEOMETRY_SHA256 = "107d55b7fa7acd94e9e4745cac8ed9a59e3d2a55c55d747e6163adfb56e3ac6e"
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_NAN_GEOMETRY_COUNT = 0
+EXPECTED_EMPTY_GEOMETRY_COUNT = 0
+EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = {
+    "xmin": -166.97025846818832, "ymin": 13.277028344549862,
+    "xmax": 145.78612348522006, "ymax": 70.68186021264667}
 # Per-feature hydrolocation category contract observed via grouped counts on
 # 2026-11-13 (sum 177,424); every feature must carry one of these pairs.
 EXPECTED_FEATURETYPE_DISTRIBUTION = {3: 7_789, 7: 151_063, 8: 18_572}
@@ -138,9 +142,9 @@ EXPECTED_LAYER_EXTENT = {"xmin": -18587044.1503, "ymin": 1491399.9107999988,
                          "xmax": 16228837.031099997, "ymax": 11294359.822499998}
 BASELINE_PENDING_NOTE = (
     "The record and geometry baseline digests, geometry gate counts and "
-    "observed bounds are pinned from a completed resumable capture directory "
-    "by build_nhd_hydrolocation_sink_spring_waterbody_outlet_baseline; unpinned values are checked "
-    "only once pinned.")
+    "observed bounds are pinned from the dated complete resumable capture of "
+    "2026-11-13 (89 roster segments, 06:07:04Z..06:07:58Z); drift against "
+    "these pins is refused and quarantined.")
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),
@@ -1044,9 +1048,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "crosswalk_doi": "10.3886/E241367V1",
         "crosswalk_layer_row": "3D Hydrography Program (3DHP) Layers",
         "crosswalk_open_id": "650c07e542fa43b6a327c7f683681712",
-        "baseline_pending_note": BASELINE_PENDING_NOTE,
-        "baseline_pending_complete_capture": bool(
-            not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256),
+        "baseline_note": BASELINE_PENDING_NOTE,
+        "baseline_pinned_complete_capture": bool(
+            EXPECTED_RECORD_SHA256 and EXPECTED_GEOMETRY_SHA256),
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
