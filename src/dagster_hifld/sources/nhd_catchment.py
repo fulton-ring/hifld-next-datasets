@@ -128,15 +128,19 @@ EXPECTED_COUNT = 300_070
 EXPECTED_SCHEMA_SHA256 = "1b32b55650559d19c1d0fe2e3c876940d179925bf2d0f3bbe2d2ac262c7a57a5"
 EXPECTED_IDS_SHA256 = "1e2cb430b690820a3e2b5c8059094e5e95af54e4e426a8ffa6809e53345e33b8"
 # The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (see the module
-# docstring); unpinned values ("", None) are checked only once pinned.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_NAN_GEOMETRY_COUNT = None
-EXPECTED_EMPTY_GEOMETRY_COUNT = None
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] | None = None
-EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = None
+# bounds below were computed by build_nhd_catchment_baseline from the complete
+# dated capture (414 retained segments, 300070 features, capture window
+# 2026-11-13T04:27:13Z..11:28:56Z in the resumable capture directory) and pin
+# the expected content for later drift refusal.
+EXPECTED_RECORD_SHA256 = "c2b619f60d52b84af3b07fc3eef6c97f0c905786c05f0469a81e4607cb187612"
+EXPECTED_GEOMETRY_SHA256 = "aa8ef29cd6a48212a5341d93b7641da92273bdd68ea29f941215db0b647de208"
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_NAN_GEOMETRY_COUNT = 0
+EXPECTED_EMPTY_GEOMETRY_COUNT = 0
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {}
+EXPECTED_OBSERVED_BOUNDS: dict[str, float] = {
+    "xmin": -159.04621038268183, "ymin": 35.61857066855389,
+    "xmax": -72.5853745558836, "ymax": 68.41390468924469}
 EXPECTED_LAYER_EXTENT = {"xmin": -17704943.152400002, "ymin": 4248263.417000003,
                          "xmax": -8080166.934599999, "ymax": 10571108.752799997}
 BASELINE_PENDING_NOTE = (

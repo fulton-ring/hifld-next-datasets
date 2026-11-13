@@ -208,6 +208,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
         patch.object(src, "SEGMENT_PROBE_BASE_DELAY_SECONDS", 0.0),
         patch.object(src, "DOC_CAPTURE_BASE_DELAY_SECONDS", 0.0),
         patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
+        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
@@ -248,9 +249,18 @@ class NhdCatchmentTests(unittest.TestCase):
                          "1b32b55650559d19c1d0fe2e3c876940d179925bf2d0f3bbe2d2ac262c7a57a5")
         self.assertEqual(src.EXPECTED_IDS_SHA256,
                          "1e2cb430b690820a3e2b5c8059094e5e95af54e4e426a8ffa6809e53345e33b8")
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
-        self.assertIsNone(src.EXPECTED_NULL_GEOMETRY_COUNT)
+        self.assertEqual(src.EXPECTED_RECORD_SHA256,
+                         "c2b619f60d52b84af3b07fc3eef6c97f0c905786c05f0469a81e4607cb187612")
+        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256,
+                         "aa8ef29cd6a48212a5341d93b7641da92273bdd68ea29f941215db0b647de208")
+        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 0)
+        self.assertEqual(src.EXPECTED_NAN_GEOMETRY_COUNT, 0)
+        self.assertEqual(src.EXPECTED_EMPTY_GEOMETRY_COUNT, 0)
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
+        self.assertEqual(
+            src.EXPECTED_OBSERVED_BOUNDS,
+            {"xmin": -159.04621038268183, "ymin": 35.61857066855389,
+             "xmax": -72.5853745558836, "ymax": 68.41390468924469})
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
