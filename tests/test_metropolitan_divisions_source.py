@@ -346,7 +346,7 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
         identity = source.processing_identity()
         self.assertIn(identity.get("code_identity_scheme"),
                       ("git-commit-blobs-v1", "sha256-packaged-dagster-hifld-v1"))
-        validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
+        validate_construction_code_identity(Path(__file__).parents[1], identity["code_commit"],
                                             identity["files"], identity=identity)
 
     def test_cached_outputs_are_rederived_from_original_native_rows(self):
