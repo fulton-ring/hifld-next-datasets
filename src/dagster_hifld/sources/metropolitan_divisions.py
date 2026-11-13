@@ -31,6 +31,7 @@ import shapely
 
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.sources.epa_frs_common import seal_ready_candidate, verify_cached_candidate
 from dagster_hifld.validation import sha256_file
@@ -252,7 +253,11 @@ def table_values(table):
 
 
 def write_native_gpkg(table,path):
-    pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
+    # Pin GDAL creation time so SQLite transaction headers are reproducible;
+    # the ambient date must not enter the container bytes (CI caught a cached
+    # container that disagreed with a fresh rebuild of the same rows).
+    with with_geopackage_creation_time('2024-01-01T00:00:00.000Z'):
+        pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
     with sqlite3.connect(path) as db:
         db.execute("UPDATE gpkg_contents SET last_change='2024-01-01T00:00:00.000Z'")
 
