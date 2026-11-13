@@ -8,7 +8,7 @@
     "date_meaning": "Inventory archive modification date; not a source release date",
     "authority": "DataLumos is a rescue archive, not a maintained agency feed; never a pipeline input"
   },
-  "research_status": "official maintained FCC ULS producer feed identified and payload-verified in this environment on 2026-11-13; draft ingest implementation pending",
+  "research_status": "official maintained FCC ULS producer feed identified and payload-verified in this environment on 2026-11-13; draft ingest asset implemented and locally materialized (PR #532)",
   "crosswalk": {
     "dhs_crosswalk_doi": "https://doi.org/10.3886/E241367V1",
     "prior_audit": "https://github.com/fulton-ring/agent-content-demos/issues/40#issuecomment-6253017620",
@@ -87,7 +87,7 @@
     "quarantine": "Do not replace an accepted release when the file is incomplete, schema-drifted, or cannot be authenticated as FCC."
   },
   "implementation_plan": {
-    "status": "pending implementation (draft ingest asset not yet written)",
+    "status": "draft implemented in PR #532 (source adapter src/dagster_hifld/sources/paging_transmission_towers.py, asset src/dagster_hifld/assets/paging_transmission_towers.py, focused tests, counts-file completeness gate); local staging materialization with real DAGSTER_HOME recorded on the PR; catalog/publish assets derive automatically",
     "steps": [
       "Ingest asset fcc_uls_paging: download l_paging.zip, verify sha256/size, stage raw zip and extracted HD.dat/LO.dat/counts under a source format directory with the counts creation date as version evidence",
       "Parse positionally against the official 59/51-column definitions; fail loudly on field-count mismatch (drift quarantine)",
