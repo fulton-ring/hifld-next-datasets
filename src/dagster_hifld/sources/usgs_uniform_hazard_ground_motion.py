@@ -178,6 +178,7 @@ def _decode(body, tmp):
     if any(shapely.get_coordinate_dimension(gg) != 2 for gg in g.geometry.array): raise ValueError("source_non_2d_geometry")
     invalid = int((~g.geometry.is_valid).sum())
     if invalid != EXPECTED_INVALID_GEOMETRY_COUNT: raise ValueError("source_geometry_validity_drift")
+    reasons = sorted({str(r) for r in shapely.is_valid_reason(g.geometry.array) if r != "Valid Geometry"})
     rings, vertices = _ring_vertex_stats(g.geometry.array)
     if rings != EXPECTED_RING_COUNT or vertices != EXPECTED_VERTEX_COUNT: raise ValueError("source_geometry_vertex_drift")
     ids, attrs, idsha, recsha, geomsha, bounds = _content_digests(g, names, fids)
@@ -197,7 +198,7 @@ def _decode(body, tmp):
         "source_item_publication_date": SOURCE_ITEM_PUBLICATION,
         "source_null_counts": {n: int(g[n].isna().sum()) for n in names},
         "source_geometry_null_count": int(g.geometry.isna().sum()), "source_geometry_empty_count": int(g.geometry.is_empty.sum()),
-        "source_invalid_geometry_count": invalid,
+        "source_invalid_geometry_count": invalid, "source_invalid_geometry_reasons": reasons,
         "source_coverage_scope": "Complete 4014-record contour-band polygon population of the pinned producer shapefile US_SA1P0_5Pct50Yrs_BC_poly (1.0 s spectral acceleration, 5% in 50 years, NEHRP site class B/C, VS30=760 m/s) over the conterminous U.S., Alaska and Hawaii, as published in the USGS ScienceBase item 04 package US_SA1P0_2Pct_5Pct_10Pct_50Yrs_BC.zip of the 2023 U.S. 50-State NSHM Overview data release (DOI 10.5066/P9GNPCOD). 157 distinct contour bands per field (low/high/range_cont) with the producer's -1000000 no-data band, 87 antimeridian MultiPolygons, 7 natively invalid (self-intersecting) ring geometries preserved verbatim without repair. Historical model snapshot; the 2026-08-10 Revised 2023 NSHM releases (CONUS 2023.R1/R2) supersede the model's hazard values with CSV point/curve data on a finer 0.05-degree grid and publish no successor polygon-map shapefiles.",
         "drift_guard": "Pinned official ScienceBase archive checksum, complete 29-member zip roster, exact PRJ text and DBF widths/types, layer name, CRS, contiguous FID roster 1..4014, polygon/multipolygon/ring/vertex totals, native validity census, all attributes and values, per-feature native WKB digests and bounds.",
     }
