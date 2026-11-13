@@ -111,19 +111,25 @@ EXPECTED_COUNT = 95423
 # attributes are captured through the producer's working attributes-only channel
 # and staged verbatim with explicitly gated null candidate geometry; the refusal
 # set is pinned and any change fails closed.
-EXPECTED_REFUSED_IDS: frozenset[int] = frozenset()
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-# Observed 2026-11-12 complete non-Lake population contract (featuretype<>3).
-EXPECTED_ID_SHA256 = "7c1f4e4a83a5a54b1e07d25b86b3f52d2f56364a9835738ebf4a8eb5687abf05"
-EXPECTED_SCHEMA_SHA256 = "4d6c9a8d0d5f6865f66a29e1b8b14ec9c83007d5f45ff05ce21a34a2e14e0e55"
-EXPECTED_RECORD_SHA256 = "71d5ec529dc2ba8f92353822643eba28f2a2765c9d96168ad42a4e60f8a325a9"
-EXPECTED_GEOMETRY_SHA256 = "f7ea01f2ee1d4e51c986b64c10a4237cd51a91d0b2c9be3895b7f22d7d70b73c"
-EXPECTED_FEATURETYPE_DISTRIBUTION = {1: 85220, 2: 9235, 4: 968}
+EXPECTED_REFUSED_IDS: frozenset[int] = frozenset({
+    1293173, 2520496, 4245000, 4694427, 7059540, 7059541, 7098625, 7135496, 7157221})
+EXPECTED_NULL_GEOMETRY_COUNT = 9
+# Observed 2026-11-13 complete non-Lake population contract (featuretype<>3),
+# re-derived from the dated full capture (330 pages, 9.0 GB wire+body under the
+# producer's identity encoding, no validation errors): the roster drifted from
+# the 2026-11-12 draft pins and the service refuses geometry for the nine
+# pinned records above, so null_geometry_count equals the refused count and the
+# featuretype distribution counts served geometries only.
+EXPECTED_ID_SHA256 = "da7641ddc6a3bc7849ce36069620de9c1c8b395b9fcb4d0dff4e49b7696942af"
+EXPECTED_SCHEMA_SHA256 = "51f11bd107670196d396c0908b3c68a4dce0f37466d3dd179c3df149fd4a04d3"
+EXPECTED_RECORD_SHA256 = "b424080aa54579c8011c24ae2f4e90550394756e9a81230fcfe37ac386b4868d"
+EXPECTED_GEOMETRY_SHA256 = "baaf0ae8c825420e64efa19ca7074b52e9abd5a7d61c8a546f6eae4983f31ab7"
+EXPECTED_FEATURETYPE_DISTRIBUTION = {1: 85215, 2: 9235, 4: 964}
 EXPECTED_FEATURETYPE_LABELS = {1: "River", 2: "Canal", 4: "Ocean or Great Lake"}
 EXPECTED_LAYER_EXTENT = {"xmin": -19951755.6817, "ymin": -1622985.3665999994,
                          "xmax": 20021551.747199997, "ymax": 11575301.958199998}
-EXPECTED_OBSERVED_BOUNDS = {"xmin": -179.1489075040686, "ymin": -14.447022724930001,
-                            "xmax": 179.43548326740464, "ymax": 71.98153473390992}
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -179.22967073889612, "ymin": -14.4246875666806,
+                            "xmax": 179.85665946299667, "ymax": 71.49960643639866}
 
 
 def _canonical(value: object) -> bytes:

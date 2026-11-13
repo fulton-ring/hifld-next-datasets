@@ -169,6 +169,7 @@ def _pins(features, schema, windows):
                         for feature in features if feature["attributes"]["OBJECTID"] in window]
         geometry_sha.update(_canonical(page_records))
     return dict(EXPECTED_COUNT=5, EXPECTED_NULL_GEOMETRY_COUNT=1,
+                EXPECTED_REFUSED_IDS=frozenset(),
                 EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),
                 EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(attrs)).hexdigest(),
                 EXPECTED_GEOMETRY_SHA256=geometry_sha.hexdigest(),
