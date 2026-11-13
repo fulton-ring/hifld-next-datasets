@@ -44,7 +44,7 @@ class UsaceObstructionLinesTests(unittest.TestCase):
             attributes.append({"attributes":values,"geometry":{"paths":[[[-88.0+oid/1000,37.0],[-87.9+oid/1000,37.1]]]}})
         features={"spatialReference":{"latestWkid":4326},"features":attributes}
         return {
-            "bts_item":{"id":source.BTS_ITEM_ID,"owner":"USDOT_BTS","title":"Inland Electronic Navigational Charts",
+            "bts_item":{"id":source.BTS_ITEM_ID,"owner":"USDOT_BTS","type":"PDF","title":"Inland Electronic Navigational Charts",
                          "description":"USACE updates. Feature classes are https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes and USACE_IENC_Master_Service_gdb.zip."},
             "service_directory":{"services":[{"name":"IENC_Feature_Classes/OBSTRUCTION_LINE","type":"MapServer"}]},
             "service_before":service,"layer_before":layer,"count_before":{"count":16},"ids_before":{"objectIds":source.EXPECTED_IDS},
@@ -55,11 +55,12 @@ class UsaceObstructionLinesTests(unittest.TestCase):
     def _capture_directory(self, root: Path):
         docs=self._documents()
         receipts={}
+        expected_urls=dict(source._capture_urls(source.EXPECTED_IDS))
         for name,doc in docs.items():
             body=_canonical(doc)
             (root/f"{name}.body").write_bytes(body)
             (root/f"{name}.wire").write_bytes(body)
-            receipt={"method":"GET","url":f"https://example.test/{name}","final_url":f"https://example.test/{name}",
+            receipt={"method":"GET","url":expected_urls[name],"final_url":expected_urls[name],
                      "observed_at":"2026-10-20T00:00:00Z","status":200,"complete_body":True,
                      "wire_bytes":len(body),"wire_sha256":source._sha(body),"bytes":len(body),"sha256":source._sha(body),
                      "content_encoding":"identity","content_length":len(body),"error_code":None}
@@ -67,6 +68,33 @@ class UsaceObstructionLinesTests(unittest.TestCase):
             receipts[name]=receipt
         (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"receipts":receipts,
             "artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+
+    def _repin_receipt_manifest(self, root: Path, name: str, mutation):
+        path=root/f"{name}.receipt.json"
+        receipt=json.loads(path.read_bytes())
+        mutation(receipt)
+        path.write_bytes(_canonical(receipt)+b"\n")
+        manifest=json.loads((root/"capture_manifest.json").read_bytes())
+        manifest["receipts"][name]=receipt
+        manifest["artifact_roster"]=capture_roster_digests(root,exclude={"capture_manifest.json"})
+        (root/"capture_manifest.json").write_bytes(_canonical(manifest)+b"\n")
+
+    def test_retained_capture_rejects_re_pinned_wrong_origin_query_and_method(self):
+        cases=[
+            ("origin", lambda r: r.update(url=r["url"].replace("ienccloud.us", "attacker.example"),
+                                           final_url=r["final_url"].replace("ienccloud.us", "attacker.example"))),
+            ("query", lambda r: r.update(url=r["url"]+"&unexpected=1", final_url=r["final_url"]+"&unexpected=1")),
+            ("method", lambda r: r.update(method="POST")),
+        ]
+        for name,mutate in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/"capture";root.mkdir();self._capture_directory(root)
+                self._repin_receipt_manifest(root,"features",mutate)
+                manifest=json.loads((root/"capture_manifest.json").read_bytes())
+                self.assertEqual(manifest["receipts"]["features"],json.loads((root/"features.receipt.json").read_bytes()))
+                self.assertEqual(manifest["artifact_roster"],capture_roster_digests(root,exclude={"capture_manifest.json"}))
+                with self.assertRaisesRegex(ValueError,"retained_capture_request_identity_mismatch:features"):
+                    source._read_replay(root)
 
     def test_live_contract_fields_ids_coordinates_and_attributes_are_complete(self):
         captures={name:(_canonical(doc),{"status":200}) for name,doc in self._documents().items()}
@@ -115,8 +143,12 @@ class UsaceObstructionLinesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/"capture";root.mkdir();self._capture_directory(root)
             storage=StagingStorageResource(local_dir=str(Path(tmp)/"staging"))
-            with patch.object(source,"validate_construction_code_identity"), patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+            with patch.object(source,"validate_construction_code_identity") as code_identity_check, patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
                 first=source.capture_usace_obstruction_lines(storage,version="draft",capture_directory=str(root))
+            code_identity_check.assert_called_once()
+            code_identity_args, code_identity_kwargs = code_identity_check.call_args
+            self.assertEqual(code_identity_args[1], code_identity_kwargs["identity"]["code_commit"])
+            self.assertEqual(code_identity_args[2], code_identity_kwargs["identity"]["files"])
             prefix=f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{first['version']}"
             manifest_before=storage.read_key(f"{prefix}/metadata/source_manifest.json")
             audit_before=storage.read_key(f"{prefix}/metadata/source_audit.json")

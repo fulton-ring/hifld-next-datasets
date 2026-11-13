@@ -21,8 +21,8 @@ class UsaceOverheadCablesConfig(Config):
     group_name="usace",
     compute_kind="http",
     description=(
-        "Official USACE IENC OVERHEAD_CABLE_LINE MapServer layer 43 (1,631 rows observed). "
-        "Unapproved faithful candidate; source, baseline, contract, coverage, rights, and release decisions remain pending."
+        "USACE IENC OVERHEAD_CABLE_LINE service layer 43 (1,631 features observed). The linked BTS catalog item is a proposed successor to an earlier item; catalog continuity and layer edition remain unaccepted. "
+        "Unapproved candidate; baseline, contract, coverage, rights, and release decisions remain pending."
     ),
 )
 def usace_overhead_cables_usace_ienc(context, config: UsaceOverheadCablesConfig,

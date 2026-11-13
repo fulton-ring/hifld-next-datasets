@@ -194,7 +194,7 @@ class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
         )
         return request, staging, published
 
-    def test_converted_publication_rejects_schema_mismatch_without_pointer_change(self):
+    def test_publication_requires_prepared_stac_without_pointer_change(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             request, staging, published = self._write_mismatched_schema_fixture(
                 Path(tmpdir)
@@ -226,7 +226,7 @@ class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
                         staging, published, request
                     ),
                 ),
-                self.assertRaisesRegex(ValueError, "missing.*ID"),
+                self.assertRaisesRegex(ValueError, "Missing or unreadable staged STAC Collection"),
             ):
                 publish_portolan_record(
                     request,
@@ -529,6 +529,7 @@ class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
                 "dagster_hifld.portolan.workflow.prepare_promoted_portolan_catalog",
                 return_value={"generation":"generation-1"},
             ) as publish,
+            patch.object(StagingStorageResource, "read_key", return_value=b"{}"),
         ):
             result = publish_portolan_catalog.node_def.compute_fn.decorated_fn(
                 context, staging, published
@@ -571,6 +572,7 @@ class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
                 "dagster_hifld.portolan.workflow.prepare_promoted_portolan_catalog",
                 return_value={"generation":"generation-1"},
             ) as publish,
+            patch.object(StagingStorageResource, "read_key", return_value=b"{}"),
         ):
             publish_portolan_catalog.node_def.compute_fn.decorated_fn(
                 context, staging, published
@@ -843,7 +845,7 @@ class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
         )
         with (
             patch(
-                "dagster_hifld.portolan.workflow._prepare_portolan_record",
+                "dagster_hifld.portolan.workflow._prepare_approved_portolan_record",
                 return_value=record,
             ) as prepare,
             patch(
@@ -855,8 +857,7 @@ class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
                 request, staging=staging, published=published, catalog_only=True, use_release_pointer=True
             )
 
-        self.assertFalse(prepare.call_args.kwargs["convert"])
-        self.assertFalse(prepare.call_args.kwargs["promote"])
+        self.assertTrue(prepare.call_args.kwargs["catalog_only"])
 
     def test_catalog_only_record_preserves_authored_version_metadata(self):
         note = (
