@@ -622,6 +622,71 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
                 self.assertEqual(sealed["feature_count"], FIXTURE_COUNT)
                 self.assertTrue(sorted(capture_root.glob("page_*.error-*.body")))
 
+    def test_layer_bracket_ignores_volatile_drawing_info(self):
+        """Volatile display metadata must not fail the before/after brackets.
+
+        The producer's live layer document regenerates
+        drawingInfo.renderer.authoringInfo.colorRamp per request (observed on
+        the 2026-11-13 full capture, which refused to complete on this field
+        alone while the data contract stayed byte-identical).
+        """
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        calls = {"n": 0}
+
+        def volatile_layer():
+            calls["n"] += 1
+            doc = _fixture_layer_doc(_fixture_layer_fields())
+            if calls["n"] >= 2:
+                doc["drawingInfo"] = {
+                    "renderer": {"type": "uniqueValue", "field1": "featuretype",
+                                 "authoringInfo": {"colorRamp": [
+                                     {"type": "algorithmic",
+                                      "algorithm": "esriCIELabAlgorithm",
+                                      "fromColor": [240, 212, 252, 255],
+                                      "toColor": [240, 212, 252, 255]}]}}}
+            return doc
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, make_responder(rows, layer=volatile_layer),
+                              page_size=2):
+                result = src.capture_nhd_waterbody_large_scale(
+                    _staging(root), version="bracket-run", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertFalse(result["release_accepted"])
+
+    def test_layer_bracket_contract_change_is_still_refused(self):
+        """Bracket comparison stays fail-closed for every non-display field."""
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        calls = {"n": 0}
+
+        def drifting_layer():
+            calls["n"] += 1
+            doc = _fixture_layer_doc(_fixture_layer_fields())
+            if calls["n"] >= 2:
+                doc["maxRecordCount"] = 2000
+            return doc
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, make_responder(rows, layer=drifting_layer),
+                              page_size=2):
+                with self.assertRaisesRegex(src.NhdWaterbodyLargeScaleError,
+                                            "source_metadata_or_count_changed_during_capture"):
+                    src.capture_nhd_waterbody_large_scale(
+                        _staging(root), version="bracket-drift-run",
+                        capture_directory=str(capture_root))
+            quarantined = sorted(
+                (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"],
+                             "source_metadata_or_count_changed_during_capture")
+
     def test_single_record_refusal_uses_attrs_channel_and_gates_null_geometry(self):
         """A producer-refused single record keeps its captured attributes with
         explicitly gated null candidate geometry and a pinned refusal set."""

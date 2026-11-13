@@ -1012,11 +1012,25 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise NhdWaterbodyLargeScaleError("source_schema_baseline_drift")
     if docs["count_before"].get("count") != EXPECTED_COUNT:
         raise NhdWaterbodyLargeScaleError("source_count_drift")
+
+    def _bracket_document(document: object) -> object:
+        # The producer's layer document carries display-only renderer metadata
+        # (drawingInfo.renderer.authoringInfo.colorRamp) that the ArcGIS server
+        # regenerates per request: the observed 2026-11-13 full capture refused
+        # to complete on this field alone while the data contract (identity,
+        # schema, pagination, extent, spatial reference, count) stayed
+        # byte-identical. Volatile display metadata is therefore excluded from
+        # the bracket comparison; every other difference still fails closed.
+        if isinstance(document, dict) and "drawingInfo" in document:
+            return {key: value for key, value in document.items()
+                    if key != "drawingInfo"}
+        return document
+
     for name in ("layer_after", "service_after", "count_after"):
         body, _receipt = _read_capture(capture_root, name)
         mirror = {"layer_after": "layer_before", "service_after": "service_before",
                   "count_after": "count_before"}[name]
-        if json.loads(body) != docs[mirror]:
+        if _bracket_document(json.loads(body)) != _bracket_document(docs[mirror]):
             raise NhdWaterbodyLargeScaleError("source_metadata_or_count_changed_during_capture")
     after_fields = json.loads(_read_capture(capture_root, "layer_after")[0]).get("fields")
     if not isinstance(after_fields, list) or [_plain_field(x) for x in after_fields] != fields:
