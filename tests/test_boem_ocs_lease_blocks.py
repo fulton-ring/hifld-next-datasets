@@ -6,6 +6,7 @@ import hashlib
 import json
 import tempfile
 import unittest
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -100,9 +101,51 @@ def _fixture():
     return captures
 
 
+_UNPINNED = {
+    "EXPECTED_COUNT": None,
+    "EXPECTED_IDS_SHA256": "",
+    "EXPECTED_SCHEMA_SHA256": "",
+    "EXPECTED_RECORD_SHA256": "",
+    "EXPECTED_GEOMETRY_SHA256": "",
+    "EXPECTED_NULL_GEOMETRY_COUNT": None,
+    "EXPECTED_RING_COUNT_DISTRIBUTION": None,
+    "EXPECTED_UNIQUE_PROT_NUMBER_COUNT": None,
+    "EXPECTED_UNIQUE_BLOCK_KEY_COUNT": None,
+    "EXPECTED_DUPLICATE_BLOCK_KEY_COUNT": None,
+    "EXPECTED_OBSERVED_BOUNDS": None,
+}
+
+
+@contextmanager
+def fixture_pins():
+    """Pin every module baseline to the fixture capture's own audit values."""
+    with ExitStack() as stack:
+        for name, value in _UNPINNED.items():
+            stack.enter_context(patch.object(blocks, name, value))
+        audit = blocks._validate(_fixture())[3]
+        stack.close()
+        pins = {
+            "EXPECTED_COUNT": audit["feature_count"],
+            "EXPECTED_IDS_SHA256": audit["source_id_sha256"],
+            "EXPECTED_SCHEMA_SHA256": audit["source_schema_sha256"],
+            "EXPECTED_RECORD_SHA256": audit["source_record_sha256"],
+            "EXPECTED_GEOMETRY_SHA256": audit["source_geometry_sha256"],
+            "EXPECTED_NULL_GEOMETRY_COUNT": audit["null_geometry_count"],
+            "EXPECTED_RING_COUNT_DISTRIBUTION": audit["ring_count_distribution"],
+            "EXPECTED_UNIQUE_PROT_NUMBER_COUNT": audit["unique_prot_number_count"],
+            "EXPECTED_UNIQUE_BLOCK_KEY_COUNT": audit["unique_block_key_count"],
+            "EXPECTED_DUPLICATE_BLOCK_KEY_COUNT": audit["duplicate_block_key_count"],
+            "EXPECTED_OBSERVED_BOUNDS": audit["geometry_bounds"],
+        }
+        for name, value in pins.items():
+            stack.enter_context(patch.object(blocks, name, value))
+        yield audit
+
+
 class BoemOcsLeaseBlocksTests(unittest.TestCase):
     def test_native_fields_polygon_nulls_and_audit_counts(self):
-        _, fields, features, audit = blocks._validate(_fixture())
+        with fixture_pins():
+            _, fields, features, audit = blocks._validate(_fixture())
         self.assertEqual([field["name"] for field in fields], blocks.FIELD_NAMES)
         self.assertEqual(len(features), 4)
         self.assertEqual(audit["unique_objectid_count"], 4)
@@ -117,180 +160,182 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
         self.assertEqual(audit["geometry_bounds"][3], 61.0)
 
     def test_spatial_reference_alias_is_valid_but_contradictions_are_rejected(self):
-        captures = _fixture()
-        _, _, _, audit = blocks._validate(captures)
-        self.assertEqual(audit["source_crs_epsg"], 4269)
+        with fixture_pins():
+            captures = _fixture()
+            _, _, _, audit = blocks._validate(captures)
+            self.assertEqual(audit["source_crs_epsg"], 4269)
 
-        candidate = copy.deepcopy(captures)
-        doc = json.loads(candidate["layer_before"][0])
-        doc["extent"]["spatialReference"] = {"wkid": 4326, "latestWkid": 4269}
-        candidate["layer_before"] = (_body(doc), candidate["layer_before"][1])
-        with self.assertRaisesRegex(ValueError, "source_layer_spatial_reference_drift"):
-            blocks._validate(candidate)
+            candidate = copy.deepcopy(captures)
+            doc = json.loads(candidate["layer_before"][0])
+            doc["extent"]["spatialReference"] = {"wkid": 4326, "latestWkid": 4269}
+            candidate["layer_before"] = (_body(doc), candidate["layer_before"][1])
+            with self.assertRaisesRegex(ValueError, "source_layer_spatial_reference_drift"):
+                blocks._validate(candidate)
 
-        candidate = copy.deepcopy(captures)
-        doc = json.loads(candidate["page_000"][0])
-        doc["spatialReference"] = {"wkid": 4326, "latestWkid": 4269}
-        candidate["page_000"] = (_body(doc), candidate["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_page_spatial_reference_drift"):
-            blocks._validate(candidate)
+            candidate = copy.deepcopy(captures)
+            doc = json.loads(candidate["page_000"][0])
+            doc["spatialReference"] = {"wkid": 4326, "latestWkid": 4269}
+            candidate["page_000"] = (_body(doc), candidate["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_page_spatial_reference_drift"):
+                blocks._validate(candidate)
 
-        candidate = copy.deepcopy(captures)
-        doc = json.loads(candidate["page_000"][0])
-        doc["features"][0]["geometry"]["spatialReference"] = {"wkid": 3857}
-        candidate["page_000"] = (_body(doc), candidate["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_geometry_spatial_reference_drift"):
-            blocks._validate(candidate)
+            candidate = copy.deepcopy(captures)
+            doc = json.loads(candidate["page_000"][0])
+            doc["features"][0]["geometry"]["spatialReference"] = {"wkid": 3857}
+            candidate["page_000"] = (_body(doc), candidate["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_geometry_spatial_reference_drift"):
+                blocks._validate(candidate)
 
     def test_missing_id_truncation_and_schema_drift_are_rejected(self):
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"].pop()
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_feature_population_incomplete"):
-            blocks._validate(captures)
-
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"][0]["attributes"].pop("OBJECTID")
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_feature_population_incomplete"):
-            blocks._validate(captures)
-
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"][0]["attributes"]["OBJECTID"] = 999
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_feature_population_incomplete"):
-            blocks._validate(captures)
-
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"][0]["attributes"]["UNEXPECTED_COLUMN"] = "x"
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_feature_field_roster_drift"):
-            blocks._validate(captures)
-
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"][0]["attributes"]["BLOCK_NUMBER"] = 71
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_string_field_type_drift"):
-            blocks._validate(captures)
-
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"][0]["attributes"]["Shape__Area"] = "big"
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_double_field_type_drift"):
-            blocks._validate(captures)
-
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"][0]["geometry"] = {"x": -93.1, "y": 29.6}
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_polygon_geometry_invalid"):
-            blocks._validate(captures)
-
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"][0]["geometry"]["rings"][0][2][0] = -200.0
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_polygon_coordinates_invalid"):
-            blocks._validate(captures)
-
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"][0]["geometry"]["rings"][0].pop(-1)
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_polygon_ring_unclosed"):
-            blocks._validate(captures)
-
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        inner_ring = [[-93.12, 29.60], [-93.12, 29.59], [-93.11, 29.59], [-93.11, 29.60],
-                      [-93.12, 29.60]]
-        doc["features"][0]["geometry"]["rings"] = [BLOCK_RING, inner_ring]
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_polygon_nested_rings_unexpected"):
-            blocks._validate(captures)
-
-        # Duplicate (PROT_NUMBER, BLOCK_NUMBER) keys are allowed (the producer
-        # publishes split blocks as same-key rows) but are pinned: with the
-        # duplicate gate pinned to 0 the mutated fixture refuses.
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"][0]["attributes"]["BLOCK_NUMBER"] = "   72"
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with patch.object(blocks, "EXPECTED_DUPLICATE_BLOCK_KEY_COUNT", 0):
-            with self.assertRaisesRegex(ValueError, "source_block_key_uniqueness_drift"):
+        with fixture_pins():
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"].pop()
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_feature_population_incomplete"):
                 blocks._validate(captures)
 
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["exceededTransferLimit"] = True
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_page_error_or_truncation"):
-            blocks._validate(captures)
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"][0]["attributes"].pop("OBJECTID")
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_feature_population_incomplete"):
+                blocks._validate(captures)
 
-        captures = _fixture()
-        doc = json.loads(captures["page_000"][0])
-        doc["features"][1]["attributes"]["OBJECTID"], doc["features"][0]["attributes"]["OBJECTID"] = (
-            doc["features"][0]["attributes"]["OBJECTID"], doc["features"][1]["attributes"]["OBJECTID"])
-        captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_page_order_drift"):
-            blocks._validate(captures)
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"][0]["attributes"]["OBJECTID"] = 999
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_feature_population_incomplete"):
+                blocks._validate(captures)
 
-        captures = _fixture()
-        doc = json.loads(captures["layer_before"][0])
-        doc["fields"][1]["type"] = "esriFieldTypeInteger"
-        captures["layer_before"] = (_body(doc), captures["layer_before"][1])
-        with self.assertRaisesRegex(ValueError, "source_field_schema_drift"):
-            blocks._validate(captures)
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"][0]["attributes"]["UNEXPECTED_COLUMN"] = "x"
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_feature_field_roster_drift"):
+                blocks._validate(captures)
+
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"][0]["attributes"]["BLOCK_NUMBER"] = 71
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_string_field_type_drift"):
+                blocks._validate(captures)
+
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"][0]["attributes"]["Shape__Area"] = "big"
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_double_field_type_drift"):
+                blocks._validate(captures)
+
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"][0]["geometry"] = {"x": -93.1, "y": 29.6}
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_polygon_geometry_invalid"):
+                blocks._validate(captures)
+
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"][0]["geometry"]["rings"][0][2][0] = -200.0
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_polygon_coordinates_invalid"):
+                blocks._validate(captures)
+
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"][0]["geometry"]["rings"][0].pop(-1)
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_polygon_ring_unclosed"):
+                blocks._validate(captures)
+
+            # Nested (hole) rings fail closed: the producer publishes disjoint
+            # outer rings only.
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            inner_ring = [[-93.12, 29.60], [-93.12, 29.59], [-93.11, 29.59],
+                          [-93.11, 29.60], [-93.12, 29.60]]
+            doc["features"][0]["geometry"]["rings"] = [BLOCK_RING, inner_ring]
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_polygon_nested_rings_unexpected"):
+                blocks._validate(captures)
+
+            # Duplicate (PROT_NUMBER, BLOCK_NUMBER) keys are allowed (the
+            # producer publishes split blocks as same-key rows) but are pinned:
+            # with the duplicate gate pinned to 0 the mutated fixture refuses.
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"][0]["attributes"]["BLOCK_NUMBER"] = "   72"
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with patch.object(blocks, "EXPECTED_DUPLICATE_BLOCK_KEY_COUNT", 0):
+                with self.assertRaisesRegex(ValueError, "source_block_key_uniqueness_drift"):
+                    blocks._validate(captures)
+
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["exceededTransferLimit"] = True
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_page_error_or_truncation"):
+                blocks._validate(captures)
+
+            captures = _fixture()
+            doc = json.loads(captures["page_000"][0])
+            doc["features"][1]["attributes"]["OBJECTID"], doc["features"][0]["attributes"]["OBJECTID"] = (
+                doc["features"][0]["attributes"]["OBJECTID"], doc["features"][1]["attributes"]["OBJECTID"])
+            captures["page_000"] = (_body(doc), captures["page_000"][1])
+            with self.assertRaisesRegex(ValueError, "source_page_order_drift"):
+                blocks._validate(captures)
+
+            captures = _fixture()
+            doc = json.loads(captures["layer_before"][0])
+            doc["fields"][1]["type"] = "esriFieldTypeInteger"
+            captures["layer_before"] = (_body(doc), captures["layer_before"][1])
+            with self.assertRaisesRegex(ValueError, "source_field_schema_drift"):
+                blocks._validate(captures)
 
     def test_pinned_baselines_are_enforced_once_set(self):
-        fixture = _fixture()
-        _, _, _, audit = blocks._validate(copy.deepcopy(fixture))
-        patches = [
-            ("EXPECTED_COUNT", audit["feature_count"]),
-            ("EXPECTED_IDS_SHA256", audit["source_id_sha256"]),
-            ("EXPECTED_SCHEMA_SHA256", audit["source_schema_sha256"]),
-            ("EXPECTED_RECORD_SHA256", audit["source_record_sha256"]),
-            ("EXPECTED_GEOMETRY_SHA256", audit["source_geometry_sha256"]),
-            ("EXPECTED_NULL_GEOMETRY_COUNT", audit["null_geometry_count"]),
-            ("EXPECTED_RING_COUNT_DISTRIBUTION", audit["ring_count_distribution"]),
-            ("EXPECTED_UNIQUE_BLOCK_KEY_COUNT", audit["unique_block_key_count"]),
-            ("EXPECTED_DUPLICATE_BLOCK_KEY_COUNT", audit["duplicate_block_key_count"]),
-            ("EXPECTED_OBSERVED_BOUNDS", audit["geometry_bounds"]),
-        ]
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(use_local=True, local_dir=tmp)
-            with patch.object(blocks, "_load_offline", return_value=copy.deepcopy(fixture)), \
-                    patch.object(blocks, "_geoparquet", return_value=b"candidate"), \
-                    patch.object(blocks, "processing_identity",
-                                 return_value={"code_commit": "a" * 40,
-                                               "files": {"x.py": "b" * 64}}), \
-                    patch.object(blocks, "validate_construction_code_identity",
-                                 return_value=None), \
-                    patch.object(epa_frs_common, "validate_construction_code_identity",
-                                 return_value=None):
-                result = blocks.capture_boem_ocs_lease_blocks(
-                    storage, offline_capture_directory=tmp)
-                self.assertTrue(result["reused"] is False)
-                for name, value in patches:
-                    with self.subTest(pin=name):
-                        with patch.object(blocks, name, value):
-                            again = blocks.capture_boem_ocs_lease_blocks(
-                                storage, offline_capture_directory=tmp)
-                            self.assertTrue(again["reused"])
-                # A single pinned baseline set to a wrong value refuses the capture.
-                for name, value in (("EXPECTED_IDS_SHA256", "0" * 64),
-                                    ("EXPECTED_COUNT", audit["feature_count"] + 1)):
-                    with self.subTest(refusal=name):
-                        with patch.object(blocks, name, value):
-                            with self.assertRaisesRegex(ValueError, "source_"):
-                                blocks.capture_boem_ocs_lease_blocks(
+            with fixture_pins() as audit:
+                fixture = _fixture()
+                with patch.object(blocks, "_load_offline", return_value=copy.deepcopy(fixture)), \
+                        patch.object(blocks, "_geoparquet", return_value=b"candidate"), \
+                        patch.object(blocks, "processing_identity",
+                                     return_value={"code_commit": "a" * 40,
+                                                   "files": {"x.py": "b" * 64}}), \
+                        patch.object(blocks, "validate_construction_code_identity",
+                                     return_value=None), \
+                        patch.object(epa_frs_common, "validate_construction_code_identity",
+                                     return_value=None):
+                    result = blocks.capture_boem_ocs_lease_blocks(
+                        storage, offline_capture_directory=tmp)
+                    self.assertFalse(result["reused"])
+                    pins = [
+                        ("EXPECTED_IDS_SHA256", audit["source_id_sha256"]),
+                        ("EXPECTED_RECORD_SHA256", audit["source_record_sha256"]),
+                        ("EXPECTED_GEOMETRY_SHA256", audit["source_geometry_sha256"]),
+                        ("EXPECTED_NULL_GEOMETRY_COUNT", audit["null_geometry_count"]),
+                        ("EXPECTED_RING_COUNT_DISTRIBUTION", audit["ring_count_distribution"]),
+                        ("EXPECTED_DUPLICATE_BLOCK_KEY_COUNT",
+                         audit["duplicate_block_key_count"]),
+                        ("EXPECTED_OBSERVED_BOUNDS", audit["geometry_bounds"]),
+                    ]
+                    for name, value in pins:
+                        with self.subTest(pin=name):
+                            with patch.object(blocks, name, value):
+                                again = blocks.capture_boem_ocs_lease_blocks(
                                     storage, offline_capture_directory=tmp)
+                                self.assertTrue(again["reused"])
+                    # A pinned baseline set to a wrong value refuses the capture.
+                    for name, value in (("EXPECTED_IDS_SHA256", "0" * 64),
+                                        ("EXPECTED_COUNT", audit["feature_count"] + 1)):
+                        with self.subTest(refusal=name):
+                            with patch.object(blocks, name, value):
+                                with self.assertRaisesRegex(ValueError, "source_"):
+                                    blocks.capture_boem_ocs_lease_blocks(
+                                        storage, offline_capture_directory=tmp)
 
     def test_same_content_reuses_original_receipts_and_changed_content_versions(self):
         fixture = _fixture()
@@ -301,58 +346,64 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(use_local=True, local_dir=tmp)
+            with fixture_pins():
+                def run(observed_at, mutate=False):
+                    captures = copy.deepcopy(fixture)
+                    for _, receipt in captures.values():
+                        receipt["observed_at"] = observed_at
+                    if mutate:
+                        doc = json.loads(captures["page_000"][0])
+                        doc["features"][0]["attributes"]["BLK_FED_APRV_DT"] = "02-JUL-2011"
+                        body = _body(doc)
+                        receipt = captures["page_000"][1]
+                        receipt.update(bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
+                                       wire_bytes=len(body),
+                                       wire_sha256=hashlib.sha256(body).hexdigest())
+                        captures["page_000"] = (body, receipt)
+                    extra = ([patch.object(blocks, "EXPECTED_RECORD_SHA256", "")] if mutate else [])
+                    with patch.object(blocks, "_load_offline", return_value=captures), \
+                            patch.object(blocks, "_geoparquet", side_effect=parquet), \
+                            patch.object(blocks, "processing_identity",
+                                         return_value=stable_identity), \
+                            patch.object(blocks, "validate_construction_code_identity",
+                                         return_value=None), \
+                            patch.object(epa_frs_common, "validate_construction_code_identity",
+                                         return_value=None):
+                        with ExitStack() as stack:
+                            for extra_patch in extra:
+                                stack.enter_context(extra_patch)
+                            return blocks.capture_boem_ocs_lease_blocks(
+                                storage, offline_capture_directory=tmp)
 
-            def run(observed_at, mutate=False):
-                captures = copy.deepcopy(fixture)
-                for _, receipt in captures.values():
-                    receipt["observed_at"] = observed_at
-                if mutate:
-                    doc = json.loads(captures["page_000"][0])
-                    doc["features"][0]["attributes"]["BLK_FED_APRV_DT"] = "02-JUL-2011"
-                    body = _body(doc)
-                    receipt = captures["page_000"][1]
-                    receipt.update(bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
-                                   wire_bytes=len(body),
-                                   wire_sha256=hashlib.sha256(body).hexdigest())
-                    captures["page_000"] = (body, receipt)
-                with patch.object(blocks, "_load_offline", return_value=captures), \
-                        patch.object(blocks, "_geoparquet", side_effect=parquet), \
-                        patch.object(blocks, "processing_identity", return_value=stable_identity), \
-                        patch.object(blocks, "validate_construction_code_identity",
-                                     return_value=None), \
-                        patch.object(epa_frs_common, "validate_construction_code_identity",
-                                     return_value=None):
-                    return blocks.capture_boem_ocs_lease_blocks(
-                        storage, offline_capture_directory=tmp)
-
-            first = run("2026-01-01T00:00:00Z")
-            first_manifest = json.loads(storage.read_key(
-                first["candidate_ready"].replace("metadata/candidate_ready.json",
-                                                 "metadata/source_manifest.json")))
-            second = run("2026-01-02T00:00:00Z")
-            second_manifest = json.loads(storage.read_key(
-                second["candidate_ready"].replace("metadata/candidate_ready.json",
-                                                  "metadata/source_manifest.json")))
-            self.assertEqual(first["version"], second["version"])
-            self.assertTrue(second["reused"])
-            self.assertEqual(first_manifest["inputs"], second_manifest["inputs"])
-            changed = run("2026-01-03T00:00:00Z", mutate=True)
-            self.assertNotEqual(first["version"], changed["version"])
+                first = run("2026-01-01T00:00:00Z")
+                first_manifest = json.loads(storage.read_key(
+                    first["candidate_ready"].replace("metadata/candidate_ready.json",
+                                                     "metadata/source_manifest.json")))
+                second = run("2026-01-02T00:00:00Z")
+                second_manifest = json.loads(storage.read_key(
+                    second["candidate_ready"].replace("metadata/candidate_ready.json",
+                                                      "metadata/source_manifest.json")))
+                self.assertEqual(first["version"], second["version"])
+                self.assertTrue(second["reused"])
+                self.assertEqual(first_manifest["inputs"], second_manifest["inputs"])
+                changed = run("2026-01-03T00:00:00Z", mutate=True)
+                self.assertNotEqual(first["version"], changed["version"])
 
     def test_manifest_records_first_party_host_and_pending_acceptance(self):
         fixture = _fixture()
         stable_identity = {"code_commit": "a" * 40, "files": {"x.py": "b" * 64}}
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(use_local=True, local_dir=tmp)
-            with patch.object(blocks, "_load_offline", return_value=copy.deepcopy(fixture)), \
-                    patch.object(blocks, "_geoparquet", return_value=b"candidate"), \
-                    patch.object(blocks, "processing_identity", return_value=stable_identity), \
-                    patch.object(blocks, "validate_construction_code_identity",
-                                 return_value=None), \
-                    patch.object(epa_frs_common, "validate_construction_code_identity",
-                                 return_value=None):
-                result = blocks.capture_boem_ocs_lease_blocks(
-                    storage, offline_capture_directory=tmp)
+            with fixture_pins():
+                with patch.object(blocks, "_load_offline", return_value=copy.deepcopy(fixture)), \
+                        patch.object(blocks, "_geoparquet", return_value=b"candidate"), \
+                        patch.object(blocks, "processing_identity", return_value=stable_identity), \
+                        patch.object(blocks, "validate_construction_code_identity",
+                                     return_value=None), \
+                        patch.object(epa_frs_common, "validate_construction_code_identity",
+                                     return_value=None):
+                    result = blocks.capture_boem_ocs_lease_blocks(
+                        storage, offline_capture_directory=tmp)
             base = result["candidate_ready"].replace("metadata/candidate_ready.json", "metadata/")
             manifest = json.loads(storage.read_key(base + "source_manifest.json"))
             self.assertFalse(manifest["source_authority_accepted"])
@@ -373,10 +424,11 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
             self.assertFalse(result["source_authority_accepted"])
 
     def test_geoparquet_roundtrip_preserves_native_values_and_geometry(self):
-        fixture = _fixture()
-        _, fields, features, _ = blocks._validate(copy.deepcopy(fixture))
-        with tempfile.TemporaryDirectory() as tmp:
-            body = blocks._geoparquet(features, fields, Path(tmp))
+        with fixture_pins():
+            fixture = _fixture()
+            _, fields, features, _ = blocks._validate(copy.deepcopy(fixture))
+            with tempfile.TemporaryDirectory() as tmp:
+                body = blocks._geoparquet(features, fields, Path(tmp))
         import io
         import pyarrow.parquet as pq
         from shapely import from_wkb

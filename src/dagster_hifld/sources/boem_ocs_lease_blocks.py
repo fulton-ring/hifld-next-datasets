@@ -71,20 +71,24 @@ CROSSWALK_DEAD_REDIRECT_NOTE = (
     "services/Hosted/BOEM_Offshore_Marine_Cadastre_Data_Collection/FeatureServer/3) "
     "no longer resolves; the same cadastre product is served first-party on BOEM's "
     "own gis.boem.gov server (layer 11).")
-# The per-value and per-geometry baselines, gate counts and observed bounds are
-# pinned from the dated complete capture; unpinned values ("", None) are checked
-# only once pinned.
-EXPECTED_COUNT: int | None = None
-EXPECTED_IDS_SHA256 = ""
-EXPECTED_SCHEMA_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT: int | None = None
-EXPECTED_RING_COUNT_DISTRIBUTION: dict[int, int] | None = None
-EXPECTED_UNIQUE_PROT_NUMBER_COUNT: int | None = None
-EXPECTED_UNIQUE_BLOCK_KEY_COUNT: int | None = None
-EXPECTED_DUPLICATE_BLOCK_KEY_COUNT: int | None = None
-EXPECTED_OBSERVED_BOUNDS: list[float] | None = None
+# The per-value and per-geometry baselines, gate counts and observed bounds
+# are pinned from the dated complete capture (2026-11-13, 28 accepted
+# resultOffset pages, /workspace/captures258 in the task sandbox); unpinned
+# values (None or "") are checked only once pinned.
+EXPECTED_COUNT = 278_438
+EXPECTED_IDS_SHA256 = "dc891e1182e69533063605d67764153a2dcb410d4fe0fcb9166e31d830e3cab5"
+EXPECTED_SCHEMA_SHA256 = "9294be8bdc15558774532cf2c997830b3ef153aefd8cd4c3efa88c4de92ebe05"
+EXPECTED_RECORD_SHA256 = "adafad8e40022e9067950767ed6c9a89bfd33ae4c7f804890af92a036546ef35"
+EXPECTED_GEOMETRY_SHA256 = "221967344317097c4cf5f53610e2ce88e1095e72f68c1fd6a25830819a950eca"
+EXPECTED_NULL_GEOMETRY_COUNT = 45
+EXPECTED_RING_COUNT_DISTRIBUTION = {1: 278_373, 2: 20}
+EXPECTED_UNIQUE_PROT_NUMBER_COUNT = 476
+EXPECTED_UNIQUE_BLOCK_KEY_COUNT = 278_347
+# The producer publishes 91 blocks (all in protraction NG16-02) as two
+# same-key features each; rows are kept verbatim and the count is pinned as a
+# drift gate.
+EXPECTED_DUPLICATE_BLOCK_KEY_COUNT = 91
+EXPECTED_OBSERVED_BOUNDS = [-180.0, 23.8179931640625, -64.1082763671875, 74.99639892578125]
 BASELINE_PENDING_NOTE = (
     "The record and geometry baseline digests, gate counts and observed bounds "
     "are pinned from a completed capture; unpinned values are checked only once "
