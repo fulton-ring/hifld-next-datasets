@@ -116,6 +116,31 @@ COVERAGE_SCOPE = (
     "and the ULS carries the locations licensees filed for them, so this is the "
     "filed-site population the FCC publishes, not a census of physical towers."
 )
+# FCC policy requires ULS geographic coordinates to be referenced to the North
+# American Datum of 1983 (https://www.fcc.gov/wireless/systems-utilities/
+# north-american-datum-1983-coordinates): CONUS, Alaska, Hawaii, Puerto Rico and
+# the U.S. Virgin Islands are converted to NAD83 (NCAT), American Samoa and Guam
+# use FCC-specified shifts to NAD83 from their local datums, and for other
+# Pacific island areas (Baker, Howland, Jarvis, Johnston, Kingman Reef, Midway,
+# Northern Mariana Islands, Palmyra, Wake) coordinates remain in the applicable
+# local datum. The published WKB points carry the DMS-derived decimal values
+# unchanged, so the GeoParquet geometry is declared in the native EPSG:4269
+# datum; no datum transformation, reprojection, repair or geocoding is applied.
+GEOMETRY_CRS = {
+    "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+    "type": "GeographicCRS",
+    "name": "NAD83",
+    "datum": {"type": "GeodeticReferenceFrame", "name": "North American Datum 1983",
+              "ellipsoid": {"name": "GRS 1980", "semi_major_axis": 6378137, "inverse_flattening": 298.257222101},
+              "id": {"authority": "EPSG", "code": 6269}},
+    "coordinate_system": {"subtype": "ellipsoidal", "axis": [{"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"},
+                                                             {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}]},
+    "id": {"authority": "EPSG", "code": 4269},
+}
+GEOMETRY_PROVENANCE = ("WKB Point (londec, latdec) in EPSG:4269 (NAD83), the datum the FCC requires for "
+                       "ULS location coordinates; the DMS-derived decimal values are written unchanged, "
+                       "with no datum transformation, reprojection, repair or geocoding; fully empty DMS "
+                       "rows keep null geometry")
 
 
 def _capture_budget(root: Path) -> None:
@@ -389,6 +414,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         "source_invalid_direction_count": invalid_directions,
         "source_file_creation_date": creation_date,
         "source_null_geometry_count": null_geometry,
+        "source_geometry_datum": "NAD83 (EPSG:4269), the FCC-required ULS location-coordinate datum; "
+                                 "coordinates are written unchanged with no datum transformation",
         "source_bounds": bounds, "source_state_count": len(states),
         "source_coverage_scope": COVERAGE_SCOPE,
         "drift_guard": ("Exact capture roster, HTTP status/completeness/length/hash receipt, zip member roster, "
@@ -400,7 +427,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                         "null-geometry count are checked. Duplicate source location rows are published verbatim "
                         "rather than dropped; direction letters outside the nominal set are preserved and "
                         "converted by the plain formula without sign flip; fully empty DMS rows stay null "
-                        "geometry, and one-sided empty DMS rows fail closed."),
+                        "geometry, and one-sided empty DMS rows fail closed. Published geometry is declared in "
+                        "the FCC-required native NAD83 datum (EPSG:4269) with no datum transformation."),
     }
     return published, audit
 
@@ -409,15 +437,8 @@ def _parquet_bytes(published: list[dict]) -> bytes:
     import io
     arrays = [pa.array([item[name] for item in published], type=kind) for name, kind in PUBLISHED_SCHEMA]
     table = pa.Table.from_arrays(arrays, names=[name for name, _ in PUBLISHED_SCHEMA])
-    crs = {"$schema": "https://proj.org/schemas/v0.7/projjson.schema.json", "type": "GeographicCRS", "name": "WGS 84",
-           "datum": {"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984",
-                     "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137, "inverse_flattening": 298.257223563},
-                     "id": {"authority": "EPSG", "code": 6326}},
-           "coordinate_system": {"subtype": "ellipsoidal", "axis": [{"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"},
-                                                                    {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}]},
-           "id": {"authority": "EPSG", "code": 4326}}
     metadata = {b"geo": _canonical({"version": "1.1.0", "primary_column": "geometry",
-                                   "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"], "crs": crs}}})}
+                                   "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"], "crs": GEOMETRY_CRS}}})}
     sink = io.BytesIO()
     pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd", use_dictionary=False)
     return sink.getvalue()
@@ -536,7 +557,7 @@ def capture_microwave_service_towers(storage: StagingStorageResource, *, version
                                 "column convention (missing minutes or seconds contribute zero; direction "
                                 "letters outside the nominal set are preserved verbatim and do not flip the "
                                 "sign); url embeds UniqSysID as the ULS license-location key"),
-            "geometry": "WKB Point (londec, latdec) in EPSG:4326, no reprojection, repair or geocoding; fully empty DMS rows keep null geometry",
+            "geometry": GEOMETRY_PROVENANCE,
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
         "lineage": ("The historical HIFLD OPEN Microwave Service Towers layer is described by its publisher as an "
                     "extract of the Universal Licensing System (ULS) licensed by the Wireless Telecommunications "

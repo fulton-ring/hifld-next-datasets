@@ -35,7 +35,16 @@ null-geometry count. Source data quality anomalies are preserved, not
 repaired: 449 pinned rows have fully empty DMS components and stay null
 geometry, 3 rows carry direction letters outside the nominal set (`W`
 latitude, `N` longitude) that the plain DMS formula converts without sign
-flip, and one-sided empty DMS rows fail closed. The weekly refresh schedule
+flip, and one-sided empty DMS rows fail closed. GeoParquet geometry is a WKB
+Point in EPSG:4269 (NAD83), the datum FCC requires for ULS coordinates; the
+DMS-derived decimal values are written unchanged with no datum transformation.
+Per FCC policy
+(https://www.fcc.gov/wireless/systems-utilities/north-american-datum-1983-coordinates),
+CONUS, Alaska, Hawaii, Puerto Rico and U.S. Virgin Islands coordinates are
+converted to NAD83 (NCAT), American Samoa and Guam use FCC-specified shifts to
+NAD83 from their local datums, and other Pacific island areas (Baker, Howland,
+Jarvis, Johnston, Kingman Reef, Midway, Northern Mariana Islands, Palmyra,
+Wake) remain in the applicable local datum. The weekly refresh schedule
 is stopped. The archived HIFLD OPEN Microwave Service Towers layer (DataLumos
 project 239596, DOI 10.3886/E239596V1) and the DHS crosswalk DOI
 (10.3886/E241367V1) return HTTP 403 anonymously and are banned as pipeline

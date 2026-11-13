@@ -183,7 +183,8 @@ class MicrowaveServiceTowersTests(unittest.TestCase):
         geometry_meta = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geometry_meta["primary_column"], "geometry")
         self.assertEqual(geometry_meta["columns"]["geometry"]["geometry_types"], ["Point"])
-        self.assertEqual(geometry_meta["columns"]["geometry"]["crs"]["id"]["code"], 4326)
+        self.assertEqual(geometry_meta["columns"]["geometry"]["crs"]["id"]["code"], 4269)
+        self.assertEqual(geometry_meta["columns"]["geometry"]["crs"]["name"], "NAD83")
         self.assertEqual(audit["source_record_sha256"], _sha(_canonical(
             [{key: row[key] for key, _ in source.PUBLISHED_SCHEMA if key != "geometry"} for row in published])))
 
