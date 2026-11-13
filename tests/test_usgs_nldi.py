@@ -208,7 +208,8 @@ class USGSNLDIAssetTests(unittest.TestCase):
             with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(root / "capture")):
                 with self.assertRaisesRegex(ValueError, "NLDI ref_gage feature source is missing or ambiguous"):
                     nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
-            quarantined = sorted((root / "staging" / "_quarantine" / nldi.DATASET_SLUG).glob("*"))
+            quarantined = sorted((root / "staging" / "_quarantine" / nldi.DATASET_SLUG
+                                 / nldi.FILE_SLUG).glob("*"))
             self.assertTrue(quarantined)
             failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_text())
             self.assertEqual(failure["reason_code"], "nldi_feature_source_registration_drift")
