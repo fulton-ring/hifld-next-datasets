@@ -439,9 +439,12 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
             with patch.object(source, "capture_get", fake_capture_get), \
                     patch.object(source, "PAGE_CAPTURE_BASE_DELAY_SECONDS", 0):
                 pages, refused = source._capture_windows(None, [7, 8], Path(temporary), [0])
-        self.assertEqual(refused, {"page_0000007": [7]})
-        self.assertEqual(sorted(pages), ["page_0000008"])
-        self.assertEqual(calls, [[7, 8], [7, 8], [7, 8], [7], [7], [7], [8]])
+            self.assertEqual(refused, {"page_0000007": [7]})
+            self.assertEqual(sorted(pages), ["page_0000008"])
+            self.assertEqual(calls, [[7, 8], [7], [7], [7], [8]])
+            preserved = sorted(p.name for p in Path(temporary).glob("page_0000007.attempt-*"))
+            self.assertEqual(len(preserved), 6)
+            self.assertTrue(all(name.endswith((".body", ".receipt.json")) for name in preserved))
 
     def test_refused_attrs_capture_rejects_wrong_identity(self):
         def fake_capture_doc(client, url, capture_root, name, budget):

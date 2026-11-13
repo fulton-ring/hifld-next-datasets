@@ -258,17 +258,23 @@ def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path
 
     Each accepted window is one exact ``objectIds`` request over a contiguous
     roster slice. A window that answers with an Esri error document, exceeds the
-    response byte cap or reports a truncated result set is retried a bounded
-    number of times for transient producer faults, then bisected into two
-    smaller windows over the same roster slice; failed attempts are preserved on
-    disk as ``.attempt-NN`` evidence and never enter the capture roster. Bisection
-    continues down to single-OBJECTID windows: a single id that still fails after
-    the bounded retries is recorded as refused (its attempt evidence stays on
-    disk and its id must match the pinned refused set) instead of aborting the
-    whole capture, because the producer is known to persistently refuse serving
-    the geometry of specific records (dated evidence on the capture manifest).
-    The pinned before/after rosters plus per-page slice equality make bisection
-    completeness-neutral: it can only change page boundaries, never population.
+    response byte cap or reports a truncated result set is bisected into two
+    smaller windows over the same roster slice: those producer answers are
+    deterministic for the requested window (observed: oversized windows persistently
+    refuse with the same HTTP 200 error document), so retrying the same window
+    only burns bounded backoff time — bisection is completeness-neutral and only
+    changes page boundaries. Transport faults (connection/reset/truncation) are
+    still retried a bounded number of times with backoff for transient producer
+    faults, and failed attempts are preserved on disk as ``.attempt-NN`` evidence
+    that never enters the capture roster. Bisection continues down to
+    single-OBJECTID windows: a single id that still answers with the error
+    document after the bounded retries is recorded as refused (its attempt
+    evidence stays on disk and its id must match the pinned refused set) instead
+    of aborting the whole capture, because the producer is known to persistently
+    refuse serving the geometry of specific records (dated evidence on the
+    capture manifest). The pinned before/after rosters plus per-page slice
+    equality make bisection completeness-neutral: it can only change page
+    boundaries, never population.
     """
     pages: dict[str, tuple[bytes, dict[str, object]]] = {}
     refused: dict[str, list[int]] = {}
@@ -301,8 +307,10 @@ def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path
                 break
             if _producer_error_doc(body):
                 last_error = ValueError("source_window_error_document")
+                _preserve_failed_attempt(capture_root, name, attempt)
+                if size > 1:
+                    break
                 if attempt < PAGE_CAPTURE_ATTEMPTS:
-                    _preserve_failed_attempt(capture_root, name, attempt)
                     time.sleep(PAGE_CAPTURE_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
                     continue
                 break
