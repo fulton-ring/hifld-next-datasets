@@ -74,7 +74,12 @@ POPULATION_WHERE = "featuretype<>3"
 # page is named by the roster's first OBJECTID it requests).
 PAGE_IDS = 500
 MAX_BODY_BYTES = 96 * 1024 * 1024
-MAX_CAPTURE_BYTES = 10 * 1024 * 1024 * 1024
+# The 3DHP non-Lake waterbody population is unusually heavy per feature (the
+# roster's main-stem polygons carry tens of thousands of Z vertices each);
+# the budget counts both wire and decoded bytes under the producer's identity
+# encoding, so it is sized for the observed full-population envelope with
+# headroom rather than a generic page-domain budget.
+MAX_CAPTURE_BYTES = 30 * 1024 * 1024 * 1024
 MIN_FREE_BYTES = 25_000_000_000
 DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
