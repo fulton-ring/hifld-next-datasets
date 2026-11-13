@@ -2,8 +2,9 @@
 
 BOEM's older Data Center ProtractionPolygons downloads describe the New Orleans
 Office (Gulf only) and are not a substitute for this national inventory layer.
-The selected BOEM_GeoSEAS FeatureServer layer exposes the national OPD footprint
-and is queried in bounded, OBJECTID-pinned pages. Its source JSON is retained
+The selected BOEM_GeoSEAS FeatureServer layer (observed hosting-account label,
+first-party linkage unverified) exposes the national OPD footprint and is
+queried in bounded, OBJECTID-pinned pages. Its source JSON is retained
 byte-for-byte; a GeoParquet candidate keeps all nine source attributes and the
 producer's EPSG:3857 polygon coordinates. This is a draft, not legal boundary
 geometry or release acceptance.
@@ -45,7 +46,15 @@ SERVICE_URL = "https://services7.arcgis.com/G5Ma95RzqJRPKsWL/arcgis/rest/service
 LAYER_ID = 11
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "OCS Protraction Polygons - 1st Division"
-PRODUCER = "Bureau of Ocean Energy Management (BOEM_GeoSEAS)"
+PRODUCER = "Bureau of Ocean Energy Management"
+HOSTING_ACCOUNT = "BOEM_GeoSEAS"
+HOSTING_ACCOUNT_NOTE = (
+    "BOEM_GeoSEAS is the observed ArcGIS Online hosting-account label (item owner), "
+    "not a verified first-party BOEM.gov endpoint: the official BOEM mapping pages "
+    "document OPD and leasing-map products but do not link this exact item/service, "
+    "so the producer relationship remains unverified and source_authority_accepted "
+    "stays false."
+)
 REGIONS = {"A": "Atlantic OCS Region", "G": "Gulf of America OCS Region", "P": "Pacific OCS Region", "Y": "Alaska OCS Region"}
 PAGE_SIZE = 50
 MAX_BODY_BYTES = 32_000_000
@@ -196,7 +205,7 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) -> tup
     if docs["count_before"].get("count") != count or docs["count_after"].get("count") != count:
         raise ValueError("source_count_bracket_mismatch")
     portal, service, layer = docs["portal_item"], docs["service_before"], docs["layer_before"]
-    if (portal.get("id") != ITEM_ID or portal.get("owner") != "BOEM_GeoSEAS" or portal.get("access") != "public"
+    if (portal.get("id") != ITEM_ID or portal.get("owner") != HOSTING_ACCOUNT or portal.get("access") != "public"
             or portal.get("url") != SERVICE_URL or service.get("serviceItemId") != ITEM_ID):
         raise ValueError("producer_item_identity_or_access_drift")
     if (not any(item.get("id") == LAYER_ID and item.get("name") == LAYER_NAME for item in service.get("layers", []) if isinstance(item, dict))
@@ -261,9 +270,9 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) -> tup
              "source_release_date": None, "service_modified_epoch_ms": service.get("documentInfo", {}).get("dateLastUpdated"),
              "service_modified_is_source_release_date": False,
              "producer_item_id": ITEM_ID, "producer_owner": portal["owner"], "source_fields": fields,
-             "required_regions": REGIONS, "release_accepted": False, "schema_contract_accepted": False,
-             "id_contract_accepted": False, "freshness_accepted": False, "rights_accepted": False,
-             "mapping_approved": False}
+              "required_regions": REGIONS, "release_accepted": False, "schema_contract_accepted": False,
+              "id_contract_accepted": False, "freshness_accepted": False, "rights_accepted": False,
+              "source_authority_accepted": False, "mapping_approved": False}
     return layer, fields, features, audit
 
 
@@ -328,12 +337,12 @@ def capture_boem_ocs_diagrams(storage: StagingStorageResource, *, version: str =
                 "region_counts": audit["region_counts"], "source_id_sha256": audit["source_id_sha256"],
                 "reused": True, "source_release_accepted": False, "schema_contract_accepted": False,
                 "id_contract_accepted": False, "freshness_accepted": False, "rights_accepted": False,
-                "mapping_approved": False, "release_accepted": False}
+                "source_authority_accepted": False, "mapping_approved": False, "release_accepted": False}
 
     parquet_body = _geoparquet(captures, capture_root)
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
-    inputs = [{"input_id": n, "producer": PRODUCER, "canonical_url": ITEM_URL if n == "portal_item" else SERVICE_URL,
+    inputs = [{"input_id": n, "producer": f"{HOSTING_ACCOUNT} (observed hosting-account label; claimed producer: {PRODUCER}; first-party linkage unverified)", "canonical_url": ITEM_URL if n == "portal_item" else SERVICE_URL,
                "host": urlsplit(receipt["url"]).hostname,
                "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
                "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
@@ -347,13 +356,16 @@ def capture_boem_ocs_diagrams(storage: StagingStorageResource, *, version: str =
     manifest = {"schema_version": 1, "approved": False,
                 "title": "Outer Continental Shelf (OCS) Protraction Diagrams & Leasing Maps",
                 "description": "National-scale BOEM OPD footprint polygons, covering Atlantic, Gulf, Pacific and Alaska. Cartographic footprint only; official/legal boundaries are the current BOEM paper/PDF OPD/LM products.",
-                "agency": "Bureau of Ocean Energy Management", "publisher": PRODUCER,
+                "agency": PRODUCER, "publisher": f"{HOSTING_ACCOUNT} (observed hosting-account label)",
+                "hosting_account": HOSTING_ACCOUNT,
+                "source_authority_note": HOSTING_ACCOUNT_NOTE,
+                "source_authority_accepted": False,
                 "source_url": LAYER_URL, "source_release_date": None,
                 "processor": "HIFLD Next", "code_commit": identity["code_commit"],
                 "inputs": inputs,
                 "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                                      "parameters": {"layer_id": LAYER_ID, "source_fields": "all nine native fields in producer order; OID and dates retain source meaning", "geometry": "Esri polygon rings read by GDAL; EPSG:3857 retained without reprojection, repair or simplification", "regions": REGIONS, "release_status": "unapproved draft"}}],
-                "lineage": "BOEM_GeoSEAS public hosted feature service in BOEM Offshore Marine Cadastre Data Collection (30 CFR 556.8, 585.205, 581.15).",
+                "lineage": "Public hosted feature service observed under the ArcGIS Online account BOEM_GeoSEAS, labeled with the BOEM Offshore Marine Cadastre Data Collection (30 CFR 556.8, 585.205, 581.15); the official BOEM mapping pages document OPD and leasing-map products but do not link this exact item/service, so first-party producer authority remains unverified.",
                 "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Source attributes and EPSG:3857 geometry retained for an unapproved candidate.", "objects": [{"path": parquet_name, **source_objects[parquet_name]}]}}},
                 "unsupported_output_formats": {
                     "shapefile_zip": "No approved published schema mapping; release remains blocked.",
@@ -364,7 +376,7 @@ def capture_boem_ocs_diagrams(storage: StagingStorageResource, *, version: str =
     audit.update({"source_item_id": ITEM_ID, "source_layer_id": LAYER_ID, "source_layer_name": LAYER_NAME,
                   "source_inputs_sha256": fingerprint, "source_release_accepted": False,
                   "id_contract_accepted": False, "freshness_accepted": False, "rights_accepted": False,
-                  "schema_contract_accepted": False, "release_accepted": False})
+                  "source_authority_accepted": False, "schema_contract_accepted": False, "release_accepted": False})
     outputs = {parquet_name: parquet_body,
                "metadata/source_inputs.json": _canonical({"sha256": fingerprint})+b"\n",
                "metadata/source_manifest.json": _canonical(manifest)+b"\n",
@@ -377,7 +389,8 @@ def capture_boem_ocs_diagrams(storage: StagingStorageResource, *, version: str =
     ready = {"approved": False, "version": version, "objects": source_objects,
              "source_record_sha256": audit["source_record_sha256"], "release_accepted": False,
              "freshness_accepted": False, "schema_contract_accepted": False,
-             "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False}
+             "id_contract_accepted": False, "rights_accepted": False,
+             "source_authority_accepted": False, "mapping_approved": False}
     outputs["metadata/candidate_ready.json"] = _canonical(ready)+b"\n"
     for name, body in outputs.items():
         write_immutable(storage, f"{prefix}/{name}", body)
@@ -396,4 +409,4 @@ def capture_boem_ocs_diagrams(storage: StagingStorageResource, *, version: str =
             "region_counts": audit["region_counts"], "source_id_sha256": audit["source_id_sha256"],
             "source_release_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "freshness_accepted": False, "rights_accepted": False,
-            "mapping_approved": False, "release_accepted": False, "capture_directory": str(capture_root)}
+            "source_authority_accepted": False, "mapping_approved": False, "release_accepted": False, "capture_directory": str(capture_root)}

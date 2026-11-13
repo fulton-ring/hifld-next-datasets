@@ -156,5 +156,31 @@ class BoemOcsDiagramsTests(unittest.TestCase):
             self.assertNotEqual(first["version"], changed["version"])
 
 
+    def test_manifest_records_hosting_account_qualification_and_authority_refusal(self):
+        fixture = _fixture()
+        stable_identity = {"code_commit": "a" * 40, "files": {"x.py": "b" * 64}}
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(use_local=True, local_dir=tmp)
+            with patch.object(boem, "_load_offline", return_value=copy.deepcopy(fixture)), \
+                 patch.object(boem, "_geoparquet", return_value=b"candidate"), \
+                 patch.object(boem, "processing_identity", return_value=stable_identity), \
+                 patch.object(boem, "validate_construction_code_identity", return_value=None), \
+                 patch.object(epa_frs_common, "validate_construction_code_identity", return_value=None):
+                result = boem.capture_boem_ocs_diagrams(storage, offline_capture_directory=tmp)
+            base = result["candidate_ready"].replace("metadata/candidate_ready.json", "metadata/")
+            manifest = json.loads(storage.read_key(base + "source_manifest.json"))
+            self.assertFalse(manifest["source_authority_accepted"])
+            self.assertEqual(manifest["hosting_account"], "BOEM_GeoSEAS")
+            self.assertIn("do not link this exact item/service", manifest["source_authority_note"])
+            self.assertIn("observed hosting-account label", manifest["publisher"])
+            self.assertIn("first-party linkage unverified", manifest["inputs"][0]["producer"])
+            self.assertIn("do not link this exact item/service", manifest["lineage"])
+            audit = json.loads(storage.read_key(base + "source_audit.json"))
+            self.assertFalse(audit["source_authority_accepted"])
+            ready = json.loads(storage.read_key(base + "candidate_ready.json"))
+            self.assertFalse(ready["source_authority_accepted"])
+            self.assertFalse(result["source_authority_accepted"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -59,6 +59,7 @@ def boem_ocs_protraction_diagrams_complete(candidate: dict) -> AssetCheckResult:
             "schema_contract_accepted": False,
             "id_contract_accepted": False,
             "rights_accepted": False,
+            "source_authority_accepted": False,
             "mapping_approved": False,
             "release_accepted": False,
         },
@@ -76,3 +77,8 @@ boem_ocs_diagrams_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [boem_ocs_protraction_diagrams]
+ASSET_CHECKS = [boem_ocs_protraction_diagrams_complete]
+JOBS = [boem_ocs_diagrams_draft_job]
+SCHEDULES = [boem_ocs_diagrams_draft_schedule]
