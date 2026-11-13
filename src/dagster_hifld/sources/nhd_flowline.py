@@ -82,7 +82,6 @@ SOURCE_CRS_WKID = 4326
 NATIVE_LAYER_SR = {"wkid": 102100, "latestWkid": 3857}
 PAGE_SIZE = 2500
 MAX_BODY_BYTES = 96 * 1024 * 1024
-MAX_CAPTURE_BYTES = 260 * 1024 * 1024 * 1024
 MIN_FREE_BYTES = 350_000_000_000
 # Producer-stated service refresh ("Data refreshed September 4, 2026" in the
 # captured service copyrightText) is freshness evidence, not a release date.

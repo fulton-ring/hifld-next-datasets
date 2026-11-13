@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
@@ -205,6 +206,12 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
                                    "files": [], "working_tree_status": "unknown"}),
         patch.object(src, "validate_construction_code_identity"),
         patch.object(epa_frs_common, "validate_construction_code_identity"),
+        # CI runners hold far less than the pinned capture floor, so the floor
+        # gate is evaluated against a stub that reports exactly the pinned
+        # requirement; the refusal itself is exercised by the dedicated floor
+        # test below.
+        patch.object(src.shutil, "disk_usage",
+                     return_value=SimpleNamespace(free=src.MIN_FREE_BYTES)),
     ]
     if page_size is not None:
         contexts.append(patch.object(src, "PAGE_SIZE", page_size))
@@ -234,6 +241,7 @@ class NhdFlowlineTests(unittest.TestCase):
         self.assertEqual(src.EXPECTED_COUNT, 30_251_533)
         self.assertEqual(src.PAGE_SIZE, 2500)
         self.assertEqual(len(src.NATIVE_FIELDS), 33)
+        self.assertEqual(src.MIN_FREE_BYTES, 350_000_000_000)
         self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
         self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
         self.assertEqual(src.EXPECTED_IDS_SHA256, "")
@@ -302,6 +310,31 @@ class NhdFlowlineTests(unittest.TestCase):
             with self.subTest(expected_error):
                 with self.assertRaisesRegex(src.NhdFlowlineError, expected_error):
                     src._polyline_wkb(geometry)
+
+    def test_disk_floor_refuses_before_any_fetch(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        fetches = {"count": 0}
+        real_send = httpx.Client.send
+
+        def counting_send(client, request, **kwargs):
+            fetches["count"] += 1
+            return real_send(client, request, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with fixture_mode(schema_sha, transport):
+                with patch.object(src.shutil, "disk_usage",
+                                  return_value=SimpleNamespace(free=src.MIN_FREE_BYTES - 1)), \
+                        patch.object(httpx.Client, "send", counting_send):
+                    with self.assertRaisesRegex(src.NhdFlowlineError,
+                                                "disk_floor_before_acquisition"):
+                        src.capture_nhd_flowline(_staging(root), version="floor-run",
+                                                 capture_directory=str(root / "capture"))
+            self.assertEqual(fetches["count"], 0)
+            self.assertFalse((root / "capture").exists())
+            self.assertFalse(any((root / "staging").iterdir()))
 
     def test_complete_fixture_capture_materializes_and_repeats(self):
         rows = _fixture_rows()
