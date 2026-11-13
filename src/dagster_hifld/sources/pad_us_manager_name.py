@@ -99,8 +99,11 @@ RELEASE_DOI = "https://doi.org/10.5066/P96WBCHS"
 SOURCE_CRS_WKID = 4326
 NATIVE_LAYER_SR = {"wkid": 102100, "latestWkid": 3857}
 MAX_RECORD_COUNT = 2000
-SEGMENT_START_RECORDS = 2000
-MAX_BODY_BYTES = 24 * 1024 * 1024
+# Observed 2026-11-13: 2000-record PBF pages run 12-65 MB and the producer
+# (or its proxy) drops connections mid-body around 16-25 MB, so segments start
+# at 1000 records and any still-oversized or truncated segment is bisected.
+SEGMENT_START_RECORDS = 1000
+MAX_BODY_BYTES = 32 * 1024 * 1024
 MAX_CAPTURE_BYTES = 12 * 1024 * 1024 * 1024
 MIN_FREE_BYTES = 20_000_000_000
 DOC_CAPTURE_ATTEMPTS = 4
