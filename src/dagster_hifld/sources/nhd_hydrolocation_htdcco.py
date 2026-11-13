@@ -67,6 +67,10 @@ from dagster_hifld.sources.epa_frs_common import (
 
 DATASET_SLUG = "nhd-hydrolocation-htdcco"
 FILE_SLUG = DATASET_SLUG
+# Repository/package root: in the shipped container layout (/app/src/dagster_hifld)
+# this resolves to /app, which carries no .git, so the processing identity uses the
+# packaged scheme. Tests redirect this constant to a no-Git packaged layout.
+REPO_ROOT = Path(__file__).parents[3]
 SERVICE_HOST = "https://3dhp.nationalmap.gov"
 SERVICE_URL = SERVICE_HOST + "/arcgis/rest/services/usgs_3dhp_all/FeatureServer"
 ALIAS_SERVICE_URL = "https://hydro.nationalmap.gov/arcgis/rest/services/3DHP_all/FeatureServer"
@@ -969,7 +973,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
 
 
 def _code_identity() -> dict[str, object]:
-    return processing_identity(Path(__file__).parents[3])
+    return processing_identity(REPO_ROOT)
 
 
 def _default_client() -> httpx.Client:
@@ -1209,8 +1213,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                "source_schema_sha256": audit["source_schema_sha256"],
                "capture_receipts": receipts, "objects": descriptors}
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
-    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
-                                        identity["files"])
+    # identity= selects the scheme-aware validation branch: a packaged runtime
+    # (/app without .git) carries a packaged-sha256: commit that the Git-only
+    # branch would reject as construction_invalid_commit after a valid seal.
+    validate_construction_code_identity(REPO_ROOT, identity["code_commit"],
+                                        identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT,
             "source_null_geometry_count": extracted["null_geometry_count"],
@@ -1240,15 +1247,15 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
             or payload["source_schema_sha256"] != audit["source_schema_sha256"]):
         raise NhdHydrolocationHtdccoError("cached_first_candidate_identity_or_source_changed")
     expected_objects = {name: descriptor for name, descriptor in payload["objects"].items()}
-    verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
+    verify_cached_candidate(storage, REPO_ROOT, state_key, prefix, version,
                             fingerprint, identity, audit["source_record_sha256"],
                             audit["source_schema_sha256"], expected_objects,
                             payload["capture_receipts"])
     if expected_objects.get(f"geoparquet/{DATASET_SLUG}.parquet") != \
             {"bytes": len(current_parquet), "sha256": _sha(current_parquet)}:
         raise NhdHydrolocationHtdccoError("cached_native_candidate_changed")
-    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
-                                        identity["files"])
+    validate_construction_code_identity(REPO_ROOT, identity["code_commit"],
+                                        identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT,
             "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,

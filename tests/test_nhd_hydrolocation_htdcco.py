@@ -179,7 +179,8 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
 
 
 @contextmanager
-def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_size=2):
+def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_size=2,
+                 mock_construction_validators=True):
     import dagster_hifld.assets.nhd_hydrolocation_htdcco as asset_module
     contexts = [
         patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
@@ -205,12 +206,15 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
-        patch.object(src, "_code_identity",
-                     return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
-                                   "files": [], "working_tree_status": "unknown"}),
-        patch.object(src, "validate_construction_code_identity"),
-        patch.object(epa_frs_common, "validate_construction_code_identity"),
     ]
+    if mock_construction_validators:
+        contexts.extend([
+            patch.object(src, "_code_identity",
+                         return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
+                                       "files": [], "working_tree_status": "unknown"}),
+            patch.object(src, "validate_construction_code_identity"),
+            patch.object(epa_frs_common, "validate_construction_code_identity"),
+        ])
     for context in contexts:
         context.start()
     try:
@@ -570,6 +574,45 @@ class NhdHydrolocationHtdccoTests(unittest.TestCase):
                 self.assertTrue(quarantined)
                 failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
                 self.assertTrue(failure["reason_code"].startswith("source_id_roster_drift"))
+
+    def test_packaged_runtime_without_git_seals_and_reuses_with_real_validator(self):
+        """Reproduce the shipped /app layout: package + manifests, no .git.
+
+        The Dockerfile ships ``/app/src`` with ``pyproject.toml`` and ``uv.lock``
+        but no ``.git``, so the processing identity must use the packaged scheme
+        and both construction validation calls must forward ``identity=`` for the
+        scheme-aware branch. Neither validator is mocked here.
+        """
+        import shutil
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "app"
+            (runtime_root / "src").mkdir(parents=True)
+            shutil.copytree(Path(src.__file__).parents[1], runtime_root / "src" / "dagster_hifld")
+            for name in ("pyproject.toml", "uv.lock"):
+                shutil.copyfile(Path(src.__file__).parents[3] / name, runtime_root / name)
+            self.assertFalse((runtime_root / ".git").exists())
+            with patch.object(src, "REPO_ROOT", runtime_root):
+                packaged = src._code_identity()
+            self.assertEqual(packaged["code_identity_scheme"], "sha256-packaged-dagster-hifld-v1")
+            self.assertTrue(packaged["code_commit"].startswith("packaged-sha256:"))
+            from dagster_hifld.construction_provenance import validate_construction_code_identity
+            validate_construction_code_identity(runtime_root, packaged["code_commit"],
+                                                packaged["files"], identity=packaged)
+            capture_root = Path(tmp) / "capture"
+            with fixture_mode(schema_sha, transport, mock_construction_validators=False), \
+                    patch.object(src, "REPO_ROOT", runtime_root):
+                storage = _staging(Path(tmp))
+                first = src.capture_nhd_hydrolocation_htdcco(
+                    storage, version="packaged-run", capture_directory=str(capture_root))
+                self.assertFalse(first["reused"])
+                self.assertEqual(first["feature_count"], FIXTURE_COUNT)
+                second = src.capture_nhd_hydrolocation_htdcco(
+                    storage, version="packaged-run-2", capture_directory=str(capture_root))
+                self.assertTrue(second["reused"])
+            self.assertEqual(first["version"], second["version"])
 
 
 if __name__ == "__main__":
