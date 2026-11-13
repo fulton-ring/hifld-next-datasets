@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      # Local, isolated roots; no production storage or model credentials.
+      HIFLD_STAGING_BUCKET: ''
+      HIFLD_DATASETS_BUCKET: ''
+    steps:
+      # pull_request checks out GitHub's merge of the PR into current main.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # Provenance regressions validate historical Git blobs.
+          persist-credentials: false
+      - name: Configure isolated local directories
+        run: |
+          # Several draft transports check this worker-layout filesystem.
+          sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /workspace
+          for name in dataset-staging dataset-published dagster; do mkdir -p "$RUNNER_TEMP/$name"; done
+          echo "HIFLD_STAGING_DIR=$RUNNER_TEMP/dataset-staging" >> "$GITHUB_ENV"
+          echo "HIFLD_DATASETS_DIR=$RUNNER_TEMP/dataset-published" >> "$GITHUB_ENV"
+          echo "DAGSTER_HOME=$RUNNER_TEMP/dagster" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          enable-cache: true
+      - name: Restore PMTiles compiler
+        id: tippecanoe
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/tippecanoe
+          key: tippecanoe-2d548bed0623005ab1ae619595ef4cfe1c745d3e-${{ runner.os }}
+      - name: Build PMTiles compiler
+        if: steps.tippecanoe.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libsqlite3-dev zlib1g-dev
+          git init "$RUNNER_TEMP/tippecanoe"
+          git -C "$RUNNER_TEMP/tippecanoe" fetch --depth=1 https://github.com/felt/tippecanoe.git 2d548bed0623005ab1ae619595ef4cfe1c745d3e
+          git -C "$RUNNER_TEMP/tippecanoe" checkout --detach FETCH_HEAD
+          make -C "$RUNNER_TEMP/tippecanoe" -j4
+          mkdir -p ~/.local/tippecanoe
+          cp "$RUNNER_TEMP/tippecanoe/tippecanoe" "$RUNNER_TEMP/tippecanoe/tippecanoe-decode" ~/.local/tippecanoe/
+      - name: Install PMTiles compiler
+        run: |
+          sudo install ~/.local/tippecanoe/tippecanoe ~/.local/tippecanoe/tippecanoe-decode /usr/local/bin/
+          tippecanoe --version
+      - run: uv sync --locked
+      - name: Run test shard ${{ matrix.shard }} of 4
+        env:
+          SHARD: ${{ matrix.shard }}
+        # Each shard runs on its own runner, so tests sharing fixed paths cannot collide.
+        # PYTHONPATH=tests matches `unittest discover tests` imports.
+        run: |
+          modules=$(ls tests/test_*.py | sort | awk -v shard="$SHARD" '(NR - 1) % 4 == shard' | xargs -n1 basename | sed 's/\.py$//')
+          PYTHONPATH=tests uv run --locked python -m unittest $modules
+
+  # The factory requires this single check name.
+  test:
+    needs: unit
+    if: always()
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 2
+    steps:
+      - run: test "${{ needs.unit.result }}" = success

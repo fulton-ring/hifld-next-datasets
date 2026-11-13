@@ -1,1 +1,1 @@
-"""Explicit dataset-specific reconstruction adapters."""
+"""Explicit producer-specific candidate acquisition and validation."""
