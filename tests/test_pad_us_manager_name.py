@@ -193,7 +193,8 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
                 page = {"objectIdFieldName": "OBJECTID",
                         "spatialReference": {"wkid": src.SOURCE_CRS_WKID,
                                              "latestWkid": src.SOURCE_CRS_WKID},
-                        "hasZ": False, "hasM": False, "exceededTransferLimit": True,
+                        "hasZ": False, "hasM": False,
+                        "exceededTransferLimit": offset + record_count < len(objectids),
                         "fields": [{"name": f["name"], "type": f["type"]}
                                    for f in layer_fields],
                         "features": rows[offset:offset + record_count]}

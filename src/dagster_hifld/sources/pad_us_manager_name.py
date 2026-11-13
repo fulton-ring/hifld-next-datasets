@@ -832,8 +832,10 @@ class _SegmentStream:
             raise PadUsManagerNameError("stream_writer_already_closed")
         page = decode_feature_collection_pbf(
             _read_capture(self._capture_root, page_name)[0], allow_transfer_limit=True)
-        if not isinstance(page, dict) or page.get("exceededTransferLimit") is not True:
+        if not isinstance(page, dict):
             raise PadUsManagerNameError("source_page_decode_failed:" + page_name)
+        if page.get("exceededTransferLimit") is not (offset + count != len(roster)):
+            raise PadUsManagerNameError("source_page_pagination_flag_drift:" + page_name)
         reference = page.get("spatialReference")
         if (not isinstance(reference, dict)
                 or reference.get("wkid") not in (None, SOURCE_CRS_WKID)
