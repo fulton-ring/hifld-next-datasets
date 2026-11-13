@@ -45,3 +45,8 @@ petroleum_refineries_eia_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [petroleum_refineries_eia_ingest]
+ASSET_CHECKS = [petroleum_refineries_eia_historical_candidate_complete]
+JOBS = [petroleum_refineries_eia_draft_job]
+SCHEDULES = [petroleum_refineries_eia_draft_schedule]
