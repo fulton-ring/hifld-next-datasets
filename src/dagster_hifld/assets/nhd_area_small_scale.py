@@ -25,8 +25,10 @@ class NhdAreaSmallScaleConfig(Config):
     description=(
         "USGS National Hydrography Dataset service layer 7 'Area - Small Scale' (medium-resolution "
         "1:100,000-scale NHD area polygons) from the producer's own REST publication. Candidate "
-        "extraction only; the NHD is retired (2023-10-01) and republished as a reference service, so "
-        "source acceptance, freshness, rights, and schema/ID acceptance remain pending."
+        "extraction only; the NHD is retired (2023-10-01) and republished as a reference service, and "
+        "no maintained agency product can recreate this layer (3DHP has no Area layer or "
+        "medium-resolution product; EPA NHDPlus V2 is a static 2012 snapshot), so the dataset routes "
+        "to the 'no maintained source: park or retire' decision with publication blocked."
     ),
 )
 def usgs_nhd_area_small_scale(context, config: NhdAreaSmallScaleConfig, staging_storage: StagingStorageResource) -> dict:

@@ -17,25 +17,43 @@ archive or third-party host is fetched as a pipeline input.
   row "3D Hydrography Program (3DHP) Layers") marks the hydrography collection "Deprecate" and directs
   users to the USGS `usgs_3dhp_all` FeatureServer.
 
-## Retirement, successor check and freshness (evidence dated 2026-11-12)
+## Retirement, successor checks and no-maintained-source finding (evidence dated 2026-11-12/13)
 
 - USGS states the NHD was retired on 2023-10-01 ("no longer maintained") and that USGS now produces the
   3D Hydrography Program; the retired NHD remains "available, but no longer maintained"
   (https://www.usgs.gov/national-hydrography/national-hydrography-dataset,
   https://www.usgs.gov/national-hydrography/access-national-hydrography-products — captured as
-  `product_doc` evidence).
-- The agency still republishes the final NHD as maintained reference products: the USGS services
-  documentation describes the NHD dynamic service as refreshed quarterly, the NHD national download is
-  regenerated monthly, and the captured service JSON declares "Data Refreshed October, 2026". No
-  per-feature or per-snapshot release date is published; the medium-resolution layer has been static
-  since stewardship ended.
-- Successor check: the crosswalk-directed 3DHP_all service
+  `product_doc` evidence). The agency still republishes the final NHD as reference products (services
+  refreshed quarterly, national download regenerated monthly, captured service JSON "Data Refreshed
+  October, 2026"), but a refresh/repackaging of retired data does not make the underlying data
+  maintained.
+- Medium-resolution maintenance path (checked 2026-11-13): USGS's NHD page ("Legacy NHD (1:100,000)")
+  names EPA's NHDPlus Version 2 suite as the medium-resolution custodian ("the US EPA manages the
+  maintenance and distribution of NHD Medium Resolution as part of the NHDPlus Version 2 suite of
+  products", https://www.usgs.gov/national-hydrography/national-hydrography-dataset). Investigated:
+  NHDPlus V2 is a 2012 product built from 2012 snapshots of NHD Medium Resolution, NED and WBD (USGS
+  "Abridged History of Hydrography Datasets"); the USGS Water Mission Area catalog entry for
+  "NHDPlus v2" (https://water.usgs.gov/catalog/datasets/8a60b6b4-d785-4265-af99-cd1870ea7928/)
+  classifies it `Update Type: Static` with no temporal coverage or refresh frequency, and EPA's
+  NHDPlus versioning page (https://www.epa.gov/waterdata/nhdplus-versioning) describes only occasional
+  error-fix component updates, not ongoing NHD stewardship. A 2012 NHD Medium Resolution snapshot
+  cannot recreate the final NHD medium-resolution layer this inventory entry carried (which includes
+  stewardship updates through the 2023-10-01 retirement), so NHDPlus V2 is itself a historical
+  one-time release, not a maintained reconstructible source.
+- High-resolution alternatives are not substitutes: NHDPlus High Resolution is 1:24,000-scale, and
+  USGS's 3DHP page states that in 2024 USGS shifted from maintaining the NHD, WBD and NHDPlus HR to
+  3DHP production, with these legacy products "no longer updated and maintained"
+  (https://www.usgs.gov/3d-hydrography-program/access-3dhp-data-products, checked 2026-11-13). The
+  crosswalk-directed 3DHP_all service
   (`https://3dhp.nationalmap.gov/arcgis/rest/services/usgs_3dhp_all/FeatureServer`) publishes
   HydroLocation, Flowline, Waterbody, Catchment and Spatial Metadata layers only — no "Area" layer and
-  no medium-resolution (1:100,000) generalized product — so the current 3DHP publication cannot recreate
-  this layer. The retired-but-published USGS NHD service is therefore the exact-matching agency
-  publication; accepting a retired dataset's reference publication (and any future 3DHP successor
-  migration) remains a maintainer decision.
+  no medium-resolution (1:100,000) generalized product.
+- No maintained source: no currently maintained agency product can recreate the medium-resolution
+  (1:100,000) NHD area layer. Under the project source policy this dataset therefore routes to the
+  "no maintained source: park or retire" decision (needs_decision) rather than pending release
+  acceptance. The retired-but-published USGS NHD reference service remains the only exact-matching
+  agency publication; this draft adapter against it is retained as evidence for that decision, with
+  the refresh schedule stopped and every approval flag false.
 - The old DHS/HIFLD-hosted ArcGIS items and the DataLumos project 239954 archive copy are identification
   and comparison context only; the DataLumos archive modification date (2025-07-03) is not a source
   release date.
@@ -63,6 +81,7 @@ declared layer extent, the service layer roster, the observed enumeration value 
 complete-record/geometry digests, and fails closed on any drift, unexpected column, Z/M ordinate, or
 incomplete page tiling. Producer rings are kept verbatim (including their Web Mercator coordinates);
 null, string-"NaN", or unassemblable rings are retained with null candidate geometry and gated in the
-audit, never repaired. The candidate is an unapproved faithful draft: source acceptance of a retired
-dataset's reference publication, baseline equivalence with the archived HIFLD copy, schema/ID/coverage
-contracts, rights, and release all remain pending acceptance, and the refresh schedule is stopped.
+audit, never repaired. The candidate remains an unapproved draft: with no maintained source available
+this dataset is routed to the "no maintained source: park or retire" decision, the refresh schedule is
+stopped, and source acceptance, baseline equivalence, schema/ID/coverage contracts, rights and release
+all stay false.

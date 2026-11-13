@@ -7,13 +7,19 @@ documented by USGS in "NHD and WBD Map Services Moving to the Cloud",
 https://www.usgs.gov/news/technical-announcement/nhd-and-wbd-map-services-moving-cloud).
 USGS retired the NHD on 2023-10-01 and stopped stewardship edits; the successor
 is the 3D Hydrography Program (3DHP).  The agency still republishes the final
-NHD as maintained reference services and monthly-regenerated national downloads
-(the service states "Data Refreshed October, 2026"), and the 3DHP_all service
-publishes HydroLocation/Flowline/Waterbody/Catchment layers only, with no
-"Area" layer and no medium-resolution (1:100,000) product, so the retired-but-
-published NHD service is the exact-matching agency publication of this layer.
-Acceptance of a retired dataset's reference publication, and any future
-successor migration, remain maintainer decisions.
+NHD as reference services and monthly-regenerated national downloads (the
+service states "Data Refreshed October, 2026"), but refresh/repackaging of
+retired data does not make the data maintained.  The medium-resolution
+custodianship path USGS names (EPA's NHDPlus Version 2 suite) is a static 2012
+snapshot of NHD Medium Resolution (USGS catalog: "Update Type: Static"), the
+3DHP_all service publishes no "Area" layer and no medium-resolution
+(1:100,000) product, and NHDPlus HR/NHD are legacy and "no longer updated and
+maintained" since 2024, so no maintained agency product can recreate this
+layer and the retired-but-published NHD service is the only exact-matching
+agency publication.  Under the project source policy this dataset routes to
+the "no maintained source: park or retire" decision; this draft remains as
+evidence for that decision, with publication blocked and every approval flag
+false.
 
 That service's layer 7 "Area - Small Scale" is the producer's own publication
 of the HIFLD Open inventory dataset ``nhd/area-small-scale-2`` (DataLumos
@@ -753,10 +759,12 @@ def capture_nhd_area_small_scale(storage: StagingStorageResource, *, version: st
                        "conterminous United States), captured completely from the producer's own REST "
                        "publication. Complete source attributes and served Web Mercator (EPSG:3857) polygon "
                        "geometry are represented in the candidate. USGS retired the NHD on 2023-10-01 and "
-                       "republishes the final dataset as a maintained reference service; the successor 3DHP "
-                       "service publishes no equivalent Area or medium-resolution product. Freshness of a "
-                       "retired dataset, rights, public schema/ID contract, and release acceptance remain "
-                       "unresolved and unapproved.",
+                       "republishes the final dataset only as an unmaintained reference service; no "
+                       "maintained agency product can recreate this layer (3DHP publishes no Area layer or "
+                       "medium-resolution product, EPA NHDPlus V2 is a static 2012 NHD MR snapshot, and "
+                       "NHD/NHDPlus HR are legacy since 2024), so the dataset routes to the 'no maintained "
+                       "source: park or retire' decision. Freshness of a retired dataset, rights, public "
+                       "schema/ID contract, and release acceptance remain unresolved and unapproved.",
         "publisher": PUBLISHER, "agency": "U.S. Geological Survey", "source_url": LAYER_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
@@ -807,13 +815,18 @@ def capture_nhd_area_small_scale(storage: StagingStorageResource, *, version: st
                    "layer 7 'Area - Small Scale' of that producer service, the layer whose name and content "
                    "(medium-resolution, NHDPlus COMIDs) match the HIFLD Open inventory dataset "
                    "nhd/area-small-scale-2 (DataLumos project 239954 is the archive copy, identification "
-                   "context only). USGS retired the NHD on 2023-10-01 and moved production to the 3D Hydrography "
-                   "Program; the USGS page 'Access National Hydrography Products' (captured as 'product_doc') "
-                   "states the retired NHD remains available as reference downloads and services, the NHD "
-                   "national download is regenerated monthly and the service data is refreshed quarterly, and "
-                   "the DHS HIFLD deprecation crosswalk routes the hydrography collection to the 3DHP_all "
-                   "service, which publishes HydroLocation/Flowline/Waterbody/Catchment layers only - no Area "
-                   "layer and no medium-resolution product - so 3DHP cannot currently recreate this layer.",
+                    "context only). USGS retired the NHD on 2023-10-01 and moved production to the 3D Hydrography "
+                    "Program; the USGS page 'Access National Hydrography Products' (captured as 'product_doc') "
+                    "states the retired NHD remains available as reference downloads and services, the NHD "
+                    "national download is regenerated monthly and the service data is refreshed quarterly, and "
+                    "the DHS HIFLD deprecation crosswalk routes the hydrography collection to the 3DHP_all "
+                    "service, which publishes HydroLocation/Flowline/Waterbody/Catchment layers only - no Area "
+                    "layer and no medium-resolution product - so 3DHP cannot currently recreate this layer. "
+                    "The medium-resolution custodian USGS names (EPA's NHDPlus Version 2 suite) is a static "
+                    "2012 snapshot of NHD Medium Resolution (USGS catalog 'Update Type: Static'), and NHD, WBD "
+                    "and NHDPlus HR have been legacy and 'no longer updated and maintained' since the 2024 "
+                    "shift to 3DHP, so no maintained source can recreate this dataset and it routes to the "
+                    "'no maintained source: park or retire' decision.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "Complete native source fields, IDs, values, physical nulls, and geometry retained in the "
                       "producer CRS; all release and compatibility approvals remain pending.",
