@@ -37,10 +37,11 @@ def _fixture():
     ids = [1, 2, 3, 4]
     api = ["427054003400", "427054003800", "427054004100", "177024107800"]
     wells = [(" A005", "9/8/1976"), (" A007", "12/30/1976"), (" A009", "6/22/1977"), (" B101", None)]
+    completions = [1704112496789, None, None, None]
     features = []
-    for oid, number, (name, spud) in zip(ids, api, wells):
+    for oid, number, (name, spud), completion in zip(ids, api, wells, completions):
         features.append({
-            "attributes": {"COMPLETION": None, "Y": 28.0146142 + oid / 1e6, "X": -95.87735874 - oid / 1e6,
+            "attributes": {"COMPLETION": completion, "Y": 28.0146142 + oid / 1e6, "X": -95.87735874 - oid / 1e6,
                            "OBJECTID": oid, "API_NUMBER": number, "OPERATOR": "02451", "WELL_NAME": name,
                            "SPUD_DATE": spud, "TYPE_CODE": "D", "TYPE_CODE_DESC": "Development",
                            "STATUS": "PA", "DEPTH": "155", "STATUS_DESCRIPTION": "Permanently Abandoned"},
@@ -260,6 +261,31 @@ class BoemOcsWellsTests(unittest.TestCase):
             self.assertFalse(ready["source_authority_accepted"])
             self.assertFalse(result["source_authority_accepted"])
 
+    def test_entrypoint_quarantines_acquisition_validation_failures(self):
+        fixture = _fixture()
+        doc = json.loads(fixture["page_000"][0])
+        doc["features"].pop()
+        fixture["page_000"] = (_body(doc), fixture["page_000"][1])
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(use_local=True, local_dir=tmp)
+            with patch.object(boem, "_load_offline", return_value=fixture):
+                with self.assertRaisesRegex(ValueError, "source_feature_population_incomplete"):
+                    boem.capture_boem_ocs_wells(storage, offline_capture_directory=tmp)
+            quarantined = sorted(str(path.relative_to(tmp)) for path in Path(tmp).rglob("*") if path.is_file())
+            self.assertTrue(quarantined)
+            self.assertTrue(all(name.startswith(f"_quarantine/{boem.DATASET_SLUG}/") for name in quarantined),
+                            quarantined)
+            token_root = Path(tmp) / "_quarantine" / boem.DATASET_SLUG
+            tokens = [path for path in token_root.iterdir() if path.is_dir()]
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "source_feature_population_incomplete")
+            self.assertEqual(sorted(failure["captured_names"]), sorted(fixture))
+            for name in fixture:
+                self.assertTrue((tokens[0] / "raw" / f"{name}.body").is_file(), name)
+                self.assertTrue((tokens[0] / "raw" / f"{name}.wire").is_file(), name)
+                self.assertTrue((tokens[0] / "raw" / f"{name}.receipt.json").is_file(), name)
+
     def test_geoparquet_roundtrip_preserves_native_values(self):
         fixture = _fixture()
         _, fields, features, _ = boem._validate(copy.deepcopy(fixture))
@@ -274,7 +300,9 @@ class BoemOcsWellsTests(unittest.TestCase):
         self.assertEqual(apis, ["427054003400", "427054003800", "427054004100", "177024107800"])
         self.assertEqual(table.column("OBJECTID").to_pylist(), [1, 2, 3, 4])
         self.assertEqual(table.column("SPUD_DATE").to_pylist(), ["9/8/1976", "12/30/1976", "6/22/1977", None])
-        self.assertEqual(table.column("COMPLETION").to_pylist(), [None] * 4)
+        self.assertEqual(table.schema.field("COMPLETION").type, __import__("pyarrow").timestamp("ms", tz="UTC"))
+        self.assertEqual(table.column("COMPLETION")[0].value, 1704112496789)
+        self.assertEqual(table.column("COMPLETION").to_pylist()[1:], [None, None, None])
         self.assertEqual(table.column("geometry").to_pylist()[0][:5], b"\x01\x01\x00\x00\x00")
 
 

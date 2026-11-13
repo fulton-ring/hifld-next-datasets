@@ -18,7 +18,6 @@ import hashlib
 import json
 import shutil
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlencode, urlsplit
@@ -301,7 +300,7 @@ def _geoparquet(features: list[dict[str, object]], fields: list[dict[str, object
     if [field["name"] for field in fields] != FIELD_NAMES:
         raise ValueError("source_field_order_drift")
     schema = pa.schema([
-        pa.field("COMPLETION", pa.date32(), nullable=True),
+        pa.field("COMPLETION", pa.timestamp("ms", tz="UTC"), nullable=True),
         pa.field("Y", pa.float64(), nullable=True),
         pa.field("X", pa.float64(), nullable=True),
         pa.field("OBJECTID", pa.int64(), nullable=False),
@@ -309,10 +308,8 @@ def _geoparquet(features: list[dict[str, object]], fields: list[dict[str, object
         pa.field("geometry", pa.binary(), nullable=False),
     ])
     columns = {
-        "COMPLETION": pa.array(
-            [None if f["attributes"]["COMPLETION"] is None
-             else datetime.fromtimestamp(f["attributes"]["COMPLETION"] / 1000, tz=timezone.utc).date()
-             for f in features], type=pa.date32()),
+        "COMPLETION": pa.array([f["attributes"]["COMPLETION"] for f in features],
+                               type=pa.timestamp("ms", tz="UTC")),
         "Y": pa.array([f["attributes"]["Y"] for f in features], type=pa.float64()),
         "X": pa.array([f["attributes"]["X"] for f in features], type=pa.float64()),
         "OBJECTID": pa.array([f["attributes"]["OBJECTID"] for f in features], type=pa.int64()),
@@ -352,8 +349,22 @@ def capture_boem_ocs_wells(storage: StagingStorageResource, *, version: str = "d
     if ".." in capture_root.parts or any(p.is_symlink() for p in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures = _load_offline(Path(offline_capture_directory)) if offline_capture_directory else _acquire(capture_root, storage)
-    layer, fields, features, audit = _validate(captures)
+    if offline_capture_directory:
+        captures = _load_offline(Path(offline_capture_directory))
+        # The offline loader records identity-encoding receipts whose wire
+        # equals the body; materialize the wire evidence so acquisition
+        # failures replayed offline quarantine complete evidence.
+        for name, (body, _receipt) in captures.items():
+            (capture_root / f"{name}.wire").write_bytes(body)
+    else:
+        captures = _acquire(capture_root, storage)
+    try:
+        layer, fields, features, audit = _validate(captures)
+    except Exception as exc:
+        reason = str(exc) if isinstance(exc, ValueError) and str(exc) else type(exc).__name__
+        quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, "invalid",
+                                      captures, reason)
+        raise
     identity = processing_identity(Path(__file__).parents[3])
     fingerprint = _input_fingerprint(captures, identity)
     version = "v" + fingerprint[:32]
