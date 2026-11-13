@@ -136,6 +136,7 @@ def _pins(features, schema, geom, counts, bounds):
                 EXPECTED_OBJECTID_1_NULL_COUNT=0,
                 EXPECTED_STATE_ALPHA_NULL_COUNT=1,
                 EXPECTED_COUNTY_NAME_NULL_COUNT=0,
+                EXPECTED_ROW_IDENTITY_DUPLICATE_COUNT=0,
                 EXPECTED_FEATURE_CLASS_VALUES=["Canal", "Stream"],
                 EXPECTED_FCODE_VALUES=[33600, 46000, 46003, 46006],
                 EXPECTED_UNKNOWN_COORDS_VALUES=[2],

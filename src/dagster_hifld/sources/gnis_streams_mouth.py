@@ -28,10 +28,10 @@ reprojection. The layer spans the whole GNIS publication area including the
 Pacific and Caribbean territories (the declared layer extent reaches
 y = -1616028.9976, i.e. American Samoa, and x = 20000987.6666, i.e. Guam).
 ``gaz_id`` and ``objectid_1`` repeat across the per-county rows of one
-gazetteer feature while each ``(objectid_1, state_alpha, county_name)`` row
-identity is unique; every source value, null (347 null ``state_alpha`` and 2
-null ``county_name`` rows), and the exact multipoint membership are preserved
-unchanged.
+gazetteer feature, and the same ``(objectid_1, state_alpha, county_name)`` row
+identity repeats exactly 154 times; every source value, null (347 null
+``state_alpha`` and 2 null ``county_name`` rows), and the exact multipoint
+membership are preserved unchanged.
 
 The layer is captured as ordered-offset pages (the service reports
 ``maxRecordCount`` 2000 and advertises pagination plus ordering) of the sorted
@@ -105,22 +105,28 @@ DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 PAGE_PROBE_ATTEMPTS = 2
 PAGE_PROBE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-13 complete-layer population contract,
-# established by two dated complete captures (independent passes) that produced
-# identical record and geometry digests.
+# established by two dated complete captures (12:07-12:10 and 12:11-12:13 UTC,
+# independent passes) that produced identical record and geometry digests; the
+# observed multipoint bounds equal the layer's declared extent exactly.
 EXPECTED_COUNT = 293894
 EXPECTED_ID_SHA256 = "8f80e48547a86655f1fb9a17aa6b2dd3b9d20114bb3d62aa5afffe69a3f28fe9"
 EXPECTED_SCHEMA_SHA256 = "054726f396a55139d7db341622d192fdac21b854cb011e5569c897838c83d6ac"
-EXPECTED_RECORD_SHA256 = "PENDING_FULL_CAPTURE_EVIDENCE"
-EXPECTED_GEOMETRY_SHA256 = "PENDING_FULL_CAPTURE_EVIDENCE"
+EXPECTED_RECORD_SHA256 = "d5a3144fd585698260d50f8ebfb2bf2d96f6ea7b72694200bafcfe7efb23d9eb"
+EXPECTED_GEOMETRY_SHA256 = "1c82c7ac31ebe9eb66e2ac227a0e4df69799a16f0da95c9442a3255d2e6b3dfd"
 EXPECTED_LAYER_EXTENT = {"xmin": -19780547.5984, "ymin": -1616028.9976000004,
                          "xmax": 20000987.6666, "ymax": 11509303.568499997}
-EXPECTED_OBSERVED_BOUNDS = None  # PENDING_FULL_CAPTURE_EVIDENCE
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -19780547.5984, "ymin": -1616028.9976000004,
+                            "xmax": 20000987.666599996, "ymax": 11509303.568499997}
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_INVALID_GEOMETRY_COUNT = 0
 EXPECTED_GAZ_ID_NULL_COUNT = 0
 EXPECTED_OBJECTID_1_NULL_COUNT = 0
 EXPECTED_STATE_ALPHA_NULL_COUNT = 347
 EXPECTED_COUNTY_NAME_NULL_COUNT = 2
+# The same (objectid_1, state_alpha, county_name) row identity appears at most
+# twice for 154 rows (a gazetteer feature repeated for one state/county pair);
+# the duplicated count is pinned so any population change fails closed.
+EXPECTED_ROW_IDENTITY_DUPLICATE_COUNT = 154
 EXPECTED_FEATURE_CLASS_VALUES = ["Canal", "Stream"]
 EXPECTED_FCODE_VALUES = [33600, 36200, 46000, 46003, 46006, 46100]
 EXPECTED_UNKNOWN_COORDS_VALUES = [2]
@@ -410,7 +416,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     row_identities = [(row["attributes"].get("objectid_1"),
                        row["attributes"].get("state_alpha"),
                        row["attributes"].get("county_name")) for row in features]
-    if len(row_identities) != len(set(row_identities)):
+    if len(row_identities) - len(set(row_identities)) != EXPECTED_ROW_IDENTITY_DUPLICATE_COUNT:
         raise ValueError("source_row_identity_duplicate_drift")
     audit = {"source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids)),
              "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
@@ -427,6 +433,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "unique_gaz_name_count": len({row["attributes"].get("gaz_name") for row in features}),
              "state_alpha_null_count": sum(1 for value in state_alphas if value is None),
              "county_name_null_count": sum(1 for value in county_names if value is None),
+             "row_identity_duplicate_count": len(row_identities) - len(set(row_identities)),
              "source_page_count": len(pages), "source_release_date": None,
              "source_release_date_unknown_reason":
                  "The National Map Gazetteer service publishes no per-snapshot release date "
@@ -786,9 +793,10 @@ def capture_gnis_streams_mouth(storage: StagingStorageResource, *, version: str,
                                                           "and objectid_1 values unchanged; "
                                                           "gaz_id/objectid_1 repeat across the "
                                                           "per-county rows of one gazetteer "
-                                                          "feature and each (objectid_1, "
+                                                          "feature and the same (objectid_1, "
                                                           "state_alpha, county_name) row "
-                                                          "identity is unique; no substitute "
+                                                          "identity repeats exactly 154 times "
+                                                          "(pinned); no substitute "
                                                           "IDs, casts, trimming, or joins",
                                             "geometry": "Native web-Mercator (EPSG:3857) "
                                                         "multipoint [x, y, z] triples retained "
