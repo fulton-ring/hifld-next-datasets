@@ -14,7 +14,7 @@ class UsgsUniformHazardGroundMotionConfig(Config):
 
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="usgs", compute_kind="http",
-       description="Pinned 2023 USGS 50-State NSHM uniform-hazard contour polygons (SA1P0 5% in 50 years, site class B/C, 4014 records) from the ScienceBase Overview data release. Historical unapproved candidate; the revised 2023 NSHM releases supersede the values with no successor polygon-map product, and HIFLD equivalence and release decisions remain unresolved.")
+       description="Pinned 2023 USGS 50-State NSHM uniform-hazard contour polygons (SA1P0 5% in 50 years, site class B/C, 4014 records) from the ScienceBase Overview data release. Acquisition stopped: the producer's Revised 2023 NSHM release (CONUS 2023.R2/AK R1/HI R2, 2026-08-10) explicitly supersedes this data release and publishes no successor polygon product, so the maintained-source admission is no-maintained-source (park or retire); materialization refuses with source_admission_unresolved_no_maintained_successor_park_or_retire until a maintainer decision. Release decisions remain unresolved.")
 def usgs_uniform_hazard_ground_motion_historical(context, config: UsgsUniformHazardGroundMotionConfig, staging_storage: StagingStorageResource) -> dict:
     result = capture_usgs_uniform_hazard_ground_motion(staging_storage, version=build_version_id(context), capture_directory=config.capture_directory or None)
     context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [build_publish_partition_key(result["dataset_slug"], result["file_slug"], result["version"])])

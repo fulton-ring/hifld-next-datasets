@@ -91,6 +91,29 @@ class UsgsUniformHazardSourceContractTest(unittest.TestCase):
         self.assertEqual(usgs_uniform_hazard_ground_motion_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
 
+    def test_source_admission_records_no_maintained_source_outcome(self):
+        from dagster_hifld.sources.usgs_uniform_hazard_ground_motion import (
+            ADMISSION_ERROR, SOURCE_ADMISSION,
+        )
+        self.assertEqual(SOURCE_ADMISSION, "no_maintained_source_park_or_retire")
+        self.assertEqual(ADMISSION_ERROR,
+                         "source_admission_unresolved_no_maintained_successor_park_or_retire")
+
+    def test_historical_acquisition_is_stopped_by_the_admission_gate(self):
+        import tempfile
+        from pathlib import Path
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources.usgs_uniform_hazard_ground_motion import (
+            capture_usgs_uniform_hazard_ground_motion,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            staging = Path(tmp) / "stage"
+            storage = StagingStorageResource(local_dir=str(staging))
+            with self.assertRaises(ValueError) as ctx:
+                capture_usgs_uniform_hazard_ground_motion(storage, version="v-test")
+            self.assertIn("source_admission_unresolved", str(ctx.exception))
+            self.assertFalse(staging.exists())
+
 
 class UsgsUniformHazardRegistrationTest(unittest.TestCase):
     def test_explicit_ingest_asset_registered_and_never_scheduled_live(self):
