@@ -884,7 +884,8 @@ def capture_nhd_area_small_scale(storage: StagingStorageResource, *, version: st
                "capture_receipts": {name: receipt for name, (_, receipt) in captures.items()},
                "objects": descriptors}
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
-    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
+    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"],
+                                        identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
             "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
