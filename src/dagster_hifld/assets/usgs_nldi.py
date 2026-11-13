@@ -304,17 +304,19 @@ class _CaptureState:
         return [entry for entry in self.entries() if PAGE_NAME_PATTERN.fullmatch(str(entry.get("name")))]
 
 
-def _validate_walk(pages: list[dict], ids: list[str], features_by_page: dict[int, list]) -> None:
+def _validate_walk(pages: list[dict], ids: list[str]) -> None:
     """The accepted pages must tile one strictly ascending identifier walk."""
     offset = 0
     for entry in pages:
-        if (entry.get("offset") != offset or entry.get("count") != len(features_by_page[offset])
+        if (entry.get("offset") != offset or not isinstance(entry.get("count"), int)
                 or not isinstance(entry.get("sha256"), str) or not entry.get("fetched_at")):
             raise ValueError("accepted page roster is not a contiguous ascending walk")
         if entry["count"] > PAGE_LIMIT:
             raise ValueError("NLDI page exceeded the requested page limit")
         offset += entry["count"]
-    if offset == 0:
+    if offset != len(ids):
+        raise ValueError("the walked page counts do not reproduce the identifier roster")
+    if not ids:
         raise ValueError("the pagination walk produced no features")
     for index, identifier in enumerate(ids):
         if index and not identifier > ids[index - 1]:
@@ -323,46 +325,73 @@ def _validate_walk(pages: list[dict], ids: list[str], features_by_page: dict[int
         raise ValueError("the walked identifiers contain duplicates")
 
 
-def _compose_asset(pages: list[dict], capture_root: Path, expected_count: int) -> bytes:
+class _WalkAudit:
+    """Streaming per-feature audit so a 200k-feature walk never holds its rows.
+
+    The digests stream the exact canonical serializations a whole-collection
+    parse would produce, and features are discarded after each page.
+    """
+
+    def __init__(self):
+        self.ids: list[str] = []
+        self._id_hash = hashlib.sha256()
+        self._geometry_hash = hashlib.sha256()
+        self._bounds: dict[str, float] | None = None
+        schema = {"feature_type": "Feature", "property_names_in_source_order": list(PROPERTY_NAMES),
+                  "geometry_type": "Point", "coordinate_dimension": 2, "root_metadata": {}}
+        self.schema_sha256 = hashlib.sha256(_canonical(schema)).hexdigest()
+
+    def update(self, features: list) -> None:
+        for feature in features:
+            identifier = _feature_identifier(feature)
+            _validate_feature(feature, identifier)
+            self._id_hash.update(b"[" if not self.ids else b",")
+            self._id_hash.update(_canonical(identifier))
+            self.ids.append(identifier)
+            coordinates = feature["geometry"]["coordinates"]
+            self._geometry_hash.update(b"[" if len(self.ids) == 1 else b",")
+            self._geometry_hash.update(_canonical([identifier, coordinates]))
+            longitude, latitude = coordinates
+            if self._bounds is None:
+                self._bounds = {"xmin": longitude, "ymin": latitude, "xmax": longitude, "ymax": latitude}
+            else:
+                self._bounds = {"xmin": min(self._bounds["xmin"], longitude),
+                                "ymin": min(self._bounds["ymin"], latitude),
+                                "xmax": max(self._bounds["xmax"], longitude),
+                                "ymax": max(self._bounds["ymax"], latitude)}
+
+    def finish(self) -> tuple[int, list[str], dict]:
+        ids = self.ids
+        id_digest = self._id_hash.copy()
+        id_digest.update(b"]")
+        geometry_digest = self._geometry_hash.copy()
+        geometry_digest.update(b"]")
+        audit = {"schema_sha256": self.schema_sha256,
+                 "id_roster_sha256": id_digest.hexdigest(),
+                 "geometry_rows_sha256": geometry_digest.hexdigest(),
+                 "source_property_names": list(PROPERTY_NAMES),
+                 "unique_id_count": len(set(ids)), "null_geometry_count": 0,
+                 "observed_bounds": self._bounds, "first_id": ids[0] if ids else None,
+                 "last_id": ids[-1] if ids else None, "feature_count": len(ids)}
+        return len(ids), ids, audit
+
+
+def _compose_asset(pages: list[dict], capture_root: Path) -> bytes:
     """Recompose the walked pages, retaining every serialized lexeme verbatim."""
     interiors = []
+    total_features = 0
     for entry in pages:
         decoded_path = entry.get("decoded_path")
         if not decoded_path or not Path(decoded_path).exists():
             raise ValueError("retained page evidence is missing at composition time")
         interiors.append(_page_slice(Path(decoded_path).read_bytes()))
+        total_features += entry["count"]
     body = (b'{"type":"FeatureCollection","features":[' + b",".join(interiors) + b"]}")
-    collection = _load_json(body, "composed candidate asset")
-    if len(_page_collection(collection)) != expected_count:
-        raise ValueError("composed candidate asset does not reproduce the walked feature count")
+    expected_length = (len(b'{"type":"FeatureCollection","features":[') + len(b"]}")) \
+        + sum(len(interior) for interior in interiors) + max(0, len(interiors) - 1)
+    if len(body) != expected_length or total_features == 0:
+        raise ValueError("composed candidate asset does not reproduce the walked features")
     return body
-
-
-def _audit_composed(body: bytes) -> tuple[int, list[str], dict]:
-    collection = _load_json(body, "composed candidate asset")
-    features = _page_collection(collection)
-    ids: list[str] = []
-    geometry_rows: list[list] = []
-    for feature in features:
-        identifier = _feature_identifier(feature)
-        _validate_feature(feature, identifier)
-        ids.append(identifier)
-        geometry_rows.append([identifier, feature["geometry"]["coordinates"]])
-    schema = {"feature_type": "Feature", "property_names_in_source_order": list(PROPERTY_NAMES),
-              "geometry_type": "Point", "coordinate_dimension": 2, "root_metadata": {}}
-    bounds = None
-    if geometry_rows:
-        xs = [row[1][0] for row in geometry_rows]
-        ys = [row[1][1] for row in geometry_rows]
-        bounds = {"xmin": min(xs), "ymin": min(ys), "xmax": max(xs), "ymax": max(ys)}
-    audit = {"schema_sha256": hashlib.sha256(_canonical(schema)).hexdigest(),
-             "id_roster_sha256": hashlib.sha256(_canonical(ids)).hexdigest(),
-             "geometry_rows_sha256": hashlib.sha256(_canonical(geometry_rows)).hexdigest(),
-             "source_property_names": list(PROPERTY_NAMES),
-             "unique_id_count": len(set(ids)), "null_geometry_count": 0,
-             "observed_bounds": bounds, "first_id": ids[0] if ids else None,
-             "last_id": ids[-1] if ids else None, "feature_count": len(features)}
-    return len(features), ids, audit
 
 
 def _quarantine(staging: StagingStorageResource, version: str,
@@ -493,7 +522,7 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
                           "fetched_at": receipt["fetched_at"], "decoded_path": str(decoded_path)})
             captures.clear()
         pages: list[dict] = []
-        features_by_page: dict[int, list] = {}
+        audit = _WalkAudit()
         offset = 0
         while True:
             name = f"page_{offset:09d}"
@@ -504,10 +533,8 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
                 features = _page_collection(document)
                 if len(features) != retained["count"]:
                     raise ValueError("retained NLDI page evidence does not match its accepted roster entry")
-                if features:
-                    for feature in features:
-                        _validate_feature(feature, _feature_identifier(feature))
-                features_by_page[offset] = features
+                audit.update(features)
+                del features, document
                 pages.append(retained)
                 if retained["count"] < PAGE_LIMIT:
                     break
@@ -530,27 +557,25 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
             # Retain the raw page before per-feature validation so a refused
             # feature still leaves its page evidence on disk unaccepted.
             decoded_path = _retain(capture_root, name, wire, decoded, receipt)
-            for feature in features:
-                _validate_feature(feature, _feature_identifier(feature))
-            entry = {"name": name, "offset": offset, "count": len(features),
+            count = len(features)
+            audit.update(features)
+            del features, document
+            entry = {"name": name, "offset": offset, "count": count,
                      "sha256": receipt["decoded_sha256"], "fetched_at": receipt["fetched_at"],
                      "decoded_path": str(decoded_path)}
             state.accept(entry)
-            features_by_page[offset] = features
             pages.append(entry)
             captures.clear()
-            if len(features) < PAGE_LIMIT:
+            if count < PAGE_LIMIT:
                 break
-            offset += len(features)
+            offset += count
         for entry in state.page_entries():
             if entry not in pages:
                 raise ValueError("retained page evidence is outside the accepted walk")
-        ids: list[str] = []
-        for offset in sorted(features_by_page):
-            ids.extend(feature["id"] for feature in features_by_page[offset])
-        _validate_walk(pages, ids, features_by_page)
-        body = _compose_asset(pages, capture_root, len(ids))
-        feature_count, ids, audit = _audit_composed(body)
+        ids = audit.ids
+        _validate_walk(pages, ids)
+        body = _compose_asset(pages, capture_root)
+        feature_count, ids, audit = audit.finish()
         asset_sha256 = hashlib.sha256(body).hexdigest()
         audit["asset_sha256"] = asset_sha256
         if EXPECTED_COUNT is not None and feature_count != EXPECTED_COUNT:
