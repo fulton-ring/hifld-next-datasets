@@ -162,12 +162,15 @@ def _pins(features, schema, windows):
         if feature.get("geometry") is not None:
             code = feature["attributes"]["featuretype"]
             distribution[code] = distribution.get(code, 0) + 1
-    geometry_sha = hashlib.sha256()
-    for window in windows:
-        page_records = [[feature["attributes"]["OBJECTID"],
-                         feature["geometry"]["rings"] if feature.get("geometry") else None]
-                        for feature in features if feature["attributes"]["OBJECTID"] in window]
-        geometry_sha.update(_canonical(page_records))
+    # Boundary-independent geometry digest: one canonical stream over the whole
+    # record sequence in window order (windows partition the roster ascending).
+    geometry_sha = hashlib.sha256(_canonical(
+        [[feature["attributes"]["OBJECTID"],
+          feature["geometry"]["rings"] if feature.get("geometry") else None]
+         for window in windows
+         for feature in sorted((f for f in features
+                                if f["attributes"]["OBJECTID"] in window),
+                               key=lambda f: f["attributes"]["OBJECTID"])]))
     return dict(EXPECTED_COUNT=5, EXPECTED_NULL_GEOMETRY_COUNT=1,
                 EXPECTED_REFUSED_IDS=frozenset(),
                 EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),
@@ -369,11 +372,9 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
             _attrs(14, featuretype=4, featuretypelabel="Ocean or Great Lake", id3dhp="OC00014"),
             _attrs(13, id3dhp="NUL0013"))
         ordered = [attrs_10, attrs_11, attrs_12, attrs_14, attrs_13]
-        geometry_sha = hashlib.sha256()
-        geometry_sha.update(_canonical([[10, [RING_A]], [11, [RING_A, HOLE_A]]]))
-        geometry_sha.update(_canonical([[12, [RING_A, RING_B, HOLE_B]]]))
-        geometry_sha.update(_canonical([[14, [RING_B]]]))
-        geometry_sha.update(_canonical([[13, None]]))
+        geometry_sha = hashlib.sha256(_canonical([
+            [10, [RING_A]], [11, [RING_A, HOLE_A]], [12, [RING_A, RING_B, HOLE_B]],
+            [14, [RING_B]], [13, None]]))
         return dict(EXPECTED_COUNT=5, EXPECTED_NULL_GEOMETRY_COUNT=1,
                     EXPECTED_REFUSED_IDS=frozenset({13}),
                     EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),

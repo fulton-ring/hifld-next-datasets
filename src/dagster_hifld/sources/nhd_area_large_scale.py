@@ -546,7 +546,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     page_entries.sort()
     attributes: list[dict[str, object]] = []
     wkbs: list[bytes | None] = []
-    geometry_hash = hashlib.sha256()
+    geometry_records: list[list] = []
     null_geometry = 0
     observed_bounds: list[float] = []
     distribution: dict[int, int] = {}
@@ -610,7 +610,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
             raise ValueError("source_page_ids_not_ascending:" + name)
         if sorted(page_ids) != sorted(requested):
             raise ValueError("source_page_id_slice_incomplete_or_reordered:" + name)
-        geometry_hash.update(_canonical(page_geometry_records))
+        geometry_records.extend(page_geometry_records)
     # Producer-refused records: their attributes were captured through the
     # working attributes-only channel and are appended in ascending OBJECTID
     # order with explicitly gated null candidate geometry (the producer's own
@@ -635,7 +635,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         null_geometry += 1
         id3dhp_seen.add(attrs["id3dhp"])
     if refused_oids:
-        geometry_hash.update(_canonical([[oid, None] for oid in refused_oids]))
+        geometry_records.extend([oid, None] for oid in refused_oids)
     if sorted(captured_ids) != ids:
         raise ValueError("source_feature_population_incomplete")
     if distribution != EXPECTED_FEATURETYPE_DISTRIBUTION:
@@ -651,6 +651,18 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     record_sha = _sha(_canonical(attributes))
     if record_sha != EXPECTED_RECORD_SHA256:
         raise ValueError("source_record_value_drift")
+    # Boundary-independent geometry digest: one canonical stream over the whole
+    # record sequence (served pages in ascending roster order, refused records
+    # appended in ascending OBJECTID order). Hashing per-page chunks would make
+    # the pin depend on the capture's bisection page boundaries, which are
+    # completeness-neutral and may legitimately differ between captures.
+    geometry_hash = hashlib.sha256()
+    geometry_hash.update(b"[")
+    for index, record in enumerate(geometry_records):
+        if index:
+            geometry_hash.update(b",")
+        geometry_hash.update(_canonical(record))
+    geometry_hash.update(b"]")
     geometry_sha = geometry_hash.hexdigest()
     if geometry_sha != EXPECTED_GEOMETRY_SHA256:
         raise ValueError("source_geometry_or_coverage_drift")
