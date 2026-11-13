@@ -42,6 +42,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
+import shapely
 from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -384,6 +385,13 @@ def _polygon_wkb(geometry: object) -> bytes | None:
     if not exteriors:
         raise ValueError("source_polygon_exterior_missing")
     shells = [(Polygon(ring), _signed_area(ring), index) for index, ring in enumerate(exteriors)]
+    # Prepared shell geometries: hole containment is queried against every
+    # exterior, and the producer's island/coastal features carry thousands of
+    # holes over six-figure-vertex exteriors where unprepared contains() per
+    # hole is pathologically slow. Preparation builds an index only and the
+    # containment results are identical.
+    for shell, _area, _index in shells:
+        shapely.prepare(shell)
     assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
     for hole in holes:
         probe = Polygon(hole).representative_point()
