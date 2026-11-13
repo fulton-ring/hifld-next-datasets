@@ -74,8 +74,10 @@ def _attributes(oid, franodeid=None):
         15: {"FRANODEID": 300005, "COUNTRY": "US", "STATE": "HI", "STFIPS": "15", "CTYFIPS": "009",
              "STCYFIPS": "15009", "FRADISTRCT": 7, "PASSNGR": None, "PASSNGRSTN": None, "BNDRY": 0},
     }
-    return {"OBJECTID": oid, **rows[oid] if franodeid is None else
-            {**rows[oid], "FRANODEID": franodeid}}
+    values = dict(rows[oid])
+    if franodeid is not None:
+        values["FRANODEID"] = franodeid
+    return {"OBJECTID": oid, **values}
 
 
 def _geometries():
