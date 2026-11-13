@@ -8,14 +8,23 @@ documented by USGS in "NHD and WBD Map Services Moving to the Cloud",
 https://www.usgs.gov/news/technical-announcement/nhd-and-wbd-map-services-moving-cloud).
 USGS retired the NHD on 2023-10-01 and stopped stewardship edits; the successor
 is the 3D Hydrography Program (3DHP).  The agency still republishes the final
-NHD as maintained reference services and monthly-regenerated national downloads
-(the service states "Data Refreshed October, 2026"), and the crosswalk-directed
-3DHP_all service publishes HydroLocation/Flowline/Waterbody/Catchment layers
-only, with no "small scale" (1:100,000-scale medium-resolution NHDPlus product)
-variant and no HI/PR/VI/Pacific-territories variant, so the retired-but-
-published NHD service is the exact-matching agency publication of this layer.
-Acceptance of a retired dataset's reference publication, and any future
-successor migration, remain maintainer decisions.
+NHD as reference services and monthly-regenerated national downloads (the
+service states "Data Refreshed October, 2026"), but a refresh/repackaging of
+retired data does not make the underlying data maintained.  The NHD this layer
+is built on (the served rows carry "High" RESOLUTION) has been legacy and "no
+longer updated and maintained" since the 2024 shift to 3DHP production; the
+medium-resolution custodianship path USGS names (EPA's NHDPlus Version 2 suite)
+is 1:100,000-scale conterminous-U.S. coverage only, so it neither serves the
+territories nor matches this High-resolution layer; and the crosswalk-directed
+3DHP_all service publishes HydroLocation/Flowline/Waterbody/Catchment/Spatial
+Metadata layers only — no "small scale" (1:100,000-scale) product, no
+HI/PR/VI/Pacific-territories variant, and a 3DHP identity model (id3dhp,
+flowpathid3dhp, featuretype) without the NHDPlus-style ComID/ReachCode schema
+this dataset carries.  No maintained agency product can recreate this layer,
+so under the project source policy this dataset routes to the "no maintained
+source: park or retire" decision; the retired-but-published NHD service is the
+only exact-matching agency publication and this draft remains as evidence for
+that decision, with publication blocked and every approval flag false.
 
 That service's layer 5 "Flowline - Small Scale (HI, PR, VI, Pacific
 Territories)" is the producer's own publication of the HIFLD Open inventory
@@ -708,10 +717,13 @@ def capture_nhd_flowline_small_scale_territories(storage: StagingStorageResource
                        "RESOLUTION and NHDPlus-style COMID identifiers), captured completely from the "
                        "producer's own REST publication. Complete source attributes and served Web "
                        "Mercator (EPSG:3857) polyline geometry are represented in the candidate. USGS "
-                       "retired the NHD on 2023-10-01 and republishes the final dataset as a maintained "
-                       "reference service; the successor 3DHP service publishes no equivalent small-scale "
-                       "or territories-variant product. Freshness of a retired dataset, rights, public "
-                       "schema/ID contract, and release acceptance remain unresolved and unapproved.",
+                       "retired the NHD on 2023-10-01 and republishes the final dataset only as an "
+                       "unmaintained reference service; no maintained agency product can recreate this "
+                       "layer (3DHP publishes no small-scale or territories-variant product and uses the "
+                       "3DHP id3dhp identity model; NHD is legacy since the 2024 shift to 3DHP), so the "
+                       "dataset routes to the 'no maintained source: park or retire' decision. Freshness "
+                       "of a retired dataset, rights, public schema/ID contract, and release acceptance "
+                       "remain unresolved and unapproved.",
         "publisher": PUBLISHER, "agency": "U.S. Geological Survey", "source_url": LAYER_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
@@ -775,7 +787,15 @@ def capture_nhd_flowline_small_scale_territories(storage: StagingStorageResource
                    "Program (3DHP) Layers') routes the hydrography collection to the 3DHP_all service, which "
                    "publishes HydroLocation/Flowline/Waterbody/Catchment layers only - no 1:100,000-scale "
                    "small-scale product and no HI/PR/VI/Pacific-territories variant - so 3DHP cannot currently "
-                   "recreate this layer.",
+                   "recreate this layer. The NHD this layer is built on (served RESOLUTION 'High') has been "
+                   "legacy and 'no longer updated and maintained' since the 2024 shift to 3DHP production "
+                   "(https://www.usgs.gov/3d-hydrography-program/access-3dhp-data-products, checked "
+                   "2026-11-13), the medium-resolution custodianship path USGS names (EPA's NHDPlus Version 2 "
+                   "suite) is 1:100,000-scale conterminous-U.S. coverage only, and the 3DHP Flowline layer "
+                   "carries the 3DHP identity model (id3dhp, mainstemid, flowpathid3dhp) without the "
+                   "NHDPlus-style ComID/ReachCode schema this dataset serves, so no maintained source can "
+                   "recreate this dataset and it routes to the 'no maintained source: park or retire' "
+                   "decision; refresh/repackaging of retired data does not make the data maintained.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "Complete native source fields, IDs, values, physical nulls, and geometry retained in the "
                       "producer CRS; all release and compatibility approvals remain pending.",
@@ -845,7 +865,8 @@ def capture_nhd_flowline_small_scale_territories(storage: StagingStorageResource
                "capture_receipts": {name: receipt for name, (_, receipt) in captures.items()},
                "objects": descriptors}
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
-    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
+    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"],
+                                        identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
             "source_nan_string_geometry_count": audit["nan_string_geometry_count"],

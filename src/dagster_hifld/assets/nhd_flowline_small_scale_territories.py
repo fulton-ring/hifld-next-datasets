@@ -25,8 +25,11 @@ class NhdFlowlineSmallScaleTerritoriesConfig(Config):
         "USGS National Hydrography Dataset service layer 5 'Flowline - Small Scale (HI, PR, VI, "
         "Pacific Territories)' (the flowline component the NHDPlus-based small-scale product ships "
         "for the island territories) from the producer's own REST publication. Candidate extraction "
-        "only; the NHD is retired (2023-10-01) and republished as a reference service, so source "
-        "acceptance, freshness, rights, and schema/ID acceptance remain pending."
+        "only; the NHD is retired (2023-10-01) and republished as an unmaintained reference service, "
+        "and no maintained agency product can recreate this layer (the 3DHP successor publishes no "
+        "small-scale or territories-variant product and uses its own id3dhp identity model), so the "
+        "dataset routes to the 'no maintained source: park or retire' decision with publication "
+        "blocked."
     ),
 )
 def usgs_nhd_flowline_small_scale_territories(context, config: NhdFlowlineSmallScaleTerritoriesConfig,

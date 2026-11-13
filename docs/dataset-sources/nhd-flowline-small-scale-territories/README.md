@@ -24,26 +24,44 @@ third-party host is fetched as a pipeline input.
   row "3D Hydrography Program (3DHP) Layers") marks the hydrography collection "Deprecate" and directs
   users to the USGS `usgs_3dhp_all` FeatureServer.
 
-## Retirement, successor check and freshness (evidence dated 2026-11-13)
+## Retirement, successor checks and no-maintained-source finding (evidence dated 2026-11-13)
 
 - USGS states the NHD was retired on 2023-10-01 ("no longer maintained") and that USGS now produces
   the 3D Hydrography Program; the retired NHD remains "available, but no longer maintained"
   (https://www.usgs.gov/national-hydrography/national-hydrography-dataset,
   https://www.usgs.gov/national-hydrography/access-national-hydrography-products — captured as
-  `product_doc` evidence).
-- The agency still republishes the final NHD as maintained reference products: the USGS services
-  documentation describes the NHD dynamic service as refreshed quarterly, the NHD national download is
-  regenerated monthly, and the captured service JSON declares "Data Refreshed October, 2026". No
-  per-feature or per-snapshot release date is published; the territories small-scale component has
-  been static since stewardship ended.
+  `product_doc` evidence). The agency still republishes the final NHD as reference products (services
+  refreshed quarterly, national download regenerated monthly, captured service JSON "Data Refreshed
+  October, 2026"), but a refresh/repackaging of retired data does not make the underlying data
+  maintained.
+- Maintenance status of the underlying data (checked 2026-11-13): USGS's 3DHP access page states that
+  "In 2024, the USGS shifted from maintaining the National Hydrography Dataset (NHD), the Watershed
+  Boundary Dataset (WBD), and the NHDPlus High-Resolution to production of 3D Hydrography Program
+  products. While these legacy products are no longer updated and maintained, they are provided here
+  as both downloadable products and as services for reference purposes"
+  (https://www.usgs.gov/3d-hydrography-program/access-3dhp-data-products). This layer is the
+  territories component of the small-scale product built on the high-resolution NHD (served rows
+  carry `RESOLUTION` = `High`), so its underlying data is exactly that legacy, unmaintained NHD.
+- Medium-resolution custodianship path is not a substitute (checked 2026-11-13): USGS's NHD page names
+  EPA's NHDPlus Version 2 suite as the custodian of NHD Medium Resolution, but that path covers
+  1:100,000-scale conterminous-U.S. production ("medium resolution National Hydrography Dataset at
+  1:100,000 scale for the conterminous U.S.", same page), so it neither serves Hawaii, Puerto Rico,
+  the U.S. Virgin Islands or the Pacific territories nor matches this layer's High-resolution source
+  data.
 - Successor check: the crosswalk-directed 3DHP_all service
-  (`https://3dhp.nationalmap.gov/arcgis/rest/services/usgs_3dhp_all/FeatureServer`, captured
-  2026-11-13, copyright "Data refreshed September 4, 2026") publishes HydroLocation, Flowline,
-  Waterbody, Catchment and Spatial Metadata layers only — no 1:100,000-scale small-scale product and
-  no HI/PR/VI/Pacific-territories variant — so the current 3DHP publication cannot recreate this
-  layer. The retired-but-published USGS NHD service is therefore the exact-matching agency
-  publication; accepting a retired dataset's reference publication (and any future 3DHP successor
-  migration) remains a maintainer decision.
+  (`https://3dhp.nationalmap.gov/arcgis/rest/services/usgs_3dhp_all/FeatureServer`, checked
+  2026-11-13, copyright "Data refreshed September 4, 2026") publishes only HydroLocation (layers
+  20/30/40), Flowline (50), Waterbody (60), Catchment (80) and Spatial Metadata (90/92/94) layers —
+  no 1:100,000-scale small-scale product and no HI/PR/VI/Pacific-territories variant — and its
+  Flowline layer carries the 3DHP identity model (`id3dhp`, `mainstemid`, `flowpathid3dhp`,
+  `featuretype`, `streamlevel`) without the NHDPlus-style `ComID`, `ReachCode` and `Permanent_`
+  schema this dataset serves, so the current maintained 3DHP publication cannot recreate this layer.
+- No maintained source: no currently maintained agency product can recreate this layer. Under the
+  project source policy this dataset therefore routes to the "no maintained source: park or retire"
+  decision (needs_decision) rather than pending release acceptance. The retired-but-published USGS
+  NHD reference service remains the only exact-matching agency publication; this draft adapter
+  against it is retained as evidence for that decision, with the refresh schedule stopped and every
+  approval flag false.
 - The old DHS/HIFLD-hosted ArcGIS items and the DataLumos project 240276 archive copy are
   identification and comparison context only; the DataLumos archive modification date (2025-07-03)
   is not a source release date.
@@ -75,6 +93,7 @@ unexpected column, served Z or M ordinate, or incomplete page tiling. Producer p
 verbatim (including their Web Mercator coordinates); each path becomes one LineString part in
 producer order and multi-path features become MultiLineString; null, string-"NaN", or structurally
 degenerate paths are retained with null candidate geometry and gated in the audit, never repaired.
-The candidate is an unapproved faithful draft: source acceptance of a retired dataset's reference
-publication, baseline equivalence with the archived HIFLD copy, schema/ID/coverage contracts,
-rights, and release all remain pending acceptance, and the refresh schedule is stopped.
+The candidate remains an unapproved draft: with no maintained source available this dataset is routed
+to the "no maintained source: park or retire" decision, the refresh schedule is stopped, and source
+acceptance, baseline equivalence with the archived HIFLD copy, schema/ID/coverage contracts, rights
+and release all stay false.

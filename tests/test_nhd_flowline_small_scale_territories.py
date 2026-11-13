@@ -594,7 +594,7 @@ class NhdFlowlineSmallScaleTerritoriesTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
                     source._capture_segments(None, root, 6)
 
-    def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
+    def _seal_catalog_cache_flow(self):
         import tempfile
         from pathlib import Path
 
@@ -656,3 +656,28 @@ class NhdFlowlineSmallScaleTerritoriesTests(unittest.TestCase):
                     storage, version="vfixture", capture_directory=str(root / "captures"))
                 self.assertTrue(reused["reused"])
                 self.assertEqual(reused["version"], candidate["version"])
+
+    def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
+        self._seal_catalog_cache_flow()
+
+    def test_packaged_runtime_without_git_seals_then_reuses_candidate(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(prefix="nhd-flowline-territories-packaged-") as temporary:
+            packaged = Path(temporary) / "runtime"
+            packaged.mkdir()
+            shutil.copytree(repo_root / "src/dagster_hifld", packaged / "src/dagster_hifld",
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            for name in ("pyproject.toml", "uv.lock"):
+                shutil.copy2(repo_root / name, packaged / name)
+            self.assertFalse((packaged / ".git").exists())
+            packaged_source = packaged / "src/dagster_hifld/sources/nhd_flowline_small_scale_territories.py"
+            with patch.object(source, "__file__", str(packaged_source)):
+                identity = source._code_identity()
+                self.assertEqual(identity["code_identity_scheme"], "sha256-packaged-dagster-hifld-v1")
+                self.assertEqual(identity["working_tree_status"], "unknown")
+                self.assertTrue(identity["code_commit"].startswith("packaged-sha256:"))
+                self._seal_catalog_cache_flow()
