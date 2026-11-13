@@ -8,7 +8,7 @@ Online item ``d1c464bac63d44bc88a4a059dc69d259`` ("PAD-US Manager Name", owned
 by the USGS organizational account ``mcroft@usgs.gov_USUS``) whose
 ``Manager_Name_PADUS`` FeatureServer layer 0 ``PADUS4_1ManagerName`` carries
 the PAD-US 4.1 data release (DOI 10.5066/P96WBCHS, cited verbatim in the
-service copyright text) Combined feature class with the manager-name mapping
+layer document's copyright text) Combined feature class with the manager-name mapping
 fields. That producer service is captured here. The DataLumos project 240684
 archive copy is identification context only and is never fetched.
 
@@ -274,16 +274,11 @@ def _validate_roster(roster: object, label: str) -> list[int]:
     return ids
 
 
-def _validate_service_document(service: object, label: str) -> None:
-    if not isinstance(service, dict):
-        raise PadUsManagerNameError("source_service_or_layer_document_invalid")
-    if service.get("copyrightText") != EXPECTED_COPYRIGHT_TEXT:
-        raise PadUsManagerNameError("service_copyright_release_drift:" + label)
-
-
 def _validate_layer_document(layer: object) -> tuple[list[dict[str, object]], str]:
     if not isinstance(layer, dict):
         raise PadUsManagerNameError("source_service_or_layer_document_invalid")
+    if layer.get("copyrightText") != EXPECTED_COPYRIGHT_TEXT:
+        raise PadUsManagerNameError("layer_copyright_release_drift")
     if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
             or layer.get("type") != "Feature Layer" or layer.get("geometryType") != GEOMETRY_TYPE):
         raise PadUsManagerNameError("exact_padus_manager_layer_metadata_drift")
@@ -939,9 +934,6 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     docs = {name: json.loads(_read_capture(capture_root, name)[0])
             for name in METADATA_NAMES if name != "sb_item"}
     _validate_corroboration_documents(capture_root)
-    _validate_service_document(docs["service_before"], "service_before")
-    _validate_service_document(json.loads(_read_capture(capture_root, "service_after")[0]),
-                               "service_after")
     fields, schema_sha = _validate_layer_document(docs["layer_before"])
     declared = {name: (esri_type, nullable)
                 for name, esri_type, nullable, _l in NATIVE_FIELDS}
@@ -1237,7 +1229,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                    "organizational account mcroft@usgs.gov_USGS), whose "
                    "Manager_Name_PADUS FeatureServer layer 0 PADUS4_1ManagerName carries "
                    "the PAD-US 4.1 release (DOI 10.5066/P96WBCHS, cited verbatim in the "
-                   "service copyright text) Combined feature class with manager-name "
+                   "layer copyright text) Combined feature class with manager-name "
                    "mapping fields. The official PAD-US 4.1 national geodatabase ZIP "
                    "(ScienceBase item 652d4fc5d34e44db0e2ee45e, 1,523,434,496 bytes, SHA-256 "
                    "62ed113335e359509ad68a731146c74aa873c5a92da4f3fda572e54bc9b823ab, "

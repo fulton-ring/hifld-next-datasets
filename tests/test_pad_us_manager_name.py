@@ -111,6 +111,7 @@ def _fixture_layer_fields() -> list[dict]:
 
 def _fixture_layer_doc(fields: list[dict]) -> dict:
     return {"id": src.LAYER_ID, "name": src.LAYER_NAME, "type": "Feature Layer",
+            "copyrightText": src.EXPECTED_COPYRIGHT_TEXT,
             "geometryType": src.GEOMETRY_TYPE, "hasZ": False, "hasM": False,
             "maxRecordCount": src.MAX_RECORD_COUNT,
             "advancedQueryCapabilities": {"supportsPagination": True},
@@ -120,7 +121,7 @@ def _fixture_layer_doc(fields: list[dict]) -> dict:
 
 
 def _fixture_service_doc() -> dict:
-    return {"copyrightText": src.EXPECTED_COPYRIGHT_TEXT}
+    return {"copyrightText": ""}
 
 
 def _fixture_sb_item() -> dict:
@@ -480,9 +481,9 @@ class PadUsManagerNameTests(unittest.TestCase):
                 layer_fields=[{**field, "length": (field.get("length") or 0) + 1}
                               if field.get("length") else field
                               for field in _fixture_layer_fields()]),
-            "service_copyright_release_drift:service_before": dict(
-                service={**_fixture_service_doc(),
-                         "copyrightText": "Data refreshed October, 2026."}),
+            "layer_copyright_release_drift": dict(
+                layer={**_fixture_layer_doc(_fixture_layer_fields()),
+                       "copyrightText": "Data refreshed October, 2026."}),
             "exact_padus_manager_layer_metadata_drift": dict(
                 layer={**_fixture_layer_doc(_fixture_layer_fields()),
                        "geometryType": "esriGeometryPolyline"}),
