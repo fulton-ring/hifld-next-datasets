@@ -74,13 +74,18 @@ CROSSWALK_DEAD_REDIRECT_NOTE = (
     "own gis.boem.gov server (layer 11).")
 # The per-value and per-geometry baselines, gate counts and observed bounds
 # are pinned from the dated complete capture (2026-11-13, 28 accepted
-# resultOffset pages, /workspace/captures258 in the task sandbox); unpinned
-# values (None or "") are checked only once pinned.
+# resultOffset pages). The producer republished layer 11 between 11:34Z and
+# 12:03Z on 2026-11-13, resequencing all OBJECTIDs (roster
+# 643,213,655..644,611,532 -> 644,316,363..644,852,019, same count); the id,
+# record and geometry digests were re-pinned from a fresh complete capture
+# (2026-11-13 ~20:11Z, /workspace/captures258b in task sandbox cf4728bd)
+# whose every other pinned value matched the original capture verbatim.
+# Unpinned values (None or "") are checked only once pinned.
 EXPECTED_COUNT = 278_438
-EXPECTED_IDS_SHA256 = "dc891e1182e69533063605d67764153a2dcb410d4fe0fcb9166e31d830e3cab5"
+EXPECTED_IDS_SHA256 = "dd11656f646bf775ac12767b392ecbc402cb9690530aff6a7a011488666b51b3"
 EXPECTED_SCHEMA_SHA256 = "9294be8bdc15558774532cf2c997830b3ef153aefd8cd4c3efa88c4de92ebe05"
-EXPECTED_RECORD_SHA256 = "adafad8e40022e9067950767ed6c9a89bfd33ae4c7f804890af92a036546ef35"
-EXPECTED_GEOMETRY_SHA256 = "221967344317097c4cf5f53610e2ce88e1095e72f68c1fd6a25830819a950eca"
+EXPECTED_RECORD_SHA256 = "ccd9aeddd2b014b09eaf599d2f8070fea2f67bc96c6cf0fa0bfa13537fcdea9c"
+EXPECTED_GEOMETRY_SHA256 = "0e29a7af75a0851983aeada85b83d62a8d4ba9b5e2f82a277c7fd28823b65aec"
 EXPECTED_NULL_GEOMETRY_COUNT = 45
 EXPECTED_RING_COUNT_DISTRIBUTION = {1: 278_373, 2: 20}
 EXPECTED_UNIQUE_PROT_NUMBER_COUNT = 476
