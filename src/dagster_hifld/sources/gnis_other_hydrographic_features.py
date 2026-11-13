@@ -132,15 +132,16 @@ EXPECTED_COUNT = 200_716
 EXPECTED_LAYER_EXTENT = {"xmin": -19946753.7371, "ymin": -1616035.5824000016,
                          "xmax": 20035651.3177, "ymax": 11536262.025600001}
 # The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (2026-11-13, 201 accepted
-# objectIds pages, /workspace/captures240 in the task sandbox); unpinned
-# values ("", None) are checked only once pinned.
-EXPECTED_IDS_SHA256 = ""
-EXPECTED_SCHEMA_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_EMPTY_GEOMETRY_COUNT = None
+# bounds are pinned from the dated complete capture (2026-11-13 11:42:47 -
+# 12:18:57 UTC, 301 accepted objectIds pages after producer-side transient
+# truncation refusals bisected down, /workspace/captures240 in the task
+# sandbox); unpinned values ("", None) are checked only once pinned.
+EXPECTED_IDS_SHA256 = "e38dcf5bd754dccfc994be7c73e7a53785e3aedf65160bcc121df9e18454ee53"
+EXPECTED_SCHEMA_SHA256 = "054726f396a55139d7db341622d192fdac21b854cb011e5569c897838c83d6ac"
+EXPECTED_RECORD_SHA256 = "fe4e8b46965ef1fccfd255efe5eebafd6533e63dd668787e917e1219c3f4919b"
+EXPECTED_GEOMETRY_SHA256 = "a6301aede01a591ac7607e03f35fcbf98851f0182f1158bd967fc09aa1f28468"
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_EMPTY_GEOMETRY_COUNT = 0
 EXPECTED_TOTAL_POINT_COUNT = 200_716
 # GNIS gazetteer per-feature value histograms observed via grouped counts on
 # 2026-11-13 (sum 200,716); every feature must carry one of these values.
@@ -152,7 +153,8 @@ EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION = {2: 200_716}
 # The layer is a plain point layer: every feature carries exactly one location.
 EXPECTED_POINT_COUNT_DISTRIBUTION = {1: 200_716}
 EXPECTED_Z_ORDINATE_DISTRIBUTION = {0.0: 200_716}
-EXPECTED_OBSERVED_BOUNDS = None
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -19946753.7371, "ymin": -1616035.5824000016,
+                            "xmax": 20035651.3177, "ymax": 11536262.025600001}
 BASELINE_PENDING_NOTE = (
     "The record and geometry baseline digests, geometry gate counts and "
     "observed bounds are pinned from a completed resumable capture directory "
