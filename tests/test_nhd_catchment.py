@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pyarrow.parquet as pq
+from shapely import from_wkb
 
 from dagster_hifld.assets.nhd_catchment import nhd_catchment, nhd_catchment_complete
 from dagster_hifld.definitions import defs
@@ -286,6 +287,9 @@ class NhdCatchmentTests(unittest.TestCase):
         exterior = _cw_square(0.0, 0.0, 1.0)
         hole = _ccw_square(0.25, -0.5, 0.25)
         wkb = src._polygon_wkb({"hasZ": True, "rings": [exterior, hole]})
+        assembled = from_wkb(wkb)
+        self.assertEqual(assembled.geom_type, "Polygon")
+        self.assertTrue(assembled.is_valid)
         order, kind = struct.unpack_from("<BI", wkb, 0)
         self.assertEqual((order, kind), (1, 0x80000003))
         (ring_count,) = struct.unpack_from("<I", wkb, 5)
@@ -300,15 +304,17 @@ class NhdCatchmentTests(unittest.TestCase):
                 offset += 24
         self.assertEqual(offset, len(wkb))
         multi = src._polygon_wkb({"hasZ": True, "rings": [_cw_square(0.0, 0.0, 1.0),
-                                                         _cw_square(2.0, 0.0, 1.0)]})
+                                                          _cw_square(2.0, 0.0, 1.0)]})
         self.assertEqual(struct.unpack_from("<BI", multi, 0), (1, 0x80000006))
         (parts,) = struct.unpack_from("<I", multi, 5)
         self.assertEqual(parts, 2)
-        nested = src._polygon_wkb({"hasZ": True, "rings": [_cw_square(0.0, -1.0, 3.0),
-                                                          _cw_square(0.5, -1.5, 1.0),
-                                                          _ccw_square(0.75, -1.75, 0.5)]})
-        (rings,) = struct.unpack_from("<I", nested, 5)
-        self.assertEqual(rings, 2)
+        self.assertTrue(from_wkb(multi).is_valid)
+        # A smaller exterior nested inside a larger exterior assembles an
+        # OGC-invalid MultiPolygon ("Nested shells"): gated, never returned.
+        with self.assertRaisesRegex(src.NhdCatchmentError, "source_polygon_assembly_invalid"):
+            src._polygon_wkb({"hasZ": True, "rings": [_cw_square(0.0, -1.0, 3.0),
+                                                      _cw_square(0.5, -1.5, 1.0),
+                                                      _ccw_square(0.75, -1.75, 0.5)]})
 
     def test_polygon_geometry_drift_is_refused(self):
         base = {"hasZ": True, "rings": [_cw_square(0.0, 0.0, 1.0)]}
@@ -331,6 +337,12 @@ class NhdCatchmentTests(unittest.TestCase):
             "source_polygon_hole_unassigned": {
                 "hasZ": True, "rings": [_cw_square(0.0, 0.0, 1.0),
                                         _ccw_square(5.0, 5.0, 1.0)]},
+            # A hole that pokes outside its only claimable exterior assembles
+            # an OGC-invalid Polygon (Self-intersection where hole and shell
+            # cross): gated through source_polygon_assembly_invalid.
+            "source_polygon_assembly_invalid": {
+                "hasZ": True, "rings": [_cw_square(0.0, 0.0, 2.0),
+                                        _ccw_square(0.5, -0.5, 2.0)]},
             "source_polygon_exterior_missing": {
                 "hasZ": True, "rings": [_ccw_square(0.25, -0.75, 0.5)]},
         }
@@ -338,6 +350,47 @@ class NhdCatchmentTests(unittest.TestCase):
             with self.subTest(expected_error):
                 with self.assertRaisesRegex(src.NhdCatchmentError, expected_error):
                     src._polygon_wkb(geometry)
+
+    def test_invalid_assembled_geometry_is_gated_counted_and_raw_rings_kept(self):
+        rows = _fixture_rows()
+        crossing_hole = {"hasZ": True, "rings": [_cw_square(0.0, 0.0, 2.0),
+                                                 _ccw_square(0.5, -0.5, 2.0)]}
+        for label, geometry in (("fixture nested shells", rows[3]["geometry"]),
+                                ("crossing hole", crossing_hole)):
+            with self.subTest(label):
+                with self.assertRaisesRegex(src.NhdCatchmentError,
+                                            "source_polygon_assembly_invalid"):
+                    src._polygon_wkb(geometry)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                storage = _staging(root)
+                result = src.capture_nhd_catchment(storage, version="gate-invalid-run",
+                                                   capture_directory=str(capture_root))
+            self.assertEqual(result["source_unusable_geometry_counts"],
+                             {"source_polygon_ring_degenerate": 1,
+                              "source_polygon_assembly_invalid": 1})
+            table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+            self.assertEqual(table.num_rows, FIXTURE_COUNT)
+            records = table.to_pylist()
+            gated = records[3]
+            self.assertEqual(gated["OBJECTID"], 4)
+            self.assertIsNone(gated["geometry"])
+            self.assertEqual({key: value for key, value in gated.items()
+                              if key != "geometry"}, _fixture_attrs(4))
+            for index in (0, 1, 2):
+                self.assertIsNotNone(records[index]["geometry"])
+                self.assertTrue(from_wkb(records[index]["geometry"]).is_valid)
+            prefix = f"{src.DATASET_SLUG}/{src.FILE_SLUG}/{result['version']}"
+            sealed = json.loads((root / "staging" / prefix / "metadata"
+                                 / "source_audit.json").read_bytes())
+            self.assertEqual(sealed["unusable_geometry_counts"],
+                             {"source_polygon_ring_degenerate": 1,
+                              "source_polygon_assembly_invalid": 1})
+            self.assertEqual(sealed["source_feature_count"], FIXTURE_COUNT)
 
     def test_complete_fixture_capture_materializes_and_repeats(self):
         rows = _fixture_rows()
@@ -367,10 +420,13 @@ class NhdCatchmentTests(unittest.TestCase):
             self.assertEqual(table.column("id3dhp").to_pylist(),
                              [row["attributes"]["id3dhp"] for row in rows])
             nulls = table.column("geometry").to_pylist()
+            self.assertIsNone(nulls[3])
             self.assertIsNone(nulls[4])
             self.assertIsNone(nulls[5])
             self.assertIsNone(nulls[6])
-            self.assertIsNotNone(nulls[0])
+            for index in (0, 1, 2):
+                self.assertIsNotNone(nulls[index])
+                self.assertTrue(from_wkb(nulls[index]).is_valid)
             geo_metadata = json.loads(table.schema.metadata[b"geo"])
             self.assertEqual(geo_metadata["columns"]["geometry"]["geometry_types"],
                              ["Polygon Z", "MultiPolygon Z"])
@@ -421,7 +477,8 @@ class NhdCatchmentTests(unittest.TestCase):
             self.assertEqual(sealed["null_geometry_count"], 1)
             self.assertEqual(sealed["nan_geometry_count"], 1)
             self.assertEqual(sealed["unusable_geometry_counts"],
-                             {"source_polygon_ring_degenerate": 1})
+                             {"source_polygon_ring_degenerate": 1,
+                              "source_polygon_assembly_invalid": 1})
             manifest = json.loads((root / "staging" / prefix / "metadata"
                                    / "source_manifest.json").read_bytes())
             self.assertFalse(manifest["approved"])

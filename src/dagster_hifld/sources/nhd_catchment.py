@@ -167,6 +167,7 @@ GEOMETRY_COLUMN = "geometry"
 UNUSABLE_GEOMETRY_MODES = frozenset({
     "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
     "source_polygon_ring_self_intersecting", "source_polygon_hole_unassigned",
+    "source_polygon_assembly_invalid",
 })
 
 _ARROW_TYPES: dict[str, pa.DataType] = {
@@ -369,10 +370,14 @@ def _polygon_wkb(geometry: object) -> bytes | None:
     containing exterior. Producer ring orientation and vertex values (x, y, z)
     are retained verbatim (no reorientation, resampling, or projection). Rows
     whose rings cannot form a valid OGC polygon (zero/signed-zero area slivers,
-    self-intersecting rings, unassignable holes) are reported through the
-    gating modes in UNUSABLE_GEOMETRY_MODES: the caller retains the raw rings,
-    gates the candidate geometry to null and counts the failure mode instead of
-    silently coercing an invented polygon.
+    self-intersecting rings, unassignable holes) or whose assembled
+    Polygon/MultiPolygon fails OGC validity (e.g. nested multipart shells, a
+    hole that crosses its assigned exterior) are reported through the gating
+    modes in UNUSABLE_GEOMETRY_MODES: the caller retains the raw rings, gates
+    the candidate geometry to null and counts the failure mode instead of
+    silently coercing an invented polygon. The assembled geometry is validated
+    before the WKB is returned, so per-ring checks alone can never seal an
+    invalid multipart assembly.
     """
     if not isinstance(geometry, dict) or set(geometry) != {"hasZ", "rings"} \
             or geometry.get("hasZ") is not True:
@@ -412,7 +417,10 @@ def _polygon_wkb(geometry: object) -> bytes | None:
     polygons = []
     for _shell, _area, index in sorted(shells, key=lambda item: item[2]):
         polygons.append(Polygon(exteriors[index], assigned[index]))
-    return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
+    assembled = MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]
+    if not assembled.is_valid:
+        raise NhdCatchmentError("source_polygon_assembly_invalid")
+    return assembled.wkb
 
 
 def _validate_feature(feature: object, expected_names: tuple[str, ...],
@@ -1206,8 +1214,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                                         "counterclockwise holes, each hole joined "
                                                         "to its smallest containing exterior, "
                                                         "producer ring and vertex order kept); "
-                                                        "rows whose rings cannot form a valid OGC "
-                                                        "polygon are gated to null candidate "
+                                                        "rows whose rings cannot form a valid "
+                                                        "OGC polygon, or whose assembled "
+                                                        "Polygon/MultiPolygon fails OGC "
+                                                        "validity, are gated to null candidate "
                                                         "geometry and counted by failure mode "
                                                         "instead of being coerced",
                                             "candidate_status": "unapproved; publication blocked "
