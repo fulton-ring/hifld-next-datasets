@@ -360,17 +360,17 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     geometry_records, null_geometry, invalid_geometry, bounds = _classify_geometries(
         features, attr_names)
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
+    if EXPECTED_OBSERVED_BOUNDS is not None and bounds != EXPECTED_OBSERVED_BOUNDS:
+        raise ValueError("source_observed_coverage_drift")
+    if (null_geometry != EXPECTED_NULL_GEOMETRY_COUNT
+            or invalid_geometry != EXPECTED_INVALID_GEOMETRY_COUNT):
+        raise ValueError("source_geometry_population_drift")
     record_sha = _list_sha(features)
     geometry_sha = _list_sha(geometry_records)
     if record_sha != EXPECTED_RECORD_SHA256:
         raise ValueError("source_record_value_drift")
     if geometry_sha != EXPECTED_GEOMETRY_SHA256:
         raise ValueError("source_geometry_or_coverage_drift")
-    if EXPECTED_OBSERVED_BOUNDS is not None and bounds != EXPECTED_OBSERVED_BOUNDS:
-        raise ValueError("source_observed_coverage_drift")
-    if (null_geometry != EXPECTED_NULL_GEOMETRY_COUNT
-            or invalid_geometry != EXPECTED_INVALID_GEOMETRY_COUNT):
-        raise ValueError("source_geometry_population_drift")
     franodeids = [row["attributes"].get("FRANODEID") for row in features]
     franodeid_nulls = sum(1 for value in franodeids if value is None)
     franodeid_duplicates = len(franodeids) - len({value for value in franodeids
