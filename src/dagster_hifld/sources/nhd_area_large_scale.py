@@ -70,10 +70,9 @@ SOURCE_CRS_WKID = 4326
 NATIVE_LAYER_SR = {"wkid": 102100, "latestWkid": 3857}
 POPULATION_WHERE = "featuretype<>3"
 # Initial window size over the pinned OBJECTID roster; oversized or failing
-# windows are bisected down to MIN_WINDOW_IDS deterministically (each captured
+# windows are bisected down to single OBJECTIDs deterministically (each captured
 # page is named by the roster's first OBJECTID it requests).
 PAGE_IDS = 500
-MIN_WINDOW_IDS = 5
 MAX_BODY_BYTES = 96 * 1024 * 1024
 MAX_CAPTURE_BYTES = 10 * 1024 * 1024 * 1024
 MIN_FREE_BYTES = 25_000_000_000
@@ -97,6 +96,17 @@ EXPECTED_SERVICE_LAYERS = [
     (94, "Spatial Metadata - Elevation Workunit Area"),
 ]
 EXPECTED_COUNT = 95423
+# Producer-refused records (dated 2026-11-13 evidence): OBJECTIDs the producer's
+# own REST publication persistently refuses to serve geometry for (HTTP 200 Esri
+# ``{"error":{"code":500,"message":"Error performing query operation"}}`` on both
+# 3dhp.nationalmap.gov and the same-org alias hydro.nationalmap.gov/3DHP_all,
+# single-id and windowed, while the same record's attributes and layer extent
+# are served normally and the full roster pins it into the population). Their
+# attributes are captured through the producer's working attributes-only channel
+# and staged verbatim with explicitly gated null candidate geometry; the refusal
+# set is pinned and any change fails closed.
+EXPECTED_REFUSED_IDS: frozenset[int] = frozenset()
+EXPECTED_NULL_GEOMETRY_COUNT = 0
 # Observed 2026-11-12 complete non-Lake population contract (featuretype<>3).
 EXPECTED_ID_SHA256 = "7c1f4e4a83a5a54b1e07d25b86b3f52d2f56364a9835738ebf4a8eb5687abf05"
 EXPECTED_SCHEMA_SHA256 = "4d6c9a8d0d5f6865f66a29e1b8b14ec9c83007d5f45ff05ce21a34a2e14e0e55"
@@ -104,7 +114,6 @@ EXPECTED_RECORD_SHA256 = "71d5ec529dc2ba8f92353822643eba28f2a2765c9d96168ad42a4e
 EXPECTED_GEOMETRY_SHA256 = "f7ea01f2ee1d4e51c986b64c10a4237cd51a91d0b2c9be3895b7f22d7d70b73c"
 EXPECTED_FEATURETYPE_DISTRIBUTION = {1: 85220, 2: 9235, 4: 968}
 EXPECTED_FEATURETYPE_LABELS = {1: "River", 2: "Canal", 4: "Ocean or Great Lake"}
-EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_LAYER_EXTENT = {"xmin": -19951755.6817, "ymin": -1622985.3665999994,
                          "xmax": 20021551.747199997, "ymax": 11575301.958199998}
 EXPECTED_OBSERVED_BOUNDS = {"xmin": -179.1489075040686, "ymin": -14.447022724930001,
@@ -217,8 +226,34 @@ def _budget_check(budget: list[int]) -> None:
         raise ValueError("source_capture_budget_exceeded")
 
 
+def _validate_attrs_types(attrs: Mapping[str, object], fields: list[dict[str, object]]) -> None:
+    for field in fields:
+        name_attr, kind = field["name"], field["type"]
+        value = attrs.get(name_attr)
+        if name_attr == "OBJECTID":
+            continue
+        if value is None:
+            continue
+        if kind == "esriFieldTypeString":
+            if not isinstance(value, str):
+                raise ValueError("source_string_value_type_drift:" + name_attr)
+            if name_attr == "id3dhp" and (not value or any(
+                    character not in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                    for character in value)):
+                raise ValueError("source_id3dhp_value_drift")
+        elif kind in ("esriFieldTypeOID", "esriFieldTypeInteger",
+                      "esriFieldTypeSmallInteger", "esriFieldTypeDate"):
+            if type(value) is not int:
+                raise ValueError("source_integer_value_type_drift:" + name_attr)
+        elif kind == "esriFieldTypeDouble":
+            if type(value) not in (int, float) or not (value == value
+                                                       and -1e308 < value < 1e308):
+                raise ValueError("source_double_value_type_drift:" + name_attr)
+
+
 def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path,
-                     budget: list[int]) -> dict[str, tuple[bytes, dict[str, object]]]:
+                     budget: list[int]) -> tuple[dict[str, tuple[bytes, dict[str, object]]],
+                                                 dict[str, list[int]]]:
     """Capture every roster window, bisecting oversized or persistently failing windows.
 
     Each accepted window is one exact ``objectIds`` request over a contiguous
@@ -226,11 +261,17 @@ def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path
     response byte cap or reports a truncated result set is retried a bounded
     number of times for transient producer faults, then bisected into two
     smaller windows over the same roster slice; failed attempts are preserved on
-    disk as ``.attempt-NN`` evidence and never enter the capture roster. The
-    pinned before/after rosters plus per-page slice equality make bisection
+    disk as ``.attempt-NN`` evidence and never enter the capture roster. Bisection
+    continues down to single-OBJECTID windows: a single id that still fails after
+    the bounded retries is recorded as refused (its attempt evidence stays on
+    disk and its id must match the pinned refused set) instead of aborting the
+    whole capture, because the producer is known to persistently refuse serving
+    the geometry of specific records (dated evidence on the capture manifest).
+    The pinned before/after rosters plus per-page slice equality make bisection
     completeness-neutral: it can only change page boundaries, never population.
     """
     pages: dict[str, tuple[bytes, dict[str, object]]] = {}
+    refused: dict[str, list[int]] = {}
     plan: deque[tuple[int, int]] = deque((start, PAGE_IDS) for start in range(0, len(roster), PAGE_IDS))
     while plan:
         start, size = plan.popleft()
@@ -273,13 +314,13 @@ def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path
             break
         if accepted:
             continue
-        if size > MIN_WINDOW_IDS:
+        if size > 1:
             mid = size // 2
             plan.appendleft((start + mid, size - mid))
             plan.appendleft((start, mid))
             continue
-        raise last_error if last_error is not None else ValueError("source_window_capture_failed")
-    return pages
+        refused[name] = window_ids
+    return pages, refused
 
 
 def _polygon_wkb(geometry: object) -> bytes | None:
@@ -385,13 +426,17 @@ def _parquet_bytes(fields: list[dict[str, object]], attributes: list[dict[str, o
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     """Validate the complete capture against the pinned producer population contract."""
     doc_names = set(captures)
+    refused_attr_names = {name for name in doc_names if name.startswith("refused_attrs_")}
     required = {"service_doc", "alias_service", "service_before", "service_after",
                 "layer_before", "layer_after", "count_before", "count_after",
-                "ids_seed", "ids_before", "ids_after"}
+                "ids_seed", "ids_before", "ids_after",
+                *{f"refused_attrs_{oid:07d}" for oid in EXPECTED_REFUSED_IDS}}
     page_names = [name for name in doc_names if name.startswith("page_")]
     if not required <= doc_names or not page_names:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    unexpected = doc_names - required - set(page_names)
+    if refused_attr_names != {f"refused_attrs_{oid:07d}" for oid in EXPECTED_REFUSED_IDS}:
+        raise ValueError("source_refused_ids_drift")
+    unexpected = doc_names - required - set(page_names) - refused_attr_names
     if unexpected:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()
@@ -509,28 +554,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
                 raise ValueError("source_featuretype_outside_area_population:" + name)
             if attrs["featuretypelabel"] != EXPECTED_FEATURETYPE_LABELS[featuretype]:
                 raise ValueError("source_featuretype_label_drift:" + name)
-            for field in fields:
-                name_attr, kind = field["name"], field["type"]
-                value = attrs.get(name_attr)
-                if name_attr == "OBJECTID":
-                    continue
-                if value is None:
-                    continue
-                if kind == "esriFieldTypeString":
-                    if not isinstance(value, str):
-                        raise ValueError("source_string_value_type_drift:" + name_attr)
-                    if name_attr == "id3dhp" and (not value or any(
-                            character not in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                            for character in value)):
-                        raise ValueError("source_id3dhp_value_drift")
-                elif kind in ("esriFieldTypeOID", "esriFieldTypeInteger",
-                              "esriFieldTypeSmallInteger", "esriFieldTypeDate"):
-                    if type(value) is not int:
-                        raise ValueError("source_integer_value_type_drift:" + name_attr)
-                elif kind == "esriFieldTypeDouble":
-                    if type(value) not in (int, float) or not (value == value
-                                                               and -1e308 < value < 1e308):
-                        raise ValueError("source_double_value_type_drift:" + name_attr)
+            _validate_attrs_types(attrs, fields)
             geometry = row.get("geometry")
             if geometry is None:
                 null_geometry += 1
@@ -559,6 +583,31 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         if sorted(page_ids) != sorted(requested):
             raise ValueError("source_page_id_slice_incomplete_or_reordered:" + name)
         geometry_hash.update(_canonical(page_geometry_records))
+    # Producer-refused records: their attributes were captured through the
+    # working attributes-only channel and are appended in ascending OBJECTID
+    # order with explicitly gated null candidate geometry (the producer's own
+    # geometry response is the persistent refusal evidence pinned in
+    # EXPECTED_REFUSED_IDS); nothing is substituted or fabricated for them.
+    refused_oids = sorted(EXPECTED_REFUSED_IDS)
+    for oid in refused_oids:
+        attrs_name = f"refused_attrs_{oid:07d}"
+        refused_rows = docs[attrs_name].get("features")
+        if (not isinstance(refused_rows, list) or len(refused_rows) != 1
+                or not isinstance(refused_rows[0], dict)
+                or not isinstance(refused_rows[0].get("attributes"), dict)
+                or refused_rows[0].get("geometry") is not None):
+            raise ValueError("source_refused_attrs_record_drift:" + attrs_name)
+        attrs = refused_rows[0]["attributes"]
+        if list(attrs) != field_names or attrs.get("OBJECTID") != oid:
+            raise ValueError("source_refused_attrs_record_drift:" + attrs_name)
+        _validate_attrs_types(attrs, fields)
+        wkbs.append(None)
+        captured_ids.append(oid)
+        attributes.append(attrs)
+        null_geometry += 1
+        id3dhp_seen.add(attrs["id3dhp"])
+    if refused_oids:
+        geometry_hash.update(_canonical([[oid, None] for oid in refused_oids]))
     if sorted(captured_ids) != ids:
         raise ValueError("source_feature_population_incomplete")
     if distribution != EXPECTED_FEATURETYPE_DISTRIBUTION:
@@ -589,6 +638,19 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "id3dhp_distinct_count": len(id3dhp_seen),
              "id3dhp_duplicate_count": len(attributes) - len(id3dhp_seen),
              "source_ring_count": ring_count, "source_vertex_count": vertex_count,
+             "source_refused_ids": refused_oids,
+             "source_refused_count": len(refused_oids),
+             "producer_refusal_note":
+                 "Records listed in source_refused_ids are part of the pinned population "
+                 "(they appear in the id roster and count) but the producer's own REST "
+                 "publication persistently refuses to serve their geometry (HTTP 200 Esri "
+                 "error document code 500 'Error performing query operation' on both "
+                 "3dhp.nationalmap.gov and the same-org alias hydro.nationalmap.gov/3DHP_all, "
+                 "single-id and windowed, retried with backoff, attempt evidence retained in "
+                 "the capture). Their attributes are served normally through the "
+                 "attributes-only channel and are staged verbatim with explicitly gated null "
+                 "candidate geometry; publication stays blocked pending the maintainer "
+                 "completeness/coverage decision for these records.",
              "source_release_date": None,
              "source_release_date_unknown_reason":
                  "The 3DHP_all service publishes no per-snapshot release date; the service "
@@ -599,6 +661,36 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT}
     return fields, {"attributes": attributes, "wkbs": wkbs, "ids": captured_ids,
                     "null_geometry_count": null_geometry, "audit": audit}
+
+
+def _capture_refused_attrs(client: httpx.Client, capture_root: Path, budget: list[int],
+                           captures: dict[str, tuple[bytes, dict[str, object]]],
+                           refused: Mapping[str, list[int]]) -> None:
+    """Capture producer-refused records' attributes through the attributes-only channel.
+
+    The producer refuses to serve some records' geometry (persistent Esri 500
+    error document on both of its own hosts, dated on the capture manifest) but
+    serves the same records' attributes with ``returnGeometry=false``. Each
+    refused id gets one attributes-only capture named ``refused_attrs_<OID>``
+    validated to exactly that record; the refusal itself is pinned in
+    ``EXPECTED_REFUSED_IDS`` and re-verified by every later capture.
+    """
+    for name in sorted(refused):
+        for oid in refused[name]:
+            attrs_name = f"refused_attrs_{oid:07d}"
+            body, receipt = _capture_doc(
+                client,
+                _query({"objectIds": str(oid), "outFields": "*", "returnGeometry": "false",
+                        "f": "json"}),
+                capture_root, attrs_name, budget)
+            doc = json.loads(body)
+            rows = doc.get("features") if isinstance(doc, dict) else None
+            if (not isinstance(rows, list) or len(rows) != 1
+                    or not isinstance(rows[0], dict) or not isinstance(rows[0].get("attributes"), dict)
+                    or rows[0].get("geometry") is not None
+                    or rows[0]["attributes"].get("OBJECTID") != oid):
+                raise ValueError("source_refused_attrs_record_drift:" + attrs_name)
+            captures[attrs_name] = (body, receipt)
 
 
 def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: str,
@@ -643,7 +735,9 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
             if (not isinstance(seed, list) or len(seed) != EXPECTED_COUNT
                     or any(type(value) is not int for value in seed) or len(set(seed)) != EXPECTED_COUNT):
                 raise ValueError("source_seed_id_population_drift")
-            captures.update(_capture_windows(client, sorted(seed), capture_root, budget))
+            pages, refused = _capture_windows(client, sorted(seed), capture_root, budget)
+            captures.update(pages)
+            _capture_refused_attrs(client, capture_root, budget, captures, refused)
             for name, url in doc_urls[2:]:
                 after_name = name.replace("_before", "_after")
                 captures[after_name] = _capture_doc(client, url, capture_root, after_name, budget)
@@ -687,9 +781,14 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                        "the maintained successor of the retired NHD high-resolution NHDArea "
                        "layer (HIFLD inventory nhd/area-large-scale-2). Complete source "
                        "attributes and Z-aware EPSG:4326 polygon geometry are represented in "
-                       "the candidate. The 3DHP schema replaces the legacy NHDArea schema; "
-                       "succession, freshness, rights, public schema/ID contract, coverage and "
-                       "release acceptance remain unresolved and unapproved.",
+                       "the candidate, except the pinned set of producer-refused records "
+                       "(source_refused_ids in the audit): their attributes are captured "
+                       "verbatim through the producer's working attributes-only channel and "
+                       "their candidate geometry is explicitly gated to null because the "
+                       "producer itself refuses to serve it. The 3DHP schema replaces the "
+                       "legacy NHDArea schema; succession, freshness, rights, public "
+                       "schema/ID contract, coverage and release acceptance remain "
+                       "unresolved and unapproved.",
         "publisher": PUBLISHER, "agency": "U.S. Geological Survey", "source_url": LAYER_URL,
         "license": "Public domain (U.S. Government work); producer service states no access or "
                    "use constraints. Rights acceptance pending.",
@@ -734,7 +833,10 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                                                         "(closed rings; clockwise exteriors, "
                                                         "counter-clockwise holes); no vertex "
                                                         "dropped, added or reordered; null source "
-                                                        "geometry retained as null",
+                                                        "geometry retained as null; pinned "
+                                                        "producer-refused records keep their "
+                                                        "captured attributes with explicitly "
+                                                        "gated null candidate geometry",
                                             "candidate_status": "unapproved; publication blocked "
                                                                 "pending succession, freshness, "
                                                                 "schema/ID contract, coverage, "

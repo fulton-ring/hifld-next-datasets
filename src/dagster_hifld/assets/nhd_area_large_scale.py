@@ -18,6 +18,7 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.nhd_area_large_scale import (
     DATASET_SLUG,
     EXPECTED_COUNT,
+    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_nhd_area_large_scale,
 )
@@ -33,10 +34,12 @@ class NhdAreaLargeScaleConfig(Config):
     compute_kind="http",
     description=(
         "USGS 3DHP_all FeatureServer layer 60 Waterbody rows with featuretype<>3 "
-        "(River, Canal, Ocean or Great Lake; 95,423 source polygons observed) as the "
+        "(River, Canal, Ocean or Great Lake; 95,423 roster ids live-verified) as the "
         "maintained successor of the retired NHD high-resolution NHDArea layer "
         "(HIFLD inventory nhd/area-large-scale-2). Complete non-Lake areal "
-        "hydrography; unapproved faithful candidate. Succession coverage, freshness, "
+        "hydrography with producer-refused records' attributes staged and their "
+        "geometry explicitly gated to null (pinned refused set); unapproved "
+        "faithful candidate. Succession coverage, freshness, "
         "schema/ID contract, rights and release decisions remain pending."
     ),
 )
@@ -62,7 +65,7 @@ def nhd_area_large_scale(
 def nhd_area_large_scale_complete(candidate: dict) -> AssetCheckResult:
     passed = (
         candidate.get("feature_count") == EXPECTED_COUNT
-        and candidate.get("source_null_geometry_count") == 0
+        and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
     )
     return AssetCheckResult(
         passed=passed,
