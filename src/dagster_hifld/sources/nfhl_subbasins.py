@@ -9,10 +9,12 @@ identification only). The layer is continuously updated and publishes no
 per-snapshot release date; source freshness, rights, and public-schema
 compatibility are not accepted by this draft.
 
-Scale and resumability: the producer reported 167,124 features for this layer
-on 2026-11-13 (returnCountOnly, observed twice in agreement; the complete
-whole-layer OBJECTID roster answered 167,124 unique integer ids over the span
-1..613,918), and the layer's serialized polygon density is high (observed
+Scale and resumability: the producer reported 169,681 features for this layer
+on 2026-11-13 (first probes early that day reported 167,124 over the span
+1..613,918; re-probes the same UTC day, after the continuously updated NFHL
+grew, agreed between returnCountOnly and the complete whole-layer OBJECTID
+roster: 169,681 unique integer ids over the span 1..616,630, sorted-roster
+sha ``ff29133e...``), and the layer's serialized polygon density is high (observed
 2026-11-13: a 100-feature slice alone returned ~16 MB of JSON), so fixed
 full-width pagination cannot serve the complete layer. The producer refuses
 queries whose serialized response approaches its transfer cap with a complete
@@ -116,16 +118,21 @@ DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 SEGMENT_PROBE_ATTEMPTS = 2
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # Structural pins below are the observed 2026-11-13 producer contract,
-# established by dated anonymous queries of the producer's own endpoints
-# (returnCountOnly agreed twice, the complete whole-layer OBJECTID roster of
-# 167,124 unique ids over 1..613,918, and the layer/service metadata
-# documents); the module's own capture must reproduce every pin. The
-# population digest pins (record, geometry, null/nan/unusable counts, observed
-# bounds) are None until a first complete capture establishes them; see the
-# module docstring. They fail closed, so the capture can never stage an
-# unverified candidate.
-EXPECTED_COUNT = 167124
-EXPECTED_ID_SHA256 = "38f108c72ac38bd6437b5dacaaca81f59cf492d43307939f767233f25b1cacb0"
+# established by dated anonymous queries of the producer's own endpoints. The
+# producer's continuously updated layer grew between two probe passes on that
+# UTC day (167,124 -> 169,681 features; span 1..613,918 -> 1..616,630), so the
+# population pins record the later contract: returnCountOnly agreed with the
+# complete whole-layer OBJECTID roster of 169,681 unique ids (sorted-roster
+# sha pinned below), with schema, layer extent, service roster, pagination
+# capability, record limit and transfer-cap mode re-verified unchanged in the
+# same probes. The module's own capture must reproduce every pin; the
+# before/after count/id/metadata brackets fail closed if the producer moves
+# again during a capture. The population digest pins (record, geometry,
+# null/nan/unusable counts, observed bounds) are None until a first complete
+# capture establishes them; see the module docstring. They fail closed, so the
+# capture can never stage an unverified candidate.
+EXPECTED_COUNT = 169681
+EXPECTED_ID_SHA256 = "ff29133e8d7c4639b5894afbc4526dbd1af16dd7225613029a24b5652baaf306"
 EXPECTED_SCHEMA_SHA256 = "f8c42f149476e34212d0c3b7ac3c8419acb5d5597a4a9f3d56687d4e6b401630"
 EXPECTED_RECORD_SHA256: str | None = None
 EXPECTED_GEOMETRY_SHA256: str | None = None
