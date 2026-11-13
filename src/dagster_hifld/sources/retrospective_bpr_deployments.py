@@ -89,6 +89,11 @@ EXPECTED_FIELDS = [
 ]
 ATTRIBUTE_FIELDS = list(EXPECTED_FIELDS)
 ID_FIELDS = ("OBJECTID", "ID", "STATION_ID", "DATASET_ID")
+# The ArcGIS sharing item body carries a volatile platform view counter
+# (numViews was observed changing between captures minutes apart). The pinned
+# item identity fields are validated and fail closed on any change; the
+# complete raw bodies of every capture remain retained as evidence.
+SERVICE_ITEM_IDENTITY_FIELDS = ("id", "owner", "orgId", "type", "url")
 EXPECTED_EXTENT = {"xmin": -19627852.616669994, "ymin": -5930818.77964573,
                    "xmax": 19846439.568791676, "ymax": 7894836.627928906}
 # Every XY coordinate must stay inside the pinned native EPSG:3857 layer extent
@@ -413,9 +418,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "release_date_note": "The layer's editingInfo lastEditDate and portal timestamps are "
             "operational metadata observed during capture, not a declared data release date.",
         "drift_guard": "Producer landing page, NOAA Natural Hazards Viewer entry, webmap item "
-            "retrospective-dart-deployments delegation to the ncei_noaa service item, exact "
-            "service layer roster, full 20-field declarations, native EPSG:3857 extent, count "
-            "and before/after ID roster, per-page attribute order/types/lengths/nulls, unique "
+            "retrospective-dart-deployments delegation to the ncei_noaa service item (pinned "
+            "item identity id/owner/orgId/type/url; the sharing body's volatile platform view "
+            "counter is recorded as raw evidence only), exact service layer roster, full "
+            "20-field declarations, native EPSG:3857 extent, count and before/after ID roster, "
+            "per-page attribute order/types/lengths/nulls, unique "
             "OBJECTID/ID/STATION_ID/DATASET_ID populations, and per-point extent containment "
             "are checked.",
         "source_population_complete": True,
@@ -463,9 +470,21 @@ def _parquet_bytes(fields, features) -> bytes:
     return sink.getvalue()
 
 
+def _service_item_identity(body: bytes) -> dict:
+    item = json.loads(body)
+    return {field: item.get(field) for field in SERVICE_ITEM_IDENTITY_FIELDS}
+
+
 def _capture_identity(captures, root):
-    return {name: {"body_sha256": _sha(_load_capture(root, name)[0]),
-                   "wire_sha256": _sha(_load_capture(root, name)[1])} for name in sorted(captures)}
+    result = {}
+    for name in sorted(captures):
+        body = _load_capture(root, name)[0]
+        if name == "service_item":
+            result[name] = {"item_identity_sha256": _sha(_canonical(_service_item_identity(body)))}
+        else:
+            result[name] = {"body_sha256": _sha(body),
+                            "wire_sha256": _sha(_load_capture(root, name)[1])}
+    return result
 
 
 def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, version: str,
@@ -577,6 +596,14 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
         for name, (body, _r) in captures.items():
             current, wire, receipt = _load_capture(root, name)
             old = previous[name]
+            if name == "service_item":
+                # The sharing item body carries the volatile platform view
+                # counter; reuse binds the pinned item identity fields only.
+                stored = storage.read_key(f"{prefix}/raw/service_item.body")
+                if (_sha(_canonical(_service_item_identity(current)))
+                        != _sha(_canonical(_service_item_identity(stored)))):
+                    raise ValueError("cached_source_capture_content_changed:" + name)
+                continue
             if (any(receipt.get(k) != old.get(k) for k in
                     ("complete_body", "status", "bytes", "sha256", "wire_bytes", "wire_sha256"))
                     or current != body or _sha(wire) != old.get("wire_sha256")):
