@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import pyarrow.parquet as pq
@@ -337,6 +338,119 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         captures[name] = (json.dumps(page, separators=(",", ":")).encode(), captures[name][1])
         with self.assertRaisesRegex(ValueError, "source_featuretype_outside_area_population"):
             self._validated(features, captures, schema, windows)
+
+    def _refusal_fixture(self):
+        """Fixture with roster id 13 persistently refused by the producer.
+
+        Id 13 has no accepted page slice; its attributes arrive through the
+        working attributes-only channel (refused_attrs_0000013), exactly as the
+        producer serves refused records.
+        """
+        fields, features, captures, schema, windows = _fixture()
+        name12 = _window_name([12, 13])
+        page = json.loads(captures[name12][0])
+        page["features"] = [page["features"][0]]
+        url = source._window_url([12])
+        captures[name12] = (json.dumps(page, separators=(",", ":"), ensure_ascii=False).encode(),
+                            {"status": 200, "url": url, "final_url": url})
+        attrs_url = source._query({"objectIds": "13", "outFields": "*", "returnGeometry": "false",
+                                   "f": "json"})
+        captures["refused_attrs_0000013"] = (
+            json.dumps({"features": [{"attributes": _attrs(13, id3dhp="NUL0013")}]},
+                       separators=(",", ":"), ensure_ascii=False).encode(),
+            {"status": 200, "url": attrs_url, "final_url": attrs_url})
+        return fields, features, captures, schema, windows
+
+    def _refusal_pins(self, features, schema):
+        attrs_10, attrs_11, attrs_12, attrs_14, attrs_13 = (
+            _attrs(10), _attrs(11), _attrs(12, featuretype=2, featuretypelabel="Canal",
+                                           id3dhp="CD00012"),
+            _attrs(14, featuretype=4, featuretypelabel="Ocean or Great Lake", id3dhp="OC00014"),
+            _attrs(13, id3dhp="NUL0013"))
+        ordered = [attrs_10, attrs_11, attrs_12, attrs_14, attrs_13]
+        geometry_sha = hashlib.sha256()
+        geometry_sha.update(_canonical([[10, [RING_A]], [11, [RING_A, HOLE_A]]]))
+        geometry_sha.update(_canonical([[12, [RING_A, RING_B, HOLE_B]]]))
+        geometry_sha.update(_canonical([[14, [RING_B]]]))
+        geometry_sha.update(_canonical([[13, None]]))
+        return dict(EXPECTED_COUNT=5, EXPECTED_NULL_GEOMETRY_COUNT=1,
+                    EXPECTED_REFUSED_IDS=frozenset({13}),
+                    EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),
+                    EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(ordered)).hexdigest(),
+                    EXPECTED_GEOMETRY_SHA256=geometry_sha.hexdigest(),
+                    EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
+                    EXPECTED_FEATURETYPE_DISTRIBUTION={1: 2, 2: 1, 4: 1},
+                    EXPECTED_SERVICE_LAYERS=[(60, "Waterbody"), (50, "Flowline")],
+                    EXPECTED_LAYER_EXTENT={"xmin": -19951755.68, "ymin": -1622985.37,
+                                           "xmax": 20021551.75, "ymax": 11575301.96},
+                    EXPECTED_OBSERVED_BOUNDS=_bounds(features))
+
+    def test_refused_record_row_is_staged_with_gated_null_geometry(self):
+        fields, features, captures, schema, windows = self._refusal_fixture()
+        with patch.multiple(source, **self._refusal_pins(features, schema)):
+            _, extracted = source._validate_captures(captures)
+        audit = extracted["audit"]
+        self.assertEqual(audit["source_feature_count"], 5)
+        self.assertEqual(audit["source_refused_ids"], [13])
+        self.assertEqual(audit["source_refused_count"], 1)
+        self.assertEqual(audit["null_geometry_count"], 1)
+        self.assertEqual(extracted["ids"], [10, 11, 12, 14, 13])
+        self.assertIsNone(extracted["wkbs"][4])
+        self.assertEqual(extracted["attributes"][4]["OBJECTID"], 13)
+
+    def test_unpinned_refused_record_fails_closed(self):
+        fields, features, captures, schema, windows = self._refusal_fixture()
+        pins = self._refusal_pins(features, schema)
+        pins["EXPECTED_REFUSED_IDS"] = frozenset()
+        with patch.multiple(source, **pins):
+            with self.assertRaisesRegex(ValueError, "source_refused_ids_drift"):
+                source._validate_captures(captures)
+
+    def test_missing_refused_attrs_capture_fails_closed(self):
+        fields, features, captures, schema, windows = self._refusal_fixture()
+        del captures["refused_attrs_0000013"]
+        with patch.multiple(source, **self._refusal_pins(features, schema)):
+            with self.assertRaisesRegex(ValueError, "source_capture_roster_incomplete_or_unexpected"):
+                source._validate_captures(captures)
+
+    def test_single_id_window_refusal_is_gated_with_evidence(self):
+        error_body = (b'{"error":{"code":500,"message":"Error performing query operation",'
+                      b'"details":[]}}')
+        calls = []
+
+        def fake_capture_get(client, url, capture_root, name, **kwargs):
+            requested = source._window_url_ids(url)
+            calls.append(requested)
+            if 7 in requested:
+                (capture_root / f"{name}.body").write_bytes(error_body)
+                (capture_root / f"{name}.receipt.json").write_bytes(
+                    _canonical({"url": url, "status": 200, "error_code": None}))
+                return error_body, {"url": url, "status": 200}
+            body = json.dumps({"features": [{"attributes": _attrs(oid)} for oid in requested],
+                               "spatialReference": {"wkid": 4326}, "hasZ": True,
+                               "exceededTransferLimit": False},
+                              separators=(",", ":")).encode()
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(
+                _canonical({"url": url, "status": 200, "error_code": None}))
+            return body, {"url": url, "status": 200}
+
+        with tempfile.TemporaryDirectory(prefix="nhd-area-refusal-") as temporary:
+            with patch.object(source, "capture_get", fake_capture_get), \
+                    patch.object(source, "PAGE_CAPTURE_BASE_DELAY_SECONDS", 0):
+                pages, refused = source._capture_windows(None, [7, 8], Path(temporary), [0])
+        self.assertEqual(refused, {"page_0000007": [7]})
+        self.assertEqual(sorted(pages), ["page_0000008"])
+        self.assertEqual(calls, [[7, 8], [7, 8], [7, 8], [7], [7], [7], [8]])
+
+    def test_refused_attrs_capture_rejects_wrong_identity(self):
+        def fake_capture_doc(client, url, capture_root, name, budget):
+            return (json.dumps({"features": [{"attributes": _attrs(99)}]},
+                               separators=(",", ":")).encode(), {"url": url})
+
+        with patch.object(source, "_capture_doc", fake_capture_doc):
+            with self.assertRaisesRegex(ValueError, "source_refused_attrs_record_drift"):
+                source._capture_refused_attrs(None, Path("."), [0], {}, {"page_0000007": [7]})
 
     def test_observed_coverage_drift_is_detected(self):
         _, features, captures, schema, windows = _fixture()

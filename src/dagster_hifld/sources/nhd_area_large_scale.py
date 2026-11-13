@@ -276,6 +276,7 @@ def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path
     while plan:
         start, size = plan.popleft()
         window_ids = roster[start:start + size]
+        size = len(window_ids)
         name = f"page_{window_ids[0]:07d}"
         url = _window_url(window_ids)
         accepted = False
