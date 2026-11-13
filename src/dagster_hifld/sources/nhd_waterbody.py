@@ -39,12 +39,14 @@ that still refuses after bounded retries on both producer hosts is captured
 through the producer's working attributes-only channel and staged verbatim
 with explicitly gated null candidate geometry; its id joins the capture's
 refusal set, which is re-verified against the pin by every later capture. The
-per-value, per-geometry and ID-roster baseline digests stay unpinned until the
-first complete capture; they are computed and reported by
-``build_nhd_waterbody_baseline`` and then pinned as constants for later drift
-refusal. Publication stays blocked pending the succession, freshness,
-schema/ID contract, rights and release decisions; all runtime approval flags
-are false and the draft refresh schedule is stopped.
+per-value, per-geometry and ID-roster baseline digests, the null-geometry
+count, the refusal set and the degenerate-ring contract were computed by the
+first complete capture (2026-11-13, reported by
+``build_nhd_waterbody_baseline``) and are pinned as module constants; every
+later capture that disagrees fails closed. Publication stays blocked pending
+the succession, freshness, schema/ID contract, rights and release decisions;
+all runtime approval flags are false and the draft refresh schedule is
+stopped.
 """
 from __future__ import annotations
 
@@ -139,22 +141,26 @@ EXPECTED_SCHEMA_SHA256 = "51f11bd107670196d396c0908b3c68a4dce0f37466d3dd179c3df1
 # without a complete capture of the 7,158,943-feature population; they are
 # pinned here as empty (checked only when non-empty) and recorded by the first
 # complete capture for the maintainer to pin.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_IDS_SHA256 = ""
-# The null-geometry count and the producer-refusal id set are likewise unknown
-# until the first complete capture (a ``None`` pin is checked only once it has
-# been transcribed from ``build_nhd_waterbody_baseline``; afterwards any change
-# fails closed).
-EXPECTED_NULL_GEOMETRY_COUNT: int | None = None
-EXPECTED_REFUSED_IDS: tuple[int, ...] | None = None
+# Per-value, per-geometry and ID-roster baseline digests computed by the first
+# complete capture (3,037 retained pages over the full 7,158,943-feature
+# population, captured 2026-11-13 07:24-11:23Z; computed_baseline.json
+# 2026-11-13T19:51Z). Any later capture that disagrees fails closed.
+EXPECTED_RECORD_SHA256 = "5a484e15ecf90b9fbe749e167220a0699acef61d02b9aeddaf59e9859bf8dd25"
+EXPECTED_GEOMETRY_SHA256 = "8ffcff7a516ec6925e4d6b2960c9ca37b8484e64ff7304aff15342133c729baa"
+EXPECTED_IDS_SHA256 = "1e32ac2f6f5f5142de8648257d716009208d40f72cb457e295acc94f82dc2d66"
+# Null geometry: the nine producer-refused records (below) are the only null
+# candidate geometries; every served record carried geometry.
+EXPECTED_NULL_GEOMETRY_COUNT: int | None = 9
+EXPECTED_REFUSED_IDS: tuple[int, ...] | None = (
+    1293173, 2520496, 4245000, 4694427, 7059540, 7059541, 7098625, 7135496, 7157221)
 # Producer-served zero-area rings are retained verbatim (see
-# ``_polygon_wkb``): the count of such rings and the id set of features
-# carrying them are unknown until the first complete capture (a ``None`` pin
-# is checked only once it has been transcribed from
-# ``build_nhd_waterbody_baseline``; afterwards any change fails closed).
-EXPECTED_DEGENERATE_RING_COUNT: int | None = None
-EXPECTED_DEGENERATE_RING_IDS: tuple[int, ...] | None = None
+# ``_polygon_wkb``): 13 rings over 13 features in the complete 2026-11-13
+# capture. The count and the feature-id set are pinned from
+# ``build_nhd_waterbody_baseline``; any change fails closed.
+EXPECTED_DEGENERATE_RING_COUNT: int | None = 13
+EXPECTED_DEGENERATE_RING_IDS: tuple[int, ...] | None = (
+    279258, 2727549, 2954106, 3590176, 3601265, 4575241, 5019081, 5144328,
+    5802262, 7072361, 7074673, 7147977, 7151432)
 # Feature-type population observed 2026-11-13 through the producer's own
 # statistics channel; the total agrees with the pinned count and both producer
 # hosts answer it identically.
@@ -165,11 +171,13 @@ EXPECTED_LAYER_EXTENT = {"xmin": -19951755.6817, "ymin": -1622985.3665999994,
 BASELINE_PENDING_NOTE = (
     "The record, geometry and ID-roster baseline digests, the null-geometry "
     "count, the producer-refusal id set and the producer-served degenerate "
-    "(zero-area) ring count/id set are not pinned yet: the 7,158,943-feature "
-    "population cannot be captured inside one session, so no complete capture "
-    "existed when this draft was implemented (observed 2026-11-13). "
-    "build_nhd_waterbody_baseline computes them from a completed resumable "
-    "capture directory for the maintainer to pin.")
+    "(zero-area) ring count/id set were unpinned when this draft was "
+    "implemented (the 7,158,943-feature population cannot be captured inside "
+    "one session, so no complete capture existed on 2026-11-13 when the draft "
+    "was written). They were computed by the first complete capture "
+    "(3,037 retained pages, fetch window 2026-11-13 07:24-11:23Z, "
+    "computed_baseline 19:51Z) and are now pinned as module constants; any "
+    "later capture that disagrees fails closed.")
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),

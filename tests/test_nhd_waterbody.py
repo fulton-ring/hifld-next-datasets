@@ -324,11 +324,21 @@ class NhdWaterbodyTests(unittest.TestCase):
         self.assertEqual(src.PAGE_SIZE, 2500)
         self.assertEqual(len(src.NATIVE_FIELDS), 12)
         self.assertEqual(src.MIN_FREE_BYTES, 150_000_000_000)
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
-        self.assertEqual(src.EXPECTED_IDS_SHA256, "")
-        self.assertIsNone(src.EXPECTED_NULL_GEOMETRY_COUNT)
-        self.assertIsNone(src.EXPECTED_REFUSED_IDS)
+        # Baselines pinned from the first complete capture (2026-11-13):
+        # digests non-empty, the refusal and degenerate-ring contracts are
+        # exact tuples, and any later drift fails closed.
+        self.assertRegex(src.EXPECTED_RECORD_SHA256, "^[0-9a-f]{64}$")
+        self.assertRegex(src.EXPECTED_GEOMETRY_SHA256, "^[0-9a-f]{64}$")
+        self.assertRegex(src.EXPECTED_IDS_SHA256, "^[0-9a-f]{64}$")
+        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 9)
+        self.assertEqual(src.EXPECTED_REFUSED_IDS,
+                         (1293173, 2520496, 4245000, 4694427, 7059540, 7059541,
+                          7098625, 7135496, 7157221))
+        self.assertEqual(src.EXPECTED_DEGENERATE_RING_COUNT, 13)
+        self.assertEqual(src.EXPECTED_DEGENERATE_RING_IDS,
+                         (279258, 2727549, 2954106, 3590176, 3601265, 4575241,
+                          5019081, 5144328, 5802262, 7072361, 7074673,
+                          7147977, 7151432))
         self.assertEqual(src.EXPECTED_FEATURETYPE_DISTRIBUTION,
                          {1: 85220, 2: 9235, 3: 7063520, 4: 968})
         self.assertEqual(src.EXPECTED_FEATURETYPE_LABELS,
