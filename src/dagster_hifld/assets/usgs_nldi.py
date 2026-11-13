@@ -10,9 +10,14 @@ complete feature listing are documented by USGS at
 feature source with no filters returns all features in that collection...
 supports ``limit`` and ``offset`` query parameters for pagination"). The bulk
 endpoint without pagination was observed failing with a gateway timeout, so the
-capture walks the documented pagination: pages of 1000 features from offset 0
+capture walks the documented pagination: pages of 250 features from offset 0
 until a page returns fewer features than the limit, each page retained as raw
-evidence in a resumable capture directory before any candidate is sealed.
+evidence in a resumable capture directory before any candidate is sealed. The
+250-feature page size is chosen because larger pages were observed exceeding
+the NLDI gateway's server-side budget under load (1000-feature pages answered
+with gateway-504 bodies or hung until read timeout, while smaller documented
+limit/offset pages completed), and any ``limit`` is a documented pagination
+value.
 
 The upstream ``internetofwater/ref_gages`` GitHub compilation is the community
 project NLDI indexes; it is named as lineage context only and is never fetched.
@@ -59,7 +64,7 @@ COLLECTION_URL = NLDI_ROOT + COLLECTION_PATH
 FEATURE_SOURCES_DOC_URL = "https://api.water.usgs.gov/docs/nldi/feature-sources/"
 EXPECTED_SOURCE_ENTRY = {"source": "ref_gage", "sourceName": "geoconnex.us reference gages",
                          "features": COLLECTION_URL}
-PAGE_LIMIT = 1000
+PAGE_LIMIT = 250
 PAGE_CAPTURE_BYTES = 8 * 1024 * 1024
 SOURCES_CAPTURE_BYTES = 1024 * 1024
 PROPERTY_NAMES = ("identifier", "navigation", "name", "source", "sourceName", "comid",
@@ -664,7 +669,10 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
                            "pages": len(state.page_entries()), "resumable": True,
                            "documented_at": FEATURE_SOURCES_DOC_URL,
                            "note": "The bulk endpoint without pagination was observed returning HTTP 504 after a "
-                                   "server-side timeout; the documented limit/offset pagination is used instead."},
+                                   "server-side timeout; the documented limit/offset pagination is used instead, "
+                                   "with 250-feature pages because 1000-feature pages were observed exceeding the "
+                                   "NLDI gateway's server-side budget (gateway-504 bodies and read timeouts) while "
+                                   "smaller documented pages completed."},
             "feature_count": feature_count, "unique_id_count": audit["unique_id_count"],
             "id_field": "Feature.id == properties.identifier",
             "id_type": "string", "id_examples": ids[:5], "first_id": audit["first_id"],
