@@ -462,7 +462,9 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
             return _read_capture(capture_root, name)
         except NhdHydrolocationHtdccoError:
             _witness_aside(capture_root, name)
-    return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
+    return _capture_with_retry(client, url, capture_root, name,
+                               attempts=DOC_CAPTURE_ATTEMPTS,
+                               base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
 
 
 def _producer_error_doc(body: bytes) -> bool:
