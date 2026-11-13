@@ -34,12 +34,13 @@ class GnisHistoricalCulturalPoliticalPointsConfig(Config):
     compute_kind="http",
     description=(
         "USGS The National Map Gazetteer (GNIS) geonames MapServer layer 12 "
-        "'Historical Cultural-Political Points' (16,115 source features observed "
-        "2026-11-13) as the maintained producer publication named by the DHS HIFLD "
-        "Open crosswalk for the inventory entry nmg/"
-        "historical-cultural-political-points-1. Resumable roster-segmented "
-        "complete capture; unapproved faithful candidate. Freshness, schema/ID "
-        "contract, rights and release decisions remain pending."
+        "'Historical Cultural-Political Points' (16,115 source features, 18,725 "
+        "multipoint ordinates, complete resumable capture 2026-11-13) as the "
+        "maintained producer publication named by the DHS HIFLD Open crosswalk for "
+        "the inventory entry nmg/historical-cultural-political-points-1. "
+        "Unapproved faithful candidate; baselines pinned from the dated complete "
+        "capture. Succession, freshness, schema/ID contract, rights and release "
+        "decisions remain pending."
     ),
 )
 def gnis_historical_cultural_political_points(
