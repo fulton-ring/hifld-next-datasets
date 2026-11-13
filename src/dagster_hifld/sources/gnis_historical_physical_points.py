@@ -29,9 +29,9 @@ the capture explicitly rather than guessing.
 
 Geometry is the layer's native Z-aware multipoint: every feature geometry is
 ``{"points": [[x, y, z], ...]}`` in the page CRS (EPSG:3857), usually one
-location per gazetteer point with a small number of features carrying
-multiple recorded locations (observed 2026-11-13; every z ordinate was 0 and
-no geometry was null). Ordinates are validated numerically and range-checked in
+location per gazetteer point and up to 5 points for features with multiple
+recorded locations (observed 2026-11-13; every z ordinate was 0 and no
+geometry was null). Ordinates are validated numerically and range-checked in
 the Web Mercator domain, then stored verbatim as MultiPoint Z WKB: no
 rounding, reordering, reprojection or repair is applied.
 
@@ -133,15 +133,17 @@ EXPECTED_COUNT = 1_250
 EXPECTED_LAYER_EXTENT = {"xmin": -19818952.8156, "ymin": -1608688.4560999982,
                          "xmax": 19325062.035899997, "ymax": 11526405.634300001}
 # The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (2026-11-13, 2 accepted
-# objectIds pages); unpinned values ("", None) are checked only once pinned.
-EXPECTED_IDS_SHA256 = ""
-EXPECTED_SCHEMA_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_EMPTY_GEOMETRY_COUNT = None
-EXPECTED_TOTAL_POINT_COUNT = None
+# bounds are pinned from the dated complete capture (2026-11-13 11:29:48-51
+# UTC, 2 accepted objectIds pages, live-run-1-0000bce26d44440fab06a7edb1a42c00
+# in /data/workspace/scratch/historical-physical-points-1/captures); unpinned
+# values ("", None) are checked only once pinned.
+EXPECTED_IDS_SHA256 = "029c61e43b10cf808b53872b16513185a40118a9fa5aa9ebe405a5411da30a2a"
+EXPECTED_SCHEMA_SHA256 = "125c6f6982d87bb339a539257aa9a7f77dd90a8401a9a5e7eb9813d160063522"
+EXPECTED_RECORD_SHA256 = "b4b7a1efb8ffa6d433453bf14bb5b8eb7c52fa80e85d8893b1b21762355d93c6"
+EXPECTED_GEOMETRY_SHA256 = "ef896f933b69086298f21a298d38dbf5b9f907d2acc183467aa39d43c7c573a6"
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_EMPTY_GEOMETRY_COUNT = 0
+EXPECTED_TOTAL_POINT_COUNT = 1_359
 # GNIS gazetteer per-feature value histograms observed via grouped counts on
 # 2026-11-13 (sum 1,250); every feature must carry one of these values.
 EXPECTED_FEATURECLASS_DISTRIBUTION = {"Island": 563, "Bar": 137, "Summit": 106,
@@ -153,10 +155,12 @@ EXPECTED_FEATURECLASS_DISTRIBUTION = {"Island": 563, "Bar": 137, "Summit": 106,
                                       "Crater": 2, "Bench": 1, "Plain": 1}
 EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION = {2: 1250}
 # Points per multipoint observed over the complete capture (sum 1,250
-# features).
-EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION = None
-EXPECTED_Z_ORDINATE_DISTRIBUTION = None
-EXPECTED_OBSERVED_BOUNDS = None
+# features, 1,359 points; one gazetteer feature carries 5 recorded
+# locations).
+EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION = {1: 1152, 2: 92, 3: 2, 4: 3, 5: 1}
+EXPECTED_Z_ORDINATE_DISTRIBUTION = {0.0: 1359}
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -18999022.4558, "ymin": -1602780.0887000002,
+                            "xmax": 16104219.1431, "ymax": 11526405.634300001}
 BASELINE_PENDING_NOTE = (
     "The record and geometry baseline digests, geometry gate counts and "
     "observed bounds are pinned from a completed resumable capture directory "
