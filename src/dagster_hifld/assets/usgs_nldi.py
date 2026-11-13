@@ -466,3 +466,8 @@ usgs_nldi_draft_refresh_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [usgs_nldi_streamgage_monitoring_locations]
+ASSET_CHECKS = [usgs_nldi_complete_source]
+JOBS = [usgs_nldi_draft_refresh_job]
+SCHEDULES = [usgs_nldi_draft_refresh_schedule]
