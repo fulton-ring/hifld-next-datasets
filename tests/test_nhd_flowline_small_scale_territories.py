@@ -127,7 +127,9 @@ def _pins(features, schema, geom, counts, bounds):
                 EXPECTED_FCODE_VALUES=sorted(set(attrs["FCode"])),
                 EXPECTED_GNIS_ID_LENGTHS=gnis_lengths,
                 EXPECTED_COMID_DUPLICATE_COUNT=len(comids) - len(set(comids)),
-                EXPECTED_PERMANENT_DUPLICATE_COUNT=len(permanents) - len(set(permanents)))
+                EXPECTED_PERMANENT_DUPLICATE_COUNT=len(permanents) - len(set(permanents)),
+                EXPECTED_MULTI_PATH_FEATURE_COUNT=sum(1 for record in geom
+                                                      if isinstance(record[1], list) and len(record[1]) > 1))
 
 
 def _page_features(captures):
@@ -373,6 +375,14 @@ class NhdFlowlineSmallScaleTerritoriesTests(unittest.TestCase):
         pins["EXPECTED_NULL_GEOMETRY_COUNT"] = counts[0] + 1
         with patch.multiple(source, **pins):
             with self.assertRaisesRegex(ValueError, "source_null_or_nan_geometry_count_drift"):
+                source._validate_captures(captures)
+
+    def test_multipath_feature_count_drift_is_detected(self):
+        _, _, captures, schema, geom, counts, bounds = _fixture()
+        pins = _pins(_page_features(captures), schema, geom, counts, bounds)
+        pins["EXPECTED_MULTI_PATH_FEATURE_COUNT"] = 0
+        with patch.multiple(source, **pins):
+            with self.assertRaisesRegex(ValueError, "source_multipath_feature_count_drift"):
                 source._validate_captures(captures)
 
     def test_missing_approval_preserves_populated_accepted_inventory(self):
