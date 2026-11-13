@@ -14,6 +14,8 @@ from jsonschema.exceptions import ValidationError
 from rashid import validate as validate_with_rashid
 from rashid.model import Severity
 
+from dagster_hifld.provenance import INPUT_URL_FIELDS, validate_provenance
+
 from .catalog import (
     HIFLD_NEXT_HOST_NAME,
     HIFLD_NEXT_HOST_URL,
@@ -331,6 +333,56 @@ def _validate_temporal_intervals(document: dict[str, object], path: str) -> list
     return failures
 
 
+def _validate_input_provenance(document: dict[str, object], path: str) -> list[str]:
+    if document.get("type") != "Collection":
+        return []
+    provenance = document.get("hifld:provenance")
+    if provenance is None:
+        return [f"{path}: processor claim missing complete input provenance"] if "hifld:processor" in document else []
+    try:
+        validate_provenance(provenance)
+    except ValueError as exc:
+        return [f"{path}: invalid input provenance: {exc}"]
+    failures = []
+    providers = document.get("providers", [])
+    if not isinstance(providers, list):
+        return [f"{path}: invalid provenance providers"]
+    if document.get("hifld:processor") != "HIFLD Next" or not any(
+            isinstance(provider, dict) and provider.get("name") == "HIFLD Next"
+            and isinstance(provider.get("roles"), list) and {"processor", "host"}.issubset(provider["roles"]) and "producer" not in provider.get("roles", []) for provider in providers):
+        failures.append(f"{path}: original producer and HIFLD Next processor/host roles must remain distinct")
+    links = document.get("links", [])
+    if not isinstance(links, list):
+        return [f"{path}: invalid provenance links"]
+    for item in provenance["inputs"]:
+        if not any(isinstance(provider, dict) and provider.get("name") == item["producer"] and isinstance(provider.get("roles"), list) and "producer" in provider["roles"] for provider in providers):
+            failures.append(f"{path}: missing original input producer {item['input_id']}")
+        for field in INPUT_URL_FIELDS:
+            if item.get(field) and not any(isinstance(link, dict) and link.get("href") == item[field]
+                    and link.get("rel") == ("derived_from" if field == "canonical_url" else "via")
+                    and link.get("hifld:input_id") == item["input_id"] and link.get("hifld:input_url_role") == field for link in links):
+                failures.append(f"{path}: missing captured {field} link for {item['input_id']}")
+    assets = document.get("assets", {})
+    if not isinstance(assets, dict):
+        return [f"{path}: invalid provenance metadata assets"]
+    names = set()
+    for asset in assets.values():
+        if not isinstance(asset, dict) or not isinstance(asset.get("roles"), list) or "metadata" not in asset["roles"]:
+            continue
+        if not isinstance(asset.get("href"), str):
+            failures.append(f"{path}: invalid metadata asset URL")
+            continue
+        names.add(Path(urlparse(asset["href"]).path).name)
+        checksum = asset.get("file:checksum")
+        size = asset.get("file:size")
+        if (not isinstance(checksum, str) or len(checksum) != 68 or not checksum.startswith("1220")
+                or any(char not in "0123456789abcdef" for char in checksum[4:]) or type(size) is not int or size < 0):
+            failures.append(f"{path}: downloadable provenance metadata requires exact byte/checksum pins")
+    if not {"source_manifest.json", "resolved_provenance.json", "data_dictionary.json", "quality_manifest.json"}.issubset(names):
+        failures.append(f"{path}: missing complete downloadable provenance metadata assets")
+    return failures
+
+
 def validate_candidate_tree(root: Path) -> None:
     """Fail closed on malformed local STAC or declared Portolan profile errors."""
     document_paths = _candidate_documents(root)
@@ -347,6 +399,7 @@ def validate_candidate_tree(root: Path) -> None:
     for relative_path, path in document_paths.items():
         document = _read_document(path)
         failures.extend(_validate_temporal_intervals(document, relative_path))
+        failures.extend(_validate_input_provenance(document, relative_path))
         extensions = document.get("stac_extensions")
         if (
             not isinstance(extensions, list)

@@ -1,3 +1,5 @@
+from publication_mechanics import PublicationMechanicsMixin
+
 import json
 import tempfile
 import unittest
@@ -35,7 +37,7 @@ from dagster_hifld.conversion import (
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
-class PublishTests(unittest.TestCase):
+class PublishTests(PublicationMechanicsMixin, unittest.TestCase):
     def test_promotion_rejects_changed_bytes_before_copying_any_objects(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
             staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
@@ -720,7 +722,7 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(output.source_metadata, {"skip_reason": "disabled_dataset_family"})
 
     def test_shapefile_zip_skips_oversized_source_before_materializing_version(self):
-        class FakeStorage:
+        class FakeStorage(StagingStorageResource):
             def list_keys(self, dataset_slug, file_slug, version):
                 return [f"{dataset_slug}/{file_slug}/{version}/geojson/source.geojson"]
 

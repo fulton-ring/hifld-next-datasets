@@ -1,3 +1,5 @@
+from publication_mechanics import PublicationMechanicsMixin
+
 import gzip
 import hashlib
 import json
@@ -59,7 +61,7 @@ def _pmtiles_archive(layer_id: str = "roads") -> bytes:
     return bytes(header) + payload
 
 
-class PortolanWorkflowTests(unittest.TestCase):
+class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
     @staticmethod
     def _schema_facts(*columns: ColumnRecord) -> GeoParquetFacts:
         return GeoParquetFacts(
@@ -192,7 +194,7 @@ class PortolanWorkflowTests(unittest.TestCase):
         )
         return request, staging, published
 
-    def test_converted_publication_rejects_schema_mismatch_without_pointer_change(self):
+    def test_publication_requires_prepared_stac_without_pointer_change(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             request, staging, published = self._write_mismatched_schema_fixture(
                 Path(tmpdir)
@@ -224,7 +226,7 @@ class PortolanWorkflowTests(unittest.TestCase):
                         staging, published, request
                     ),
                 ),
-                self.assertRaisesRegex(ValueError, "missing.*ID"),
+                self.assertRaisesRegex(ValueError, "Missing or unreadable staged STAC Collection"),
             ):
                 publish_portolan_record(
                     request,
@@ -450,7 +452,7 @@ class PortolanWorkflowTests(unittest.TestCase):
             )
             self.assertEqual(root_links, {"root": expected_root, "self": expected_root})
 
-    def test_release_rollback_conditionally_restores_a_complete_prior_generation(self):
+    def test_legacy_rollback_fails_closed_and_preserves_both_complete_generations(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             published = PublishedStorageResource(local_dir=tmpdir, use_local=True)
             request = PortolanPublishRequest(
@@ -498,25 +500,16 @@ class PortolanWorkflowTests(unittest.TestCase):
                 any(f"/releases/{first_generation}/" in href for href in second_hrefs)
             )
 
-            restored = rollback_portolan_release(
-                first_generation,
-                published=published,
-                expected_snapshot=current_snapshot,
-            )
-
-            self.assertEqual(restored.generation, first_generation)
-            self.assertEqual(
-                ReleasePointer.parse(
-                    published.read_key("_catalog/current.json")
-                ).generation,
-                first_generation,
-            )
+            before = {key: published.object_snapshot(key) for key in published.list_prefix()}
+            with self.assertRaisesRegex(ValueError, "Legacy rollback is disabled"):
+                rollback_portolan_release(first_generation, published=published, expected_snapshot=current_snapshot)
+            self.assertEqual(before, {key: published.object_snapshot(key) for key in published.list_prefix()})
 
     def test_terminal_portolan_asset_is_partitioned_with_promotion(self):
         self.assertIs(publish_portolan_catalog.partitions_def, PUBLISH_PARTITIONS)
 
     def test_terminal_asset_publishes_selected_promoted_partition_only(self):
-        context = SimpleNamespace(partition_key="dataset/file/v1.0.0")
+        context = SimpleNamespace(partition_key="dataset/file/v1.0.0", op_config={"mode":"prepare", "plan_dir":"/tmp/fixture-review-plan"})
         staging = StagingStorageResource(
             local_dir="/tmp/staging", use_local=True, prefix="hifld"
         )
@@ -533,9 +526,10 @@ class PortolanWorkflowTests(unittest.TestCase):
                 },
             ),
             patch(
-                "dagster_hifld.portolan.workflow.publish_portolan_record",
-                return_value="generation-1",
+                "dagster_hifld.portolan.workflow.prepare_promoted_portolan_catalog",
+                return_value={"generation":"generation-1"},
             ) as publish,
+            patch.object(StagingStorageResource, "read_key", return_value=b"{}"),
         ):
             result = publish_portolan_catalog.node_def.compute_fn.decorated_fn(
                 context, staging, published
@@ -554,15 +548,12 @@ class PortolanWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(request.public_root, "https://example.test/catalog")
         self.assertEqual(request.collection_title, "HIFLD Next")
-        self.assertTrue(request.archive_public_domain)
-        self.assertEqual(
-            request.resolved_license, ("CC-PDM-1.0", "../../../LICENSE.md")
-        )
-        self.assertTrue(kwargs["catalog_only"])
-        self.assertTrue(kwargs["use_release_pointer"])
+        self.assertFalse(request.archive_public_domain)
+        self.assertEqual(request.resolved_license, ("other", None))
+        self.assertEqual(args[1:], (staging, published, Path("/tmp/fixture-review-plan")))
 
     def test_terminal_asset_opts_into_archived_hifld_status_when_configured(self):
-        context = SimpleNamespace(partition_key="dataset/file/v1.0.0")
+        context = SimpleNamespace(partition_key="dataset/file/v1.0.0", op_config={"mode":"prepare", "plan_dir":"/tmp/fixture-review-plan"})
         staging = StagingStorageResource(
             local_dir="/tmp/staging", use_local=True, prefix="hifld"
         )
@@ -578,9 +569,10 @@ class PortolanWorkflowTests(unittest.TestCase):
                 },
             ),
             patch(
-                "dagster_hifld.portolan.workflow.publish_portolan_record",
-                return_value="generation-1",
+                "dagster_hifld.portolan.workflow.prepare_promoted_portolan_catalog",
+                return_value={"generation":"generation-1"},
             ) as publish,
+            patch.object(StagingStorageResource, "read_key", return_value=b"{}"),
         ):
             publish_portolan_catalog.node_def.compute_fn.decorated_fn(
                 context, staging, published
@@ -627,26 +619,26 @@ class PortolanWorkflowTests(unittest.TestCase):
                 (),
                 collection_title="HIFLD",
             )
-            _publish_catalog((first,), request, published)
-            _publish_catalog((second,), request, published)
+            _publish_catalog((first,), request, published, use_release_pointer=True)
+            generation = _publish_catalog((second,), request, published, use_release_pointer=True)
 
-            collection = json.loads(published.read_key("hifld/catalog.json"))
+            collection = json.loads(published.read_key(f"releases/{generation}/hifld/catalog.json"))
             child_hrefs = {
                 link["href"] for link in collection["links"] if link["rel"] == "child"
             }
             self.assertEqual(
                 child_hrefs,
                 {
-                    "https://example.test/catalog/hifld/first/catalog.json",
-                    "https://example.test/catalog/hifld/second/catalog.json",
+                    f"https://example.test/catalog/releases/{generation}/hifld/first/catalog.json",
+                    f"https://example.test/catalog/releases/{generation}/hifld/second/catalog.json",
                 },
             )
-            with sqlite3.connect(Path(tmpdir) / "_catalog/catalog.sqlite") as conn:
+            with sqlite3.connect(Path(tmpdir) / f"releases/{generation}/_catalog/catalog.sqlite") as conn:
                 root_title = conn.execute(
                     "SELECT root_title FROM catalog_metadata"
                 ).fetchone()[0]
             self.assertEqual(root_title, "HIFLD Next")
-            root_catalog = json.loads(published.read_key("catalog.json"))
+            root_catalog = json.loads(published.read_key(f"releases/{generation}/catalog.json"))
             self.assertEqual(root_catalog["title"], "HIFLD Next")
             self.assertEqual(collection["title"], "HIFLD")
 
@@ -677,9 +669,9 @@ class PortolanWorkflowTests(unittest.TestCase):
                 (),
                 collection_title="HIFLD Next",
             )
-            _publish_catalog((record,), request, published)
-            self.assertTrue((Path(tmpdir) / "catalog.json").is_file())
-            self.assertTrue((Path(tmpdir) / "hifld/catalog.json").is_file())
+            generation = _publish_catalog((record,), request, published, use_release_pointer=True)
+            self.assertTrue((Path(tmpdir) / f"releases/{generation}/catalog.json").is_file())
+            self.assertTrue((Path(tmpdir) / f"releases/{generation}/hifld/catalog.json").is_file())
             self.assertFalse((Path(tmpdir) / "hifld/hifld/catalog.json").exists())
 
     def test_incremental_version_publication_keeps_prior_version_and_latest(self):
@@ -708,10 +700,10 @@ class PortolanWorkflowTests(unittest.TestCase):
                     (),
                     collection_title="HIFLD Next",
                 )
-                _publish_catalog((record,), request, published)
+                generation = _publish_catalog((record,), request, published, use_release_pointer=True)
 
             file_catalog = json.loads(
-                published.read_key("hifld/dataset/file/catalog.json")
+                published.read_key(f"releases/{generation}/hifld/dataset/file/catalog.json")
             )
             links = file_catalog["links"]
             child_hrefs = {link["href"] for link in links if link["rel"] == "child"}
@@ -720,10 +712,10 @@ class PortolanWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 latest,
                 [
-                    "https://example.test/catalog/hifld/dataset/file/v1.10.0/collection.json"
+                    f"https://example.test/catalog/releases/{generation}/hifld/dataset/file/v1.10.0/collection.json"
                 ],
             )
-            with sqlite3.connect(Path(tmpdir) / "_catalog/catalog.sqlite") as conn:
+            with sqlite3.connect(Path(tmpdir) / f"releases/{generation}/_catalog/catalog.sqlite") as conn:
                 projected_latest = conn.execute(
                     "SELECT latest_version FROM files WHERE file_path = ?",
                     ("hifld/dataset/file",),
@@ -853,7 +845,7 @@ class PortolanWorkflowTests(unittest.TestCase):
         )
         with (
             patch(
-                "dagster_hifld.portolan.workflow._prepare_portolan_record",
+                "dagster_hifld.portolan.workflow._prepare_approved_portolan_record",
                 return_value=record,
             ) as prepare,
             patch(
@@ -862,11 +854,10 @@ class PortolanWorkflowTests(unittest.TestCase):
             ),
         ):
             publish_portolan_record(
-                request, staging=staging, published=published, catalog_only=True
+                request, staging=staging, published=published, catalog_only=True, use_release_pointer=True
             )
 
-        self.assertFalse(prepare.call_args.kwargs["convert"])
-        self.assertFalse(prepare.call_args.kwargs["promote"])
+        self.assertTrue(prepare.call_args.kwargs["catalog_only"])
 
     def test_catalog_only_record_preserves_authored_version_metadata(self):
         note = (

@@ -1,0 +1,46 @@
+{
+  "dataset_slug": "us-county-boundaries-1",
+  "title": "US County Boundaries",
+  "status": "unapproved_candidate",
+  "producer": "U.S. Census Bureau, Geography Division",
+  "source_url": "https://www2.census.gov/geo/tiger/TIGER2023/COUNTY/tl_2023_us_county.zip",
+  "source_vintage": "2023 TIGER/Line COUNTY",
+  "release_date": null,
+  "release_date_unknown_reason": "The archive is identified as the 2023 TIGER/Line vintage; this capture did not preserve an HTTP Last-Modified header or establish a precise publication date.",
+  "retrieval": {
+    "observed_at": "2026-10-21T15:42:39.845355+00:00",
+    "status": 200,
+    "final_url": "https://www2.census.gov/geo/tiger/TIGER2023/COUNTY/tl_2023_us_county.zip",
+    "complete_body": true,
+    "content_encoding": "identity",
+    "bytes": 83451409,
+    "sha256": "692e12c30c83adcaabdbac0d3954fafa55e1c89a24b36d95e72e02dff938652e",
+    "wire_bytes": 83451409,
+    "wire_sha256": "692e12c30c83adcaabdbac0d3954fafa55e1c89a24b36d95e72e02dff938652e"
+  },
+  "archive_validation": {
+    "feature_count": 3235,
+    "fields": ["STATEFP", "COUNTYFP", "COUNTYNS", "GEOID", "GEOIDFQ", "NAME", "NAMELSAD", "LSAD", "CLASSFP", "MTFCC", "CSAFP", "CBSAFP", "METDIVFP", "FUNCSTAT", "ALAND", "AWATER", "INTPTLAT", "INTPTLON"],
+    "source_id_field": "GEOID",
+    "source_id_sha256": "2543af0c3d664319369a412825a0ef0970f684b1db94163e711735239db312f2",
+    "source_crs": "EPSG:4269",
+    "geometry_types": ["Polygon", "MultiPolygon"],
+    "null_geometry_count": 0,
+    "empty_geometry_count": 0,
+    "invalid_geometry_count": 0,
+    "bounds": [-179.231086, -14.601813, 179.859681, 71.439786]
+  },
+  "lineage": "Census TIGER/Line 2023 COUNTY producer publication. The archived HIFLD copy was not used as the pipeline input. This recovery does not establish equivalence to a historical HIFLD/FEMA baseline.",
+  "acceptance": {
+    "source_release_accepted": false,
+    "source_freshness_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false,
+    "production_publication_performed": false
+  },
+  "local_evidence": "/workspace/work/363-clean-evidence"
+}

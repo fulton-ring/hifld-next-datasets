@@ -1,3 +1,5 @@
+from publication_mechanics import PublicationMechanicsMixin
+
 import io
 import tempfile
 import unittest
@@ -10,7 +12,7 @@ from dagster_hifld.promotion import promote_immutable_objects, write_immutable_o
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
 
-class ImmutablePromotionTests(unittest.TestCase):
+class ImmutablePromotionTests(PublicationMechanicsMixin, unittest.TestCase):
     def test_legacy_zip_normalization_is_compressed_and_idempotent(self):
         with (
             tempfile.TemporaryDirectory() as source_dir,

@@ -24,6 +24,7 @@ import warnings
 import zipfile
 import zlib
 from dataclasses import asdict, dataclass, replace
+from numbers import Integral
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Iterable, Optional
@@ -1273,6 +1274,7 @@ def _resolve_first_source_column(
 def _coerce_gdf_to_fiona_schema(
     gdf: gpd.GeoDataFrame,
     schema: dict[str, Any],
+    original_features: list[Any] | None = None,
 ) -> gpd.GeoDataFrame:
     """Keep streaming chunks in source order with stable types for sparse fields."""
     properties = schema.get("properties") or {}
@@ -1284,6 +1286,35 @@ def _coerce_gdf_to_fiona_schema(
         if column not in coerced.columns:
             coerced[column] = pd.Series(None, index=coerced.index, dtype="object")
         fiona_type = str(raw_type).lower()
+        if fiona_type.startswith(("int", "uint")):
+            # from_features has already rounded nullable integers through float64.
+            # Reconstruct from the original records, preserving declared widths.
+            integer_kind = fiona_type.split(":", 1)[0]
+            unsigned = integer_kind.startswith("uint")
+            width_text = integer_kind.removeprefix("uint" if unsigned else "int")
+            bits = int(width_text) if width_text else 64
+            if bits not in (8, 16, 32, 64):
+                raise ValueError(f"Unsupported source integer width: {raw_type}")
+            values = (
+                [_feature_properties(feature).get(column) for feature in original_features]
+                if original_features is not None
+                else coerced[column].tolist()
+            )
+            if len(values) != len(coerced):
+                raise ValueError("Original source records do not align with the batch")
+            minimum = 0 if unsigned else -(2 ** (bits - 1))
+            maximum = 2**bits - 1 if unsigned else 2 ** (bits - 1) - 1
+            exact = []
+            for value in values:
+                if value is None or value is pd.NA:
+                    exact.append(None)
+                elif isinstance(value, Integral) and not isinstance(value, bool) and minimum <= value <= maximum:
+                    exact.append(int(value))
+                else:
+                    raise ValueError(f"Noninteger or out-of-range source value for {column}:{raw_type}")
+            dtype = f"{'U' if unsigned else ''}Int{bits}"
+            coerced[column] = pd.Series(pd.array(exact, dtype=dtype), index=coerced.index)
+            continue
         try:
             list_type = _fiona_list_arrow_type(fiona_type)
             if list_type is not None:
@@ -1312,10 +1343,6 @@ def _coerce_gdf_to_fiona_schema(
                 )
             elif fiona_type.startswith(("str", "date", "time")):
                 coerced[column] = coerced[column].astype("string")
-            elif fiona_type.startswith(("int", "uint")):
-                coerced[column] = pd.to_numeric(
-                    coerced[column], errors="coerce"
-                ).astype("Int64")
             elif fiona_type.startswith(("float", "real", "double")):
                 coerced[column] = pd.to_numeric(
                     coerced[column], errors="coerce"
@@ -1945,7 +1972,7 @@ def _preflight_layer_with_histograms(
             if not features:
                 return
             gdf = gpd.GeoDataFrame.from_features(features, crs=current_crs)
-            gdf = _coerce_gdf_to_fiona_schema(gdf, source_schema)
+            gdf = _coerce_gdf_to_fiona_schema(gdf, source_schema, features)
             table = _canonicalize_geoparquet_batch_metadata(
                 _geodataframe_to_geoparquet_arrow(gdf)
             )
@@ -2422,7 +2449,7 @@ async def process_layer_partitioned_geoparquet(
         # The SQLite cursor already provides the global order for this partition.
         gdf = gpd.GeoDataFrame.from_features(buffered, crs=current_crs)
         prepared = _coerce_gdf_to_fiona_schema(
-            gdf.reset_index(drop=True), source_schema
+            gdf.reset_index(drop=True), source_schema, buffered
         )
         return _canonicalize_geoparquet_batch_metadata(
             _geodataframe_to_geoparquet_arrow(prepared)

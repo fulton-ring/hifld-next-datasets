@@ -1,0 +1,360 @@
+"""Source contract tests for the complete official IENC LANDMARK_AREA layer."""
+
+from __future__ import annotations
+
+import io
+import json
+import unittest
+import copy
+from urllib.parse import parse_qs, urlsplit
+
+import pyarrow.parquet as pq
+import shapely
+from dagster import DefaultScheduleStatus
+
+from dagster_hifld.native_geoparquet_catalog import geometry_metadata
+from dagster_hifld.sources.usace_landmark_areas import (
+    BTS_ITEM_ID,
+    EXPECTED_COUNT,
+    EXPECTED_FIELD_DECLARATIONS,
+    EXPECTED_FIELDS,
+    EXPECTED_ID_SHA256,
+    EXPECTED_LAYER_EXTENT,
+    _capture_roster,
+    _esri_polygon,
+    _parquet_bytes,
+    _validate,
+    PAGE_SIZE,
+)
+from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
+from dagster_hifld.assets.usace_landmark_areas import (
+    usace_landmark_areas_complete,
+    usace_landmark_areas_draft_job,
+    usace_landmark_areas_draft_schedule,
+    usace_landmark_areas_usace_ienc,
+)
+from dagster_hifld.definitions import defs
+
+
+def _docs(ids: list[int] | None = None) -> dict[str, dict]:
+    object_ids = ids or list(range(1, EXPECTED_COUNT + 1))
+    fields = EXPECTED_FIELD_DECLARATIONS
+    item = {
+        "id": BTS_ITEM_ID,
+        "owner": "USDOT_BTS",
+        "type": "PDF",
+        "access": "public",
+        "title": "Inland Electronic Navigational Charts",
+        "description": (
+            "IENC dataset is updated bi-monthly by USACE. "
+            "Charts can be downloaded here: https://ienccloud.us/ienc/products/files/"
+            "U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip. "
+            "Services: https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"
+        ),
+    }
+    service = {
+        "mapName": "LANDMARK_AREA",
+        "copyrightText": "USACE IENC",
+        "layers": [{"id": 90, "name": "LANDMARK_AREA", "geometryType": "esriGeometryPolygon"}],
+    }
+    layer = {
+        "id": 90,
+        "name": "LANDMARK_AREA",
+        "geometryType": "esriGeometryPolygon",
+        "spatialReference": {"wkid": 4326, "latestWkid": 4326},
+        "extent": {**EXPECTED_LAYER_EXTENT,
+                   "spatialReference": {"wkid": 4326, "latestWkid": 4326}},
+        "maxRecordCount": 2000,
+        "fields": fields,
+    }
+    features = []
+    for oid in object_ids:
+        attrs = {name: None for name, _kind in EXPECTED_FIELDS if name != "SHAPE"}
+        attrs.update({"OBJECTID": oid, "Category_of_Landmark": "Chimney",
+            "Visually_Conspicuous": "Visually Conspicuous", "Object_Name": f"LANDMARK-{oid:03d}",
+            "Function": "Cooling", "Height": "", "Information": "", "Scale_Minimum": 60000,
+            "Source_Date": "20090626", "Source_Indication": "US,U3,IMAGE,LRH_Aerial_Imagery",
+            "Source_Dataset": "U37OH391.000", "Feature_ID": f"U3 {oid:010d}"})
+        features.append(
+            {
+                "attributes": attrs,
+                "geometry": {
+                    "rings": [[[-88, 37], [-88, 38], [-87, 38], [-87, 37], [-88, 37]]],
+                    "spatialReference": {"wkid": 4326},
+                },
+            }
+        )
+    docs = {
+        "bts_item": item,
+        "service_directory": {"services": [{"name": "IENC_Feature_Classes/LANDMARK_AREA", "type": "MapServer"}]},
+        "service_before": service,
+        "service_after": service,
+        "layer_before": layer,
+        "layer_after": layer,
+        "count_before": {"count": EXPECTED_COUNT},
+        "count_after": {"count": EXPECTED_COUNT},
+        "ids_seed": {"objectIds": object_ids},
+        "ids_before": {"objectIds": object_ids},
+        "ids_after": {"objectIds": object_ids},
+    }
+    for page_index, start in enumerate(range(0, len(features), PAGE_SIZE)):
+        docs[f"page_{page_index:03d}"] = {
+            "spatialReference": {"wkid": 4326, "latestWkid": 4326},
+            "features": features[start:start + PAGE_SIZE],
+        }
+    return docs
+
+
+def _captures(docs: dict[str, dict]) -> dict[str, tuple[bytes, dict]]:
+    return {name: (json.dumps(doc).encode("utf-8"), {}) for name, doc in docs.items()}
+
+
+class UsaceLandmarkAreasSourceTest(unittest.TestCase):
+    def test_registered_stopped_draft_and_unapproved_release_gate(self) -> None:
+        self.assertIn(usace_landmark_areas_usace_ienc, hifld_ingest_assets)
+        registered = defs.get_repository_def()
+        self.assertIn(usace_landmark_areas_usace_ienc.key, registered.asset_graph.get_all_asset_keys())
+        self.assertIn("usace_landmark_areas_complete",
+                      {key.name for key in registered.asset_checks_defs_by_key})
+        self.assertIn(usace_landmark_areas_draft_job.name,
+                      {job.name for job in registered.get_all_jobs()})
+        self.assertIn(usace_landmark_areas_draft_schedule.name,
+                      {schedule.name for schedule in registered.schedule_defs})
+        self.assertEqual(usace_landmark_areas_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
+        check = usace_landmark_areas_complete({"feature_count": EXPECTED_COUNT, "source_population_complete": True})
+        self.assertTrue(check.passed)
+        self.assertFalse(check.metadata["release_accepted"].value)
+        self.assertFalse(check.metadata["mapping_approved"].value)
+        self.assertFalse(check.metadata["schema_contract_accepted"].value)
+
+    def test_current_public_bts_pdf_is_required_prior_denied_item_rejected(self) -> None:
+        captures = _captures(_docs())
+        item = json.loads(captures["bts_item"][0])
+        item["id"] = "different-item"
+        captures["bts_item"] = (json.dumps(item).encode("utf-8"), {})
+        with self.assertRaisesRegex(ValueError, "bts_ienc_item_identity_drift"):
+            _validate(captures)
+
+    def test_complete_id_roster_and_geometry_are_checked(self) -> None:
+        fields, features, audit = _validate(_captures(_docs()))
+        self.assertEqual(fields, EXPECTED_FIELD_DECLARATIONS)
+        self.assertEqual(len(features), EXPECTED_COUNT)
+        self.assertEqual(audit["source_id_sha256"], EXPECTED_ID_SHA256)
+        self.assertEqual(audit["geometry_valid_count"], EXPECTED_COUNT)
+        self.assertEqual(audit["geometry_empty_count"], 0)
+        self.assertEqual(audit["geometry_invalid_count"], 0)
+        self.assertEqual(audit["source_vertex_count"], EXPECTED_COUNT * 5)
+
+    def test_changed_ids_fail_closed(self) -> None:
+        docs = _docs()
+        docs["ids_after"] = {"objectIds": list(range(1, EXPECTED_COUNT)) + [7]}
+        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+            _validate(_captures(docs))
+
+    def test_type_loss_fails_closed(self) -> None:
+        docs = _docs()
+        docs["page_000"]["features"][0]["attributes"]["Object_Name"] = 60000
+        with self.assertRaisesRegex(ValueError, "source_string_value_type_drift"):
+            _validate(_captures(docs))
+
+    def test_duplicate_feature_ids_are_retained_without_synthesizing_replacements(self) -> None:
+        docs = _docs()
+        docs["page_000"]["features"][1]["attributes"]["Feature_ID"] = \
+            docs["page_000"]["features"][0]["attributes"]["Feature_ID"]
+        _fields, features, audit = _validate(_captures(docs))
+        self.assertEqual(audit["feature_id_duplicate_count"], 1)
+        self.assertEqual(
+            features[1]["attributes"]["Feature_ID"],
+            features[0]["attributes"]["Feature_ID"],
+        )
+
+    def test_nullable_feature_id_is_preserved(self) -> None:
+        docs = _docs()
+        docs["page_000"]["features"][0]["attributes"]["Feature_ID"] = None
+        fields, features, audit = _validate(_captures(docs))
+        self.assertEqual(audit["feature_id_null_count"], 1)
+        self.assertIsNone(features[0]["attributes"]["Feature_ID"])
+        parquet = pq.read_table(io.BytesIO(_parquet_bytes(fields, features, 4326)))
+        self.assertEqual(parquet["Feature_ID"].null_count, 1)
+        self.assertEqual(parquet["OBJECTID"].to_pylist(), list(range(1, EXPECTED_COUNT + 1)))
+
+    def test_unexpected_column_fails_closed(self) -> None:
+        docs = _docs()
+        docs["layer_before"]["fields"] = docs["layer_before"]["fields"] + [
+            {"name": "NEW_FIELD", "type": "esriFieldTypeString", "alias": "NEW_FIELD", "length": 254, "domain": None}
+        ]
+        docs["layer_after"] = copy.deepcopy(docs["layer_before"])
+        with self.assertRaisesRegex(ValueError, "source_field_schema_drift"):
+            _validate(_captures(docs))
+
+    def test_incomplete_page_fails_closed(self) -> None:
+        docs = _docs()
+        docs["page_000"]["exceededTransferLimit"] = True
+        with self.assertRaisesRegex(ValueError, "source_page_error_or_truncation"):
+            _validate(_captures(docs))
+
+    def test_extent_and_geometry_coverage_drift_fail_closed(self) -> None:
+        docs = _docs()
+        docs["layer_before"]["extent"]["xmax"] += 1
+        docs["layer_after"] = copy.deepcopy(docs["layer_before"])
+        with self.assertRaisesRegex(ValueError, "source_coverage_extent_drift"):
+            _validate(_captures(docs))
+        docs = _docs()
+        docs["page_000"]["features"][0]["geometry"]["rings"][0][0][0] = -110
+        with self.assertRaisesRegex(ValueError, "source_geometry_outside_declared_coverage"):
+            _validate(_captures(docs))
+
+    def test_native_identifier_values_and_polygon_coordinates_survive_geoparquet(self) -> None:
+        fields = [
+            {"name": "OBJECTID", "type": "esriFieldTypeOID"},
+            {"name": "SHAPE", "type": "esriFieldTypeGeometry"},
+            {"name": "Object_Name", "type": "esriFieldTypeString"},
+            {"name": "Information", "type": "esriFieldTypeString"},
+            {"name": "Scale_Minimum", "type": "esriFieldTypeInteger"},
+            {"name": "Feature_ID", "type": "esriFieldTypeString"},
+        ]
+        feature = {
+            "attributes": {"OBJECTID": 17, "Object_Name": "00107", "Information": "raw text",
+                           "Scale_Minimum": 60000, "Feature_ID": "U3 1393266544 00001"},
+            "geometry": {"rings": [[[0, 0], [0, 4], [4, 4], [4, 0], [0, 0]]]},
+        }
+        body = _parquet_bytes(fields, [feature], 4326)
+        table = pq.ParquetFile(io.BytesIO(body)).read(use_threads=False)
+        self.assertEqual(table.column("OBJECTID").to_pylist(), [17])
+        self.assertEqual(table.column("Object_Name").to_pylist(), ["00107"])
+        self.assertEqual(table.column("Information").to_pylist(), ["raw text"])
+        self.assertEqual(table.column("Scale_Minimum").to_pylist(), [60000])
+        self.assertEqual(table.column("Feature_ID").to_pylist(), ["U3 1393266544 00001"])
+        self.assertEqual(str(table.schema.field("OBJECTID").type), "int64")
+        self.assertEqual(str(table.schema.field("Scale_Minimum").type), "int32")
+        self.assertEqual(str(table.schema.field("Information").type), "string")
+        primary, _, crs = geometry_metadata(table.schema)
+        self.assertEqual(primary, "geometry")
+        self.assertEqual(crs.to_epsg(), 4326)
+        geom = shapely.from_wkb(table.column("geometry")[0].as_py())
+        self.assertEqual(list(geom.exterior.coords), [(0., 0.), (0., 4.), (4., 4.), (4., 0.), (0., 0.)])
+
+    def test_bts_linkage_is_required(self) -> None:
+        docs = _docs()
+        docs["bts_item"]["owner"] = "unverified"
+        with self.assertRaisesRegex(ValueError, "bts_ienc_item_identity_drift"):
+            _validate(_captures(docs))
+
+    def test_conflicting_layer_wkids_fail_closed(self) -> None:
+        docs = _docs()
+        docs["layer_before"]["spatialReference"] = {"wkid": 3857, "latestWkid": 4326}
+        docs["layer_after"] = copy.deepcopy(docs["layer_before"])
+        with self.assertRaisesRegex(ValueError, "source_layer_crs_drift"):
+            _validate(_captures(docs))
+
+    def test_extent_and_feature_crs_overrides_fail_closed(self) -> None:
+        for location, label in (("extent", "source_layer_extent"), ("feature", "source_feature")):
+            with self.subTest(location=location):
+                docs = _docs()
+                if location == "extent":
+                    docs["layer_before"]["extent"] = {
+                        **EXPECTED_LAYER_EXTENT,
+                        "spatialReference": {"wkid": 4269},
+                    }
+                    docs["layer_after"] = copy.deepcopy(docs["layer_before"])
+                else:
+                    docs["page_000"]["features"][0]["geometry"]["spatialReference"] = {
+                        "wkid": 3857,
+                        "latestWkid": 4326,
+                    }
+                with self.assertRaisesRegex(ValueError, label + "_crs_drift"):
+                    _validate(_captures(docs))
+
+    def test_page_crs_conflict_fails_closed(self) -> None:
+        docs = _docs()
+        docs["page_000"]["spatialReference"] = {"wkid": 4269, "latestWkid": 4326}
+        with self.assertRaisesRegex(ValueError, "source_page_crs_drift"):
+            _validate(_captures(docs))
+
+    def test_layer_after_crs_or_extent_change_fails_closed(self) -> None:
+        for key, value in (
+            ("spatialReference", {"latestWkid": 4269}),
+            ("extent", {"xmin": -1, "ymin": -1, "xmax": 2, "ymax": 2}),
+        ):
+            with self.subTest(key=key):
+                docs = _docs()
+                docs["layer_after"] = copy.deepcopy(docs["layer_before"])
+                docs["layer_after"][key] = value
+                with self.assertRaisesRegex(ValueError, "source_layer_changed_during_capture"):
+                    _validate(_captures(docs))
+
+    def test_page_queries_request_z_and_m_and_reject_returned_dimensions(self) -> None:
+        pages = [(name, url) for name, url in _capture_roster(list(range(1, EXPECTED_COUNT + 1)))
+                 if name.startswith("page_")]
+        self.assertEqual(len(pages), 1)
+        for _name, url in pages:
+            query = parse_qs(urlsplit(url).query)
+            self.assertEqual(query["returnZ"], ["true"])
+            self.assertEqual(query["returnM"], ["true"])
+        docs = _docs()
+        ring = docs["page_000"]["features"][0]["geometry"]["rings"][0]
+        docs["page_000"]["features"][0]["geometry"]["rings"][0] = [
+            [x, y, 17.0] for x, y in ring
+        ]
+        with self.assertRaisesRegex(ValueError, "source_polygon_zm_flags_do_not_match_coordinates"):
+            _validate(_captures(docs))
+
+    def test_correctly_flagged_z_m_and_zm_drift_fail_closed_at_every_boundary(self) -> None:
+        cases = (({"hasZ": True}, (17.0,)), ({"hasM": True}, (29.0,)),
+                 ({"hasZ": True, "hasM": True}, (17.0, 29.0)))
+        for flags, extra in cases:
+            with self.subTest(flags=sorted(flags), boundary="layer"):
+                docs = _docs()
+                for name in ("layer_before", "layer_after", "page_000"):
+                    docs[name] = {**docs[name], **flags}
+                for feature in docs["page_000"]["features"]:
+                    feature["geometry"] = {**feature["geometry"], **flags}
+                    feature["geometry"]["rings"] = [
+                        [point + list(extra) for point in ring]
+                        for ring in feature["geometry"]["rings"]
+                    ]
+                with self.assertRaisesRegex(ValueError, "source_layer_dimensional_drift"):
+                    _validate(_captures(docs))
+            with self.subTest(flags=sorted(flags), boundary="page"):
+                docs = _docs()
+                docs["page_000"] = {**docs["page_000"], **flags}
+                with self.assertRaisesRegex(ValueError, "source_page_dimensional_drift"):
+                    _validate(_captures(docs))
+            with self.subTest(flags=sorted(flags), boundary="geometry_flagged_with_coordinates"):
+                docs = _docs()
+                for feature in docs["page_000"]["features"]:
+                    feature["geometry"] = {**feature["geometry"], **flags}
+                    feature["geometry"]["rings"] = [
+                        [point + list(extra) for point in ring]
+                        for ring in feature["geometry"]["rings"]
+                    ]
+                with self.assertRaisesRegex(ValueError, "source_geometry_dimensional_drift"):
+                    _validate(_captures(docs))
+            with self.subTest(flags=sorted(flags), boundary="geometry_flagged_without_coordinates"):
+                docs = _docs()
+                for feature in docs["page_000"]["features"]:
+                    feature["geometry"] = {**feature["geometry"], **flags}
+                with self.assertRaisesRegex(ValueError, "source_geometry_dimensional_drift"):
+                    _validate(_captures(docs))
+
+    def test_esri_polygon_rejects_flagged_dimensions_and_non_xy_rings_directly(self) -> None:
+        ring = [[-88, 37], [-88, 38], [-87, 38], [-87, 37], [-88, 37]]
+        cases = (({"hasZ": True}, (17.0,)), ({"hasM": True}, (29.0,)),
+                 ({"hasZ": True, "hasM": True}, (17.0, 29.0)))
+        for flags, extra in cases:
+            with self.subTest(flags=sorted(flags), dimensional=True):
+                with self.assertRaisesRegex(ValueError, "source_polygon_dimensional_flags_rejected"):
+                    _esri_polygon({"rings": [[point + list(extra) for point in ring]], **flags})
+            with self.subTest(flags=sorted(flags), dimensional=False):
+                with self.assertRaisesRegex(ValueError, "source_polygon_dimensional_flags_rejected"):
+                    _esri_polygon({"rings": [ring], **flags})
+        with self.assertRaisesRegex(ValueError, "source_polygon_zm_flags_do_not_match_coordinates"):
+            _esri_polygon({"rings": [[point + [17.0] for point in ring]]})
+        self.assertEqual(
+            shapely.from_wkb(_esri_polygon({"rings": [ring]})).wkb_hex[:10],
+            "0103000000",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
