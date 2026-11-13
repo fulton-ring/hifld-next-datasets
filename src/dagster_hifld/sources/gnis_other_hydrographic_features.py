@@ -20,7 +20,8 @@ Datasets" repackaging are identification context only and are never fetched.
 
 The producer serves the complete OBJECTID roster (``returnIdsOnly`` returned
 exactly 200,716 ids spanning 1..200716 contiguously on 2026-11-13), so the
-layer is captured as adaptively bisected ``objectIds`` pages of the sorted
+layer is captured as adaptively bisected ``resultOffset`` segments of the
+sorted
 roster: each accepted page must return exactly its expected id slice, the
 accepted pages must tile the complete roster without gaps or overlaps, and
 before/after count/roster/layer/service brackets prove that nothing was
@@ -132,10 +133,10 @@ EXPECTED_COUNT = 200_716
 EXPECTED_LAYER_EXTENT = {"xmin": -19946753.7371, "ymin": -1616035.5824000016,
                          "xmax": 20035651.3177, "ymax": 11536262.025600001}
 # The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (2026-11-13 11:42:47 -
-# 12:18:57 UTC, 301 accepted objectIds pages after producer-side transient
-# truncation refusals bisected down, /workspace/captures240 in the task
-# sandbox); unpinned values ("", None) are checked only once pinned.
+# bounds are pinned from the dated complete captures (2026-11-13: objectIds
+# pages 11:42:47-12:18:57 UTC and resultOffset segments; both complete,
+# /workspace/captures240* in the task sandbox); unpinned values ("", None) are
+# checked only once pinned.
 EXPECTED_IDS_SHA256 = "e38dcf5bd754dccfc994be7c73e7a53785e3aedf65160bcc121df9e18454ee53"
 EXPECTED_SCHEMA_SHA256 = "054726f396a55139d7db341622d192fdac21b854cb011e5569c897838c83d6ac"
 EXPECTED_RECORD_SHA256 = "fe4e8b46965ef1fccfd255efe5eebafd6533e63dd668787e917e1219c3f4919b"
@@ -249,10 +250,11 @@ def _ids_url() -> str:
     return _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
 
 
-def _page_url(ids_slice: list[int]) -> str:
-    return _query({"objectIds": ",".join(str(value) for value in ids_slice),
-                   "outFields": "*", "returnGeometry": "true", "returnZ": "true",
-                   "returnM": "true", "orderByFields": "OBJECTID ASC", "f": "json"})
+def _segment_query(offset: int, count: int) -> str:
+    return _query({"where": "1=1", "outFields": "*", "returnGeometry": "true",
+                   "returnZ": "true", "returnM": "true",
+                   "orderByFields": "OBJECTID ASC", "resultOffset": offset,
+                   "resultRecordCount": count, "f": "json"})
 
 
 _PAGE_NAME_PATTERN = re.compile(r"page_([0-9]{6})_([0-9]{5})$")
@@ -522,9 +524,11 @@ def _validate_request_scope(name: str, receipt: Mapping[str, object],
             raise GnisOtherHydrographicFeaturesError(
                 "source_capture_request_scope_drift:" + name)
         expected_path, expected = urlsplit(LAYER_URL).path + "/query", {
-            "objectIds": [",".join(str(value) for value in roster[offset:offset + count])],
-            "outFields": ["*"], "returnGeometry": ["true"], "returnZ": ["true"],
-            "returnM": ["true"], "orderByFields": ["OBJECTID ASC"], "f": ["json"]}
+            "where": ["1=1"], "outFields": ["*"], "returnGeometry": ["true"],
+            "returnZ": ["true"], "returnM": ["true"],
+            "orderByFields": ["OBJECTID ASC"],
+            "resultOffset": [str(offset)], "resultRecordCount": [str(count)],
+            "f": ["json"]}
     else:
         raise GnisOtherHydrographicFeaturesError(
             "source_capture_request_scope_drift:" + name)
@@ -718,7 +722,7 @@ def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
                 and not (capture_root / f"{name}.body").read_bytes().lstrip().startswith(
                     b'{"error"'):
             continue
-        url = _page_url(roster[offset:offset + count])
+        url = _segment_query(offset, count)
         try:
             body, receipt = _capture_with_retry(
                 client, url, capture_root, name,
@@ -1225,7 +1229,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             "service copyrightText records a service refresh (October 2026) and "
             "USGS documents that GNIS names data products are refreshed every "
             "other month. Neither is a dataset release date.",
-        "pagination": {"mode": "enumerated_roster_bisected_objectids_pages",
+        "pagination": {"mode": "enumerated_roster_bisected_resultoffset_segments",
                        "page_start_records": PAGE_START_RECORDS,
                        "producer_max_record_count": MAX_RECORD_COUNT,
                        "pages": extracted["pages"], "resumable": True,
@@ -1233,11 +1237,13 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "id_roster_enumeration_note":
                            "returnIdsOnly enumerated the complete OBJECTID roster "
                            "(200,716 ids spanning 1..200716 contiguously, observed "
-                           "2026-11-13). Pages start at 1000 ids below the producer's "
-                           "2000-record cap and refused pages are bisected until "
-                           "served; accepted pages must tile the sorted roster "
-                           "exactly and before/after count/roster brackets prove "
-                           "nothing was skipped, duplicated or reordered."},
+                           "2026-11-13). Segments request consecutive roster windows "
+                           "by resultOffset/resultRecordCount starting at 1000 rows "
+                           "below the producer's 2000-record cap and refused "
+                           "segments are bisected until served; accepted segments "
+                           "must tile the sorted roster exactly and before/after "
+                           "count/roster brackets prove nothing was skipped, "
+                           "duplicated or reordered."},
         "capture_window_utc": {"first_page": first_captured_at,
                                "last_page": last_captured_at},
         "freshness_accepted": False, "schema_contract_accepted": False,
@@ -1291,7 +1297,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                  "layer_id": LAYER_ID,
                                  "population": "the complete enumerated OBJECTID roster "
                                                "captured as adaptively bisected "
-                                               "objectIds pages (full Other "
+                                               "resultOffset segments (full Other "
                                                "Hydrographic Features gazetteer "
                                                "population)",
                                  "source_fields": "all producer attribute fields "

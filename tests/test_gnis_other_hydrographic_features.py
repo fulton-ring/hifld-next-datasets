@@ -144,9 +144,11 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
             return httpx.Response(200, stream=JSONStream(
                 {"objectIdFieldName": "OBJECTID", "objectIds": objectids}),
                 headers={"content-type": "application/json"})
-        if query.get("objectIds") is not None:
-            requested = [int(value) for value in query["objectIds"][0].split(",")]
-            if len(requested) in refuse_counts:
+        if query.get("resultOffset") is not None:
+            offset = int(query["resultOffset"][0])
+            segment_count = int(query["resultRecordCount"][0])
+            requested = objectids[offset:offset + segment_count]
+            if segment_count in refuse_counts:
                 return httpx.Response(200, stream=JSONStream(
                     {"error": {"code": 500, "message": "Error performing query "
                                                       "operation", "details": []}}),
@@ -259,10 +261,11 @@ class GnisOtherHydrographicFeaturesTests(unittest.TestCase):
         from dagster import DefaultScheduleStatus
         self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
 
-    def test_page_query_contract_is_roster_bounded(self):
-        url = src._page_url([2, 3, 5])
-        query = parse_qs(urlparse(url).query)
-        self.assertEqual(query["objectIds"], ["2,3,5"])
+    def test_segment_query_contract_is_roster_bounded(self):
+        query = parse_qs(urlparse(src._segment_query(2000, 1000)).query)
+        self.assertEqual(query["where"], ["1=1"])
+        self.assertEqual(query["resultOffset"], ["2000"])
+        self.assertEqual(query["resultRecordCount"], ["1000"])
         self.assertEqual(query["orderByFields"], ["OBJECTID ASC"])
         self.assertEqual(query["outFields"], ["*"])
         self.assertEqual(query["returnGeometry"], ["true"])
@@ -396,7 +399,7 @@ class GnisOtherHydrographicFeaturesTests(unittest.TestCase):
                                  / "source_audit.json").read_bytes())
             self.assertEqual(sealed["source_feature_count"], FIXTURE_COUNT)
             self.assertEqual(sealed["pagination"]["mode"],
-                             "enumerated_roster_bisected_objectids_pages")
+                             "enumerated_roster_bisected_resultoffset_segments")
             self.assertEqual(sealed["pagination"]["page_start_records"], 4)
             self.assertTrue(sealed["pagination"]["resumable"])
             self.assertFalse(sealed["release_accepted"])
