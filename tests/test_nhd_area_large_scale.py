@@ -671,6 +671,26 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
                 self.assertEqual(sorted(capture_manifest["failed_attempt_receipts"]),
                                  sorted(expected_attempts))
                 self.assertNotIn("page_0000013", capture_manifest["receipts"])
+                # The catalog path tolerates the attempt-evidence raw objects:
+                # quality/dictionary derive from the geoparquet and the bounded
+                # source manifest, never from a raw-object roster.
+                from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
+                from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
+
+                snapshot_source_metadata(storage, source.DATASET_SLUG, source.FILE_SLUG,
+                                         candidate["version"])
+                resolved = load_resolved_source_manifest(storage, source.DATASET_SLUG,
+                                                         source.FILE_SLUG,
+                                                         candidate["version"]).metadata
+                summary = summarize_staged_catalog(storage, source.DATASET_SLUG, source.FILE_SLUG,
+                                                   candidate["version"], source.DATASET_SLUG,
+                                                   source_metadata=resolved)
+                self.assertEqual(summary.quality_manifest["null_geometry_count"], 1)
+                self.assertFalse(summary.quality_manifest["quality_check_passed"])
+                write_catalog_metadata(storage, dataset_slug=source.DATASET_SLUG,
+                                       file_slug=source.FILE_SLUG, version=candidate["version"],
+                                       quality_dict=summary.quality_manifest,
+                                       dictionary_dict=summary.data_dictionary)
                 reused = source.capture_nhd_area_large_scale(
                     storage, version="vfixture", capture_directory=str(root / "captures"))
                 self.assertTrue(reused["reused"])
