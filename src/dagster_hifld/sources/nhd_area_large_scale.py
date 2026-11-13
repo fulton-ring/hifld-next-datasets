@@ -90,6 +90,10 @@ PAGE_CAPTURE_BASE_DELAY_SECONDS = 5.0
 # captured service copyrightText) is freshness evidence, not a release date.
 EXPECTED_COPYRIGHT_TEXT = ("Credits: USGS TNM / NGTOC – 3D National Hydrographic Program "
                            "(3DHP.) Data refreshed September 4, 2026.")
+# Live-verified 2026-11-13 (both USGS hosts agree). The producer reordered the
+# Spatial Metadata layers between the 04:06Z and 05:37Z captures of that day
+# (90 DEM/92 EDH/94 Elevation -> 90 EDH/92 Elevation/94 DEM) without changing
+# the service copyrightText; the roster pin tracks the maintained publication.
 EXPECTED_SERVICE_LAYERS = [
     (20, "HydroLocation - Sink, Spring, Waterbody Outlet"),
     (30, "HydroLocation - Headwater, Terminus, Divergence, Confluence, Catchment Outlet"),
@@ -97,9 +101,9 @@ EXPECTED_SERVICE_LAYERS = [
     (50, "Flowline"),
     (60, "Waterbody"),
     (80, "Catchment"),
-    (90, "Spatial Metadata - DEM LimitationArea"),
-    (92, "Spatial Metadata - EDH Workunit Area"),
-    (94, "Spatial Metadata - Elevation Workunit Area"),
+    (90, "Spatial Metadata - EDH Workunit Area"),
+    (92, "Spatial Metadata - Elevation Workunit Area"),
+    (94, "Spatial Metadata - DEM LimitationArea"),
 ]
 EXPECTED_COUNT = 95423
 # Producer-refused records (dated 2026-11-13 evidence): OBJECTIDs the producer's
