@@ -63,6 +63,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "nhd-flowline"
 FILE_SLUG = DATASET_SLUG
@@ -266,11 +267,11 @@ def _polyline_wkb(geometry: object) -> bytes | None:
             if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
                 raise NhdFlowlineError("source_coordinate_range_drift")
             vertices.append((x, y, z, m))
-        parts.append(struct.pack("<BIQ", 1, _WKB_LINESTRING_ZM, len(vertices))
+        parts.append(struct.pack("<BII", 1, _WKB_LINESTRING_ZM, len(vertices))
                      + b"".join(struct.pack("<4d", *vertex) for vertex in vertices))
     if len(parts) == 1:
         return parts[0]
-    return struct.pack("<BIQ", 1, _WKB_MULTILINESTRING_ZM, len(parts)) + b"".join(parts)
+    return struct.pack("<BII", 1, _WKB_MULTILINESTRING_ZM, len(parts)) + b"".join(parts)
 
 
 def _validate_value(name: str, esri_type: str, nullable: bool, value: object) -> None:
@@ -537,7 +538,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     path_count = 0
     vertex_count = 0
     featuretype_distribution: dict[object, int] = {}
-    observed_bounds: list[float] = []
+    bounds_extrema: list[float] | None = None
     page_bodies = [name for name in _expected_capture_names(EXPECTED_COUNT)
                    if name.startswith("page_") and name != "page_tail"]
     try:
@@ -577,7 +578,18 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                     vertex_count += feature_vertices
                     for path in paths:
                         for vertex in path:
-                            observed_bounds.extend((vertex[0], vertex[1]))
+                            x, y = vertex[0], vertex[1]
+                            if bounds_extrema is None:
+                                bounds_extrema = [x, y, x, y]
+                                continue
+                            if x < bounds_extrema[0]:
+                                bounds_extrema[0] = x
+                            if y < bounds_extrema[1]:
+                                bounds_extrema[1] = y
+                            if x > bounds_extrema[2]:
+                                bounds_extrema[2] = x
+                            if y > bounds_extrema[3]:
+                                bounds_extrema[3] = y
                     geometries.append(_polyline_wkb(geometry))
                     geometry_hash.update(_canonical([objectid, paths]) + b"\x00")
                 featuretype = attrs["featuretype"]
@@ -615,9 +627,9 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
     bounds = None
-    if observed_bounds:
-        bounds = {"xmin": min(observed_bounds[0::2]), "ymin": min(observed_bounds[1::2]),
-                  "xmax": max(observed_bounds[0::2]), "ymax": max(observed_bounds[1::2])}
+    if bounds_extrema is not None:
+        bounds = {"xmin": bounds_extrema[0], "ymin": bounds_extrema[1],
+                  "xmax": bounds_extrema[2], "ymax": bounds_extrema[3]}
     return {"fields": fields, "schema_sha": schema_sha, "record_sha": record_sha,
             "geometry_sha": geometry_sha, "ids_sha": ids_sha,
             "null_geometry_count": null_geometry_count, "parquet_path": sink_path,
@@ -628,6 +640,22 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
 
 def _code_identity() -> dict[str, object]:
     return processing_identity(Path(__file__).parents[3])
+
+
+def _parquet_descriptor(path: Path) -> dict[str, object]:
+    """Size and digest of a candidate parquet without holding it in memory."""
+    return {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
+
+
+def _write_immutable_file(storage: StagingStorageResource, key: str, source: Path,
+                          descriptor: Mapping[str, object]) -> None:
+    """write_immutable for a local file too large to buffer as bytes."""
+    snapshot = storage.object_snapshot(key)
+    if snapshot is None:
+        storage.upload_local_file(source, key)
+        return
+    if snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
+        raise ValueError("immutable_staged_object_changed:" + key)
 
 
 def _default_client() -> httpx.Client:
@@ -778,13 +806,15 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                       extracted["schema_sha"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+    parquet_path = Path(extracted["parquet_path"])
+    parquet_descriptor = _parquet_descriptor(parquet_path)
+    parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     if storage.object_snapshot(state_key) is not None:
-        parquet_body = Path(extracted["parquet_path"]).read_bytes()
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
              "source_schema_sha256": extracted["schema_sha"]},
-            parquet_body)
+            parquet_descriptor)
     audit = {
         "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
@@ -832,9 +862,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
         "mapping_approved": False, "release_accepted": False,
     }
-    parquet_body = Path(extracted["parquet_path"]).read_bytes()
-    parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
-    source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
+    source_objects = {parquet_name: parquet_descriptor}
     receipts = _load_receipt_map(capture_root)
     manifest = {
         "schema_version": 1, "approved": False,
@@ -929,7 +957,6 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
              "release_accepted": False}
     metadata_outputs: dict[str, bytes] = {
-        parquet_name: parquet_body,
         "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n",
         "metadata/processing_identity.json": _canonical(identity) + b"\n",
@@ -937,8 +964,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     }
     # Stream every retained capture to storage one page at a time; the full
     # population holds tens of millions of features, so the seal never holds
-    # more than one page body/wire pair plus the small receipt and descriptor maps.
+    # more than one page body/wire pair plus the small receipt and descriptor
+    # maps, and the parquet moves from disk to storage as a streamed file.
     descriptors: dict[str, dict[str, object]] = {}
+    _write_immutable_file(storage, f"{prefix}/{parquet_name}", parquet_path, parquet_descriptor)
+    descriptors[parquet_name] = dict(parquet_descriptor)
     for relative, body in metadata_outputs.items():
         write_immutable(storage, f"{prefix}/{relative}", body)
         descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
@@ -957,7 +987,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                "capture_receipts": receipts, "objects": descriptors}
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
-                                        identity["files"])
+                                        identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT,
             "source_null_geometry_count": extracted["null_geometry_count"],
@@ -972,7 +1002,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
 
 def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
                              version: str, identity: Mapping[str, object],
-                             audit: Mapping[str, object], current_parquet: bytes) -> dict[str, object]:
+                             audit: Mapping[str, object],
+                             current_parquet: Mapping[str, object]) -> dict[str, object]:
     fingerprint = _sha(_canonical(identity))
     bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
     payload = bundle.get("payload")
@@ -987,11 +1018,10 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
                             fingerprint, identity, audit["source_record_sha256"],
                             audit["source_schema_sha256"], expected_objects,
                             payload["capture_receipts"])
-    if expected_objects.get(f"geoparquet/{DATASET_SLUG}.parquet") != \
-            {"bytes": len(current_parquet), "sha256": _sha(current_parquet)}:
+    if expected_objects.get(f"geoparquet/{DATASET_SLUG}.parquet") != dict(current_parquet):
         raise NhdFlowlineError("cached_native_candidate_changed")
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
-                                        identity["files"])
+                                        identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT,
             "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,

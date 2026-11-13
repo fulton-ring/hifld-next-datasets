@@ -188,7 +188,8 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
 
 
 @contextmanager
-def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=None):
+def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=None,
+                 real_identity: bool = False):
     import dagster_hifld.assets.nhd_flowline as asset_module
     contexts = [
         patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
@@ -201,11 +202,6 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
-        patch.object(src, "_code_identity",
-                     return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
-                                   "files": [], "working_tree_status": "unknown"}),
-        patch.object(src, "validate_construction_code_identity"),
-        patch.object(epa_frs_common, "validate_construction_code_identity"),
         # CI runners hold far less than the pinned capture floor, so the floor
         # gate is evaluated against a stub that reports exactly the pinned
         # requirement; the refusal itself is exercised by the dedicated floor
@@ -213,6 +209,14 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
         patch.object(src.shutil, "disk_usage",
                      return_value=SimpleNamespace(free=src.MIN_FREE_BYTES)),
     ]
+    if not real_identity:
+        contexts.extend([
+            patch.object(src, "_code_identity",
+                         return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
+                                       "files": [], "working_tree_status": "unknown"}),
+            patch.object(src, "validate_construction_code_identity"),
+            patch.object(epa_frs_common, "validate_construction_code_identity"),
+        ])
     if page_size is not None:
         contexts.append(patch.object(src, "PAGE_SIZE", page_size))
     for context in contexts:
@@ -267,14 +271,14 @@ class NhdFlowlineTests(unittest.TestCase):
         wkb = src._polyline_wkb(geometry)
         order, kind = struct.unpack_from("<BI", wkb, 0)
         self.assertEqual((order, kind), (1, 0xC0000005))
-        (parts,) = struct.unpack_from("<Q", wkb, 5)
+        (parts,) = struct.unpack_from("<I", wkb, 5)
         self.assertEqual(parts, 2)
-        offset = 13
+        offset = 9
         for part_index, path in enumerate(geometry["paths"]):
             part_order, part_kind = struct.unpack_from("<BI", wkb, offset)
             offset += 5
-            (count,) = struct.unpack_from("<Q", wkb, offset)
-            offset += 8
+            (count,) = struct.unpack_from("<I", wkb, offset)
+            offset += 4
             self.assertEqual((part_order, part_kind, count), (1, 0xC0000002, len(path)))
             for vertex in path:
                 self.assertEqual(struct.unpack_from("<4d", wkb, offset), tuple(vertex))
@@ -282,6 +286,58 @@ class NhdFlowlineTests(unittest.TestCase):
         self.assertEqual(offset, len(wkb))
         single = src._polyline_wkb(_fixture_geometry(FIXTURE_OBJECTIDS[0]))
         self.assertEqual(struct.unpack_from("<BI", single, 0), (1, 0xC0000002))
+
+    def test_polyline_wkb_round_trips_through_independent_readers(self):
+        """WKB counts are uint32; independent decoders must read every ordinate.
+
+        Writing vertex or part counts as uint64 makes every independent reader
+        (shapely/GEOS, GDAL) decode garbage coordinates or the wrong geometry,
+        even when a byte-layout test repeats the same wrong layout.
+        """
+        import shapely
+
+        def independent_decode(wkb: bytes) -> list[list[tuple[float, float, float, float]]]:
+            order, kind, count = struct.unpack_from("<BII", wkb, 0)
+            self.assertEqual(order, 1)
+            self.assertIn(kind, (0xC0000002, 0xC0000005))
+            offset = 9
+            if kind == 0xC0000005:
+                parts = []
+                for _part in range(count):
+                    part_order, part_kind, vertices = struct.unpack_from("<BII", wkb, offset)
+                    offset += 9
+                    self.assertEqual((part_order, part_kind), (1, 0xC0000002))
+                    parts.append([struct.unpack_from("<4d", wkb, offset + 32 * index)
+                                  for index in range(vertices)])
+                    offset += 32 * vertices
+                return parts
+            return [[struct.unpack_from("<4d", wkb, offset + 32 * index)
+                     for index in range(count)]]
+
+        expected_by_oid = {}
+        for oid in FIXTURE_OBJECTIDS:
+            geometry = _fixture_geometry(oid)
+            expected = [[tuple(vertex) for vertex in path] for path in geometry["paths"]]
+            expected_by_oid[oid] = expected
+            decoded = independent_decode(src._polyline_wkb(geometry))
+            self.assertEqual(decoded, expected)
+            shapely_geometry = shapely.from_wkb(src._polyline_wkb(geometry))
+            kind = shapely.LineString if len(expected) == 1 else shapely.MultiLineString
+            self.assertIsInstance(shapely_geometry, kind)
+            if len(expected) > 1:
+                self.assertEqual(shapely.get_num_geometries(shapely_geometry), len(expected))
+            self.assertEqual(shapely.get_coordinates(shapely_geometry, include_z=True,
+                                                     include_m=True).tolist(),
+                             [list(vertex) for path in expected for vertex in path])
+        minimal = {"hasZ": True, "hasM": True,
+                   "paths": [[[1, 2, 3, 4], [5, 6, 7, 8]],
+                             [[9, 10, 11, 12], [13, 14, 15, 16]]]}
+        decoded = shapely.from_wkb(src._polyline_wkb(minimal))
+        self.assertIsInstance(decoded, shapely.MultiLineString)
+        self.assertEqual(shapely.get_num_geometries(decoded), 2)
+        self.assertEqual(shapely.get_coordinates(decoded, include_z=True, include_m=True).tolist(),
+                         [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0],
+                          [9.0, 10.0, 11.0, 12.0], [13.0, 14.0, 15.0, 16.0]])
 
     def test_polyline_geometry_drift_is_refused(self):
         base = _fixture_geometry(FIXTURE_OBJECTIDS[0])
@@ -423,6 +479,143 @@ class NhdFlowlineTests(unittest.TestCase):
             parquet_bytes = (root / "staging" / prefix / "geoparquet"
                              / f"{src.DATASET_SLUG}.parquet").read_bytes()
             self.assertEqual(pq.read_table(io.BytesIO(parquet_bytes)).num_rows, FIXTURE_COUNT)
+
+    def test_seal_and_reuse_stream_parquet_without_reading_it_into_memory(self):
+        """The national parquet is sealed and verified as a streamed file.
+
+        Reading the candidate parquet through read_bytes would buffer the
+        complete national geometry population (tens of GB) in memory during the
+        seal, contradicting this module's bounded streaming contract.
+        """
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport, page_size=2):
+                storage = _staging(root)
+                first = src.capture_nhd_flowline(storage, version="stream-seal-run",
+                                                 capture_directory=str(capture_root))
+                parquet_path = capture_root / f"{src.FILE_SLUG}.parquet"
+                real_read_bytes = Path.read_bytes
+
+                def refuse_parquet_read_bytes(path: Path):
+                    if path == parquet_path:
+                        raise AssertionError("candidate parquet was read into memory")
+                    return real_read_bytes(path)
+
+                with patch.object(Path, "read_bytes", refuse_parquet_read_bytes):
+                    reused = src.capture_nhd_flowline(storage, version="stream-seal-run-2",
+                                                      capture_directory=str(capture_root))
+                    fresh = src.capture_nhd_flowline(_staging(root / "b"),
+                                                     version="stream-seal-run",
+                                                     capture_directory=str(capture_root))
+            self.assertTrue(reused["reused"])
+            self.assertFalse(fresh["reused"])
+            self.assertEqual(fresh["version"], first["version"])
+            self.assertEqual(fresh["feature_count"], FIXTURE_COUNT)
+            sealed = (f"{src.DATASET_SLUG}/{src.FILE_SLUG}/{first['version']}"
+                      f"/geoparquet/{src.DATASET_SLUG}.parquet")
+            self.assertEqual((root / "staging" / sealed).read_bytes(),
+                             parquet_path.read_bytes())
+            self.assertEqual((root / "b" / "staging" / sealed).read_bytes(),
+                             parquet_path.read_bytes())
+
+    def test_stream_validate_extrema_are_running_and_memory_bounded(self):
+        """Bounds stay four running extrema; per-vertex retention is refused.
+
+        Holding both ordinate floats for every vertex of the 30,251,533-feature
+        population would retain gigabytes during the streaming validation, so
+        this regression walks many vertex-heavy pages and requires the traced
+        peak to stay below the accumulation the old list layout needed.
+        """
+        import tracemalloc
+
+        pages = 15
+        features_per_page = 2
+        vertices_per_feature = 6000
+        count = pages * features_per_page
+
+        def geometry(row: dict) -> dict:
+            index = row["attributes"]["OBJECTID"] - 1
+            return {"hasZ": True, "hasM": True, "paths": [
+                [[-170.0 + index * 0.1 + offset * 1e-6,
+                  80.0 - index * 0.1 - offset * 1e-6,
+                  1.0 + offset * 0.5, 2.0 + offset * 0.25]
+                 for offset in range(vertices_per_feature)]]}
+
+        rows = []
+        for oid in range(1, count + 1):
+            attrs = dict(_fixture_attrs(FIXTURE_OBJECTIDS[0]))
+            attrs["OBJECTID"] = oid
+            rows.append({"attributes": attrs, "geometry": None})
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows, geometry=geometry)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport, page_size=2), \
+                    patch.object(src, "EXPECTED_COUNT", count):
+                src.fetch_nhd_flowline_pages(capture_root)
+                tracemalloc.start()
+                try:
+                    extracted = src._stream_validate(capture_root, parquet_sink=None)
+                finally:
+                    _current, peak = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+            last = count - 1
+            self.assertEqual(extracted["observed_bounds"], {
+                "xmin": -170.0,
+                "ymin": 80.0 - last * 0.1 - (vertices_per_feature - 1) * 1e-6,
+                "xmax": -170.0 + last * 0.1 + (vertices_per_feature - 1) * 1e-6,
+                "ymax": 80.0,
+            })
+            accumulation_bytes = count * vertices_per_feature * 2 * 32
+            self.assertLess(peak, accumulation_bytes)
+
+    def test_packaged_identity_first_seal_and_reuse_validate_for_real(self):
+        """A Git-free installed tree must seal and reuse with real validation.
+
+        The shipped runtime has no .git, so processing_identity returns a
+        packaged-sha256 identity; validate_construction_code_identity must
+        receive the full identity on both the first-seal and the reuse path, or
+        it rejects the packaged commit as construction_invalid_commit.
+        """
+        import shutil as shutil_module
+
+        from dagster_hifld.construction_provenance import validate_construction_code_identity
+
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tree = root / "installed"
+            (tree / "src").mkdir(parents=True)
+            shutil_module.copytree(Path(src.__file__).parents[1], tree / "src" / "dagster_hifld",
+                                   ignore=shutil_module.ignore_patterns("__pycache__"))
+            for name in ("pyproject.toml", "uv.lock"):
+                shutil_module.copy2(Path(src.__file__).parents[3] / name, tree / name)
+            with fixture_mode(schema_sha, transport, page_size=2, real_identity=True), \
+                    patch.object(src, "__file__", str(tree / "src" / "dagster_hifld"
+                                                      / "sources" / "nhd_flowline.py")):
+                storage = _staging(root)
+                first = src.capture_nhd_flowline(storage, version="packaged-run",
+                                                 capture_directory=str(root / "capture"))
+                identity = src._code_identity()
+                self.assertEqual(identity["code_identity_scheme"],
+                                 "sha256-packaged-dagster-hifld-v1")
+                self.assertTrue(identity["code_commit"].startswith("packaged-sha256:"))
+                self.assertFalse(first["reused"])
+                self.assertEqual(first["feature_count"], FIXTURE_COUNT)
+                self.assertFalse(first["release_accepted"])
+                second = src.capture_nhd_flowline(storage, version="packaged-run-2",
+                                                  capture_directory=str(root / "capture"))
+                self.assertTrue(second["reused"])
+                self.assertEqual(first["version"], second["version"])
+                validate_construction_code_identity(tree, identity["code_commit"],
+                                                    identity["files"], identity=identity)
 
     def test_transient_error_page_is_witnessed_and_resume_refetches(self):
         rows = _fixture_rows()
