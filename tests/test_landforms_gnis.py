@@ -434,6 +434,70 @@ class LandformsGnisTests(unittest.TestCase):
                     capture_directory=str(capture_root))
                 self.assertTrue(resumed["reused"])
 
+    def test_damaged_page_resume_rebisects_and_reconciles_state(self):
+        """A damaged accepted page is replaced without stale parent entries.
+
+        Regression for the resumability finding: a torn previously accepted
+        page must lose its accepted entry when witnessed aside, and a resume
+        that has to bisect its slice again must drop the stale parent before
+        accepting the replacement children. The repaired capture, its full
+        reconstruction and a second healthy replay all succeed while the
+        other retained pages are kept untouched.
+        """
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            storage = _staging(root)
+            with fixture_mode(schema_sha, make_responder(rows)):
+                first = src.capture_landforms_gnis(
+                    storage, version="repair-run", capture_directory=str(capture_root))
+                self.assertFalse(first["reused"])
+                healthy_baseline = json.loads(
+                    (capture_root / "computed_baseline.json").read_bytes())
+            survivor_bodies = {
+                name: (capture_root / f"{name}.body").read_bytes()
+                for name in ("page_000004_00004", "page_000008_00001")}
+            (capture_root / "page_000000_00004.wire").write_bytes(b"torn")
+            with fixture_mode(schema_sha, make_responder(rows, refuse_counts={4})):
+                repaired = src.capture_landforms_gnis(
+                    storage, version="repair-run-2", capture_directory=str(capture_root))
+                self.assertEqual(repaired["version"], first["version"])
+                self.assertTrue(repaired["reused"])
+                self.assertEqual(repaired["feature_count"], FIXTURE_COUNT)
+                repaired_baseline = json.loads(
+                    (capture_root / "computed_baseline.json").read_bytes())
+                self.assertEqual(repaired_baseline["source_record_sha256"],
+                                 healthy_baseline["source_record_sha256"])
+                self.assertEqual(repaired_baseline["source_geometry_sha256"],
+                                 healthy_baseline["source_geometry_sha256"])
+            state = json.loads((capture_root / "capture_state.json").read_bytes())
+            self.assertEqual(
+                sorted((entry["offset"], entry["count"]) for entry in state["pages"]),
+                [(0, 2), (2, 2), (4, 4), (8, 1)])
+            witnessed = sorted(capture_root.glob("page_000000_00004.error-*.wire"))
+            self.assertTrue(witnessed)
+            self.assertTrue(any(path.read_bytes() == b"torn" for path in witnessed))
+            self.assertFalse((capture_root / "page_000000_00004.wire").exists())
+            for name, body in survivor_bodies.items():
+                self.assertEqual((capture_root / f"{name}.body").read_bytes(), body)
+            parquet = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+            self.assertEqual(parquet.num_rows, FIXTURE_COUNT)
+            self.assertEqual(parquet.column("OBJECTID").to_pylist(),
+                             list(FIXTURE_OBJECTIDS))
+            with fixture_mode(schema_sha, make_responder(rows)):
+                again = src.capture_landforms_gnis(
+                    storage, version="repair-run-3", capture_directory=str(capture_root))
+                self.assertTrue(again["reused"])
+                self.assertEqual(again["version"], first["version"])
+            state = json.loads((capture_root / "capture_state.json").read_bytes())
+            self.assertEqual(
+                sorted((entry["offset"], entry["count"]) for entry in state["pages"]),
+                [(0, 2), (2, 2), (4, 4), (8, 1)])
+            for name, body in survivor_bodies.items():
+                self.assertEqual((capture_root / f"{name}.body").read_bytes(), body)
+
     def test_unservable_single_feature_refuses_explicitly(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]

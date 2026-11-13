@@ -102,6 +102,12 @@ WEB_MERCATOR_Y_LIMIT = 20_048_966.1040146
 # refused page can be bisected while staying below the cap at every step.
 MAX_RECORD_COUNT = 2000
 PAGE_START_RECORDS = 1000
+# Candidate parquet row groups are cut at absolute multiples of this many
+# rows (plus one tail group), so the reconstructed parquet is byte-identical
+# no matter how the roster was split into pages across capture sessions: a
+# repaired capture re-bisects differently than the first run, and the sealed
+# candidate must stay reusable under the content-derived version.
+PARQUET_FLUSH_ROWS = 1000
 MAX_BODY_BYTES = 96 * 1024 * 1024
 MAX_CAPTURE_BYTES = 512 * 1024 * 1024
 MIN_FREE_BYTES = 2_000_000_000
@@ -590,6 +596,28 @@ def _witness_aside(capture_root: Path, name: str) -> None:
             source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
 
 
+def _forget_page_entry(capture_root: Path, state: dict[str, object],
+                       accepted: set[object], name: str) -> None:
+    """Drop one invalidated page entry from the capture state and persist it.
+
+    A page that is witnessed aside or bisected must lose its accepted entry
+    in the same step: a stale parent entry left beside its replacement
+    slices would overlap them and ``_stream_validate`` would reject the
+    roster forever. The pruned state is persisted immediately so a later
+    resume plans from the reconciled acceptance, never from the stale one.
+    """
+    pages = state.get("pages")
+    if not isinstance(pages, list):
+        return
+    pruned = [entry for entry in pages
+              if not (isinstance(entry, dict) and entry.get("name") == name)]
+    if len(pruned) == len(pages):
+        return
+    pages[:] = pruned
+    accepted.discard(name)
+    _save_state(capture_root, state)
+
+
 def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
                        url: str) -> tuple[bytes, dict[str, object]]:
     if (capture_root / f"{name}.body").exists():
@@ -648,42 +676,59 @@ def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name
     raise AssertionError("unreachable_retry_state")
 
 
-def _plan_page_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
+def _plan_page_gaps(capture_root: Path, roster: list[int],
+                    state: dict[str, object]) -> list[tuple[int, int]]:
     """Plan the roster gaps that still need a capture this session.
 
     A retained page counts as accepted only when its receipt and body verify,
     its body is not a producer error document, and it already sits in the
-    capture state; anything else is witnessed aside and refetched.
+    capture state; anything else is witnessed aside, dropped from the shared
+    capture state (persisted immediately) and refetched. Entries whose
+    canonical page evidence is gone from disk are dropped the same way so
+    the refetch records a fresh accepted entry instead of trusting a stale
+    one.
     """
-    state = _load_state(capture_root)
-    accepted_names = {entry.get("name") for entry in state["pages"]
-                      if isinstance(entry, dict)}
+    pages = state.get("pages")
+    if not isinstance(pages, list):
+        pages = []
+        state["pages"] = pages
+    accepted_names = {entry.get("name") for entry in pages if isinstance(entry, dict)}
     retained: list[tuple[int, int]] = []
+    present: set[str] = set()
     for path in sorted(capture_root.glob("page_*.body")):
         name = path.name.removesuffix(".body")
         if _PAGE_NAME_PATTERN.fullmatch(name) is None:
             # Witnessed refusal evidence (page_*.error-*.body) and other
             # non-canonical names are not roster pages; skip them.
             continue
+        present.add(name)
         try:
             body, _receipt = _read_capture(capture_root, name)
         except LandformsGnisError:
             _witness_aside(capture_root, name)
+            _forget_page_entry(capture_root, state, accepted_names, name)
             continue
         if body.lstrip().startswith(b'{"error"') or name not in accepted_names:
             _witness_aside(capture_root, name)
+            _forget_page_entry(capture_root, state, accepted_names, name)
             continue
         offset, count = _parse_page_name(name)
         if offset + count > len(roster):
             _witness_aside(capture_root, name)
+            _forget_page_entry(capture_root, state, accepted_names, name)
             continue
         retained.append((offset, count))
+    for name in [entry.get("name") for entry in pages
+                 if isinstance(entry, dict) and entry.get("name") not in present]:
+        _forget_page_entry(capture_root, state, accepted_names, name)
     gaps: list[tuple[int, int]] = []
     covered = bytearray(len(roster))
     for offset, count in sorted(retained):
         if offset < 0 or count < 1 or offset + count > len(roster) \
                 or any(covered[offset:offset + count]):
             _witness_aside(capture_root, _page_name(offset, count))
+            _forget_page_entry(capture_root, state, accepted_names,
+                               _page_name(offset, count))
             continue
         covered[offset:offset + count] = b"\x01" * count
     cursor = 0
@@ -729,11 +774,15 @@ def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
     persistent error document or a persistent incomplete transport capture;
     the refused page's final body and receipts stay on disk as evidence under
     witnessed names. A single-record page that still fails ends the capture
-    explicitly.
+    explicitly. Whenever a page is invalidated this way, its accepted entry
+    is dropped from the shared capture state and persisted before any
+    replacement slice is accepted, so stale parents can never overlap their
+    bisected children.
     """
     pages = state.setdefault("pages", [])
+    todo: deque[tuple[int, int]] = deque(
+        _plan_page_gaps(capture_root, roster, state))
     accepted = {entry.get("name") for entry in pages if isinstance(entry, dict)}
-    todo: deque[tuple[int, int]] = deque(_plan_page_gaps(capture_root, roster))
     while todo:
         offset, count = todo.popleft()
         name = _page_name(offset, count)
@@ -754,6 +803,8 @@ def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
             # attempts were still incomplete is bisected like an error
             # document, while a single-record page keeps failing explicitly.
             if count > 1 and str(exc).startswith("incomplete_source_capture:"):
+                _witness_aside(capture_root, name)
+                _forget_page_entry(capture_root, state, accepted, name)
                 middle = count // 2
                 todo.appendleft((offset + middle, count - middle))
                 todo.appendleft((offset, middle))
@@ -762,6 +813,7 @@ def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
                 "source_capture_failed:" + type(exc).__name__) from exc
         if _producer_error_doc(body):
             _witness_aside(capture_root, name)
+            _forget_page_entry(capture_root, state, accepted, name)
             if count == 1:
                 raise LandformsGnisError(
                     "source_single_feature_unservable")
@@ -771,6 +823,7 @@ def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
             continue
         if not _page_matches_slice(body, offset, count, roster):
             _witness_aside(capture_root, name)
+            _forget_page_entry(capture_root, state, accepted, name)
             raise LandformsGnisError(
                 "source_page_id_slice_incomplete_or_reordered")
         if name not in accepted:
@@ -914,6 +967,9 @@ class _PageStream:
         self._writer = (pq.ParquetWriter(self.tmp_path, self.schema, compression="zstd",
                                          use_dictionary=False)
                         if self.tmp_path is not None else None)
+        self._pending_columns: dict[str, list[object]] = {
+            name: [] for name in self.expected_names}
+        self._pending_geometries: list[bytes | None] = []
         self.record_hash = hashlib.sha256()
         self.geometry_hash = hashlib.sha256()
         self.ids: array = array("q")
@@ -994,15 +1050,37 @@ class _PageStream:
                 geometries.append(_multipoint_wkb(points))
             for name in self.expected_names:
                 columns[name].append(attrs[name])
-        if self._writer is not None:
-            batch = pa.Table.from_pydict({**columns, GEOMETRY_COLUMN: geometries},
-                                         schema=self.schema)
-            self._writer.write_table(batch)
+        if self._writer is None:
+            return
+        # Buffer rows and cut row groups at absolute row positions: flushed
+        # groups always cover [n * PARQUET_FLUSH_ROWS, (n + 1) * ...), so the
+        # parquet bytes depend only on the content, never on how the roster
+        # was paginated across capture sessions.
+        for name in self.expected_names:
+            self._pending_columns[name].extend(columns[name])
+        self._pending_geometries.extend(geometries)
+        while len(self._pending_geometries) >= PARQUET_FLUSH_ROWS:
+            self._flush_pending(PARQUET_FLUSH_ROWS)
+
+    def _flush_pending(self, rows: int) -> None:
+        """Write exactly ``rows`` buffered rows as one row group and drop them."""
+        batch = pa.Table.from_pydict(
+            {name: self._pending_columns[name][:rows]
+             for name in self.expected_names}
+            | {GEOMETRY_COLUMN: self._pending_geometries[:rows]},
+            schema=self.schema)
+        self._pending_columns = {name: self._pending_columns[name][rows:]
+                                 for name in self.expected_names}
+        del self._pending_geometries[:rows]
+        self._writer.write_table(batch)
 
     def close_writer(self) -> None:
         if not self._writer_closed:
             self._writer_closed = True
             if self._writer is not None:
+                while self._pending_geometries:
+                    self._flush_pending(
+                        min(PARQUET_FLUSH_ROWS, len(self._pending_geometries)))
                 self._writer.close()
                 self._writer = None
 
