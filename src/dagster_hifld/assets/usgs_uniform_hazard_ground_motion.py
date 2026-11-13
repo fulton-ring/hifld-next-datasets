@@ -11,6 +11,7 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.usgs_uniform_hazard_ground_motion import (
     DATASET_SLUG,
@@ -38,6 +39,10 @@ from dagster_hifld.sources.usgs_uniform_hazard_ground_motion import (
 )
 def us_sa5p0_5pct50yrs_bc_poly(context, staging_storage: StagingStorageResource) -> dict:
     result = capture_uniform_hazard_ground_motion(staging_storage)
+    context.instance.add_dynamic_partitions(
+        PUBLISH_PARTITION_NAME,
+        [build_publish_partition_key(result["dataset_slug"], result["file_slug"], result["version"])],
+    )
     context.add_output_metadata(result)
     return result
 
