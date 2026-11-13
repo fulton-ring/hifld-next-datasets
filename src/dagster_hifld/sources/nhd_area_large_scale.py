@@ -859,6 +859,61 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
     del extracted
     rel = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {rel: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
+    # The catalog reads source_manifest.json under a bounded 2 MiB layer limit,
+    # so the per-page feature-query requests are represented by one aggregate
+    # input whose digest covers their complete receipt roster; every per-page
+    # receipt is still staged verbatim under raw/<name>.receipt.json next to
+    # its body and wire transcript, keeping the full request-level provenance
+    # machine-readable without bloating the manifest layer.
+    _unknown_release_reason = ("The 3DHP_all service publishes no per-snapshot "
+                               "release date; its copyrightText records a "
+                               "service refresh (September 4, 2026) and USGS "
+                               "documents quarterly service updates and "
+                               "annual staged products.")
+    _input_license = ("Public domain (U.S. Government work) per the producer service; "
+                      "rights acceptance pending.")
+    _input_attribution = ("USGS 3D Hydrography Program (3DHP_all), The National Map; "
+                          "formal attribution terms require maintainer review.")
+
+    def _input_entry(name, receipt):
+        return {"input_id": name, "producer": PUBLISHER,
+                "host": urlsplit(receipt["url"]).hostname,
+                "role": "producer_publication",
+                "canonical_url": SERVICE_URL,
+                "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
+                "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
+                "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+                "release_date": None,
+                "release_date_unknown_reason": _unknown_release_reason,
+                "license": _input_license, "attribution": _input_attribution}
+
+    doc_captures = [(n, r) for n, (_, r) in sorted(captures.items()) if not n.startswith("page_")]
+    page_captures = [(n, r) for n, (_, r) in sorted(captures.items()) if n.startswith("page_")]
+    if not page_captures:
+        raise ValueError("paged_capture_inputs_missing")
+    if {r["status"] for _, r in page_captures} != {200}:
+        raise ValueError("paged_capture_http_status_drift")
+    page_roster_sha = _sha(_canonical([r for _, r in page_captures]))
+    page_entry = {"input_id": "3dhp_paged_feature_queries", "producer": PUBLISHER,
+                  "host": urlsplit(page_captures[0][1]["url"]).hostname,
+                  "role": "producer_publication",
+                  "canonical_url": SERVICE_URL,
+                  "retrieval_url": page_captures[0][1]["url"],
+                  "observed_final_url": page_captures[0][1]["final_url"],
+                  "retrieved_at": page_captures[0][1]["observed_at"],
+                  "http_status": 200,
+                  "bytes": sum(int(r["bytes"]) for _, r in page_captures),
+                  "sha256": page_roster_sha,
+                  "page_query_count": len(page_captures),
+                  "page_capture_window": [min(r["observed_at"] for _, r in page_captures),
+                                          max(r["observed_at"] for _, r in page_captures)],
+                  "page_receipts_sha256_basis": "SHA-256 over the canonical JSON array of the "
+                                                "per-page receipt objects in ascending page name "
+                                                "order, staged verbatim as raw/<name>.receipt.json "
+                                                "next to each page's raw body and wire transcript",
+                  "release_date": None,
+                  "release_date_unknown_reason": _unknown_release_reason,
+                  "license": _input_license, "attribution": _input_attribution}
     manifest = {
         "schema_version": 1, "approved": False,
         "title": "Area - Large Scale (USGS 3DHP Waterbody, non-Lake areal hydrography)",
@@ -881,23 +936,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                    "use constraints. Rights acceptance pending.",
         "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
-        "inputs": [{"input_id": name, "producer": PUBLISHER, "host": urlsplit(receipt["url"]).hostname,
-                    "role": "producer_publication",
-                    "canonical_url": SERVICE_URL,
-                    "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
-                    "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
-                    "bytes": receipt["bytes"], "sha256": receipt["sha256"],
-                    "release_date": None,
-                    "release_date_unknown_reason": "The 3DHP_all service publishes no per-snapshot "
-                                                   "release date; its copyrightText records a "
-                                                   "service refresh (September 4, 2026) and USGS "
-                                                   "documents quarterly service updates and "
-                                                   "annual staged products.",
-                    "license": "Public domain (U.S. Government work) per the producer service; "
-                               "rights acceptance pending.",
-                    "attribution": "USGS 3D Hydrography Program (3DHP_all), The National Map; "
-                                   "formal attribution terms require maintainer review."}
-                   for name, (_, receipt) in sorted(captures.items())],
+        "inputs": [_input_entry(name, receipt) for name, receipt in doc_captures] + [page_entry],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "population": POPULATION_WHERE + " over the pinned "
