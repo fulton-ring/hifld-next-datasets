@@ -8,14 +8,15 @@ assets are derived automatically from this registry.
 from dagster_hifld.assets.discovery import discovered, unique
 
 from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volcanoes
-from dagster_hifld.assets.usgs import usgs_aquifers
 from dagster_hifld.assets.ems_stations import usgs_ems_stations
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
 from dagster_hifld.assets.nfhl_nodes import fema_nfhl_nodes
 from dagster_hifld.assets.nfhl_hydrologic_reaches import fema_nfhl_hydrologic_reaches
+from dagster_hifld.assets.nfhl_seclusion_boundaries import fema_nfhl_seclusion_boundaries
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.epa_icis_wastewater import epa_icis_wastewater_treatment_plants
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
+from dagster_hifld.assets.fuds_irm_property_boundary import fuds_irm_property_boundary_ingest
 from dagster_hifld.assets.national_inventory_of_dams import national_inventory_of_dams_ingest
 from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
 from dagster_hifld.assets.fuds_district_boundaries import usace_fuds_program_district_boundaries
@@ -77,7 +78,6 @@ from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import shoreli
 from dagster_hifld.assets.shoreline_construction_lines_usace_ienc import shoreline_construction_lines_usace_ienc
 from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
-from dagster_hifld.assets.child_care_centers import child_care_centers
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
 from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
@@ -119,7 +119,6 @@ from dagster_hifld.assets.colleges_universities import nces_colleges_universitie
 from dagster_hifld.assets.combined_statistical_areas import census_combined_statistical_areas
 from dagster_hifld.assets.census_consolidated_cities import census_consolidated_cities
 from dagster_hifld.assets.usace_conveyor_areas import usace_conveyor_areas_usace_ienc
-from dagster_hifld.assets.construction_minerals import construction_minerals_preservation_candidate
 from dagster_hifld.assets.census_county_subdivisions import census_county_subdivisions
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 from dagster_hifld.assets.usace_floating_docks import usace_floating_docks_usace_ienc
@@ -132,7 +131,6 @@ from dagster_hifld.assets.land_region_areas_usace_ienc import (
     land_region_areas_usace_ienc_candidate,
 )
 from dagster_hifld.assets.building_locations_usace_ienc import building_locations_usace_ienc
-from dagster_hifld.assets.ferrous_metal_mines import ferrous_metal_mines_candidate
 from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_facilities
@@ -141,8 +139,6 @@ from dagster_hifld.assets.epa_frs_interest_contact import epa_frs_interest_conta
 from dagster_hifld.assets.epa_rcra_tsd import epa_rcra_treatment_storage_and_disposal_facilities
 from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
-from dagster_hifld.assets.epa_facilities import epa_facilities
-from dagster_hifld.assets.epa_facilities_labels import epa_facilities_labels
 from dagster_hifld.assets.epa_frs_tri import epa_frs_toxic_release_inventory
 from dagster_hifld.assets.epa_tsca import epa_frs_toxic_substances_control_act_tsca
 from dagster_hifld.assets.epa_frs_interests import epa_frs_interests
@@ -160,10 +156,8 @@ from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
 from dagster_hifld.assets.national_transit_map_agencies import bts_national_transit_map_agencies
 from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
 
-from dagster_hifld.assets.healthcare_dialysis import healthcare_ready_dialysis_centers
 
 hifld_ingest_assets = [
-    healthcare_ready_dialysis_centers,
     bts_ferry_terminals,
     smithsonian_holocene_volcanoes,
     bts_ferry_routes,
@@ -179,7 +173,6 @@ hifld_ingest_assets = [
     census_elementary_districts,
     noaa_current_dart,
     nces_colleges_universities,
-    usgs_aquifers,
     usgs_ems_stations,
     noaa_historical_tsunami_events,
     noaa_12nm_territorial_sea,
@@ -234,7 +227,6 @@ hifld_ingest_assets = [
     shoreline_construction_lines_usace_ienc,
     small_craft_facility_areas_usace_ienc,
     sloped_ground_lines_usace_ienc,
-    child_care_centers,
     census_secondary_school_districts,
     principal_ports_usace,
     census_unified_school_districts,
@@ -255,6 +247,7 @@ hifld_ingest_assets = [
     epa_frs_eia_860_power_generation_facilities_by_source,
     epa_icis_wastewater_treatment_plants,
     fuds_irm_property_point_ingest,
+    fuds_irm_property_boundary_ingest,
     national_inventory_of_dams_ingest,
     usace_fuds_projects_points,
     usace_fuds_program_district_boundaries,
@@ -279,7 +272,6 @@ hifld_ingest_assets = [
     census_combined_statistical_areas,
     census_consolidated_cities,
     usace_conveyor_areas_usace_ienc,
-    construction_minerals_preservation_candidate,
     census_county_subdivisions,
     usace_crane_locations_ienc,
     usace_floating_docks_usace_ienc,
@@ -287,7 +279,6 @@ hifld_ingest_assets = [
     harbor_facility_locations_usace_ienc,
     land_region_areas_usace_ienc_candidate,
     hf_areas_usace_ienc_candidate,
-    ferrous_metal_mines_candidate,
     courthouses_usgs,
     usace_data_coverage_areas_usace_ienc,
     docks_usace_bts,
@@ -296,8 +287,6 @@ hifld_ingest_assets = [
     epa_frs_sic_powerplants,
     epa_frs_interest_contact,
     epa_rcra_treatment_storage_and_disposal_facilities,
-    epa_facilities,
-    epa_facilities_labels,
     epa_frs_toxic_release_inventory,
     epa_frs_toxic_substances_control_act_tsca,
     epa_frs_interests,
@@ -305,6 +294,7 @@ hifld_ingest_assets = [
     national_transit_map_routes,
     fema_nfhl_nodes,
     fema_nfhl_hydrologic_reaches,
+    fema_nfhl_seclusion_boundaries,
     building_locations_usace_ienc,
     usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,

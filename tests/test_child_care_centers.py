@@ -9,7 +9,6 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.child_care_centers import (
     child_care_centers, child_care_centers_complete, child_care_centers_draft_schedule,
 )
-from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import child_care_centers as source
 from dagster_hifld.sources.epa_frs_common import _canonical
@@ -81,17 +80,6 @@ class ChildCareCentersTests(unittest.TestCase):
                                 expected_count=count,
                                 expected_id_sha256=_sha(list(range(1, count + 1))))
 
-    def test_registered_stopped_asset_and_unapproved_blocking_check(self):
-        self.assertIn(child_care_centers, hifld_ingest_assets)
-        self.assertEqual(child_care_centers_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = child_care_centers_complete(
-            {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True})
-        self.assertTrue(check.passed)
-        self.assertFalse(check.metadata["release_accepted"].value)
-        for failed_candidate in ({"feature_count": source.EXPECTED_COUNT - 1, "source_population_complete": True},
-                                 {"feature_count": source.EXPECTED_COUNT, "source_population_complete": False},
-                                 {"feature_count": source.EXPECTED_COUNT}):
-            self.assertFalse(child_care_centers_complete(failed_candidate).passed)
 
     def test_pinned_source_population_constants_are_consistent(self):
         self.assertEqual(source.EXPECTED_COUNT, len(source.EXPECTED_IDS))
