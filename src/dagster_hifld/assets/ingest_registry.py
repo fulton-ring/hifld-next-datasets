@@ -12,6 +12,7 @@ from dagster_hifld.assets.ems_stations import usgs_ems_stations
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
 from dagster_hifld.assets.nfhl_nodes import fema_nfhl_nodes
 from dagster_hifld.assets.nfhl_hydrologic_reaches import fema_nfhl_hydrologic_reaches
+from dagster_hifld.assets.nfhl_seclusion_boundaries import fema_nfhl_seclusion_boundaries
 from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.epa_icis_wastewater import epa_icis_wastewater_treatment_plants
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
@@ -293,6 +294,7 @@ hifld_ingest_assets = [
     national_transit_map_routes,
     fema_nfhl_nodes,
     fema_nfhl_hydrologic_reaches,
+    fema_nfhl_seclusion_boundaries,
     building_locations_usace_ienc,
     usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,
