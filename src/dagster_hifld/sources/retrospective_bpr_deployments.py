@@ -589,6 +589,14 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
                   "schema_contract_accepted": False, "id_contract_accepted": False,
                   "baseline_accepted": False, "coverage_accepted": False,
                   "rights_accepted": False, "mapping_approved": False, "release_accepted": False})
+    delegation = {"distributor": "Esri ArcGIS Online hosting the NOAA GeoPlatform organization "
+                  "(service item owner ncei_noaa)", "delegation_evidence": {
+                      "producer_landing_url": NCEI_LANDING_URL, "producer_map_url": NCEI_MAP_URL,
+                      "webmap_url": WEBMAP_URL, "webmap_item_id": WEBMAP_ITEM_ID,
+                      "webmap_layer_id": RETROSPECTIVE_LAYER_ID,
+                      "service_item_id": SERVICE_ITEM_ID, "service_item_owner": "ncei_noaa",
+                      "service_item_org": "NOAA GeoPlatform (C8EMgrsFcRFL6LrL)",
+                      "layer_id": LAYER_ID, "layer_name": RETROSPECTIVE_LAYER_TITLE}}
     inputs = [{"input_id": name,
                "producer": PUBLISHER if name not in ("webmap", "service_item") else
                    "NOAA NCEI (ncei_noaa) via the ArcGIS Online hosting platform",
@@ -605,15 +613,7 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
                    "editingInfo and portal timestamps are operational metadata, not release dates.",
                "license": "Rights review pending.", "rights_review_reference": NOAA_DISCLAIMER_URL,
                "attribution": "NOAA NCEI / PMEL / NDBC; attribution and rights review pending.",
-               **({"distributor": "Esri ArcGIS Online hosting the NOAA GeoPlatform organization "
-                   "(service item owner ncei_noaa)", "delegation_evidence": {
-                       "producer_landing_url": NCEI_LANDING_URL, "producer_map_url": NCEI_MAP_URL,
-                       "webmap_url": WEBMAP_URL, "webmap_item_id": WEBMAP_ITEM_ID,
-                       "webmap_layer_id": RETROSPECTIVE_LAYER_ID,
-                       "service_item_id": SERVICE_ITEM_ID, "service_item_owner": "ncei_noaa",
-                       "service_item_org": "NOAA GeoPlatform (C8EMgrsFcRFL6LrL)",
-                       "layer_id": LAYER_ID, "layer_name": RETROSPECTIVE_LAYER_TITLE}}
-                   if name in ("webmap", "service_item") else {})}
+               **(delegation if name not in ("ncei_landing", "ncei_map") else {})}
               for name, receipt in sorted(receipts.items())]
     manifest = {"schema_version": 1, "approved": False, "title": "Retrospective BPR Deployments",
         "description": "Complete observed NOAA NCEI retrospective BPR deployments layer (524 "
