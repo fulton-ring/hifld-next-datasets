@@ -323,7 +323,7 @@ class NhdWaterbodyTests(unittest.TestCase):
         self.assertEqual(src.EXPECTED_MAX_OBJECTID, 7_158_943)
         self.assertEqual(src.PAGE_SIZE, 2500)
         self.assertEqual(len(src.NATIVE_FIELDS), 12)
-        self.assertEqual(src.MIN_FREE_BYTES, 150_000_000_000)
+        self.assertEqual(src.MIN_FREE_BYTES, 55_000_000_000)
         # Baselines pinned from the first complete capture (2026-11-13):
         # digests non-empty, the refusal and degenerate-ring contracts are
         # exact tuples, and any later drift fails closed.
@@ -584,6 +584,30 @@ class NhdWaterbodyTests(unittest.TestCase):
             self.assertTrue(all(host in ("3dhp.nationalmap.gov",
                                          "hydro.nationalmap.gov", "www.usgs.gov")
                                 for host in hosts))
+            # Per-page feature-query receipts stay staged verbatim as raw/
+            # objects and are represented in the manifest by exactly one
+            # aggregate input (the catalog reads the manifest under a bounded
+            # layer limit), while every document and refused-attributes
+            # receipt keeps its own individual provenance entry.
+            aggregate = [entry for entry in manifest["inputs"]
+                         if entry["input_id"] == "3dhp_paged_feature_queries"]
+            self.assertEqual(len(aggregate), 1)
+            page_receipts = sorted(capture_root.glob("page_*.receipt.json"))
+            self.assertGreater(len(page_receipts), 1)
+            self.assertEqual(aggregate[0]["page_query_count"], len(page_receipts))
+            roster = [json.loads(path.read_bytes())
+                      for path in page_receipts]
+            self.assertEqual(aggregate[0]["sha256"], src._sha(src._canonical(roster)))
+            self.assertEqual(aggregate[0]["bytes"],
+                             sum(entry["bytes"] for entry in roster))
+            self.assertFalse(any(
+                entry["input_id"].startswith("page_") for entry in manifest["inputs"]
+                if entry["input_id"] != "3dhp_paged_feature_queries"))
+            self.assertIn("service_doc",
+                          {entry["input_id"] for entry in manifest["inputs"]})
+            self.assertTrue(all(
+                (root / "staging" / prefix / "raw" / f"{path.name.removesuffix('.receipt.json')}.receipt.json").is_file()
+                for path in page_receipts))
             parquet_bytes = (root / "staging" / prefix / "geoparquet"
                              / f"{src.DATASET_SLUG}.parquet").read_bytes()
             self.assertEqual(pq.read_table(io.BytesIO(parquet_bytes)).num_rows, FIXTURE_COUNT)

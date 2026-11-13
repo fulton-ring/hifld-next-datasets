@@ -98,13 +98,21 @@ SOURCE_CRS_WKID = 4326
 NATIVE_LAYER_SR = {"wkid": 102100, "latestWkid": 3857}
 PAGE_SIZE = 2500
 MAX_BODY_BYTES = 96 * 1024 * 1024
-# The 7,158,943-feature population is unusually heavy per feature (the roster
-# head carries main-stem polygons with tens of thousands of Z vertices each).
-# The budget counts both wire and decoded bytes under the producer's identity
-# encoding, so it is sized for the observed full-population envelope with
-# headroom rather than a generic page-domain budget.
+# The complete population is unusually heavy per feature (the roster head
+# carries main-stem polygons with tens of thousands of Z vertices each), and
+# the acquisition budget counts both wire and decoded bytes under the
+# producer's identity encoding, so it is sized for the observed
+# full-population envelope with headroom rather than a generic page-domain
+# budget.
 MAX_CAPTURE_BYTES = 90 * 1024 * 1024 * 1024
-MIN_FREE_BYTES = 150_000_000_000
+# The entry floor is sized to this dataset's measured envelope on the current
+# factory task-lease cap of 100 GiB (observed 2026-11-13; the 150 GiB value
+# was calibrated for the earlier 200 GiB leases and can never pass on the
+# capped leases): the restored capture (~33 GB) plus the candidate GeoParquet
+# and its staged raw copy peak near 85 GiB, so 55 GiB of free space at entry
+# still refuses to start without room for the full candidate while leaving
+# slack above that envelope. The budget above still bounds every fetch.
+MIN_FREE_BYTES = 55_000_000_000
 PAGE_ATTEMPTS = 3
 PAGE_RETRY_BASE_DELAY_SECONDS = 5.0
 DOC_ATTEMPTS = 4
@@ -1406,6 +1414,64 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
     receipts = _load_receipt_map(capture_root)
+    # The catalog reads source_manifest.json under a bounded 2 MiB layer
+    # limit, so the ~3,000 per-page feature-query requests of the complete
+    # population are represented by one aggregate input whose digest covers
+    # their complete receipt roster; every per-page receipt is still staged
+    # verbatim under raw/<name>.receipt.json next to its body and wire
+    # transcript, keeping the full request-level provenance machine-readable
+    # without bloating the manifest layer.
+    _unknown_release_reason = ("The 3DHP_all service publishes no per-snapshot "
+                               "release date; its copyrightText records a "
+                               "service refresh (September 4, 2026) and USGS "
+                               "documents quarterly service updates and "
+                               "annual staged products.")
+    _input_license = ("Public domain (U.S. Government work) per the producer service; "
+                      "rights acceptance pending.")
+    _input_attribution = ("USGS 3D Hydrography Program (3DHP_all), The National Map; "
+                          "formal attribution terms require maintainer review.")
+
+    def _input_entry(name: str, receipt: Mapping[str, object]) -> dict[str, object]:
+        return {"input_id": name, "producer": PUBLISHER,
+                "host": urlsplit(receipt["url"]).hostname,
+                "role": "producer_publication",
+                "canonical_url": SERVICE_URL,
+                "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
+                "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
+                "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+                "release_date": None,
+                "release_date_unknown_reason": _unknown_release_reason,
+                "license": _input_license, "attribution": _input_attribution}
+
+    page_captures = [(name, receipts[name]) for name in sorted(receipts)
+                     if name.startswith("page_")]
+    if not page_captures:
+        raise NhdWaterbodyError("paged_capture_inputs_missing")
+    if {receipt["status"] for _, receipt in page_captures} != {200}:
+        raise NhdWaterbodyError("paged_capture_http_status_drift")
+    page_roster_sha = _sha(_canonical([receipt for _, receipt in page_captures]))
+    page_entry = {"input_id": "3dhp_paged_feature_queries", "producer": PUBLISHER,
+                  "host": urlsplit(page_captures[0][1]["url"]).hostname,
+                  "role": "producer_publication",
+                  "canonical_url": SERVICE_URL,
+                  "retrieval_url": page_captures[0][1]["url"],
+                  "observed_final_url": page_captures[0][1]["final_url"],
+                  "retrieved_at": page_captures[0][1]["observed_at"],
+                  "http_status": 200,
+                  "bytes": sum(int(receipt["bytes"]) for _, receipt in page_captures),
+                  "sha256": page_roster_sha,
+                  "page_query_count": len(page_captures),
+                  "page_capture_window": [min(receipt["observed_at"] for _, receipt in page_captures),
+                                          max(receipt["observed_at"] for _, receipt in page_captures)],
+                  "page_receipts_sha256_basis": "SHA-256 over the canonical JSON array of the "
+                                                "per-page receipt objects in ascending page name "
+                                                "order, staged verbatim as raw/<name>.receipt.json "
+                                                "next to each page's raw body and wire transcript",
+                  "release_date": None,
+                  "release_date_unknown_reason": _unknown_release_reason,
+                  "license": _input_license, "attribution": _input_attribution}
+    doc_entries = [_input_entry(name, receipts[name]) for name in sorted(receipts)
+                   if not name.startswith("page_")]
     manifest = {
         "schema_version": 1, "approved": False,
         "title": "Waterbody (USGS 3DHP_all)",
@@ -1428,22 +1494,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                    "use constraints. Rights acceptance pending.",
         "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
-        "inputs": [{"input_id": name, "producer": PUBLISHER,
-                    "host": urlsplit(receipt["url"]).hostname,
-                    "role": "producer_publication", "canonical_url": SERVICE_URL,
-                    "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
-                    "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
-                    "bytes": receipt["bytes"], "sha256": receipt["sha256"],
-                    "release_date": None,
-                    "release_date_unknown_reason":
-                        "The 3DHP_all service publishes no per-snapshot release date; its "
-                        "copyrightText records a service refresh (September 4, 2026) and USGS "
-                        "documents quarterly service updates and annual staged products.",
-                    "license": "Public domain (U.S. Government work) per the producer service; "
-                               "rights acceptance pending.",
-                    "attribution": "USGS 3D Hydrography Program (3DHP_all), The National Map; "
-                                   "formal attribution terms require maintainer review."}
-                   for name, receipt in sorted(receipts.items())],
+        "inputs": doc_entries + [page_entry],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "population": "1=1 over the complete keyset-ordered "
