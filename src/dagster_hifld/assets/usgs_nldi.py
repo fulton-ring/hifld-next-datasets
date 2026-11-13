@@ -54,7 +54,8 @@ DATASET_SLUG = "nhd"
 FILE_SLUG = "usgs-hydro-nldi-streamgage-monitoring-locations"
 NLDI_ROOT = "https://api.water.usgs.gov/nldi"
 SOURCES_URL = NLDI_ROOT + "/linked-data"
-COLLECTION_URL = NLDI_ROOT + "/linked-data/ref_gage"
+COLLECTION_PATH = "/linked-data/ref_gage"
+COLLECTION_URL = NLDI_ROOT + COLLECTION_PATH
 FEATURE_SOURCES_DOC_URL = "https://api.water.usgs.gov/docs/nldi/feature-sources/"
 EXPECTED_SOURCE_ENTRY = {"source": "ref_gage", "sourceName": "geoconnex.us reference gages",
                          "features": COLLECTION_URL}

@@ -27,7 +27,7 @@ def _fixture_identifier(index: int) -> str:
 
 def _fixture_feature(index: int) -> dict:
     identifier = _fixture_identifier(index)
-    return {"type": "Feature",
+    return {"type": "Feature", "id": identifier,
             "properties": {"identifier": identifier,
                            "navigation": f"{nldi.NLDI_ROOT}/linked-data/ref_gage/{identifier}/navigation",
                            "name": f"GAGE {index}", "source": "ref_gage",
@@ -55,6 +55,18 @@ def _fixture_sources() -> dict:
     ]}
 
 
+class JSONStream(httpx.SyncByteStream):
+    def __init__(self, payload):
+        self.body = payload if isinstance(payload, bytes) else json.dumps(
+            payload, separators=(",", ":"), ensure_ascii=False).encode()
+
+    def __iter__(self):
+        yield self.body
+
+    def close(self):
+        return None
+
+
 def make_transport(rows: list[dict] | None = None, *, sources: dict | None = None,
                    refuse_at_offset: int | None = None, extra_features: int = 0) -> httpx.MockTransport:
     rows = list(rows) if rows is not None else _fixture_rows()
@@ -64,20 +76,20 @@ def make_transport(rows: list[dict] | None = None, *, sources: dict | None = Non
         parsed = urlparse(str(request.url))
         query = parse_qs(parsed.query)
         if parsed.path.rstrip("/").endswith("/linked-data"):
-            return httpx.Response(200, content=json.dumps(sources).encode(),
+            return httpx.Response(200, stream=JSONStream(sources),
                                   headers={"content-type": "application/json"})
         if parsed.path.rstrip("/").endswith("/linked-data/ref_gage"):
             offset = int(query.get("offset", ["0"])[0])
             limit = int(query.get("limit", ["0"])[0])
             if refuse_at_offset is not None and offset == refuse_at_offset:
-                return httpx.Response(504, content=b"gateway timeout",
+                return httpx.Response(504, stream=JSONStream(b"gateway timeout"),
                                       headers={"content-type": "text/plain"})
             window = rows[offset:offset + limit] if limit else []
             if extra_features:
                 window = window + [_fixture_feature(FIXTURE_COUNT + position)
                                    for position in range(extra_features)]
-            return httpx.Response(200, content=json.dumps(
-                {"type": "FeatureCollection", "features": window}).encode(),
+            return httpx.Response(200, stream=JSONStream(
+                {"type": "FeatureCollection", "features": window}),
                 headers={"content-type": "application/geo+json"})
         raise AssertionError(f"unrouted request {request.url}")
 
