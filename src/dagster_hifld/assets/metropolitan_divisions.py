@@ -5,12 +5,12 @@ from dagster import AssetKey, AssetSelection, DefaultScheduleStatus, ScheduleDef
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.metropolitan_divisions import SLUG, stage_metdiv_candidate
 
-@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='census_bureau',compute_kind='http',description='Exact2024 Census GDB Metropolitan Division source; unapproved local draft, native IDs/types/geometry preserved.')
+@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='census_bureau',compute_kind='http',description='Exact2026 Census GDB Metropolitan Division source; unapproved local draft, native IDs/types/geometry preserved.')
 def census_metropolitan_divisions(context,staging_storage:StagingStorageResource):
     capture=os.environ.get('HIFLD_METDIV_CAPTURE_DIR')
     baseline=os.environ.get('HIFLD_METDIV_BASELINE_DIR')
-    result=stage_metdiv_candidate(staging_storage,archive_path=Path(capture)/'official2024_nationgeo.zip' if capture else None,
-        receipt_path=Path(capture)/'official2024_nationgeo.receipt.json' if capture else None,
+    result=stage_metdiv_candidate(staging_storage,archive_path=Path(capture)/'official2026_nationgeo.zip' if capture else None,
+        receipt_path=Path(capture)/'official2026_nationgeo.receipt.json' if capture else None,
         baseline_dir=Path(baseline) if baseline else None)
     context.add_output_metadata(result)
     return result

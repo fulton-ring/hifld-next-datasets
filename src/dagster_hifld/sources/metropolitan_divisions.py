@@ -1,7 +1,10 @@
-"""Faithful local draft of the exact inventory's Census 2024 national-GDB Metdiv layer.
+"""Faithful local draft of the exact inventory's Census 2026 national-GDB Metdiv layer.
 
-An edition label is not proof of a release date or approved compatibility. No
-projection, ID substitution, geometry repair or area-type migration occurs here.
+The pipeline pins the current Census TIGER/Line national geodatabase edition,
+re-published annually; the 2026 object supersedes the retired 2024 ``_a_``
+edition. An edition label is not proof of a release date or approved
+compatibility. No projection, ID substitution, geometry repair or area-type
+migration occurs here.
 """
 from __future__ import annotations
 
@@ -38,14 +41,17 @@ from dagster_hifld.validation import sha256_file
 
 SLUG = 'metropolitan-divisions-2'
 LAYER = 'Metropolitan_Division'
-GDB = 'tlgdb_2024_a_us_nationgeo.gdb'
-URL = 'https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_nationgeo.gdb.zip'
-SHA256 = '68f517f0ef6ab6bcbc2e89102fa960fd1c7c7a130039a1aee2f475319917aeb4'
-BYTES = 271963133
-FIELDS = ('OBJECTID','GEOID','GEOIDFQ','NAMELSAD','ALAND','AWATER','INTPTLAT','INTPTLON','SHAPE')
+GDB = 'tlgdb_2026_us_nationgeo.gdb'
+URL = 'https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_nationgeo.gdb.zip'
+SHA256 = '93b8c6da72cf68832d69b3e72a766d6dc7df89f0d886ed2f965da8f6d0c1d354'
+BYTES = 273107184
+FIELDS = ('OBJECTID','CSAFP','CBSAFP','METDIVFP','GEOID','GEOIDFQ','NAME','NAMELSAD','LSAD','MTFCC','ALAND','AWATER','INTPTLAT','INTPTLON','SHAPE')
 # Producer OID is esriFieldTypeOID Length4. This int64 is the GDAL Arrow
 # return_fids/output representation, not a native-width declaration/approval.
-TYPES = (pa.int64(),pa.string(),pa.string(),pa.string(),pa.float64(),pa.float64(),pa.string(),pa.string(),pa.binary())
+# CSAFP is producer-nullable and observed empty on exactly the two Tampa-area
+# divisions (CBSA 45300 belongs to no CSA); every other field is fully populated.
+TYPES = (pa.int64(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.float64(),pa.float64(),pa.string(),pa.string(),pa.binary())
+NULLS = {'CSAFP':2}
 BASELINE_ROOT = 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/metropolitan-divisions-2/metropolitan-divisions-2/v1.0.0'
 BASELINE_COLLECTION = {'name':'collection.json','url':BASELINE_ROOT+'/collection.json','bytes':11853,'generation':'1791506395736945','md5':'69f72f5fb13cd92ebb074dbbddb7c95e','sha256':'e09863343cd1987f04b5bbc6a647b41caa62f0bd902a95af1e88b33904df6ffb'}
 BASELINE_ASSETS = {
@@ -120,17 +126,22 @@ def manifest_for(body,receipt,identity):
         raise MetdivQuarantineError('original_receipt_url_status_hash_length_or_completeness_mismatch')
     manifest = {'schema_version':1,'processor':'HIFLD Next','approved':False,
         'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),
-        'title':'Metropolitan Divisions — exact Census 2024 GDB working draft',
+        'title':'Metropolitan Divisions — exact Census 2026 GDB working draft',
         'publisher':'U.S. Census Bureau','agency':'U.S. Census Bureau','source_url':URL,
         'license':'https://www.census.gov/about/policies/quality/guidelines/copyright.html',
         'processing_fingerprint':digest(encode(identity)),
-        'inputs':[{'input_id':'census2024-national-geodatabase:'+SHA256,
+        'inputs':[{'input_id':'census2026-national-geodatabase:'+SHA256,
             'producer':'U.S. Census Bureau','host':'www2.census.gov','role':'producer_publication',
             'canonical_url':URL,'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],
             'retrieved_at':receipt.get('observed_at'),'http_status':receipt['status'],
             'sha256':digest(body),'bytes':len(body),'license':'https://www.census.gov/about/policies/quality/guidelines/copyright.html',
-            'attribution':'U.S. Census Bureau, 2024 TIGER/Line national geographic geodatabase, Metropolitan_Division layer.',
-            'release_date_unknown_reason':'2024 edition label is explicit; actual producer release date is not established. HTTP Last-Modified is packaging evidence only. Inventory links a 2023 metadata document, an unresolved lineage discrepancy.'}],
+            'attribution':'U.S. Census Bureau, 2026 TIGER/Line national geographic geodatabase, Metropolitan_Division layer.',
+            'edition':'2026','refresh_cadence':'Census re-publishes the TIGER/Line geodatabase national files annually; the advertised current product is built from, not a retired historical edition.',
+            'release_evidence':{'landing_page':'https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-geodatabase-file.html',
+                'advertised_current_product':'2026 TIGER/Line Geodatabases',
+                'file_last_modified':'2026-07-29T16:00:43Z',
+                'file_last_modified_meaning':'HTTP Last-Modified on www2.census.gov and TGRGDB26 directory date; packaging evidence, not an independently published producer release date.'},
+            'release_date_unknown_reason':'The producer release date is not independently established; the observed 2026-07-29 publication timestamp and the advertised current 2026 TIGER/Line Geodatabases product are recorded as evidence. Earlier Census pages linking a 2023 metadata document for this inventory remain an unresolved lineage discrepancy.'}],
         'transformations':[{'operation':'decode_exact_original_openfilegdb_layer',
             'parameters':{'layer':LAYER,'preserve_intrinsic_fid_as':'OBJECTID','producer_oid_declaration':{'type':'esriFieldTypeOID','length_bytes':4,'nullable':False,'required':True,'editable':False},'driver_and_draft_output_oid':'int64; width representation change remains unapproved','native_crs':'EPSG:4269','repair':False,'reproject':False}},
             {'operation':'typed_native_geopackage_and_geoparquet','parameters':{'area_types':'float64','gpkg_fid':'independent storage index, not a source or published identifier'}}],
@@ -193,7 +204,7 @@ def acquire(storage,archive_path=None,receipt_path=None):
 def inspect_archive(archive_path):
     with zipfile.ZipFile(archive_path) as archive:
         entries=archive.infolist();names=[i.filename for i in entries]
-        if len(entries)!=71 or len(set(names))!=71:
+        if len(entries)!=64 or len(set(names))!=64:
             raise MetdivQuarantineError('missing_duplicate_or_changed_archive_inventory')
         for entry in entries:
             path=PurePosixPath(entry.filename)
@@ -238,7 +249,7 @@ def validate_table(table,metadata):
     rows=table.to_pylist();ids=[r['OBJECTID'] for r in rows];geoids=[r['GEOID'] for r in rows]
     if ids!=list(range(1,38)) or len(set(geoids))!=37 or any(not re.fullmatch(r'\d{10}',v or '') for v in geoids):
         raise MetdivQuarantineError('missing_duplicate_changed_source_ids_or_coverage')
-    if any(table.column(name).null_count for name in FIELDS):
+    if any(table.column(name).null_count!=NULLS.get(name,0) for name in FIELDS):
         raise MetdivQuarantineError('native_nullability_drift')
     geometries=shapely.from_wkb(table['SHAPE'].to_pylist())
     if any(shapely.is_empty(geometries)) or not all(shapely.is_valid(geometries)) or not all(shapely.get_type_id(geometries)==6):
@@ -256,10 +267,10 @@ def write_native_gpkg(table,path):
     # Pin GDAL creation time so SQLite transaction headers are reproducible;
     # the ambient date must not enter the container bytes (CI caught a cached
     # container that disagreed with a fresh rebuild of the same rows).
-    with with_geopackage_creation_time('2024-01-01T00:00:00.000Z'):
+    with with_geopackage_creation_time('2026-01-01T00:00:00.000Z'):
         pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
     with sqlite3.connect(path) as db:
-        db.execute("UPDATE gpkg_contents SET last_change='2024-01-01T00:00:00.000Z'")
+        db.execute("UPDATE gpkg_contents SET last_change='2026-01-01T00:00:00.000Z'")
 
 
 def gpkg_geometry_declarations(path):
@@ -335,7 +346,10 @@ def acquire_published_baseline(storage, baseline_dir=None):
                         raise MetdivQuarantineError('published_baseline_oversized_response:'+key)
                     pieces.append(block)
             body=b''.join(pieces)
-            receipt.update(bytes=len(body),complete_body=True)
+            # The live receipt must carry the same computed digest the pin
+            # comparison requires; otherwise every default ingest (no preserved
+            # baseline capture) would fail on collection.json before staging.
+            receipt.update(bytes=len(body),sha256=digest(body),complete_body=True)
         md5=hashlib.md5(body).hexdigest()
         if (len(body)!=spec['bytes'] or digest(body)!=spec['sha256'] or md5!=spec['md5']
             or receipt.get('status')!=200 or receipt.get('complete_body') is not True
@@ -436,7 +450,7 @@ def stage_metdiv_candidate(storage,*,archive_path=None,receipt_path=None,baselin
         immutable(storage,capture,body)
         immutable(storage,capture+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt))
         fingerprint=digest(encode(identity))
-        version=f'v0.0.0-draft-census2024-{SHA256[:16]}-{fingerprint[:16]}'
+        version=f'v0.0.0-draft-census2026-{SHA256[:16]}-{fingerprint[:16]}'
         prefix=f'{SLUG}/{SLUG}/{version}'
         base=Path(storage.local_dir);root=base/prefix
         # Decode the exact immutable retained original; no external-path substitution.
@@ -489,7 +503,7 @@ def stage_metdiv_candidate(storage,*,archive_path=None,receipt_path=None,baselin
                 'intrinsic_source_id':'Producer OBJECTID esriFieldTypeOID Length4, required/nonnullable/noneditable; GDAL return_fids and draft output expose int64. Every original value preserved; widening/mapping remains unapproved. Independent GPKG storage FID not published/source ID',
                 'coverage_GEOIDs':sorted(table['GEOID'].to_pylist()),'full_value_type_id_and_native_wkb_roundtrip':{'geopackage':True,'parquet':True},
                 'published_compatibility':'Complete pinned HIFLD v1.0.0 baseline comparison is recorded separately. Field/type/OBJECTID/CRS/geometry drift is present; no mapping or release is approved.'}
-            payloads={'raw/source_capture.json':{'key':capture,'sha256':SHA256,'bytes':BYTES,'complete_original_gdb_members':71},'raw/retrieval.json':receipt,
+            payloads={'raw/source_capture.json':{'key':capture,'sha256':SHA256,'bytes':BYTES,'complete_original_gdb_members':64},'raw/retrieval.json':receipt,
                 'metadata/source_manifest.json':manifest,'metadata/processing_identity.json':identity,'metadata/metdiv_source_audit.json':audit,
                 # Preserve the measured, fully pinned baseline comparison. A
                 # review gate may block acceptance, but the baseline is present;
