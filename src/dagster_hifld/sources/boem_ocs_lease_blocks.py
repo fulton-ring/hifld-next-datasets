@@ -186,7 +186,7 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
         receipt = json.loads(receipt_path.read_bytes())
         name = receipt_path.name.removesuffix(".receipt.json")
         body = (root / f"{name}.body").read_bytes()
-        if (receipt.get("complete") is not True or receipt.get("status") != 200
+        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
                 or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
             raise ValueError("offline_capture_body_receipt_mismatch:" + name)
         # The preserved one-shot capture was recorded with identity encoding;
