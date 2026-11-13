@@ -37,9 +37,9 @@ class RailroadBridgesConfig(Config):
         "features observed 2026-11-13) from the FRA-delegated BTS NTAD "
         "FeatureServer publication named by FRA's own GIS page and the DHS HIFLD "
         "Open crosswalk for the inventory entry railroad-bridges. Unapproved "
-        "faithful candidate; record/geometry baselines stay unpinned until the "
-        "dated complete capture. Freshness, schema/ID contract, rights and "
-        "release decisions remain pending."
+        "faithful candidate; record/geometry baselines are pinned from the "
+        "complete dated 2026-11-13 capture. Freshness, schema/ID contract, "
+        "rights and release decisions remain pending."
     ),
 )
 def railroad_bridges(

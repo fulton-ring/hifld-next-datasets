@@ -107,17 +107,21 @@ DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 PAGE_PROBE_ATTEMPTS = 2
 PAGE_PROBE_BASE_DELAY_SECONDS = 5.0
-# Pins below are the observed 2026-11-13 live population identity: count, sorted
-# OBJECTID_12 roster digest and schema digest. The per-value record digest,
-# geometry digest and observed bounds stay unpinned (""/None) until a complete
-# dated capture has been retained in a task sandbox; unpinned gates are inert
-# by design and the next run pins them from that capture.
+# Pins below are the observed 2026-11-13 live population identity, verified by a
+# complete dated capture (35 ordered 2,000-wide pages of the sorted OBJECTID_12
+# roster): count, sorted roster digest, schema digest, per-value record digest,
+# geometry digest, observed bounds (equal to the declared layer extent to the
+# last digit) and the UniqueID business-identifier population (fully unique,
+# no nulls, no duplicates).
 EXPECTED_COUNT = 69_510
 EXPECTED_ID_SHA256 = "06bf3dad25cdcf8d79a9dcc5d86b52ebe0759b688989cfc313cd64150a6875a8"
 EXPECTED_SCHEMA_SHA256 = "5213b70fe787b2aaf6d7a8de5c3b1150ed8589a82073b3d6acbe4979043c7edd"
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_OBSERVED_BOUNDS = None
+EXPECTED_RECORD_SHA256 = "901eb3cd3298b9e27c5345607b669d0908cd8be9597adc4d09533c06713e80e5"
+EXPECTED_GEOMETRY_SHA256 = "3c54df594415cb09eb86c064241f7570ef103a7dce1ecc422813048623cfddb4"
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -156.679116754942, "ymin": 20.883272149839772,
+                            "xmax": -67.17009477420116, "ymax": 64.9183034028861}
+EXPECTED_UNIQUEID_NULL_COUNT = 0
+EXPECTED_UNIQUEID_DUPLICATE_COUNT = 0
 EXPECTED_LAYER_EXTENT = {"xmin": -156.679116754942, "ymin": 20.883272149839772,
                          "xmax": -67.17009477420116, "ymax": 64.9183034028861}
 EXPECTED_NULL_GEOMETRY_COUNT = 0
@@ -387,6 +391,14 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_record_value_drift")
     if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
         raise ValueError("source_geometry_or_coverage_drift")
+    uniqueids = [row["attributes"].get("UniqueID") for row in features]
+    uniqueid_nulls = sum(1 for value in uniqueids if value is None)
+    uniqueid_duplicates = len(uniqueids) - len({value for value in uniqueids
+                                                if value is not None})
+    if uniqueid_nulls != EXPECTED_UNIQUEID_NULL_COUNT:
+        raise ValueError("source_feature_id_null_drift")
+    if uniqueid_duplicates != EXPECTED_UNIQUEID_DUPLICATE_COUNT:
+        raise ValueError("source_feature_id_duplicate_drift")
     audit = {"source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids)),
              "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
              "source_schema_sha256": schema_sha, "source_crs_wkid": SOURCE_CRS_WKID,
@@ -395,15 +407,19 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "invalid_geometry_count": invalid_geometry,
              "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
              "unique_object_id_count": len(ids), "source_page_count": len(pages),
+             "unique_uniqueid_count": len({value for value in uniqueids if value is not None}),
+             "uniqueid_null_count": uniqueid_nulls,
+             "uniqueid_duplicate_count": uniqueid_duplicates,
              "source_release_date": None,
              "source_release_date_unknown_reason":
                  "The BTS NTAD service publishes no per-snapshot release date for this layer; "
                  "the producer's compiled-on statement (October 14, 2022), the layer "
                  "editingInfo timestamps and the NTAD publication cadence are retained as "
                  "separate vintage evidence, not as an accepted release date.",
-             "baseline_pending_note":
-                 "The record and geometry digests and observed bounds stay unpinned until a "
-                 "complete dated capture is retained; unpinned gates are inert by design."}
+             "baseline_note":
+                  "Record and geometry digests and observed bounds are pinned from the "
+                  "complete dated 2026-11-13 capture retained in a task sandbox; freshness "
+                  "acceptance remains a separate maintainer decision."}
     return layer, fields_value, {"features": features, "audit": audit, "ids": ids}
 
 
