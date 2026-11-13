@@ -105,6 +105,22 @@ EXPECTED_SERVICE_LAYERS = [
     (92, "Spatial Metadata - Elevation Workunit Area"),
     (94, "Spatial Metadata - DEM LimitationArea"),
 ]
+# The producer's same-org alias publication (hydro.nationalmap.gov 3DHP_all)
+# still serves the pre-reorder Spatial Metadata ordering while the main host
+# already serves the reordered one (live-verified 2026-11-13, mid-deployment
+# metadata propagation); each host's roster is pinned with its own dated
+# evidence so identity drift is detected per host, not smeared across them.
+EXPECTED_ALIAS_SERVICE_LAYERS = [
+    (20, "HydroLocation - Sink, Spring, Waterbody Outlet"),
+    (30, "HydroLocation - Headwater, Terminus, Divergence, Confluence, Catchment Outlet"),
+    (40, "HydroLocation - External Connection"),
+    (50, "Flowline"),
+    (60, "Waterbody"),
+    (80, "Catchment"),
+    (90, "Spatial Metadata - DEM LimitationArea"),
+    (92, "Spatial Metadata - EDH Workunit Area"),
+    (94, "Spatial Metadata - Elevation Workunit Area"),
+]
 EXPECTED_COUNT = 95423
 # Producer-refused records (dated 2026-11-13 evidence): OBJECTIDs the producer's
 # own REST publication persistently refuses to serve geometry for (HTTP 200 Esri
@@ -488,7 +504,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     alias = docs["alias_service"]
     if (not isinstance(alias, dict) or alias.get("copyrightText") != EXPECTED_COPYRIGHT_TEXT
             or [(entry.get("id"), entry.get("name")) for entry in alias.get("layers", [])
-                if isinstance(entry, dict)] != EXPECTED_SERVICE_LAYERS):
+                if isinstance(entry, dict)] != EXPECTED_ALIAS_SERVICE_LAYERS):
         raise ValueError("usgs_3dhp_alias_service_identity_drift")
     for name in ("service_before", "service_after", "alias_service"):
         description = str(docs[name].get("serviceDescription", ""))

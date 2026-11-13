@@ -179,6 +179,7 @@ def _pins(features, schema, windows):
                 EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
                 EXPECTED_FEATURETYPE_DISTRIBUTION=distribution,
                 EXPECTED_SERVICE_LAYERS=[(60, "Waterbody"), (50, "Flowline")],
+                EXPECTED_ALIAS_SERVICE_LAYERS=[(60, "Waterbody"), (50, "Flowline")],
                 EXPECTED_LAYER_EXTENT={"xmin": -19951755.68, "ymin": -1622985.37,
                                        "xmax": 20021551.75, "ymax": 11575301.96},
                 EXPECTED_OBSERVED_BOUNDS=_bounds(features))
@@ -383,6 +384,7 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
                     EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
                     EXPECTED_FEATURETYPE_DISTRIBUTION={1: 2, 2: 1, 4: 1},
                     EXPECTED_SERVICE_LAYERS=[(60, "Waterbody"), (50, "Flowline")],
+                    EXPECTED_ALIAS_SERVICE_LAYERS=[(60, "Waterbody"), (50, "Flowline")],
                     EXPECTED_LAYER_EXTENT={"xmin": -19951755.68, "ymin": -1622985.37,
                                            "xmax": 20021551.75, "ymax": 11575301.96},
                     EXPECTED_OBSERVED_BOUNDS=_bounds(features))
