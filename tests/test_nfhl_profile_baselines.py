@@ -450,6 +450,7 @@ def _write_evidence(capture_root: Path, name: str, body: bytes, receipt: dict | 
 ERROR_BODY = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
 
 
+
 class RetryAndResumeTests(unittest.TestCase):
     def _fixture_bodies(self):
         fields, features, docs, schema, stats, attr_names, ids = _fixture()
@@ -468,9 +469,9 @@ class RetryAndResumeTests(unittest.TestCase):
             root = Path(temporary)
             with patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep") as sleep_mock:
-                receipt = source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
-                                                  max_bytes=1024, attempts=source.DOC_CAPTURE_ATTEMPTS,
-                                                  base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+                receipt, _reused = source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
+                                                           max_bytes=1024, attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                                           base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
             self.assertEqual(receipt["sha256"], hashlib.sha256(b'{"objectIds": []}').hexdigest())
             self.assertEqual(calls, ["probe", "probe"])
             self.assertEqual((root / "probe.body").read_bytes(), b'{"objectIds": []}')
@@ -489,9 +490,9 @@ class RetryAndResumeTests(unittest.TestCase):
             root = Path(temporary)
             with patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
-                receipt = source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
-                                                  max_bytes=1024, attempts=source.DOC_CAPTURE_ATTEMPTS,
-                                                  base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+                receipt, _reused = source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
+                                                           max_bytes=1024, attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                                           base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
             self.assertEqual(len(calls), source.DOC_CAPTURE_ATTEMPTS)
             for attempt in range(1, source.DOC_CAPTURE_ATTEMPTS):
                 self.assertEqual((root / f"probe.attempt-{attempt:02d}.body").read_bytes(), ERROR_BODY)
@@ -517,9 +518,9 @@ class RetryAndResumeTests(unittest.TestCase):
             root = Path(temporary)
             with patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
-                receipt = source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
-                                                  max_bytes=1024, attempts=source.DOC_CAPTURE_ATTEMPTS,
-                                                  base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+                receipt, _reused = source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
+                                                           max_bytes=1024, attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                                           base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
                 with self.assertRaisesRegex(ValueError, "unrelated_source_capture_failure"):
                     source._ensure_captured(None, "https://producer.invalid/other", root, "probe2",
                                             max_bytes=1024, attempts=source.DOC_CAPTURE_ATTEMPTS,
@@ -541,9 +542,10 @@ class RetryAndResumeTests(unittest.TestCase):
             root = Path(temporary)
             _write_evidence(root, "probe", ok_body)
             with patch.object(source, "capture_get", side_effect=fake_capture_get):
-                receipt = source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
-                                                  max_bytes=1024, attempts=2, base_delay=1.0)
+                receipt, reused = source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
+                                                          max_bytes=1024, attempts=2, base_delay=1.0)
             self.assertEqual(calls, [])
+            self.assertTrue(reused)
             self.assertEqual(receipt["sha256"], hashlib.sha256(ok_body).hexdigest())
 
     def test_stale_or_tampered_evidence_is_not_reused(self):
@@ -692,10 +694,6 @@ class RetryAndResumeTests(unittest.TestCase):
                 self.assertEqual(reused["version"], candidate["version"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class BisectionOnTransportTests(unittest.TestCase):
     def _fixture_bodies(self):
         fields, features, docs, schema, stats, attr_names, ids = _fixture()
@@ -721,7 +719,7 @@ class BisectionOnTransportTests(unittest.TestCase):
         with TemporaryDirectory() as temporary:
             root = Path(temporary) / "captures"
             with patch.multiple(source, SEGMENT_START_RECORDS=4, SEGMENT_PROBE_ATTEMPTS=2,
-                                DOC_CAPTURE_ATTEMPTS=1, EXPECTED_COUNT=4), \
+                                DOC_CAPTURE_ATTEMPTS=1, EXPECTED_COUNT=5), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 settled = source._capture_segments(None, root, sorted(ids), attr_names,
@@ -748,3 +746,74 @@ class BisectionOnTransportTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "incomplete_source_capture"):
                     source._capture_segments(None, root, [10, 11], ["OBJECTID"],
                                              source._StreamStats(), {})
+
+
+class ResumeStalenessTests(unittest.TestCase):
+    """Reused pages that no longer match the roster slice are stale evidence."""
+
+    def _bodies_and_docs(self):
+        fields, features, docs, schema, stats, attr_names, ids = _fixture()
+        return _docs_to_bodies(docs), docs, schema, stats, ids, attr_names
+
+    def test_stale_reused_page_is_purged_and_recaptured_once(self):
+        bodies, docs, schema, stats, ids, attr_names = self._bodies_and_docs()
+        # A page captured under an older roster generation: same window name,
+        # different features than the current roster slice expects.
+        stale_page = {"features": docs["page_000000_00002"]["features"][:1]
+                      + docs["page_000002_00002"]["features"][:1],
+                      "spatialReference": {"wkid": 4269, "latestWkid": 4269}}
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            body = bodies[name]
+            if name == "page_000000_00002":
+                body = json.dumps(docs["page_000000_00002"], separators=(",", ":")).encode()
+            _write_evidence(capture_root, name, body)
+            return body, _receipt(body)
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            _write_evidence(root, "page_000000_00002",
+                            json.dumps(stale_page, separators=(",", ":")).encode())
+            with patch.multiple(source, SEGMENT_START_RECORDS=2, SEGMENT_PROBE_ATTEMPTS=2,
+                                DOC_CAPTURE_ATTEMPTS=2, EXPECTED_COUNT=5), \
+                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                settled = source._capture_segments(None, root, sorted(ids), attr_names,
+                                                   source._StreamStats(), {})
+            self.assertEqual(sorted(settled), [(0, 2), (2, 2), (4, 1)])
+            self.assertEqual(calls, ["page_000000_00002", "page_000002_00002", "page_000004_00001"])
+            self.assertEqual((root / "page_000000_00002.body").read_bytes(),
+                             json.dumps(docs["page_000000_00002"], separators=(",", ":")).encode())
+
+    def test_fresh_page_mismatch_fails_immediately_without_double_count(self):
+        docs, schema, stats, ids, attr_names = self._bodies_and_docs()[1:]
+        drifted = json.loads(json.dumps(docs))
+        drifted["page_000000_00002"]["features"][0]["attributes"]["OBJECTID"] = 999
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            body = json.dumps(drifted.get(name, docs.get(name)), separators=(",", ":")).encode()
+            _write_evidence(capture_root, name, body)
+            return body, _receipt(body)
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            capture_stats = source._StreamStats()
+            with patch.multiple(source, SEGMENT_START_RECORDS=2, SEGMENT_PROBE_ATTEMPTS=2,
+                                DOC_CAPTURE_ATTEMPTS=2, EXPECTED_COUNT=5), \
+                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_reordered"):
+                    source._capture_segments(None, root, sorted(ids), attr_names,
+                                             capture_stats, {})
+            self.assertEqual(calls, ["page_000000_00002"])
+            self.assertEqual(capture_stats.feature_count, 0)
+            self.assertEqual(capture_stats.record_sha256,
+                             hashlib.sha256(b"[]").hexdigest())
+
+
+if __name__ == "__main__":
+    unittest.main()

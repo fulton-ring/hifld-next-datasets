@@ -44,6 +44,12 @@ directory, bodies verified against their hash-pinned receipts are reused
 instead of re-downloaded, while the before/after count/id/metadata brackets,
 exact segment tiling, per-page roster slices, and full-record digests still
 prove nothing was skipped, duplicated, reordered, or silently substituted.
+Document captures (count/ID rosters, layer metadata) are always fetched fresh
+because the NFHL is continuously updated - observed on 2026-11-12/13, when
+FEMA edited this layer during a capture window (2,254 features added, 2,025
+removed) - and a reused page that no longer matches its roster slice is
+purged and re-captured fresh exactly once, so a resumed capture always
+describes the current population.
 """
 from __future__ import annotations
 
@@ -302,20 +308,24 @@ def _reusable_receipt(capture_root: Path, name: str) -> dict[str, object] | None
 
 
 def _ensure_captured(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                     max_bytes: int, attempts: int, base_delay: float) -> dict[str, object]:
-    """Capture one producer request, reusing verified on-disk evidence first.
+                     max_bytes: int, attempts: int, base_delay: float,
+                     reuse: bool = True) -> tuple[dict[str, object], bool]:
+    """Capture one producer request, optionally reusing verified on-disk evidence.
 
     Retries cover the producer's transient complete-200 Esri error documents
     and incomplete transport captures; failed attempts are preserved on disk
     under ``<name>.attempt-NN`` evidence names and never enter the capture
     roster. A request whose completed body/wire/receipt evidence is already on
-    disk and still verifies is reused without a network request, so an
-    interrupted capture resumes instead of repeating its completed pages; the
-    digests remain the proof either way.
+    disk and still verifies is reused without a network request when ``reuse``
+    is set, so an interrupted capture resumes instead of repeating its
+    completed pages. Returns the receipt and whether it came from disk;
+    document captures always fetch fresh because the NFHL is continuously
+    updated and a stale roster would mis-slice every page.
     """
-    reuse = _reusable_receipt(capture_root, name)
-    if reuse is not None:
-        return reuse
+    if reuse:
+        cached = _reusable_receipt(capture_root, name)
+        if cached is not None:
+            return cached, True
     for attempt in range(1, attempts + 1):
         try:
             capture_get(client, url, capture_root, name, max_bytes=max_bytes)
@@ -329,7 +339,7 @@ def _ensure_captured(client: httpx.Client, url: str, capture_root: Path, name: s
             _preserve_failed_attempt(capture_root, name, attempt)
             time.sleep(base_delay * (3 ** (attempt - 1)))
             continue
-        return json.loads((capture_root / f"{name}.receipt.json").read_bytes())
+        return json.loads((capture_root / f"{name}.receipt.json").read_bytes()), False
     raise AssertionError("unreachable_retry_state")
 
 
@@ -461,6 +471,12 @@ class _ItemDigest:
         digest.update(b"]")
         return digest.hexdigest()
 
+    def snapshot(self) -> tuple:
+        return self._digest.copy(), self._first
+
+    def restore(self, snapshot: tuple) -> None:
+        self._digest, self._first = snapshot[0], snapshot[1]
+
 
 class _StreamStats:
     """Streamed full-record/geometry digests and population tallies.
@@ -486,6 +502,36 @@ class _StreamStats:
         self.nan_m_vertex_count = 0
         self.xmin = self.ymin = self.xmax = self.ymax = None
         self.geometry_types: set[str] = set()
+
+    def snapshot(self) -> dict[str, object]:
+        return {"records": self._records.snapshot(), "geometries": self._geometries.snapshot(),
+                "feature_count": self.feature_count, "null_geometry_count": self.null_geometry_count,
+                "nan_geometry_count": self.nan_geometry_count,
+                "null_geometry_ids": list(self.null_geometry_ids),
+                "empty_geometry_count": self.empty_geometry_count,
+                "empty_geometry_ids": list(self.empty_geometry_ids),
+                "null_z_vertex_count": self.null_z_vertex_count,
+                "nan_z_vertex_count": self.nan_z_vertex_count,
+                "null_m_vertex_count": self.null_m_vertex_count,
+                "nan_m_vertex_count": self.nan_m_vertex_count,
+                "bounds": (self.xmin, self.ymin, self.xmax, self.ymax),
+                "geometry_types": set(self.geometry_types)}
+
+    def restore(self, snapshot: Mapping[str, object]) -> None:
+        self._records.restore(snapshot["records"])
+        self._geometries.restore(snapshot["geometries"])
+        self.feature_count = snapshot["feature_count"]
+        self.null_geometry_count = snapshot["null_geometry_count"]
+        self.nan_geometry_count = snapshot["nan_geometry_count"]
+        self.null_geometry_ids = list(snapshot["null_geometry_ids"])
+        self.empty_geometry_count = snapshot["empty_geometry_count"]
+        self.empty_geometry_ids = list(snapshot["empty_geometry_ids"])
+        self.null_z_vertex_count = snapshot["null_z_vertex_count"]
+        self.nan_z_vertex_count = snapshot["nan_z_vertex_count"]
+        self.null_m_vertex_count = snapshot["null_m_vertex_count"]
+        self.nan_m_vertex_count = snapshot["nan_m_vertex_count"]
+        self.xmin, self.ymin, self.xmax, self.ymax = snapshot["bounds"]
+        self.geometry_types = set(snapshot["geometry_types"])
 
     def add(self, feature: object, attr_names: list[str]) -> None:
         if not isinstance(feature, dict):
@@ -596,7 +642,10 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
     explicitly. Each served page is validated against its sorted roster slice
     and fed to the streamed tallies immediately, so memory stays bounded by
     one page regardless of layer size; each settled page's receipt is recorded
-    in ``receipts`` for the candidate evidence roster.
+    in ``receipts`` for the candidate evidence roster. A reused page that no
+    longer matches its roster slice is producer-stale evidence: it is purged
+    and re-captured fresh once (the NFHL is continuously updated, and FEMA
+    edited this layer during a capture window on 2026-11-12/13).
     """
     total = len(ids)
     segments: deque[tuple[int, int]] = deque(
@@ -604,14 +653,16 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
         for offset in range(0, total, SEGMENT_START_RECORDS)
     )
     settled: list[tuple[int, int]] = []
+    purged: set[str] = set()
     while segments:
         offset, count = segments.popleft()
         name = _segment_name(offset, count)
         try:
-            _ensure_captured(client, _segment_query(offset, count), capture_root, name,
-                             max_bytes=MAX_CAPTURE_BYTES,
-                             attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                             base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
+            receipt, reused = _ensure_captured(
+                client, _segment_query(offset, count), capture_root, name,
+                max_bytes=MAX_CAPTURE_BYTES,
+                attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
+                base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
         except ValueError as exc:
             # The producer's transfer cap can also surface as a persistent
             # mid-stream reset/oversized-response (observed 2026-11-12 on this
@@ -635,10 +686,29 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
             segments.appendleft((offset, middle))
             time.sleep(SEGMENT_BISECT_COOLDOWN_SECONDS)
             continue
-        page = _read_doc(capture_root, name)
-        _validate_page(offset, count, page, ids, attr_names, stats)
+        snapshot = stats.snapshot()
+        try:
+            page = _read_doc(capture_root, name)
+            _validate_page(offset, count, page, ids, attr_names, stats)
+        except ValueError as exc:
+            stats.restore(snapshot)
+            # A reused page whose served content no longer matches its roster
+            # slice is stale evidence from a roster generation the producer has
+            # since edited (observed 2026-11-12/13: FEMA edited this layer
+            # during a capture window, adding 2,254 and removing 2,025
+            # features). Its cached evidence is purged and the page is
+            # re-captured fresh exactly once; a freshly captured page that
+            # still mismatches, or any other page defect, fails the capture.
+            if reused and str(exc).startswith("source_page_id_slice_incomplete_or_reordered") \
+                    and name not in purged:
+                purged.add(name)
+                for suffix in (".body", ".wire", ".receipt.json"):
+                    (capture_root / f"{name}{suffix}").unlink(missing_ok=True)
+                segments.appendleft((offset, count))
+                continue
+            raise
         settled.append((offset, count))
-        receipts[name] = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
+        receipts[name] = receipt
     return settled
 
 
@@ -919,7 +989,8 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
             for name, url in [(_SEED_DOC, _ids_query()), *_doc_urls()]:
                 receipts[name] = _ensure_captured(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                   attempts=DOC_CAPTURE_ATTEMPTS,
-                                                  base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                                                  base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+                                                  reuse=False)[0]
             docs = {name: _read_doc(capture_root, name)
                     for name in (_SEED_DOC, "service_before", "layer_before", "count_before", "ids_before")}
             docs["service_doc"] = (capture_root / "service_doc.body").read_bytes()
@@ -931,7 +1002,8 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
             for name, url in _after_doc_urls():
                 receipts[name] = _ensure_captured(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                   attempts=DOC_CAPTURE_ATTEMPTS,
-                                                  base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                                                  base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+                                                  reuse=False)[0]
             docs_after = {name: _read_doc(capture_root, name) for name in _AFTER_DOC_NAMES}
             docs_after["count_before"] = docs["count_before"]
             _validate_after_docs(docs_after, contract)
