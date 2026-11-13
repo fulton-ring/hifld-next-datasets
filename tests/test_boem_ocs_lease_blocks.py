@@ -215,12 +215,16 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_polygon_nested_rings_unexpected"):
             blocks._validate(captures)
 
+        # Duplicate (PROT_NUMBER, BLOCK_NUMBER) keys are allowed (the producer
+        # publishes split blocks as same-key rows) but are pinned: with the
+        # duplicate gate pinned to 0 the mutated fixture refuses.
         captures = _fixture()
         doc = json.loads(captures["page_000"][0])
         doc["features"][0]["attributes"]["BLOCK_NUMBER"] = "   72"
         captures["page_000"] = (_body(doc), captures["page_000"][1])
-        with self.assertRaisesRegex(ValueError, "source_block_key_uniqueness_drift"):
-            blocks._validate(captures)
+        with patch.object(blocks, "EXPECTED_DUPLICATE_BLOCK_KEY_COUNT", 0):
+            with self.assertRaisesRegex(ValueError, "source_block_key_uniqueness_drift"):
+                blocks._validate(captures)
 
         captures = _fixture()
         doc = json.loads(captures["page_000"][0])

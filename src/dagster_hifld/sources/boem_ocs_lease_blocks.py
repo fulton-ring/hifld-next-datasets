@@ -377,15 +377,15 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
     if (EXPECTED_RING_COUNT_DISTRIBUTION is not None
             and dict(sorted(ring_counts.items())) != EXPECTED_RING_COUNT_DISTRIBUTION):
         raise ValueError("source_ring_count_distribution_drift")
-    # The lease-block grid is keyed by (PROT_NUMBER, BLOCK_NUMBER); repeated
-    # block keys would mean duplicate or versioned grid cells, which the
-    # producer publication must not contain.
+    # The producer publication itself is not unique by (PROT_NUMBER,
+    # BLOCK_NUMBER): the complete capture found 91 blocks (all in protraction
+    # NG16-02) published as two same-key features each. Rows are never merged
+    # or dropped; the duplicate count is audited and pinned as a drift gate
+    # instead.
     featureclass = [f["attributes"] for f in features]
     prot_numbers = [attrs["PROT_NUMBER"] for attrs in featureclass]
     block_keys = [(attrs["PROT_NUMBER"], attrs["BLOCK_NUMBER"]) for attrs in featureclass]
     duplicate_block_keys = len(block_keys) - len(set(block_keys))
-    if duplicate_block_keys:
-        raise ValueError("source_block_key_uniqueness_drift")
     if EXPECTED_DUPLICATE_BLOCK_KEY_COUNT is not None \
             and duplicate_block_keys != EXPECTED_DUPLICATE_BLOCK_KEY_COUNT:
         raise ValueError("source_block_key_uniqueness_drift")
