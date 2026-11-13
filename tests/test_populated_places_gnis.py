@@ -407,6 +407,28 @@ class PopulatedPlacesGnisTests(unittest.TestCase):
             self.assertEqual(manifest["agency"], "U.S. Geological Survey")
             hosts = {entry["host"] for entry in manifest["inputs"]}
             self.assertEqual(hosts, {"carto.nationalmap.gov"})
+            # Per-page provenance must stay within the bounded catalog layer
+            # read (resolve_literal_metadata re-reads the manifest at 2 MiB)
+            # while the verbatim objectIds enumeration remains in each raw
+            # receipt staged inside the same prefix.
+            self.assertLess(
+                (root / "staging" / prefix / "metadata" / "source_manifest.json")
+                .stat().st_size, 2 * 1024 * 1024)
+            entries = {entry["input_id"]: entry for entry in manifest["inputs"]}
+            page_entries = [entry for input_id, entry in entries.items()
+                            if src._PAGE_NAME_PATTERN.fullmatch(input_id)]
+            self.assertTrue(page_entries)
+            for entry in page_entries:
+                objectids = (entry["retrieval_url"].split("objectIds=", 1)[1]
+                             .split("&", 1)[0])
+                self.assertNotIn(",", objectids)
+                self.assertIn(f"raw.{entry['input_id']}.receipt.json", objectids)
+                self.assertEqual(entry["observed_final_url"],
+                                 entry["retrieval_url"])
+            self.assertIn("returnIdsOnly=true&f=json",
+                          entries["ids_before"]["retrieval_url"])
+            self.assertIn("page_url_provenance",
+                          manifest["transformations"][0]["parameters"])
             parquet_bytes = (root / "staging" / prefix / "geoparquet"
                              / f"{src.DATASET_SLUG}.parquet").read_bytes()
             self.assertEqual(pq.read_table(io.BytesIO(parquet_bytes)).num_rows,

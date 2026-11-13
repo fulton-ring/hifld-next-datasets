@@ -57,7 +57,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qsl, parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
@@ -1182,6 +1182,42 @@ class _RetainedCaptureViews(Mapping):
         return len(self._names)
 
 
+# A page URL enumerates up to PAGE_START_RECORDS sorted OBJECTIDs, which would
+# inflate the manifest far beyond the bounded catalog layer read
+# (resolve_literal_metadata re-reads source_manifest.json at 2 MiB). Per-page
+# provenance therefore elides the enumeration and names the verbatim receipt
+# staged inside the same sealed candidate prefix.
+_PAGE_OBJECTIDS_ELISION = ("<elided.complete.sorted.OBJECTID.slice.retained."
+                           "verbatim.in.raw.{name}.receipt.json>")
+_PAGE_URL_PROVENANCE_NOTE = (
+    "Per-page input URLs elide the enumerated objectIds query parameter as "
+    "objectIds=" + _PAGE_OBJECTIDS_ELISION.format(name="<input_id>") + "; each "
+    "verbatim requested and final page URL with the complete sorted OBJECTID "
+    "enumeration is retained at raw/<input_id>.receipt.json within the same "
+    "sealed candidate prefix and the complete roster is pinned by "
+    "EXPECTED_IDS_SHA256 and the staged raw ids receipts.")
+
+
+def _bounded_input_urls(receipt: Mapping[str, object],
+                        name: str) -> tuple[str, str]:
+    """Bounded provenance URLs; a page's verbatim enumeration is its receipt."""
+    url = str(receipt["url"])
+    final_url = str(receipt["final_url"])
+    if _PAGE_NAME_PATTERN.fullmatch(name) is None:
+        return url, final_url
+    marker = _PAGE_OBJECTIDS_ELISION.format(name=name)
+
+    def elide_objectids(value: str) -> str:
+        head, separator, query = value.partition("?")
+        if not separator:
+            return value
+        rebuilt = [(key, marker if key == "objectIds" else part)
+                   for key, part in parse_qsl(query, keep_blank_values=True)]
+        return head + "?" + urlencode(rebuilt)
+
+    return elide_objectids(url), elide_objectids(final_url)
+
+
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_pages: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
@@ -1257,6 +1293,28 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     source_objects = {parquet_name: {"bytes": len(parquet_body),
                                      "sha256": _sha(parquet_body)}}
     receipts = _load_receipt_map(capture_root)
+    manifest_inputs = []
+    for name, receipt in sorted(receipts.items()):
+        retrieval_url, final_url = _bounded_input_urls(receipt, name)
+        manifest_inputs.append({
+            "input_id": name, "producer": PUBLISHER,
+            "host": urlsplit(str(receipt["url"])).hostname,
+            "role": "producer_publication", "canonical_url": SERVICE_URL,
+            "retrieval_url": retrieval_url, "observed_final_url": final_url,
+            "retrieved_at": receipt["observed_at"],
+            "http_status": receipt["status"],
+            "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+            "release_date": None,
+            "release_date_unknown_reason":
+                "The geonames MapServer publishes no per-snapshot release "
+                "date; its copyrightText records a service refresh (October "
+                "2026) and USGS documents that GNIS names data products are "
+                "refreshed every other month.",
+            "license": "Public domain (U.S. Government work) per the producer "
+                       "service; rights acceptance pending.",
+            "attribution": "USGS The National Map: Geographic Names "
+                           "Information System (GNIS); formal attribution "
+                           "terms require maintainer review."})
     manifest = {
         "schema_version": 1, "approved": False,
         "title": "Populated Places (USGS GNIS gazetteer)",
@@ -1274,29 +1332,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                    "access or use constraints. Rights acceptance pending.",
         "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
-        "inputs": [{"input_id": name, "producer": PUBLISHER,
-                    "host": urlsplit(receipt["url"]).hostname,
-                    "role": "producer_publication", "canonical_url": SERVICE_URL,
-                    "retrieval_url": receipt["url"],
-                    "observed_final_url": receipt["final_url"],
-                    "retrieved_at": receipt["observed_at"],
-                    "http_status": receipt["status"],
-                    "bytes": receipt["bytes"], "sha256": receipt["sha256"],
-                    "release_date": None,
-                    "release_date_unknown_reason":
-                        "The geonames MapServer publishes no per-snapshot release "
-                        "date; its copyrightText records a service refresh (October "
-                        "2026) and USGS documents that GNIS names data products are "
-                        "refreshed every other month.",
-                    "license": "Public domain (U.S. Government work) per the producer "
-                               "service; rights acceptance pending.",
-                    "attribution": "USGS The National Map: Geographic Names "
-                                   "Information System (GNIS); formal attribution "
-                                   "terms require maintainer review."}
-                   for name, receipt in sorted(receipts.items())],
+        "inputs": manifest_inputs,
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {
                                  "layer_id": LAYER_ID,
+                                 "page_url_provenance": _PAGE_URL_PROVENANCE_NOTE,
                                  "population": "the complete enumerated OBJECTID roster "
                                                "captured as adaptively bisected "
                                                "objectIds pages (full Populated "
