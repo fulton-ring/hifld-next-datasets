@@ -23,7 +23,12 @@ return exactly its expected id slice, the accepted segments must tile the
 complete roster without gaps or overlaps, and before/after count/roster/
 service/layer brackets prove that nothing was skipped, duplicated, or
 reordered. A single-record segment the producer still refuses ends the capture
-explicitly rather than guessing.
+explicitly rather than guessing. Every captured query page must carry a
+top-level ``hasZ: true`` and must not carry ``hasM: true``; the producer's
+responses for this Z-only layer omit the top-level ``hasM`` key entirely
+(observed on every captured page) while the layer document declares
+``hasM: false``, and M ordinates stay structurally refused by the
+three-ordinate vertex contract.
 
 The per-value and per-geometry baseline digests, geometry gate counts and
 observed bounds are computed and reported by ``build_nhd_catchment_baseline``
@@ -848,7 +853,7 @@ class _SegmentStream:
             raise NhdCatchmentError("source_page_spatial_reference_drift:" + page_name)
         if page.get("objectIdFieldName") != "OBJECTID":
             raise NhdCatchmentError("source_id_field_changed:" + page_name)
-        if page.get("hasZ") is not True or page.get("hasM") is not False:
+        if page.get("hasZ") is not True or page.get("hasM") is True:
             raise NhdCatchmentError("source_page_z_or_m_flag_missing:" + page_name)
         features = page.get("features")
         if not isinstance(features, list) or len(features) != count:

@@ -129,7 +129,7 @@ class JSONStream(httpx.SyncByteStream):
 
 def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
                    service=None, alias=None, layer=None, doc_page=None,
-                   refuse_counts=()) -> httpx.MockTransport:
+                   refuse_counts=(), page_has_m=None) -> httpx.MockTransport:
     count = count if count is not None else len(rows)
     objectids = ids if ids is not None else list(FIXTURE_OBJECTIDS)
     layer_fields = layer_fields if layer_fields is not None else _fixture_layer_fields()
@@ -176,13 +176,15 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
                     headers={"content-type": "application/json"})
             slice_ids = objectids[offset:offset + record_count]
             features = rows[offset:offset + record_count]
-            return httpx.Response(200, stream=JSONStream(
-                {"objectIdFieldName": "OBJECTID",
-                 "spatialReference": {"wkid": src.SOURCE_CRS_WKID,
-                                      "latestWkid": src.SOURCE_CRS_WKID},
-                 "hasZ": True, "hasM": False, "features": features,
-                 "exceededTransferLimit": False}),
-                headers={"content-type": "application/json"})
+            page = {"objectIdFieldName": "OBJECTID",
+                    "spatialReference": {"wkid": src.SOURCE_CRS_WKID,
+                                         "latestWkid": src.SOURCE_CRS_WKID},
+                    "hasZ": True, "features": features,
+                    "exceededTransferLimit": False}
+            if page_has_m is not None:
+                page["hasM"] = page_has_m
+            return httpx.Response(200, stream=JSONStream(page),
+                                  headers={"content-type": "application/json"})
         raise AssertionError(f"unrouted request {request.url}")
 
     return httpx.MockTransport(respond)
@@ -480,6 +482,7 @@ class NhdCatchmentTests(unittest.TestCase):
                        "geometryType": "esriGeometryPolyline"}),
             "source_layer_z_or_m_contract_drift": dict(
                 layer={**_fixture_layer_doc(_fixture_layer_fields()), "hasM": True}),
+            "source_page_z_or_m_flag_missing": dict(page_has_m=True),
             "source_record_limit_drift": dict(
                 layer={**_fixture_layer_doc(_fixture_layer_fields()), "maxRecordCount": 2000}),
             "source_layer_extent_drift": dict(
