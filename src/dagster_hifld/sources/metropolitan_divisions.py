@@ -373,9 +373,16 @@ def acquire_published_baseline(storage, baseline_dir=None):
                 raise MetdivQuarantineError('published_baseline_receipt_pin_changed:'+key)
         raw_key=f'_raw-captures/{SLUG}/baseline/{spec["generation"]}/{filename}'
         immutable(storage,raw_key,body)
-        immutable(storage,raw_key+'.receipt.json',encode(receipt))
+        # Every live GET stamps a fresh observed_at, so receipt bytes are not
+        # reproducible; retain each receipt under a content-addressed key (like
+        # the original capture receipt). A fixed name would make any rerun with
+        # unchanged inputs fail its own immutable capture. The body key plus the
+        # byte/generation/hash pins above still quarantine every real drift.
+        receipt_body=encode(receipt)
+        receipt_key=raw_key+'.receipt-'+digest(receipt_body)+'.json'
+        immutable(storage,receipt_key,receipt_body)
         blobs[key]=body;receipts[key]={'url':spec['url'],'generation':spec['generation'],'bytes':len(body),
-            'md5':md5,'sha256':digest(body),'capture_key':raw_key,'receipt_sha256':digest(encode(receipt))}
+            'md5':md5,'sha256':digest(body),'capture_key':raw_key,'receipt_key':receipt_key,'receipt_sha256':digest(receipt_body)}
     return blobs,receipts
 
 

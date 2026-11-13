@@ -3,6 +3,7 @@ import hashlib
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 import subprocess
@@ -49,6 +50,58 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
     def receipt(self, body=b"x"):
         return {"url": source.URL, "final_url": source.URL, "status": 200, "bytes": len(body),
                 "sha256": source.digest(body), "complete_body": True, "observed_at": "2026-10-19T00:00:00Z"}
+
+    def synthetic_baseline(self):
+        """Synthetic pinned GCS baseline: one collection plus five full assets."""
+        assets = {}
+        bodies = {}
+        for key, name, fmt in (
+            ("geojson-synthetic", "metropolitan-divisions-2-geojson.geojson", "geojson"),
+            ("geopackage-synthetic", "metropolitan-divisions-2.gpkg", "geopackage"),
+            ("geoparquet-synthetic", "metropolitan-divisions-2.parquet", "geoparquet"),
+            ("pmtiles-synthetic", "metropolitan-divisions-2.pmtiles", "pmtiles"),
+            ("shapefile-synthetic", "metropolitan-divisions-2.zip", "shapefile_zip"),
+        ):
+            body = f"synthetic-{key}".encode()
+            url = f"https://baseline.test/{name}"
+            assets[key] = {"name": name, "format": fmt, "url": url, "bytes": len(body),
+                "generation": f"1791506395{len(body):04d}", "md5": hashlib.md5(body).hexdigest(),
+                "collection_checksum": "d50110" + hashlib.md5(body).hexdigest(), "sha256": source.digest(body)}
+            bodies[key] = body
+        collection = {"hifld:feature_count": 37, "hifld:agency": "U.S. Census Bureau", "hifld:geometry_type": "MultiPolygon",
+            "assets": {key: {"href": spec["url"], "file:size": spec["bytes"], "file:checksum": spec["collection_checksum"]}
+                       for key, spec in assets.items()}}
+        bodies["collection"] = json.dumps(collection).encode()
+        specs = {"name": "collection.json", "url": "https://baseline.test/collection.json", "bytes": len(bodies["collection"]),
+            "generation": "1791506395736945", "md5": hashlib.md5(bodies["collection"]).hexdigest(),
+            "sha256": source.digest(bodies["collection"])}
+        served = {}
+        generations = {}
+        etags = {}
+        for key, spec in {**assets, "collection": specs}.items():
+            url = spec["url"] + "?generation=" + spec["generation"]
+            served[url] = bodies[key]
+            generations[url] = spec["generation"]
+            etags[url] = f'"{spec["md5"]}"'
+
+        def handler(request):
+            url = str(request.url)
+            return httpx.Response(200, content=served[url], headers={"content-length": str(len(served[url])),
+                "x-goog-generation": generations[url], "etag": etags[url]})
+
+        real_client = httpx.Client
+
+        def client_factory(**kwargs):
+            return real_client(transport=httpx.MockTransport(handler), follow_redirects=kwargs.get("follow_redirects", False),
+                timeout=kwargs.get("timeout", 60))
+
+        return assets, specs, bodies, client_factory
+
+    def counting_clock(self):
+        """Deterministic strictly increasing wall clock for receipt observed_at."""
+        ticks = iter(range(1, 10_000))
+        return type("Clock", (), {"now": staticmethod(
+            lambda tz=None: datetime(2026, 11, 13, 0, 0, 0, next(ticks), tz or timezone.utc))})
 
     def test_registered_source_and_refresh_stopped(self):
         from dagster_hifld.assets.metropolitan_divisions import census_metropolitan_divisions
@@ -127,54 +180,14 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
                 self.assertEqual(protected.read_bytes(), b"keep")
 
     def test_live_baseline_http_branch_populates_receipt_sha256_and_pins_capture(self):
-        assets = {}
-        served = {}
-        generations = {}
-        for key, name, fmt in (
-            ("geojson-synthetic", "metropolitan-divisions-2-geojson.geojson", "geojson"),
-            ("geopackage-synthetic", "metropolitan-divisions-2.gpkg", "geopackage"),
-            ("geoparquet-synthetic", "metropolitan-divisions-2.parquet", "geoparquet"),
-            ("pmtiles-synthetic", "metropolitan-divisions-2.pmtiles", "pmtiles"),
-            ("shapefile-synthetic", "metropolitan-divisions-2.zip", "shapefile_zip"),
-        ):
-            body = f"synthetic-{key}".encode()
-            url = f"https://baseline.test/{name}"
-            assets[key] = {"name": name, "format": fmt, "url": url, "bytes": len(body),
-                "generation": f"1791506395{len(body):04d}", "md5": hashlib.md5(body).hexdigest(),
-                "collection_checksum": "d50110" + hashlib.md5(body).hexdigest(), "sha256": source.digest(body)}
-            served[url + "?generation=" + assets[key]["generation"]] = body
-            generations[url + "?generation=" + assets[key]["generation"]] = assets[key]["generation"]
-        collection = {"hifld:feature_count": 37, "hifld:agency": "U.S. Census Bureau", "hifld:geometry_type": "MultiPolygon",
-            "assets": {key: {"href": spec["url"], "file:size": spec["bytes"], "file:checksum": spec["collection_checksum"]}
-                       for key, spec in assets.items()}}
-        collection_body = json.dumps(collection).encode()
-        collection_url = "https://baseline.test/collection.json"
-        collection_generation = "1791506395736945"
-        served[collection_url + "?generation=" + collection_generation] = collection_body
-        generations[collection_url + "?generation=" + collection_generation] = collection_generation
-        specs = {"name": "collection.json", "url": collection_url, "bytes": len(collection_body),
-            "generation": collection_generation, "md5": hashlib.md5(collection_body).hexdigest(),
-            "sha256": source.digest(collection_body)}
-
-        def handler(request):
-            url = str(request.url)
-            body = served[url]
-            return httpx.Response(200, content=body, headers={"content-length": str(len(body)),
-                "x-goog-generation": generations[url], "etag": f'"{hashlib.md5(body).hexdigest()}"'})
-
-        real_client = httpx.Client
-
-        def client_factory(**kwargs):
-            return real_client(transport=httpx.MockTransport(handler), follow_redirects=kwargs.get("follow_redirects", False),
-                timeout=kwargs.get("timeout", 60))
-
+        assets, specs, bodies, client_factory = self.synthetic_baseline()
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp)
             with patch.object(source.httpx, "Client", client_factory), \
                  patch.object(source, "BASELINE_COLLECTION", specs), patch.object(source, "BASELINE_ASSETS", assets):
                 blobs, receipts = source.acquire_published_baseline(storage)
             self.assertEqual(set(blobs), {"collection", *assets})
-            self.assertEqual(blobs["collection"], collection_body)
+            self.assertEqual(blobs["collection"], bodies["collection"])
             for key, spec in {**assets, "collection": specs}.items():
                 with self.subTest(key=key):
                     summary = receipts[key]
@@ -184,19 +197,55 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
                     self.assertEqual(summary["generation"], spec["generation"])
                     captured_key = (f"_raw-captures/{source.SLUG}/baseline/{spec['generation']}/"
                                     + ("collection.json" if key == "collection" else spec["name"]))
-                    self.assertEqual(storage.read_key(captured_key), served[spec["url"] + "?generation=" + spec["generation"]])
-                    raw = source.strict_json(storage.read_key(captured_key + ".receipt.json"))
+                    self.assertEqual(summary["capture_key"], captured_key)
+                    self.assertEqual(storage.read_key(captured_key), bodies[key])
+                    raw = source.strict_json(storage.read_key(summary["receipt_key"]))
+                    self.assertEqual(summary["receipt_key"],
+                                     captured_key + ".receipt-" + summary["receipt_sha256"] + ".json")
+                    self.assertEqual(source.digest(storage.read_key(summary["receipt_key"])), summary["receipt_sha256"])
                     self.assertEqual(raw["sha256"], spec["sha256"])
                     self.assertEqual(raw["bytes"], spec["bytes"])
                     self.assertEqual(raw["generation"], spec["generation"])
                     self.assertEqual(raw["etag"], f'"{spec["md5"]}"')
                     self.assertEqual(raw["status"], 200)
                     self.assertTrue(raw["complete_body"])
-            smaller = {**specs, "bytes": len(collection_body) - 1}
+            smaller = {**specs, "bytes": len(bodies["collection"]) - 1}
             with patch.object(source.httpx, "Client", client_factory), \
                  patch.object(source, "BASELINE_COLLECTION", smaller), patch.object(source, "BASELINE_ASSETS", assets), \
                  self.assertRaisesRegex(ValueError, "published_baseline_oversized_response:collection"):
                 source.acquire_published_baseline(storage)
+
+    def test_repeated_live_baseline_acquisition_on_same_storage_is_repeatable(self):
+        assets, specs, bodies, client_factory = self.synthetic_baseline()
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp)
+            with patch.object(source.httpx, "Client", client_factory), \
+                 patch.object(source, "BASELINE_COLLECTION", specs), patch.object(source, "BASELINE_ASSETS", assets), \
+                 patch.object(source, "datetime", self.counting_clock()):
+                first_blobs, first_receipts = source.acquire_published_baseline(storage)
+                second_blobs, second_receipts = source.acquire_published_baseline(storage)
+            self.assertEqual(first_blobs, second_blobs)
+            for key, spec in {**assets, "collection": specs}.items():
+                with self.subTest(key=key):
+                    name = "collection.json" if key == "collection" else spec["name"]
+                    body_key = f"_raw-captures/{source.SLUG}/baseline/{spec['generation']}/{name}"
+                    self.assertEqual(first_receipts[key]["capture_key"], second_receipts[key]["capture_key"])
+                    self.assertNotEqual(first_receipts[key]["receipt_key"], second_receipts[key]["receipt_key"])
+                    for receipts in (first_receipts, second_receipts):
+                        stored = storage.read_key(receipts[key]["receipt_key"])
+                        self.assertEqual(receipts[key]["receipt_key"], body_key + ".receipt-" + source.digest(stored) + ".json")
+                        parsed = source.strict_json(stored)
+                        self.assertEqual(parsed["sha256"], spec["sha256"])
+                        self.assertEqual(parsed["bytes"], spec["bytes"])
+                        self.assertEqual(parsed["generation"], spec["generation"])
+                        self.assertEqual(parsed["status"], 200)
+                        self.assertTrue(parsed["complete_body"])
+            with patch.object(source.httpx, "Client", client_factory), \
+                 patch.object(source, "BASELINE_COLLECTION", specs), patch.object(source, "BASELINE_ASSETS", assets), \
+                 patch.object(source, "datetime", self.counting_clock()):
+                storage.write_key(first_receipts["collection"]["capture_key"], b"tampered-baseline-body")
+                with self.assertRaisesRegex(source.MetdivQuarantineError, "immutable_capture_changed"):
+                    source.acquire_published_baseline(storage)
 
     def test_default_ingest_path_stages_candidate_with_default_baseline_wiring(self):
         comparison = {"baseline_collection": {}, "baseline_artifacts": {}, "baseline_receipts": {}, "formats": {},
@@ -238,6 +287,56 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
             self.assertFalse(ready["approved"])
             self.assertEqual(ready["source_sha256"], source.digest(b"x"))
             self.assertTrue(ready["version"].startswith("v0.0.0-draft-census2026-"))
+
+    def test_second_default_staging_run_reuses_candidate_and_repeats_live_baseline(self):
+        assets, specs, bodies, client_factory = self.synthetic_baseline()
+        url = "https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_nationgeo.gdb.zip"
+        receipt = {"url": url, "final_url": url, "status": 200, "bytes": 1,
+            "sha256": source.digest(b"x"), "complete_body": True, "observed_at": "2026-11-13T00:00:00Z"}
+        definition = {"definition_xml": "<DEFeatureClassInfo/>", "fields": {"OBJECTID": {"FieldType": "esriFieldTypeOID"}},
+            "driver_oid_representation": "test", "draft_output_oid_representation": "test"}
+        comparison = {"baseline_collection": {}, "baseline_artifacts": {}, "baseline_receipts": {}, "formats": {},
+            "comparison_status": "breaking_change_review_required", "source_schema_contract_approved": False,
+            "source_id_contract_approved": False, "baseline_approved": False, "release_approved": False}
+        identity = {"test": True, "code_commit": "b" * 40, "files": {}}
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp)
+            with patch.object(source, "acquire", return_value=(b"x", receipt)) as acquire, \
+                 patch.object(source, "URL", url), patch.object(source, "BYTES", 1), \
+                 patch.object(source, "SHA256", source.digest(b"x")), \
+                 patch.object(source, "inspect_archive", return_value=({**self.metadata, "native_layer_definition": definition},
+                                                                        self.table, {})), \
+                 patch.object(source, "processing_identity", return_value=identity), \
+                 patch.object(source, "compare_published_baseline", side_effect=lambda table, blobs: dict(comparison)), \
+                 patch.object(source.httpx, "Client", client_factory), \
+                 patch.object(source, "BASELINE_COLLECTION", specs), patch.object(source, "BASELINE_ASSETS", assets), \
+                 patch.object(source, "datetime", self.counting_clock()), \
+                 patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                first = source.stage_metdiv_candidate(storage)
+                second = source.stage_metdiv_candidate(storage)
+            self.assertEqual(acquire.call_count, 2)
+            self.assertFalse(first["reused"])
+            self.assertTrue(second["reused"])
+            self.assertEqual(first["version"], second["version"])
+            self.assertEqual(first["feature_count"], second["feature_count"])
+            baseline_keys = set(storage.list_prefix(f"_raw-captures/{source.SLUG}/baseline/"))
+            for key, spec in {**assets, "collection": specs}.items():
+                name = "collection.json" if key == "collection" else spec["name"]
+                body_key = f"_raw-captures/{source.SLUG}/baseline/{spec['generation']}/{name}"
+                receipt_keys = sorted(item for item in baseline_keys
+                                      if item.startswith(body_key + ".receipt-") and item.endswith(".json"))
+                with self.subTest(key=key):
+                    self.assertEqual(storage.read_key(body_key), bodies[key])
+                    self.assertEqual(len(receipt_keys), 2)
+                    for receipt_key in receipt_keys:
+                        stored = storage.read_key(receipt_key)
+                        self.assertEqual(receipt_key, body_key + ".receipt-" + source.digest(stored) + ".json")
+                        parsed = source.strict_json(stored)
+                        self.assertEqual(parsed["sha256"], spec["sha256"])
+                        self.assertEqual(parsed["bytes"], spec["bytes"])
+                        self.assertEqual(parsed["generation"], spec["generation"])
+                        self.assertEqual(parsed["status"], 200)
+                        self.assertTrue(parsed["complete_body"])
 
     def test_cached_outputs_are_rederived_from_original_native_rows(self):
         expected = source.expected_parquet_table(self.table)
