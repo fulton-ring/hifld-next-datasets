@@ -40,7 +40,8 @@ class UsaceObstructionAreasTests(unittest.TestCase):
                        "by the US Army Corps (USACE)/Army Geospatial Center (AGC). "
                        "Web mapping services: https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes. "
                        "Data geodatabase: USACE_IENC_Master_Service_gdb.zip")
-        item = {"id": "3607d485a9854d6fa458bf507058ceae", "owner": "USDOT_BTS",
+        item = {"id": "7ec34864c8804468a9cf52d437fe4b6c", "owner": "USDOT_BTS",
+                "type": "PDF", "access": "public",
                 "title": "Inland Electronic Navigational Charts", "description": description}
         attributes = {name: None for name, _kind in EXPECTED_FIELDS if name != "SHAPE"}
         attributes.update({"OBJECTID": 12, "Category_of_Obstruction": "Obstruction",
@@ -49,7 +50,7 @@ class UsaceObstructionAreasTests(unittest.TestCase):
             "rings": [[[-90, 35, 2], [-90, 36, 2], [-89, 36, 2], [-89, 35, 2], [-90, 35, 2]]],
             "hasZ": True, "hasM": False, "spatialReference": spatial_reference}}
         docs = {
-            "official_item": item,
+            "bts_item": item,
             "service_before": service,
             "service_after": service,
             "layer_before": layer,
@@ -94,8 +95,35 @@ class UsaceObstructionAreasTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "page_error_or_truncation"):
             _validate(captures)
 
+    def test_rejects_obsolete_bts_distribution_metadata(self):
+        obsolete_live_body = json.dumps(
+            {"error": {"code": 403, "messageCode": "GWM_0003",
+                       "message": "You do not have permissions to access this resource or perform this operation.",
+                       "details": []}}).encode()
+        captures = self._captures()
+        captures["bts_item"] = (obsolete_live_body, {})
+        with self.assertRaisesRegex(ValueError, "official_bts_distribution_reference_drift"):
+            _validate(captures)
+
+        for field, value in (("id", "3607d485a9854d6fa458bf507058ceae"), ("owner", "Somewhere_Else"),
+                             ("type", "Map Service"), ("access", "private")):
+            captures = self._captures()
+            item = json.loads(captures["bts_item"][0])
+            item[field] = value
+            captures["bts_item"] = (json.dumps(item).encode(), {})
+            with self.assertRaisesRegex(ValueError, "official_bts_distribution_reference_drift"):
+                _validate(captures)
+
+        captures = self._captures()
+        item = json.loads(captures["bts_item"][0])
+        item["description"] = "Description without the service reference."
+        captures["bts_item"] = (json.dumps(item).encode(), {})
+        with self.assertRaisesRegex(ValueError, "official_bts_distribution_reference_drift"):
+            _validate(captures)
+
     def test_capture_roster_uses_native_layer_and_bounded_pages(self):
         roster = _capture_roster(list(range(1, 252)))
+        self.assertIn(("bts_item", "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json"), roster)
         self.assertIn(("layer_before", "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/OBSTRUCTION_AREA/MapServer/81?f=pjson"), roster)
         self.assertEqual([name for name, _url in roster if name.startswith("page_")], ["page_000", "page_001"])
 

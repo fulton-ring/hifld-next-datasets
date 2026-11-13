@@ -37,8 +37,9 @@ FILE_SLUG = DATASET_SLUG
 SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/OBSTRUCTION_AREA/MapServer"
 LAYER_URL = SERVICE_URL + "/81"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; distributed through USDOT/BTS NTAD"
-OFFICIAL_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
-OFFICIAL_ITEM_URL = "https://www.arcgis.com/sharing/rest/content/items/" + OFFICIAL_ITEM_ID + "?f=json"
+PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+CURRENT_BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
+BTS_ITEM_URL = "https://www.arcgis.com/sharing/rest/content/items/" + CURRENT_BTS_ITEM_ID + "?f=json"
 PAGE_SIZE = 250
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"), ("SHAPE", "esriFieldTypeGeometry"),
@@ -65,7 +66,7 @@ def _query(params: dict[str, object], *, layer_url: str = LAYER_URL) -> str:
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("official_item", OFFICIAL_ITEM_URL),
+    urls = [("bts_item", BTS_ITEM_URL),
             ("service_before", SERVICE_URL + "?f=pjson"),
             ("layer_before", LAYER_URL + "?f=pjson"),
             ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"}))]
@@ -99,13 +100,17 @@ def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]]) -> str:
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
-    item = docs["official_item"]
-    if (item.get("id") != OFFICIAL_ITEM_ID or item.get("owner") != "USDOT_BTS"
-            or item.get("title") != "Inland Electronic Navigational Charts"
-            or "bi-monthly" not in item.get("description", "")
-            or "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes" not in item.get("description", "")
-            or "USACE_IENC_Master_Service_gdb.zip" not in item.get("description", "")):
-        raise ValueError("official_bts_lineage_metadata_changed")
+    item = docs["bts_item"]
+    description = item.get("description")
+    if (item.get("id") != CURRENT_BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
+            or item.get("type") != "PDF" or item.get("access") != "public"
+            or not isinstance(item.get("title"), str)
+            or "Inland Electronic Navigational Charts" not in item["title"]
+            or not isinstance(description, str)
+            or "bi-monthly" not in description
+            or "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes" not in description
+            or "USACE_IENC_Master_Service_gdb.zip" not in description):
+        raise ValueError("official_bts_distribution_reference_drift")
     service = docs["service_before"]
     advertised = service.get("layers")
     if not isinstance(advertised, list) or [(x.get("id"), x.get("name")) for x in advertised if isinstance(x, dict)] != [(81, "OBSTRUCTION_AREA")]:
@@ -224,7 +229,7 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
             ids = json.loads(ids_body).get("objectIds")
             if not isinstance(ids, list):
                 raise ValueError("retained_id_seed_invalid")
-            names = ["official_item", "service_before", "layer_before", "count_before", "ids_before",
+            names = ["bts_item", "service_before", "layer_before", "count_before", "ids_before",
                      *[f"page_{i:03d}" for i in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)],
                      "layer_after", "count_after", "ids_after", "service_after"]
             if set(retained.get("receipts", {})) != set(names):
@@ -290,14 +295,15 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
             "source_ids": "OBJECTID and Feature_ID values retained unchanged",
             "geometry": "Polygon rings preserved in raw Esri JSON; source EPSG:4326; no reprojection or geometry repair",
             "candidate_status": "unapproved; source release, baseline, schema/ID, coverage and rights remain pending"}}],
-        "lineage": f"USDOT/BTS IENC item {OFFICIAL_ITEM_ID} links the USACE IENC Feature Classes service and master geodatabase. This candidate contains the complete OBSTRUCTION_AREA layer only.",
+        "lineage": f"Current public BTS IENC PDF item {CURRENT_BTS_ITEM_ID} links the official USACE IENC Feature Classes service and master geodatabase and describes the bi-monthly USACE/AGC update cadence. The previous BTS map-service item {PRIOR_BTS_ITEM_ID} returned an anonymous-access denial (ArcGIS error 403/GWM_0003) on 2026-11-13; succession continuity is recorded but not accepted. This candidate contains the complete OBSTRUCTION_AREA layer only.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Faithful unapproved native-layer candidate.",
             "objects": [{"path": output_path, "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
         "unsupported_output_formats": {"geopackage": "No approved mapping or GDB cross-check.", "pmtiles": "No display transformation approved."}}
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
     audit.update({"source_fields": fields, "official_layer_name": "OBSTRUCTION_AREA", "official_layer_id": 81,
-        "official_source_item": OFFICIAL_ITEM_ID, "source_release_accepted": False,
+        "official_source_item": "USDOT_BTS " + CURRENT_BTS_ITEM_ID, "bts_item_succession_accepted": False,
+        "source_release_accepted": False,
         "source_freshness_accepted": False, "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False, "release_accepted": False})
     (root / "capture_manifest.json").write_bytes(_canonical({"captured_at": datetime.now(timezone.utc).isoformat(),
