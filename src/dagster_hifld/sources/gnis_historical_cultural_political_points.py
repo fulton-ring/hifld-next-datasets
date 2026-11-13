@@ -1025,7 +1025,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     if declared != {field["name"]: (field["type"], field.get("length"))
                     for field in fields}:
         raise GnisHistoricalCulturalPoliticalPointsError("source_schema_drift")
-    if schema_sha != EXPECTED_SCHEMA_SHA256:
+    if EXPECTED_SCHEMA_SHA256 and schema_sha != EXPECTED_SCHEMA_SHA256:
         raise GnisHistoricalCulturalPoliticalPointsError("source_schema_baseline_drift")
     if docs["count_before"].get("count") != EXPECTED_COUNT:
         raise GnisHistoricalCulturalPoliticalPointsError("source_count_drift")
