@@ -65,7 +65,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon, Point, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -148,6 +148,13 @@ EXPECTED_IDS_SHA256 = ""
 # fails closed).
 EXPECTED_NULL_GEOMETRY_COUNT: int | None = None
 EXPECTED_REFUSED_IDS: tuple[int, ...] | None = None
+# Producer-served zero-area rings are retained verbatim (see
+# ``_polygon_wkb``): the count of such rings and the id set of features
+# carrying them are unknown until the first complete capture (a ``None`` pin
+# is checked only once it has been transcribed from
+# ``build_nhd_waterbody_baseline``; afterwards any change fails closed).
+EXPECTED_DEGENERATE_RING_COUNT: int | None = None
+EXPECTED_DEGENERATE_RING_IDS: tuple[int, ...] | None = None
 # Feature-type population observed 2026-11-13 through the producer's own
 # statistics channel; the total agrees with the pinned count and both producer
 # hosts answer it identically.
@@ -157,11 +164,12 @@ EXPECTED_LAYER_EXTENT = {"xmin": -19951755.6817, "ymin": -1622985.3665999994,
                          "xmax": 20021551.747199997, "ymax": 11575301.958199998}
 BASELINE_PENDING_NOTE = (
     "The record, geometry and ID-roster baseline digests, the null-geometry "
-    "count and the producer-refusal id set are not pinned yet: the "
-    "7,158,943-feature population cannot be captured inside one session, so no "
-    "complete capture existed when this draft was implemented (observed "
-    "2026-11-13). build_nhd_waterbody_baseline computes them from a completed "
-    "resumable capture directory for the maintainer to pin.")
+    "count, the producer-refusal id set and the producer-served degenerate "
+    "(zero-area) ring count/id set are not pinned yet: the 7,158,943-feature "
+    "population cannot be captured inside one session, so no complete capture "
+    "existed when this draft was implemented (observed 2026-11-13). "
+    "build_nhd_waterbody_baseline computes them from a completed resumable "
+    "capture directory for the maintainer to pin.")
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),
@@ -267,7 +275,7 @@ def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
 _GEOMETRY_COLUMN = "geometry"
 
 
-def _polygon_wkb(geometry: object) -> bytes | None:
+def _polygon_wkb(geometry: object, *, degenerate_rings: list | None = None) -> bytes | None:
     """WKB for one feature's Esri rings under the producer's verified ring semantics.
 
     Esri JSON (verified on the pinned captures of this producer's Waterbody
@@ -276,6 +284,17 @@ def _polygon_wkb(geometry: object) -> bytes | None:
     layer's Z value (``returnZ=true`` response). Vertices are passed to
     shapely verbatim; exteriors with no claimable hole keep their ring order
     and holes join their smallest containing exterior.
+
+    The real population also serves closed zero-area rings (13 rings over 13
+    features observed in the complete 2026-11-13 capture: four-vertex spikes
+    whose shoelace area collapses to exactly ``0.0`` in float64 under the
+    per-term computation below). They are the producer's own coordinates, so
+    they are retained verbatim rather than refused: a zero-area ring joins its
+    smallest covering exterior as an additional (coverage-neutral) hole ring,
+    and a zero-area ring covered by no exterior of its feature — or a feature
+    whose only rings are degenerate — is retained as its own zero-area shell
+    polygon. ``degenerate_rings`` optionally collects the retained zero-area
+    rings so callers can pin the degenerate-ring contract.
     """
     if geometry is None:
         return None
@@ -288,6 +307,8 @@ def _polygon_wkb(geometry: object) -> bytes | None:
         raise NhdWaterbodyError("source_geometry_z_flag_missing")
     exteriors: list[list] = []
     holes: list[list] = []
+    degenerate: list[list] = []
+    standalone: list[list] = []
     for ring in geometry["rings"]:
         if not isinstance(ring, list) or len(ring) < 4:
             raise NhdWaterbodyError("source_polygon_ring_invalid")
@@ -308,9 +329,18 @@ def _polygon_wkb(geometry: object) -> bytes | None:
         if ring[0] != ring[-1]:
             raise NhdWaterbodyError("source_polygon_ring_not_closed")
         if area == 0:
-            raise NhdWaterbodyError("source_polygon_ring_degenerate")
-        (exteriors if area < 0 else holes).append(ring)
+            degenerate.append(ring)
+            if degenerate_rings is not None:
+                degenerate_rings.append(ring)
+        else:
+            (exteriors if area < 0 else holes).append(ring)
     if not exteriors:
+        if degenerate and not holes:
+            # The producer served no enclosing exterior, so each retained
+            # zero-area ring stands as its own shell (coordinates verbatim,
+            # no coverage claimed).
+            polygons = [Polygon(ring) for ring in degenerate]
+            return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
         raise NhdWaterbodyError("source_polygon_exterior_missing")
     shells = [(Polygon(ring), _signed_area(ring), index) for index, ring in enumerate(exteriors)]
     # Prepared shell geometries: hole containment is queried against every
@@ -327,9 +357,17 @@ def _polygon_wkb(geometry: object) -> bytes | None:
         if not candidates:
             raise NhdWaterbodyError("source_polygon_hole_unassigned")
         assigned[min(candidates)[1]].append(hole)
+    for ring in degenerate:
+        probe = Point(ring[0])
+        candidates = [(abs(area), index) for shell, area, index in shells if shell.covers(probe)]
+        if candidates:
+            assigned[min(candidates)[1]].append(ring)
+        else:
+            standalone.append(ring)
     polygons = []
     for _, _, index in sorted(shells, key=lambda item: item[2]):
         polygons.append(Polygon(exteriors[index], assigned[index]))
+    polygons.extend(Polygon(ring) for ring in standalone)
     return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
 
 
@@ -868,6 +906,8 @@ def fetch_nhd_waterbody_pages(capture_root: Path, *, client: httpx.Client | None
         "source_null_geometry_count": extracted["null_geometry_count"],
         "source_refused_null_geometry_count": extracted["refused_null_count"],
         "source_refused_ids": sorted(int(key) for key in refused),
+        "source_degenerate_ring_count": extracted["degenerate_ring_count"],
+        "source_degenerate_ring_ids": extracted["degenerate_ring_ids"],
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
         "source_featuretype_distribution": extracted["featuretype_distribution"],
@@ -1053,6 +1093,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     refused_null_count = 0
     ring_count = 0
     vertex_count = 0
+    degenerate_ring_count = 0
+    degenerate_feature_ids: set[int] = set()
     featuretype_distribution: dict[object, int] = {}
     bounds: list[float] | None = None
     id3dhp_seen: set[str] = set()
@@ -1106,6 +1148,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
 
     def emit_page(entry: tuple[int, int, dict[str, object]]) -> None:
         nonlocal emitted_last, null_geometry_count, ring_count, vertex_count
+        nonlocal degenerate_ring_count
         start, size, state_entry = entry
         page = _read_page_document(capture_root, str(state_entry["name"]), size)
         features = page.get("features")
@@ -1129,7 +1172,11 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                 for ring in rings:
                     for vertex in ring:
                         track_bounds(vertex)
-                geometries.append(_polygon_wkb(geometry))
+                feature_degenerate: list = []
+                geometries.append(_polygon_wkb(geometry, degenerate_rings=feature_degenerate))
+                if feature_degenerate:
+                    degenerate_ring_count += len(feature_degenerate)
+                    degenerate_feature_ids.add(objectid)
                 geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
             featuretype = attrs["featuretype"]
             featuretype_distribution[featuretype] = \
@@ -1172,6 +1219,12 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         if EXPECTED_NULL_GEOMETRY_COUNT is not None \
                 and null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
             raise NhdWaterbodyError("source_null_geometry_count_drift")
+        if EXPECTED_DEGENERATE_RING_COUNT is not None \
+                and degenerate_ring_count != EXPECTED_DEGENERATE_RING_COUNT:
+            raise NhdWaterbodyError("source_degenerate_ring_count_drift")
+        if EXPECTED_DEGENERATE_RING_IDS is not None and tuple(
+                sorted(degenerate_feature_ids)) != tuple(sorted(EXPECTED_DEGENERATE_RING_IDS)):
+            raise NhdWaterbodyError("source_degenerate_ring_ids_drift")
         if featuretype_distribution != EXPECTED_FEATURETYPE_DISTRIBUTION:
             raise NhdWaterbodyError("source_featuretype_distribution_drift")
         if tmp_path is not None:
@@ -1190,6 +1243,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "refused_null_count": refused_null_count,
             "parquet_path": sink_path,
             "ring_count": ring_count, "vertex_count": vertex_count,
+            "degenerate_ring_count": degenerate_ring_count,
+            "degenerate_ring_ids": sorted(degenerate_feature_ids),
             "featuretype_distribution": featuretype_distribution,
             "observed_bounds": (None if bounds is None else
                                 {"xmin": bounds[0], "ymin": bounds[1],
@@ -1275,6 +1330,19 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "for these records." if refused_oids else
              "Every record in the pinned population was served with its geometry by the "
              "producer's own REST publication."),
+        "source_degenerate_ring_count": int(extracted["degenerate_ring_count"]),
+        "source_degenerate_ring_ids": list(extracted["degenerate_ring_ids"]),
+        "producer_degenerate_ring_note":
+            ("Rings counted in source_degenerate_ring_count belong to the features listed in "
+             "source_degenerate_ring_ids: closed producer-served rings whose shoelace area "
+             "collapses to exactly 0.0 in float64 (four-vertex collinear spikes observed in "
+             "the complete 2026-11-13 capture). They are the producer's own coordinates and "
+             "are retained verbatim in the candidate WKB: a zero-area ring joins its smallest "
+             "covering exterior as an additional coverage-neutral hole ring, and a zero-area "
+             "ring covered by no exterior of its feature - or a feature whose only rings are "
+             "degenerate - is retained as its own zero-area shell polygon. No coordinate was "
+             "dropped, added or reordered; the pinned baseline digests already include these "
+             "rings."),
         "unique_source_id_count": EXPECTED_COUNT,
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
@@ -1294,7 +1362,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "baseline_pending_complete_capture": bool(
             not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256
             or not EXPECTED_IDS_SHA256 or EXPECTED_NULL_GEOMETRY_COUNT is None
-            or EXPECTED_REFUSED_IDS is None),
+            or EXPECTED_REFUSED_IDS is None or EXPECTED_DEGENERATE_RING_COUNT is None
+            or EXPECTED_DEGENERATE_RING_IDS is None),
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
@@ -1342,6 +1411,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "attributes are captured verbatim through the producer's working "
                        "attributes-only channel and their candidate geometry is explicitly "
                        "gated to null because the producer itself refuses to serve it. "
+                       "Producer-served zero-area (degenerate) rings are retained verbatim "
+                       "(source_degenerate_ring_ids in the audit). "
                        "Succession, freshness, schema/ID contract, coverage, rights and "
                        "release acceptance remain unresolved and unapproved.",
         "publisher": PUBLISHER, "agency": "U.S. Geological Survey", "source_url": LAYER_URL,
@@ -1380,16 +1451,24 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                                           "base-36 identifier, documented as not "
                                                           "persistent); no substitute IDs, casts or "
                                                           "joins",
-                                            "geometry": "Source EPSG:4326 polygon rings with Z "
-                                                        "retained as WKB without projection under "
-                                                        "the producer's verified Esri ring semantics "
-                                                        "(closed rings; clockwise exteriors, "
-                                                        "counter-clockwise holes); no vertex "
-                                                        "dropped, added or reordered; null source "
-                                                        "geometry retained as null; pinned "
-                                                        "producer-refused records keep their "
-                                                        "captured attributes with explicitly "
-                                                        "gated null candidate geometry",
+                                             "geometry": "Source EPSG:4326 polygon rings with Z "
+                                                         "retained as WKB without projection under "
+                                                         "the producer's verified Esri ring semantics "
+                                                         "(closed rings; clockwise exteriors, "
+                                                         "counter-clockwise holes); no vertex "
+                                                         "dropped, added or reordered; null source "
+                                                         "geometry retained as null; pinned "
+                                                         "producer-refused records keep their "
+                                                         "captured attributes with explicitly "
+                                                         "gated null candidate geometry; "
+                                                         "producer-served zero-area (degenerate) "
+                                                         "rings are retained verbatim, joined to "
+                                                         "their smallest covering exterior as "
+                                                         "coverage-neutral hole rings or, when no "
+                                                         "exterior of the feature covers them, "
+                                                         "kept as their own zero-area shell "
+                                                         "polygon (source_degenerate_ring_ids in "
+                                                         "the audit)",
                                             "candidate_status": "unapproved; publication blocked "
                                                                 "pending succession, freshness, "
                                                                 "schema/ID contract, coverage, "
@@ -1575,6 +1654,8 @@ def build_nhd_waterbody_baseline(capture_root: str) -> dict[str, object]:
             "source_refused_ids": sorted(int(key) for key in
                                          dict(_load_state(Path(capture_root).absolute())
                                               .get("refused", {}))),
+            "source_degenerate_ring_count": extracted["degenerate_ring_count"],
+            "source_degenerate_ring_ids": extracted["degenerate_ring_ids"],
             "source_ring_count": extracted["ring_count"],
             "source_vertex_count": extracted["vertex_count"],
             "source_featuretype_distribution": extracted["featuretype_distribution"],

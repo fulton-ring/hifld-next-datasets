@@ -77,6 +77,35 @@ def _fixture_rows() -> list[dict]:
              "geometry": _fixture_geometry(oid)} for oid in FIXTURE_OBJECTIDS]
 
 
+# Real producer-served degenerate ring (OBJECTID 279258 in the complete
+# 2026-11-13 capture): a closed four-vertex spike whose shoelace area
+# collapses to exactly 0.0 in float64 under the module's own per-term
+# computation. The 13 rings observed in that capture all have this shape.
+REAL_DEGENERATE_SPIKE = [
+    [-87.28423147967823, 39.571322553363785, 0],
+    [-87.284229168313, 39.57132196270366, 0],
+    [-87.28422989505007, 39.57132238856065, 0],
+    [-87.28423147967823, 39.571322553363785, 0],
+]
+
+
+def _fixture_degenerate_spike() -> list:
+    """Closed zero-area spike strictly inside the fixture oid-8 exterior.
+
+    Every ordinate pair is dyadic, so the shoelace terms telescope exactly to
+    0.0 in float64.
+    """
+    return [[-85.75, 35.5, 105.0], [-85.5, 35.5, 105.0],
+            [-85.25, 35.5, 105.0], [-85.75, 35.5, 105.0]]
+
+
+def _real_spike_exterior() -> list:
+    """Clockwise closed exterior that contains the real observed spike."""
+    points = [[-87.0, 39.5, 100.0], [-87.5, 39.5, 100.0],
+              [-87.5, 39.7, 100.0], [-87.0, 39.7, 100.0]]
+    return [*points, points[0]]
+
+
 def _fixture_layer_fields() -> list[dict]:
     fields = []
     for name, esri_type, nullable, length in src.NATIVE_FIELDS:
@@ -230,7 +259,8 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=None,
                  count=FIXTURE_COUNT, max_objectid=max(FIXTURE_OBJECTIDS),
-                 refused_ids=None, null_geometry_count=None, distribution=None):
+                 refused_ids=None, null_geometry_count=None, distribution=None,
+                 degenerate_count=None, degenerate_ids=None):
     import dagster_hifld.assets.nhd_waterbody as asset_module
     rows = _fixture_rows()
     if distribution is None:
@@ -244,6 +274,8 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
         patch.object(src, "EXPECTED_IDS_SHA256", ""),
         patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", null_geometry_count),
         patch.object(src, "EXPECTED_REFUSED_IDS", refused_ids),
+        patch.object(src, "EXPECTED_DEGENERATE_RING_COUNT", degenerate_count),
+        patch.object(src, "EXPECTED_DEGENERATE_RING_IDS", degenerate_ids),
         patch.object(src, "EXPECTED_FEATURETYPE_DISTRIBUTION", distribution),
         patch.object(asset_module, "EXPECTED_COUNT", count),
         patch.object(src, "_default_client",
@@ -344,6 +376,97 @@ class NhdWaterbodyTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from("<BI", wkb_with_hole, 0), (1, 0x80000003))
         (rings,) = struct.unpack_from("<I", wkb_with_hole, 5)
         self.assertEqual(rings, 2)
+
+    def test_degenerate_zero_area_ring_is_retained_verbatim(self):
+        from shapely import from_wkb
+        collected: list = []
+        geometry = {"hasZ": True, "rings": [_real_spike_exterior(),
+                                            [list(vertex) for vertex in REAL_DEGENERATE_SPIKE]]}
+        wkb = src._polygon_wkb(geometry, degenerate_rings=collected)
+        self.assertEqual(collected, [REAL_DEGENERATE_SPIKE])
+        polygon = from_wkb(wkb)
+        self.assertEqual(polygon.geom_type, "Polygon")
+        self.assertEqual(len(polygon.interiors), 1)
+        self.assertEqual([tuple(vertex) for vertex in polygon.exterior.coords],
+                         [tuple(vertex) for vertex in _real_spike_exterior()])
+        self.assertEqual([tuple(vertex) for vertex in polygon.interiors[0].coords],
+                         [tuple(vertex) for vertex in REAL_DEGENERATE_SPIKE])
+        self.assertAlmostEqual(polygon.area, 0.1)
+
+    def test_degenerate_only_feature_stands_as_zero_area_shell(self):
+        from shapely import from_wkb
+        collected: list = []
+        geometry = {"hasZ": True, "rings": [[list(vertex) for vertex in REAL_DEGENERATE_SPIKE]]}
+        wkb = src._polygon_wkb(geometry, degenerate_rings=collected)
+        self.assertEqual(collected, [REAL_DEGENERATE_SPIKE])
+        self.assertEqual(struct.unpack_from("<BI", wkb, 0), (1, 0x80000003))
+        polygon = from_wkb(wkb)
+        self.assertEqual(polygon.geom_type, "Polygon")
+        self.assertEqual([tuple(vertex) for vertex in polygon.exterior.coords],
+                         [tuple(vertex) for vertex in REAL_DEGENERATE_SPIKE])
+        # The module's own shoelace loop collapses this ring to exactly 0.0;
+        # GEOS's independent summation leaves a ~1e-13 sliver, which is why the
+        # degeneracy contract is defined by the pinned module computation.
+        self.assertLess(polygon.area, 1e-9)
+
+    def test_uncovered_degenerate_ring_becomes_standalone_shell(self):
+        from shapely import from_wkb
+        collected: list = []
+        # The fixture spike sits far from the fixture exterior (two real
+        # producer features serve exactly this shape: a spike no exterior of
+        # the feature covers).
+        geometry = {"hasZ": True, "rings": [_exterior(50.0), _fixture_degenerate_spike()]}
+        wkb = src._polygon_wkb(geometry, degenerate_rings=collected)
+        self.assertEqual(collected, [_fixture_degenerate_spike()])
+        self.assertEqual(struct.unpack_from("<BI", wkb, 0), (1, 0x80000006))
+        (parts,) = struct.unpack_from("<I", wkb, 5)
+        self.assertEqual(parts, 2)
+        multipolygon = from_wkb(wkb)
+        self.assertEqual(multipolygon.geom_type, "MultiPolygon")
+        self.assertEqual(multipolygon.geoms[0].area, 1.0)
+        self.assertEqual([tuple(vertex) for vertex in multipolygon.geoms[1].exterior.coords],
+                         [tuple(vertex) for vertex in _fixture_degenerate_spike()])
+        self.assertLess(multipolygon.geoms[1].area, 1e-9)
+
+    def test_degenerate_pin_contract_fails_closed_after_transcription(self):
+        rows = _fixture_rows()
+        rows[4]["geometry"]["rings"].append(_fixture_degenerate_spike())
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            storage = _staging(root)
+            with fixture_mode(schema_sha, transport):
+                first = src.capture_nhd_waterbody(storage, version="degen-run",
+                                                  capture_directory=str(capture_root))
+                self.assertFalse(first["reused"])
+                baseline = src.build_nhd_waterbody_baseline(str(capture_root))
+                self.assertEqual(baseline["source_degenerate_ring_count"], 1)
+                self.assertEqual(baseline["source_degenerate_ring_ids"], [8])
+                audit = json.loads((root / "staging" / src.DATASET_SLUG / src.FILE_SLUG
+                                    / first["version"] / "metadata"
+                                    / "source_audit.json").read_bytes())
+                self.assertEqual(audit["source_degenerate_ring_count"], 1)
+                self.assertEqual(audit["source_degenerate_ring_ids"], [8])
+                self.assertTrue(audit["baseline_pending_complete_capture"])
+                self.assertIn("coverage-neutral", audit["producer_degenerate_ring_note"])
+                table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+                self.assertEqual(table.num_rows, FIXTURE_COUNT)
+            with fixture_mode(schema_sha, transport, degenerate_count=1,
+                              degenerate_ids=(8,)):
+                second = src.capture_nhd_waterbody(storage, version="degen-run-2",
+                                                   capture_directory=str(capture_root))
+                self.assertEqual(second["version"], first["version"])
+                self.assertTrue(second["reused"])
+            with fixture_mode(schema_sha, transport, degenerate_ids=(9,)):
+                with self.assertRaisesRegex(src.NhdWaterbodyError,
+                                            "source_degenerate_ring_ids_drift"):
+                    src.build_nhd_waterbody_baseline(str(capture_root))
+            with fixture_mode(schema_sha, transport, degenerate_count=2):
+                with self.assertRaisesRegex(src.NhdWaterbodyError,
+                                            "source_degenerate_ring_count_drift"):
+                    src.build_nhd_waterbody_baseline(str(capture_root))
 
     def test_disk_floor_refuses_before_any_fetch(self):
         rows = _fixture_rows()
