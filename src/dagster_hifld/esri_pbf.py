@@ -284,8 +284,13 @@ def _transform(data: bytes) -> dict[str, Any]:
 
 
 def _geometry(data: bytes, transform: dict[str, Any]) -> tuple[dict[str, Any], int]:
-    geometry_type = _one(data, 1, required=True)
-    if geometry_type != 3:
+    # Field 1 names the geometry type and is optional in the published
+    # FeatureCollection PBF schema; some AGOL services omit it. The layer's
+    # polygon type is already enforced by the FeatureResult check in the
+    # decoder, so an absent type is accepted and a present non-polygon type
+    # is still refused.
+    geometry_type = _one(data, 1, required=False)
+    if geometry_type is not None and geometry_type != 3:
         raise EsriPbfError("unsupported_geometry_type")
     lengths: list[int] = []
     coordinates: list[int] = []
@@ -328,8 +333,15 @@ def _geometry(data: bytes, transform: dict[str, Any]) -> tuple[dict[str, Any], i
     return {"rings": rings}, sum(lengths)
 
 
-def decode_feature_collection_pbf(data: bytes) -> dict[str, Any]:
-    """Decode one PBF query page, rejecting unsupported or incomplete records."""
+def decode_feature_collection_pbf(data: bytes, *, allow_transfer_limit: bool = False) \
+        -> dict[str, Any]:
+    """Decode one PBF query page, rejecting unsupported or incomplete records.
+
+    ``allow_transfer_limit`` admits pages that declare ``exceededTransferLimit``
+    (the normal state of offset/record-count paged queries, where every page by
+    definition has successors); windowed ``objectIds`` queries keep the default
+    refusal, which protects them against truncation.
+    """
     if not isinstance(data, bytes) or not data:
         raise EsriPbfError("empty_pbf_response")
     top = _wire_fields(data)
@@ -397,12 +409,14 @@ def decode_feature_collection_pbf(data: bytes) -> dict[str, Any]:
         raise EsriPbfError("invalid_object_id_field_name") from exc
     if object_id_name not in {field["name"] for field in schema}:
         raise EsriPbfError("object_id_field_missing_from_schema")
-    if result.get(9, 0):
+    exceeded = bool(result.get(9, 0))
+    if exceeded and not allow_transfer_limit:
         raise EsriPbfError("query_page_exceeded_transfer_limit")
     return {
         "objectIdFieldName": object_id_name,
         "globalIdFieldName": global_id_name,
         "geometryType": "esriGeometryPolygon",
+        "exceededTransferLimit": exceeded,
         "spatialReference": {
             key: spatial[number]
             for number, key in ((1, "wkid"), (2, "latestWkid"), (3, "vcsWkid"), (4, "latestVcsWkid"), (5, "wkt"), (6, "wkt2"))
