@@ -45,14 +45,14 @@ def _fixture_rows() -> list[dict]:
     return [_fixture_feature(index) for index in range(FIXTURE_COUNT)]
 
 
-def _fixture_sources() -> dict:
-    return {"sources": [
+def _fixture_sources() -> list:
+    return [
         {"source": "comid", "sourceName": "NHDPlus comid",
          "features": "https://api.water.usgs.gov/nldi/linked-data/comid"},
         dict(nldi.EXPECTED_SOURCE_ENTRY),
         {"source": "nwissite", "sourceName": "NWIS Surface Water Sites",
          "features": "https://api.water.usgs.gov/nldi/linked-data/nwissite"},
-    ]}
+    ]
 
 
 class JSONStream(httpx.SyncByteStream):
@@ -67,7 +67,7 @@ class JSONStream(httpx.SyncByteStream):
         return None
 
 
-def make_transport(rows: list[dict] | None = None, *, sources: dict | None = None,
+def make_transport(rows: list[dict] | None = None, *, sources: list | dict | None = None,
                    refuse_at_offset: int | None = None, extra_features: int = 0) -> httpx.MockTransport:
     rows = list(rows) if rows is not None else _fixture_rows()
     sources = sources if sources is not None else _fixture_sources()
@@ -200,8 +200,8 @@ class USGSNLDIAssetTests(unittest.TestCase):
                 (prefix / "evidence" / "page_000000000.decoded").read_bytes())
 
     def test_feature_source_registration_drift_stops(self):
-        sources = {"sources": [{"source": "nwissite", "sourceName": "NWIS Surface Water Sites",
-                                "features": "https://api.water.usgs.gov/nldi/linked-data/nwissite"}]}
+        sources = [{"source": "nwissite", "sourceName": "NWIS Surface Water Sites",
+                    "features": "https://api.water.usgs.gov/nldi/linked-data/nwissite"}]
         transport = make_transport(sources=sources)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

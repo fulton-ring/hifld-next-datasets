@@ -149,10 +149,17 @@ def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
 
 
-def _sources_entry(document: dict) -> dict:
-    sources = document.get("sources") if isinstance(document, dict) else None
-    if type(sources) is not list:
-        raise ValueError("NLDI feature-source listing has no sources array")
+def _sources_list(document: object) -> list:
+    """USGS documents the feature-source listing as a JSON array of objects."""
+    if isinstance(document, dict) and type(document.get("sources")) is list:
+        return document["sources"]
+    if type(document) is list:
+        return document
+    raise ValueError("NLDI feature-source listing is not a sources array")
+
+
+def _sources_entry(document: object) -> dict:
+    sources = _sources_list(document)
     entries = [entry for entry in sources
                if type(entry) is dict and entry.get("source") == EXPECTED_SOURCE_ENTRY["source"]]
     if len(entries) != 1:
@@ -462,8 +469,7 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
         for label in SOURCE_NAMES:
             entry = state.accepted(label)
             if entry is not None:
-                document = _load_json(_evidence_path(capture_root, label, "decoded").read_bytes(),
-                                      f"retained NLDI {label} listing")
+                document = json.loads(_evidence_path(capture_root, label, "decoded").read_bytes())
                 _sources_entry(document)
                 continue
             wire, decoded, receipt = _fetch(session, SOURCES_URL + "?f=json",
@@ -472,7 +478,11 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
             if receipt["status_code"] != 200 or not receipt["complete"]:
                 _quarantine(staging, capture_version, captures, "nldi_source_listing_http_capture_incomplete")
                 raise ValueError(f"NLDI {label} HTTP capture incomplete")
-            document = _load_json(decoded, f"NLDI {label} listing")
+            try:
+                document = json.loads(decoded)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                _quarantine(staging, capture_version, captures, "nldi_source_listing_malformed_json")
+                raise ValueError(f"NLDI {label} listing was not valid JSON") from exc
             try:
                 _sources_entry(document)
             except ValueError:
