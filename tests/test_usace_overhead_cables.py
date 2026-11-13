@@ -39,6 +39,7 @@ class UsaceOverheadCablesTests(unittest.TestCase):
                  "extent": source.EXPECTED_EXTENT, "fields": source.EXPECTED_FIELD_DECLARATIONS}
         docs = {
             "bts_item": {"id": source.BTS_ITEM_ID, "owner": "USDOT_BTS",
+                         "type": "PDF",
                          "title": "Inland Electronic Navigational Charts",
                          "description": "Official service https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes; "
                                         "USACE_IENC_Master_Service_gdb.zip"},
@@ -115,7 +116,16 @@ class UsaceOverheadCablesTests(unittest.TestCase):
         self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 3262)
         self.assertEqual(audit["geometry_valid_count"], 1631)
+        self.assertEqual(audit["bts_catalog_item_id"], "7ec34864c8804468a9cf52d437fe4b6c")
+        self.assertEqual(audit["prior_bts_catalog_item_id"], "3607d485a9854d6fa458bf507058ceae")
+        self.assertTrue(audit["bts_catalog_item_successor_review_pending"])
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "Feature_ID-1")
+
+    def test_obsolete_bts_map_service_item_is_not_accepted_as_current_receipt(self):
+        docs = self._documents()
+        docs["bts_item"]["id"] = source.PRIOR_BTS_ITEM_ID
+        with self.assertRaisesRegex(ValueError, "bts_ienc_item_identity_drift"):
+            source._validate(self._captures(docs))
 
     def test_missing_rows_schema_drift_transfer_limit_and_crs_override_fail_closed(self):
         mutations = [

@@ -31,7 +31,7 @@ from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "obstruction-lines-usace-ienc"
 FILE_SLUG = DATASET_SLUG
-BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson"
 SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/OBSTRUCTION_LINE/MapServer"
@@ -186,7 +186,9 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
-    if docs["bts_item"].get("id") != BTS_ITEM_ID or docs["bts_item"].get("owner") != "USDOT_BTS":
+    if (docs["bts_item"].get("id") != BTS_ITEM_ID
+            or docs["bts_item"].get("owner") != "USDOT_BTS"
+            or docs["bts_item"].get("type") != "PDF"):
         raise ValueError("bts_ienc_item_identity_drift")
     item_text = " ".join(str(docs["bts_item"].get(key, "")) for key in ("title", "description"))
     if ("Inland Electronic Navigational Charts" not in item_text
@@ -496,7 +498,9 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
         "source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "capture_receipts":receipts,"objects":descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
+    validate_construction_code_identity(
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
+    )
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
         "source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":1,"source_id_max":EXPECTED_COUNT,
         "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],

@@ -44,7 +44,7 @@ class UsaceObstructionLinesTests(unittest.TestCase):
             attributes.append({"attributes":values,"geometry":{"paths":[[[-88.0+oid/1000,37.0],[-87.9+oid/1000,37.1]]]}})
         features={"spatialReference":{"latestWkid":4326},"features":attributes}
         return {
-            "bts_item":{"id":source.BTS_ITEM_ID,"owner":"USDOT_BTS","title":"Inland Electronic Navigational Charts",
+            "bts_item":{"id":source.BTS_ITEM_ID,"owner":"USDOT_BTS","type":"PDF","title":"Inland Electronic Navigational Charts",
                          "description":"USACE updates. Feature classes are https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes and USACE_IENC_Master_Service_gdb.zip."},
             "service_directory":{"services":[{"name":"IENC_Feature_Classes/OBSTRUCTION_LINE","type":"MapServer"}]},
             "service_before":service,"layer_before":layer,"count_before":{"count":16},"ids_before":{"objectIds":source.EXPECTED_IDS},
@@ -143,8 +143,12 @@ class UsaceObstructionLinesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/"capture";root.mkdir();self._capture_directory(root)
             storage=StagingStorageResource(local_dir=str(Path(tmp)/"staging"))
-            with patch.object(source,"validate_construction_code_identity"), patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+            with patch.object(source,"validate_construction_code_identity") as code_identity_check, patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
                 first=source.capture_usace_obstruction_lines(storage,version="draft",capture_directory=str(root))
+            code_identity_check.assert_called_once()
+            code_identity_args, code_identity_kwargs = code_identity_check.call_args
+            self.assertEqual(code_identity_args[1], code_identity_kwargs["identity"]["code_commit"])
+            self.assertEqual(code_identity_args[2], code_identity_kwargs["identity"]["files"])
             prefix=f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{first['version']}"
             manifest_before=storage.read_key(f"{prefix}/metadata/source_manifest.json")
             audit_before=storage.read_key(f"{prefix}/metadata/source_audit.json")

@@ -1,0 +1,1258 @@
+{
+ "currentVersion": 11.5,
+ "cimVersion": "3.5.0",
+ "id": 2,
+ "name": "FEMA Regions",
+ "type": "Feature Layer",
+ "parentLayer": null,
+ "defaultVisibility": true,
+ "minScale": 0,
+ "maxScale": 0,
+ "canScaleSymbols": false,
+ "geometryType": "esriGeometryPolygon",
+ "description": "Regional Offices manage, operate and maintain all delegated programs, functions and activities not managed, operated or maintained by headquarters organizational units. The FEMA Regional Offices serve as the primary organizational unit for liaison to states and local governments within each region, and non-governmental and private sector entities within each Regional Office's geographical area",
+ "copyrightText": "FEMA",
+ "editFieldsInfo": null,
+ "ownershipBasedAccessControlForFeatures": null,
+ "syncCanReturnChanges": false,
+ "relationships": [],
+ "isDataVersioned": false,
+ "isDataArchived": false,
+ "infoInEstimates": [
+  "extent",
+  "count"
+ ],
+ "isDataBranchVersioned": false,
+ "isDataReplicaTracked": false,
+ "isCoGoEnabled": false,
+ "supportsRollbackOnFailureParameter": true,
+ "archivingInfo": {
+  "supportsQueryWithHistoricMoment": false,
+  "startArchivingMoment": -1
+ },
+ "supportsStatistics": true,
+ "supportsExceedsLimitStatistics": true,
+ "supportsAdvancedQueries": true,
+ "supportsValidateSQL": true,
+ "supportsCoordinatesQuantization": true,
+ "supportsQuantizationEditMode": true,
+ "supportsCalculate": true,
+ "supportsASyncCalculate": true,
+ "supportsDatumTransformation": true,
+ "advancedQueryCapabilities": {
+  "supportsPagination": true,
+  "supportsQueryWithDistance": true,
+  "supportsReturningQueryExtent": true,
+  "supportsStatistics": true,
+  "supportsPercentileStatistics": true,
+  "supportsHavingClause": true,
+  "supportsOrderBy": true,
+  "supportsDistinct": true,
+  "supportsCountDistinct": true,
+  "supportsAdvancedQueryRelated": true,
+  "supportsQueryRelatedPagination": true,
+  "supportsCurrentUserQueries": true,
+  "supportsFullTextSearch": true,
+  "fullTextSearchCapabilities": {
+   "supportsSearchOperator": true,
+   "supportsOperator": false,
+   "supportsSqlExpressionInFullText": true
+  },
+  "fullTextSearchableFields": [],
+  "supportsQueryWithResultType": true,
+  "supportsReturningGeometryCentroid": true,
+  "supportsReturningGeometryEnvelope": true,
+  "supportsSqlExpression": true,
+  "supportsQueryWithDatumTransformation": true,
+  "supportsLod": false,
+  "supportsQueryWithLodSR": false,
+  "supportsQueryAnalytic": true,
+  "supportsTrueCurve": true,
+  "supportedCurveTypes": [
+   "esriGeometryCircularArc",
+   "esriGeometryEllipticArc",
+   "esriGeometryBezier3Curve"
+  ],
+  "supportsQueryWithCacheHint": false
+ },
+ "advancedQueryAnalyticCapabilities": {
+  "supportsLinearRegression": true,
+  "supportsAsync": true,
+  "supportsPercentileAnalytic": false
+ },
+ "advancedEditingCapabilities": {
+  "supportedSqlFormatsInCalculate": [
+   "standard"
+  ],
+  "supportsAsyncApplyEdits": true,
+  "supportsApplyEditsbyUploadID": true,
+  "supportedApplyEditsUploadIDFormats": "JSON,PBF"
+ },
+ "hasGeometryProperties": true,
+ "geometryProperties": {
+  "shapeAreaFieldName": "Shape__Area",
+  "shapeLengthFieldName": "Shape__Length",
+  "units": "esriDecimalDegrees"
+ },
+ "hasMetadata": true,
+ "extent": {
+  "xmin": -179.1685668262706,
+  "ymin": -14.382478030080733,
+  "xmax": 179.74870944836516,
+  "ymax": 71.39048202284835,
+  "spatialReference": {
+   "wkid": 4326,
+   "latestWkid": 4326,
+   "xyTolerance": 3.50981149336058E-7,
+   "zTolerance": 2,
+   "mTolerance": 0.001,
+   "falseX": -400,
+   "falseY": -400,
+   "xyUnits": 1.125899906842624E13,
+   "falseZ": 0,
+   "zUnits": 1,
+   "falseM": -100000,
+   "mUnits": 10000
+  }
+ },
+ "spatialReference": {
+  "wkid": 4326,
+  "latestWkid": 4326,
+  "xyTolerance": 3.50981149336058E-7,
+  "zTolerance": 2,
+  "mTolerance": 0.001,
+  "falseX": -400,
+  "falseY": -400,
+  "xyUnits": 1.125899906842624E13,
+  "falseZ": 0,
+  "zUnits": 1,
+  "falseM": -100000,
+  "mUnits": 10000
+ },
+ "sourceSpatialReference": {
+  "wkid": 4326,
+  "latestWkid": 4326,
+  "xyTolerance": 3.5098114933605796E-7,
+  "zTolerance": 0.001,
+  "mTolerance": 0.001,
+  "falseX": -399.99999987105105,
+  "falseY": -399.999999954759,
+  "xyUnits": 7.29383901341336E8,
+  "falseZ": 0,
+  "zUnits": 1,
+  "falseM": 0,
+  "mUnits": 1
+ },
+ "drawingInfo": {
+  "renderer": {
+   "type": "uniqueValue",
+   "field1": "region",
+   "uniqueValueGroups": [
+    {
+     "heading": "",
+     "classes": [
+      {
+       "label": "REGION I",
+       "description": "REGION I",
+       "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+         252,
+         239,
+         215,
+         255
+        ],
+        "outline": {
+         "type": "esriSLS",
+         "style": "esriSLSSolid",
+         "color": [
+          110,
+          110,
+          110,
+          255
+         ],
+         "width": 0.4
+        }
+       },
+       "values": [
+        [
+         "REGION I"
+        ]
+       ]
+      },
+      {
+       "label": "REGION II",
+       "description": "REGION II",
+       "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+         194,
+         200,
+         252,
+         255
+        ],
+        "outline": {
+         "type": "esriSLS",
+         "style": "esriSLSSolid",
+         "color": [
+          110,
+          110,
+          110,
+          255
+         ],
+         "width": 0.4
+        }
+       },
+       "values": [
+        [
+         "REGION II"
+        ]
+       ]
+      },
+      {
+       "label": "REGION III",
+       "description": "REGION III",
+       "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+         207,
+         252,
+         228,
+         255
+        ],
+        "outline": {
+         "type": "esriSLS",
+         "style": "esriSLSSolid",
+         "color": [
+          110,
+          110,
+          110,
+          255
+         ],
+         "width": 0.4
+        }
+       },
+       "values": [
+        [
+         "REGION III"
+        ]
+       ]
+      },
+      {
+       "label": "REGION IV",
+       "description": "REGION IV",
+       "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+         184,
+         252,
+         192,
+         255
+        ],
+        "outline": {
+         "type": "esriSLS",
+         "style": "esriSLSSolid",
+         "color": [
+          110,
+          110,
+          110,
+          255
+         ],
+         "width": 0.4
+        }
+       },
+       "values": [
+        [
+         "REGION IV"
+        ]
+       ]
+      },
+      {
+       "label": "REGION IX",
+       "description": "REGION IX",
+       "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+         252,
+         198,
+         179,
+         255
+        ],
+        "outline": {
+         "type": "esriSLS",
+         "style": "esriSLSSolid",
+         "color": [
+          110,
+          110,
+          110,
+          255
+         ],
+         "width": 0.4
+        }
+       },
+       "values": [
+        [
+         "REGION IX"
+        ]
+       ]
+      },
+      {
+       "label": "REGION V",
+       "description": "REGION V",
+       "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+         179,
+         229,
+         252,
+         255
+        ],
+        "outline": {
+         "type": "esriSLS",
+         "style": "esriSLSSolid",
+         "color": [
+          110,
+          110,
+          110,
+          255
+         ],
+         "width": 0.4
+        }
+       },
+       "values": [
+        [
+         "REGION V"
+        ]
+       ]
+      },
+      {
+       "label": "REGION VI",
+       "description": "REGION VI",
+       "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+         252,
+         182,
+         196,
+         255
+        ],
+        "outline": {
+         "type": "esriSLS",
+         "style": "esriSLSSolid",
+         "color": [
+          110,
+          110,
+          110,
+          255
+         ],
+         "width": 0.4
+        }
+       },
+       "values": [
+        [
+         "REGION VI"
+        ]
+       ]
+      },
+      {
+       "label": "REGION VII",
+       "description": "REGION VII",
+       "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+         252,
+         215,
+         232,
+         255
+        ],
+        "outline": {
+         "type": "esriSLS",
+         "style": "esriSLSSolid",
+         "color": [
+          110,
+          110,
+          110,
+          255
+         ],
+         "width": 0.4
+        }
+       },
+       "values": [
+        [
+         "REGION VII"
+        ]
+       ]
+      },
+      {
+       "label": "REGION VIII",
+       "description": "REGION VIII",
+       "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+         248,
+         192,
+         252,
+         255
+        ],
+        "outline": {
+         "type": "esriSLS",
+         "style": "esriSLSSolid",
+         "color": [
+          110,
+          110,
+          110,
+          255
+         ],
+         "width": 0.4
+        }
+       },
+       "values": [
+        [
+         "REGION VIII"
+        ]
+       ]
+      },
+      {
+       "label": "REGION X",
+       "description": "REGION X",
+       "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+         252,
+         243,
+         179,
+         255
+        ],
+        "outline": {
+         "type": "esriSLS",
+         "style": "esriSLSSolid",
+         "color": [
+          110,
+          110,
+          110,
+          255
+         ],
+         "width": 0.4
+        }
+       },
+       "values": [
+        [
+         "REGION X"
+        ]
+       ]
+      }
+     ]
+    }
+   ],
+   "uniqueValueInfos": [
+    {
+     "symbol": {
+      "type": "esriSFS",
+      "style": "esriSFSSolid",
+      "color": [
+       252,
+       239,
+       215,
+       255
+      ],
+      "outline": {
+       "type": "esriSLS",
+       "style": "esriSLSSolid",
+       "color": [
+        110,
+        110,
+        110,
+        255
+       ],
+       "width": 0.4
+      }
+     },
+     "value": "REGION I",
+     "label": "REGION I"
+    },
+    {
+     "symbol": {
+      "type": "esriSFS",
+      "style": "esriSFSSolid",
+      "color": [
+       194,
+       200,
+       252,
+       255
+      ],
+      "outline": {
+       "type": "esriSLS",
+       "style": "esriSLSSolid",
+       "color": [
+        110,
+        110,
+        110,
+        255
+       ],
+       "width": 0.4
+      }
+     },
+     "value": "REGION II",
+     "label": "REGION II"
+    },
+    {
+     "symbol": {
+      "type": "esriSFS",
+      "style": "esriSFSSolid",
+      "color": [
+       207,
+       252,
+       228,
+       255
+      ],
+      "outline": {
+       "type": "esriSLS",
+       "style": "esriSLSSolid",
+       "color": [
+        110,
+        110,
+        110,
+        255
+       ],
+       "width": 0.4
+      }
+     },
+     "value": "REGION III",
+     "label": "REGION III"
+    },
+    {
+     "symbol": {
+      "type": "esriSFS",
+      "style": "esriSFSSolid",
+      "color": [
+       184,
+       252,
+       192,
+       255
+      ],
+      "outline": {
+       "type": "esriSLS",
+       "style": "esriSLSSolid",
+       "color": [
+        110,
+        110,
+        110,
+        255
+       ],
+       "width": 0.4
+      }
+     },
+     "value": "REGION IV",
+     "label": "REGION IV"
+    },
+    {
+     "symbol": {
+      "type": "esriSFS",
+      "style": "esriSFSSolid",
+      "color": [
+       252,
+       198,
+       179,
+       255
+      ],
+      "outline": {
+       "type": "esriSLS",
+       "style": "esriSLSSolid",
+       "color": [
+        110,
+        110,
+        110,
+        255
+       ],
+       "width": 0.4
+      }
+     },
+     "value": "REGION IX",
+     "label": "REGION IX"
+    },
+    {
+     "symbol": {
+      "type": "esriSFS",
+      "style": "esriSFSSolid",
+      "color": [
+       179,
+       229,
+       252,
+       255
+      ],
+      "outline": {
+       "type": "esriSLS",
+       "style": "esriSLSSolid",
+       "color": [
+        110,
+        110,
+        110,
+        255
+       ],
+       "width": 0.4
+      }
+     },
+     "value": "REGION V",
+     "label": "REGION V"
+    },
+    {
+     "symbol": {
+      "type": "esriSFS",
+      "style": "esriSFSSolid",
+      "color": [
+       252,
+       182,
+       196,
+       255
+      ],
+      "outline": {
+       "type": "esriSLS",
+       "style": "esriSLSSolid",
+       "color": [
+        110,
+        110,
+        110,
+        255
+       ],
+       "width": 0.4
+      }
+     },
+     "value": "REGION VI",
+     "label": "REGION VI"
+    },
+    {
+     "symbol": {
+      "type": "esriSFS",
+      "style": "esriSFSSolid",
+      "color": [
+       252,
+       215,
+       232,
+       255
+      ],
+      "outline": {
+       "type": "esriSLS",
+       "style": "esriSLSSolid",
+       "color": [
+        110,
+        110,
+        110,
+        255
+       ],
+       "width": 0.4
+      }
+     },
+     "value": "REGION VII",
+     "label": "REGION VII"
+    },
+    {
+     "symbol": {
+      "type": "esriSFS",
+      "style": "esriSFSSolid",
+      "color": [
+       248,
+       192,
+       252,
+       255
+      ],
+      "outline": {
+       "type": "esriSLS",
+       "style": "esriSLSSolid",
+       "color": [
+        110,
+        110,
+        110,
+        255
+       ],
+       "width": 0.4
+      }
+     },
+     "value": "REGION VIII",
+     "label": "REGION VIII"
+    },
+    {
+     "symbol": {
+      "type": "esriSFS",
+      "style": "esriSFSSolid",
+      "color": [
+       252,
+       243,
+       179,
+       255
+      ],
+      "outline": {
+       "type": "esriSLS",
+       "style": "esriSLSSolid",
+       "color": [
+        110,
+        110,
+        110,
+        255
+       ],
+       "width": 0.4
+      }
+     },
+     "value": "REGION X",
+     "label": "REGION X"
+    }
+   ],
+   "fieldDelimiter": ",",
+   "authoringInfo": {
+    "colorRamp": {
+     "type": "multipart",
+     "colorRamps": [
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        179,
+        252,
+        251,
+        255
+       ],
+       "toColor": [
+        179,
+        252,
+        251,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        251,
+        179,
+        252,
+        255
+       ],
+       "toColor": [
+        251,
+        179,
+        252,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        252,
+        202,
+        179,
+        255
+       ],
+       "toColor": [
+        252,
+        202,
+        179,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        223,
+        252,
+        182,
+        255
+       ],
+       "toColor": [
+        223,
+        252,
+        182,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        187,
+        203,
+        252,
+        255
+       ],
+       "toColor": [
+        187,
+        203,
+        252,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        252,
+        207,
+        234,
+        255
+       ],
+       "toColor": [
+        252,
+        207,
+        234,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        252,
+        245,
+        210,
+        255
+       ],
+       "toColor": [
+        252,
+        245,
+        210,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        212,
+        234,
+        252,
+        255
+       ],
+       "toColor": [
+        212,
+        234,
+        252,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        210,
+        252,
+        222,
+        255
+       ],
+       "toColor": [
+        210,
+        252,
+        222,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        228,
+        197,
+        252,
+        255
+       ],
+       "toColor": [
+        228,
+        197,
+        252,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        184,
+        252,
+        197,
+        255
+       ],
+       "toColor": [
+        184,
+        252,
+        197,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        252,
+        189,
+        190,
+        255
+       ],
+       "toColor": [
+        252,
+        189,
+        190,
+        255
+       ]
+      },
+      {
+       "type": "algorithmic",
+       "algorithm": "esriCIELabAlgorithm",
+       "fromColor": [
+        252,
+        182,
+        219,
+        255
+       ],
+       "toColor": [
+        252,
+        182,
+        219,
+        255
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "scaleSymbols": true,
+  "transparency": 0,
+  "labelingInfo": null
+ },
+ "hasM": false,
+ "hasZ": false,
+ "allowGeometryUpdates": false,
+ "allowTrueCurvesUpdates": true,
+ "onlyAllowTrueCurveUpdatesByTrueCurveClients": true,
+ "hasAttachments": false,
+ "supportsApplyEditsWithGlobalIds": false,
+ "htmlPopupType": "esriServerHTMLPopupTypeNone",
+ "objectIdField": "objectid",
+ "globalIdField": "",
+ "displayField": "REGION",
+ "typeIdField": "region",
+ "subtypeField": "",
+ "fields": [
+  {
+   "name": "objectid",
+   "type": "esriFieldTypeOID",
+   "alias": "OBJECTID_1",
+   "domain": null,
+   "editable": false,
+   "nullable": false,
+   "defaultValue": null,
+   "modelName": "OBJECTID"
+  },
+  {
+   "name": "region",
+   "type": "esriFieldTypeString",
+   "alias": "REGION",
+   "domain": null,
+   "editable": true,
+   "nullable": true,
+   "length": 254,
+   "defaultValue": null,
+   "modelName": "REGION"
+  },
+  {
+   "name": "Shape__Area",
+   "type": "esriFieldTypeDouble",
+   "alias": "SHAPE.AREA",
+   "domain": null,
+   "editable": false,
+   "nullable": true,
+   "defaultValue": null,
+   "modelName": "st_area(shape)",
+   "required": true
+  },
+  {
+   "name": "Shape__Length",
+   "type": "esriFieldTypeDouble",
+   "alias": "SHAPE.LEN",
+   "domain": null,
+   "editable": false,
+   "nullable": true,
+   "defaultValue": null,
+   "modelName": "st_perimeter(shape)",
+   "required": true
+  },
+  {
+   "name": "cnt_region",
+   "type": "esriFieldTypeInteger",
+   "alias": "REGION NUMBER",
+   "domain": null,
+   "editable": true,
+   "nullable": true,
+   "defaultValue": null,
+   "modelName": "CNT_REGION"
+  },
+  {
+   "name": "website",
+   "type": "esriFieldTypeString",
+   "alias": "WEBSITE",
+   "domain": null,
+   "editable": true,
+   "nullable": true,
+   "length": 150,
+   "defaultValue": null,
+   "modelName": "WEBSITE"
+  }
+ ],
+ "geometryField": {
+  "name": "shape",
+  "type": "esriFieldTypeGeometry",
+  "alias": "Shape",
+  "domain": null,
+  "editable": false,
+  "nullable": true,
+  "defaultValue": null,
+  "modelName": "Shape"
+ },
+ "indexes": [
+  {
+   "name": "r84_sde_rowid_uk",
+   "isAscending": true,
+   "isUnique": true,
+   "description": "",
+   "fields": "objectid"
+  },
+  {
+   "name": "a64_ix1",
+   "isAscending": true,
+   "isUnique": true,
+   "description": "",
+   "fields": "shape"
+  }
+ ],
+ "datesInUnknownTimezone": false,
+ "dateFieldsTimeReference": {
+  "timeZone": "UTC",
+  "timeZoneIANA": "Etc/UTC",
+  "respectsDaylightSaving": false
+ },
+ "preferredTimeReference": null,
+ "types": [
+  {
+   "id": "REGION I",
+   "name": "REGION I",
+   "domains": {},
+   "templates": [
+    {
+     "name": "REGION I",
+     "description": "",
+     "prototype": {
+      "attributes": {
+       "cnt_region": null,
+       "website": null,
+       "region": "REGION I"
+      }
+     },
+     "drawingTool": "esriFeatureEditToolPolygon"
+    }
+   ]
+  },
+  {
+   "id": "REGION II",
+   "name": "REGION II",
+   "domains": {},
+   "templates": [
+    {
+     "name": "REGION II",
+     "description": "",
+     "prototype": {
+      "attributes": {
+       "cnt_region": null,
+       "website": null,
+       "region": "REGION II"
+      }
+     },
+     "drawingTool": "esriFeatureEditToolPolygon"
+    }
+   ]
+  },
+  {
+   "id": "REGION III",
+   "name": "REGION III",
+   "domains": {},
+   "templates": [
+    {
+     "name": "REGION III",
+     "description": "",
+     "prototype": {
+      "attributes": {
+       "cnt_region": null,
+       "website": null,
+       "region": "REGION III"
+      }
+     },
+     "drawingTool": "esriFeatureEditToolPolygon"
+    }
+   ]
+  },
+  {
+   "id": "REGION IV",
+   "name": "REGION IV",
+   "domains": {},
+   "templates": [
+    {
+     "name": "REGION IV",
+     "description": "",
+     "prototype": {
+      "attributes": {
+       "cnt_region": null,
+       "website": null,
+       "region": "REGION IV"
+      }
+     },
+     "drawingTool": "esriFeatureEditToolPolygon"
+    }
+   ]
+  },
+  {
+   "id": "REGION IX",
+   "name": "REGION IX",
+   "domains": {},
+   "templates": [
+    {
+     "name": "REGION IX",
+     "description": "",
+     "prototype": {
+      "attributes": {
+       "cnt_region": null,
+       "website": null,
+       "region": "REGION IX"
+      }
+     },
+     "drawingTool": "esriFeatureEditToolPolygon"
+    }
+   ]
+  },
+  {
+   "id": "REGION V",
+   "name": "REGION V",
+   "domains": {},
+   "templates": [
+    {
+     "name": "REGION V",
+     "description": "",
+     "prototype": {
+      "attributes": {
+       "cnt_region": null,
+       "website": null,
+       "region": "REGION V"
+      }
+     },
+     "drawingTool": "esriFeatureEditToolPolygon"
+    }
+   ]
+  },
+  {
+   "id": "REGION VI",
+   "name": "REGION VI",
+   "domains": {},
+   "templates": [
+    {
+     "name": "REGION VI",
+     "description": "",
+     "prototype": {
+      "attributes": {
+       "cnt_region": null,
+       "website": null,
+       "region": "REGION VI"
+      }
+     },
+     "drawingTool": "esriFeatureEditToolPolygon"
+    }
+   ]
+  },
+  {
+   "id": "REGION VII",
+   "name": "REGION VII",
+   "domains": {},
+   "templates": [
+    {
+     "name": "REGION VII",
+     "description": "",
+     "prototype": {
+      "attributes": {
+       "cnt_region": null,
+       "website": null,
+       "region": "REGION VII"
+      }
+     },
+     "drawingTool": "esriFeatureEditToolPolygon"
+    }
+   ]
+  },
+  {
+   "id": "REGION VIII",
+   "name": "REGION VIII",
+   "domains": {},
+   "templates": [
+    {
+     "name": "REGION VIII",
+     "description": "",
+     "prototype": {
+      "attributes": {
+       "cnt_region": null,
+       "website": null,
+       "region": "REGION VIII"
+      }
+     },
+     "drawingTool": "esriFeatureEditToolPolygon"
+    }
+   ]
+  },
+  {
+   "id": "REGION X",
+   "name": "REGION X",
+   "domains": {},
+   "templates": [
+    {
+     "name": "REGION X",
+     "description": "",
+     "prototype": {
+      "attributes": {
+       "cnt_region": null,
+       "website": null,
+       "region": "REGION X"
+      }
+     },
+     "drawingTool": "esriFeatureEditToolPolygon"
+    }
+   ]
+  }
+ ],
+ "templates": [],
+ "maxRecordCount": 2000,
+ "supportedQueryFormats": "JSON, geoJSON, PBF",
+ "supportedExportFormats": "sqlite,filegdb,shapefile,csv,geojson",
+ "capabilities": "Query",
+ "useStandardizedQueries": true,
+ "bigIntegerRestrictedTo53Bits": true,
+ "supportedSpatialRelationships": [
+  "esriSpatialRelIntersects",
+  "esriSpatialRelContains",
+  "esriSpatialRelCrosses",
+  "esriSpatialRelEnvelopeIntersects",
+  "esriSpatialRelIndexIntersects",
+  "esriSpatialRelOverlaps",
+  "esriSpatialRelTouches",
+  "esriSpatialRelWithin",
+  "esriSpatialRelRelation"
+ ],
+ "supportsAppend": true,
+ "supportedAppendFormats": "FILEGDB,PBF",
+ "standardMaxRecordCount": 4000,
+ "tileMaxRecordCount": 4000,
+ "standardMaxRecordCountNoGeometry": 32000,
+ "maxRecordCountFactor": 1
+}
