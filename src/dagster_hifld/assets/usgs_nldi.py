@@ -441,6 +441,11 @@ def _result(audit: dict, version: str, *, reused: bool) -> dict:
             "id_contract_accepted": False, "compatibility_accepted": False, "release_accepted": False}
 
 
+def _default_client() -> httpx.Client:
+    return httpx.Client(follow_redirects=True,
+                        timeout=httpx.Timeout(60.0, read=240.0, write=60.0, pool=60.0))
+
+
 def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Client | None = None,
                          capture_directory: str | None = None) -> dict:
     """Walk the USGS NLDI ref_gage pagination, verify it completely, and stage one candidate."""
@@ -450,8 +455,7 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
     capture_root.mkdir(parents=True, exist_ok=True)
     state = _CaptureState(capture_root)
     own_client = client is None
-    session = client or httpx.Client(follow_redirects=True,
-                                     timeout=httpx.Timeout(60.0, read=240.0, write=60.0, pool=60.0))
+    session = client or _default_client()
     captures: list[tuple[str, bytes, bytes, dict]] = []
     capture_version = "unresolved-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     try:

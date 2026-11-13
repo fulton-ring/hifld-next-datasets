@@ -97,7 +97,7 @@ def make_transport(rows: list[dict] | None = None, *, sources: dict | None = Non
 
 
 @contextmanager
-def fixture_mode():
+def fixture_mode(transport: httpx.MockTransport | None = None):
     contexts = [
         patch.object(nldi, "PAGE_LIMIT", FIXTURE_PAGE_LIMIT),
         patch.object(nldi, "EXPECTED_COUNT", None),
@@ -109,6 +109,9 @@ def fixture_mode():
         patch.object(nldi, "EXPECTED_LAST_ID", None),
         patch.object(nldi, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(nldi, "EXPECTED_OBSERVED_BOUNDS", None),
+        *([patch.object(nldi, "_default_client",
+                        side_effect=lambda: httpx.Client(transport=transport))]
+          if transport is not None else []),
     ]
     for context in contexts:
         context.start()
@@ -139,7 +142,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
             staging = _staging(root)
             dagster_home = root / "dagster-home"
             dagster_home.mkdir()
-            with fixture_mode(), patch.dict(os.environ, {"DAGSTER_HOME": str(dagster_home)}), \
+            with fixture_mode(transport), patch.dict(os.environ, {"DAGSTER_HOME": str(dagster_home)}), \
                  DagsterInstance.local_temp() as instance:
                 first = _materialize(staging, str(capture_root), instance)
                 result = first.output_for_node(ASSET_NAME)
@@ -213,7 +216,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
     def test_page_drift_cases_are_refused(self):
         rows = _fixture_rows()
         cases = {
-            "nldi_page_http_capture_incomplete": dict(refuse_at_offset=3),
+            "NLDI page at offset 3 HTTP capture incomplete": dict(refuse_at_offset=3),
             "NLDI served more features than the requested page limit": dict(extra_features=3),
             "NLDI feature property roster or order drifted": dict(rows=[
                 {**rows[0], "properties": {"identifier": rows[0]["properties"]["identifier"],
