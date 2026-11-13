@@ -123,13 +123,13 @@ EXPECTED_ZIP_SHA256 = "62ed113335e359509ad68a731146c74aa873c5a92da4f3fda572e54bc
 # The per-value and per-geometry baselines, geometry gate counts and observed
 # bounds are pinned from the dated complete capture (see the module
 # docstring); unpinned values ("", None) are checked only once pinned.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_NAN_GEOMETRY_COUNT = None
-EXPECTED_EMPTY_GEOMETRY_COUNT = None
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] | None = None
-EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = None
+EXPECTED_RECORD_SHA256 = "a78bdae737ffe899263d0df21480a77790bd41a2ea8b9e2ead1f4deabe6b290a"
+EXPECTED_GEOMETRY_SHA256 = "3bd3a3fab452f9a4a4d0b0b9d37d3c9b11c42a3d644536a46f68a71ccbaf6687"
+EXPECTED_NULL_GEOMETRY_COUNT = 6
+EXPECTED_NAN_GEOMETRY_COUNT = 0
+EXPECTED_EMPTY_GEOMETRY_COUNT = 0
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] | None = {"source_polygon_ring_self_intersecting": 1750}
+EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = {"xmax": 179.999988541,"xmin": -179.999988541,"ymax": 74.996355101,"ymin": -15.386135526}
 EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0672, "ymin": -1733741.441300001,
                          "xmax": 20037507.067199998, "ymax": 12930675.6069}
 BASELINE_PENDING_NOTE = (

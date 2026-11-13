@@ -288,9 +288,9 @@ class PadUsManagerNameTests(unittest.TestCase):
                          "c796d962b10cfb278175ca0076a528414fcd6241514a7f75dd6980c430b3153a")
         self.assertEqual(src.EXPECTED_ZIP_SHA256,
                          "62ed113335e359509ad68a731146c74aa873c5a92da4f3fda572e54bc9b823ab")
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
-        self.assertIsNone(src.EXPECTED_NULL_GEOMETRY_COUNT)
+        self.assertEqual(src.EXPECTED_RECORD_SHA256, "a78bdae737ffe899263d0df21480a77790bd41a2ea8b9e2ead1f4deabe6b290a")
+        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "3bd3a3fab452f9a4a4d0b0b9d37d3c9b11c42a3d644536a46f68a71ccbaf6687")
+        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 6)
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
