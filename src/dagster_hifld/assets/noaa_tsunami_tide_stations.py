@@ -10,3 +10,7 @@ def noaa_tsunami_tide_stations(context,staging_storage:StagingStorageResource):
 
 tsunami_tide_source_integrity_job=define_asset_job('tsunami_tide_source_integrity',selection=AssetSelection.assets(noaa_tsunami_tide_stations))
 tsunami_tide_source_integrity_schedule=ScheduleDefinition(name='tsunami_tide_source_integrity_weekly',job=tsunami_tide_source_integrity_job,cron_schedule='0 11 * * 1',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS=[noaa_tsunami_tide_stations]
+JOBS=[tsunami_tide_source_integrity_job]
+SCHEDULES=[tsunami_tide_source_integrity_schedule]
