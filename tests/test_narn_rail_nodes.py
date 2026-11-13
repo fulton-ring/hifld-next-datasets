@@ -341,7 +341,7 @@ class NarnRailNodesTests(unittest.TestCase):
     def test_geometry_change_is_detected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
         page = json.loads(captures["page_000000_00002"][0])
-        page["features"][0]["geometry"]["x"] = -160.5
+        page["features"][1]["geometry"]["x"] = -120.5
         captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
             with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
