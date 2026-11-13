@@ -353,7 +353,7 @@ class CompleteCaptureTests(unittest.TestCase):
             for name in s.PINS:
                 body=self.captures()[name][0][:-1];receipt=dict(self.captures()[name][1],bytes=len(body),sha256=s.digest(body))
                 (package/(name+'.body')).write_bytes(body);(package/(name+'.receipt.json')).write_bytes(s.encode(receipt))
-            with self.assertRaisesRegex(ValueError,'pinned_package_drift'):s.acquire(storage,str(package),s.PACKAGE)
+            with self.assertRaisesRegex(ValueError,'unreviewed_package_bytes_require_explicit_new_package'):s.acquire(storage,str(package),s.PACKAGE)
             self.assertTrue(list((Path(tmp)/'stage/_quarantine').rglob('usgs_mineplant_zip.body')))
             for name in s.PINS:
                 (package/(name+'.body')).write_bytes(self.captures()[name][0]);(package/(name+'.receipt.json')).write_bytes(s.encode(self.captures()[name][1]))
