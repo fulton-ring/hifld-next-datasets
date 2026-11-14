@@ -40,6 +40,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix,
     capture_get,
     processing_identity,
+    quarantine_incomplete_capture,
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
@@ -428,6 +429,9 @@ def _load_capture(root: Path, identity: dict) -> dict:
             or catalog_receipt.get("bytes") != len(catalog_body) \
             or catalog_receipt.get("sha256") != _sha(catalog_body):
         raise GsaIolpLeasesError("capture_catalog_receipt_invalid")
+    derived = select_leases_distribution(_strict_json(catalog_body))
+    if derived != identity:
+        raise GsaIolpLeasesError("capture_manifest_identity_drift")
     if receipt.get("method") != "GET" \
             or receipt.get("url") != receipt.get("final_url") \
             or receipt.get("final_url") != redirect_receipt.get("final_url") \
@@ -468,15 +472,18 @@ def _capture(root: Path, storage: StagingStorageResource, version: str) -> dict:
     if any(root.glob("*")):
         raise GsaIolpLeasesError("unsealed_capture_attempt")
     root.mkdir(parents=True, exist_ok=True)
+    captured: dict[str, tuple[bytes, dict]] = {}
     try:
         with httpx.Client(follow_redirects=False,
                           timeout=httpx.Timeout(60, connect=15),
                           headers={"User-Agent": "hifld-next-datasets/gsa-iolp-leases-draft"}) as client:
             catalog_body, catalog_receipt = capture_get(
                 client, CATALOG_URL, root, "catalog_discovery", max_bytes=16 * 1024 * 1024)
+            captured["catalog_discovery"] = (catalog_body, catalog_receipt)
             identity = select_leases_distribution(_strict_json(catalog_body))
             body, receipt, redirect_receipt = _capture_ckan_download(
                 client, identity["download_url"], root, "leases_xlsx")
+            captured["leases_xlsx"] = (body, receipt)
         manifest_path.write_bytes(_canonical({
             "complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(),
@@ -496,7 +503,8 @@ def _capture(root: Path, storage: StagingStorageResource, version: str) -> dict:
         manifest_path.write_bytes(_canonical({
             "complete": False, "captured_at": datetime.now(timezone.utc).isoformat(),
             "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, {}, type(exc).__name__)
+        quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captured,
+                                      type(exc).__name__)
         raise
 
 

@@ -8,7 +8,9 @@ import zipfile
 import hashlib
 import json
 from pathlib import Path
+from urllib.parse import urlsplit
 
+import httpx
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -18,6 +20,7 @@ from dagster_hifld.assets.gsa_iolp_leases import (
     gsa_iolp_leases_complete, gsa_iolp_leases_draft_schedule,
 )
 from dagster_hifld.http_capture import capture_roster_digests
+from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.gsa_iolp_leases import (
     CATALOG_IDENTIFIER, CATALOG_LICENSE, CATALOG_URL, CKAN_DATASET_ID, DATASET_SLUG,
     EXPECTED_FIELDS, FIELD_NAMES, FILE_SLUG, LANDING_URL, GsaIolpLeasesError,
@@ -26,6 +29,17 @@ from dagster_hifld.sources.gsa_iolp_leases import (
 )
 
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+class _BodyStream(httpx.SyncByteStream):
+    def __init__(self, body: bytes):
+        self.body = body
+
+    def __iter__(self):
+        yield self.body
+
+    def close(self):
+        return None
 
 
 def _catalog_record(title="2026 - 11 - 6 - IOLP Leases.xlsx",
@@ -318,14 +332,20 @@ class GsaIolpLeasesDecodeTest(unittest.TestCase):
 
 
 class GsaIolpLeasesCaptureReplayTest(unittest.TestCase):
-    """A sealed capture manifest must reload byte-identically without refetch."""
+    """Sealed captures replay byte-identically without refetch and quarantine failures.
+
+    Replay must re-derive the distribution identity from the captured catalog
+    record itself; a manifest-only identity edit must be refused even though the
+    manifest is outside the artifact digest roster.
+    """
 
     def _seal_capture(self, root: Path) -> dict:
         root.mkdir(parents=True)
         identity = select_leases_distribution(_catalog_record())
+        catalog_body = json.dumps(_catalog_record()).encode("utf-8")
         artifacts = {
-            "catalog_discovery.body": b'{"results":[]}',
-            "catalog_discovery.wire": b'{"results":[]}',
+            "catalog_discovery.body": catalog_body,
+            "catalog_discovery.wire": catalog_body,
             "leases_xlsx.body": b"PK\x03\x04leases",
             "leases_xlsx.wire": b"PK\x03\x04leases",
             "leases_xlsx.redirect.wire": b"redirect",
@@ -381,6 +401,82 @@ class GsaIolpLeasesCaptureReplayTest(unittest.TestCase):
             (root / "leases_xlsx.body").write_bytes(b"PK\x03\x04tampered")
             with self.assertRaises(GsaIolpLeasesError):
                 _capture(root, storage=None, version="v0.0.0-research-test")
+
+    def test_reuse_rejects_manifest_identity_tamper(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "sealed"
+            identity = self._seal_capture(root)
+            loaded = _capture(root, storage=None, version="v0.0.0-research-test")
+            self.assertEqual(loaded["identity"], identity)
+            manifest_path = root / "capture_manifest.json"
+            manifest = json.loads(manifest_path.read_bytes())
+            manifest["identity"]["release_date"] = "2099-01-01"
+            manifest_path.write_bytes(json.dumps(manifest).encode("utf-8"))
+            with self.assertRaises(GsaIolpLeasesError) as ctx:
+                _capture(root, storage=None, version="v0.0.0-research-test")
+            self.assertEqual(str(ctx.exception), "capture_manifest_identity_drift")
+
+    def test_capture_failure_quarantines_evidence_and_propagates(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root_dir = Path(temp)
+            storage = StagingStorageResource(use_local=True,
+                                             local_dir=str(root_dir / "staging"),
+                                             prefix="", backend="local")
+            root = root_dir / "capture"
+            catalog_body = json.dumps(_catalog_record()).encode("utf-8")
+            signed = ("https://inventory-filestore.s3.us-gov-west-1.amazonaws.com/"
+                      f"{CKAN_DATASET_ID}/d05232d8-dc36-46e0-905b-275413399499/"
+                      "2026-11-6-iolp-leases.xlsx?X-Amz-Signature=sig")
+            download_path = (f"/dataset/{CKAN_DATASET_ID}/"
+                             "resource/d05232d8-dc36-46e0-905b-275413399499/"
+                             "download/2026-11-6-iolp-leases.xlsx")
+
+            def respond(request: httpx.Request) -> httpx.Response:
+                url = str(request.url)
+                if url == CATALOG_URL:
+                    return httpx.Response(200, stream=_BodyStream(catalog_body))
+                if urlsplit(url).path == download_path:
+                    return httpx.Response(302, stream=_BodyStream(b""),
+                                          headers={"location": signed})
+                if urlsplit(url).path == urlsplit(signed).path:
+                    return httpx.Response(404, stream=_BodyStream(b"forbidden"))
+                raise AssertionError("unrouted request " + url)
+
+            real_client = httpx.Client
+
+            def run() -> dict:
+                with patch("dagster_hifld.sources.gsa_iolp_leases.httpx.Client",
+                           side_effect=lambda **kwargs: real_client(
+                               transport=httpx.MockTransport(respond), **kwargs)):
+                    return _capture(root, storage, "vtest")
+
+            with self.assertRaises(GsaIolpLeasesError) as ctx:
+                run()
+            self.assertEqual(str(ctx.exception), "ckan_download_file_status_not_ok")
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "GsaIolpLeasesError")
+            tokens = sorted((root_dir / "staging" / "_quarantine" / DATASET_SLUG).glob("*"))
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "GsaIolpLeasesError")
+            self.assertEqual(failure["captured_names"], ["catalog_discovery"])
+            retained = (tokens[0] / "raw" / "catalog_discovery.body").read_bytes()
+            self.assertEqual(json.loads(retained), _catalog_record())
+            retained_receipt = json.loads(
+                (tokens[0] / "raw" / "catalog_discovery.receipt.json").read_bytes())
+            self.assertEqual(retained_receipt["url"], CATALOG_URL)
+            self.assertTrue(retained_receipt["complete_body"])
+
+            def deny(request: httpx.Request) -> httpx.Response:
+                raise AssertionError("second network access attempted")
+
+            with patch("dagster_hifld.sources.gsa_iolp_leases.httpx.Client",
+                       side_effect=lambda **kwargs: real_client(
+                           transport=httpx.MockTransport(deny), **kwargs)):
+                with self.assertRaises(GsaIolpLeasesError) as replay:
+                    run()
+            self.assertEqual(str(replay.exception), "capture_manifest_incomplete")
 
 
 class GsaIolpLeasesAssetTest(unittest.TestCase):
