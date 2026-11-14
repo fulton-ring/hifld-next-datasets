@@ -496,19 +496,68 @@ def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> Non
             path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
 
 
+class _CaptureLedger:
+    """Cumulative scratch budget shared by documents, pages and failed attempts.
+
+    ``charge`` is installed as ``capture_get``'s ``before_retain`` hook, so it
+    runs before every wire/body block is written; a charge that would push the
+    cumulative total past the budget raises before the crossing block is
+    retained, so no response, retry, or bisected parent can push scratch past
+    the advertised total. ``exceeded`` marks a refusal for the caller wrapper,
+    because the hook's exception is consumed inside ``capture_get`` and
+    re-raised as an incomplete capture.
+    """
+
+    def __init__(self, budget: int):
+        if type(budget) is not int or budget < 0:
+            raise ValueError("capture_budget_invalid")
+        self.budget = budget
+        self.retained = 0
+        self.exceeded = False
+
+    def charge(self, _kind: str, data: bytes) -> None:
+        if type(data) is not bytes:
+            raise ValueError("capture_budget_block_invalid")
+        if self.retained + len(data) > self.budget:
+            self.exceeded = True
+            raise ValueError("source_capture_exceeds_scratch_budget")
+        self.retained += len(data)
+
+
+def _capture_with_budget(client: httpx.Client, url: str, capture_root: Path, name: str,
+                         ledger: _CaptureLedger, *, max_bytes: int) -> tuple[bytes, dict[str, object]]:
+    """``capture_get`` wired to the shared cumulative scratch budget.
+
+    The ledger hook refuses any block that would exceed the total budget before
+    it is written; ``capture_get`` surfaces that refusal as an incomplete
+    capture, which is translated back to the explicit budget error so it is
+    never retried or bisected like a transient producer failure.
+    """
+    try:
+        return capture_get(client, url, capture_root, name, max_bytes=max_bytes,
+                           before_retain=ledger.charge)
+    except ValueError as exc:
+        if ledger.exceeded and str(exc).startswith("incomplete_source_capture:"):
+            raise ValueError("source_capture_exceeds_scratch_budget") from None
+        raise
+
+
 def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
+                        max_bytes: int, attempts: int, base_delay: float,
+                        ledger: _CaptureLedger) -> tuple[bytes, dict[str, object]]:
     """Capture one producer request, retrying bounded times on transient failures.
 
     Retries cover the producer's transient complete-200 Esri error documents and
     incomplete transport captures; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
-    final attempt's body is always returned as captured, so a persistent
-    producer failure surfaces to the caller unchanged.
+    ``<name>.attempt-NN`` evidence names, charged against the shared budget as
+    their bytes are retained, and never enter the capture roster. The final
+    attempt's body is always returned as captured, so a persistent producer
+    failure surfaces to the caller unchanged.
     """
     for attempt in range(1, attempts + 1):
         try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
+            body, receipt = _capture_with_budget(client, url, capture_root, name, ledger,
+                                                 max_bytes=max_bytes)
         except ValueError as exc:
             if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
                 raise
@@ -523,15 +572,16 @@ def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name
     raise AssertionError("unreachable_retry_state")
 
 
-def _capture_pages(client: httpx.Client, capture_root: Path,
-                   total: int) -> dict[str, tuple[bytes, dict[str, object]]]:
+def _capture_pages(client: httpx.Client, capture_root: Path, total: int,
+                   ledger: _CaptureLedger) -> dict[str, tuple[bytes, dict[str, object]]]:
     """Capture the complete layer as ordered, adaptively bisected roster pages.
 
     Pages start at PAGE_START_RECORDS. A page the producer keeps refusing with
     an error document or keeps dropping mid-stream is bisected until the
-    producer serves both halves; the refused page's final body and receipts stay
-    on disk as evidence under its own name. A single-record page that still
-    fails ends the capture explicitly.
+    producer serves both halves; the refused page's final body and receipts
+    stay on disk as evidence under its own name, charged against the shared
+    budget like every accepted page. A single-record page that still fails ends
+    the capture explicitly.
     """
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
     pages: deque[tuple[int, int]] = deque(
@@ -543,7 +593,7 @@ def _capture_pages(client: httpx.Client, capture_root: Path,
         name = _page_name(offset, count)
         try:
             body, receipt = _capture_with_retry(
-                client, _page_query(offset, count), capture_root, name,
+                client, _page_query(offset, count), capture_root, name, ledger=ledger,
                 max_bytes=MAX_CAPTURE_BYTES,
                 attempts=PAGE_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
                 base_delay=PAGE_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -563,6 +613,64 @@ def _capture_pages(client: httpx.Client, capture_root: Path,
             continue
         captures[name] = (body, receipt)
     return captures
+
+
+_EVIDENCE_SUFFIXES = (".receipt.json", ".body", ".wire")
+
+
+def _capture_evidence(capture_root: Path,
+                      captures: dict[str, tuple[bytes, dict[str, object]]]
+                      ) -> dict[str, dict[str, object]]:
+    """Collect hash-pinned failed-attempt and refused-page evidence for sealing.
+
+    Retry and bisection responses never enter the accepted capture roster; at
+    seal time every body/wire/receipt still on disk under a non-accepted name
+    is returned so failed producer responses and refused parents are staged
+    separately from the accepted pages, with each retained receipt re-verified
+    against its own bytes. Anything else in the capture directory fails closed.
+    """
+    evidence: dict[str, dict[str, object]] = {}
+    for path in sorted(capture_root.iterdir(), key=lambda item: item.name):
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("unsafe_capture_evidence_file:" + path.name)
+        suffix = next((s for s in _EVIDENCE_SUFFIXES if path.name.endswith(s)), None)
+        if suffix is None:
+            continue
+        stem = path.name[:-len(suffix)]
+        if stem in captures:
+            continue
+        if ".attempt-" in stem:
+            if (stem.split(".attempt-", 1)[0] not in captures
+                    and _PAGE_NAME_PATTERN.fullmatch(stem.split(".attempt-", 1)[0]) is None):
+                raise ValueError("unsafe_capture_evidence_file:" + path.name)
+            kind = "failed_attempt"
+        elif _PAGE_NAME_PATTERN.fullmatch(stem) is not None:
+            kind = "refused_page"
+        else:
+            raise ValueError("unsafe_capture_evidence_file:" + path.name)
+        entry = evidence.setdefault(stem, {"kind": kind, "files": {}})
+        entry["files"][suffix] = path.read_bytes()
+    for stem, entry in sorted(evidence.items()):
+        files = entry["files"]
+        receipt_body = files.get(".receipt.json")
+        if receipt_body is None:
+            raise ValueError("capture_evidence_receipt_missing:" + stem)
+        try:
+            receipt = json.loads(receipt_body)
+        except ValueError:
+            receipt = None
+        if not isinstance(receipt, dict):
+            raise ValueError("capture_evidence_receipt_invalid:" + stem)
+        for suffix, size_key, digest_key in ((".body", "bytes", "sha256"),
+                                             (".wire", "wire_bytes", "wire_sha256")):
+            body = files.get(suffix)
+            if body is None:
+                raise ValueError("capture_evidence_bytes_missing:" + stem + suffix)
+            if isinstance(receipt.get(size_key), int) and receipt[size_key] != len(body):
+                raise ValueError("capture_evidence_receipt_mismatch:" + stem + suffix)
+            if isinstance(receipt.get(digest_key), str) and receipt[digest_key] != _sha(body):
+                raise ValueError("capture_evidence_receipt_mismatch:" + stem + suffix)
+    return evidence
 
 
 def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version: str,
@@ -587,45 +695,38 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    ledger = _CaptureLedger(MAX_CAPTURE_TOTAL_BYTES)
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/railroad-grade-crossings-draft"}) as client:
             seed_body, seed_receipt = _capture_with_retry(
                 client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                 capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
-                attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+                ledger=ledger)
             seed = json.loads(seed_body).get("objectIds")
             if (not isinstance(seed, list) or len(seed) != EXPECTED_COUNT
                     or any(type(value) is not int for value in seed) or len(set(seed)) != EXPECTED_COUNT):
                 raise ValueError("source_seed_id_population_drift")
             captures["ids_seed"] = (seed_body, seed_receipt)
-            captured_total = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
             for name, url in _doc_urls():
                 body, receipt = _capture_with_retry(client, url, capture_root, name,
                                                     max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
-                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+                                                    ledger=ledger)
                 captures[name] = (body, receipt)
-                captured_total += receipt["bytes"] + receipt["wire_bytes"]
-                if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
             layer_doc = json.loads(captures["layer_before"][0])
             if layer_doc.get("maxRecordCount") != 2000 or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
                 raise ValueError("source_record_limit_drift")
-            captures.update(_capture_pages(client, capture_root, EXPECTED_COUNT))
-            captured_total += sum(receipt["bytes"] + receipt["wire_bytes"]
-                                  for _, receipt in _page_receipts(captures))
-            if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                raise ValueError("source_capture_exceeds_scratch_budget")
+            captures.update(_capture_pages(client, capture_root, EXPECTED_COUNT, ledger))
             for name, url in _after_doc_urls():
                 body, receipt = _capture_with_retry(client, url, capture_root, name,
                                                     max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
-                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+                                                    ledger=ledger)
                 captures[name] = (body, receipt)
-                captured_total += receipt["bytes"] + receipt["wire_bytes"]
-                if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}
@@ -636,7 +737,8 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
                 receipts[path.name.removesuffix(".receipt.json")] = {"receipt_readback_failed": True}
         (capture_root / "capture_manifest.json").write_bytes(
             _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
-                        "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
+                        "error_code": type(exc).__name__, "capture_bytes_retained": ledger.retained,
+                        "receipts": receipts}) + b"\n")
         retained = dict(captures)
         for receipt_path in capture_root.glob("*.receipt.json"):
             name = receipt_path.name.removesuffix(".receipt.json")
@@ -799,12 +901,18 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
     version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+    evidence = _capture_evidence(capture_root, captures)
     (capture_root / "capture_manifest.json").write_bytes(
         _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
                     "source_feature_count": EXPECTED_COUNT,
                     "source_record_sha256": audit["source_record_sha256"],
                     "source_geometry_sha256": audit["source_geometry_sha256"],
-                    "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}) + b"\n")
+                    "capture_bytes_retained": ledger.retained,
+                    "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())},
+                    "evidence": {stem: {"kind": entry["kind"],
+                                        "files": {suffix: {"bytes": len(body), "sha256": _sha(body)}
+                                                  for suffix, body in sorted(entry["files"].items())}}
+                                 for stem, entry in sorted(evidence.items())}}) + b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {rel: parquet_body, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
                "metadata/source_audit.json": _canonical(audit) + b"\n",
@@ -813,6 +921,9 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = (capture_root / f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
+    for stem, entry in sorted(evidence.items()):
+        for suffix, body in sorted(entry["files"].items()):
+            outputs[f"raw/evidence/{stem}{suffix}"] = body
     outputs["metadata/candidate_ready.json"] = _canonical(
         {"approved": False, "version": version, "objects": source_objects,
          "source_record_sha256": audit["source_record_sha256"], "freshness_accepted": False,
@@ -862,9 +973,3 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
             "schema_contract_accepted": False, "id_contract_accepted": False,
             "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
             "capture_directory": str(capture_root)}
-
-
-def _page_receipts(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    for name, (_, receipt) in sorted(captures.items()):
-        if name.startswith("page_"):
-            yield name, receipt

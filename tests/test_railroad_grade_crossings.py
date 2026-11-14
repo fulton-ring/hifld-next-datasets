@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import httpx
 import json
 import os
 import shutil
@@ -585,7 +586,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
         calls = []
 
-        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes, before_retain=None):
             calls.append(name)
             body = error_body if len(calls) == 1 else ok_body
             digest = hashlib.sha256(body).hexdigest()
@@ -604,7 +605,8 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
-                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS,
+                                                            ledger=source._CaptureLedger(1 << 30))
             self.assertEqual(body, ok_body)
             self.assertEqual(calls, ["probe", "probe"])
             self.assertEqual((root / "probe.body").read_bytes(), ok_body)
@@ -615,7 +617,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
         calls = []
 
-        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes, before_retain=None):
             calls.append(name)
             digest = hashlib.sha256(error_body).hexdigest()
             receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
@@ -632,7 +634,8 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
-                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS,
+                                                            ledger=source._CaptureLedger(1 << 30))
             self.assertEqual(body, error_body)
             self.assertEqual(len(calls), source.DOC_CAPTURE_ATTEMPTS)
             for attempt in range(1, source.DOC_CAPTURE_ATTEMPTS):
@@ -642,7 +645,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         ok_body = b'{"objectIds": []}'
         calls = []
 
-        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes, before_retain=None):
             calls.append(name)
             if name == "probe2":
                 raise ValueError("unrelated_source_capture_failure")
@@ -666,12 +669,14 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
-                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS,
+                                                            ledger=source._CaptureLedger(1 << 30))
                 with self.assertRaisesRegex(ValueError, "unrelated_source_capture_failure"):
                     source._capture_with_retry(None, "https://producer.invalid/other",
                                                root, "probe2", max_bytes=1024,
                                                attempts=source.DOC_CAPTURE_ATTEMPTS,
-                                               base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+                                               base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS,
+                                               ledger=source._CaptureLedger(1 << 30))
             self.assertEqual(body, ok_body)
             self.assertEqual(calls.count("probe"), 2)
             self.assertEqual(len(calls), 3)
@@ -683,7 +688,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
         calls = []
 
-        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes, before_retain=None):
             calls.append(name)
             body = error_body if name == "page_000000_00004" else bodies[name]
             digest = hashlib.sha256(body).hexdigest()
@@ -704,7 +709,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
-                pages = source._capture_pages(None, root, 6)
+                pages = source._capture_pages(None, root, 6, source._CaptureLedger(1 << 30))
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
             self.assertEqual(calls.count("page_000000_00004"), 1)
@@ -714,7 +719,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         bodies = {name: body for name, (body, _) in fixture_captures.items()}
         calls = []
 
-        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes, before_retain=None):
             calls.append(name)
             if name == "page_000000_00004":
                 (capture_root / f"{name}.body").write_bytes(b"")
@@ -740,14 +745,14 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
-                pages = source._capture_pages(None, root, 6)
+                pages = source._capture_pages(None, root, 6, source._CaptureLedger(1 << 30))
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual(calls.count("page_000000_00004"), 1)
 
     def test_unservable_single_feature_fails_explicitly(self):
         error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
 
-        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes, before_retain=None):
             digest = hashlib.sha256(error_body).hexdigest()
             receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
                        "complete_body": True, "bytes": len(error_body), "sha256": digest}
@@ -764,7 +769,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
-                    source._capture_pages(None, root, 6)
+                    source._capture_pages(None, root, 6, source._CaptureLedger(1 << 30))
 
     def test_capture_requires_explicit_local_staging(self):
         from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -812,16 +817,24 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                      for key in published.list_prefix()}
             self.assertEqual(after, before)
 
-    def _seal_catalog_cache_flow(self):
+    def _seal_catalog_cache_flow(self, scenario="happy"):
         from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
         from dagster_hifld.resources import StagingStorageResource
         from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 
         fields, features, fixture_captures, schema, geom, counts, bounds = _fixture()
         bodies = {name: body for name, (body, _) in fixture_captures.items()}
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+        error_once = {}
 
-        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
-            body = bodies[name]
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes, before_retain=None):
+            if (scenario == "retry" and name == "page_000000_00002"
+                    and error_once.get(name, 0) == 0) or (scenario == "refused_parent"
+                                                          and name == "page_000000_00004"):
+                error_once[name] = error_once.get(name, 0) + 1
+                body = error_body
+            else:
+                body = bodies[name]
             digest = hashlib.sha256(body).hexdigest()
             receipt = {"method": "GET", "url": url, "final_url": url, "observed_at": "2026-11-13T00:00:00+00:00",
                        "status": 200, "complete_body": True, "wire_bytes": len(body), "wire_sha256": digest,
@@ -839,10 +852,13 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             def __exit__(self, *_args):
                 return False
 
+        pins = _pins(features, schema, geom, counts, bounds)
+        if scenario == "refused_parent":
+            pins.update(PAGE_START_RECORDS=4, PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1)
         with tempfile.TemporaryDirectory(prefix="railroad-grade-crossings-e2e-") as temporary:
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
-            with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)), \
+            with patch.multiple(source, **pins), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_railroad_grade_crossings(
@@ -856,6 +872,24 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                 for name, body in bodies.items():
                     self.assertEqual(storage.read_key(f"{prefix}/raw/{name}.body"), body)
                     self.assertEqual(storage.read_key(f"{prefix}/raw/{name}.wire"), body)
+                capture_manifest = json.loads((Path(candidate["capture_directory"])
+                                               / "capture_manifest.json").read_bytes())
+                expected_evidence = {"retry": "page_000000_00002.attempt-01",
+                                     "refused_parent": "page_000000_00004"}.get(scenario)
+                if expected_evidence is None:
+                    self.assertEqual(capture_manifest["evidence"], {})
+                else:
+                    self.assertEqual(sorted(capture_manifest["evidence"]), [expected_evidence])
+                    descriptor = capture_manifest["evidence"][expected_evidence]["files"][".body"]
+                    self.assertEqual(descriptor["sha256"], hashlib.sha256(error_body).hexdigest())
+                    stem = expected_evidence
+                    for suffix in (".body", ".wire", ".receipt.json"):
+                        sealed = storage.read_key(f"{prefix}/raw/evidence/{stem}{suffix}")
+                        on_disk = (Path(candidate["capture_directory"]) / f"{stem}{suffix}").read_bytes()
+                        self.assertEqual(sealed, on_disk)
+                    self.assertEqual(storage.read_key(f"{prefix}/raw/evidence/{stem}.body"), error_body)
+                    self.assertEqual(capture_manifest["evidence"][expected_evidence]["kind"],
+                                     "failed_attempt" if scenario == "retry" else "refused_page")
                 snapshot_source_metadata(storage, source.DATASET_SLUG, source.FILE_SLUG,
                                          candidate["version"])
                 manifest = load_resolved_source_manifest(storage, source.DATASET_SLUG, source.FILE_SLUG,
@@ -873,6 +907,116 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                     storage, version="vfixture", capture_directory=str(root / "captures"))
                 self.assertTrue(reused["reused"])
                 self.assertEqual(reused["version"], candidate["version"])
+                if expected_evidence is not None:
+                    self.assertEqual(storage.read_key(
+                        f"{prefix}/raw/evidence/{expected_evidence}.body"), error_body)
+                    self.assertTrue(storage.object_snapshot(
+                        f"{prefix}/raw/evidence/{expected_evidence}.body"))
+
+    def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
+        self._seal_catalog_cache_flow()
+
+    def test_retry_to_seal_preserves_failed_attempt_evidence(self):
+        self._seal_catalog_cache_flow(scenario="retry")
+
+    def test_refused_parent_page_is_sealed_as_evidence(self):
+        self._seal_catalog_cache_flow(scenario="refused_parent")
+
+    def test_unexpected_capture_evidence_file_fails_closed(self):
+        _, features, fixture_captures, _, _, _, _ = _fixture()
+        captures = {name: (body, {"status": 200}) for name, (body, _) in fixture_captures.items()}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "rogue.body").write_bytes(b"unexpected")
+            with self.assertRaisesRegex(ValueError, "unsafe_capture_evidence_file:rogue.body"):
+                source._capture_evidence(root, captures)
+
+    def test_evidence_receipt_pin_mismatch_fails_closed(self):
+        _, features, fixture_captures, _, _, _, _ = _fixture()
+        captures = {name: (body, {"status": 200}) for name, (body, _) in fixture_captures.items()}
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+        receipt = {"status": 200, "complete_body": True, "bytes": len(error_body),
+                   "sha256": hashlib.sha256(error_body).hexdigest()}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "ids_seed.attempt-01.body").write_bytes(error_body)
+            (root / "ids_seed.attempt-01.wire").write_bytes(error_body)
+            (root / "ids_seed.attempt-01.receipt.json").write_bytes(
+                _canonical({**receipt, "bytes": len(error_body) + 1}) + b"\n")
+            with self.assertRaisesRegex(ValueError,
+                                        "capture_evidence_receipt_mismatch:ids_seed.attempt-01.body"):
+                source._capture_evidence(root, captures)
+
+    def test_capture_budget_refuses_before_retaining_blocks(self):
+        _, _features, fixture_captures, _schema, _geom, _counts, _bounds = _fixture()
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+        page_names = ["page_000000_00002", "page_000002_00002", "page_000004_00002"]
+
+        def handler(request):
+            params = request.url.params
+            name = source._page_name(int(params["resultOffset"]), int(params["resultRecordCount"]))
+            return httpx.Response(200, request=request, stream=httpx.ByteStream(bodies[name]))
+
+        client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False)
+        budget = 2 * (len(bodies["page_000000_00002"]) + len(bodies["page_000002_00002"]))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            root.mkdir()
+            ledger = source._CaptureLedger(budget)
+            with patch.multiple(source, PAGE_START_RECORDS=2), patch.object(source.time, "sleep"):
+                with self.assertRaisesRegex(ValueError, "source_capture_exceeds_scratch_budget"):
+                    source._capture_pages(client, root, 6, ledger)
+            self.assertEqual(ledger.retained, budget)
+            self.assertLessEqual(sum(path.stat().st_size for path in root.iterdir()
+                                     if path.name.endswith((".body", ".wire"))), budget)
+            # The refused page's delivered blocks were never retained.
+            self.assertEqual((root / "page_000004_00002.body").read_bytes(), b"")
+
+    def test_capture_budget_charges_rejected_retries(self):
+        ok_body = b'{"objectIds": []}'
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+        responses = [error_body, ok_body]
+
+        def handler(request):
+            return httpx.Response(200, request=request,
+                                  stream=httpx.ByteStream(responses.pop(0)))
+
+        client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            ledger = source._CaptureLedger(1 << 20)
+            with patch.object(source.time, "sleep"):
+                body, _receipt = source._capture_with_retry(client, "https://producer.invalid/page",
+                                                            root, "probe", max_bytes=64 * 1024 * 1024,
+                                                            attempts=2, base_delay=0.0, ledger=ledger)
+            self.assertEqual(body, ok_body)
+            # Wire plus decoded bytes of the rejected attempt are budgeted too.
+            self.assertEqual(ledger.retained, 2 * (len(error_body) + len(ok_body)))
+            self.assertEqual((root / "probe.attempt-01.body").read_bytes(), error_body)
+
+    def test_capture_budget_charges_refused_parent_pages(self):
+        _, _features, fixture_captures, _schema, _geom, _counts, _bounds = _fixture()
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+
+        def handler(request):
+            params = request.url.params
+            name = source._page_name(int(params["resultOffset"]), int(params["resultRecordCount"]))
+            body = error_body if name == "page_000000_00004" else bodies[name]
+            return httpx.Response(200, request=request, stream=httpx.ByteStream(body))
+
+        client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            root.mkdir()
+            ledger = source._CaptureLedger(1 << 30)
+            with patch.multiple(source, PAGE_START_RECORDS=4, PAGE_PROBE_ATTEMPTS=1,
+                                DOC_CAPTURE_ATTEMPTS=1), patch.object(source.time, "sleep"):
+                pages = source._capture_pages(client, root, 6, ledger)
+            self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
+            accepted = 2 * sum(len(bodies[name]) for name in sorted(pages))
+            self.assertEqual(ledger.retained, 2 * len(error_body) + accepted)
+            self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
 
     def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
         self._seal_catalog_cache_flow()
