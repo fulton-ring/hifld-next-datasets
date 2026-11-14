@@ -396,10 +396,17 @@ def capture_roads_usace_ienc(storage: StagingStorageResource, *, version: str,
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
     receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    # The catalog reads the manifest under a bounded 2 MiB layer limit; 437 page
+    # inputs each embedding a ~2.4 KiB request URL exceed it when the final URL
+    # is duplicated verbatim. capture_get already fails closed unless
+    # final_url == url (no redirects are followed), and every receipt in
+    # metadata/source_audit.json and raw/*.receipt.json retains final_url, so
+    # the manifest records observed_final_url only when it actually differs.
     inputs = [{"input_id": name, "producer": ("USDOT BTS IENC NTAD item" if name == "bts_item" else PUBLISHER),
         "host": urlsplit(receipt["url"]).hostname, "role": "official_distributor" if name == "bts_item" else "producer_publication",
         "canonical_url": BTS_ITEM_URL if name == "bts_item" else LAYER_URL, "retrieval_url": receipt["url"],
-        "observed_final_url": receipt["final_url"], "retrieved_at": receipt["observed_at"],
+        **({} if receipt["final_url"] == receipt["url"] else {"observed_final_url": receipt["final_url"]}),
+        "retrieved_at": receipt["observed_at"],
         "http_status": receipt["status"], "bytes": receipt["bytes"], "sha256": receipt["sha256"],
         "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
         "release_date": None, "release_date_unknown_reason": "The BTS catalog item describes IENC update cadence but does not identify this layer's release date; the item succession does not establish the captured layer's edition date. The layer's own Source_Date attributes are source-encounter vintages, not a service release date.",
