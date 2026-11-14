@@ -229,6 +229,67 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str,
     return capture_get(client, url, root, name, max_bytes=max_bytes)
 
 
+def _is_refusal(body: bytes) -> bool:
+    """The producer's deterministic refusing-window document (observed: Esri
+    error code 500 "Error performing query operation" on 9 of 190 nominal
+    100-id windows, 2026-11-14). Retained as evidence, never validated as a
+    page."""
+    if not body.lstrip().startswith(b"{") or len(body) > 4096:
+        return False
+    try:
+        document = json.loads(body)
+    except ValueError:
+        return False
+    error = document.get("error") if isinstance(document, dict) else None
+    return isinstance(error, dict) and type(error.get("code")) is int
+
+
+def _part_url(roster: list[int], index: int, part_name: str) -> str:
+    """Exact GET URL bound to a bisected part artifact, re-derived from the
+    pinned roster so replay needs no trusted extra state."""
+    slice_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
+    half = (len(slice_ids) + 1) // 2
+    if part_name.endswith("a"):
+        sub, last = slice_ids[:half], (slice_ids[0] - 1 if slice_ids[0] > 1 else 0)
+    else:
+        sub, last = slice_ids[half:], slice_ids[half] - 1
+    return _page_window_url(last, len(sub))
+
+
+def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
+                         root: Path) -> tuple[dict[str, tuple[bytes, dict]], list[str]]:
+    """Capture one nominal page window, bisecting a refusing window once.
+
+    The producer persistently refuses some full-size windows (content-dependent
+    server-side failure, observed 2026-11-14); the refusal document is retained
+    as evidence and the window is re-fetched as two half-size parts whose URLs
+    are derived from the pinned roster. A refusing half fails the capture:
+    bisection is one level, never a repair loop.
+    """
+    name = f"page_{index:04d}"
+    nominal_url = _page_window_url(
+        roster[index * PAGE_SIZE - 1] if index > 0 else 0,
+        min(PAGE_SIZE, len(roster) - index * PAGE_SIZE))
+    parts: dict[str, tuple[bytes, dict]] = {}
+    refusals: list[str] = []
+    body, receipt = _capture(client, nominal_url, root, name)
+    if not _is_refusal(body):
+        return {name: (body, receipt)}, refusals
+    refusals.append(name)
+    parts[f"{name}_refusal"] = (body, receipt)
+    slice_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
+    half = (len(slice_ids) + 1) // 2
+    for tag, sub in (("a", slice_ids[:half]), ("b", slice_ids[half:])):
+        sub_name = f"{name}{tag}"
+        body, receipt = _capture(client, _part_url(roster, index, sub_name), root, sub_name)
+        if _is_refusal(body):
+            refusals.append(sub_name)
+            parts[f"{sub_name}_refusal"] = (body, receipt)
+            raise ValueError("source_page_window_refused_after_bisection:" + sub_name)
+        parts[sub_name] = (body, receipt)
+    return parts, refusals
+
+
 class _GeometryGate(Exception):
     """One row's served rings cannot form a valid OGC polygon; gate, never repair."""
 
@@ -452,7 +513,8 @@ def _arrow_type(field: dict) -> pa.DataType:
             "esriFieldTypeGlobalID": pa.string()}[field["type"]]
 
 
-def _validate_stream(root: Path, *, parquet_sink: Path | None) -> tuple[dict, dict]:
+def _validate_stream(root: Path, *, parquet_sink: Path | None,
+                     page_parts: dict[str, list[str]] | None = None) -> tuple[dict, dict]:
     """Validate every retained response and build the native geoparquet.
 
     Pages are processed in ascending-OBJECTID keyset order; each page's rows
@@ -494,6 +556,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None) -> tuple[dict, di
     geometry_valid = 0
     multipart = 0
     with_hole = 0
+    ids_member_features = 0
     bounds: list[float] | None = None
     coverage = {key: EXPECTED_EXTENT[key] for key in ("xmin", "ymin", "xmax", "ymax")}
     last_objectid = 0
@@ -502,154 +565,180 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None) -> tuple[dict, di
     try:
         for index in range(PAGE_COUNT):
             name = f"page_{index:04d}"
-            body, _wire, receipt = _load_capture(root, name)
-            _validate_capture_request_identity(name, receipt, expected_urls[name])
             expected_page_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
-            page = json.loads(body)
-            if "error" in page:
-                raise ValueError("source_page_error:" + name)
-            if set(page) - {"displayFieldName", "exceededTransferLimit", "features",
-                            "fieldAliases", "fields", "geometryType", "spatialReference"}:
-                raise ValueError("source_page_unexpected_member:" + name)
-            if page.get("displayFieldName") != DISPLAY_FIELD_NAME:
-                raise ValueError("source_page_identity_drift:" + name)
-            exceeded = page.get("exceededTransferLimit")
-            if exceeded is not None and type(exceeded) is not bool:
-                raise ValueError("source_page_transfer_flag_drift:" + name)
-            if exceeded is True and index == PAGE_COUNT - 1:
-                raise ValueError("source_page_transfer_limit_on_final_page:" + name)
-            rows = page.get("features")
-            if not isinstance(rows, list) or len(rows) != len(expected_page_ids):
-                raise ValueError("source_page_population_incomplete:" + name)
-            if exceeded is True and len(rows) < PAGE_SIZE:
-                raise ValueError("source_page_transfer_truncated:" + name)
-            _validate_spatial_reference(page.get("spatialReference"), "source_" + name + "_page")
-            if page.get("geometryType") != "esriGeometryPolygon":
-                raise ValueError("source_page_identity_drift:" + name)
-            aliases = page.get("fieldAliases")
-            if (not isinstance(aliases, dict)
-                    or aliases != {field["name"]: field["alias"]
-                                   for field in EXPECTED_PAGE_FIELD_DECLARATIONS}):
-                raise ValueError("source_page_alias_drift:" + name)
-            if page.get("fields") != EXPECTED_PAGE_FIELD_DECLARATIONS:
-                raise ValueError("source_page_physical_schema_changed:" + name)
+            part_names = (page_parts or {}).get(name) or [name]
+            half = (len(expected_page_ids) + 1) // 2
+            page_ids = []
             columns: dict[str, list] = {field: [] for field in names}
             geometries: list[bytes | None] = []
-            page_ids = []
-            for feature in rows:
-                attrs, geometry = feature.get("attributes"), feature.get("geometry")
-                if (not isinstance(attrs, dict) or len(attrs) != len(ATTRIBUTE_FIELDS)
-                        or tuple(attrs) != names):
-                    raise ValueError("source_attribute_roster_or_order_drift:" + name)
-                for field in ATTRIBUTE_FIELDS:
-                    value = attrs[field["name"]]
-                    if value is None:
+            for part_no, part_name in enumerate(part_names):
+                if part_no == 0 and part_name != name:
+                    raise ValueError("source_page_parts_missing_nominal:" + name)
+                if part_no > 0 and (not part_name.startswith(name)
+                                    or len(part_name) != len(name) + 1
+                                    or part_name[-1] not in ("a", "b")):
+                    raise ValueError("source_page_parts_naming_drift:" + name)
+                body, _wire, receipt = _load_capture(root, part_name)
+                expected_url = (expected_urls[name] if len(part_names) == 1
+                                else _part_url(roster, index, part_name))
+                _validate_capture_request_identity(part_name, receipt, expected_url)
+                expected_part_ids = (expected_page_ids if len(part_names) == 1 else
+                                     (expected_page_ids[:half] if part_name.endswith("a")
+                                      else expected_page_ids[half:]))
+                page = json.loads(body)
+                if "error" in page:
+                    raise ValueError("source_page_error:" + part_name)
+                if set(page) - {"displayFieldName", "exceededTransferLimit", "features",
+                                "fieldAliases", "fields", "geometryType", "spatialReference"}:
+                    raise ValueError("source_page_unexpected_member:" + part_name)
+                if page.get("displayFieldName") != DISPLAY_FIELD_NAME:
+                    raise ValueError("source_page_identity_drift:" + part_name)
+                exceeded = page.get("exceededTransferLimit")
+                if exceeded is not None and type(exceeded) is not bool:
+                    raise ValueError("source_page_transfer_flag_drift:" + part_name)
+                if (exceeded is True and index == PAGE_COUNT - 1
+                        and part_no == len(part_names) - 1):
+                    raise ValueError("source_page_transfer_limit_on_final_page:" + part_name)
+                rows = page.get("features")
+                if not isinstance(rows, list) or len(rows) != len(expected_part_ids):
+                    raise ValueError("source_page_population_incomplete:" + part_name)
+                if len(part_names) == 1 and exceeded is True and len(rows) < PAGE_SIZE:
+                    raise ValueError("source_page_transfer_truncated:" + part_name)
+                _validate_spatial_reference(page.get("spatialReference"),
+                                            "source_" + part_name + "_page")
+                if page.get("geometryType") != "esriGeometryPolygon":
+                    raise ValueError("source_page_identity_drift:" + part_name)
+                aliases = page.get("fieldAliases")
+                if (not isinstance(aliases, dict)
+                        or aliases != {field["name"]: field["alias"]
+                                       for field in EXPECTED_PAGE_FIELD_DECLARATIONS}):
+                    raise ValueError("source_page_alias_drift:" + part_name)
+                if page.get("fields") != EXPECTED_PAGE_FIELD_DECLARATIONS:
+                    raise ValueError("source_page_physical_schema_changed:" + part_name)
+                for feature in rows:
+                    attrs, geometry = feature.get("attributes"), feature.get("geometry")
+                    if (not isinstance(attrs, dict) or len(attrs) != len(ATTRIBUTE_FIELDS)
+                            or tuple(attrs) != names):
+                        raise ValueError("source_attribute_roster_or_order_drift:" + part_name)
+                    for field in ATTRIBUTE_FIELDS:
+                        value = attrs[field["name"]]
+                        if value is None:
+                            continue
+                        kind = field["type"]
+                        if kind == "esriFieldTypeOID" and (type(value) is not int or value <= 0):
+                            raise ValueError("source_oid_value_type_drift:" + part_name)
+                        if kind in {"esriFieldTypeString", "esriFieldTypeGlobalID"} \
+                                and not isinstance(value, str):
+                            raise ValueError("source_string_value_type_drift:" + field["name"])
+                        if kind == "esriFieldTypeDate" and type(value) is not int:
+                            raise ValueError("source_date_value_type_drift:" + field["name"])
+                        if kind == "esriFieldTypeDouble" and (type(value) not in (int, float)
+                                                              or not math.isfinite(float(value))):
+                            raise ValueError("source_double_value_type_drift:" + field["name"])
+                    oid = attrs.get("objectid")
+                    if type(oid) is not int or oid not in expected_page_ids:
+                        raise ValueError("source_feature_id_roster_drift:" + part_name)
+                    if oid <= last_objectid:
+                        raise ValueError("source_feature_ids_not_strictly_increasing:" + part_name)
+                    last_objectid = oid
+                    page_ids.append(oid)
+                    if not isinstance(geometry, dict) \
+                            or set(geometry) - {"rings", "ids", "hasZ", "hasM", "spatialReference"}:
+                        raise ValueError("source_polygon_geometry_structure_drift:" + part_name)
+                    if geometry.get("hasZ") is True or geometry.get("hasM") is True:
+                        raise ValueError("source_geometry_dimensional_drift:" + part_name)
+                    if isinstance(geometry, dict) and geometry.get("spatialReference") is not None:
+                        _validate_spatial_reference(geometry.get("spatialReference"),
+                                                    "source_" + name + "_feature")
+                    rings = geometry.get("rings")
+                    if not isinstance(rings, list) or not rings:
+                        raise ValueError("source_polygon_rings_missing:" + part_name)
+                    for ring in rings:
+                        if not isinstance(ring, list) or len(ring) < 4:
+                            raise ValueError("source_polygon_ring_invalid:" + part_name)
+                        if ring[0] != ring[-1]:
+                            raise ValueError("source_polygon_ring_not_closed:" + part_name)
+                        for point in ring:
+                            if (not isinstance(point, list) or len(point) != 2
+                                    or any(type(coord) not in (int, float)
+                                           or not math.isfinite(coord) for coord in point)):
+                                raise ValueError("source_xy_ordinate_contract_drift:" + part_name)
+                            if not (coverage["xmin"] - EXPECTED_EXTENT_TOLERANCE
+                                    <= point[0] <= coverage["xmax"] + EXPECTED_EXTENT_TOLERANCE
+                                    and coverage["ymin"] - EXPECTED_EXTENT_TOLERANCE
+                                    <= point[1] <= coverage["ymax"] + EXPECTED_EXTENT_TOLERANCE):
+                                raise ValueError("source_geometry_outside_declared_coverage:" + part_name)
+                        vertices += len(ring)
+                        area = _signed_area(ring)
+                        if area > 0:
+                            winding["ccw_holes"] += 1
+                        elif area < 0:
+                            winding["cw_shells"] += 1
+                    served_ids = geometry.get("ids")
+                    if served_ids is not None:
+                        if (not isinstance(served_ids, list)
+                                or len(served_ids) != len(rings)
+                                or any(not isinstance(entry, list)
+                                        or len(entry) != len(ring)
+                                        or any(type(v) is not int for v in entry)
+                                        for entry, ring in zip(served_ids, rings))):
+                            raise ValueError("source_geometry_ids_member_drift:" + part_name)
+                        ids_member_features += 1
+                    try:
+                        wkb = _assemble_geometry(rings)
+                    except _GeometryGate as gate:
+                        if gate.code not in GATE_MODES:
+                            raise
+                        gate_counts[gate.code] = gate_counts.get(gate.code, 0) + 1
+                        null_geometry_count += 1
+                        geometries.append(None)
+                        for field in names:
+                            columns[field].append(attrs[field])
+                        record_hash.update(_canonical(dict(attrs)) + DIGEST_SEPARATOR)
                         continue
-                    kind = field["type"]
-                    if kind == "esriFieldTypeOID" and (type(value) is not int or value <= 0):
-                        raise ValueError("source_oid_value_type_drift:" + name)
-                    if kind in {"esriFieldTypeString", "esriFieldTypeGlobalID"} \
-                            and not isinstance(value, str):
-                        raise ValueError("source_string_value_type_drift:" + field["name"])
-                    if kind == "esriFieldTypeDate" and type(value) is not int:
-                        raise ValueError("source_date_value_type_drift:" + field["name"])
-                    if kind == "esriFieldTypeDouble" and (type(value) not in (int, float)
-                                                          or not math.isfinite(float(value))):
-                        raise ValueError("source_double_value_type_drift:" + field["name"])
-                oid = attrs.get("objectid")
-                if type(oid) is not int or oid not in expected_page_ids:
-                    raise ValueError("source_feature_id_roster_drift:" + name)
-                if oid <= last_objectid:
-                    raise ValueError("source_feature_ids_not_strictly_increasing:" + name)
-                last_objectid = oid
-                page_ids.append(oid)
-                if not isinstance(geometry, dict) \
-                        or set(geometry) - {"rings", "hasZ", "hasM", "spatialReference"}:
-                    raise ValueError("source_polygon_geometry_structure_drift:" + name)
-                if geometry.get("hasZ") is True or geometry.get("hasM") is True:
-                    raise ValueError("source_geometry_dimensional_drift:" + name)
-                if isinstance(geometry, dict) and geometry.get("spatialReference") is not None:
-                    _validate_spatial_reference(geometry.get("spatialReference"),
-                                                "source_" + name + "_feature")
-                rings = geometry.get("rings")
-                if not isinstance(rings, list) or not rings:
-                    raise ValueError("source_polygon_rings_missing:" + name)
-                for ring in rings:
-                    if not isinstance(ring, list) or len(ring) < 4:
-                        raise ValueError("source_polygon_ring_invalid:" + name)
-                    if ring[0] != ring[-1]:
-                        raise ValueError("source_polygon_ring_not_closed:" + name)
-                    for point in ring:
-                        if (not isinstance(point, list) or len(point) != 2
-                                or any(type(coord) not in (int, float)
-                                       or not math.isfinite(coord) for coord in point)):
-                            raise ValueError("source_xy_ordinate_contract_drift:" + name)
-                        if not (coverage["xmin"] - EXPECTED_EXTENT_TOLERANCE
-                                <= point[0] <= coverage["xmax"] + EXPECTED_EXTENT_TOLERANCE
-                                and coverage["ymin"] - EXPECTED_EXTENT_TOLERANCE
-                                <= point[1] <= coverage["ymax"] + EXPECTED_EXTENT_TOLERANCE):
-                            raise ValueError("source_geometry_outside_declared_coverage:" + name)
-                    vertices += len(ring)
-                    area = _signed_area(ring)
-                    if area > 0:
-                        winding["ccw_holes"] += 1
-                    elif area < 0:
-                        winding["cw_shells"] += 1
-                try:
-                    wkb = _assemble_geometry(rings)
-                except _GeometryGate as gate:
-                    if gate.code not in GATE_MODES:
-                        raise
-                    gate_counts[gate.code] = gate_counts.get(gate.code, 0) + 1
-                    null_geometry_count += 1
-                    geometries.append(None)
+                    decoded = from_wkb(wkb)
+                    for parity_field, observed in (("shape_Area", attrs.get("shape_Area")),
+                                                   ("shape_Length", attrs.get("shape_Length"))):
+                        if observed is None:
+                            continue
+                        computed = decoded.area if parity_field == "shape_Area" else decoded.length
+                        if abs(computed - observed) > SHAPE_PARITY_TOLERANCE * max(abs(observed), 1e-12):
+                            raise ValueError(f"source_{parity_field}_parity_drift:" + part_name)
+                    geometry_valid += 1
+                    if isinstance(decoded, MultiPolygon):
+                        multipart += 1
+                        geometry_types_seen.add("MultiPolygon")
+                        decoded_rings = [ring for polygon in decoded.geoms
+                                         for ring in (polygon.exterior, *polygon.interiors)]
+                    else:
+                        geometry_types_seen.add("Polygon")
+                        decoded_rings = [decoded.exterior, *decoded.interiors]
+                    if any(len(ring.interiors) for ring in
+                           (decoded.geoms if isinstance(decoded, MultiPolygon) else [decoded])):
+                        with_hole += 1
+                    for ring in decoded_rings:
+                        for x, y in ring.coords:
+                            if not (coverage["xmin"] - EXPECTED_EXTENT_TOLERANCE
+                                    <= x <= coverage["xmax"] + EXPECTED_EXTENT_TOLERANCE
+                                    and coverage["ymin"] - EXPECTED_EXTENT_TOLERANCE
+                                    <= y <= coverage["ymax"] + EXPECTED_EXTENT_TOLERANCE):
+                                raise ValueError("source_geometry_outside_declared_coverage:" + part_name)
+                            if bounds is None:
+                                bounds = [x, y, x, y]
+                            else:
+                                if x < bounds[0]:
+                                    bounds[0] = x
+                                if y < bounds[1]:
+                                    bounds[1] = y
+                                if x > bounds[2]:
+                                    bounds[2] = x
+                                if y > bounds[3]:
+                                    bounds[3] = y
+                    geometries.append(wkb)
                     for field in names:
                         columns[field].append(attrs[field])
                     record_hash.update(_canonical(dict(attrs)) + DIGEST_SEPARATOR)
-                    continue
-                decoded = from_wkb(wkb)
-                for parity_field, observed in (("shape_Area", attrs.get("shape_Area")),
-                                               ("shape_Length", attrs.get("shape_Length"))):
-                    if observed is None:
-                        continue
-                    computed = decoded.area if parity_field == "shape_Area" else decoded.length
-                    if abs(computed - observed) > SHAPE_PARITY_TOLERANCE * max(abs(observed), 1e-12):
-                        raise ValueError(f"source_{parity_field}_parity_drift:" + name)
-                geometry_valid += 1
-                if isinstance(decoded, MultiPolygon):
-                    multipart += 1
-                    geometry_types_seen.add("MultiPolygon")
-                    decoded_rings = [ring for polygon in decoded.geoms
-                                     for ring in (polygon.exterior, *polygon.interiors)]
-                else:
-                    geometry_types_seen.add("Polygon")
-                    decoded_rings = [decoded.exterior, *decoded.interiors]
-                if any(len(ring.interiors) for ring in
-                       (decoded.geoms if isinstance(decoded, MultiPolygon) else [decoded])):
-                    with_hole += 1
-                for ring in decoded_rings:
-                    for x, y in ring.coords:
-                        if not (coverage["xmin"] - EXPECTED_EXTENT_TOLERANCE
-                                <= x <= coverage["xmax"] + EXPECTED_EXTENT_TOLERANCE
-                                and coverage["ymin"] - EXPECTED_EXTENT_TOLERANCE
-                                <= y <= coverage["ymax"] + EXPECTED_EXTENT_TOLERANCE):
-                            raise ValueError("source_geometry_outside_declared_coverage:" + name)
-                        if bounds is None:
-                            bounds = [x, y, x, y]
-                        else:
-                            if x < bounds[0]:
-                                bounds[0] = x
-                            if y < bounds[1]:
-                                bounds[1] = y
-                            if x > bounds[2]:
-                                bounds[2] = x
-                            if y > bounds[3]:
-                                bounds[3] = y
-                geometries.append(wkb)
-                for field in names:
-                    columns[field].append(attrs[field])
-                record_hash.update(_canonical(dict(attrs)) + DIGEST_SEPARATOR)
-                geometry_hash.update(_canonical([oid, geometry["rings"]]) + DIGEST_SEPARATOR)
+                    geometry_hash.update(_canonical([oid, geometry["rings"]]) + DIGEST_SEPARATOR)
             if sorted(page_ids) != expected_page_ids or len(set(page_ids)) != len(page_ids):
                 raise ValueError("source_page_id_population_drift:" + name)
             if writer is not None:
@@ -691,6 +780,8 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None) -> tuple[dict, di
             "null_geometry_count": null_geometry_count,
             "unusable_geometry_counts": dict(sorted(gate_counts.items())),
             "multipart_feature_count": multipart, "feature_with_hole_count": with_hole,
+            "source_ids_member_feature_count": ids_member_features,
+            "page_parts": dict(sorted((page_parts or {}).items())),
             "geometry_bounds": bounds, "declared_extent": EXPECTED_EXTENT,
             "service_copyright_text": EXPECTED_COPYRIGHT_TEXT,
             "coverage_scope": ("Complete observed USGS wbd MapServer layer 5 "
@@ -716,15 +807,28 @@ def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) 
     return _sha(_canonical(_capture_identity(captures, root)))
 
 
-def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, list[str]]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
     manifest = json.loads(manifest_path.read_bytes())
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
         raise ValueError("retained_capture_manifest_invalid")
+    page_parts = manifest.get("page_parts") or {}
+    if not isinstance(page_parts, dict) or not all(
+            isinstance(parts, list) and len(parts) in (1, 2) and parts[0] == page
+            and (len(parts) == 1 or (isinstance(parts[1], str) and parts[1] == page + "b"))
+            and all(isinstance(part, str) for part in parts)
+            for page, parts in page_parts.items()):
+        raise ValueError("retained_capture_page_parts_invalid")
+    part_names = {part for parts in page_parts.values() for part in parts}
+    refusals = manifest.get("page_refusals") or []
+    if not isinstance(refusals, list) or not all(
+            isinstance(entry, str) and (entry.endswith("_refusal")) for entry in refusals):
+        raise ValueError("retained_capture_page_refusals_invalid")
+    expected_names = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT)),
+                      *part_names, *refusals}
     roster_files = manifest.get("artifact_roster")
-    expected_names = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
     if not isinstance(roster_files, dict) or set(manifest["receipts"]) != expected_names:
         raise ValueError("retained_capture_roster_or_names_invalid")
     validate_capture_roster(root, set(roster_files) | {"capture_manifest.json"})
@@ -737,9 +841,20 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
+        if name.endswith("_refusal"):
+            bound = next(page for page in expected_urls if name.startswith(page)) \
+                if False else name[:-len("_refusal")].rstrip("ab")
+            _validate_capture_request_identity(name, receipt, expected_urls[bound])
+            if not _is_refusal(body):
+                raise ValueError("retained_capture_refusal_document_drift:" + name)
+        elif page_parts and any(name in parts for parts in page_parts.values()
+                                if len(parts) > 1):
+            page = next(page for page, parts in page_parts.items() if name in parts)
+            _validate_capture_request_identity(name, receipt, _part_url(ids, int(page[5:9]), name))
+        else:
+            _validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
-    return captures
+    return captures, page_parts
 
 
 def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
@@ -763,7 +878,7 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
         root = requested
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
-        captures = _read_replay(root)
+        captures, page_parts = _read_replay(root)
     else:
         if requested and (any(requested.glob("*.body")) or any(requested.glob("*.wire"))
                           or any(requested.glob("*.receipt.json"))):
@@ -785,9 +900,19 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
                                           timeout=httpx.Timeout(60, connect=20, read=300),
                                           headers={"Connection": "close",
                                                    "User-Agent": DOC_USER_AGENT})
+                page_parts: dict[str, list[str]] = {}
+                page_refusals: list[str] = []
                 try:
                     for name, url in _capture_roster(roster):
                         if name in captures:
+                            continue
+                        if name.startswith("page_"):
+                            window, window_refusals = _capture_page_window(
+                                client, roster, int(name[5:9]), root)
+                            captures.update(window)
+                            page_parts[name] = [part for part in sorted(window)
+                                                if not part.endswith("_refusal")]
+                            page_refusals.extend(window_refusals)
                             continue
                         active = doc_client if name == "service_doc" else client
                         captures[name] = _capture(active, url, root, name,
@@ -809,14 +934,17 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
                 quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captures,
                                               type(exc).__name__)
             raise
-        (root / "capture_manifest.json").write_bytes(_canonical({"complete": True,
+        (root / "capture_manifest.json").write_bytes(_canonical({
+            "complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(),
             "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
-            "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
+            "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
+            "page_parts": dict(sorted(page_parts.items())),
+            "page_refusals": sorted(page_refusals)}) + b"\n")
         captures = _read_replay(root)
 
     parquet_sink = staging / "_construction-tmp" / f"{DATASET_SLUG}-{version}.parquet"
-    audit, derived = _validate_stream(root, parquet_sink=parquet_sink)
+    audit, derived = _validate_stream(root, parquet_sink=parquet_sink, page_parts=page_parts)
     identity = processing_identity(Path(__file__).parents[3])
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,

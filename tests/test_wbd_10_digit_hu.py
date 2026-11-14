@@ -388,8 +388,9 @@ class Wbd10DigitHuTests(unittest.TestCase):
         (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)),
                           DISK_FLOOR_BYTES=1):
-            captures = source._read_replay(root)
+            captures, replay_parts = source._read_replay(root)
             self.assertEqual(set(captures), set(documents))
+            self.assertEqual(replay_parts, {})
             audit, _derived = source._validate_stream(root, parquet_sink=None)
             self.assertEqual(audit["source_id_sha256"], _digest(_canonical(roster)))
         mutated = json.loads(json.dumps(documents))
