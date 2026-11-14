@@ -19,6 +19,15 @@ with gateway-504 bodies or hung until read timeout, while smaller documented
 limit/offset pages completed), and any ``limit`` is a documented pagination
 value.
 
+The collection is captured as served. Where the ``ref_gage`` listing itself
+repeats a feature — the same feature served twice consecutively inside one
+page (2026-11-14 capture: 9 such source-served duplicate rows) — the walk
+retains those duplicate rows verbatim, audits and pins their count and
+identifier roster, and audits the unique identifier count separately from the
+row count. Every other non-ascending identifier order, a repeated identifier
+with different content, and any duplicate across a page boundary is refused as
+pagination drift.
+
 The upstream ``internetofwater/ref_gages`` GitHub compilation is the community
 project NLDI indexes; it is named as lineage context only and is never fetched.
 The DataLumos 240397 archive is historical provenance and is not the refresh
@@ -85,11 +94,14 @@ EXPECTED_FIRST_ID = None
 EXPECTED_LAST_ID = None
 EXPECTED_NULL_GEOMETRY_COUNT = None
 EXPECTED_OBSERVED_BOUNDS = None
+EXPECTED_DUPLICATE_FEATURE_COUNT = None
+EXPECTED_DUPLICATE_IDS = None
 BASELINE_NOTE = (
     "The complete-population count, unique-identifier roster digest, property "
-    "schema digest and composed-asset digest are pinned from the dated complete "
-    "resumable pagination walk; unpinned values are checked only once pinned, "
-    "and drift against a pinned value is refused and quarantined.")
+    "schema digest, composed-asset digest and source-served duplicate-row "
+    "roster are pinned from the dated complete resumable pagination walk; "
+    "unpinned values are checked only once pinned, and drift against a pinned "
+    "value is refused and quarantined.")
 PAGE_NAME_PATTERN = re.compile(r"page_([0-9]{9})$")
 SOURCE_NAMES = ("sources-before", "sources-after")
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -309,8 +321,16 @@ class _CaptureState:
         return [entry for entry in self.entries() if PAGE_NAME_PATTERN.fullmatch(str(entry.get("name")))]
 
 
-def _validate_walk(pages: list[dict], ids: list[str]) -> None:
-    """The accepted pages must tile one strictly ascending identifier walk."""
+def _validate_walk(pages: list[dict], ids: list[str], duplicate_rows: list[dict]) -> None:
+    """The accepted pages must tile one ascending identifier walk.
+
+    The collection is captured as served: a repeated identifier is accepted
+    only where the streaming audit recorded the same feature served twice
+    consecutively inside one page (a source-served duplicate row, retained
+    verbatim). Any other non-ascending order, a repeated identifier with
+    different content, and any duplicate across a page boundary is refused as
+    pagination drift.
+    """
     offset = 0
     for entry in pages:
         if (entry.get("offset") != offset or not isinstance(entry.get("count"), int)
@@ -323,25 +343,43 @@ def _validate_walk(pages: list[dict], ids: list[str]) -> None:
         raise ValueError("the walked page counts do not reproduce the identifier roster")
     if not ids:
         raise ValueError("the pagination walk produced no features")
+    audited = set()
+    for row in duplicate_rows:
+        index = row.get("index")
+        if (type(index) is not int or index < 1 or index >= len(ids)
+                or row.get("id") != ids[index] or ids[index] != ids[index - 1]):
+            raise ValueError("audited duplicate rows do not match the walked identifiers")
+        audited.add(index)
+    cursor = 0
+    for entry in pages:
+        if cursor and entry["count"] and not ids[cursor] > ids[cursor - 1]:
+            raise ValueError("the walked identifiers repeat or descend across a page boundary")
+        cursor += entry["count"]
     for index, identifier in enumerate(ids):
-        if index and not identifier > ids[index - 1]:
+        if index and not identifier > ids[index - 1] and index not in audited:
             raise ValueError("the walked identifier order is not strictly ascending")
-    if len(set(ids)) != len(ids):
-        raise ValueError("the walked identifiers contain duplicates")
+    if len(set(ids)) != len(ids) - len(duplicate_rows):
+        raise ValueError("the walked identifiers contain unaudited duplicates")
 
 
 class _WalkAudit:
     """Streaming per-feature audit so a 200k-feature walk never holds its rows.
 
     The digests stream the exact canonical serializations a whole-collection
-    parse would produce, and features are discarded after each page.
+    parse would produce, and features are discarded after each page except the
+    immediately previous one, which is retained to identify source-served
+    duplicate rows (a repeated identifier whose feature is canonically
+    identical to the row before it, served consecutively inside one page).
     """
 
     def __init__(self):
         self.ids: list[str] = []
+        self.duplicate_rows: list[dict] = []
         self._id_hash = hashlib.sha256()
         self._geometry_hash = hashlib.sha256()
         self._bounds: dict[str, float] | None = None
+        self._last_feature: dict | None = None
+        self._last_feature_page_end = False
         schema = {"feature_type": "Feature", "property_names_in_source_order": list(PROPERTY_NAMES),
                   "geometry_type": "Point", "coordinate_dimension": 2, "root_metadata": {}}
         self.schema_sha256 = hashlib.sha256(_canonical(schema)).hexdigest()
@@ -349,6 +387,14 @@ class _WalkAudit:
     def update(self, features: list) -> None:
         for feature in features:
             identifier = _feature_identifier(feature)
+            if self.ids and identifier == self.ids[-1]:
+                if self._last_feature_page_end:
+                    raise ValueError("NLDI walk repeated an identifier across a page boundary")
+                if _canonical(feature) != _canonical(self._last_feature):
+                    raise ValueError("NLDI walk repeated an identifier with different feature content")
+                self.duplicate_rows.append({"id": identifier, "index": len(self.ids)})
+            elif self.ids and identifier < self.ids[-1]:
+                raise ValueError("the walked identifier order is not strictly ascending")
             _validate_feature(feature, identifier)
             self._id_hash.update(b"[" if not self.ids else b",")
             self._id_hash.update(_canonical(identifier))
@@ -364,6 +410,10 @@ class _WalkAudit:
                                 "ymin": min(self._bounds["ymin"], latitude),
                                 "xmax": max(self._bounds["xmax"], longitude),
                                 "ymax": max(self._bounds["ymax"], latitude)}
+            self._last_feature = feature
+            self._last_feature_page_end = False
+        if features:
+            self._last_feature_page_end = True
 
     def finish(self) -> tuple[int, list[str], dict]:
         ids = self.ids
@@ -375,7 +425,10 @@ class _WalkAudit:
                  "id_roster_sha256": id_digest.hexdigest(),
                  "geometry_rows_sha256": geometry_digest.hexdigest(),
                  "source_property_names": list(PROPERTY_NAMES),
-                 "unique_id_count": len(set(ids)), "null_geometry_count": 0,
+                 "unique_id_count": len(set(ids)),
+                 "duplicate_feature_count": len(self.duplicate_rows),
+                 "duplicate_rows": [dict(row) for row in self.duplicate_rows],
+                 "null_geometry_count": 0,
                  "observed_bounds": self._bounds, "first_id": ids[0] if ids else None,
                  "last_id": ids[-1] if ids else None, "feature_count": len(ids)}
         return len(ids), ids, audit
@@ -578,7 +631,7 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
             if entry not in pages:
                 raise ValueError("retained page evidence is outside the accepted walk")
         ids = audit.ids
-        _validate_walk(pages, ids)
+        _validate_walk(pages, ids, audit.duplicate_rows)
         body = _compose_asset(pages, capture_root)
         feature_count, ids, audit = audit.finish()
         asset_sha256 = hashlib.sha256(body).hexdigest()
@@ -601,6 +654,12 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
             raise ValueError("NLDI ref_gage null-geometry count drifted from the pinned walk")
         if EXPECTED_OBSERVED_BOUNDS is not None and audit["observed_bounds"] != EXPECTED_OBSERVED_BOUNDS:
             raise ValueError("NLDI ref_gage observed bounds drifted from the pinned walk")
+        if (EXPECTED_DUPLICATE_FEATURE_COUNT is not None
+                and audit["duplicate_feature_count"] != EXPECTED_DUPLICATE_FEATURE_COUNT):
+            raise ValueError("NLDI ref_gage duplicate-row count drifted from the pinned walk")
+        if (EXPECTED_DUPLICATE_IDS is not None
+                and [row["id"] for row in audit["duplicate_rows"]] != EXPECTED_DUPLICATE_IDS):
+            raise ValueError("NLDI ref_gage duplicate-row roster drifted from the pinned walk")
         state.data["complete"] = True
         state.save()
     finally:
@@ -674,6 +733,14 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
                                    "NLDI gateway's server-side budget (gateway-504 bodies and read timeouts) while "
                                    "smaller documented pages completed."},
             "feature_count": feature_count, "unique_id_count": audit["unique_id_count"],
+            "duplicate_rows": {"feature_count": audit["duplicate_feature_count"],
+                               "ids": [row["id"] for row in audit["duplicate_rows"]],
+                               "treatment": "retained_verbatim_as_served",
+                               "note": "The served collection repeated these identifiers as canonically "
+                                       "identical consecutive rows inside one page; the walk retains them "
+                                       "verbatim, refuses any other repeated, descending or cross-page "
+                                       "identifier order as pagination drift, and pins the duplicate "
+                                       "roster against drift."},
             "id_field": "Feature.id == properties.identifier",
             "id_type": "string", "id_examples": ids[:5], "first_id": audit["first_id"],
             "last_id": audit["last_id"],

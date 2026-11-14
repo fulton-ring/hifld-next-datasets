@@ -109,6 +109,8 @@ def fixture_mode(transport: httpx.MockTransport | None = None):
         patch.object(nldi, "EXPECTED_LAST_ID", None),
         patch.object(nldi, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(nldi, "EXPECTED_OBSERVED_BOUNDS", None),
+        patch.object(nldi, "EXPECTED_DUPLICATE_FEATURE_COUNT", None),
+        patch.object(nldi, "EXPECTED_DUPLICATE_IDS", None),
         *([patch.object(nldi, "_default_client",
                         side_effect=lambda: httpx.Client(transport=transport))]
           if transport is not None else []),
@@ -161,6 +163,8 @@ class USGSNLDIAssetTests(unittest.TestCase):
             self.assertEqual(audit["first_id"], _fixture_identifier(0))
             self.assertEqual(audit["last_id"], _fixture_identifier(FIXTURE_COUNT - 1))
             self.assertEqual(audit["unique_id_count"], FIXTURE_COUNT)
+            self.assertEqual(audit["duplicate_feature_count"], 0)
+            self.assertEqual(audit["duplicate_rows"], [])
             self.assertEqual(audit["null_geometry_count"], 0)
             self.assertEqual(audit["asset_sha256"], __import__("hashlib").sha256(composed).hexdigest())
             collection = json.loads(composed)
@@ -187,6 +191,8 @@ class USGSNLDIAssetTests(unittest.TestCase):
             self.assertEqual(observation["pagination"]["mode"], "limit_offset_walk")
             self.assertEqual(observation["pagination"]["page_limit"], FIXTURE_PAGE_LIMIT)
             self.assertTrue(observation["pagination"]["resumable"])
+            self.assertEqual(observation["duplicate_rows"]["feature_count"], 0)
+            self.assertEqual(observation["duplicate_rows"]["ids"], [])
             self.assertFalse(observation["agency_authority_accepted"])
             self.assertFalse(observation["compatibility_accepted"])
             self.assertEqual(observation["publication_status"], "STOPPED")
@@ -244,8 +250,14 @@ class USGSNLDIAssetTests(unittest.TestCase):
             "NLDI feature coordinates fall outside the geographic degree ranges": dict(rows=[
                 {**rows[0], "geometry": {"type": "Point", "coordinates": [200.0, 35.0]}},
                 *rows[1:]]),
+            "NLDI walk repeated an identifier with different feature content": dict(rows=[
+                rows[0],
+                {**rows[0], "properties": {**rows[0]["properties"], "name": "CHANGED"}},
+                *rows[2:]]),
             "the walked identifier order is not strictly ascending": dict(rows=[
-                rows[0], rows[0], *rows[2:]]),
+                rows[0], rows[1], rows[0], *rows[3:]]),
+            "NLDI walk repeated an identifier across a page boundary": dict(rows=[
+                rows[0], rows[1], rows[2], rows[2], rows[3], rows[4], rows[5], rows[6]]),
             "NLDI feature id/identifier do not match the walk position": dict(rows=[
                 {**rows[0], "id": "000000999"},
                 *rows[1:]]),
@@ -259,6 +271,36 @@ class USGSNLDIAssetTests(unittest.TestCase):
                         with self.assertRaisesRegex(ValueError, expected_error):
                             nldi.fetch_and_stage_nldi(_staging(root),
                                                       client=httpx.Client(transport=transport))
+
+    def test_source_served_duplicate_rows_are_retained_and_pinned(self):
+        rows = _fixture_rows()
+        duplicate_source_rows = rows[:2] + [rows[1]] + rows[2:]
+        transport = make_transport(rows=duplicate_source_rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            staging = _staging(root)
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                first = nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=transport))
+                audit = first["source_audit"]
+                self.assertEqual(first["feature_count"], FIXTURE_COUNT + 1)
+                self.assertEqual(audit["unique_id_count"], FIXTURE_COUNT)
+                self.assertEqual(audit["duplicate_feature_count"], 1)
+                self.assertEqual(audit["duplicate_rows"], [{"id": _fixture_identifier(1), "index": 2}])
+                prefix = Path(root) / "staging" / nldi.DATASET_SLUG / nldi.FILE_SLUG / first["version"]
+                composed = json.loads((prefix / nldi.ASSET_PATH).read_bytes())
+                self.assertEqual(len(composed["features"]), FIXTURE_COUNT + 1)
+                self.assertEqual(composed["features"][1], composed["features"][2])
+                manifest = json.loads((prefix / "metadata/source_manifest.json").read_text())
+                self.assertEqual(manifest["source_observation"]["duplicate_rows"]["feature_count"], 1)
+                self.assertEqual(manifest["source_observation"]["duplicate_rows"]["ids"],
+                                 [_fixture_identifier(1)])
+                with patch.object(nldi, "EXPECTED_DUPLICATE_FEATURE_COUNT", 0):
+                    with self.assertRaisesRegex(ValueError, "duplicate-row count drifted"):
+                        nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=transport))
+                with patch.object(nldi, "EXPECTED_DUPLICATE_IDS", ["000000999"]):
+                    with self.assertRaisesRegex(ValueError, "duplicate-row roster drifted"):
+                        nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=transport))
 
     def test_walk_reuses_retained_page_evidence_without_transport(self):
         transport = make_transport()
