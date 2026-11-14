@@ -144,11 +144,11 @@ IN_PACKAGE_SHAPEFILE_XML_MARKERS = (
 # anchors; the landing page and downloads index are dynamic HTML and are pinned
 # by content markers, not bytes).
 LANDING_MARKERS = (
-    "USGS Open-File Report 2012&ndash;1205",
-    "Coal Fields of the Conterminous United States&mdash;National Coal Resource Assessment Updated Version",
+    "Coal Fields of the Conterminous United States",
+    "National Coal Resource Assessment Updated Version",
+    "Joseph A. East",
     "First posted April 2, 2013",
     "Downloads Directory",
-    "https://doi.org/10.3133/ofr20121205",
 )
 DOWNLOADS_INDEX_MARKERS = (
     "Index of /pubs/of/2012/1205/Downloads",
