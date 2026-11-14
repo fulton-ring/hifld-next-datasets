@@ -439,10 +439,10 @@ def _compose_asset(pages: list[dict], capture_root: Path) -> bytes:
     interiors = []
     total_features = 0
     for entry in pages:
-        decoded_path = entry.get("decoded_path")
-        if not decoded_path or not Path(decoded_path).exists():
+        decoded_path = _evidence_path(capture_root, entry["name"], "decoded")
+        if not decoded_path.exists():
             raise ValueError("retained page evidence is missing at composition time")
-        interiors.append(_page_slice(Path(decoded_path).read_bytes()))
+        interiors.append(_page_slice(decoded_path.read_bytes()))
         total_features += entry["count"]
     body = (b'{"type":"FeatureCollection","features":[' + b",".join(interiors) + b"]}")
     expected_length = (len(b'{"type":"FeatureCollection","features":[') + len(b"]}")) \

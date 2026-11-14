@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -301,6 +302,32 @@ class USGSNLDIAssetTests(unittest.TestCase):
                 with patch.object(nldi, "EXPECTED_DUPLICATE_IDS", ["000000999"]):
                     with self.assertRaisesRegex(ValueError, "duplicate-row roster drifted"):
                         nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=transport))
+
+    def test_relocated_capture_root_seals_from_relocated_page_evidence(self):
+        refusing = make_transport(refuse_at_offset=3)
+        complete = make_transport()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            staging = _staging(root)
+            capture_a = root / "capture-a"
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_a)):
+                with self.assertRaisesRegex(ValueError, "HTTP capture incomplete"):
+                    nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=refusing))
+            state = json.loads((capture_a / "capture_state.json").read_text())
+            self.assertEqual([entry["name"] for entry in state["pages"]], ["sources-before", "sources-after",
+                                                                           "page_000000000"])
+            stale_path = next(entry for entry in state["pages"]
+                              if entry["name"] == "page_000000000")["decoded_path"]
+            self.assertEqual(Path(stale_path).parent, capture_a)
+            capture_b = root / "capture-b"
+            shutil.move(str(capture_a), str(capture_b))
+            self.assertFalse(capture_a.exists())
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_b)):
+                result = nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=complete))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertFalse(result["reused"])
+            moved_state = json.loads((capture_b / "capture_state.json").read_text())
+            self.assertTrue(moved_state["complete"])
 
     def test_walk_reuses_retained_page_evidence_without_transport(self):
         transport = make_transport()
