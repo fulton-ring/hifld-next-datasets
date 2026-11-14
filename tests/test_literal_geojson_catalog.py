@@ -190,9 +190,39 @@ class LiteralCatalogTests(unittest.TestCase):
             with self.assertRaises(ValueError):summary(storage,metadata)
             self.assertEqual(outside.read_bytes(),body)
         with tempfile.TemporaryDirectory()as tmp:
-            root=Path(tmp);local,metadata=fixture(root);local.write_key(PREFIX+'/metadata/source_manifest.json',b' '* (2*1024*1024+1));remote=Remote(local)
+            root=Path(tmp);local,metadata=fixture(root);local.write_key(PREFIX+'/metadata/source_manifest.json',b' '* (module.MAX_PROBE_MANIFEST_BYTES+1));remote=Remote(local)
             with self.assertRaisesRegex(ValueError,'layer limit'):summary(remote,metadata)
             self.assertEqual(remote.downloads,[]);self.assertEqual(remote.ranges,[])
+
+    def test_page_per_receipt_provenance_manifest_exceeds_the_old_bound_and_resolves(self):
+        """Whole-population captures pin one provenance entry per producer
+        page; the bounded probe must still read such a manifest (observed
+        2026-11-14: 2,835 entries / 3.98 MB from a 3DHP full capture)."""
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp)
+            inputs=[{'input_id':f'page_{index:06d}','producer':'Synthetic Agency',
+                     'host':'example.invalid','canonical_url':'https://example.invalid/input',
+                     'retrieval_url':f'https://example.invalid/input?page={index}',
+                     'retrieved_at':'2026-11-13T00:00:00Z','sha256':'a'*64,'bytes':2500,
+                     'license':'Synthetic','attribution':'Synthetic Agency',
+                     'role':'producer_publication','release_date':None,
+                     'release_date_unknown_reason':'Synthetic test, no real source; '
+                     + f'page offset {index} of the synthetic whole-population keyset walk; '
+                     + 'retained receipt padding so the manifest exceeds the retired 2 MiB '
+                     + 'probe bound: ' + 'x' * 160}
+
+                    for index in range(2835)]
+            metadata={'title':'Synthetic page-per-receipt manifest','schema_version':1,
+                      'processor':'HIFLD Next','code_commit':'synthetic-only',
+                      'transformations':[],'inputs':inputs}
+            body=json.dumps(metadata).encode()
+            self.assertGreater(len(body),2*1024*1024)
+            self.assertLess(len(body),module.MAX_PROBE_MANIFEST_BYTES)
+            storage=StagingStorageResource(local_dir=str(root),prefix='')
+            storage.write_key(PREFIX+'/metadata/source_manifest.json',body)
+            resolved=load_resolved_source_manifest(storage,*PREFIX.split('/'),max_layer_bytes=module.MAX_PROBE_MANIFEST_BYTES)
+            self.assertEqual(len(resolved.metadata['inputs']),2835)
+            self.assertEqual(resolved.manifest_keys,[PREFIX+'/metadata/source_manifest.json'])
 
     def test_profile_survives_resolved_layers_dictionary_and_downloadable_provenance(self):
         with tempfile.TemporaryDirectory()as tmp:
