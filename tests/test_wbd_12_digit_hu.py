@@ -54,6 +54,7 @@ def relaxed_pins(**extra):
         "EXPECTED_ID_SHA256": "", "EXPECTED_RECORD_SHA256": "",
         "EXPECTED_GEOMETRY_SHA256": "", "EXPECTED_NULL_GEOMETRY_COUNT": None,
         "EXPECTED_UNUSABLE_GEOMETRY_COUNTS": None,
+        "EXPECTED_REFUSED_GEOMETRY_OIDS": None,
     }
     scale.update(extra)
     with patches(source, **scale):
