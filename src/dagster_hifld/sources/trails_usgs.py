@@ -14,6 +14,7 @@ import shutil
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
+from time import sleep, time_ns
 from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
@@ -88,6 +89,19 @@ def _processing_identity(repo_root: Path | None = None) -> dict[str, object]:
     return identity
 
 
+_RETRY_ATTEMPTS = 4
+_RETRY_BASE_DELAY_SECONDS = 5.0
+
+
+def _witness_refused(root: Path, name: str) -> None:
+    """Move a retained refused attempt aside so the slot can be refetched."""
+    stamp = time_ns()
+    for suffix in ("body", "wire", "receipt.json"):
+        source = root / f"{name}.{suffix}"
+        if source.exists():
+            source.replace(root / f"{name}.error-{stamp}.{suffix}")
+
+
 def _capture(client: httpx.Client, url: str, root: Path, name: str, retained: int) -> tuple[bytes, dict]:
     if type(retained) is not int or retained < 0 or retained > MAX_CAPTURE_BYTES:
         raise ValueError("trails_capture_budget_invalid")
@@ -98,7 +112,18 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str, retained: in
         if prospective > MAX_CAPTURE_BYTES:
             raise OSError("trails_capture_budget_exceeded")
 
-    return capture_get(client, url, root, name, max_bytes=MAX_RESPONSE_BYTES, reserve=reserve)
+    # The producer intermittently drops mid-page transports (observed on a
+    # full-width 2,000-record page); incomplete captures are witnessed aside
+    # and retried a bounded number of times before the capture fails closed.
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            return capture_get(client, url, root, name, max_bytes=MAX_RESPONSE_BYTES, reserve=reserve)
+        except ValueError as exc:
+            if attempt + 1 >= _RETRY_ATTEMPTS or not str(exc).startswith("incomplete_source_capture:"):
+                raise
+            _witness_refused(root, name)
+            sleep(_RETRY_BASE_DELAY_SECONDS * attempt)
+    raise AssertionError("unreachable_retry_state")
 
 
 def _load(root: Path) -> dict[str, tuple[bytes, dict]]:
