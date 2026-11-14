@@ -140,6 +140,7 @@ from dagster_hifld.assets.epa_rcra_tsd import epa_rcra_treatment_storage_and_dis
 from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
 from dagster_hifld.assets.epa_frs_tri import epa_frs_toxic_release_inventory
+from dagster_hifld.assets.epa_frs_sic import epa_frs_sic_codes
 from dagster_hifld.assets.epa_tsca import epa_frs_toxic_substances_control_act_tsca
 from dagster_hifld.assets.epa_frs_interests import epa_frs_interests
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
@@ -287,6 +288,7 @@ hifld_ingest_assets = [
     epa_frs_interest_contact,
     epa_rcra_treatment_storage_and_disposal_facilities,
     epa_frs_toxic_release_inventory,
+    epa_frs_sic_codes,
     epa_frs_toxic_substances_control_act_tsca,
     epa_frs_interests,
     bts_intermodal_freight_air_to_truck,
