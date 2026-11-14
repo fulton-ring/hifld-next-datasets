@@ -29,7 +29,10 @@ repair loop); a refusing half fails the capture. Ring assembly keeps the
 producer's winding and hole ownership; rows that still cannot form a valid OGC
 polygon gate to null geometry and are counted by failure mode instead of being
 repaired, with the counts pinned for later drift refusal after the first
-complete walk.
+complete walk. The geometry digest is updated from the raw served rings of
+every row before assembly and gating, so a coordinate change that still gates
+is refused by the pinned geometry baseline rather than hiding behind unchanged
+aggregate gate counts.
 
 The per-value record and geometry baseline digests, the ID roster digest and
 the geometry-gate counts are pinned below from the complete dated population
@@ -133,7 +136,10 @@ SHAPE_PARITY_TOLERANCE = 1e-6
 # empty/None pins are checked only when non-empty.
 EXPECTED_SCHEMA_SHA256 = "cc3308bf19b6db3ebdf0e125b91f829db672512b6f2188de03cb498c7d783845"
 EXPECTED_RECORD_SHA256 = "87a5b6a972cea49fd96efc22997a8a821b3ec08633170427a2324cb9a91e4439"
-EXPECTED_GEOMETRY_SHA256 = "af2458195c34d2cb32eeb08f0276834ba835c2624e28a5d2aebd1f437fc2d18f"
+# Geometry digest over every served row — one [objectid, served rings] document
+# per feature in ascending OBJECTID order, including the rows that gate to null
+# geometry — computed from the complete dated population walk (2026-11-14).
+EXPECTED_GEOMETRY_SHA256 = "0946ee86214c9fbb02f5feb900c2a43fc1a1395e34bf58c580bf42cdc61fa67e"
 EXPECTED_NULL_GEOMETRY_COUNT = 2
 EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {"source_polygon_ring_self_intersecting": 2}
 BASELINE_PENDING_NOTE = (
@@ -699,6 +705,11 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                                         for entry, ring in zip(served_ids, rings))):
                             raise ValueError("source_geometry_ids_member_drift:" + part_name)
                         ids_member_features += 1
+                    # The served rings are digested for every row, before
+                    # assembly and gating: a gated row's raw coordinates stay
+                    # covered by the pinned geometry baseline, so a coordinate
+                    # change that still raises the same gate mode is refused.
+                    geometry_hash.update(_canonical([oid, rings]) + DIGEST_SEPARATOR)
                     try:
                         wkb = _assemble_geometry(rings)
                     except _GeometryGate as gate:
@@ -753,7 +764,6 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                     for field in names:
                         columns[field].append(attrs[field])
                     record_hash.update(_canonical(dict(attrs)) + DIGEST_SEPARATOR)
-                    geometry_hash.update(_canonical([oid, geometry["rings"]]) + DIGEST_SEPARATOR)
             if sorted(page_ids) != expected_page_ids or len(set(page_ids)) != len(page_ids):
                 raise ValueError("source_page_id_population_drift:" + name)
             if writer is not None:
@@ -785,7 +795,9 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                                        "compact-JSON document per feature in ascending "
                                        "OBJECTID order, each followed by a 0x00 byte; the "
                                        "record document is the served attribute object and "
-                                       "the geometry document is [objectid, served rings]"),
+                                       "the geometry document is [objectid, served rings], "
+                                       "hashed for every served row including rows that "
+                                       "gate to null geometry"),
             "source_geometry_type": "esriGeometryPolygon",
             "source_crs": f"EPSG:{SOURCE_CRS_WKID}",
             "source_native_wkid": NATIVE_WKID,

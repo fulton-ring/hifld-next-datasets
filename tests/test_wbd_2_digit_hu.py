@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import pyarrow.parquet as pq
 from shapely import from_wkb
+from shapely.geometry import Polygon
 
 from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
@@ -335,9 +336,8 @@ class Wbd10DigitHuTests(unittest.TestCase):
         expected_geometry = hashlib.sha256()
         for oid in _TEST_ROSTER:
             expected_record.update(_canonical(_attributes(oid)) + source.DIGEST_SEPARATOR)
-            if oid not in _GATE_FEATURES:
-                expected_geometry.update(
-                    _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
+            expected_geometry.update(
+                _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
         self.assertEqual(audit["source_record_sha256"], expected_record.hexdigest())
         self.assertEqual(audit["source_geometry_sha256"], expected_geometry.hexdigest())
 
@@ -377,6 +377,35 @@ class Wbd10DigitHuTests(unittest.TestCase):
                                       **gate_counts, "source_polygon_ring_degenerate": 2}):
                     source._validate_stream(root, parquet_sink=None)
 
+    def test_gated_polygon_coordinate_drift_is_refused_by_the_geometry_pin(self):
+        documents = _documents()
+        root = self._capture_root(documents)
+        with relaxed_pins():
+            audit, _derived = source._validate_stream(root, parquet_sink=None)
+        self_intersecting = next(oid for oid, mode in _GATE_FEATURES.items()
+                                 if mode == "source_polygon_ring_self_intersecting")
+        mutated = json.loads(json.dumps(documents))
+        row = next(feature for feature in mutated["page_0001"]["features"]
+                   if feature["attributes"]["objectid"] == self_intersecting)
+        ring = row["geometry"]["rings"][0]
+        ring[1][0] += 500.0
+        self.assertFalse(Polygon(ring).is_valid)
+        with relaxed_pins():
+            drifted, _derived = source._validate_stream(
+                self._capture_root(mutated), parquet_sink=None)
+        self.assertEqual(drifted["source_record_sha256"], audit["source_record_sha256"])
+        self.assertEqual(drifted["unusable_geometry_counts"],
+                         audit["unusable_geometry_counts"])
+        self.assertEqual(drifted["null_geometry_count"], audit["null_geometry_count"])
+        self.assertNotEqual(drifted["source_geometry_sha256"], audit["source_geometry_sha256"])
+        with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(list(_TEST_ROSTER))),
+                          EXPECTED_RECORD_SHA256=audit["source_record_sha256"],
+                          EXPECTED_GEOMETRY_SHA256=audit["source_geometry_sha256"],
+                          EXPECTED_NULL_GEOMETRY_COUNT=audit["null_geometry_count"],
+                          EXPECTED_UNUSABLE_GEOMETRY_COUNTS=audit["unusable_geometry_counts"]):
+            with self.assertRaisesRegex(ValueError, "source_geometry_baseline_drift"):
+                source._validate_stream(self._capture_root(mutated), parquet_sink=None)
+
     def test_refused_window_bisection_streams_and_replays_to_the_same_population(self):
         documents = _documents()
         roster = list(_TEST_ROSTER)
@@ -401,9 +430,8 @@ class Wbd10DigitHuTests(unittest.TestCase):
         expected_record, expected_geometry = hashlib.sha256(), hashlib.sha256()
         for oid in roster:
             expected_record.update(_canonical(_attributes(oid)) + source.DIGEST_SEPARATOR)
-            if oid not in _GATE_FEATURES:
-                expected_geometry.update(
-                    _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
+            expected_geometry.update(
+                _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
         self.assertEqual(audit["source_record_sha256"], expected_record.hexdigest())
         self.assertEqual(audit["source_geometry_sha256"], expected_geometry.hexdigest())
         self.assertEqual(audit["page_parts"], dict(sorted(page_parts.items())))
