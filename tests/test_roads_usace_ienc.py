@@ -123,9 +123,6 @@ class RoadsUsaceIencTests(unittest.TestCase):
              "source_page_id_population_drift"),
             ("ordinate", lambda d: d["page_000"]["features"][0]["geometry"]["paths"][0][0].append(20),
              "source_xy_ordinate_contract_drift"),
-            ("duplicate feature id", lambda d: d["page_000"]["features"][1]["attributes"].update(
-                Feature_ID=d["page_000"]["features"][0]["attributes"]["Feature_ID"]),
-             "source_feature_id_duplicate"),
         ]
         for label, mutate, expected in cases:
             with self.subTest(label=label):
@@ -133,6 +130,18 @@ class RoadsUsaceIencTests(unittest.TestCase):
                 mutate(docs)
                 with self.assertRaisesRegex(ValueError, expected):
                     source._validate(self._captures(docs))
+
+    def test_duplicated_source_feature_ids_are_preserved_and_counted(self):
+        docs = json.loads(json.dumps(self._documents()))
+        shared = docs["page_000"]["features"][0]["attributes"]["Feature_ID"]
+        docs["page_000"]["features"][1]["attributes"]["Feature_ID"] = shared
+        docs["page_001"]["features"][0]["attributes"]["Feature_ID"] = shared
+        fields, features, audit = source._validate(self._captures(docs))
+        self.assertEqual(features[1]["attributes"]["Feature_ID"], shared)
+        self.assertEqual(features[2]["attributes"]["Feature_ID"], shared)
+        self.assertEqual(audit["source_feature_id_unique_count"], 4)
+        self.assertEqual(audit["source_feature_id_duplicate_count"], 2)
+        self.assertEqual(audit["source_feature_id_null_count"], 0)
 
     def test_vertex_domain_and_coverage_drift_fail_closed(self):
         def replace_vertex(docs, vertex, index):

@@ -202,6 +202,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     nulls = {field["name"]: 0 for field in ATTRIBUTE_FIELDS}
     geometry_valid = geometry_empty = 0
     feature_ids = set()
+    feature_id_duplicates = 0
     for name in sorted(n for n in captures if n.startswith("page_")):
         page = docs[name]
         if "error" in page or page.get("exceededTransferLimit") is True:
@@ -233,8 +234,14 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                     if len(value) > int(field["length"]):
                         raise ValueError("source_string_length_drift:" + field["name"])
                 if field["name"] == "Feature_ID" and value:
+                    # Source-encounter identifiers are reused across roadway
+                    # segments in the live layer (2026-11-14: 106230 distinct
+                    # values across 106747 non-null rows, 471 values repeated
+                    # up to 7 times), so duplicates are preserved and counted,
+                    # never dropped or failed; the row identity contract is the
+                    # OBJECTID roster validated below.
                     if value in feature_ids:
-                        raise ValueError("source_feature_id_duplicate:" + value)
+                        feature_id_duplicates += 1
                     feature_ids.add(value)
             if not isinstance(geometry, dict) or set(geometry) - {"paths", "hasZ", "hasM", "spatialReference"}:
                 raise ValueError("source_polyline_geometry_structure_drift")
@@ -290,6 +297,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "geometry_invalid_count": len(features) - geometry_valid - geometry_empty,
         "source_null_counts": nulls,
         "source_feature_id_unique_count": len(feature_ids),
+        "source_feature_id_duplicate_count": feature_id_duplicates,
         "source_feature_id_null_count": nulls["Feature_ID"],
         "geometry_bounds": [min(b[0] for b in bounds), min(b[1] for b in bounds),
                             max(b[2] for b in bounds), max(b[3] for b in bounds)],
