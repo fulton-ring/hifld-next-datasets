@@ -6,19 +6,18 @@ Layer" page at the exact REST URL used here) exposes layer 32 "Water Areas"
 (the ``S_Wtr_Area`` hydrographic base-map polygons shown on FIRMs) as the
 producer's own publication of this HIFLD inventory dataset
 (``nfhl/water-areas-1``, DataLumos 240887 historical archive copy used for
-identifiication only). The layer is continuously updated and publishes no
+identification only). The layer is continuously updated and publishes no
 per-snapshot release date; source freshness, rights, and public-schema
-compatibility are not accepted by this draft. Producer rows may publish null
-geometry, string-"NaN" ordinates, numeric coordinates outside the NAD83
-geographic domain (a small set of producer rows in DFIRM 22051C carry
-coordinates that cannot be placed geographically, consistent with the
-layer's declared extent, which likewise is not a geographic envelope),
-a non-null geometry that is an empty rings list (observed in DFIRM 39031C),
-or
-rings that cannot be assembled into a valid OGC polygon container
-(self-intersecting or overlapping rings); all such records are retained with
-null candidate geometry, raw evidence and audit object IDs intact, and never
-silently coerced to a location.
+compatibility are not accepted by this draft. In the pinned 2026-11-14
+population, five producer rows publish null geometry, eight producer rows in
+DFIRM 22051C publish numeric coordinates outside the NAD83 geographic domain
+(consistent with the layer's declared extent, which likewise is not a
+geographic envelope), two producer rows in DFIRM 39031C publish a non-null
+geometry that is an empty rings list, and 1,120 producer rows publish rings
+that cannot be assembled into a valid OGC polygon container
+(self-intersecting or overlapping rings, islands inside holes); all such
+records are retained with null candidate geometry, raw evidence and audit
+object IDs intact, and never silently coerced to a location.
 
 Like the sibling NFHL line layer, this layer is captured as adaptively
 bisected segments of the sorted OBJECTID roster: the producer's MapServer
@@ -96,20 +95,23 @@ SEGMENT_PROBE_ATTEMPTS = 2
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-14 complete-layer population contract,
 # established by one dated complete capture (414 adaptive segments tiling the
-# sorted OBJECTID roster; eight producer rows in DFIRM 22051C publish numeric
-# coordinates outside the NAD83 geographic domain and are retained as null
-# candidate geometries). PLACEHOLDER pins are replaced by the dated
-# complete-capture values before any staging run; see the handoff.
+# sorted OBJECTID roster). Five producer rows publish null geometry, eight
+# producer rows in DFIRM 22051C publish numeric coordinates outside the NAD83
+# geographic domain, two producer rows in DFIRM 39031C publish a non-null
+# geometry that is an empty rings list, and 1,120 producer rows publish rings
+# that cannot be assembled into a valid OGC polygon container; all of those
+# records are retained with null candidate geometry.
 EXPECTED_COUNT = 778402
-EXPECTED_ID_SHA256 = "PLACEHOLDER_ID_SHA256"
-EXPECTED_SCHEMA_SHA256 = "PLACEHOLDER_SCHEMA_SHA256"
-EXPECTED_RECORD_SHA256 = "PLACEHOLDER_RECORD_SHA256"
-EXPECTED_GEOMETRY_SHA256 = "PLACEHOLDER_GEOMETRY_SHA256"
-EXPECTED_OBSERVED_BOUNDS = {"xmin": -180.0, "ymin": -90.0, "xmax": 180.0, "ymax": 90.0}
-EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_ID_SHA256 = "391ef7e61fa9cf971060a9dfa64aa0fe046814ad52f90a5c0a5161c300e3ffa6"
+EXPECTED_SCHEMA_SHA256 = "69afaed8c69f76064604e04c007749c5f60369f1d23c1c54a6b83e024a723da4"
+EXPECTED_RECORD_SHA256 = "16d1a1c1735f7c3c5f4dbb1e6c58f44c07c6a65e87aab2c5f1899501d4ce4d27"
+EXPECTED_GEOMETRY_SHA256 = "5df2c6f17687becf2ff4af38103e1e4674f14f71b1a49698cdca1e95c89d2cfd"
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -170.78674380320848, "ymin": -14.337630301941374,
+                            "xmax": 144.76521859688876, "ymax": 61.48395130434233}
+EXPECTED_NULL_GEOMETRY_COUNT = 5
 EXPECTED_NAN_GEOMETRY_COUNT = 0
-EXPECTED_UNPLACABLE_GEOMETRY_COUNT = 0
-EXPECTED_EMPTY_GEOMETRY_COUNT = 0
+EXPECTED_UNPLACABLE_GEOMETRY_COUNT = 8
+EXPECTED_EMPTY_GEOMETRY_COUNT = 2
 EXPECTED_LAYER_EXTENT = {"xmin": -305.0788612945911, "ymin": -125.69290611810862,
                          "xmax": 2761.6811641840727, "ymax": 2253.8486798599915}
 EXPECTED_SERVICE_LAYER_ROSTER = [
