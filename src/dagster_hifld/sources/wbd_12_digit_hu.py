@@ -363,7 +363,7 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
         if not _is_refusal(body):
             parts[part_name] = (body, receipt)
             return
-        refusals.append(part_name)
+        refusals.append(f"{part_name}_refusal")
         parts[f"{part_name}_refusal"] = _retain_refusal(root, part_name, body, receipt)
         if len(sub) == 1:
             attrs_name = f"{part_name}_attrs"

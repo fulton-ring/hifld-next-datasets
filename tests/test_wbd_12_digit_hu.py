@@ -444,7 +444,7 @@ class Wbd12DigitHuTests(unittest.TestCase):
             self.assertEqual(sorted(parts),
                              ["page_0000_refusal", "page_0000a_refusal",
                               "page_0000aa", "page_0000ab", "page_0000b"])
-            self.assertEqual(refusals, ["page_0000", "page_0000a"])
+            self.assertEqual(refusals, ["page_0000_refusal", "page_0000a_refusal"])
             self.assertEqual(requested["page_0000"],
                              dict(source._capture_roster(roster))["page_0000"])
             self.assertEqual(requested["page_0000aa"],
@@ -484,7 +484,7 @@ class Wbd12DigitHuTests(unittest.TestCase):
                      EXPECTED_ID_MIN=11, EXPECTED_ID_MAX=11):
             parts, refusals = source._capture_page_window(None, roster, 0, root)
             self.assertEqual(sorted(parts), ["page_0000_attrs", "page_0000_refusal"])
-            self.assertEqual(refusals, ["page_0000"])
+            self.assertEqual(refusals, ["page_0000_refusal"])
             self.assertEqual(requested["page_0000_attrs"], source._record_attrs_url(11))
         self.assertTrue((root / "page_0000_refusal.body").read_bytes().startswith(b'{"error"'))
         self.assertIn(b'"features"', (root / "page_0000_attrs.body").read_bytes())
