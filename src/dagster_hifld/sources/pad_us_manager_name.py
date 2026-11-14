@@ -1067,6 +1067,78 @@ class _RetainedCaptureViews(Mapping):
         return len(self._names)
 
 
+def _document_input(name: str, receipt: Mapping[str, object]) -> dict[str, object]:
+    return {"input_id": name, "producer": PUBLISHER,
+            "host": urlsplit(receipt["url"]).hostname,
+            "role": "producer_publication", "canonical_url": LAYER_URL,
+            "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
+            "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
+            "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+            "release_date": None,
+            "release_date_unknown_reason":
+                "The PAD-US 4.1 release is a fixed dated USGS data release "
+                "(DOI 10.5066/P96WBCHS); the service publishes no additional "
+                "per-snapshot release date.",
+            "license": "U.S. Government work in the public domain per the producer "
+                       "item; rights acceptance pending.",
+            "attribution": "U.S. Geological Survey (USGS) Gap Analysis Project "
+                           "(GAP), PAD-US 4.1; formal attribution terms require "
+                           "maintainer review."}
+
+
+def _segment_pages_input(capture_root: Path) -> dict[str, object]:
+    """One bounded provenance input carrying every accepted roster segment page.
+
+    The catalog layer reads each manifest under a hard byte bound, so the
+    thousands of per-page HTTP responses cannot be listed as separate top-level
+    inputs; this aggregate input records the shared retrieval contract and every
+    page's own response digest, length and observation time.
+    """
+    state = _load_state(capture_root)
+    rows = []
+    total_bytes = 0
+    statuses = set()
+    for entry in sorted((e for e in state.get("segments", []) if isinstance(e, dict)),
+                        key=lambda e: (e.get("offset", -1), e.get("count", -1))):
+        receipt = _load_receipt(capture_root, str(entry["name"]))
+        total_bytes += int(receipt["bytes"])
+        statuses.add(int(receipt["status"]))
+        rows.append([str(entry["name"]), entry["offset"], entry["count"],
+                     receipt["bytes"], receipt["sha256"], receipt["observed_at"]])
+    if not rows:
+        raise PadUsManagerNameError("segment_pages_input_empty")
+    if statuses != {200}:
+        raise PadUsManagerNameError("segment_pages_input_status_drift")
+    return {
+        "input_id": "PADUS4_1ManagerName_roster_segment_pages",
+        "producer": PUBLISHER,
+        "host": urlsplit(LAYER_URL).hostname,
+        "role": "producer_publication",
+        "canonical_url": LAYER_URL,
+        "retrieval_url": _segment_query(0, MAX_RECORD_COUNT),
+        "retrieved_at": rows[-1][5],
+        "http_status": 200,
+        "bytes": total_bytes,
+        "sha256": _sha(_canonical(rows)),
+        "sha256_basis": "sha256 of the canonical JSON encoding of this input's pages "
+                        "array; each row is [segment name, roster offset, record count, "
+                        "response bytes, response sha256, observed_at] for one accepted "
+                        "producer page, and every page response is additionally retained "
+                        "as raw evidence in the candidate.",
+        "release_date": None,
+        "release_date_unknown_reason":
+            "The PAD-US 4.1 release is a fixed dated USGS data release "
+            "(DOI 10.5066/P96WBCHS); the service publishes no additional "
+            "per-snapshot release date.",
+        "license": "U.S. Government work in the public domain per the producer "
+                   "item; rights acceptance pending.",
+        "attribution": "U.S. Geological Survey (USGS) Gap Analysis Project "
+                       "(GAP), PAD-US 4.1; formal attribution terms require "
+                       "maintainer review.",
+        "pages": rows,
+    }
+
+
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_segments: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
@@ -1172,23 +1244,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                    "no-warranty statement. Rights acceptance pending.",
         "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
-        "inputs": [{"input_id": name, "producer": PUBLISHER,
-                    "host": urlsplit(receipt["url"]).hostname,
-                    "role": "producer_publication", "canonical_url": LAYER_URL,
-                    "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
-                    "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
-                    "bytes": receipt["bytes"], "sha256": receipt["sha256"],
-                    "release_date": None,
-                    "release_date_unknown_reason":
-                        "The PAD-US 4.1 release is a fixed dated USGS data release "
-                        "(DOI 10.5066/P96WBCHS); the service publishes no additional "
-                        "per-snapshot release date.",
-                    "license": "U.S. Government work in the public domain per the producer "
-                               "item; rights acceptance pending.",
-                    "attribution": "U.S. Geological Survey (USGS) Gap Analysis Project "
-                                   "(GAP), PAD-US 4.1; formal attribution terms require "
-                                   "maintainer review."}
-                   for name, receipt in sorted(receipts.items())],
+        "inputs": [*(_document_input(name, receipts[name])
+                     for name in sorted((*METADATA_NAMES, *AFTER_NAMES))),
+                   _segment_pages_input(capture_root)],
         "transformations": [{"operation": "native_esri_pbf_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "population": "the complete enumerated OBJECTID "
