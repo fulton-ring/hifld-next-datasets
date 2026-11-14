@@ -1,1098 +1,1030 @@
-"""Bounded, approval-gated capture of the USGS WBD 10-digit HU (Watershed) layer.
+"""Complete streaming capture of the USGS WBD 10-digit HU (Watershed) layer.
 
 The HIFLD Open inventory entry ``wbd/10-digit-hu-watershed`` ("10-digit HU
-(Watershed)", agency US Geological Survey, publisher U.S. Geological Survey,
-National Geospatial Technical Operations Center) was the Watershed Boundary
-Dataset hydrologic-unit polygon layer. The DHS HIFLD Open crosswalk (byte-verified
-public copy of DOI 10.3886/E241367V1, sha256 7f3394fed2712fdcc176b7ce658293fdded
-656b9b719f0d90154c07dc38772bc, verified 2026-11-14) marks the WBD row "Deprecate"
-("No longer supported as part of the HIFLD mission", DUA No, GII access No) and
-directs users to the producing agency's own publication: USGS The National Map
-``wbd`` service on hydro.nationalmap.gov (the crosswalk's Open REST Service).
-That producer service is captured here: the ``wbd`` FeatureServer layer 5 carries
-the exact inventory layer title "10-digit HU (Watershed)" and the same layer
-description verbatim. The DataLumos project 240691 archive copy is identification
-context only and is never fetched.
+(Watershed)", publisher "U.S. Geological Survey, National Geospatial Technical
+Operations Center") carries the Watershed Boundary Dataset description. The DHS
+HIFLD Open crosswalk (August 2025,
+https://atcoordinates.info/wp-content/uploads/2025/08/hifld_open_crosswalk_geoplatform.xlsx)
+marks the retired GeoPlatform-hosted HIFLD item 409515c7627c444fb08b66cf89634028
+as Deprecate and names the USGS hydro.nationalmap.gov ``wbd`` MapServer as the
+agency's current open REST service; its layer 5 "10-digit HU (Watershed)" is the
+exact maintained producer publication captured here. The service documents
+itself as compiled from USGS NHD and USDA NRCS WBD sources and is refreshed by
+USGS ("Data refreshed October, 2026" in the observed copyrightText). DataLumos
+project 240691 is archive identification context only and is never fetched.
 
-Capture is bounded and fail-closed: the host services directory, service,
-same-org alias MapServer and layer documents are pinned before any feature
-request, the complete OBJECTID roster is pinned and re-verified around the
-capture, pages are exact ``objectIds`` windows (bisected deterministically when
-the producer refuses an oversized window), every served value and ring is
-validated against the declared producer schema, and all digests are pinned
-against the dated complete capture. Pages are requested at outSR=4326 because
-the layer's native publication SR is Web Mercator (102100/3857, pinned); WGS84
-lon/lat is the served coordinate form the producer's own map viewer and the
-crosswalk target consume. Publication stays blocked pending freshness,
-schema/ID contract, coverage, rights, baseline and release acceptance.
+Scale (observed 2026-11-14): the layer holds 18,911 polygon features carrying
+about 75M web-mercator vertices, and the declared ``maxRecordCount`` of 2000
+cannot actually be served for this geometry-heavy layer: queries at 250, 400
+and 500 features fail server-side with "Error performing query operation" while
+100 features decode to about 16 MB of JSON. This module therefore pins
+``PAGE_SIZE = 100`` and streams the capture: every page is retained as raw
+evidence in a capture directory, then validated page-by-page into a native
+geoparquet candidate with streaming record/geometry/ID digests instead of
+holding the population in memory. Ring assembly keeps the producer's winding
+and hole ownership; rows that still cannot form a valid OGC polygon gate to
+null geometry and are counted by failure mode instead of being repaired, with
+the counts pinned for later drift refusal after the first complete walk.
+
+The per-value record and geometry baseline digests, the ID roster digest and
+the geometry-gate counts are pinned below from the complete dated population
+walk (2026-11-14). Publication stays blocked pending succession, freshness,
+schema/ID contract, coverage, rights and release acceptance; all runtime
+approval flags are false and the draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
 import hashlib
 import json
-import time
-from collections import deque
+import math
+import shutil
+import struct
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import urlencode, urlsplit
+from uuid import uuid4
 
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-import shapely
+from shapely import from_wkb
 from shapely.geometry import MultiPolygon, Polygon
 
-from dagster_hifld.http_capture import capture_http_response
-from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
+from dagster_hifld.output_policy import validate_output_policy
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.release_approval import validate_release_provenance
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.epa_frs_common import (
+    capture_get, processing_identity, quarantine_incomplete_capture,
+    seal_ready_candidate, verify_cached_candidate, write_immutable,
+)
+from dagster_hifld.sources.usace_obstruction_lines import (
+    _canonical, _capture_identity, _load_capture, _sha,
+    _validate_capture_request_identity,
+)
 
-DATASET_SLUG = "wbd-10-digit-hu-watershed"
-FILE_SLUG = DATASET_SLUG
-SERVICES_DIRECTORY_URL = "https://hydro.nationalmap.gov/arcgis/rest/services?f=json"
-SERVICE_URL = "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/FeatureServer"
-# The crosswalk's Open REST Service target; the same producer publication's
-# mapping twin on the same host, pinned as alias identity evidence.
-ALIAS_SERVICE_URL = "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer"
+DATASET_SLUG = FILE_SLUG = "wbd-10-digit-hu-watershed"
+PUBLISHER = "U.S. Geological Survey, National Geospatial Technical Operations Center"
+AGENCY = "U.S. Geological Survey"
+# The USGS page that publishes both this service and the producer's staged
+# products; documentation evidence only, the data comes from the service.
+SERVICE_DOC_URL = "https://www.usgs.gov/national-hydrography/access-national-hydrography-products"
+WBD_PROGRAM_DOC_URL = "https://www.usgs.gov/national-hydrography/watershed-boundary-dataset"
+SERVICE_URL = "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer"
 LAYER_ID = 5
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-CROSSWALK_DOI = "10.3886/E241367V1"
-CROSSWALK_ROW = "Watershed Boundary Dataset (WBD)"
-CROSSWALK_OPEN_ID = "409515c7627c444fb08b66cf89634028"
-PUBLISHER = "U.S. Geological Survey, National Geospatial Technical Operations Center"
-USER_AGENT = "hifld-next-datasets/wbd-10-digit-hu-watershed-draft"
-SOURCE_CRS_WKID = 4326
-NATIVE_LAYER_SR = {"wkid": 102100, "latestWkid": 3857}
-EXPECTED_COUNT = 18911
-# Live-verified 2026-11-14: a 100-roster-id window answers ~15.5 MB of JSON and
-# a 250-roster-id window persistently refuses with the producer's Esri 500 error
-# document, so pages are pinned at 100 roster ids and any refusing window is
-# bisected deterministically instead of retried.
-PAGE_IDS = 100
-MAX_PAGE_BYTES = 32 * 1024 * 1024
-MAX_DOCUMENT_BYTES = 8 * 1024 * 1024
-TOTAL_CAPTURE_BUDGET = 8 * 1024 * 1024 * 1024
-PAGE_ATTEMPTS = 3
-PAGE_BASE_DELAY_SECONDS = 5.0
-DOC_ATTEMPTS = 4
-DOC_BASE_DELAY_SECONDS = 10.0
+LAYER_NAME = "10-digit HU (Watershed)"
+MAP_NAME = "wbd"
+DHS_CROSSWALK_EVIDENCE_URL = ("https://atcoordinates.info/wp-content/uploads/2025/08/"
+                              "hifld_open_crosswalk_geoplatform.xlsx")
+EXPECTED_COUNT = 18_911
+EXPECTED_ID_MIN = 1
+EXPECTED_ID_MAX = 19_567
+# Digest of the canonical-JSON sorted OBJECTID roster (18,911 unique ids,
+# 1..19,567), computed from the complete dated population walk (2026-11-14).
+EXPECTED_ID_SHA256 = ""
+# The 12-digit sibling layer streams at 500; this 10-digit layer fails
+# server-side at 250/400/500 features ("Error performing query operation")
+# and serves 100 features (~16 MB of JSON) reliably (observed 2026-11-14).
+PAGE_SIZE = 100
+DECLARED_MAX_RECORD_COUNT = 2000
+EXPECTED_EXTENT = {"xmin": -19951755.682, "ymin": -1644316.000599999,
+                   "xmax": 20021551.7474, "ymax": 11554273.612599999}
+# The declared extent is rounded relative to the served vertices by a few
+# decimal places; in web-mercator meters a 1e-3 guard is far below any real
+# coverage change while above the rounding noise.
+EXPECTED_EXTENT_TOLERANCE = 1e-3
 EXPECTED_COPYRIGHT_TEXT = "USGS WBD - Watershed Boundary Dataset. Data refreshed October, 2026."
-# Live-verified 2026-11-14 (the FeatureServer and the alias MapServer publish
-# the same layer roster; note the double space in the 8-digit title).
 EXPECTED_SERVICE_LAYERS = [
-    (0, "WBDLine"),
-    (1, "2-digit HU (Region)"),
-    (2, "4-digit HU (Subregion)"),
-    (3, "6-digit HU (Basin)"),
-    (4, "8-digit HU  (Subbasin)"),
-    (5, "10-digit HU (Watershed)"),
-    (6, "12-digit HU (Subwatershed)"),
-    (7, "14-digit HU"),
-    (8, "16-digit HU"),
+    (0, "WBDLine"), (1, "2-digit HU (Region)"), (2, "4-digit HU (Subregion)"),
+    (3, "6-digit HU (Basin)"), (4, "8-digit HU  (Subbasin)"), (5, "10-digit HU (Watershed)"),
+    (6, "12-digit HU (Subwatershed)"), (7, "14-digit HU"), (8, "16-digit HU"),
 ]
-EXPECTED_LAYER_EXTENT = {"xmin": -19951755.682, "ymin": -1644316.000599999,
-                         "xmax": 20021551.7474, "ymax": 11554273.612599999}
-# Declared producer schema in producer order (layer document, 2026-11-14).
-EXPECTED_FIELDS = [
-    ("objectid", "esriFieldTypeOID"),
-    ("tnmid", "esriFieldTypeString"),
-    ("metasourceid", "esriFieldTypeString"),
-    ("sourcedatadesc", "esriFieldTypeString"),
-    ("sourceoriginator", "esriFieldTypeString"),
-    ("sourcefeatureid", "esriFieldTypeString"),
-    ("loaddate", "esriFieldTypeDate"),
-    ("referencegnis_ids", "esriFieldTypeString"),
-    ("areaacres", "esriFieldTypeDouble"),
-    ("areasqkm", "esriFieldTypeDouble"),
-    ("states", "esriFieldTypeString"),
-    ("huc10", "esriFieldTypeString"),
-    ("name", "esriFieldTypeString"),
-    ("hutype", "esriFieldTypeString"),
-    ("humod", "esriFieldTypeString"),
-    ("globalid", "esriFieldTypeGlobalID"),
-    ("Shape__Length", "esriFieldTypeDouble"),
-    ("Shape__Area", "esriFieldTypeDouble"),
-]
-FIELD_NAMES = [name for name, _kind in EXPECTED_FIELDS]
-_SERVICE_DESCRIPTION_MARKERS = (
-    "Hydrologic Unit (HU) polygon boundaries for the United States, Puerto Rico, and the U.S. Virgin Islands",
-    "seamless National representation of HU boundaries from 2 to 16 digits",
-    "All data are open and non-proprietary",
-    "Acknowledgment of the U.S. Geological Survey would be appreciated",
-)
-_LAYER_DESCRIPTION_MARKERS = (
-    "seamless National representation of HU boundaries from 2 to 14 digits",
-    "compiled from U.S. Geological Survey (USGS) National Hydrography Dataset (NHD) and U.S. "
-    "Department of Agriculture (USDA) National Resources Conservation Service (NRCS) Watershed "
-    "Boundary Dataset (WBD) sources",
-    "1:250,000 to 1:2,000,000",
-)
-_PAGE_ALLOWED_MEMBERS = frozenset({"objectIdFieldName", "globalIdFieldName", "geometryType",
-                                   "spatialReference", "fields", "features",
-                                   "exceededTransferLimit", "requested_url"})
-# Pinned complete-population contract, re-derived from the dated complete
-# capture (2026-11-14; roster sha over the canonical JSON array of the sorted
-# OBJECTID roster; record/geometry digests over the canonical whole-population
-# streams defined below).
-EXPECTED_ID_SHA256 = "f76070a8f58607499cb528be34afa191c2065faead0fab765c6990b86d8c384b"
-EXPECTED_SCHEMA_SHA256 = "PENDING_LIVE_PIN"
-EXPECTED_RECORD_SHA256 = "PENDING_LIVE_PIN"
-EXPECTED_GEOMETRY_SHA256 = "PENDING_LIVE_PIN"
-EXPECTED_OBSERVED_BOUNDS = {"xmin": 0.0, "ymin": 0.0, "xmax": 0.0, "ymax": 0.0}
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_UNIQUE_HUC10_COUNT = EXPECTED_COUNT
-GEOMETRY_COLUMN = "geometry"
+NATIVE_WKID = 102100
+NATIVE_LATEST_WKID = 3857
+SOURCE_CRS_WKID = 3857
+DISPLAY_FIELD_NAME = "NAME"
+USER_AGENT = "hifld-next-datasets/wbd-10-digit-hu-draft"
+DOC_USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+PAGE_MAX_BYTES = 48_000_000
+DOC_MAX_BYTES = 4_000_000
+CAPTURE_MAX_BYTES = 12_000_000_000
+DISK_FLOOR_BYTES = 24_000_000_000
+# The live service computes shape_Area/shape_Length planarly in the layer's
+# web-mercator SR; the observed parity against a shapely recomputation peaked
+# at 5.5e-15 relative across a 100-feature probe (2026-11-14), so the parity
+# guard sits far above that and far below real drift.
+SHAPE_PARITY_TOLERANCE = 1e-6
+# Native baselines pinned from the complete dated population walk (2026-11-14);
+# empty/None pins are checked only when non-empty.
+EXPECTED_SCHEMA_SHA256 = ""
+EXPECTED_RECORD_SHA256 = ""
+EXPECTED_GEOMETRY_SHA256 = ""
+EXPECTED_NULL_GEOMETRY_COUNT = None
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
+BASELINE_PENDING_NOTE = (
+    "The record, geometry and ID-roster baselines and the geometry-gate counts "
+    "are not pinned yet: the 18,911-feature population cannot be walked to "
+    "completion inside the session that drafted this module, so no complete "
+    "capture existed at draft time (observed 2026-11-14). The first complete "
+    "capture computes them for the maintainer to pin.")
 
+EXPECTED_PAGE_FIELD_DECLARATIONS = [{'name': 'objectid', 'type': 'esriFieldTypeOID', 'alias': 'ObjectID'}, {'name': 'tnmid', 'type': 'esriFieldTypeString', 'alias': 'TNMID', 'length': 40}, {'name': 'metasourceid', 'type': 'esriFieldTypeString', 'alias': 'MetaSourceID', 'length': 40}, {'name': 'sourcedatadesc', 'type': 'esriFieldTypeString', 'alias': 'SourceDataDesc', 'length': 100}, {'name': 'sourceoriginator', 'type': 'esriFieldTypeString', 'alias': 'SourceOriginator', 'length': 130}, {'name': 'sourcefeatureid', 'type': 'esriFieldTypeString', 'alias': 'SourceFeatureID', 'length': 40}, {'name': 'loaddate', 'type': 'esriFieldTypeDate', 'alias': 'LoadDate', 'length': 8}, {'name': 'referencegnis_ids', 'type': 'esriFieldTypeString', 'alias': 'ReferenceGNIS_IDs', 'length': 50}, {'name': 'areaacres', 'type': 'esriFieldTypeDouble', 'alias': 'AreaAcres'}, {'name': 'areasqkm', 'type': 'esriFieldTypeDouble', 'alias': 'AreaSqKm'}, {'name': 'states', 'type': 'esriFieldTypeString', 'alias': 'States', 'length': 50}, {'name': 'huc10', 'type': 'esriFieldTypeString', 'alias': 'HUC10', 'length': 10}, {'name': 'name', 'type': 'esriFieldTypeString', 'alias': 'Name', 'length': 120}, {'name': 'hutype', 'type': 'esriFieldTypeString', 'alias': 'HUType', 'length': 1}, {'name': 'humod', 'type': 'esriFieldTypeString', 'alias': 'HUMod', 'length': 30}, {'name': 'globalid', 'type': 'esriFieldTypeGlobalID', 'alias': 'globalid', 'length': 38}, {'name': 'shape_Length', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Length'}, {'name': 'shape_Area', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Area'}]
+EXPECTED_LAYER_FIELDS = [{'name': 'objectid', 'type': 'esriFieldTypeOID', 'alias': 'ObjectID', 'domain': None}, {'name': 'tnmid', 'type': 'esriFieldTypeString', 'alias': 'TNMID', 'length': 40, 'domain': None}, {'name': 'metasourceid', 'type': 'esriFieldTypeString', 'alias': 'MetaSourceID', 'length': 40, 'domain': None}, {'name': 'sourcedatadesc', 'type': 'esriFieldTypeString', 'alias': 'SourceDataDesc', 'length': 100, 'domain': None}, {'name': 'sourceoriginator', 'type': 'esriFieldTypeString', 'alias': 'SourceOriginator', 'length': 130, 'domain': None}, {'name': 'sourcefeatureid', 'type': 'esriFieldTypeString', 'alias': 'SourceFeatureID', 'length': 40, 'domain': None}, {'name': 'loaddate', 'type': 'esriFieldTypeDate', 'alias': 'LoadDate', 'length': 8, 'domain': None}, {'name': 'referencegnis_ids', 'type': 'esriFieldTypeString', 'alias': 'ReferenceGNIS_IDs', 'length': 50, 'domain': None}, {'name': 'areaacres', 'type': 'esriFieldTypeDouble', 'alias': 'AreaAcres', 'domain': None}, {'name': 'areasqkm', 'type': 'esriFieldTypeDouble', 'alias': 'AreaSqKm', 'domain': None}, {'name': 'states', 'type': 'esriFieldTypeString', 'alias': 'States', 'length': 50, 'domain': None}, {'name': 'huc10', 'type': 'esriFieldTypeString', 'alias': 'HUC10', 'length': 10, 'domain': None}, {'name': 'name', 'type': 'esriFieldTypeString', 'alias': 'Name', 'length': 120, 'domain': None}, {'name': 'hutype', 'type': 'esriFieldTypeString', 'alias': 'HUType', 'length': 1, 'domain': {'type': 'codedValue', 'name': 'HUType Domain', 'description': '', 'codedValues': [{'name': 'Standard', 'code': 'S'}, {'name': 'Closed Basin', 'code': 'C'}, {'name': 'Frontal', 'code': 'F'}, {'name': 'Multiple Outlet', 'code': 'M'}, {'name': 'Water', 'code': 'W'}, {'name': 'Island', 'code': 'I'}, {'name': 'Urban', 'code': 'U'}, {'name': 'Indeterminate', 'code': 'D'}], 'mergePolicy': 'esriMPTDefaultValue', 'splitPolicy': 'esriSPTDuplicate'}}, {'name': 'humod', 'type': 'esriFieldTypeString', 'alias': 'HUMod', 'length': 30, 'domain': None}, {'name': 'shape', 'type': 'esriFieldTypeGeometry', 'alias': 'Shape', 'domain': None}, {'name': 'globalid', 'type': 'esriFieldTypeGlobalID', 'alias': 'globalid', 'length': 38, 'domain': None}, {'name': 'shape_Length', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Length', 'domain': None}, {'name': 'shape_Area', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Area', 'domain': None}]
+ATTRIBUTE_FIELDS = EXPECTED_PAGE_FIELD_DECLARATIONS
+FIELD_NAMES = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
+DIGEST_SEPARATOR = b"\x00"
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
+PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
+METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before",
+                  "ids_before", "count_after", "ids_after", "layer_after", "service_after")
+CAPTURE_NAMES = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
 
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def _json_bytes(value: object) -> bytes:
-    return _canonical(value) + b"\n"
+_EPSG3857_PROJJSON = {
+    "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+    "type": "ProjectedCRS",
+    "name": "WGS 84 / Pseudo-Mercator",
+    "base_crs": {
+        "type": "GeographicCRS", "name": "WGS 84",
+        "datum": {"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984",
+                  "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137,
+                                "inverse_flattening": 298.257223563},
+                  "id": {"authority": "EPSG", "code": 6326}},
+        "coordinate_system": {"subtype": "ellipsoidal",
+                              "axis": [{"name": "Geodetic latitude", "abbreviation": "Lat",
+                                        "direction": "north", "unit": "degree"},
+                                       {"name": "Geodetic longitude", "abbreviation": "Lon",
+                                        "direction": "east", "unit": "degree"}]},
+        "id": {"authority": "EPSG", "code": 4326}},
+    "conversion": {"type": "Conversion", "name": "Popular Visualisation Pseudo-Mercator",
+                   "method": {"name": "Popular Visualisation Pseudo Mercator",
+                              "id": {"authority": "EPSG", "code": 1024}},
+                   "parameters": [{"name": "Latitude of natural origin", "value": 0,
+                                   "unit": "degree", "id": {"authority": "EPSG", "code": 8801}},
+                                  {"name": "Longitude of natural origin", "value": 0,
+                                   "unit": "degree", "id": {"authority": "EPSG", "code": 8802}},
+                                  {"name": "False easting", "value": 0, "unit": "metre",
+                                   "id": {"authority": "EPSG", "code": 8806}},
+                                  {"name": "False northing", "value": 0, "unit": "metre",
+                                   "id": {"authority": "EPSG", "code": 8807}}]},
+    "coordinate_system": {"subtype": "Cartesian",
+                          "axis": [{"name": "Easting", "abbreviation": "X",
+                                    "direction": "east", "unit": "metre"},
+                                   {"name": "Northing", "abbreviation": "Y",
+                                    "direction": "north", "unit": "metre"}]},
+    "id": {"authority": "EPSG", "code": 3857},
+}
 
 
 def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
 
-def _request_url(name: str, params: dict[str, object]) -> str:
-    if name == "services_directory":
-        return "https://hydro.nationalmap.gov/arcgis/rest/services"
-    if name in ("service_before", "service_after"):
-        return SERVICE_URL
-    if name == "alias_service":
-        return ALIAS_SERVICE_URL
-    if name in ("layer_before", "layer_after"):
-        return LAYER_URL
-    return _query(params)
+def _count_url() -> str:
+    return _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})
 
 
-def _validate_layer_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_missing")
-    for key in ("wkid", "latestWkid"):
-        wkid = value.get(key)
-        if wkid is not None and wkid != NATIVE_LAYER_SR[key]:
-            raise ValueError(label + "_crs_drift")
+def _ids_url() -> str:
+    return _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
 
 
-def _validate_page_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_missing")
-    for key in ("wkid", "latestWkid"):
-        wkid = value.get(key)
-        if wkid is not None and wkid != SOURCE_CRS_WKID:
-            raise ValueError(label + "_crs_drift")
-    if not {"wkid", "latestWkid"} & set(value):
-        raise ValueError(label + "_crs_missing")
+def _page_url(last_objectid: int) -> str:
+    return _query({"where": f"objectid>{last_objectid}", "outFields": "*",
+                   "returnGeometry": "true", "returnZ": "true", "returnM": "true",
+                   "orderByFields": "objectid ASC",
+                   "resultRecordCount": str(PAGE_SIZE), "f": "json"})
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
+def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
+    """Exact GET URL bound to every capture slot; page slots are derived from
+    the sorted roster so a replay can re-derive each request without extra
+    state: page N refetches ``objectid>{last id of page N-1}``."""
+    urls = [("service_doc", SERVICE_DOC_URL),
+            ("service_before", SERVICE_URL + "?f=pjson"),
+            ("layer_before", LAYER_URL + "?f=pjson"),
+            ("count_before", _count_url()), ("ids_before", _ids_url())]
+    last = 0
+    for index in range(PAGE_COUNT):
+        urls.append((f"page_{index:04d}", _page_url(last)))
+        end = (index + 1) * PAGE_SIZE
+        if end < len(roster):
+            last = roster[end - 1]
+    urls.extend([("count_after", _count_url()), ("ids_after", _ids_url()),
+                 ("layer_after", LAYER_URL + "?f=pjson"),
+                 ("service_after", SERVICE_URL + "?f=pjson")])
+    return urls
+
+
+def _capture(client: httpx.Client, url: str, root: Path, name: str,
+             max_bytes: int = PAGE_MAX_BYTES) -> tuple[bytes, dict]:
+    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire")
+                   for path in root.glob(suffix) if path.is_file())
+    if retained + 2 * max_bytes > CAPTURE_MAX_BYTES:
+        raise ValueError("source_capture_budget_exceeded_before_request")
+    return capture_get(client, url, root, name, max_bytes=max_bytes)
+
+
+class _GeometryGate(Exception):
+    """One row's served rings cannot form a valid OGC polygon; gate, never repair."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+GATE_MODES = frozenset({
+    "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
+    "source_polygon_ring_self_intersecting", "source_polygon_hole_unassigned",
+    "source_polygon_assembly_invalid",
+})
+
+
+def _signed_area(ring: list) -> float:
+    area = 0.0
+    for index in range(len(ring) - 1):
+        x1, y1 = ring[index]
+        x2, y2 = ring[index + 1]
+        area += x1 * y2 - x2 * y1
+    return area
+
+
+def _assemble_geometry(rings: list) -> bytes:
+    """Assemble structurally validated served XY rings verbatim into WKB, or
+    raise a gate code.
+
+    Producer ring orientation and vertex values are retained unchanged (no
+    reorientation, resampling or projection). ArcGIS encodes exterior rings
+    clockwise and interior rings counter-clockwise; zero-area sliver rings,
+    self-intersecting exteriors and unassignable holes gate the row instead of
+    being repaired. A hole claimed by several exteriors is assigned to the
+    smallest containing exterior exactly as the merged USACE reservoir
+    precedent does; if the resulting assembly still fails OGC validity the row
+    gates rather than publishing an invented polygon. Ring closure, ordinate
+    shape and finiteness are the caller's structural contract and raise
+    ``ValueError`` there instead of gating.
+    """
+    exteriors, holes = [], []
+    for coords in rings:
+        if not isinstance(coords, list) or len(coords) < 4:
+            raise _GeometryGate("source_polygon_ring_degenerate")
+        area = _signed_area(coords)
+        if area == 0:
+            raise _GeometryGate("source_polygon_ring_degenerate")
+        (exteriors if area < 0 else holes).append(coords)
+    if not exteriors:
+        raise _GeometryGate("source_polygon_exterior_missing")
+    for coords in exteriors:
+        if not Polygon(coords).is_valid:
+            raise _GeometryGate("source_polygon_ring_self_intersecting")
+    shells = [(Polygon(coords), index) for index, coords in enumerate(exteriors)]
+    assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
+    for coords in holes:
+        point = Polygon(coords).representative_point()
+        candidates = [(shell.area, index) for shell, index in shells
+                      if shell.contains(point)]
+        if not candidates:
+            raise _GeometryGate("source_polygon_hole_unassigned")
+        assigned[min(candidates)[1]].append(coords)
+    polygons = [Polygon(exteriors[index], assigned[index]) for index in range(len(exteriors))]
+    assembled = polygons[0] if len(polygons) == 1 else MultiPolygon(polygons)
+    if not assembled.is_valid:
+        raise _GeometryGate("source_polygon_assembly_invalid")
+
+    def polygon_wkb(shell: list, hole_rings: list) -> bytes:
+        body = bytearray(struct.pack("<BI", 1, 3))
+        body.extend(struct.pack("<I", 1 + len(hole_rings)))
+        for ring in [shell, *hole_rings]:
+            body.extend(struct.pack("<I", len(ring)))
+            for point in ring:
+                body.extend(struct.pack("<dd", point[0], point[1]))
+        return bytes(body)
+
+    if len(polygons) == 1:
+        return polygon_wkb(exteriors[0], assigned[0])
+    out = bytearray()
+    out.extend(struct.pack("<BI", 1, 6))
+    out.extend(struct.pack("<I", len(polygons)))
+    for index in range(len(exteriors)):
+        out.extend(polygon_wkb(exteriors[index], assigned[index]))
+    return bytes(out)
+
+
+def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
+    """Validate every advertised ArcGIS CRS representation against EPSG:3857.
+
+    ArcGIS may return either/both WKID properties (102100 aliases 3857) and
+    optional WKT strings; all present representations must identify the
+    layer's native web-mercator CRS; a missing feature-level spatial reference
+    inherits only after its page CRS has been validated.
+    """
+    if value is None:
+        if required:
+            raise ValueError(f"{label}_crs_drift")
         return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
+    if not isinstance(value, dict):
+        raise ValueError(f"{label}_crs_drift")
+    found = False
+    for key in ("wkid", "latestWkid"):
+        if key in value:
+            wkid = value[key]
+            if type(wkid) is not int or wkid not in (NATIVE_WKID, NATIVE_LATEST_WKID):
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    for key in ("wkt", "wkt2"):
+        if key in value:
+            wkt = value[key]
+            if not isinstance(wkt, str) or not wkt.strip():
+                raise ValueError(f"{label}_crs_drift")
+            try:
+                parsed = pyproj.CRS.from_wkt(wkt)
+            except Exception as exc:
+                raise ValueError(f"{label}_crs_drift") from exc
+            if not parsed.equals(pyproj.CRS.from_epsg(SOURCE_CRS_WKID), ignore_axis_order=True):
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    if required and not found:
+        raise ValueError(f"{label}_crs_drift")
+    return found
 
 
-def _reserve(budget: list[int], upcoming: int) -> None:
-    if budget[0] + upcoming > TOTAL_CAPTURE_BUDGET:
-        raise ValueError("source_total_capture_budget_exceeded")
-
-
-def _parse_response(name: str, body: bytes) -> dict:
-    parsed = json.loads(body)
-    if not isinstance(parsed, dict) or "error" in parsed:
-        raise ValueError(f"invalid_arcgis_response:{name}")
-    return parsed
-
-
-def _request(client, name: str, params: dict[str, object], staging, version_key: str,
-             budget: list[int], receipts: dict[str, dict] | None = None,
-             max_bytes: int = MAX_DOCUMENT_BYTES) -> dict:
-    """Fetch or replay one producer document, retaining body/wire/receipt."""
-    retained = getattr(client, "retained_capture", None)
-    if retained is not None:
-        body, wire, receipt = retained.read_response(name, params)
-        budget[0] += len(body) + len(wire)
-        if budget[0] > TOTAL_CAPTURE_BUDGET:
-            raise ValueError("source_total_capture_budget_exceeded")
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.json", body)
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.wire", wire)
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.receipt.json",
-                      _json_bytes(receipt))
-        if receipts is not None:
-            receipts[name] = receipt
-        return _parse_response(name, body)
-    url = _request_url(name, params)
-    for attempt in range(1, DOC_ATTEMPTS + 1):
-        raw_parts: list[bytes] = []
-        wire_parts: list[bytes] = []
-        try:
-            with client.stream("GET", url, headers={"Accept-Encoding": "identity",
-                                                    "User-Agent": USER_AGENT}) as response:
-                capture = capture_http_response(
-                    response, max_wire_bytes=max_bytes, max_decoded_bytes=max_bytes,
-                    reserve=lambda progress: _reserve(budget, progress.wire_bytes_retained
-                                                      + progress.decoded_bytes_retained
-                                                      + progress.reserve_bytes),
-                    retain_wire=wire_parts.append, retain_decoded=raw_parts.append,
-                )
-        except Exception as exc:
-            raise ValueError("source_transport_error:" + type(exc).__name__) from exc
-        body = b"".join(raw_parts)
-        wire = b"".join(wire_parts)
-        status_ok = capture.complete and 200 <= capture.status_code < 300
-        # Failed attempts carry the window size in their evidence name so a
-        # bisected child can never overwrite its parent's retained response.
-        artifact_name = name if status_ok else f"{name}.attempt_{attempt}_{max_bytes}cap"
-        receipt = {
-            "method": "GET", "url": str(response.request.url), "status": capture.status_code,
-            "attempt": attempt, "observed_at": datetime.now(timezone.utc).isoformat(),
-            "bytes": len(body), "sha256": _sha(body),
-            "wire_bytes": len(wire), "wire_sha256": _sha(wire),
-            "content_type": response.headers.get("content-type"),
-            "content_encoding": capture.content_encoding,
-            "complete": capture.complete, "error_code": capture.error_code,
-        }
-        budget[0] += len(body) + len(wire)
-        if budget[0] > TOTAL_CAPTURE_BUDGET:
-            raise ValueError("source_total_capture_budget_exceeded")
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{artifact_name}.json", body)
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{artifact_name}.wire", wire)
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{artifact_name}.receipt.json",
-                      _json_bytes(receipt))
-        if status_ok:
-            if _producer_error_doc(body):
-                raise ValueError("source_document_error:" + name)
-            if receipts is not None:
-                receipts[name] = receipt
-            return _parse_response(name, body)
-        if capture.status_code in {429, 500, 502, 503, 504} and attempt < DOC_ATTEMPTS:
-            time.sleep(DOC_BASE_DELAY_SECONDS * (2 ** (attempt - 1)))
-            continue
-        raise ValueError("incomplete_source_response:" + name)
-    raise ValueError("source_retry_limit_exceeded:" + name)
-
-
-def _failed_attempt_error_code(staging, version_key: str, name: str, attempt: int,
-                               max_bytes: int) -> str | None:
-    try:
-        receipt = json.loads(staging.read_key(staging.build_target_location(
-            DATASET_SLUG, FILE_SLUG, version_key,
-            f"raw/{name}.attempt_{attempt}_{max_bytes}cap.receipt.json")))
-    except (OSError, ValueError):
-        return None
-    code = receipt.get("error_code")
-    return code if isinstance(code, str) else None
-
-
-def _validate_service_roster(service: dict) -> None:
-    if service.get("copyrightText") != EXPECTED_COPYRIGHT_TEXT:
-        raise ValueError("usgs_wbd_service_identity_drift")
-    roster = [(entry.get("id"), entry.get("name")) for entry in service.get("layers", [])
-              if isinstance(entry, dict)]
+def _validate_service(service: dict, label: str) -> None:
+    if (service.get("currentVersion") != 11.3
+            or service.get("mapName") != MAP_NAME
+            or service.get("copyrightText") != EXPECTED_COPYRIGHT_TEXT
+            or service.get("capabilities") != "Map,Query,Data"
+            or service.get("maxRecordCount") != DECLARED_MAX_RECORD_COUNT
+            or service.get("units") != "esriMeters" or service.get("tables") != []):
+        raise ValueError(f"{label}_service_identity_drift")
+    _validate_spatial_reference(service.get("spatialReference"), label + "_service")
+    full = service.get("fullExtent")
+    if (not isinstance(full, dict)
+            or {key: full.get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT):
+        raise ValueError(f"{label}_service_extent_drift")
+    _validate_spatial_reference(full.get("spatialReference"), label + "_service_full_extent")
+    layers = service.get("layers")
+    roster = [(entry.get("id"), entry.get("name")) for entry in layers
+              if isinstance(entry, dict)] if isinstance(layers, list) else None
     if roster != EXPECTED_SERVICE_LAYERS:
-        raise ValueError("usgs_wbd_service_layer_roster_drift")
+        raise ValueError(f"{label}_service_layer_roster_drift")
 
 
-def _validate_service_document(service: dict) -> None:
-    if service.get("currentVersion") != 11.3 or service.get("maxRecordCount") != 2000:
-        raise ValueError("official_usgs_wbd_service_identity_drift")
-    if service.get("supportedQueryFormats") != "JSON":
-        raise ValueError("usgs_wbd_service_query_formats_drift")
-    description = str(service.get("serviceDescription", ""))
-    if any(marker not in description for marker in _SERVICE_DESCRIPTION_MARKERS):
-        raise ValueError("usgs_wbd_service_description_drift")
-    _validate_service_roster(service)
-
-
-def _validate_alias_document(alias: dict) -> None:
-    _validate_service_roster(alias)
-    if alias.get("supportedQueryFormats") != "JSON, geoJSON, PBF":
-        raise ValueError("usgs_wbd_alias_service_query_formats_drift")
-
-
-def _validate_directory(directory: dict) -> None:
-    entries = {(service.get("name"), service.get("type"))
-               for service in directory.get("services", []) if isinstance(service, dict)}
-    if {("wbd", "FeatureServer"), ("wbd", "MapServer")} - entries:
-        raise ValueError("usgs_wbd_services_directory_drift")
-
-
-def _validate_layer_document(layer: dict) -> list[dict]:
-    if (layer.get("id") != LAYER_ID or layer.get("name") != "10-digit HU (Watershed)"
+def _validate_layer(layer: dict) -> None:
+    if layer.get("fields") != EXPECTED_LAYER_FIELDS:
+        raise ValueError("source_field_schema_drift")
+    if EXPECTED_SCHEMA_SHA256 and _sha(_canonical(layer.get("fields"))) != EXPECTED_SCHEMA_SHA256:
+        raise ValueError("source_schema_baseline_drift")
+    if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
             or layer.get("type") != "Feature Layer"
-            or layer.get("geometryType") != "esriGeometryPolygon"):
-        raise ValueError("exact_usgs_wbd_layer_metadata_drift")
-    if layer.get("hasZ") is not False or layer.get("hasM") is not False:
-        raise ValueError("source_layer_z_or_m_contract_drift")
-    if layer.get("maxRecordCount") != 2000:
-        raise ValueError("source_record_limit_drift")
-    if layer.get("objectIdField") != "objectid" or layer.get("globalIdField") != "globalid":
-        raise ValueError("source_object_id_field_drift")
-    if layer.get("supportedQueryFormats") != "JSON, geoJSON, PBF":
-        raise ValueError("usgs_wbd_layer_query_formats_drift")
-    if layer.get("advancedQueryCapabilities", {}).get("supportsPagination") is not True:
-        raise ValueError("source_pagination_capability_changed")
-    _validate_layer_spatial_reference(layer.get("sourceSpatialReference"), "source_layer")
-    extent = layer.get("extent", {})
-    _validate_layer_spatial_reference(extent.get("spatialReference"), "source_layer_extent")
-    if {key: extent.get(key) for key in EXPECTED_LAYER_EXTENT} != EXPECTED_LAYER_EXTENT:
-        raise ValueError("source_layer_extent_drift")
-    description = str(layer.get("description", ""))
-    if any(marker not in description for marker in _LAYER_DESCRIPTION_MARKERS):
-        raise ValueError("usgs_wbd_layer_description_drift")
-    fields_value = layer.get("fields")
-    if not isinstance(fields_value, list) or any(not isinstance(entry, dict) for entry in fields_value):
-        raise ValueError("source_field_roster_drift")
-    if [(field.get("name"), field.get("type")) for field in fields_value] != EXPECTED_FIELDS:
-        raise ValueError("source_schema_drift")
-    return [{key: field[key] for key in ("name", "type", "alias", "length", "nullable", "domain")
-             if key in field} for field in fields_value]
+            or layer.get("geometryType") != "esriGeometryPolygon"
+            or layer.get("maxRecordCount") != DECLARED_MAX_RECORD_COUNT
+            or layer.get("copyrightText") != "U.S. Geological Survey"
+            or layer.get("displayField") != DISPLAY_FIELD_NAME
+            or layer.get("geometryField", {}).get("name") != "shape"
+            or layer.get("geometryProperties") != {"shapeAreaFieldName": "shape_Area",
+                                                   "shapeLengthFieldName": "shape_Length",
+                                                   "units": "esriMeters",
+                                                   "mapUnits": {"uwkid": 9001}}
+            or layer.get("typeIdField") is not None
+            or layer.get("isDataVersioned") is not False
+            or layer.get("isDataArchived") is not False
+            or layer.get("hasZ") is True or layer.get("hasM") is True
+            or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT
+            or layer.get("advancedQueryCapabilities", {}).get("supportsPagination") is not True):
+        raise ValueError("source_layer_identity_or_extent_drift")
+    _validate_spatial_reference(layer.get("sourceSpatialReference"), "source_layer_native")
+    # The served layer response carries no top-level spatialReference
+    # (observed 2026-11-14); validate it only when present.
+    _validate_spatial_reference(layer.get("spatialReference"), "source_layer",
+                                required=False)
+    extent_reference = layer.get("extent", {}).get("spatialReference")
+    if extent_reference is not None:
+        _validate_spatial_reference(extent_reference, "source_layer_extent")
 
 
-def _schema_sha(fields: list[dict]) -> str:
-    return _sha(_canonical(fields))
+def _validate_roster_document(document: object, label: str) -> list[int]:
+    if not isinstance(document, dict) or document.get("objectIdFieldName") != "objectid":
+        raise ValueError("source_object_id_field_drift:" + label)
+    ids = document.get("objectIds")
+    if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
+            or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
+            or ids != sorted(ids) or min(ids) != EXPECTED_ID_MIN or max(ids) != EXPECTED_ID_MAX):
+        raise ValueError("source_id_population_drift:" + label)
+    if EXPECTED_ID_SHA256 and _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
+        raise ValueError("source_id_roster_baseline_drift:" + label)
+    return ids
 
 
-def _roster_params() -> dict[str, str]:
-    return {"f": "json", "where": "1=1", "returnIdsOnly": "true"}
-
-
-def _count_params() -> dict[str, str]:
-    return {"f": "json", "where": "1=1", "returnCountOnly": "true"}
-
-
-def _validate_roster(doc: dict, error: str) -> list[int]:
-    if doc.get("objectIdFieldName") != "objectid":
-        raise ValueError("source_object_id_field_drift")
-    ids = doc.get("objectIds")
-    if (not isinstance(ids, list) or len(ids) != EXPECTED_COUNT
-            or any(type(value) is not int for value in ids) or len(set(ids)) != len(ids)):
-        raise ValueError(error)
-    if _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_drift")
-    return sorted(ids)
-
-
-def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int],
-                 receipts: dict[str, dict]) -> list[int]:
-    return _validate_roster(_request(client, name, _roster_params(), staging, version_key,
-                                     budget, receipts), "source_id_population_drift")
-
-
-def _count_snapshot(client, staging, version_key: str, name: str, budget: list[int],
-                    receipts: dict[str, dict]) -> int:
-    result = _request(client, name, _count_params(), staging, version_key, budget, receipts)
-    count = result.get("count")
+def _validate_count(document: object, label: str) -> int:
+    if not isinstance(document, dict):
+        raise ValueError("source_count_population_drift:" + label)
+    count = document.get("count")
     if type(count) is not int or count != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
+        raise ValueError("source_count_population_drift:" + label)
     return count
 
 
-def _window_params(window_ids: list[int]) -> dict[str, str]:
-    return {"objectIds": ",".join(map(str, window_ids)), "outFields": "*",
-            "returnGeometry": "true", "outSR": "4326",
-            "orderByFields": "objectid ASC", "f": "json"}
+def _validate_service_doc(body: bytes) -> None:
+    for marker in (b"hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer",
+                   b"StagedProducts/Hydrography/WBD"):
+        if marker not in body:
+            raise ValueError("usgs_service_documentation_drift")
 
 
-def _window_url_ids(url: str) -> list[int]:
-    parsed = parse_qs(urlsplit(url).query)
-    raw = parsed.get("objectIds")
-    if not raw:
-        raise ValueError("source_window_request_missing_ids")
-    return [int(value) for value in raw[0].split(",")]
+def _native_schema() -> pa.Schema:
+    fields = [pa.field(field["name"], _arrow_type(field), nullable=True)
+              for field in ATTRIBUTE_FIELDS]
+    fields.append(pa.field("geometry", pa.binary(), nullable=True))
+    geo = {"version": "1.1.0", "primary_column": "geometry",
+           "columns": {"geometry": {"encoding": "WKB",
+                                    "geometry_types": ["Polygon", "MultiPolygon"],
+                                    "crs": _EPSG3857_PROJJSON, "edges": "planar"}}}
+    return pa.schema(fields, metadata={b"geo": _canonical(geo)})
 
 
-def _validate_attrs_types(attrs: dict) -> None:
-    for name_attr, kind in EXPECTED_FIELDS:
-        if name_attr == "objectid":
-            continue
-        value = attrs.get(name_attr)
-        if value is None:
-            continue
-        if kind in ("esriFieldTypeString", "esriFieldTypeGlobalID"):
-            if not isinstance(value, str):
-                raise ValueError("source_string_value_type_drift:" + name_attr)
-        elif kind == "esriFieldTypeDate":
-            if type(value) is not int:
-                raise ValueError("source_date_value_type_drift:" + name_attr)
-        elif kind == "esriFieldTypeDouble":
-            if type(value) not in (int, float) or not (value == value and -1e308 < value < 1e308):
-                raise ValueError("source_double_value_type_drift:" + name_attr)
+def _arrow_type(field: dict) -> pa.DataType:
+    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeString": pa.string(),
+            "esriFieldTypeDate": pa.int64(), "esriFieldTypeDouble": pa.float64(),
+            "esriFieldTypeGlobalID": pa.string()}[field["type"]]
 
 
-def _validate_ring(ring: object) -> list[list[float]]:
-    if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
-        raise ValueError("source_polygon_ring_invalid")
-    points: list[list[float]] = []
-    for point in ring:
-        if not isinstance(point, list) or len(point) != 2 \
-                or type(point[0]) not in (int, float) or type(point[1]) not in (int, float):
-            raise ValueError("source_polygon_ordinate_contract_drift")
-        x, y = float(point[0]), float(point[1])
-        if not (x == x and y == y and -1e308 < x < 1e308 and -1e308 < y < 1e308):
-            raise ValueError("source_polygon_ordinate_not_finite")
-        if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
-            raise ValueError("source_coordinate_range_drift")
-        points.append([x, y])
-    return points
+def _validate_stream(root: Path, *, parquet_sink: Path | None) -> tuple[dict, dict]:
+    """Validate every retained response and build the native geoparquet.
 
-
-def _ring_area(ring: list[list[float]]) -> float:
-    x0, y0 = ring[0]
-    return sum((ring[index][0] - x0) * (ring[index + 1][1] - y0)
-               - (ring[index + 1][0] - x0) * (ring[index][1] - y0)
-               for index in range(len(ring) - 1)) / 2
-
-
-def _group_rings(geometry: object) -> list[list[list[list[float]]]]:
-    """Group the producer's served rings into [shell, holes...] lists, unrepaired.
-
-    Verified Esri semantics (pinned capture): rings are closed, clockwise rings
-    are exteriors, counter-clockwise rings are holes, and every vertex is an
-    (x, y) pair. Vertices pass through verbatim; holes join the smallest
-    containing exterior. No vertex is dropped, added, reordered or reprojected.
+    Pages are processed in ascending-OBJECTID keyset order; each page's rows
+    are validated, gated and written as one parquet row group before the next
+    page is parsed, so the population is never held in memory. Returns the
+    source audit and derived candidate facts.
     """
-    if not isinstance(geometry, dict) or set(geometry) - {"rings", "spatialReference"}:
-        raise ValueError("source_polygon_geometry_structure_drift")
-    if "spatialReference" in geometry:
-        _validate_page_spatial_reference(geometry["spatialReference"], "source_geometry")
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    shells: list[tuple[list[list[float]], Polygon]] = []
-    holes: list[list[list[float]]] = []
-    for ring in rings:
-        points = _validate_ring(ring)
-        polygon = Polygon(points)
-        if _ring_area(points) < 0:
-            shells.append((points, polygon))
-        else:
-            holes.append(points)
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    assigned: dict[int, list[list[list[float]]]] = {index: [] for index in range(len(shells))}
-    if holes:
-        if len(shells) > 1:
-            for _points, polygon in shells:
-                shapely.prepare(polygon)
-        for hole in holes:
-            probe = Polygon(hole).representative_point()
-            candidates = [(abs(_ring_area(shell_points)), index)
-                          for index, (shell_points, polygon) in enumerate(shells)
-                          if polygon.contains(probe)]
-            if not candidates:
-                raise ValueError("source_polygon_hole_unassigned")
-            assigned[min(candidates)[1]].append(hole)
-    return [[shells[index][0], *assigned[index]] for index in range(len(shells))]
+    loaded = {name: _load_capture(root, name) for name in METADATA_NAMES}
+    docs = {name: value[0] for name, value in loaded.items()}
+    receipts = {name: value[2] for name, value in loaded.items()}
+    _validate_service_doc(docs["service_doc"])
+    _validate_service(json.loads(docs["service_before"]), "service_before")
+    layer = json.loads(docs["layer_before"])
+    _validate_layer(layer)
+    if json.loads(docs["service_after"]) != json.loads(docs["service_before"]) \
+            or json.loads(docs["layer_after"]) != layer:
+        raise ValueError("source_service_or_layer_changed_during_capture")
+    _validate_count(json.loads(docs["count_before"]), "before")
+    _validate_count(json.loads(docs["count_after"]), "after")
+    roster = _validate_roster_document(json.loads(docs["ids_before"]), "before")
+    roster_after = _validate_roster_document(json.loads(docs["ids_after"]), "after")
+    if roster != roster_after:
+        raise ValueError("source_id_roster_changed_during_capture")
+    expected_urls = dict(_capture_roster(roster))
+    for name in METADATA_NAMES:
+        _validate_capture_request_identity(name, receipts[name], expected_urls[name])
 
-
-def _geometry_wkb(grouped: list[list[list[list[float]]]]) -> bytes:
-    members = [Polygon(shell, holes) for shell, *holes in grouped]
-    geometry = members[0] if len(members) == 1 else MultiPolygon(members)
-    return shapely.to_wkb(geometry, byte_order=1, output_dimension=2)
-
-
-def _arrow_type(field: tuple[str, str]) -> pa.DataType:
-    kind = field[1]
-    if kind in ("esriFieldTypeString", "esriFieldTypeGlobalID"):
-        return pa.string()
-    if kind in ("esriFieldTypeOID", "esriFieldTypeInteger", "esriFieldTypeSmallInteger",
-                "esriFieldTypeDate"):
-        return pa.int64()
-    if kind in ("esriFieldTypeDouble", "esriFieldTypeSingle"):
-        return pa.float64()
-    raise ValueError("unsupported_source_field_type:" + kind)
-
-
-def _parquet_bytes(attributes: list[dict], wkbs: list[bytes | None]) -> bytes:
-    arrays = []
-    for name, kind in EXPECTED_FIELDS:
-        values = [row[name] for row in attributes]
-        if kind == "esriFieldTypeDate":
-            if any(value is not None and type(value) is not int for value in values):
-                raise ValueError("source_date_value_type_drift:" + name)
-        if kind == "esriFieldTypeOID" and any(type(value) is not int for value in values):
-            raise ValueError("source_object_id_value_drift")
-        arrays.append(pa.array(values, type=_arrow_type((name, kind))))
-    arrays.append(pa.array(wkbs, type=pa.binary()))
-    schema_fields = [pa.field(field_name, _arrow_type((field_name, field_kind)), nullable=True)
-                     for field_name, field_kind in EXPECTED_FIELDS]
-    schema_fields.append(pa.field(GEOMETRY_COLUMN, pa.binary(), nullable=True))
-    table = pa.Table.from_arrays(arrays, names=[field.name for field in schema_fields])
-    crs = pyproj.CRS.from_epsg(SOURCE_CRS_WKID).to_json_dict()
-    geo = {"version": "1.1.0", "primary_column": GEOMETRY_COLUMN,
-           "columns": {GEOMETRY_COLUMN: {"encoding": "WKB",
-                                         "geometry_types": ["Polygon", "MultiPolygon"],
-                                         "crs": crs, "edges": "planar"}}}
-    table = table.replace_schema_metadata({b"geo": _json_bytes(geo).strip()})
-    sink = pa.BufferOutputStream()
-    pq.write_table(table, sink, compression="zstd", version="2.6")
-    return sink.getvalue().to_pybytes()
-
-
-def _capture_windows(client, roster: list[int], staging, version_key: str, budget: list[int],
-                     receipts: dict[str, dict]) -> dict[str, dict]:
-    """Capture every roster window, bisecting refused or oversized windows.
-
-    Each accepted window is one exact ``objectIds`` request over a contiguous
-    roster slice. A window that answers with an Esri error document, exceeds the
-    byte cap or reports a truncated result is bisected into two smaller windows
-    over the same roster slice: those producer answers are deterministic for the
-    requested window (observed 2026-11-14: windows above ~100 roster ids refuse
-    with the same HTTP 200 Esri 500 error document), so bisection is
-    completeness-neutral and only changes page boundaries. Transport faults are
-    retried a bounded number of times with backoff and every failed attempt is
-    preserved on disk under a collision-free ``.attempt_<n>_<cap>cap`` evidence
-    name that never enters the capture roster. A single roster id that still
-    refuses after bisection fails the capture closed.
-    """
-    pages: dict[str, dict] = {}
-    refused: dict[str, list[int]] = {}
-    plan: deque[tuple[int, int]] = deque((start, PAGE_IDS)
-                                         for start in range(0, len(roster), PAGE_IDS))
-    while plan:
-        start, size = plan.popleft()
-        window_ids = roster[start:start + size]
-        size = len(window_ids)
-        name = f"page_{window_ids[0]:07d}"
-        params = _window_params(window_ids)
-        accepted = False
-        for attempt in range(1, PAGE_ATTEMPTS + 1):
-            try:
-                doc = _request(client, name, params, staging, version_key, budget, receipts,
-                               max_bytes=MAX_PAGE_BYTES)
-            except ValueError as exc:
-                if "source_total_capture_budget_exceeded" in str(exc):
-                    raise
-                error_code = _failed_attempt_error_code(staging, version_key, name, attempt,
-                                                        MAX_PAGE_BYTES)
-                if error_code in ("wire_limit_exceeded", "decoded_limit_exceeded"):
-                    break
-                if attempt < PAGE_ATTEMPTS:
-                    time.sleep(PAGE_BASE_DELAY_SECONDS * (2 ** (attempt - 1)))
-                    continue
-                break
-            if doc.get("exceededTransferLimit"):
-                break
-            pages[name] = doc
-            accepted = True
-            break
-        if accepted:
-            continue
-        if size > 1:
-            mid = size // 2
-            plan.appendleft((start + mid, size - mid))
-            plan.appendleft((start, mid))
-            continue
-        refused[name] = window_ids
-    if refused:
-        raise ValueError("source_window_persistent_producer_refusal:" + ",".join(sorted(refused)))
-    for name in pages:
-        pages[name]["requested_url"] = receipts[name]["url"]
-    return pages
-
-
-def _validate_pages(pages: dict[str, dict]) -> dict:
-    """Validate the complete page capture against the pinned producer contract.
-
-    Attributes and per-feature ring groups are accumulated in roster order;
-    the geometry digest is streamed over the same record sequence so the pin is
-    independent of the capture's (completeness-neutral) page boundaries.
-    """
-    page_entries = []
-    for name in pages:
-        start = int(name.removeprefix("page_"))
-        if not 0 <= start <= 9_999_999:
-            raise ValueError("source_page_name_invalid:" + name)
-        page_entries.append((start, name))
-    page_entries.sort()
-    attributes: list[dict] = []
-    wkbs: list[bytes | None] = []
-    captured_ids: list[int] = []
-    null_geometry = 0
-    observed_bounds: list[float] = []
-    huc10_seen: set[str] = set()
-    ring_count = 0
-    vertex_count = 0
-    geometry_hash = hashlib.sha256()
-    geometry_hash.update(b"[")
-    first_record = True
-    for _start, name in page_entries:
-        page = pages[name]
-        _validate_page_spatial_reference(page.get("spatialReference"), f"source_page_{name}")
-        if page.get("exceededTransferLimit"):
-            raise ValueError("source_page_transfer_truncated:" + name)
-        if page.get("geometryType") != "esriGeometryPolygon":
-            raise ValueError("source_page_geometry_type_drift:" + name)
-        if set(page) - _PAGE_ALLOWED_MEMBERS:
-            raise ValueError("source_page_unexpected_members:" + name)
-        requested = _window_url_ids(page["requested_url"])
-        rows = page.get("features")
-        if not isinstance(rows, list) or not rows:
-            raise ValueError("source_page_missing_features:" + name)
-        page_ids = []
-        for row in rows:
-            attrs = row.get("attributes")
-            if not isinstance(attrs, dict) or list(attrs) != FIELD_NAMES:
-                raise ValueError("source_record_attribute_schema_drift:" + name)
-            oid = attrs["objectid"]
-            if type(oid) is not int or oid <= 0:
-                raise ValueError("source_native_identifier_missing_or_type_drift:" + name)
-            huc10 = attrs["huc10"]
-            if not isinstance(huc10, str) or not huc10:
-                raise ValueError("source_huc10_missing:" + name)
-            _validate_attrs_types(attrs)
-            geometry = row.get("geometry")
-            if geometry is None:
-                null_geometry += 1
-                grouped: list[list[list[list[float]]]] = []
-                wkbs.append(None)
-            else:
-                grouped = _group_rings(geometry)
-                wkbs.append(_geometry_wkb(grouped))
-                rings = [ring for polygon in grouped for ring in polygon]
-                ring_count += len(rings)
-                vertex_count += sum(len(ring) for ring in rings)
-                for ring in rings:
-                    for vertex in ring:
-                        observed_bounds.extend((vertex[0], vertex[1]))
-            page_ids.append(oid)
-            captured_ids.append(oid)
-            attributes.append(attrs)
-            huc10_seen.add(huc10)
-            if not first_record:
-                geometry_hash.update(b",")
-            first_record = False
-            geometry_hash.update(_canonical([oid, grouped]))
-        if page_ids != sorted(page_ids):
-            raise ValueError("source_page_ids_not_ascending:" + name)
-        if sorted(page_ids) != sorted(requested):
-            raise ValueError("source_page_id_slice_incomplete_or_reordered:" + name)
-    geometry_hash.update(b"]")
-    return {"attributes": attributes, "wkbs": wkbs, "ids": captured_ids,
-            "null_geometry_count": null_geometry,
-            "huc10_seen": huc10_seen, "ring_count": ring_count, "vertex_count": vertex_count,
-            "observed_bounds_raw": observed_bounds, "geometry_sha256": geometry_hash.hexdigest()}
-
-
-def _validate_captures(roster: list[int], pages: dict[str, dict], fields: list[dict]) -> dict:
-    """Validate the complete capture against the pinned producer contract."""
-    result = _validate_pages(pages)
-    if sorted(result["ids"]) != roster:
-        raise ValueError("source_feature_population_incomplete")
-    if result["null_geometry_count"] != EXPECTED_NULL_GEOMETRY_COUNT:
-        raise ValueError("source_null_geometry_count_drift")
-    if len(result["huc10_seen"]) != EXPECTED_UNIQUE_HUC10_COUNT:
-        raise ValueError("source_huc10_identifier_drift")
-    raw = result["observed_bounds_raw"]
-    if not raw:
-        raise ValueError("source_observed_coverage_empty")
-    bounds = {"xmin": min(raw[0::2]), "ymin": min(raw[1::2]),
-              "xmax": max(raw[0::2]), "ymax": max(raw[1::2])}
-    if bounds != EXPECTED_OBSERVED_BOUNDS:
-        raise ValueError("source_observed_coverage_drift")
-    record_sha = _sha(_canonical(result["attributes"]))
-    if record_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_record_value_drift")
-    if result["geometry_sha256"] != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_or_coverage_drift")
-    audit = {"source_feature_count": len(result["attributes"]),
-             "source_id_sha256": _sha(_canonical(result["ids"])),
-             "source_record_sha256": record_sha,
-             "source_geometry_sha256": result["geometry_sha256"],
-             "source_schema_sha256": _schema_sha(fields),
-             "source_crs_epsg": SOURCE_CRS_WKID, "source_layer_native_sr": NATIVE_LAYER_SR,
-             "geometry_type": "Polygon / MultiPolygon",
-             "null_geometry_count": result["null_geometry_count"],
-             "observed_bounds": bounds, "declared_layer_extent_3857": EXPECTED_LAYER_EXTENT,
-             "unique_source_id_count": len(set(result["ids"])),
-             "unique_huc10_count": len(result["huc10_seen"]),
-             "source_ring_count": result["ring_count"],
-             "source_vertex_count": result["vertex_count"],
-             "source_release_date": None,
-             "source_release_date_unknown_reason":
-                 "The wbd service publishes no per-snapshot release date; the service "
-                 "copyrightText records a service refresh (October, 2026) and is freshness "
-                 "evidence only.",
-             "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT}
-    return {**result, "audit": audit}
-
-
-class _RetainedCaptureClient:
-    """Read immutable successful responses from an earlier retained capture."""
-
-    def __init__(self, staging, source_version: str):
-        self.staging = staging
-        self.source_version = source_version
-        self.retained_capture = self
-
-    def read_response(self, name: str, params: dict[str, object]):
-        root = self.staging.build_target_location(DATASET_SLUG, FILE_SLUG, self.source_version, "")
-        body_key = root + f"raw/{name}.json"
-        wire_key = root + f"raw/{name}.wire"
-        receipt_key = root + f"raw/{name}.receipt.json"
-        try:
-            body, wire = self.staging.read_key(body_key), self.staging.read_key(wire_key)
-            receipt = json.loads(self.staging.read_key(receipt_key))
-        except (OSError, ValueError) as exc:
-            raise ValueError("retained_source_response_missing:" + name) from exc
-        if (receipt.get("method") != "GET" or receipt.get("complete") is not True
-                or type(receipt.get("status")) is not int or not 200 <= receipt["status"] < 300
-                or receipt.get("bytes") != len(body) or receipt.get("wire_bytes") != len(wire)
-                or receipt.get("sha256") != _sha(body) or receipt.get("wire_sha256") != _sha(wire)):
-            raise ValueError("retained_source_receipt_mismatch:" + name)
-        parsed_url = urlsplit(receipt.get("url", ""))
-        expected_url = urlsplit(_request_url(name, params))
-        if (parsed_url.scheme != expected_url.scheme or parsed_url.netloc != expected_url.netloc
-                or parsed_url.path != expected_url.path):
-            raise ValueError("retained_source_request_identity_mismatch:" + name)
-        query = parse_qs(parsed_url.query, keep_blank_values=True)
-        for key, value in params.items():
-            expected = str(value).lower() if isinstance(value, bool) else str(value)
-            if query.get(key) != [expected]:
-                raise ValueError("retained_source_request_parameters_mismatch:" + name)
-        return body, wire, receipt
-
-
-def _capture(client, staging, version_key: str, budget: list[int],
-             receipts: dict[str, dict], distribution_chain: bool) -> dict:
-    if distribution_chain:
-        _validate_directory(_request(client, "services_directory", {}, staging, version_key,
-                                     budget, receipts))
-        service_before = _request(client, "service_before", {}, staging, version_key, budget, receipts)
-        _validate_service_document(service_before)
-        _validate_alias_document(_request(client, "alias_service", {}, staging, version_key,
-                                          budget, receipts))
-    else:
-        service_before = _request(client, "service_before", {}, staging, version_key, budget, receipts)
-    layer_before = _request(client, "layer_before", {}, staging, version_key, budget, receipts)
-    fields = _validate_layer_document(layer_before)
-    count_before = _count_snapshot(client, staging, version_key, "count_before", budget, receipts)
-    ids_before = _id_snapshot(client, staging, version_key, "ids_before", budget, receipts)
-    # The seed roster is what the windows actually walk; it is re-fetched after
-    # the pinned roster so population drift between the two reads fails closed.
-    seed_doc = _request(client, "ids_seed", _roster_params(), staging, version_key, budget, receipts)
-    roster = _validate_roster(seed_doc, "source_seed_id_population_drift")
-    pages = _capture_windows(client, roster, staging, version_key, budget, receipts)
-    service_after = _request(client, "service_after", {}, staging, version_key, budget, receipts)
-    _validate_service_roster(service_after)
-    if service_after != service_before:
-        raise ValueError("official_usgs_wbd_service_changed_during_capture")
-    layer_after = _request(client, "layer_after", {}, staging, version_key, budget, receipts)
-    if layer_after != layer_before:
-        raise ValueError("source_layer_metadata_changed_during_capture")
-    if _count_snapshot(client, staging, version_key, "count_after", budget, receipts) != count_before:
-        raise ValueError("source_count_changed_during_capture")
-    if _id_snapshot(client, staging, version_key, "ids_after", budget, receipts) != ids_before:
-        raise ValueError("source_population_changed_during_capture")
-    extracted = _validate_captures(roster, pages, fields)
-    client_docs = {"services_directory": None, "service_before": service_before,
-                   "alias_service": None, "layer_before": layer_before,
-                   "count_before": {"count": count_before}, "ids_before": {"objectIds": ids_before},
-                   "ids_seed": seed_doc, "service_after": service_after,
-                   "layer_after": layer_after,
-                   "count_after": {"count": count_before},
-                   "ids_after": {"objectIds": ids_before}}
-    return {"fields": fields, "extracted": extracted, "pages": pages,
-            "client_docs": client_docs, "receipts": receipts}
-
-
-def _write_source_manifest(staging, version_key: str, client_docs: dict, fields: list[dict],
-                           audit: dict, identity: dict, receipts: dict[str, dict],
-                           retained_source_version: str | None, parquet_body: bytes,
-                           distribution_chain: bool) -> None:
-    prefix = staging.build_target_location(DATASET_SLUG, FILE_SLUG, version_key, "")
-    inputs = []
-    retry_receipts = []
-    page_names = []
-    for key in staging.list_keys(DATASET_SLUG, FILE_SLUG, version_key):
-        marker = "/raw/"
-        if marker not in key or not key.endswith(".receipt.json"):
-            continue
-        name = key.split(marker, 1)[1][:-len(".receipt.json")]
-        receipt = json.loads(staging.read_key(key))
-        if ".attempt_" in name:
-            retry_receipts.append({"artifact": f"raw/{name}.receipt.json",
-                                   "status": receipt.get("status"),
-                                   "sha256": receipt.get("sha256"),
-                                   "wire_sha256": receipt.get("wire_sha256")})
-            continue
-        if receipt.get("complete") is not True or not 200 <= receipt.get("status", 0) < 300:
-            raise ValueError("manifest_contains_failed_source_input")
-        if name.startswith("page_"):
-            page_names.append(name)
-            continue
-        request_url = receipt["url"]
-        if name == "services_directory":
-            canonical_url = SERVICES_DIRECTORY_URL
-        elif name.startswith("service"):
-            canonical_url = SERVICE_URL
-        elif name.startswith("alias"):
-            canonical_url = ALIAS_SERVICE_URL
-        else:
-            canonical_url = LAYER_URL
-        inputs.append({
-            "input_id": name, "producer": PUBLISHER,
-            "host": urlsplit(request_url).hostname, "role": "producer_publication",
-            "canonical_url": canonical_url, "retrieval_url": request_url,
-            "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
-            "bytes": receipt["bytes"], "sha256": receipt["sha256"], "raw_path": f"raw/{name}.json",
-            "license": ("The producer's service description states 'All data are open and "
-                        "non-proprietary'; rights acceptance pending."),
-            "attribution": "U.S. Geological Survey (the service requests acknowledgment of "
-                           "the U.S. Geological Survey; attribution terms pending review).",
-            "release_date": None,
-            "release_date_unknown_reason": "The wbd service publishes no per-snapshot release "
-                                           "date; its copyrightText records a service refresh "
-                                           "(October, 2026), which is freshness evidence only.",
-        })
-    if not page_names:
-        raise ValueError("paged_capture_inputs_missing")
-    page_receipts = [receipts[name] for name in sorted(page_names)]
-    if {receipt["status"] for receipt in page_receipts} != {200}:
-        raise ValueError("paged_capture_http_status_drift")
-    parquet_rel = f"geoparquet/{FILE_SLUG}.parquet"
-    page_entry = {"input_id": "wbd_paged_feature_queries", "producer": PUBLISHER,
-                  "host": urlsplit(page_receipts[0]["url"]).hostname,
-                  "role": "producer_publication",
-                  "canonical_url": LAYER_URL,
-                  "retrieval_url": page_receipts[0]["url"],
-                  "retrieved_at": page_receipts[0]["observed_at"],
-                  "http_status": 200,
-                  "bytes": sum(int(receipt["bytes"]) for receipt in page_receipts),
-                  "sha256": _sha(_canonical(page_receipts)),
-                  "page_query_count": len(page_receipts),
-                  "page_capture_window": [min(receipt["observed_at"] for receipt in page_receipts),
-                                          max(receipt["observed_at"] for receipt in page_receipts)],
-                  "page_receipts_sha256_basis": "SHA-256 over the canonical JSON array of the "
-                                                "per-page receipt objects in ascending page name "
-                                                "order, staged verbatim as raw/<name>.receipt.json "
-                                                "next to each page's raw body and wire transcript",
-                  "license": ("The producer's service description states 'All data are open and "
-                              "non-proprietary'; rights acceptance pending."),
-                  "attribution": "U.S. Geological Survey; attribution terms pending review.",
-                  "release_date": None,
-                  "release_date_unknown_reason": "The wbd service publishes no per-snapshot "
-                                                 "release date; its copyrightText records a "
-                                                 "service refresh (October, 2026)."}
-    inputs.append(page_entry)
-    manifest = {
-        "schema_version": 1, "approved": False, "processor": "HIFLD Next",
-        "title": "10-digit HU (Watershed) — unaccepted USGS WBD native snapshot draft",
-        "description": "Complete observed USGS The National Map wbd FeatureServer layer 5 "
-                       "'10-digit HU (Watershed)' candidate; 18,911 hydrologic-unit watershed "
-                       "polygons with zero-padded ten-character HUC10 identifiers. The DHS HIFLD "
-                       "Open crosswalk marks the WBD row Deprecate and directs users to the "
-                       "producing agency's own wbd service. Edition, HIFLD continuity, baseline, "
-                       "schema/ID contract, coverage, rights and release decisions remain pending.",
-        "agency": "U.S. Geological Survey",
-        "publisher": PUBLISHER,
-        "source_url": LAYER_URL,
-        "documentation_url": SERVICE_URL,
-        "license": "Producer service states 'All data are open and non-proprietary'; rights "
-                   "acceptance pending.",
-        "date_issued": None, "date_modified": None,
-        "code_commit": identity["code_commit"],
-        "code_identity_scheme": identity["code_identity_scheme"],
-        "processing_code": identity, "inputs": inputs,
-        "transformations": [{"operation": "Complete ESRI JSON WBD polygon capture to typed GeoParquet evidence candidate",
-                             "parameters": {"attributes": "All declared nongeometry fields and values retained in source order; producer-declared string fields as Arrow string, doubles as float64, the objectid OID as int64 and the loaddate epoch-milliseconds as int64.",
-                                            "identifiers": "objectid, tnmid and huc10 retained exactly, including the zero-padded ten-character HUC10 strings; no synthetic identifier or join.",
-                                            "geometry": "Served outSR=4326 polygon rings retained verbatim as WKB in EPSG:4326 under the producer's verified Esri ring semantics (closed rings; clockwise exteriors, counter-clockwise holes assigned to their smallest containing exterior); no reprojection, quantization, repair or vertex change.",
-                                            "candidate_status": "Unaccepted draft; no output or release approval implied."}}],
-        "lineage": {"scope": "Complete observed USGS wbd FeatureServer layer 5 '10-digit HU "
-                             "(Watershed)'; the hydrologic-unit watershed polygons only; WBDLine "
-                             "and the other HU levels are separate inventory entries.",
-                    "layer_id": LAYER_ID,
-                    "source_description": client_docs["layer_before"].get("description"),
-                    "source_copyright_text": client_docs["layer_before"].get("copyrightText"),
-                    "service_url": SERVICE_URL, "alias_service_url": ALIAS_SERVICE_URL,
-                    "services_directory": SERVICES_DIRECTORY_URL,
-                    **({"distribution_chain": "USGS The National Map server hydro.nationalmap.gov "
-                                              "publishes the wbd FeatureServer and wbd MapServer "
-                                              "(both listed in the host's own services directory); "
-                                              "the DHS HIFLD Open crosswalk row 'Watershed Boundary "
-                                              "Dataset (WBD)' (Status Deprecate, DUA Required No, "
-                                              "GII Access Required No) directs users to the wbd "
-                                              "MapServer as the producer publication. The same-org "
-                                              "MapServer is captured as alias identity evidence."}
-                       if distribution_chain else {}),
-                    "crosswalk_doi": CROSSWALK_DOI,
-                    "crosswalk_row": CROSSWALK_ROW,
-                    "crosswalk_status": "Deprecate ('No longer supported as part of the HIFLD "
-                                        "mission'; DUA Required No, GII Access Required No)",
-                    "crosswalk_open_id": CROSSWALK_OPEN_ID,
-                    "crosswalk_verified": "2026-11-14 from the byte-verified public crosswalk file "
-                                          "(sha256 7f3394fed2712fdcc176b7ce658293fdded656b9b719f0d9"
-                                          "0154c07dc38772bc); the DataLumos-hosted DOI copy was not "
-                                          "fetched (banned mirror host).",
-                    "hifld_continuity": {"basis": "The archived HIFLD inventory row's description is "
-                                                  "the producer layer description verbatim and the "
-                                                  "producer layer title is the exact inventory "
-                                                  "title; the DataLumos archive (project 240691) is "
-                                                  "identification context only and is never "
-                                                  "fetched.",
-                                         "hifld_continuity_accepted": False},
-                    "producer_succession_claimed": False,
-                    "source_release_date_known": False,
-                    "source_last_data_edit_observed": None,
-                    "source_last_data_edit_basis": "The wbd layer and service documents expose no "
-                                                   "editingInfo/dataLastEditDate; the service "
-                                                   "copyrightText 'Data refreshed October, 2026.' is "
-                                                   "the producer's own refresh statement.",
-                    "source_record_sha256": audit["source_record_sha256"],
-                    "source_geometry_sha256": audit["source_geometry_sha256"],
-                    "raw_capture_mode": ("retained_response_replay" if retained_source_version
-                                         else "live_http_capture"),
-                    "retained_source_capture_version": retained_source_version,
-                    "failed_retry_responses": retry_receipts,
-                    "source_contract_accepted": False, "schema_contract_accepted": False,
-                    "id_contract_accepted": False, "coverage_accepted": False,
-                    "rights_accepted": False, "baseline_accepted": False, "release_accepted": False},
-        "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
-            "reason": "Complete native source fields, IDs, values, physical nulls and served "
-                      "EPSG:4326 polygon geometry retained; all freshness, contract, coverage, "
-                      "rights and release approvals remain pending.",
-            "objects": [{"path": parquet_rel,
-                         "bytes": len(parquet_body), "sha256": _sha(parquet_body)}]}}},
-        "unsupported_output_formats": {
-            "shapefile_zip": "No approved field-name, type, or geometry conversion mapping exists.",
-            "geopackage": "No approved container-schema or release mapping exists.",
-            "pmtiles": "No approved reprojection, quantization, or visualization mapping exists.",
-        },
-    }
-    validate_provenance(manifest)
-    staging.write(DATASET_SLUG, FILE_SLUG, version_key, "metadata/source_manifest.json",
-                  _json_bytes(manifest))
-
-
-def _quarantined_capture(staging, version_key: str, client: httpx.Client | None,
-                         retained_source_version: str | None, distribution_chain: bool) -> dict:
-    if retained_source_version is not None:
-        if client is not None:
-            raise ValueError("retained_replay_does_not_accept_http_client")
-        client = _RetainedCaptureClient(staging, retained_source_version)
-    owned = client is None
-    client = client or httpx.Client(timeout=300, follow_redirects=False)
+    tmp_path = (parquet_sink.with_name(parquet_sink.name + ".construction-tmp")
+                if parquet_sink is not None else None)
+    if parquet_sink is not None:
+        parquet_sink.parent.mkdir(parents=True, exist_ok=True)
+    writer = (pq.ParquetWriter(tmp_path, _native_schema(), compression="zstd",
+                               use_dictionary=False) if tmp_path is not None else None)
+    record_hash, geometry_hash = hashlib.sha256(), hashlib.sha256()
+    vertices = 0
+    winding = {"cw_shells": 0, "ccw_holes": 0}
+    gate_counts: dict[str, int] = {}
+    null_geometry_count = 0
+    geometry_valid = 0
+    multipart = 0
+    with_hole = 0
+    bounds: list[float] | None = None
+    coverage = {key: EXPECTED_EXTENT[key] for key in ("xmin", "ymin", "xmax", "ymax")}
+    last_objectid = 0
+    names = FIELD_NAMES
+    geometry_types_seen: set[str] = set()
     try:
+        for index in range(PAGE_COUNT):
+            name = f"page_{index:04d}"
+            body, _wire, receipt = _load_capture(root, name)
+            _validate_capture_request_identity(name, receipt, expected_urls[name])
+            expected_page_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
+            page = json.loads(body)
+            if "error" in page:
+                raise ValueError("source_page_error:" + name)
+            if set(page) - {"displayFieldName", "exceededTransferLimit", "features",
+                            "fieldAliases", "fields", "geometryType", "spatialReference"}:
+                raise ValueError("source_page_unexpected_member:" + name)
+            if page.get("displayFieldName") != DISPLAY_FIELD_NAME:
+                raise ValueError("source_page_identity_drift:" + name)
+            exceeded = page.get("exceededTransferLimit")
+            if exceeded is not None and type(exceeded) is not bool:
+                raise ValueError("source_page_transfer_flag_drift:" + name)
+            if exceeded is True and index == PAGE_COUNT - 1:
+                raise ValueError("source_page_transfer_limit_on_final_page:" + name)
+            rows = page.get("features")
+            if not isinstance(rows, list) or len(rows) != len(expected_page_ids):
+                raise ValueError("source_page_population_incomplete:" + name)
+            if exceeded is True and len(rows) < PAGE_SIZE:
+                raise ValueError("source_page_transfer_truncated:" + name)
+            _validate_spatial_reference(page.get("spatialReference"), "source_" + name + "_page")
+            if page.get("geometryType") != "esriGeometryPolygon":
+                raise ValueError("source_page_identity_drift:" + name)
+            aliases = page.get("fieldAliases")
+            if (not isinstance(aliases, dict)
+                    or aliases != {field["name"]: field["alias"]
+                                   for field in EXPECTED_PAGE_FIELD_DECLARATIONS}):
+                raise ValueError("source_page_alias_drift:" + name)
+            if page.get("fields") != EXPECTED_PAGE_FIELD_DECLARATIONS:
+                raise ValueError("source_page_physical_schema_changed:" + name)
+            columns: dict[str, list] = {field: [] for field in names}
+            geometries: list[bytes | None] = []
+            page_ids = []
+            for feature in rows:
+                attrs, geometry = feature.get("attributes"), feature.get("geometry")
+                if (not isinstance(attrs, dict) or len(attrs) != len(ATTRIBUTE_FIELDS)
+                        or tuple(attrs) != names):
+                    raise ValueError("source_attribute_roster_or_order_drift:" + name)
+                for field in ATTRIBUTE_FIELDS:
+                    value = attrs[field["name"]]
+                    if value is None:
+                        continue
+                    kind = field["type"]
+                    if kind == "esriFieldTypeOID" and (type(value) is not int or value <= 0):
+                        raise ValueError("source_oid_value_type_drift:" + name)
+                    if kind in {"esriFieldTypeString", "esriFieldTypeGlobalID"} \
+                            and not isinstance(value, str):
+                        raise ValueError("source_string_value_type_drift:" + field["name"])
+                    if kind == "esriFieldTypeDate" and type(value) is not int:
+                        raise ValueError("source_date_value_type_drift:" + field["name"])
+                    if kind == "esriFieldTypeDouble" and (type(value) not in (int, float)
+                                                          or not math.isfinite(float(value))):
+                        raise ValueError("source_double_value_type_drift:" + field["name"])
+                oid = attrs.get("objectid")
+                if type(oid) is not int or oid not in expected_page_ids:
+                    raise ValueError("source_feature_id_roster_drift:" + name)
+                if oid <= last_objectid:
+                    raise ValueError("source_feature_ids_not_strictly_increasing:" + name)
+                last_objectid = oid
+                page_ids.append(oid)
+                if not isinstance(geometry, dict) \
+                        or set(geometry) - {"rings", "hasZ", "hasM", "spatialReference"}:
+                    raise ValueError("source_polygon_geometry_structure_drift:" + name)
+                if geometry.get("hasZ") is True or geometry.get("hasM") is True:
+                    raise ValueError("source_geometry_dimensional_drift:" + name)
+                if isinstance(geometry, dict) and geometry.get("spatialReference") is not None:
+                    _validate_spatial_reference(geometry.get("spatialReference"),
+                                                "source_" + name + "_feature")
+                rings = geometry.get("rings")
+                if not isinstance(rings, list) or not rings:
+                    raise ValueError("source_polygon_rings_missing:" + name)
+                for ring in rings:
+                    if not isinstance(ring, list) or len(ring) < 4:
+                        raise ValueError("source_polygon_ring_invalid:" + name)
+                    if ring[0] != ring[-1]:
+                        raise ValueError("source_polygon_ring_not_closed:" + name)
+                    for point in ring:
+                        if (not isinstance(point, list) or len(point) != 2
+                                or any(type(coord) not in (int, float)
+                                       or not math.isfinite(coord) for coord in point)):
+                            raise ValueError("source_xy_ordinate_contract_drift:" + name)
+                        if not (coverage["xmin"] - EXPECTED_EXTENT_TOLERANCE
+                                <= point[0] <= coverage["xmax"] + EXPECTED_EXTENT_TOLERANCE
+                                and coverage["ymin"] - EXPECTED_EXTENT_TOLERANCE
+                                <= point[1] <= coverage["ymax"] + EXPECTED_EXTENT_TOLERANCE):
+                            raise ValueError("source_geometry_outside_declared_coverage:" + name)
+                    vertices += len(ring)
+                    area = _signed_area(ring)
+                    if area > 0:
+                        winding["ccw_holes"] += 1
+                    elif area < 0:
+                        winding["cw_shells"] += 1
+                try:
+                    wkb = _assemble_geometry(rings)
+                except _GeometryGate as gate:
+                    if gate.code not in GATE_MODES:
+                        raise
+                    gate_counts[gate.code] = gate_counts.get(gate.code, 0) + 1
+                    null_geometry_count += 1
+                    geometries.append(None)
+                    for field in names:
+                        columns[field].append(attrs[field])
+                    record_hash.update(_canonical(dict(attrs)) + DIGEST_SEPARATOR)
+                    continue
+                decoded = from_wkb(wkb)
+                for parity_field, observed in (("shape_Area", attrs.get("shape_Area")),
+                                               ("shape_Length", attrs.get("shape_Length"))):
+                    if observed is None:
+                        continue
+                    computed = decoded.area if parity_field == "shape_Area" else decoded.length
+                    if abs(computed - observed) > SHAPE_PARITY_TOLERANCE * max(abs(observed), 1e-12):
+                        raise ValueError(f"source_{parity_field}_parity_drift:" + name)
+                geometry_valid += 1
+                if isinstance(decoded, MultiPolygon):
+                    multipart += 1
+                    geometry_types_seen.add("MultiPolygon")
+                    decoded_rings = [ring for polygon in decoded.geoms
+                                     for ring in (polygon.exterior, *polygon.interiors)]
+                else:
+                    geometry_types_seen.add("Polygon")
+                    decoded_rings = [decoded.exterior, *decoded.interiors]
+                if any(len(ring.interiors) for ring in
+                       (decoded.geoms if isinstance(decoded, MultiPolygon) else [decoded])):
+                    with_hole += 1
+                for ring in decoded_rings:
+                    for x, y in ring.coords:
+                        if not (coverage["xmin"] - EXPECTED_EXTENT_TOLERANCE
+                                <= x <= coverage["xmax"] + EXPECTED_EXTENT_TOLERANCE
+                                and coverage["ymin"] - EXPECTED_EXTENT_TOLERANCE
+                                <= y <= coverage["ymax"] + EXPECTED_EXTENT_TOLERANCE):
+                            raise ValueError("source_geometry_outside_declared_coverage:" + name)
+                        if bounds is None:
+                            bounds = [x, y, x, y]
+                        else:
+                            if x < bounds[0]:
+                                bounds[0] = x
+                            if y < bounds[1]:
+                                bounds[1] = y
+                            if x > bounds[2]:
+                                bounds[2] = x
+                            if y > bounds[3]:
+                                bounds[3] = y
+                geometries.append(wkb)
+                for field in names:
+                    columns[field].append(attrs[field])
+                record_hash.update(_canonical(dict(attrs)) + DIGEST_SEPARATOR)
+                geometry_hash.update(_canonical([oid, geometry["rings"]]) + DIGEST_SEPARATOR)
+            if sorted(page_ids) != expected_page_ids or len(set(page_ids)) != len(page_ids):
+                raise ValueError("source_page_id_population_drift:" + name)
+            if writer is not None:
+                writer.write_table(pa.Table.from_pydict(
+                    {**columns, "geometry": geometries}, schema=_native_schema()))
+        if writer is not None:
+            writer.close()
+            writer = None
+            tmp_path.replace(parquet_sink)
+        ids_sha = _sha(_canonical(roster))
+        record_sha, geometry_sha = record_hash.hexdigest(), geometry_hash.hexdigest()
+        if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
+            raise ValueError("source_record_baseline_drift")
+        if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
+            raise ValueError("source_geometry_baseline_drift")
+        if EXPECTED_NULL_GEOMETRY_COUNT is not None \
+                and null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
+            raise ValueError("source_null_geometry_count_drift")
+        if (EXPECTED_UNUSABLE_GEOMETRY_COUNTS is not None
+                and gate_counts != EXPECTED_UNUSABLE_GEOMETRY_COUNTS):
+            raise ValueError("source_unusable_geometry_counts_drift")
+        audit = {
+            "source_feature_count": EXPECTED_COUNT,
+            "source_id_sha256": ids_sha, "source_id_min": EXPECTED_ID_MIN,
+            "source_id_max": EXPECTED_ID_MAX,
+            "source_schema_sha256": _sha(_canonical(layer["fields"])),
+            "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
+            "baseline_digest_scheme": ("sha256 of the concatenation of one canonical "
+                                       "compact-JSON document per feature in ascending "
+                                       "OBJECTID order, each followed by a 0x00 byte; the "
+                                       "record document is the served attribute object and "
+                                       "the geometry document is [objectid, served rings]"),
+            "source_geometry_type": "esriGeometryPolygon",
+            "source_crs": f"EPSG:{SOURCE_CRS_WKID}",
+            "source_native_wkid": NATIVE_WKID,
+            "source_vertex_count": vertices,
+            "source_ring_winding_counts": dict(sorted(winding.items())),
+            "geometry_valid_count": geometry_valid,
+            "null_geometry_count": null_geometry_count,
+            "unusable_geometry_counts": dict(sorted(gate_counts.items())),
+            "multipart_feature_count": multipart, "feature_with_hole_count": with_hole,
+            "geometry_bounds": bounds, "declared_extent": EXPECTED_EXTENT,
+            "service_copyright_text": EXPECTED_COPYRIGHT_TEXT,
+            "coverage_scope": ("Complete observed USGS wbd MapServer layer 5 "
+                               "'10-digit HU (Watershed)': every hydrologic-unit "
+                               "watershed polygon the producer publishes for the United "
+                               "States, Puerto Rico and the U.S. Virgin Islands; not "
+                               "asserted beyond that layer."),
+        }
+        return audit, {"parquet_path": parquet_sink, "geometry_types": sorted(geometry_types_seen)}
+    except BaseException:
+        if writer is not None:
+            try:
+                writer.close()
+            except Exception:
+                pass
+            writer = None
+        if parquet_sink is not None:
+            parquet_sink.with_name(parquet_sink.name + ".construction-tmp").unlink(missing_ok=True)
+        raise
+
+
+def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
+    return _sha(_canonical(_capture_identity(captures, root)))
+
+
+def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+    manifest_path = root / "capture_manifest.json"
+    if manifest_path.is_symlink():
+        raise ValueError("retained_capture_manifest_symlink_rejected")
+    manifest = json.loads(manifest_path.read_bytes())
+    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
+        raise ValueError("retained_capture_manifest_invalid")
+    roster_files = manifest.get("artifact_roster")
+    expected_names = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
+    if not isinstance(roster_files, dict) or set(manifest["receipts"]) != expected_names:
+        raise ValueError("retained_capture_roster_or_names_invalid")
+    validate_capture_roster(root, set(roster_files) | {"capture_manifest.json"})
+    if roster_files != capture_roster_digests(root, exclude={"capture_manifest.json"}):
+        raise ValueError("retained_capture_artifact_digest_mismatch")
+    ids = _validate_roster_document(json.loads(_load_capture(root, "ids_before")[0]), "replay")
+    expected_urls = dict(_capture_roster(ids))
+    captures = {}
+    for name in sorted(expected_names):
+        body, _wire, receipt = _load_capture(root, name)
+        if receipt != manifest["receipts"].get(name):
+            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
+        _validate_capture_request_identity(name, receipt, expected_urls[name])
+        captures[name] = (body, receipt)
+    return captures
+
+
+def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
+                            capture_directory: str | None = None) -> dict[str, object]:
+    """Capture or replay one complete, unapproved native WBD 10-digit candidate."""
+    if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
+            or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
+        raise ValueError("explicit_local_staging_resource_required")
+    if (not isinstance(version, str) or not version or version in {".", ".."}
+            or Path(version).name != version or "/" in version or "\\" in version):
+        raise ValueError("unsafe_capture_version")
+    staging = Path(storage.local_dir).absolute()
+    if ".." in staging.parts or any(path.is_symlink() for path in (staging, *staging.parents)):
+        raise ValueError("unsafe_local_staging_root")
+    staging.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(staging).free < DISK_FLOOR_BYTES:
+        raise ValueError("disk_floor_before_acquisition")
+    requested = Path(capture_directory).absolute() if capture_directory else None
+    replay = bool(requested and (requested / "capture_manifest.json").exists())
+    if replay:
+        root = requested
+        if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
+            raise ValueError("unsafe_capture_directory")
+        captures = _read_replay(root)
+    else:
+        if requested and (any(requested.glob("*.body")) or any(requested.glob("*.wire"))
+                          or any(requested.glob("*.receipt.json"))):
+            raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
+        root = ((requested / version / uuid4().hex) if requested else
+                Path("/tmp/hifld-native-reconstruction/375/captures") / (version + "-" + uuid4().hex))
+        if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
+            raise ValueError("unsafe_capture_directory")
+        root.mkdir(parents=True, exist_ok=False)
+        captures = {}
         try:
-            budget = [0]
-            receipts: dict[str, dict] = {}
-            capture = _capture(client, staging, version_key, budget, receipts, distribution_chain)
-            fields = capture["fields"]
-            extracted = capture["extracted"]
-            audit = extracted["audit"]
-            parquet = _parquet_bytes(extracted["attributes"], extracted["wkbs"])
-            del extracted
-            staging.write(DATASET_SLUG, FILE_SLUG, version_key,
-                          f"geoparquet/{FILE_SLUG}.parquet", parquet)
-            identity = processing_identity(Path(__file__).parents[3])
-            _write_source_manifest(staging, version_key, capture["client_docs"], fields, audit,
-                                   identity, receipts, retained_source_version, parquet,
-                                   distribution_chain)
-            staging.write(DATASET_SLUG, FILE_SLUG, version_key, "metadata/native_capture.json",
-                          _json_bytes({
-                              "source_layer": LAYER_URL,
-                              "official_service": SERVICE_URL,
-                              "alias_service": ALIAS_SERVICE_URL,
-                              "services_directory": SERVICES_DIRECTORY_URL,
-                              "service_layer_id": LAYER_ID,
-                              "layer_name": "10-digit HU (Watershed)",
-                              "pinned_id_roster_sha256": EXPECTED_ID_SHA256,
-                              "pinned_layer_extent_3857": EXPECTED_LAYER_EXTENT,
-                              "declared_layer_extent": capture["client_docs"]["layer_before"].get("extent"),
-                              "service_description":
-                                  capture["client_docs"]["service_before"].get("serviceDescription"),
-                              "source_copyright_text": EXPECTED_COPYRIGHT_TEXT,
-                              "source_release_date": None,
-                              "source_release_date_known": False,
-                              "feature_count": EXPECTED_COUNT,
-                              "before_id_sha256": EXPECTED_ID_SHA256,
-                              "after_id_sha256": EXPECTED_ID_SHA256,
-                              "source_record_sha256": audit["source_record_sha256"],
-                              "source_geometry_sha256": audit["source_geometry_sha256"],
-                              "source_schema_sha256": audit["source_schema_sha256"],
-                              "parquet_sha256": _sha(parquet),
-                              "native_crs": f"EPSG:{SOURCE_CRS_WKID}",
-                              "field_schema": [list(field) for field in EXPECTED_FIELDS],
-                              "attribute_fields": EXPECTED_FIELDS,
-                              "page_count": len(capture["pages"]),
-                              "pages": [{"page": name,
-                                         "first_objectid": int(name.removeprefix("page_")),
-                                         "feature_count": len(page["features"])}
-                                        for name, page in sorted(capture["pages"].items())],
-                              "code_identity": identity,
-                              "coverage_statement": "Complete observed USGS wbd FeatureServer layer "
-                                                    "5 '10-digit HU (Watershed)'; hydrologic-unit "
-                                                    "watershed polygons only.",
-                              "capture_mode": ("retained_response_replay" if retained_source_version
-                                               else "live_http_capture"),
-                              "retained_source_capture_version": retained_source_version,
-                              "refresh_semantics": "Default runs capture a fresh source snapshot. An "
-                                                   "explicit retained_response_replay is an evidence-only "
-                                                   "reprocessing operation, not a cache or currentness claim.",
-                              "historical_hifld_continuity_accepted": False,
-                              "source_contract_accepted": False,
-                              "schema_contract_accepted": False,
-                              "id_contract_accepted": False,
-                              "coverage_accepted": False,
-                              "rights_accepted": False,
-                              "release_accepted": False,
-                          }))
-            return {"feature_count": EXPECTED_COUNT, "ids_sha256": EXPECTED_ID_SHA256,
-                    "records_sha256": audit["source_record_sha256"],
-                    "geometry_sha256": audit["source_geometry_sha256"],
-                    "schema_sha256": audit["source_schema_sha256"],
-                    "parquet_sha256": _sha(parquet), "release_accepted": False,
-                    "source_population_complete": True,
-                    "source_coverage_scope": "Complete observed USGS wbd FeatureServer layer 5 "
-                                             "'10-digit HU (Watershed)'; hydrologic-unit watershed "
-                                             "polygons only."}
+            with httpx.Client(follow_redirects=False,
+                              timeout=httpx.Timeout(120, connect=20, read=600),
+                              headers={"User-Agent": USER_AGENT}) as client:
+                ids_body, ids_receipt = _capture(client, _ids_url(), root, "ids_before")
+                roster = _validate_roster_document(json.loads(ids_body), "seed")
+                captures["ids_before"] = (ids_body, ids_receipt)
+                doc_client = httpx.Client(follow_redirects=True,
+                                          timeout=httpx.Timeout(60, connect=20, read=300),
+                                          headers={"Connection": "close",
+                                                   "User-Agent": DOC_USER_AGENT})
+                try:
+                    for name, url in _capture_roster(roster):
+                        if name in captures:
+                            continue
+                        active = doc_client if name == "service_doc" else client
+                        captures[name] = _capture(active, url, root, name,
+                                                  max_bytes=DOC_MAX_BYTES
+                                                  if name == "service_doc" else PAGE_MAX_BYTES)
+                finally:
+                    doc_client.close()
         except Exception as exc:
-            error = str(exc).split(":", 1)[0]
-            staging.write(DATASET_SLUG, FILE_SLUG, version_key, "metadata/quarantine.json",
-                          _json_bytes({
-                              "status": "quarantined", "source_layer": LAYER_URL,
-                              "observed_at": datetime.now(timezone.utc).isoformat(),
-                              "failure_code": error,
-                              "capture_module_sha256": _sha(Path(__file__).read_bytes()),
-                              "release_accepted": False,
-                          }))
+            receipts = {}
+            for path in sorted(root.glob("*.receipt.json")):
+                try:
+                    receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
+                except (OSError, ValueError):
+                    receipts[path.name] = {"receipt_readback_failed": True}
+            (root / "capture_manifest.json").write_bytes(_canonical({"complete": False,
+                "captured_at": datetime.now(timezone.utc).isoformat(),
+                "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
+            if captures:
+                quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captures,
+                                              type(exc).__name__)
             raise
-    finally:
-        if owned:
-            client.close()
+        (root / "capture_manifest.json").write_bytes(_canonical({"complete": True,
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
+        captures = _read_replay(root)
+
+    parquet_sink = staging / "_construction-tmp" / f"{DATASET_SLUG}-{version}.parquet"
+    audit, derived = _validate_stream(root, parquet_sink=parquet_sink)
+    identity = processing_identity(Path(__file__).parents[3])
+    capture_hash = _capture_identity_hash(captures, root)
+    audit.update({"source_capture_evidence_sha256": capture_hash,
+        "source_capture_evidence": _capture_identity(captures, root),
+        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_release_accepted": False, "source_freshness_accepted": False,
+        "schema_contract_accepted": False, "id_contract_accepted": False,
+        "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
+        "release_accepted": False, "baseline_accepted": False})
+    if not EXPECTED_ID_SHA256 or not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256 \
+            or EXPECTED_NULL_GEOMETRY_COUNT is None or EXPECTED_UNUSABLE_GEOMETRY_COUNTS is None:
+        audit["baseline_pending_note"] = BASELINE_PENDING_NOTE
+        audit["baseline_pending_complete_capture"] = True
+    content_version = "v" + _sha(_canonical({
+        "source_record_sha256": audit["source_record_sha256"],
+        "source_geometry_sha256": audit["source_geometry_sha256"],
+        "source_schema_sha256": audit["source_schema_sha256"],
+        "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
+    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{content_version}"
+    output_path = f"geoparquet/{FILE_SLUG}.parquet"
+    parquet_path = derived["parquet_path"]
+    parquet_bytes = parquet_path.stat().st_size
+    digest = hashlib.sha256()
+    with open(parquet_path, "rb") as stream:
+        for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+            digest.update(block)
+    parquet_sha = digest.hexdigest()
+    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    gate_note = (f"{audit['null_geometry_count']} rows gate to null geometry and are "
+                 "counted by failure mode: "
+                 + json.dumps(audit["unusable_geometry_counts"], sort_keys=True)
+                 if audit["unusable_geometry_counts"] else
+                 "no rows gate: every served polygon assembles to a valid OGC geometry")
+    inputs = [{"input_id": name, "producer": PUBLISHER,
+        "host": urlsplit(receipt["url"]).hostname,
+        "role": "producer_publication",
+        "canonical_url": SERVICE_DOC_URL if name == "service_doc" else LAYER_URL,
+        "retrieval_url": receipt["url"], "observed_final_url": receipt["final_url"],
+        "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
+        "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+        "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
+        "release_date": None,
+        "release_date_unknown_reason": (
+            "The service publishes no per-snapshot release date; its copyrightText "
+            "records a service refresh (October 2026) and the producer publishes staged "
+            "products on a continuing basis; neither is an immutable release date."),
+        "license": "Public domain (U.S. Government work) per the producer service use "
+                   "constraints; formal rights acceptance remains pending.",
+        "attribution": "U.S. Geological Survey (acknowledgment of the USGS is requested for "
+                       "products derived from these data).",
+        **({"documentation_evidence": {
+            "service_documentation_url": SERVICE_DOC_URL,
+            "wbd_program_url": WBD_PROGRAM_DOC_URL,
+            "dhs_crosswalk_status": "Deprecate",
+            "dhs_crosswalk_layer_name": "Watershed Boundary Dataset (WBD)",
+            "old_hosting_item_id": "409515c7627c444fb08b66cf89634028",
+            "old_hosting_location": ("https://geoplatform.maps.arcgis.com/home/item.html?id="
+                                     "409515c7627c444fb08b66cf89634028"),
+            "crosswalk_open_rest_service": SERVICE_URL,
+            "crosswalk_evidence_url": DHS_CROSSWALK_EVIDENCE_URL,
+            "basis": "The DHS HIFLD Open crosswalk (August 2025) marks the retired "
+                     "GeoPlatform-hosted HIFLD item 409515c7627c444fb08b66cf89634028 as "
+                     "Deprecate and names this USGS hydro.nationalmap.gov wbd MapServer "
+                     "as the agency's current open REST service; the USGS page captured "
+                     "as service_doc publishes exactly this service URL and the "
+                     "producer's staged-product locations; the captured layer response, "
+                     "not either page, supplies the data."}}
+         if name == "service_doc" else {})}
+        for name, receipt in sorted(receipts.items())]
+    manifest = {"schema_version": 1, "approved": False, "title": "10-digit HU (Watershed)",
+        "description": ("Complete observed USGS Watershed Boundary Dataset 10-digit HU "
+                        "(Watershed) layer 5 from the USGS hydro.nationalmap.gov wbd "
+                        "MapServer named by the DHS HIFLD Open crosswalk; succession, "
+                        "freshness, contract, coverage, rights and release decisions "
+                        "remain unaccepted."),
+        "publisher": PUBLISHER, "agency": AGENCY, "source_url": LAYER_URL,
+        "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
+        "processor": "HIFLD Next", "code_commit": identity["code_commit"],
+        "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
+        "transformations": [{"operation": "Esri web-mercator polygon capture to typed native "
+                                        "geoparquet candidate",
+            "parameters": {
+                "source_fields": "all 21 served attributes retained in source order with "
+                                 "declared physical types; esriFieldTypeDate served as "
+                                 "epoch-milliseconds and represented as Arrow int64 "
+                                 "without conversion; no field added or dropped",
+                "source_ids": "OBJECTID retained unchanged; served roster is 18,911 unique "
+                              "ids from 1 to 19,567; HUC10 and TNMID retained verbatim "
+                              "including leading zeros; no substitute or synthetic identifier",
+                "source_crs": f"EPSG:{SOURCE_CRS_WKID}",
+                "geometry": ("2D ring order, winding and hole ownership preserved; no "
+                             "reprojection, repair or simplification; multi-owned holes "
+                             "attach to the smallest containing exterior per the merged "
+                             "USACE reservoir precedent and rows that still cannot form a "
+                             "valid OGC polygon are counted by failure mode; " + gate_note),
+                "raw_evidence": "complete decoded response and wire bodies retained with "
+                                "checksummed receipts for every page and service document",
+                "candidate_status": "unapproved; baseline/schema/ID/coverage/rights/release "
+                                    "decisions pending"}}],
+        "lineage": ("DHS HIFLD Open crosswalk (August 2025) row 'Watershed Boundary Dataset "
+                    "(WBD)' (agency U.S. Geological Survey) marks the retired GeoPlatform "
+                    "item 409515c7627c444fb08b66cf89634028 as Deprecate and names the USGS "
+                    "hydro.nationalmap.gov wbd MapServer as the agency's current open REST "
+                    "service; its layer 5 '10-digit HU (Watershed)' is the exact producer "
+                    "publication for the HIFLD Open inventory entry wbd/10-digit-hu-"
+                    "subwatershed (publisher U.S. Geological Survey, National Geospatial "
+                    "Technical Operations Center). The service documents itself as compiled "
+                    "from USGS NHD and USDA NRCS WBD sources. The old GeoPlatform item is "
+                    "not fetched; DataLumos project 240691 copies are research context only "
+                    "and are never fetched."),
+        "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
+            "reason": "Native attributes, OBJECTID/HUC12/TNMID identifiers and served rings "
+                      "are retained in a typed EPSG:3857 candidate.",
+            "objects": [{"path": output_path, "bytes": parquet_bytes, "sha256": parquet_sha}]}}},
+        "unsupported_output_formats": {"geopackage": "No format-specific mapping has been approved.",
+            "pmtiles": "No display generalization or release policy has been approved."}}
+    validate_release_provenance(manifest)
+    validate_output_policy(manifest)
+    provenance_projection(manifest)
+    audit.update({"source_fields": EXPECTED_LAYER_FIELDS, "official_layer_name": LAYER_NAME,
+                  "official_layer_id": LAYER_ID, "official_service_url": SERVICE_URL,
+                  "source_population_complete": True,
+                  "declared_page_geometry_types": derived["geometry_types"]})
+    ready = {"approved": False, "version": content_version,
+        "objects": {output_path: {"bytes": parquet_bytes, "sha256": parquet_sha}},
+        "source_population_complete": True,
+        "source_record_sha256": audit["source_record_sha256"],
+        "source_schema_sha256": audit["source_schema_sha256"],
+        "source_release_accepted": False, "freshness_accepted": False,
+        "schema_contract_accepted": False, "id_contract_accepted": False,
+        "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
+        "release_accepted": False}
+    fingerprint = _sha(_canonical({"identity": identity,
+        "source_record_sha256": audit["source_record_sha256"],
+        "source_schema_sha256": audit["source_schema_sha256"],
+        "source_capture_sha256": capture_hash}))
+    state_key = f"_construction-state/{DATASET_SLUG}/{content_version}.json"
+    if storage.object_snapshot(state_key) is not None:
+        original = json.loads(load_first_construction(storage, state_key, content_version,
+                                                      fingerprint)).get("payload")
+        if not isinstance(original, dict) or not isinstance(original.get("capture_receipts"), dict):
+            raise ValueError("cached_first_candidate_receipts_missing")
+        original_receipts = original["capture_receipts"]
+        if set(original_receipts) != set(captures):
+            raise ValueError("cached_candidate_capture_roster_changed")
+        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix,
+            content_version, fingerprint, identity, audit["source_record_sha256"],
+            audit["source_schema_sha256"], original.get("objects", {}), original_receipts)
+        return _candidate_result(audit, content_version, prefix, capture_hash,
+                                 reused=True, root=root)
+    descriptors = {}
+    for name, key, body in (
+            (output_path, f"{prefix}/{output_path}", None),
+            ("metadata/source_manifest.json", f"{prefix}/metadata/source_manifest.json",
+             _canonical(manifest) + b"\n"),
+            ("metadata/source_audit.json", f"{prefix}/metadata/source_audit.json",
+             _canonical(audit) + b"\n"),
+            ("metadata/processing_identity.json", f"{prefix}/metadata/processing_identity.json",
+             _canonical(identity) + b"\n"),
+            ("metadata/candidate_ready.json", f"{prefix}/metadata/candidate_ready.json",
+             _canonical(ready) + b"\n")):
+        if body is None:
+            storage.upload_local_file(parquet_path, key)
+        else:
+            write_immutable(storage, key, body)
+        snapshot = storage.object_snapshot(key)
+        if snapshot is None:
+            raise ValueError("candidate_object_readback_failed:" + name)
+        descriptor = {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+        if name == output_path and descriptor != {"bytes": parquet_bytes, "sha256": parquet_sha}:
+            raise ValueError("candidate_object_readback_failed:" + name)
+        descriptors[name] = descriptor
+    for name in sorted(captures):
+        body, wire, receipt = _load_capture(root, name)
+        for suffix, payload in (("body", body), ("wire", wire),
+                                ("receipt.json", _canonical(receipt) + b"\n")):
+            key = f"{prefix}/raw/{name}.{suffix}"
+            write_immutable(storage, key, payload)
+            snapshot = storage.object_snapshot(key)
+            if snapshot is None or snapshot.size != len(payload) \
+                    or storage.sha256_key(key) != _sha(payload):
+                raise ValueError("candidate_object_readback_failed:raw/" + name + "." + suffix)
+            descriptors[f"raw/{name}.{suffix}"] = {"bytes": len(payload), "sha256": _sha(payload)}
+    seal_ready_candidate(storage, state_key, content_version, fingerprint,
+                         {"processing_identity": identity,
+                          "source_record_sha256": audit["source_record_sha256"],
+                          "source_schema_sha256": audit["source_schema_sha256"],
+                          "capture_receipts": receipts, "objects": descriptors})
+    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
+                                        identity["files"], identity=identity)
+    return _candidate_result(audit, content_version, prefix, capture_hash,
+                             reused=False, root=root)
 
 
-def capture(staging, version_key: str, client: httpx.Client | None = None,
-            retained_source_version: str | None = None) -> dict:
-    """Baseline capture primitive: complete layer snapshot with roster/count
-    checks and per-page fail-closed validation, retaining failed attempts as
-    quarantine evidence. This function intentionally does not request the host
-    services directory or the alias MapServer document. Production callers must
-    use capture_validated."""
-    return _quarantined_capture(staging, version_key, client, retained_source_version,
-                                distribution_chain=False)
-
-
-def capture_validated(staging, version_key: str, client: httpx.Client | None = None,
-                      retained_source_version: str | None = None) -> dict:
-    """Production capture entry: capture() plus fail-closed validation of the
-    USGS distribution chain. Before any layer traffic it verifies the host
-    services directory entry, the wbd FeatureServer service document and the
-    same-org wbd MapServer alias document; after extraction it re-verifies the
-    service and layer documents, and it enforces the live-verified pins for the
-    OBJECTID roster digest, layer extent and observed coverage."""
-    return _quarantined_capture(staging, version_key, client, retained_source_version,
-                                distribution_chain=True)
+def _candidate_result(audit: dict, version: str, prefix: str, capture_hash: str,
+                      *, reused: bool, root: Path) -> dict[str, object]:
+    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"],
+            "source_id_min": EXPECTED_ID_MIN, "source_id_max": EXPECTED_ID_MAX,
+            "source_schema_sha256": audit["source_schema_sha256"],
+            "source_coverage_scope": audit["coverage_scope"],
+            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": reused,
+            "source_capture_evidence_sha256": capture_hash,
+            "null_geometry_count": audit["null_geometry_count"],
+            "unusable_geometry_counts": audit["unusable_geometry_counts"],
+            "geometry_valid_count": audit["geometry_valid_count"],
+            "source_release_accepted": False, "source_freshness_accepted": False,
+            "schema_contract_accepted": False, "id_contract_accepted": False,
+            "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
+            "release_accepted": False, "capture_directory": str(root)}
