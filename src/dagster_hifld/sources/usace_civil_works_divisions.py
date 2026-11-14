@@ -113,15 +113,20 @@ OBSERVED_LAST_DATA_EDIT = "2026-01-28T14:38:22.679000+00:00"
 # "") are checked only once pinned; a later producer republish surfaces as an
 # explicit roster, record or geometry drift refusal.
 EXPECTED_COUNT = 8
-EXPECTED_IDS_SHA256 = None
-EXPECTED_SCHEMA_SHA256 = None
-EXPECTED_RECORD_SHA256 = None
-EXPECTED_GEOMETRY_SHA256 = None
+EXPECTED_IDS_SHA256 = ("b2ddd6543011e658aaebc223b42021e89fa9a18bd1f2207f6cb68e73ca"
+                       "5688b3")
+EXPECTED_SCHEMA_SHA256 = ("d068c175b5fe1d48ed3d05549c313655c38a68a04f7d587fa2ce651d2"
+                          "1d7a4f8")
+EXPECTED_RECORD_SHA256 = ("76fb71879f960856fe609c9f206746215ef0cbe30cc020250e30e615b"
+                          "5c6808f")
+EXPECTED_GEOMETRY_SHA256 = ("4e5400aaffd04f623be76d54ade5eb7e9c47b7be290f2386d7bfdc4c"
+                            "3b8b993b")
 EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_SHELL_COUNT_DISTRIBUTION = None
-EXPECTED_HOLE_COUNT = None
-EXPECTED_VERTEX_COUNT = None
-EXPECTED_OBSERVED_BOUNDS = None
+EXPECTED_SHELL_COUNT_DISTRIBUTION = {1: 4, 2: 1, 7: 2, 94: 1}
+EXPECTED_HOLE_COUNT = 119
+EXPECTED_VERTEX_COUNT = 404_216
+EXPECTED_OBSERVED_BOUNDS = [-179.231070639888, -14.6018199641378,
+                            179.775108112044, 71.439786190856]
 BASELINE_PENDING_NOTE = (
     "The record and geometry baseline digests, gate counts and observed bounds "
     "are pinned from a completed capture; unpinned values are checked only once "
@@ -627,31 +632,44 @@ def _geoparquet(features: list[dict[str, object]], fields: list[dict[str, object
                 root: Path) -> bytes:
     if [field["name"] for field in fields] != FIELD_NAMES:
         raise ValueError("source_field_order_drift")
+    kinds: dict[str, str] = {}
+    for name in STRING_FIELDS:
+        kinds[name] = "string"
+    for name in INTEGER_FIELDS:
+        kinds[name] = "integer"
+    for name in DOUBLE_FIELDS:
+        kinds[name] = "double"
+    for name in BLOB_FIELDS:
+        kinds[name] = "blob"
+    arrow_field = {"string": pa.string(), "integer": pa.int64(), "double": pa.float64(),
+                   "blob": pa.string()}
     schema = pa.schema([
         pa.field("OBJECTID", pa.int64(), nullable=False),
-        *[pa.field(name, pa.string(), nullable=True) for name in STRING_FIELDS],
-        *[pa.field(name, pa.int64(), nullable=True) for name in INTEGER_FIELDS],
-        *[pa.field(name, pa.float64(), nullable=True) for name in DOUBLE_FIELDS],
-        *[pa.field(name, pa.string(), nullable=True) for name in BLOB_FIELDS],
+        *[pa.field(name, arrow_field[kinds[name]], nullable=True)
+          for name in FIELD_NAMES if name != "OBJECTID"],
         pa.field("geometry", pa.binary(), nullable=True),
     ])
     rings_parts = [_geometry_rings(f.get("geometry")) for f in features]
     columns = {
         "OBJECTID": pa.array([f["attributes"]["OBJECTID"] for f in features], type=pa.int64()),
-        **{name: pa.array([f["attributes"][name] for f in features], type=pa.string())
-           for name in STRING_FIELDS},
-        **{name: pa.array([None if f["attributes"][name] is None
-                           else int(f["attributes"][name]) for f in features], type=pa.int64())
-           for name in INTEGER_FIELDS},
-        **{name: pa.array([None if f["attributes"][name] is None
-                           else float(f["attributes"][name]) for f in features],
-                          type=pa.float64())
-           for name in DOUBLE_FIELDS},
-        **{name: pa.array([f["attributes"][name] for f in features], type=pa.string())
-           for name in BLOB_FIELDS},
-        "geometry": pa.array([None if rings is None else _rings_wkb(rings)
-                              for rings in rings_parts], type=pa.binary()),
     }
+    for name in FIELD_NAMES:
+        if name == "OBJECTID":
+            continue
+        kind = kinds[name]
+        if kind in ("string", "blob"):
+            columns[name] = pa.array([f["attributes"][name] for f in features],
+                                     type=pa.string())
+        elif kind == "integer":
+            columns[name] = pa.array([None if f["attributes"][name] is None
+                                      else int(f["attributes"][name]) for f in features],
+                                     type=pa.int64())
+        else:
+            columns[name] = pa.array([None if f["attributes"][name] is None
+                                      else float(f["attributes"][name]) for f in features],
+                                     type=pa.float64())
+    columns["geometry"] = pa.array([None if rings is None else _rings_wkb(rings)
+                                    for rings in rings_parts], type=pa.binary())
     built = [_ring_geometry(rings)[0] if rings is not None else None for rings in rings_parts]
     present = [geometry for geometry in built if geometry is not None]
     bounds = [min(geometry.bounds[i] for geometry in present) for i in (0, 1)] \
