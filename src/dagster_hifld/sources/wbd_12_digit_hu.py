@@ -108,7 +108,7 @@ EXPECTED_ID_MIN = 1
 EXPECTED_ID_MAX = 106_609
 # Digest of the canonical-JSON sorted OBJECTID roster (103,068 unique ids,
 # 1..106,609), computed from the complete dated population walk (2026-11-14).
-EXPECTED_ID_SHA256 = ""
+EXPECTED_ID_SHA256 = "7b0e4a783d86a92a383a69c8a477ef74c57839839aa95b129bda2f152ef8e533"
 PAGE_SIZE = 500
 DECLARED_MAX_RECORD_COUNT = 2000
 # The producer sometimes refuses even a single-feature geometry window
@@ -154,23 +154,25 @@ DISK_FLOOR_BYTES = 24_000_000_000
 # at 5.9e-15 relative across a 500-feature probe (2026-11-14), so the parity
 # guard sits far above that and far below real drift.
 SHAPE_PARITY_TOLERANCE = 1e-6
-# Native baselines pinned from the complete dated population walk (2026-11-14);
-# empty/None pins are checked only when non-empty.
-EXPECTED_SCHEMA_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
+# Native baselines pinned from the complete dated population walk (2026-11-14,
+# sealed candidate v5eee4c1c755f33decc2af5addc3fb186: 103,068 features with
+# 155,028,829 served web-mercator vertices; 103,056 valid polygons, 12 rows
+# gate to null geometry, of which 5 are producer-refused single-feature rows
+# whose attributes were captured through the attributes-only channel and 7 are
+# assembly-gated served rings). Pins are checked only when non-empty.
+EXPECTED_SCHEMA_SHA256 = "c95002464d58e1cff306035acc325e7070a6c3764a5fa02277be612a8e7c6f59"
+EXPECTED_RECORD_SHA256 = "393ff32e209b061ffe28dc9c8218a8f139e35e38e66f57a6d05a85f545a0c800"
+EXPECTED_GEOMETRY_SHA256 = "48f663b94e9dedfd4aebe3bd4587f2df75d66c7fa24f0c3557ac5323de9d1659"
+EXPECTED_NULL_GEOMETRY_COUNT = 12
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {
+    "source_page_window_refused_geometry": 5,
+    "source_polygon_assembly_invalid": 4,
+    "source_polygon_ring_self_intersecting": 3,
+}
 # Refused single-feature windows (attributes-only rows published with null
 # geometry), pinned from the complete dated population walk; checked only when
 # non-empty.
-EXPECTED_REFUSED_GEOMETRY_OIDS = None
-BASELINE_PENDING_NOTE = (
-    "The record, geometry and ID-roster baselines and the geometry-gate counts "
-    "are not pinned yet: the 103,068-feature population cannot be walked to "
-    "completion inside the session that drafted this module, so no complete "
-    "capture existed at draft time (observed 2026-11-14). The first complete "
-    "capture computes them for the maintainer to pin.")
+EXPECTED_REFUSED_GEOMETRY_OIDS = (46057, 101177, 106424, 106517, 106521)
 
 EXPECTED_PAGE_FIELD_DECLARATIONS = [{"name": "objectid", "type": "esriFieldTypeOID", "alias": "ObjectID"}, {"name": "tnmid", "type": "esriFieldTypeString", "alias": "TNMID", "length": 40}, {"name": "metasourceid", "type": "esriFieldTypeString", "alias": "MetaSourceID", "length": 40}, {"name": "sourcedatadesc", "type": "esriFieldTypeString", "alias": "SourceDataDesc", "length": 100}, {"name": "sourceoriginator", "type": "esriFieldTypeString", "alias": "SourceOriginator", "length": 130}, {"name": "sourcefeatureid", "type": "esriFieldTypeString", "alias": "SourceFeatureID", "length": 40}, {"name": "loaddate", "type": "esriFieldTypeDate", "alias": "LoadDate", "length": 8}, {"name": "referencegnis_ids", "type": "esriFieldTypeString", "alias": "ReferenceGNIS_IDs", "length": 50}, {"name": "areaacres", "type": "esriFieldTypeDouble", "alias": "AreaAcres"}, {"name": "areasqkm", "type": "esriFieldTypeDouble", "alias": "AreaSqKm"}, {"name": "states", "type": "esriFieldTypeString", "alias": "States", "length": 50}, {"name": "huc12", "type": "esriFieldTypeString", "alias": "HUC12", "length": 12}, {"name": "name", "type": "esriFieldTypeString", "alias": "Name", "length": 120}, {"name": "hutype", "type": "esriFieldTypeString", "alias": "HUType", "length": 1}, {"name": "humod", "type": "esriFieldTypeString", "alias": "HUMod", "length": 30}, {"name": "tohuc", "type": "esriFieldTypeString", "alias": "ToHUC", "length": 16}, {"name": "noncontributingareaacres", "type": "esriFieldTypeDouble", "alias": "NonContributingAreaAcres"}, {"name": "noncontributingareasqkm", "type": "esriFieldTypeDouble", "alias": "NonContributingAreaSqKm"}, {"name": "globalid", "type": "esriFieldTypeGlobalID", "alias": "globalid", "length": 38}, {"name": "shape_Length", "type": "esriFieldTypeDouble", "alias": "shape_Length"}, {"name": "shape_Area", "type": "esriFieldTypeDouble", "alias": "shape_Area"}]
 EXPECTED_LAYER_FIELDS = [{"name": "objectid", "type": "esriFieldTypeOID", "alias": "ObjectID", "domain": None}, {"name": "tnmid", "type": "esriFieldTypeString", "alias": "TNMID", "length": 40, "domain": None}, {"name": "metasourceid", "type": "esriFieldTypeString", "alias": "MetaSourceID", "length": 40, "domain": None}, {"name": "sourcedatadesc", "type": "esriFieldTypeString", "alias": "SourceDataDesc", "length": 100, "domain": None}, {"name": "sourceoriginator", "type": "esriFieldTypeString", "alias": "SourceOriginator", "length": 130, "domain": None}, {"name": "sourcefeatureid", "type": "esriFieldTypeString", "alias": "SourceFeatureID", "length": 40, "domain": None}, {"name": "loaddate", "type": "esriFieldTypeDate", "alias": "LoadDate", "length": 8, "domain": None}, {"name": "referencegnis_ids", "type": "esriFieldTypeString", "alias": "ReferenceGNIS_IDs", "length": 50, "domain": None}, {"name": "areaacres", "type": "esriFieldTypeDouble", "alias": "AreaAcres", "domain": None}, {"name": "areasqkm", "type": "esriFieldTypeDouble", "alias": "AreaSqKm", "domain": None}, {"name": "states", "type": "esriFieldTypeString", "alias": "States", "length": 50, "domain": None}, {"name": "huc12", "type": "esriFieldTypeString", "alias": "HUC12", "length": 12, "domain": None}, {"name": "name", "type": "esriFieldTypeString", "alias": "Name", "length": 120, "domain": None}, {"name": "hutype", "type": "esriFieldTypeString", "alias": "HUType", "length": 1, "domain": {"type": "codedValue", "name": "HUType Domain", "description": "", "codedValues": [{"name": "Standard", "code": "S"}, {"name": "Closed Basin", "code": "C"}, {"name": "Frontal", "code": "F"}, {"name": "Multiple Outlet", "code": "M"}, {"name": "Water", "code": "W"}, {"name": "Island", "code": "I"}, {"name": "Urban", "code": "U"}, {"name": "Indeterminate", "code": "D"}], "mergePolicy": "esriMPTDefaultValue", "splitPolicy": "esriSPTDuplicate"}}, {"name": "humod", "type": "esriFieldTypeString", "alias": "HUMod", "length": 30, "domain": None}, {"name": "tohuc", "type": "esriFieldTypeString", "alias": "ToHUC", "length": 16, "domain": None}, {"name": "noncontributingareaacres", "type": "esriFieldTypeDouble", "alias": "NonContributingAreaAcres", "domain": None}, {"name": "noncontributingareasqkm", "type": "esriFieldTypeDouble", "alias": "NonContributingAreaSqKm", "domain": None}, {"name": "shape", "type": "esriFieldTypeGeometry", "alias": "Shape", "domain": None}, {"name": "globalid", "type": "esriFieldTypeGlobalID", "alias": "globalid", "length": 38, "domain": None}, {"name": "shape_Length", "type": "esriFieldTypeDouble", "alias": "shape_Length", "domain": None}, {"name": "shape_Area", "type": "esriFieldTypeDouble", "alias": "shape_Area", "domain": None}]
@@ -1091,10 +1093,6 @@ def capture_wbd_12_digit_hu(storage: StagingStorageResource, *, version: str,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
         "release_accepted": False, "baseline_accepted": False})
-    if not EXPECTED_ID_SHA256 or not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256 \
-            or EXPECTED_NULL_GEOMETRY_COUNT is None or EXPECTED_UNUSABLE_GEOMETRY_COUNTS is None:
-        audit["baseline_pending_note"] = BASELINE_PENDING_NOTE
-        audit["baseline_pending_complete_capture"] = True
     content_version = "v" + _sha(_canonical({
         "source_record_sha256": audit["source_record_sha256"],
         "source_geometry_sha256": audit["source_geometry_sha256"],
