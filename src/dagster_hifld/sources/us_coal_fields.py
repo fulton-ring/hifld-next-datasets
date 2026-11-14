@@ -163,13 +163,13 @@ README_MARKERS = (
     "Coal_Fields_GIS.mxd",
 )
 METADATA_XML_MARKERS = (
-    "<title>Coal Fields of the Conterminous United States: National Coal Resource Assessment Updated Version</title>",
-    "<originator>East, J.A.</originator>",
+    "Coal Fields of the Conterminous United States: National Coal Resource Assessment Updated Version",
+    "<origin>East, J.A.</origin>",
     "<pubdate>2012</pubdate>",
     "<publish>U.S. Geological Survey</publish>",
     "<pubplace>Reston, VA</pubplace>",
     "http://pubs.usgs.gov/of/2012/1205/",
-    "<abstract>This dataset is a polygon shapefile representing the most recent update of the coal fields of the conterminous United States.",
+    "This dataset is a polygon shapefile representing the most recent",
 )
 
 # Pinned native declarations of the staged source shapefile.
