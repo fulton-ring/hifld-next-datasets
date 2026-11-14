@@ -38,8 +38,12 @@ capture therefore bisects a refused window recursively into two half-size
 sub-windows (``a`` = lower OBJECTIDs, ``b`` = upper OBJECTIDs), retaining
 every refusal document as evidence and each served sub-window as a named page
 part whose URL is re-derived from the pinned roster so a replay needs no
-extra trusted state. A refusing single-feature window fails the capture
-rather than inventing, retrying or dropping a row. Individual layer resources
+extra trusted state. A single-feature window is retried bounded times first;
+when its geometry stays refused its attributes are captured through the
+producer's working attributes-only channel and the row's geometry is gated to
+null with the OBJECTID recorded (the merged USGS 3DHP waterbody precedent for
+permanently unservable rows), never invented, dropped or silently repaired.
+Individual layer resources
 also omit the top-level ``spatialReference`` the service root carries; the
 layer's source/extent references and every page carry validated CRS data.
 
@@ -56,6 +60,7 @@ import json
 import math
 import shutil
 import struct
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -106,6 +111,15 @@ EXPECTED_ID_MAX = 106_609
 EXPECTED_ID_SHA256 = ""
 PAGE_SIZE = 500
 DECLARED_MAX_RECORD_COUNT = 2000
+# The producer sometimes refuses even a single-feature geometry window
+# (observed 2026-11-14: OBJECTID 46057 persistently returned the error
+# document across three spaced attempts while its attributes-only query and
+# its roster/count entries stayed servable). Before staging the refusal the
+# walk retries the single-feature geometry window this many times with this
+# delay, then captures the row's attributes through the producer's working
+# attributes-only channel and gates the row's geometry to null.
+SINGLE_REFUSAL_RETRIES = 2
+SINGLE_REFUSAL_RETRY_SECONDS = 10.0
 EXPECTED_EXTENT = {"xmin": -19951755.682, "ymin": -1644316.000599999,
                    "xmax": 20021551.7474, "ymax": 11554273.612599999}
 # The declared extent is rounded relative to the served vertices by a few
@@ -141,6 +155,10 @@ EXPECTED_RECORD_SHA256 = ""
 EXPECTED_GEOMETRY_SHA256 = ""
 EXPECTED_NULL_GEOMETRY_COUNT = None
 EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
+# Refused single-feature windows (attributes-only rows published with null
+# geometry), pinned from the complete dated population walk; checked only when
+# non-empty.
+EXPECTED_REFUSED_GEOMETRY_OIDS = None
 BASELINE_PENDING_NOTE = (
     "The record, geometry and ID-roster baselines and the geometry-gate counts "
     "are not pinned yet: the 103,068-feature population cannot be walked to "
@@ -253,6 +271,11 @@ def _is_page_part_name(name: str) -> bool:
     return not suffix or set(suffix) <= {"a", "b"}
 
 
+def _is_attrs_part_name(name: str) -> bool:
+    """True for a refused single's attributes-only part (``..._attrs``)."""
+    return name.endswith("_attrs") and _is_page_part_name(name[:-len("_attrs")])
+
+
 def _is_refusal(body: bytes) -> bool:
     """The producer's deterministic refused-window document (observed 2026-11-14:
     HTTP 200 with Esri error code 500 "Error performing query operation" on 29
@@ -294,6 +317,14 @@ def _page_part_url(roster: list[int], index: int, part_name: str) -> str:
     return _page_url(last, len(sub))
 
 
+def _record_attrs_url(oid: int) -> str:
+    """Attributes-only URL for one refused row; the producer serves attributes
+    for records whose geometry response it cannot construct (observed
+    2026-11-14: OBJECTID 46057)."""
+    return _query({"where": f"objectid={oid}", "outFields": "*",
+                   "returnGeometry": "false", "resultRecordCount": "1", "f": "json"})
+
+
 def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
                          root: Path) -> tuple[dict[str, tuple[bytes, dict]], list[str]]:
     """Capture one nominal page window, recursively bisecting refused windows.
@@ -302,8 +333,13 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
     dependent server-side construction failure, observed 2026-11-14); the
     refusal document is retained as evidence and the window is re-fetched as
     two half-size parts whose URLs are derived from the pinned roster until
-    every part is served. A refusing single-feature window fails the capture:
-    bisection never invents, retries or drops a row.
+    every part is served. A single-feature window is retried bounded times
+    first; when its geometry stays refused its attributes are captured through
+    the producer's working attributes-only channel and staged as a named
+    ``_attrs`` part (the row's geometry gates to null at validation time) so a
+    permanently unservable row cannot block the complete capture, exactly as
+    the merged USGS 3DHP waterbody precedent does. The refusal evidence and
+    the attributes document are both retained.
     """
     name = f"page_{index:04d}"
     slice_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
@@ -312,13 +348,23 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
 
     def walk(part_name: str, sub: list[int], last: int) -> None:
         body, receipt = _capture(client, _page_url(last, len(sub)), root, part_name)
+        if _is_refusal(body) and len(sub) == 1:
+            for _attempt in range(SINGLE_REFUSAL_RETRIES):
+                time.sleep(SINGLE_REFUSAL_RETRY_SECONDS)
+                body, receipt = _capture(client, _page_url(last, len(sub)), root, part_name)
+                if not _is_refusal(body):
+                    break
         if not _is_refusal(body):
             parts[part_name] = (body, receipt)
             return
         refusals.append(part_name)
         parts[f"{part_name}_refusal"] = _retain_refusal(root, part_name, body, receipt)
         if len(sub) == 1:
-            raise ValueError("source_page_window_refused_single:" + part_name)
+            attrs_name = f"{part_name}_attrs"
+            attrs_body, attrs_receipt = _capture(client, _record_attrs_url(sub[0]),
+                                                 root, attrs_name)
+            parts[attrs_name] = (attrs_body, attrs_receipt)
+            return
         half = (len(sub) + 1) // 2
         walk(part_name + "a", sub[:half], sub[0] - 1 if sub[0] > 1 else 0)
         walk(part_name + "b", sub[half:], sub[half] - 1)
@@ -338,7 +384,7 @@ class _GeometryGate(Exception):
 GATE_MODES = frozenset({
     "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
     "source_polygon_ring_self_intersecting", "source_polygon_hole_unassigned",
-    "source_polygon_assembly_invalid",
+    "source_polygon_assembly_invalid", "source_page_window_refused_geometry",
 })
 
 
@@ -593,6 +639,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
     multipart = 0
     with_hole = 0
     ids_member_features = 0
+    refused_geometry_oids: list[int] = []
     bounds: list[float] | None = None
     coverage = {key: EXPECTED_EXTENT[key] for key in ("xmin", "ymin", "xmax", "ymax")}
     last_objectid = 0
@@ -603,48 +650,63 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
             name = f"page_{index:04d}"
             expected_page_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
             declared_parts = (page_parts or {}).get(name) or [name]
-            part_names = sorted(declared_parts)
-            if len(set(part_names)) != len(part_names):
-                raise ValueError("source_page_parts_duplicate:" + name)
-            for part_name in part_names:
-                if not (part_name == name or (part_name.startswith(name)
-                        and part_name[len(name):] and set(part_name[len(name):]) <= {"a", "b"})):
+            part_slices = []
+            for part_name in declared_parts:
+                attrs_part = part_name.endswith("_attrs")
+                base = part_name[:-len("_attrs")] if attrs_part else part_name
+                if not (base == name or (base.startswith(name) and base[len(name):]
+                        and set(base[len(name):]) <= {"a", "b"})):
                     raise ValueError("source_page_parts_naming_drift:" + name)
+                part_ids = expected_page_ids
+                for tag in base[len(name):]:
+                    half = (len(part_ids) + 1) // 2
+                    part_ids = part_ids[:half] if tag == "a" else part_ids[half:]
+                if attrs_part and len(part_ids) != 1:
+                    raise ValueError("source_page_parts_attrs_window:" + name)
+                part_slices.append((part_ids[0], part_name, part_ids, attrs_part))
+            if len({entry[1] for entry in part_slices}) != len(part_slices):
+                raise ValueError("source_page_parts_duplicate:" + name)
+            part_slices.sort(key=lambda entry: entry[0])
             columns: dict[str, list] = {field: [] for field in names}
             geometries: list[bytes | None] = []
             page_ids = []
-            for part_no, part_name in enumerate(part_names):
-                part_ids = expected_page_ids
-                for tag in part_name[len(name):]:
-                    half = (len(part_ids) + 1) // 2
-                    part_ids = part_ids[:half] if tag == "a" else part_ids[half:]
+            for part_no, (_first_id, part_name, part_ids, attrs_part) \
+                    in enumerate(part_slices):
                 body, _wire, receipt = _load_capture(root, part_name)
                 expected_url = (expected_urls[name] if part_name == name
+                                else _record_attrs_url(part_ids[0]) if attrs_part
                                 else _page_part_url(roster, index, part_name))
                 _validate_capture_request_identity(part_name, receipt, expected_url)
                 page = json.loads(body)
                 if "error" in page:
                     raise ValueError("source_page_error:" + part_name)
-                if set(page) - {"displayFieldName", "exceededTransferLimit", "features",
-                                "fieldAliases", "fields", "geometryType", "spatialReference"}:
-                    raise ValueError("source_page_unexpected_member:" + part_name)
+                if attrs_part:
+                    if set(page) - {"displayFieldName", "features", "fieldAliases", "fields"}:
+                        raise ValueError("source_page_attrs_unexpected_member:" + part_name)
+                else:
+                    if set(page) - {"displayFieldName", "exceededTransferLimit", "features",
+                                    "fieldAliases", "fields", "geometryType",
+                                    "spatialReference"}:
+                        raise ValueError("source_page_unexpected_member:" + part_name)
                 if page.get("displayFieldName") != DISPLAY_FIELD_NAME:
                     raise ValueError("source_page_identity_drift:" + part_name)
                 exceeded = page.get("exceededTransferLimit")
                 if exceeded is not None and type(exceeded) is not bool:
                     raise ValueError("source_page_transfer_flag_drift:" + part_name)
-                if (exceeded is True and index == PAGE_COUNT - 1
-                        and part_no == len(part_names) - 1):
+                if (not attrs_part and exceeded is True and index == PAGE_COUNT - 1
+                        and part_no == len(part_slices) - 1):
                     raise ValueError("source_page_transfer_limit_on_final_page:" + part_name)
                 rows = page.get("features")
                 if not isinstance(rows, list) or len(rows) != len(part_ids):
                     raise ValueError("source_page_population_incomplete:" + part_name)
-                if len(part_names) == 1 and exceeded is True and len(rows) < PAGE_SIZE:
+                if (not attrs_part and len(part_slices) == 1 and exceeded is True
+                        and len(rows) < PAGE_SIZE):
                     raise ValueError("source_page_transfer_truncated:" + part_name)
-                _validate_spatial_reference(page.get("spatialReference"),
-                                            "source_" + part_name + "_page")
-                if page.get("geometryType") != "esriGeometryPolygon":
-                    raise ValueError("source_page_identity_drift:" + part_name)
+                if not attrs_part:
+                    _validate_spatial_reference(page.get("spatialReference"),
+                                                "source_" + part_name + "_page")
+                    if page.get("geometryType") != "esriGeometryPolygon":
+                        raise ValueError("source_page_identity_drift:" + part_name)
                 aliases = page.get("fieldAliases")
                 if (not isinstance(aliases, dict)
                         or aliases != {field["name"]: field["alias"]
@@ -679,6 +741,18 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                         raise ValueError("source_feature_ids_not_strictly_increasing:" + part_name)
                     last_objectid = oid
                     page_ids.append(oid)
+                    if attrs_part:
+                        if feature.get("geometry") is not None:
+                            raise ValueError("source_page_attrs_geometry_drift:" + part_name)
+                        gate_counts["source_page_window_refused_geometry"] = \
+                            gate_counts.get("source_page_window_refused_geometry", 0) + 1
+                        null_geometry_count += 1
+                        refused_geometry_oids.append(oid)
+                        geometries.append(None)
+                        for field in names:
+                            columns[field].append(attrs[field])
+                        record_hash.update(_canonical(dict(attrs)) + DIGEST_SEPARATOR)
+                        continue
                     if not isinstance(geometry, dict) \
                             or set(geometry) - {"rings", "hasZ", "hasM", "spatialReference", "ids"}:
                         raise ValueError("source_polygon_geometry_structure_drift:" + part_name)
@@ -799,6 +873,9 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
         if (EXPECTED_UNUSABLE_GEOMETRY_COUNTS is not None
                 and gate_counts != EXPECTED_UNUSABLE_GEOMETRY_COUNTS):
             raise ValueError("source_unusable_geometry_counts_drift")
+        if EXPECTED_REFUSED_GEOMETRY_OIDS is not None \
+                and tuple(sorted(refused_geometry_oids)) != tuple(EXPECTED_REFUSED_GEOMETRY_OIDS):
+            raise ValueError("source_refused_geometry_oids_drift")
         audit = {
             "source_feature_count": EXPECTED_COUNT,
             "source_id_sha256": ids_sha, "source_id_min": EXPECTED_ID_MIN,
@@ -820,6 +897,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
             "unusable_geometry_counts": dict(sorted(gate_counts.items())),
             "multipart_feature_count": multipart, "feature_with_hole_count": with_hole,
             "source_ids_member_feature_count": ids_member_features,
+            "source_refused_geometry_oids": sorted(refused_geometry_oids),
             "geometry_bounds": bounds, "declared_extent": EXPECTED_EXTENT,
             "service_copyright_text": EXPECTED_COPYRIGHT_TEXT,
             "coverage_scope": ("Complete observed USGS wbd MapServer layer 6 "
@@ -857,7 +935,8 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]],
     if not isinstance(page_parts, dict) or not all(
             _is_page_part_name(page)
             and isinstance(parts, list) and parts and len(set(parts)) == len(parts)
-            and all(_is_page_part_name(part) and part.startswith(page) for part in parts)
+            and all((_is_page_part_name(part) or _is_attrs_part_name(part))
+                    and part.startswith(page) for part in parts)
             for page, parts in page_parts.items()):
         raise ValueError("retained_capture_page_parts_invalid")
     page_refusals = manifest.get("page_refusals") or []
@@ -892,6 +971,13 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]],
             _validate_capture_request_identity(name, receipt, expected_url)
             if not _is_refusal(body):
                 raise ValueError("retained_capture_refusal_document_drift:" + name)
+        elif _is_attrs_part_name(name):
+            bound = name[:-len("_attrs")]
+            sub = ids[int(bound[5:9]) * PAGE_SIZE:(int(bound[5:9]) + 1) * PAGE_SIZE]
+            for tag in bound[9:]:
+                half = (len(sub) + 1) // 2
+                sub = sub[:half] if tag == "a" else sub[half:]
+            _validate_capture_request_identity(name, receipt, _record_attrs_url(sub[0]))
         elif name in expected_urls:
             _validate_capture_request_identity(name, receipt, expected_urls[name])
         else:
