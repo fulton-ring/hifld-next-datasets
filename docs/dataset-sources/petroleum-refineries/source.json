@@ -59,8 +59,29 @@
       ]
     },
     {
+      "url": "https://atlas.eia.gov/",
+      "role": "EIA's current maintained geospatial publication (U.S. Energy Atlas); successor checked 2026-11-14 and holds no refineries dataset",
+      "observed_check_date": "2026-11-14",
+      "observations": [
+        "DCAT catalog feed (https://atlas.eia.gov/api/feed/dcat-us, 101 dataset entries) contains no title, tag or description mentioning refineries.",
+        "OGC Records search (https://atlas.eia.gov/api/search/v1/collections/all/items, 74 items) has no refineries record; q=refineries/refinery/'Petroleum Refineries' all match zero records.",
+        "The Hub record historically referenced as eia::petroleum-refineries-1 (cited by third-party 2024 metadata) returns HTTP 404 from the catalog API.",
+        "The producing agency's own ArcGIS Online organization (owner 'EIA.gov') has no refinery feature service; a portal-wide title search for 'Petroleum Refineries' returns no EIA-owned items."
+      ],
+      "limitations": [
+        "The successor catalog cannot recreate the historical 2021 point release, so the pinned official EIA ZIP remains the only agency-level source.",
+        "The Energy Atlas maps route eia::petroleum-refineries-1/explore still serves the SPA shell (HTTP 200), but the backing record no longer resolves; a responding SPA route is not publication evidence."
+      ]
+    },
+    {
       "url": "https://www.arcgis.com/sharing/rest/content/items/dd7c50959b4f4c038e09054b2073b7d4?f=json",
       "role": "third-party fallback candidate; ArcGIS owner is priho011_UMN",
+      "observed_check_date": "2026-11-14",
+      "observed_owner": "priho011_UMN",
+      "observed_org_id": "8df8p0NlLFEShl0r",
+      "observed_org_name": "University of Minnesota",
+      "observed_item_modified": "2026-04-15",
+      "observed_data_vintage": "2024-01-01",
       "limitations": [
         "The portal item's topic/source description references EIA capacity reports, but item ownership is not EIA delegation.",
         "A recent item edit is not proof of source currency or authority."
