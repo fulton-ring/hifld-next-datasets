@@ -6,10 +6,14 @@ Layer" page at the exact REST URL used here) exposes layer 32 "Water Areas"
 (the ``S_Wtr_Area`` hydrographic base-map polygons shown on FIRMs) as the
 producer's own publication of this HIFLD inventory dataset
 (``nfhl/water-areas-1``, DataLumos 240887 historical archive copy used for
-identification only). The layer is continuously updated and publishes no
+identifiication only). The layer is continuously updated and publishes no
 per-snapshot release date; source freshness, rights, and public-schema
 compatibility are not accepted by this draft. Producer rows may publish null
-geometry or rings that cannot be assembled into a valid OGC polygon container
+geometry, string-"NaN" ordinates, numeric coordinates outside the NAD83
+geographic domain (a small set of producer rows in DFIRM 22051C carry
+coordinates that cannot be placed geographically, consistent with the
+layer's declared extent, which likewise is not a geographic envelope), or
+rings that cannot be assembled into a valid OGC polygon container
 (self-intersecting or overlapping rings); all such records are retained with
 null candidate geometry, raw evidence and audit object IDs intact, and never
 silently coerced to a location.
@@ -64,6 +68,11 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "Water Areas"
 PUBLISHER = "Federal Emergency Management Agency (FEMA)"
 SOURCE_CRS_WKID = 4269
+# The producer's geographic domain for placed coordinates (NAD83 longitude/
+# latitude). Numeric coordinates outside this domain are retained verbatim in
+# the raw evidence and record digests, but the record is gated with null
+# candidate geometry: it cannot be placed faithfully and is never coerced.
+GEO_BOUNDS = (-180.0, -90.0, 180.0, 90.0)
 # Initial segment width, capped by the producer's maxRecordCount (2000). Any
 # segment whose response would approach the producer's transfer cap is
 # bisected until the producer serves it; see the module docstring.
@@ -84,8 +93,10 @@ DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 SEGMENT_PROBE_ATTEMPTS = 2
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-14 complete-layer population contract,
-# established by one dated complete capture (adaptive segments tiling the
-# sorted OBJECTID roster). PLACEHOLDER pins are replaced by the dated
+# established by one dated complete capture (414 adaptive segments tiling the
+# sorted OBJECTID roster; eight producer rows in DFIRM 22051C publish numeric
+# coordinates outside the NAD83 geographic domain and are retained as null
+# candidate geometries). PLACEHOLDER pins are replaced by the dated
 # complete-capture values before any staging run; see the handoff.
 EXPECTED_COUNT = 778402
 EXPECTED_ID_SHA256 = "PLACEHOLDER_ID_SHA256"
@@ -95,6 +106,7 @@ EXPECTED_GEOMETRY_SHA256 = "PLACEHOLDER_GEOMETRY_SHA256"
 EXPECTED_OBSERVED_BOUNDS = {"xmin": -180.0, "ymin": -90.0, "xmax": 180.0, "ymax": 90.0}
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_NAN_GEOMETRY_COUNT = 0
+EXPECTED_UNPLACABLE_GEOMETRY_COUNT = 0
 EXPECTED_LAYER_EXTENT = {"xmin": -305.0788612945911, "ymin": -125.69290611810862,
                          "xmax": 2761.6811641840727, "ymax": 2253.8486798599915}
 EXPECTED_SERVICE_LAYER_ROSTER = [
@@ -248,9 +260,21 @@ def _usable_rings(geom: object) -> list | None:
     return geom["rings"] if usable else None
 
 
+def _rings_in_domain(rings: list) -> bool:
+    """True when every numeric vertex coordinate lies in the NAD83 domain."""
+    xmin, ymin, xmax, ymax = GEO_BOUNDS
+    for ring in rings:
+        for vertex in ring:
+            x, y = vertex
+            if not (xmin <= x <= xmax and ymin <= y <= ymax):
+                return False
+    return True
+
+
 def _classify_geometries(features: list[dict[str, object]], attr_names: list[str]):
     null_geometry = 0
     nan_geometry = 0
+    unplacable_geometry = 0
     geometry_records = []
     xmin = ymin = xmax = ymax = None
     for feature in features:
@@ -276,11 +300,18 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
                 geometry_records.append([attrs["OBJECTID"], raw])
                 continue
             raise ValueError("source_polygon_geometry_invalid")
+        if not _rings_in_domain(rings):
+            # Producer rows with numeric coordinates outside the NAD83
+            # geographic domain (observed in DFIRM 22051C; consistent with the
+            # layer's non-geographic declared extent) are counted and gated:
+            # the raw rings stay in the record digest and audit, and the
+            # candidate geometry is null — never repaired or coerced.
+            unplacable_geometry += 1
+            geometry_records.append([attrs["OBJECTID"], rings])
+            continue
         for ring in rings:
             for vertex in ring:
                 x, y = vertex
-                if not (-180 <= x <= 180 and -90 <= y <= 90):
-                    raise ValueError("source_coordinate_range_drift")
                 if xmin is None or x < xmin:
                     xmin = x
                 if xmax is None or x > xmax:
@@ -291,7 +322,7 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
                     ymax = y
         geometry_records.append([attrs["OBJECTID"], rings])
     observed_bounds = None if xmin is None else {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
-    return geometry_records, null_geometry, nan_geometry, observed_bounds
+    return geometry_records, null_geometry, nan_geometry, unplacable_geometry, observed_bounds
 
 
 def _assemble_polygons(rings: list) -> list:
@@ -337,7 +368,8 @@ def _assemble_polygons(rings: list) -> list:
 def _polygon_wkb(geom: object) -> bytes | None:
     """WKB for a producer polygon geometry, or ``None`` when it is unusable.
 
-    ``None`` covers null geometry, string-"NaN" ordinates, and producer rings
+    ``None`` covers null geometry, string-"NaN" ordinates, producer rings with
+    numeric coordinates outside the NAD83 geographic domain, and producer rings
     that cannot be assembled into a valid OGC Polygon/MultiPolygon container
     (self-intersecting rings, overlapping parts); the raw rings remain in the
     record digest and audit either way, and such records are gated with null
@@ -346,6 +378,8 @@ def _polygon_wkb(geom: object) -> bytes | None:
     rings = _usable_rings(geom)
     if rings is None:
         return None
+    if not _rings_in_domain(rings):
+        return None
     try:
         polygons = _assemble_polygons(rings)
     except ValueError:
@@ -353,16 +387,33 @@ def _polygon_wkb(geom: object) -> bytes | None:
     return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
 
 
+def _unplacable_object_ids(features: list[dict[str, object]]) -> list[int]:
+    """Object IDs whose geometry is numeric but outside the NAD83 domain."""
+    unplacable = []
+    for feature in features:
+        attrs = feature.get("attributes", {})
+        geom = feature.get("geometry")
+        if geom is None:
+            continue
+        rings = _usable_rings(geom)
+        if rings is not None and not _rings_in_domain(rings):
+            unplacable.append(attrs["OBJECTID"])
+    return sorted(unplacable)
+
+
 def _unassembled_object_ids(features: list[dict[str, object]]) -> list[int]:
-    """Object IDs whose geometry is usable but cannot be assembled faithfully."""
+    """Object IDs whose geometry is usable and placed but cannot be assembled faithfully."""
     unassembled = []
     for feature in features:
         attrs = feature.get("attributes", {})
         geom = feature.get("geometry")
-        if geom is None or _usable_rings(geom) is None:
+        if geom is None:
+            continue
+        rings = _usable_rings(geom)
+        if rings is None or not _rings_in_domain(rings):
             continue
         try:
-            _assemble_polygons(_usable_rings(geom))
+            _assemble_polygons(rings)
         except ValueError:
             unassembled.append(attrs["OBJECTID"])
     return sorted(unassembled)
@@ -444,7 +495,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     for (offset, count), name in zip(segments, page_names):
         _collect_segment(offset, count, json.loads(captures[name][0]), ids, features)
     attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
-    geometry_records, null_geometry, nan_geometry, bounds = _classify_geometries(features, attr_names)
+    geometry_records, null_geometry, nan_geometry, unplacable_geometry, bounds = _classify_geometries(features, attr_names)
     unassembled_ids = _unassembled_object_ids(sorted(features, key=lambda row: row["attributes"]["OBJECTID"]))
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     record_sha = _list_sha(features)
@@ -460,6 +511,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "source_schema_sha256": schema_sha, "source_crs_epsg": SOURCE_CRS_WKID,
              "geometry_type": "Polygon", "null_geometry_count": null_geometry,
              "nan_string_geometry_count": nan_geometry,
+             "unplacable_geometry_count": unplacable_geometry,
+             "unplacable_geometry_object_ids": _unplacable_object_ids(features),
              "unassembled_polygon_count": len(unassembled_ids),
              "unassembled_polygon_object_ids": unassembled_ids,
              "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
@@ -697,8 +750,9 @@ def capture_nfhl_water_areas(storage: StagingStorageResource, *, version: str,
                                                         "without projection or repair; multi-ring features are "
                                                         "grouped into Polygon/MultiPolygon containers by producer "
                                                         "ring nesting (containment, largest shell first); null, "
-                                                        "string-'NaN', or rings that cannot assemble into a valid "
-                                                        "OGC container (self-intersecting/overlapping) are "
+                                                        "string-'NaN', numeric coordinates outside the NAD83 "
+                                                        "geographic domain, or rings that cannot assemble into a "
+                                                        "valid OGC container (self-intersecting/overlapping) are "
                                                         "retained as records with null candidate geometry, raw "
                                                         "evidence and audit object IDs intact",
                                             "candidate_status": "unapproved; publication blocked pending freshness, "
@@ -762,6 +816,7 @@ def capture_nfhl_water_areas(storage: StagingStorageResource, *, version: str,
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
                 "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
                 "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
+                "source_unplacable_geometry_count": audit["unplacable_geometry_count"],
                 "source_unassembled_polygon_count": audit["unassembled_polygon_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_release_accepted": False, "source_freshness_accepted": False,
@@ -787,6 +842,7 @@ def capture_nfhl_water_areas(storage: StagingStorageResource, *, version: str,
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
             "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
+            "source_unplacable_geometry_count": audit["unplacable_geometry_count"],
             "source_unassembled_polygon_count": audit["unassembled_polygon_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
