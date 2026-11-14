@@ -287,7 +287,7 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
     body, receipt = _capture(client, nominal_url, root, name)
     if not _is_refusal(body):
         return {name: (body, receipt)}, refusals
-    refusals.append(name)
+    refusals.append(f"{name}_refusal")
     parts[f"{name}_refusal"] = (body, receipt)
     slice_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
     half = (len(slice_ids) + 1) // 2
@@ -295,7 +295,7 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
         sub_name = f"{name}{tag}"
         body, receipt = _capture(client, _part_url(roster, index, sub_name), root, sub_name)
         if _is_refusal(body):
-            refusals.append(sub_name)
+            refusals.append(f"{sub_name}_refusal")
             parts[f"{sub_name}_refusal"] = (body, receipt)
             raise ValueError("source_page_window_refused_after_bisection:" + sub_name)
         parts[sub_name] = (body, receipt)

@@ -407,7 +407,7 @@ class Wbd10DigitHuTests(unittest.TestCase):
         self.assertEqual(audit["source_record_sha256"], expected_record.hexdigest())
         self.assertEqual(audit["source_geometry_sha256"], expected_geometry.hexdigest())
         self.assertEqual(audit["page_parts"], dict(sorted(page_parts.items())))
-        _seal_manifest(root, documents, page_parts=page_parts, page_refusals=["page_0001"])
+        _seal_manifest(root, documents, page_parts=page_parts, page_refusals=["page_0001_refusal"])
         with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)), DISK_FLOOR_BYTES=1):
             captures, replay_parts = source._read_replay(root)
             self.assertEqual(replay_parts, page_parts)
