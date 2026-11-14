@@ -11,6 +11,7 @@ from dagster_hifld.assets.secondary_roads_census import (
     secondary_roads_census, secondary_roads_census_complete, secondary_roads_census_draft_schedule,
 )
 from dagster_hifld.http_capture import capture_roster_digests
+from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.sources import secondary_roads_census as source
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import _canonical
@@ -42,6 +43,7 @@ class SecondaryRoadsCensusTests(unittest.TestCase):
                               for layer_id, name in source.EXPECTED_SERVICE_LAYERS]}
         layer = {"id": source.LAYER_ID, "name": source.EXPECTED_LAYER_NAME,
                  "geometryType": "esriGeometryPolyline",
+                 "description": source.EXPECTED_LAYER_DESCRIPTION,
                  "minScale": source.EXPECTED_SCALE_RANGE["minScale"],
                  "maxScale": source.EXPECTED_SCALE_RANGE["maxScale"],
                  "spatialReference": {"wkid": 102100, "latestWkid": 3857},
@@ -142,6 +144,11 @@ class SecondaryRoadsCensusTests(unittest.TestCase):
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("scale range", lambda d: d["layer_before"].update(minScale=999),
+             "source_layer_identity_extent_or_scale_drift"),
+            ("layer vintage changed", lambda d: d["layer_before"].update(
+                description="Secondary roads - Interstates and US Highways; July 1, 2026"),
+             "source_layer_identity_extent_or_scale_drift"),
+            ("layer vintage missing", lambda d: d["layer_before"].pop("description"),
              "source_layer_identity_extent_or_scale_drift"),
             ("transfer", lambda d: d["page_001"].update(exceededTransferLimit=True),
              "source_page_error_or_transfer_limit"),
@@ -269,6 +276,21 @@ class SecondaryRoadsCensusTests(unittest.TestCase):
             audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
             self.assertEqual(audit["geometry_valid_count"], 6)
             self.assertEqual(audit["geometry_invalid_count"], 0)
+            self.assertEqual(audit["source_vintage"], "2026-01-01")
+            self.assertEqual(audit["source_vintage_evidence"], source.EXPECTED_LAYER_DESCRIPTION)
+            self.assertIn("not a per-feature last-edit timestamp", audit["source_vintage_note"])
+            manifest = json.loads(storage.read_key(f"{prefix}/metadata/source_manifest.json"))
+            self.assertEqual(manifest["date_issued"], "2026-01-01")
+            self.assertIsNone(manifest["source_modified"])
+            self.assertIsNone(manifest["date_modified"])
+            self.assertEqual({item["release_date"] for item in manifest["inputs"]}, {"2026-01-01"})
+            self.assertTrue(all("release_date_unknown_reason" not in item for item in manifest["inputs"]))
+            # The publisher-stated vintage must survive into the projected
+            # provenance that publication consumes.
+            projected = provenance_projection(manifest)
+            self.assertIsNotNone(projected)
+            self.assertEqual({item["release_date"] for item in projected["inputs"]}, {"2026-01-01"})
+            self.assertTrue(all("release_date_unknown_reason" not in item for item in projected["inputs"]))
             second = source.capture_secondary_roads_census(storage, version="regression",
                                                            capture_directory=str(root))
             self.assertTrue(second["reused"])
@@ -340,6 +362,15 @@ class SecondaryRoadsTransientRetryTests(unittest.TestCase):
 
 
 class SecondaryRoadsLiveRosterTests(unittest.TestCase):
+    def test_live_layer_description_pin_carries_the_publisher_vintage(self):
+        self.assertEqual(source.EXPECTED_LAYER_DESCRIPTION,
+                         "Secondary roads - Interstates and US Highways; January 1, 2026")
+        self.assertEqual(source._publisher_stated_vintage(source.EXPECTED_LAYER_DESCRIPTION), "2026-01-01")
+        with self.assertRaisesRegex(ValueError, "source_layer_description_or_vintage_drift"):
+            source._publisher_stated_vintage("Secondary roads - Interstates and US Highways")
+        with self.assertRaisesRegex(ValueError, "source_layer_description_or_vintage_drift"):
+            source._publisher_stated_vintage(None)
+
     def test_live_page_roster_covers_31212_ids_in_125_pages(self):
         self.assertEqual(source.EXPECTED_COUNT, 31212)
         self.assertEqual(source.EXPECTED_ID_MIN, 1)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import shutil
 import time
 from datetime import datetime, timezone
@@ -95,6 +96,15 @@ EXPECTED_SERVICE_LAYERS = [
     (8, "Local Roads"), (9, "Railroads"),
 ]
 EXPECTED_LAYER_NAME = "Secondary Roads Interstates and US Highways"
+# The publisher stamps the layer description with the vintage of the observed
+# layer population (verified live 2026-11-14); the trailing date is recorded as
+# the publisher-stated source vintage, not a per-feature last-edit timestamp
+# and not the HTTP retrieval time. Freshness/release acceptance stays pending.
+EXPECTED_LAYER_DESCRIPTION = "Secondary roads - Interstates and US Highways; January 1, 2026"
+SOURCE_VINTAGE_NOTE = ("Publisher-stated vintage of the observed TIGERweb layer population, parsed from the "
+    "captured layer description 'Secondary roads - Interstates and US Highways; January 1, 2026'; it dates the "
+    "published layer population and is not a per-feature last-edit timestamp or the HTTP retrieval time. "
+    "Freshness acceptance remains pending.")
 EXPECTED_SCALE_RANGE = {"minScale": 2500000, "maxScale": 650001}
 # Population contract observed on the live layer (2026-11-14): 31212 features,
 # every one MTFCC S1200 with route type U (30607) or I (605), no nulls.
@@ -215,6 +225,26 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     return captures
 
 
+_MONTH_NAMES = {name: number for number, name in enumerate(
+    ("January", "February", "March", "April", "May", "June", "July",
+     "August", "September", "October", "November", "December"), start=1)}
+
+
+def _publisher_stated_vintage(description: object) -> str:
+    """Parse the publisher-stated vintage from the captured layer description.
+
+    The TIGERweb Transportation layer description ends with a 'Month D, YYYY'
+    stamp for the vintage of the published layer population. The stamp is
+    preserved as the publisher-stated source vintage; no last-edit timestamp
+    is invented for it.
+    """
+    match = (re.fullmatch(r"(?s)(.*);\s+([A-Z][a-z]+) (\d{1,2}), (\d{4})", description)
+             if isinstance(description, str) else None)
+    if not match or match.group(2) not in _MONTH_NAMES:
+        raise ValueError("source_layer_description_or_vintage_drift")
+    return f"{int(match.group(4)):04d}-{_MONTH_NAMES[match.group(2)]:02d}-{int(match.group(3)):02d}"
+
+
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     if set(captures) != _capture_names():
         raise ValueError("source_capture_name_roster_drift")
@@ -235,9 +265,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         raise ValueError("source_field_schema_drift")
     if (layer.get("id") != LAYER_ID or layer.get("name") != EXPECTED_LAYER_NAME
             or layer.get("geometryType") != "esriGeometryPolyline"
+            or layer.get("description") != EXPECTED_LAYER_DESCRIPTION
             or {key: layer.get(key) for key in EXPECTED_SCALE_RANGE} != EXPECTED_SCALE_RANGE
             or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT):
         raise ValueError("source_layer_identity_extent_or_scale_drift")
+    vintage = _publisher_stated_vintage(layer.get("description"))
     _validate_web_mercator_reference(layer.get("spatialReference"), "source_layer")
     _validate_web_mercator_reference(layer.get("extent", {}).get("spatialReference"), "source_layer_extent")
     if docs["service_after"] != service or docs["layer_after"] != layer:
@@ -352,6 +384,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "geometry_bounds": [min(b[0] for b in bounds), min(b[1] for b in bounds),
                             max(b[2] for b in bounds), max(b[3] for b in bounds)],
         "source_extent": layer["extent"], "source_scale_range": EXPECTED_SCALE_RANGE,
+        "source_vintage": vintage, "source_vintage_evidence": layer.get("description"),
+        "source_vintage_note": SOURCE_VINTAGE_NOTE,
         "source_coverage_scope": "Complete observed TIGERweb Transportation MapServer layer 3 "
             "Secondary Roads Interstates and US Highways (MTFCC S1200 segments with route type U or I) "
             "from the directly queried U.S. Census Bureau service; a continuously maintained national "
@@ -660,6 +694,7 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
     # observed_final_url only when it actually differs (bounded manifest size).
     canonical_by_prefix = (("page_", LAYER_URL), ("layer_", LAYER_URL), ("count_", LAYER_URL), ("ids_", LAYER_URL))
     inputs = []
+    vintage = audit["source_vintage"]
     for name, receipt in sorted(receipts.items()):
         canonical = SERVICE_FOLDER_URL if name == "folder" else (
             SERVICE_URL if name.startswith("service_") else
@@ -671,7 +706,7 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
             "retrieved_at": receipt["observed_at"],
             "http_status": receipt["status"], "bytes": receipt["bytes"], "sha256": receipt["sha256"],
             "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
-            "release_date": None, "release_date_unknown_reason": "TIGERweb is a continuously maintained live Census web service (service currentVersion 11.5); the service publishes no per-layer release date, and the observed layer population is recorded as the current maintained publication. Freshness acceptance remains pending.",
+            "release_date": vintage, "release_date_meaning": SOURCE_VINTAGE_NOTE,
             "license": "https://www.census.gov/about/policies/quality/guidelines/copyright.html",
             "attribution": "U.S. Census Bureau, TIGERweb Transportation (Roads and Railroads), layer 3 Secondary Roads Interstates and US Highways."})
     manifest = {"schema_version": 1, "approved": False, "title": "Secondary Roads Interstates and US Highways",
@@ -681,7 +716,8 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
             "display scale. Historical HIFLD Open equivalence, contract, baseline, rights and release remain unaccepted.",
         "publisher": PUBLISHER, "agency": "U.S. Census Bureau", "source_url": LAYER_URL,
         "license": "https://www.census.gov/about/policies/quality/guidelines/copyright.html",
-        "source_modified": None, "date_issued": None, "date_modified": None,
+        "source_modified": None, "date_issued": vintage, "date_modified": None,
+        "source_vintage_note": SOURCE_VINTAGE_NOTE,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
         "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
         "transformations": [{"operation": "Esri XY Polyline (Web Mercator) to GeoParquet WKB candidate", "parameters": {
