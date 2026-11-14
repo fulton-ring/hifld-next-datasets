@@ -72,6 +72,7 @@ RUN apt-get update \
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app/src /app/src
 COPY --from=builder /app/pyproject.toml /app/pyproject.toml
+COPY --from=builder /app/uv.lock /app/uv.lock
 COPY --from=builder /app/HIFLD_Open_Inventory_12112025.csv /app/HIFLD_Open_Inventory_12112025.csv
 
 WORKDIR /app

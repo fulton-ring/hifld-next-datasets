@@ -14,8 +14,649 @@ from dagster import (
     sensor,
 )
 
+from dagster_hifld.assets.discovery import discovered, unique
 from dagster_hifld.assets import hifld_dataset_assets
-from dagster_hifld.assets.usace_offices import usace_offices_draft_schedule
+from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals_draft_refresh_job, bts_ferry_terminals_draft_refresh_schedule
+from dagster_hifld.assets.smithsonian_holocene import holocene_source_integrity_job, holocene_source_integrity_schedule
+from dagster_hifld.assets.historical_tsunami_events import (
+    tsunami_events_draft_job,
+    tsunami_events_draft_schedule,
+)
+from dagster_hifld.assets.bts_ferry_routes import ferry_routes_source_integrity_job, ferry_routes_source_integrity_schedule
+from dagster_hifld.assets.bts_air_truck import (
+    bts_air_truck_draft_job,
+    bts_air_truck_draft_schedule,
+    bts_intermodal_freight_air_to_truck_complete,
+)
+from dagster_hifld.assets.epa_regions import epa_regions_draft_job, epa_regions_draft_schedule
+from dagster_hifld.assets.epa_large_scale import (
+    epa_large_scale_source_integrity_job,
+    epa_large_scale_source_integrity_schedule,
+)
+from dagster_hifld.assets.fema_regional_offices import fema_offices_draft_job, fema_offices_draft_schedule
+from dagster_hifld.assets.epa_sems import epa_sems_source_integrity_job, epa_sems_source_integrity_schedule
+from dagster_hifld.assets.national_bridge_inventory import nbi_source_integrity_job, nbi_source_integrity_schedule
+from dagster_hifld.assets.fdic_locations import (
+    fdic_locations_draft_job,
+    fdic_locations_draft_schedule,
+    fdic_locations_full_quality,
+)
+from dagster_hifld.assets.fema_regions import (
+    fema_regions_draft_job,
+    fema_regions_draft_schedule,
+    fema_regions_full_quality,
+)
+from dagster_hifld.assets.fuds_division_boundaries import (
+    fuds_division_draft_schedule,
+    fuds_program_division_boundaries_complete,
+)
+from dagster_hifld.assets.epa_eez import (
+    epa_eez_draft_job,
+    epa_eez_draft_schedule,
+    epa_eez_full_quality,
+)
+from dagster_hifld.assets.epa_regions_with_eez import (
+    epa_regions_with_eez_draft_job,
+    epa_regions_with_eez_draft_schedule,
+    epa_regions_with_eez_full_quality,
+)
+from dagster_hifld.assets.census_elementary_districts import elsd_source_integrity_job, elsd_source_integrity_schedule
+from dagster_hifld.assets.epa_disaster_debris import (
+    epa_disaster_debris_complete,
+    epa_disaster_debris_draft_job,
+    epa_disaster_debris_draft_schedule,
+    epa_disaster_debris_recovery_data,
+)
+from dagster_hifld.assets.colleges_universities import (
+    colleges_source_integrity_job,
+    colleges_source_integrity_schedule,
+)
+from dagster_hifld.assets.arc_regions import (
+    arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
+)
+
+
+from dagster_hifld.assets.epa_frs_naics_powerplants import (
+    epa_frs_naics_complete,
+    epa_frs_naics_draft_job,
+    epa_frs_naics_draft_schedule,
+    epa_frs_naics_published_membership_compatible,
+)
+
+from dagster_hifld.assets.census_bureau import (
+    aiannh_source_integrity_refresh_job,
+    aiannh_source_integrity_refresh_schedule,
+)
+
+from dagster_hifld.assets.census_consolidated_cities import (
+    concity_source_integrity_job,
+    concity_source_integrity_schedule,
+)
+
+from dagster_hifld.assets.bts import (
+    amtrak_draft_refresh_job,
+    amtrak_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.quaternary_fault_lines import (
+    quaternary_fault_lines_draft_job,
+    quaternary_fault_lines_draft_schedule,
+    quaternary_fault_lines_population_complete,
+)
+
+from dagster_hifld.assets.courthouses_usgs import (
+    courthouses_draft_job,
+    courthouses_draft_schedule,
+    courthouses_population_complete,
+)
+
+from dagster_hifld.assets.ornl_power_plants import (
+    eia_power_plants_complete,
+    eia_power_plants_draft_job,
+    eia_power_plants_draft_schedule,
+)
+from dagster_hifld.assets.eia_natural_gas_processing_plants import (
+    eia_natural_gas_processing_plants_complete,
+    eia_natural_gas_processing_plants_draft_job,
+    eia_natural_gas_processing_plants_draft_schedule,
+)
+from dagster_hifld.assets.eia_ethanol_plants import (
+    eia_ethanol_plants_complete,
+    eia_ethanol_plants_draft_job,
+    eia_ethanol_plants_draft_schedule,
+)
+from dagster_hifld.assets.epa_power_generation import (
+    epa_frs_eia_860_power_generation_complete,
+    epa_power_generation_draft_job,
+    epa_power_generation_draft_schedule,
+)
+from dagster_hifld.assets.national_transit_map_agencies import (
+    bts_national_transit_map_agencies_candidate_complete,
+    bts_national_transit_map_agencies_draft_job,
+    bts_national_transit_map_agencies_draft_schedule,
+    bts_national_transit_map_agencies_release_gate,
+)
+from dagster_hifld.assets.fuds_projects_points import (
+    fuds_projects_points_draft_schedule,
+    usace_fuds_projects_points_complete,
+)
+from dagster_hifld.assets.fuds_public_properties import (
+    usace_fuds_public_properties_complete,
+    fuds_public_properties_draft_schedule,
+)
+from dagster_hifld.assets.nfhl_nodes import (
+    nfhl_nodes_draft_schedule,
+    fema_nfhl_nodes_complete,
+)
+from dagster_hifld.assets.nfhl_hydrologic_reaches import (
+    nfhl_hydrologic_reaches_draft_schedule,
+    fema_nfhl_hydrologic_reaches_complete,
+)
+from dagster_hifld.assets.nfhl_seclusion_boundaries import (
+    nfhl_seclusion_boundaries_draft_schedule,
+    fema_nfhl_seclusion_boundaries_complete,
+)
+from dagster_hifld.assets.fuds_district_boundaries import (
+    fuds_district_boundaries_draft_schedule,
+    usace_fuds_program_district_boundaries_complete,
+)
+from dagster_hifld.assets.fuds_irm_property_point import (
+    fuds_irm_property_point_complete,
+    fuds_irm_property_point_draft_schedule,
+    fuds_irm_property_point_geometry_quality,
+)
+from dagster_hifld.assets.fuds_irm_property_boundary import (
+    fuds_irm_property_boundary_complete,
+    fuds_irm_property_boundary_draft_schedule,
+    fuds_irm_property_boundary_geometry_quality,
+)
+from dagster_hifld.assets.fuds_property_boundaries import (
+    fuds_property_boundaries_complete,
+    fuds_property_boundaries_draft_schedule,
+    fuds_property_boundaries_geometry_quality,
+)
+from dagster_hifld.assets.bts_marine_roro import (
+    bts_intermodal_freight_marine_roll_on_roll_off_complete,
+    bts_marine_roro_draft_schedule,
+)
+from dagster_hifld.assets.bts_rail_tofc_cofc import (
+    bts_intermodal_freight_rail_tofc_cofc_complete,
+    bts_rail_tofc_cofc_draft_schedule,
+)
+from dagster_hifld.assets.epa_small_scale import (
+    epa_small_scale_source_integrity_job,
+    epa_small_scale_source_integrity_schedule,
+)
+
+from dagster_hifld.assets.gcca_warehouse_directory import (
+    gcca_warehouses_geometry_complete,
+    gcca_warehouses_draft_job,
+    gcca_warehouses_draft_schedule,
+)
+
+from dagster_hifld.assets.red_cross_headquarters import (
+    red_cross_headquarters_draft_job,
+    red_cross_headquarters_draft_schedule,
+    red_cross_headquarters_source_population,
+)
+
+from dagster_hifld.assets.faa import (
+    faa_airspace_draft_refresh_job,
+    faa_airspace_draft_refresh_schedule,
+    faa_aviation_draft_refresh_job,
+    faa_aviation_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.noaa_contiguous import (
+    noaa_contiguous_draft_refresh_job,
+    noaa_contiguous_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.noaa import (
+    noaa_eez_draft_refresh_job,
+    noaa_eez_draft_weekly_schedule,
+    noaa_territorial_draft_refresh_job,
+    noaa_territorial_draft_weekly_schedule,
+)
+
+from dagster_hifld.assets.ems_stations import (
+    usgs_ems_stations_draft_refresh_job,
+    usgs_ems_stations_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.noaa_current_dart import (
+    noaa_dart_draft_refresh_job,
+    noaa_dart_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.usace_pylon_areas import (
+    usace_pylon_areas_draft_schedule,
+    usace_pylon_areas_complete,
+    usace_pylon_areas_draft_job,
+)
+from dagster_hifld.assets.hf_areas_usace_ienc import (
+    hf_areas_usace_ienc_draft_schedule,
+    hf_areas_usace_ienc_complete,
+    hf_areas_usace_ienc_draft_job,
+)
+from dagster_hifld.assets.land_region_areas_usace_ienc import (
+    land_region_areas_usace_ienc_draft_schedule,
+    land_region_areas_usace_ienc_complete,
+    land_region_areas_usace_ienc_draft_job,
+)
+
+from dagster_hifld.assets.principal_ports import (
+    principal_ports_source_complete,
+    principal_ports_draft_schedule,
+)
+
+from dagster_hifld.assets.bsee_ocs_platforms import (
+    bsee_ocs_platforms_complete,
+    bsee_ocs_platforms_draft_job,
+    bsee_ocs_platforms_draft_schedule,
+)
+
+from dagster_hifld.assets.nces_public_schools import (
+    nces_public_schools_complete,
+    nces_public_schools_draft_job,
+    nces_public_schools_draft_schedule,
+)
+
+from dagster_hifld.assets.proposed_critical_habitat import (
+    proposed_critical_habitat_complete,
+    proposed_critical_habitat_draft_job,
+    proposed_critical_habitat_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_dam_lines import (
+    usace_dam_lines_complete,
+    usace_dam_lines_draft_job,
+    usace_dam_lines_draft_schedule,
+)
+from dagster_hifld.assets.river_areas_usace_ienc import (
+    river_areas_usace_ienc_complete,
+    river_areas_usace_ienc_draft_job,
+    river_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.river_gauges_usace_ienc import (
+    river_gauges_usace_ienc_complete,
+    river_gauges_usace_ienc_draft_job,
+    river_gauges_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.shoreline_construction_locations_usace_ienc import (
+    shoreline_construction_locations_usace_ienc_complete,
+    shoreline_construction_locations_usace_ienc_draft_job,
+    shoreline_construction_locations_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sea_area_locations_usace_ienc import (
+    sea_area_locations_usace_ienc_complete,
+    sea_area_locations_usace_ienc_draft_job,
+    sea_area_locations_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sea_areas_usace_ienc import (
+    sea_areas_usace_ienc_complete,
+    sea_areas_usace_ienc_draft_job,
+    sea_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import (
+    shoreline_construction_areas_usace_ienc_complete,
+    shoreline_construction_areas_usace_ienc_draft_job,
+    shoreline_construction_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.shoreline_construction_lines_usace_ienc import (
+    shoreline_construction_lines_usace_ienc_complete,
+    shoreline_construction_lines_usace_ienc_draft_job,
+    shoreline_construction_lines_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import (
+    small_craft_facility_areas_usace_ienc_complete,
+    small_craft_facility_areas_usace_ienc_draft_job,
+    small_craft_facility_areas_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.sloped_ground_lines_usace_ienc import (
+    sloped_ground_lines_usace_ienc_complete,
+    sloped_ground_lines_usace_ienc_draft_job,
+    sloped_ground_lines_usace_ienc_draft_schedule,
+)
+from dagster_hifld.assets.usace_overhead_cables import (
+    usace_overhead_cables_complete,
+    usace_overhead_cables_draft_schedule,
+    usace_overhead_cables_draft_job,
+)
+from dagster_hifld.assets.building_locations_usace_ienc import (
+    building_locations_population_complete,
+    building_locations_draft_schedule,
+)
+
+from dagster_hifld.assets.nces_private_schools import (
+    nces_private_schools_complete,
+    nces_private_schools_draft_job,
+    nces_private_schools_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_berths_areas import (
+    usace_berths_areas_complete,
+    usace_berths_areas_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_dry_docks import (
+    usace_dry_docks_complete,
+    usace_dry_docks_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_pipeline_areas import (
+    usace_pipeline_areas_complete,
+    usace_pipeline_areas_draft_job,
+    usace_pipeline_areas_draft_schedule,
+)
+from dagster_hifld.assets.usace_data_quality_areas import (
+    usace_data_quality_areas_complete,
+    usace_data_quality_areas_draft_job,
+    usace_data_quality_areas_draft_schedule,
+)
+from dagster_hifld.assets.usace_dumping_ground_areas import (
+    usace_dumping_ground_areas_complete,
+    usace_dumping_ground_areas_draft_job,
+    usace_dumping_ground_areas_draft_schedule,
+)
+
+from dagster_hifld.assets.us_county_boundaries import (
+    us_county_boundaries_draft_job,
+    us_county_boundaries_draft_schedule,
+    us_county_boundaries_source_complete,
+)
+
+from dagster_hifld.assets.us_state_boundaries import (
+    us_state_boundaries_draft_job,
+    us_state_boundaries_draft_schedule,
+    us_state_boundaries_source_complete,
+)
+
+from dagster_hifld.assets.coastlines_usace_ienc import (
+    coastlines_usace_ienc_complete,
+    coastlines_usace_ienc_draft_job,
+    coastlines_usace_ienc_draft_schedule,
+)
+
+from dagster_hifld.assets.locks_usace_ienc import (
+    locks_usace_ienc_complete,
+    locks_usace_ienc_draft_job,
+    locks_usace_ienc_draft_schedule,
+)
+
+from dagster_hifld.assets.lock_basins_usace_ienc import (
+    lock_basins_usace_ienc_complete,
+    lock_basins_usace_ienc_draft_job,
+    lock_basins_usace_ienc_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_overhead_pipeline_lines import (
+    usace_overhead_pipeline_lines_complete,
+    usace_overhead_pipeline_lines_draft_job,
+    usace_overhead_pipeline_lines_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_obstruction_lines import (
+    usace_obstruction_lines_complete,
+    usace_obstruction_lines_draft_job,
+    usace_obstruction_lines_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_obstruction_locations import (
+    usace_obstruction_locations_complete,
+    usace_obstruction_locations_draft_job,
+    usace_obstruction_locations_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_mooring_facility_lines import (
+    usace_mooring_facility_lines_complete,
+    usace_mooring_facility_lines_draft_job,
+    usace_mooring_facility_lines_draft_schedule,
+)
+
+from dagster_hifld.assets.floodwalls_usace_ienc import (
+    floodwalls_usace_ienc_complete,
+    floodwalls_usace_ienc_draft_job,
+    floodwalls_usace_ienc_draft_schedule,
+)
+
+from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
+    harbor_facility_locations_usace_ienc_complete,
+    harbor_facility_locations_usace_ienc_draft_job,
+    harbor_facility_locations_usace_ienc_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_data_coverage_areas import (
+    usace_data_coverage_areas_complete,
+    usace_data_coverage_areas_draft_job,
+    usace_data_coverage_areas_draft_schedule,
+)
+
+from dagster_hifld.assets.epa_rmp_facilities import (
+    epa_emergency_response_rmp_facilities_complete,
+    epa_rmp_facilities_draft_job,
+    epa_rmp_facilities_draft_schedule,
+)
+from dagster_hifld.assets.epa_rcra_tsd import (
+    epa_rcra_tsd_complete,
+    epa_rcra_tsd_draft_job,
+    epa_rcra_tsd_draft_schedule,
+)
+
+from dagster_hifld.assets.epa_frs_sic_powerplants import (
+    epa_frs_sic_complete,
+    epa_frs_sic_draft_job,
+    epa_frs_sic_draft_schedule,
+    epa_frs_sic_published_membership_compatible,
+)
+
+from dagster_hifld.assets.epa_frs_interest_contact import (
+    epa_frs_interest_contact_complete,
+    epa_frs_interest_contact_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_caution_areas import (
+    usace_caution_areas_complete,
+    usace_caution_areas_draft_schedule,
+    usace_caution_areas_draft_job,
+)
+
+from dagster_hifld.assets.usace_pile_locations import (
+    usace_pile_locations_complete,
+    usace_pile_locations_draft_job,
+    usace_pile_locations_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_daymark_locations import (
+    usace_daymark_locations_complete,
+    usace_daymark_locations_draft_job,
+    usace_daymark_locations_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_lateral_buoys import (
+    usace_lateral_buoys_complete,
+    usace_lateral_buoys_draft_job,
+    usace_lateral_buoys_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_landmark_locations import (
+    usace_landmark_locations_complete,
+    usace_landmark_locations_draft_job,
+    usace_landmark_locations_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_dynamic_buoys import (
+    usace_dynamic_buoys_complete,
+    usace_dynamic_buoys_draft_job,
+    usace_dynamic_buoys_draft_schedule,
+)
+
+from dagster_hifld.assets.usace import (
+    usace_administrative_areas_complete,
+    usace_administrative_areas_draft_job,
+    usace_administrative_areas_draft_schedule,
+    usace_navigation_marks_areas_complete,
+    usace_navigation_marks_areas_draft_job,
+    usace_navigation_marks_areas_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_navigation_lights import (
+    usace_navigation_lights_complete,
+    usace_navigation_lights_draft_job,
+    usace_navigation_lights_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_notice_marks import (
+    usace_notice_marks_complete,
+    usace_notice_marks_draft_job,
+    usace_notice_marks_draft_schedule,
+)
+
+from dagster_hifld.assets.plate_boundaries import (
+    plate_boundaries_draft_job,
+    plate_boundaries_draft_schedule,
+    plate_boundaries_population_complete,
+)
+
+from dagster_hifld.assets.usace_pylon_locations import (
+    pylon_locations_draft_refresh_job,
+    pylon_locations_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.usace_distance_marks import (
+    distance_marks_draft_refresh_job,
+    distance_marks_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.usace_recommended_tracks import (
+    recommended_tracks_draft_job,
+    recommended_tracks_draft_schedule,
+    usace_recommended_tracks_complete,
+)
+
+from dagster_hifld.assets.fuel_stations import (
+    fuel_stations_draft_refresh_job,
+    fuel_stations_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.secondary_school_districts import (
+    secondary_school_districts_draft_refresh_job,
+    secondary_school_districts_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.unified_school_districts import (
+    unified_school_districts_draft_refresh_job,
+    unified_school_districts_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.puerto_rico_subbarrios import (
+    puerto_rico_subbarrios_draft_job,
+    puerto_rico_subbarrios_draft_schedule,
+    puerto_rico_subbarrios_source_complete,
+)
+
+from dagster_hifld.assets.census_primary_roads import (
+    census_primary_roads_source_complete,
+    census_primary_roads_draft_schedule,
+)
+
+from dagster_hifld.assets.census_block_groups import (
+    census_block_groups_source_complete,
+    census_block_groups_draft_schedule,
+)
+from dagster_hifld.assets.census_tracts import (
+    census_tracts_source_complete,
+    census_tracts_draft_job,
+    census_tracts_draft_schedule,
+)
+from dagster_hifld.assets.usace_pontoon_areas import (
+    usace_pontoon_areas_complete,
+    usace_pontoon_areas_draft_job,
+    usace_pontoon_areas_draft_schedule,
+)
+from dagster_hifld.assets.usace_hulke_areas import (
+    usace_hulke_areas_complete,
+    usace_hulke_areas_draft_job,
+    usace_hulke_areas_draft_schedule,
+)
+from dagster_hifld.assets.usace_landmark_areas import (
+    usace_landmark_areas_complete,
+    usace_landmark_areas_draft_job,
+    usace_landmark_areas_draft_schedule,
+)
+
+from dagster_hifld.assets.usace_airport_area import (
+    usace_airport_area_complete,
+    usace_airport_area_quality,
+    usace_airport_area_release,
+    usace_airport_area_draft_job,
+    usace_airport_area_draft_schedule,
+)
+
+from dagster_hifld.assets.ibc import (
+    ibc_boundary_draft_refresh_job,
+    ibc_boundary_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.fws import (
+    fws_cbrs_buffer_draft_refresh_job,
+    fws_cbrs_buffer_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.fws_cmt_locations import (
+    fws_cmt_locations_complete,
+    fws_cmt_locations_draft_refresh_job,
+    fws_cmt_locations_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.fws_map_panels import (
+    fws_cbrs_map_panels_draft_refresh_job,
+    fws_cbrs_map_panels_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.fws_prohibitions import (
+    fws_cbrs_prohibitions_draft_refresh_job,
+    fws_cbrs_prohibitions_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.fws_units import (
+    fws_cbrs_units_draft_refresh_job,
+    fws_cbrs_units_draft_refresh_schedule,
+)
+from dagster_hifld.assets.generalized_units import (
+    fws_generalized_units_draft_refresh_job,
+    fws_generalized_units_draft_refresh_schedule,
+)
+
+from dagster_hifld.assets.census_designated_places import (
+    cdp_source_integrity_job,
+    cdp_source_integrity_schedule,
+)
+
+from dagster_hifld.assets.state_capitols import (
+    state_capitols_draft_job,
+    state_capitols_draft_schedule,
+    state_capitols_population_complete,
+)
+from dagster_hifld.assets.national_inventory_of_dams import (
+    national_inventory_of_dams_draft_job,
+    national_inventory_of_dams_draft_schedule,
+    national_inventory_of_dams_geometry_quality,
+    national_inventory_of_dams_population_complete,
+)
+from dagster_hifld.assets.combined_statistical_areas import (
+    csa_source_integrity_job,
+    csa_source_integrity_schedule,
+)
+from dagster_hifld.assets.epa_icis_wastewater import (
+    epa_icis_wastewater_capture_complete,
+    epa_icis_wastewater_draft_job,
+    epa_icis_wastewater_draft_schedule,
+)
+from dagster_hifld.assets.fuds_mrs import (
+    usace_fuds_munitions_response_sites_complete,
+    fuds_mrs_draft_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -33,7 +674,56 @@ from dagster_hifld.source_formats import (
     discover_legacy_unknown_shapefile,
     discover_legacy_unknown_shapefile_keys,
 )
+from dagster_hifld.assets.usace_conveyor_areas import (
+    usace_conveyor_areas_complete,
+    usace_conveyor_areas_draft_job,
+    usace_conveyor_areas_draft_schedule,
+)
+from dagster_hifld.assets.usace_depth_areas import (
+    usace_depth_areas_complete,
+    usace_depth_areas_draft_job,
+    usace_depth_areas_draft_schedule,
+)
+from dagster_hifld.assets.census_county_subdivisions import (
+    county_subdivisions_draft_refresh_job,
+    county_subdivisions_draft_refresh_schedule,
+)
+from dagster_hifld.assets.usace_crane_locations import (
+    usace_crane_locations_complete,
+    usace_crane_locations_quality,
+    usace_crane_locations_release,
+    usace_crane_locations_draft_job,
+    usace_crane_locations_draft_schedule,
+)
 
+from dagster_hifld.assets.usace_floating_docks import (
+    usace_floating_docks_complete,
+    usace_floating_docks_draft_job,
+    usace_floating_docks_draft_schedule,
+)
+
+from dagster_hifld.assets.docks import (
+    docks_draft_job,
+    docks_draft_schedule,
+    docks_source_population_complete,
+    docks_source_geometry_quality,
+    docks_release_acceptance_pending,
+)
+from dagster_hifld.assets.epa_frs_tri import (
+    epa_frs_toxic_release_inventory_complete,
+    epa_frs_tri_draft_job,
+    epa_frs_tri_draft_schedule,
+)
+from dagster_hifld.assets.epa_tsca import (
+    epa_frs_tsca_complete,
+    epa_tsca_draft_job,
+    epa_tsca_draft_schedule,
+)
+from dagster_hifld.assets.epa_frs_interests import (
+    epa_frs_interests_complete,
+    epa_frs_interests_draft_job,
+    epa_frs_interests_draft_schedule,
+)
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
 logger = logging.getLogger(__name__)
@@ -408,9 +1098,397 @@ def _configured_sensors():
 
 
 defs = Definitions(
-    assets=hifld_dataset_assets,
-    asset_checks=hifld_asset_checks,
-    schedules=[usace_offices_draft_schedule],
+    assets=[*hifld_dataset_assets, epa_disaster_debris_recovery_data],
+    asset_checks=unique(
+        [
+            *hifld_asset_checks,
+            usace_fuds_program_district_boundaries_complete,
+            epa_disaster_debris_complete,
+            arc_regions_full_quality,
+            eia_power_plants_complete,
+            eia_ethanol_plants_complete,
+            eia_natural_gas_processing_plants_complete,
+            epa_frs_eia_860_power_generation_complete,
+            epa_icis_wastewater_capture_complete,
+            fuds_irm_property_point_complete,
+            fuds_irm_property_point_geometry_quality,
+            fuds_irm_property_boundary_complete,
+            fuds_irm_property_boundary_geometry_quality,
+            fuds_property_boundaries_complete,
+            fuds_property_boundaries_geometry_quality,
+            bts_intermodal_freight_marine_roll_on_roll_off_complete,
+            bts_intermodal_freight_rail_tofc_cofc_complete,
+            usace_fuds_projects_points_complete,
+            epa_frs_naics_complete,
+            epa_frs_naics_published_membership_compatible,
+            gcca_warehouses_geometry_complete,
+            red_cross_headquarters_source_population,
+            census_primary_roads_source_complete,
+            census_block_groups_source_complete,
+            census_tracts_source_complete,
+            quaternary_fault_lines_population_complete,
+            courthouses_population_complete,
+            usace_pylon_areas_complete,
+            hf_areas_usace_ienc_complete,
+            land_region_areas_usace_ienc_complete,
+            usace_recommended_tracks_complete,
+            usace_overhead_pipeline_lines_complete,
+            usace_obstruction_lines_complete,
+            usace_mooring_facility_lines_complete,
+            usace_obstruction_locations_complete,
+            floodwalls_usace_ienc_complete,
+            harbor_facility_locations_usace_ienc_complete,
+            usace_administrative_areas_complete,
+            usace_navigation_marks_areas_complete,
+            usace_navigation_lights_complete,
+            usace_notice_marks_complete,
+            puerto_rico_subbarrios_source_complete,
+            principal_ports_source_complete,
+            usace_overhead_cables_complete,
+            usace_dam_lines_complete,
+            building_locations_population_complete,
+            river_areas_usace_ienc_complete,
+            river_gauges_usace_ienc_complete,
+            shoreline_construction_locations_usace_ienc_complete,
+            sea_area_locations_usace_ienc_complete,
+            sea_areas_usace_ienc_complete,
+            shoreline_construction_areas_usace_ienc_complete,
+            shoreline_construction_lines_usace_ienc_complete,
+            small_craft_facility_areas_usace_ienc_complete,
+            sloped_ground_lines_usace_ienc_complete,
+            usace_caution_areas_complete,
+            usace_berths_areas_complete,
+            usace_dry_docks_complete,
+            us_county_boundaries_source_complete,
+            us_state_boundaries_source_complete,
+            usace_pontoon_areas_complete,
+            usace_hulke_areas_complete,
+            usace_landmark_areas_complete,
+            plate_boundaries_population_complete,
+            bsee_ocs_platforms_complete,
+            proposed_critical_habitat_complete,
+            usace_pile_locations_complete,
+            fws_cmt_locations_complete,
+            usace_daymark_locations_complete,
+            usace_lateral_buoys_complete,
+            usace_landmark_locations_complete,
+            usace_dynamic_buoys_complete,
+            usace_pipeline_areas_complete,
+            usace_data_quality_areas_complete,
+            usace_dumping_ground_areas_complete,
+            nces_private_schools_complete,
+            nces_public_schools_complete,
+            coastlines_usace_ienc_complete,
+            locks_usace_ienc_complete,
+            lock_basins_usace_ienc_complete,
+            usace_airport_area_complete,
+            usace_airport_area_quality,
+            usace_airport_area_release,
+            state_capitols_population_complete,
+            national_inventory_of_dams_population_complete,
+            national_inventory_of_dams_geometry_quality,
+            usace_conveyor_areas_complete,
+            usace_depth_areas_complete,
+            usace_crane_locations_complete,
+            usace_crane_locations_quality,
+            usace_crane_locations_release,
+            usace_floating_docks_complete,
+            usace_data_coverage_areas_complete,
+            epa_emergency_response_rmp_facilities_complete,
+            epa_frs_sic_complete,
+            epa_frs_sic_published_membership_compatible,
+            epa_frs_interest_contact_complete,
+            epa_rcra_tsd_complete,
+            docks_source_population_complete,
+            docks_source_geometry_quality,
+            docks_release_acceptance_pending,
+            epa_eez_full_quality,
+            epa_regions_with_eez_full_quality,
+            epa_frs_toxic_release_inventory_complete,
+            epa_frs_tsca_complete,
+            epa_frs_interests_complete,
+            fdic_locations_full_quality,
+            fema_regions_full_quality,
+            fuds_program_division_boundaries_complete,
+            bts_intermodal_freight_air_to_truck_complete,
+            fema_nfhl_nodes_complete,
+            fema_nfhl_hydrologic_reaches_complete,
+            fema_nfhl_seclusion_boundaries_complete,
+            usace_fuds_munitions_response_sites_complete,
+            usace_fuds_public_properties_complete,
+            bts_national_transit_map_agencies_candidate_complete,
+            bts_national_transit_map_agencies_release_gate,
+        ],
+        discovered("ASSET_CHECKS"),
+    ),
+    jobs=unique(
+        [
+            bts_ferry_terminals_draft_refresh_job,
+            holocene_source_integrity_job,
+            ferry_routes_source_integrity_job,
+            epa_large_scale_source_integrity_job,
+            epa_regions_draft_job,
+            epa_small_scale_source_integrity_job,
+            fema_offices_draft_job,
+            epa_sems_source_integrity_job,
+            nbi_source_integrity_job,
+            elsd_source_integrity_job,
+            epa_disaster_debris_draft_job,
+            colleges_source_integrity_job,
+            tsunami_events_draft_job,
+            bts_air_truck_draft_job,
+            census_tracts_draft_job,
+            quaternary_fault_lines_draft_job,
+            courthouses_draft_job,
+            faa_airspace_draft_refresh_job,
+            noaa_eez_draft_refresh_job,
+            noaa_territorial_draft_refresh_job,
+            noaa_contiguous_draft_refresh_job,
+            noaa_dart_draft_refresh_job,
+            usgs_ems_stations_draft_refresh_job,
+            usace_pylon_areas_draft_job,
+            hf_areas_usace_ienc_draft_job,
+            land_region_areas_usace_ienc_draft_job,
+            pylon_locations_draft_refresh_job,
+            distance_marks_draft_refresh_job,
+            recommended_tracks_draft_job,
+            fuel_stations_draft_refresh_job,
+            usace_overhead_pipeline_lines_draft_job,
+            usace_overhead_cables_draft_job,
+            usace_dam_lines_draft_job,
+            river_areas_usace_ienc_draft_job,
+            river_gauges_usace_ienc_draft_job,
+            shoreline_construction_locations_usace_ienc_draft_job,
+            sea_area_locations_usace_ienc_draft_job,
+            sea_areas_usace_ienc_draft_job,
+            shoreline_construction_areas_usace_ienc_draft_job,
+            shoreline_construction_lines_usace_ienc_draft_job,
+            small_craft_facility_areas_usace_ienc_draft_job,
+            sloped_ground_lines_usace_ienc_draft_job,
+            usace_obstruction_lines_draft_job,
+            usace_mooring_facility_lines_draft_job,
+            usace_obstruction_locations_draft_job,
+            floodwalls_usace_ienc_draft_job,
+            harbor_facility_locations_usace_ienc_draft_job,
+            usace_administrative_areas_draft_job,
+            usace_navigation_marks_areas_draft_job,
+            usace_navigation_lights_draft_job,
+            usace_notice_marks_draft_job,
+            secondary_school_districts_draft_refresh_job,
+            unified_school_districts_draft_refresh_job,
+            usace_pontoon_areas_draft_job,
+            usace_hulke_areas_draft_job,
+            usace_landmark_areas_draft_job,
+            puerto_rico_subbarrios_draft_job,
+            usace_caution_areas_draft_job,
+            plate_boundaries_draft_job,
+            eia_power_plants_draft_job,
+            eia_ethanol_plants_draft_job,
+            eia_natural_gas_processing_plants_draft_job,
+            epa_power_generation_draft_job,
+            epa_icis_wastewater_draft_job,
+            epa_frs_naics_draft_job,
+            gcca_warehouses_draft_job,
+            bsee_ocs_platforms_draft_job,
+            proposed_critical_habitat_draft_job,
+            usace_pile_locations_draft_job,
+            usace_daymark_locations_draft_job,
+            usace_lateral_buoys_draft_job,
+            usace_landmark_locations_draft_job,
+            usace_dynamic_buoys_draft_job,
+            usace_pipeline_areas_draft_job,
+            usace_data_quality_areas_draft_job,
+            usace_dumping_ground_areas_draft_job,
+            nces_private_schools_draft_job,
+            us_county_boundaries_draft_job,
+            us_state_boundaries_draft_job,
+            nces_public_schools_draft_job,
+            coastlines_usace_ienc_draft_job,
+            locks_usace_ienc_draft_job,
+            lock_basins_usace_ienc_draft_job,
+            arc_regions_draft_job,
+            aiannh_source_integrity_refresh_job,
+            red_cross_headquarters_draft_job,
+            usace_airport_area_draft_job,
+            amtrak_draft_refresh_job,
+            faa_aviation_draft_refresh_job,
+            ibc_boundary_draft_refresh_job,
+            fws_cbrs_buffer_draft_refresh_job,
+            fws_cmt_locations_draft_refresh_job,
+            fws_cbrs_map_panels_draft_refresh_job,
+            fws_cbrs_prohibitions_draft_refresh_job,
+            fws_cbrs_units_draft_refresh_job,
+            fws_generalized_units_draft_refresh_job,
+            cdp_source_integrity_job,
+            state_capitols_draft_job,
+            national_inventory_of_dams_draft_job,
+            csa_source_integrity_job,
+            concity_source_integrity_job,
+            usace_conveyor_areas_draft_job,
+            usace_depth_areas_draft_job,
+            county_subdivisions_draft_refresh_job,
+            usace_crane_locations_draft_job,
+            usace_floating_docks_draft_job,
+            usace_data_coverage_areas_draft_job,
+            epa_rmp_facilities_draft_job,
+            epa_frs_sic_draft_job,
+            epa_rcra_tsd_draft_job,
+            docks_draft_job,
+            epa_eez_draft_job,
+            epa_regions_with_eez_draft_job,
+            epa_frs_tri_draft_job,
+            epa_tsca_draft_job,
+            epa_frs_interests_draft_job,
+            fdic_locations_draft_job,
+            fema_regions_draft_job,
+            bts_national_transit_map_agencies_draft_job,
+        ],
+        discovered("JOBS"),
+    ),
+    schedules=unique(
+        [
+            bts_ferry_terminals_draft_refresh_schedule,
+            holocene_source_integrity_schedule,
+            ferry_routes_source_integrity_schedule,
+            epa_large_scale_source_integrity_schedule,
+            fuds_irm_property_point_draft_schedule,
+            fuds_irm_property_boundary_draft_schedule,
+            fuds_property_boundaries_draft_schedule,
+            bts_marine_roro_draft_schedule,
+            bts_rail_tofc_cofc_draft_schedule,
+            epa_regions_draft_schedule,
+            epa_small_scale_source_integrity_schedule,
+            fema_offices_draft_schedule,
+            epa_sems_source_integrity_schedule,
+            nbi_source_integrity_schedule,
+            elsd_source_integrity_schedule,
+            epa_disaster_debris_draft_schedule,
+            colleges_source_integrity_schedule,
+            quaternary_fault_lines_draft_schedule,
+            courthouses_draft_schedule,
+            census_primary_roads_draft_schedule,
+            census_block_groups_draft_schedule,
+            census_tracts_draft_schedule,
+            usace_pylon_areas_draft_schedule,
+            hf_areas_usace_ienc_draft_schedule,
+            land_region_areas_usace_ienc_draft_schedule,
+            faa_airspace_draft_refresh_schedule,
+            noaa_eez_draft_weekly_schedule,
+            noaa_territorial_draft_weekly_schedule,
+            noaa_contiguous_draft_refresh_schedule,
+            noaa_dart_draft_refresh_schedule,
+            usgs_ems_stations_draft_refresh_schedule,
+            pylon_locations_draft_refresh_schedule,
+            distance_marks_draft_refresh_schedule,
+            recommended_tracks_draft_schedule,
+            fuel_stations_draft_refresh_schedule,
+            usace_overhead_pipeline_lines_draft_schedule,
+            usace_overhead_cables_draft_schedule,
+            usace_dam_lines_draft_schedule,
+            building_locations_draft_schedule,
+            river_areas_usace_ienc_draft_schedule,
+            river_gauges_usace_ienc_draft_schedule,
+            shoreline_construction_locations_usace_ienc_draft_schedule,
+            sea_area_locations_usace_ienc_draft_schedule,
+            sea_areas_usace_ienc_draft_schedule,
+            shoreline_construction_areas_usace_ienc_draft_schedule,
+            shoreline_construction_lines_usace_ienc_draft_schedule,
+            small_craft_facility_areas_usace_ienc_draft_schedule,
+            sloped_ground_lines_usace_ienc_draft_schedule,
+            usace_obstruction_lines_draft_schedule,
+            usace_mooring_facility_lines_draft_schedule,
+            usace_obstruction_locations_draft_schedule,
+            floodwalls_usace_ienc_draft_schedule,
+            harbor_facility_locations_usace_ienc_draft_schedule,
+            usace_administrative_areas_draft_schedule,
+            usace_navigation_marks_areas_draft_schedule,
+            usace_navigation_lights_draft_schedule,
+            usace_notice_marks_draft_schedule,
+            secondary_school_districts_draft_refresh_schedule,
+            principal_ports_draft_schedule,
+            usace_berths_areas_draft_schedule,
+            usace_dry_docks_draft_schedule,
+            us_county_boundaries_draft_schedule,
+            us_state_boundaries_draft_schedule,
+            unified_school_districts_draft_refresh_schedule,
+            usace_pontoon_areas_draft_schedule,
+            usace_hulke_areas_draft_schedule,
+            usace_landmark_areas_draft_schedule,
+            puerto_rico_subbarrios_draft_schedule,
+            usace_caution_areas_draft_schedule,
+            plate_boundaries_draft_schedule,
+            eia_power_plants_draft_schedule,
+            eia_ethanol_plants_draft_schedule,
+            eia_natural_gas_processing_plants_draft_schedule,
+            epa_power_generation_draft_schedule,
+            epa_icis_wastewater_draft_schedule,
+            fuds_projects_points_draft_schedule,
+            nfhl_nodes_draft_schedule,
+            nfhl_hydrologic_reaches_draft_schedule,
+            nfhl_seclusion_boundaries_draft_schedule,
+            epa_frs_naics_draft_schedule,
+            gcca_warehouses_draft_schedule,
+            bsee_ocs_platforms_draft_schedule,
+            proposed_critical_habitat_draft_schedule,
+            usace_pile_locations_draft_schedule,
+            usace_daymark_locations_draft_schedule,
+            usace_lateral_buoys_draft_schedule,
+            usace_landmark_locations_draft_schedule,
+            usace_dynamic_buoys_draft_schedule,
+            usace_pipeline_areas_draft_schedule,
+            usace_data_quality_areas_draft_schedule,
+            usace_dumping_ground_areas_draft_schedule,
+            nces_private_schools_draft_schedule,
+            nces_public_schools_draft_schedule,
+            coastlines_usace_ienc_draft_schedule,
+            locks_usace_ienc_draft_schedule,
+            lock_basins_usace_ienc_draft_schedule,
+            arc_regions_draft_schedule,
+            aiannh_source_integrity_refresh_schedule,
+            red_cross_headquarters_draft_schedule,
+            usace_airport_area_draft_schedule,
+            amtrak_draft_refresh_schedule,
+            faa_aviation_draft_refresh_schedule,
+            ibc_boundary_draft_refresh_schedule,
+            fws_cbrs_buffer_draft_refresh_schedule,
+            fws_cmt_locations_draft_refresh_schedule,
+            fws_cbrs_map_panels_draft_refresh_schedule,
+            fws_cbrs_prohibitions_draft_refresh_schedule,
+            fws_cbrs_units_draft_refresh_schedule,
+            fws_generalized_units_draft_refresh_schedule,
+            cdp_source_integrity_schedule,
+            state_capitols_draft_schedule,
+            national_inventory_of_dams_draft_schedule,
+            csa_source_integrity_schedule,
+            concity_source_integrity_schedule,
+            usace_conveyor_areas_draft_schedule,
+            usace_depth_areas_draft_schedule,
+            county_subdivisions_draft_refresh_schedule,
+            usace_crane_locations_draft_schedule,
+            usace_floating_docks_draft_schedule,
+            usace_data_coverage_areas_draft_schedule,
+            epa_rmp_facilities_draft_schedule,
+            epa_frs_sic_draft_schedule,
+            epa_frs_interest_contact_draft_schedule,
+            epa_rcra_tsd_draft_schedule,
+            docks_draft_schedule,
+            epa_eez_draft_schedule,
+            epa_regions_with_eez_draft_schedule,
+            epa_frs_tri_draft_schedule,
+            epa_tsca_draft_schedule,
+            epa_frs_interests_draft_schedule,
+            fdic_locations_draft_schedule,
+            fema_regions_draft_schedule,
+            fuds_division_draft_schedule,
+            fuds_district_boundaries_draft_schedule,
+            tsunami_events_draft_schedule,
+            bts_air_truck_draft_schedule,
+            fuds_mrs_draft_schedule,
+            fuds_public_properties_draft_schedule,
+            bts_national_transit_map_agencies_draft_schedule,
+        ],
+        discovered("SCHEDULES"),
+    ),
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={

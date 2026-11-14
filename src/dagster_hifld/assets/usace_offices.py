@@ -38,3 +38,8 @@ def usace_offices_source_quality(usace_offices: dict) -> AssetCheckResult:
 usace_offices_draft_job = define_asset_job("usace_offices_draft_refresh", selection=AssetSelection.assets(usace_offices))
 usace_offices_draft_schedule = ScheduleDefinition(name="usace_offices_draft_monthly", job=usace_offices_draft_job,
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York", default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [usace_offices]
+ASSET_CHECKS = [usace_offices_source_quality]
+JOBS = [usace_offices_draft_job]
+SCHEDULES = [usace_offices_draft_schedule]

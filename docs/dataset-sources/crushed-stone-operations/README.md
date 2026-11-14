@@ -1,0 +1,12 @@
+# Crushed-stone historical candidate (draft)
+
+Explicit input: Stanford `cs268nn2622` preservation-as-provided package; USGS historical `crstonx020.xml` identifies the active-2002 dataset family.
+Package ID: `stanford-cs268nn2622-preservation-as-provided-v1`; no default fetch or archive polling.
+The 2,324-row native NAD83 candidate preserves all 11 DBF fields, IDs, exact Decimal128 values and Point WKB in GeoParquet.
+Published 766-row MINOP construction-minerals data remains separate; source authenticity/selection, dataset identity, baseline/ID/schema/coverage compatibility, rights, contract and release require external decisions.
+
+Set `HIFLD_CRUSHED_STONE_CAPTURE_DIR` to the complete preserved capture directory and `HIFLD_CRUSHED_STONE_PACKAGE_ID` to the ID above.
+Run registered job `crushed_stone_preservation_reconstruct`; schedule `crushed_stone_preservation_integrity` is STOPPED.
+Real-input tests: `HIFLD_CRUSHED_STONE_REAL_CAPTURE_DIR=/path/to/explicit-package PYTHONPATH=.:src:tests python -m unittest test_crushed_stone test_crushed_stone_registration`.
+Isolated complete replay: `PYTHONPATH=.:src python scripts/verify_crushed_stone_draft.py --capture-dir /path/to/explicit-package --runtime /new/isolated/runtime`.
+The original coordinator input and verification artifacts are referenced by SHA256 in PR #462, but were not present in the recovery worktree. The replacement proof therefore uses a new bounded retrieval of the same pinned Stanford preservation files and separately pinned published candidates. Its bodies, wire captures, and HTTP receipts are retained outside Git under `/workspace/work/48-evidence/capture-current-20261021`; receipt timestamps are the new retrieval observations and do not recover or replace the earlier receipt history. The no-Git runtime, Dagster database, and reports are retained under `/workspace/work/48-evidence/no-git-runtime-v4`. The registered source run is `67a2088c-d3e1-4b62-bd0a-9917f004a7bf`; the candidate quality/approval graph is `c63b7832-156c-4be7-973d-b7751b1bc41c`; the synthetic blocking-quality graph is `942251c3-c353-40ae-a54e-4c4dfa3030ae`; and the post-catalog source-cache reuse run is `b1f6b07b-122e-4c4d-8b47-5f5430144793`. That cache run appended one expected acquisition-attempt record; the candidate was reused and the 14-object published fixture remained unchanged. Issue #48 / PR #616 carry recovery progress and pending external decisions.
