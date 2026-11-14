@@ -200,6 +200,10 @@ GEOPARQUET_POLICY_REGISTRY: dict[tuple[str, str], GeoParquetWritePolicy] = {
     ("nhd", "flowline-small-scale-2"): GeoParquetWritePolicy(force_s2=True),
     ("nhd", "flowline"): GeoParquetWritePolicy(force_admin_columns=("workunitid",)),
     ("nhd", "area-large-scale-2"): GeoParquetWritePolicy(force_s2=True),
+    ("wbd", "8-digit-hu-subbasin"): GeoParquetWritePolicy(
+        derived_huc_column="huc8",
+        derived_huc_partition_columns=("huc2",),
+    ),
     ("wbd", "10-digit-hu-watershed"): GeoParquetWritePolicy(
         derived_huc_column="huc10",
         derived_huc_partition_columns=("huc2",),
