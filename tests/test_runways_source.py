@@ -203,11 +203,11 @@ class RunwaysTests(unittest.TestCase):
         shapes = [shapely.from_wkb(wkb) if wkb is not None else None
                   for wkb in table.column("geometry").to_pylist()]
         self.assertIsInstance(shapes[0], shapely.MultiPolygon)
-        self.assertEqual(shapely.geometry_count(shapes[0]), 1)
+        self.assertEqual(shapely.get_num_geometries(shapes[0]), 1)
         # Shell with its hole.
-        self.assertEqual(shapely.geometry_count(shapes[1]), 1)
-        self.assertEqual(len(shapely.get_rings(shapes[1])), 2)
-        self.assertEqual(shapely.geometry_count(shapes[2]), 2)
+        self.assertEqual(shapely.get_num_geometries(shapes[1]), 1)
+        self.assertEqual(shapely.get_num_interior_rings(shapely.get_geometry(shapes[1], 0)), 1)
+        self.assertEqual(shapely.get_num_geometries(shapes[2]), 2)
         self.assertIsNone(shapes[3])
         self.assertIsNone(shapes[4])
         self.assertIsInstance(shapes[5], shapely.MultiPolygon)

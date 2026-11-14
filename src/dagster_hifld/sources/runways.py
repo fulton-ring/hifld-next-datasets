@@ -277,8 +277,8 @@ def _esri_polygon_wkb(rings: list) -> bytes:
         if not parents:
             raise ValueError("source_polygon_hole_without_containing_shell")
         assigned[min(parents)[1]].append(ring)
-    return MultiPolygon([Polygon(shell, assigned[index])
-                         for index, (_, shell) in enumerate(shells)]).wkb
+    return MultiPolygon([Polygon(ring, assigned[index])
+                         for index, (ring, _polygon) in enumerate(shells)]).wkb
 
 
 def _classify_ring_geometries(features: list[dict[str, object]], attr_names: list[str]):
