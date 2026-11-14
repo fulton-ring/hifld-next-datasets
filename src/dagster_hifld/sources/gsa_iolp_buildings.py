@@ -40,6 +40,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix,
     capture_get,
     processing_identity,
+    quarantine_incomplete_capture,
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
@@ -400,9 +401,9 @@ def _parquet(columns: dict, count: int, bbox: list[float]) -> bytes:
     return body
 
 
-def _load_capture(root: Path, identity: dict) -> dict:
+def _load_capture(root: Path, identity: dict, artifact_roster: dict) -> dict:
     roster = capture_roster_digests(root, exclude={"capture_manifest.json"})
-    if roster != identity.get("artifact_roster"):
+    if roster != artifact_roster:
         raise GsaIolpBuildingsError("capture_roster_digest_drift")
     catalog_body = (root / "catalog_discovery.body").read_bytes()
     catalog_receipt = json.loads((root / "catalog_discovery.receipt.json").read_bytes())
@@ -417,7 +418,7 @@ def _load_capture(root: Path, identity: dict) -> dict:
             or catalog_receipt.get("sha256") != _sha(catalog_body):
         raise GsaIolpBuildingsError("capture_catalog_receipt_invalid")
     if receipt.get("method") != "GET" \
-            or receipt.get("url") != _redact_url(identity["download_url"]) \
+            or receipt.get("url") != _redact_url(redirect_receipt.get("final_url")) \
             or receipt.get("complete_body") is not True or receipt.get("status") != 200 \
             or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body) \
             or receipt.get("final_url") != _redact_url(receipt.get("final_url")):
@@ -445,30 +446,34 @@ def _capture(root: Path, storage: StagingStorageResource, version: str) -> dict:
         identity = manifest.get("identity")
         if not isinstance(identity, dict) or not isinstance(identity.get("download_url"), str):
             raise GsaIolpBuildingsError("capture_manifest_identity_invalid")
-        validate_capture_roster(root, set(manifest.get("artifact_roster", {}))
-                                | {"capture_manifest.json"})
-        return _load_capture(root, identity)
+        roster = manifest.get("artifact_roster")
+        if not isinstance(roster, dict) or not roster:
+            raise GsaIolpBuildingsError("capture_manifest_roster_invalid")
+        validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
+        return _load_capture(root, identity, roster)
     if any(root.glob("*")):
         raise GsaIolpBuildingsError("unsealed_capture_attempt")
     root.mkdir(parents=True, exist_ok=True)
+    captured: dict[str, tuple[bytes, dict]] = {}
     try:
         with httpx.Client(follow_redirects=False,
                           timeout=httpx.Timeout(60, connect=15),
                           headers={"User-Agent": "hifld-next-datasets/gsa-iolp-buildings-draft"}) as client:
             catalog_body, catalog_receipt = capture_get(
                 client, CATALOG_URL, root, "catalog_discovery", max_bytes=16 * 1024 * 1024)
+            captured["catalog_discovery"] = (catalog_body, catalog_receipt)
             identity = select_buildings_distribution(_strict_json(catalog_body))
             body, receipt, redirect_receipt = _capture_ckan_download(
                 client, identity["download_url"], root, "buildings_xlsx")
+            captured["buildings_xlsx"] = (body, receipt)
+        roster = capture_roster_digests(root, exclude={"capture_manifest.json"})
         manifest_path.write_bytes(_canonical({
             "complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(),
             "identity": identity,
-            "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
+            "artifact_roster": roster,
         }) + b"\n")
-        return {"identity": identity, "catalog_body": catalog_body, "body": body,
-                "catalog_receipt": catalog_receipt, "receipt": receipt,
-                "redirect_receipt": redirect_receipt, "capture_root": root}
+        return _load_capture(root, identity, roster)
     except Exception as exc:
         receipts = {}
         for path in sorted(root.glob("*.receipt.json")):
@@ -479,7 +484,8 @@ def _capture(root: Path, storage: StagingStorageResource, version: str) -> dict:
         manifest_path.write_bytes(_canonical({
             "complete": False, "captured_at": datetime.now(timezone.utc).isoformat(),
             "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, {}, type(exc).__name__)
+        quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captured,
+                                      type(exc).__name__)
         raise
 
 

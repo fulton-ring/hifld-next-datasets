@@ -1,12 +1,15 @@
 """Focused GSA IOLP Buildings source-contract, decode and validation checks."""
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
+import httpx
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -15,10 +18,12 @@ import pyogrio
 from dagster_hifld.assets.gsa_iolp_buildings import (
     gsa_iolp_buildings_complete, gsa_iolp_buildings_draft_schedule,
 )
+from dagster_hifld.http_capture import capture_roster_digests
+from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.gsa_iolp_buildings import (
     CATALOG_IDENTIFIER, CATALOG_LICENSE, CATALOG_URL, CKAN_DATASET_ID, DATASET_SLUG,
     EXPECTED_FIELDS, FIELD_NAMES, FILE_SLUG, LANDING_URL, GsaIolpBuildingsError,
-    _decode_workbook, _ogr_types, _parquet, _point_wkb,
+    _capture, _decode_workbook, _ogr_types, _parquet, _point_wkb,
     parse_release_date, select_buildings_distribution,
 )
 
@@ -300,6 +305,182 @@ class GsaIolpBuildingsAssetTest(unittest.TestCase):
                      "coverage_accepted", "rights_accepted",
                      "baseline_accepted", "release_accepted"):
             self.assertFalse(metadata[flag].value)
+
+
+class _BodyStream(httpx.SyncByteStream):
+    def __init__(self, body: bytes):
+        self.body = body
+
+    def __iter__(self):
+        yield self.body
+
+    def close(self):
+        return None
+
+
+class GsaIolpBuildingsCaptureReplayTest(unittest.TestCase):
+    """Sealed-capture first capture, no-network replay and failure quarantine."""
+
+    SIGNED_S3_TARGET = ("https://inventory-filestore.s3.us-gov-west-1.amazonaws.com/"
+                        f"{CKAN_DATASET_ID}/c9db0ffa-d55b-4dc4-b62a-597c72737deb/"
+                        "2026-11-6-iolp-buildings.xlsx"
+                        "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=300&X-Amz-Signature=sig")
+    DOWNLOAD_PATH = (f"/dataset/{CKAN_DATASET_ID}/"
+                     "resource/c9db0ffa-d55b-4dc4-b62a-597c72737deb/"
+                     "download/2026-11-6-iolp-buildings.xlsx")
+
+    def _workbook_bytes(self, root: Path) -> bytes:
+        path = root / "fixture_buildings.xlsx"
+        pyogrio.write_dataframe(_workbook(), str(path), driver="XLSX", layer="Sheet1")
+        return path.read_bytes()
+
+    def _transport(self, xlsx: bytes, *, file_status: int = 200, log: list | None = None):
+        catalog_body = json.dumps(_catalog_record()).encode("utf-8")
+        target_path = urlsplit(self.SIGNED_S3_TARGET).path
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if log is not None:
+                log.append(url)
+            if url == CATALOG_URL:
+                return httpx.Response(200, stream=_BodyStream(catalog_body))
+            if urlsplit(url).path == self.DOWNLOAD_PATH:
+                return httpx.Response(302, stream=_BodyStream(b""),
+                                      headers={"location": self.SIGNED_S3_TARGET})
+            if urlsplit(url).path == target_path:
+                if file_status != 200:
+                    return httpx.Response(file_status, stream=_BodyStream(b"forbidden"))
+                return httpx.Response(200, stream=_BodyStream(xlsx))
+            raise AssertionError("unrouted request " + url)
+
+        return httpx.MockTransport(respond)
+
+    def _run_capture(self, root: Path, storage: StagingStorageResource, xlsx: bytes, *,
+                     file_status: int = 200, log: list | None = None, refuse: bool = False):
+        transport = self._transport(xlsx, file_status=file_status, log=log)
+        if refuse:
+            def deny(request: httpx.Request) -> httpx.Response:
+                raise AssertionError("second network access attempted")
+
+            transport = httpx.MockTransport(deny)
+        real_client = httpx.Client
+        with patch("dagster_hifld.sources.gsa_iolp_buildings.httpx.Client",
+                   side_effect=lambda **kwargs: real_client(transport=transport, **kwargs)):
+            return _capture(root, storage, "vtest")
+
+    def _staging(self, root: Path) -> StagingStorageResource:
+        return StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                      prefix="", backend="local")
+
+    def test_first_capture_replays_without_second_network(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root_dir = Path(temp)
+            xlsx = self._workbook_bytes(root_dir)
+            storage = self._staging(root_dir)
+            root = root_dir / "capture"
+            log = []
+            first = self._run_capture(root, storage, xlsx, log=log)
+            self.assertEqual([urlsplit(url).path for url in log],
+                             [urlsplit(CATALOG_URL).path, self.DOWNLOAD_PATH,
+                              urlsplit(self.SIGNED_S3_TARGET).path])
+            self.assertEqual(first["body"], xlsx)
+            self.assertEqual(first["redirect_receipt"]["url"], first["identity"]["download_url"])
+            redacted_target = "https://" + urlsplit(self.SIGNED_S3_TARGET).netloc \
+                + urlsplit(self.SIGNED_S3_TARGET).path
+            self.assertEqual(first["receipt"]["url"], redacted_target)
+            self.assertEqual(first["receipt"]["final_url"], redacted_target)
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertTrue(manifest["complete"])
+            self.assertEqual(manifest["identity"]["download_url"],
+                             "https://inventory.data.gov" + self.DOWNLOAD_PATH)
+            self.assertIn("catalog_discovery.body", manifest["artifact_roster"])
+            second = self._run_capture(root, storage, xlsx, refuse=True)
+            self.assertEqual(second["identity"], first["identity"])
+            self.assertEqual(second["body"], first["body"])
+            self.assertEqual(second["catalog_receipt"], first["catalog_receipt"])
+            self.assertEqual(second["receipt"], first["receipt"])
+            self.assertEqual(second["redirect_receipt"], first["redirect_receipt"])
+
+    def test_reuse_rejects_manifest_roster_digest_drift(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root_dir = Path(temp)
+            xlsx = self._workbook_bytes(root_dir)
+            storage = self._staging(root_dir)
+            root = root_dir / "capture"
+            self._run_capture(root, storage, xlsx)
+            manifest_path = root / "capture_manifest.json"
+            manifest = json.loads(manifest_path.read_bytes())
+            manifest["artifact_roster"]["catalog_discovery.body"]["sha256"] = "0" * 64
+            manifest_path.write_bytes(json.dumps(manifest).encode("utf-8"))
+            with self.assertRaises(GsaIolpBuildingsError) as ctx:
+                self._run_capture(root, storage, xlsx, refuse=True)
+            self.assertEqual(str(ctx.exception), "capture_roster_digest_drift")
+
+    def test_reuse_rejects_workbook_receipt_linkage_drift(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root_dir = Path(temp)
+            xlsx = self._workbook_bytes(root_dir)
+            storage = self._staging(root_dir)
+            root = root_dir / "capture"
+            self._run_capture(root, storage, xlsx)
+            receipt_path = root / "buildings_xlsx.receipt.json"
+            receipt = json.loads(receipt_path.read_bytes())
+            receipt["url"] = receipt["final_url"] = "https://inventory.data.gov" + self.DOWNLOAD_PATH
+            receipt_path.write_bytes(json.dumps(receipt).encode("utf-8"))
+            self._reseal(root)
+            with self.assertRaises(GsaIolpBuildingsError) as ctx:
+                self._run_capture(root, storage, xlsx, refuse=True)
+            self.assertEqual(str(ctx.exception), "capture_workbook_receipt_invalid")
+
+    def test_reuse_rejects_redirect_receipt_drift(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root_dir = Path(temp)
+            xlsx = self._workbook_bytes(root_dir)
+            storage = self._staging(root_dir)
+            root = root_dir / "capture"
+            self._run_capture(root, storage, xlsx)
+            redirect_path = root / "buildings_xlsx.redirect.receipt.json"
+            redirect = json.loads(redirect_path.read_bytes())
+            redirect["status"] = 200
+            redirect_path.write_bytes(json.dumps(redirect).encode("utf-8"))
+            self._reseal(root)
+            with self.assertRaises(GsaIolpBuildingsError) as ctx:
+                self._run_capture(root, storage, xlsx, refuse=True)
+            self.assertEqual(str(ctx.exception), "capture_redirect_receipt_invalid")
+
+    def _reseal(self, root: Path) -> None:
+        manifest_path = root / "capture_manifest.json"
+        manifest = json.loads(manifest_path.read_bytes())
+        manifest["artifact_roster"] = capture_roster_digests(
+            root, exclude={"capture_manifest.json"})
+        manifest_path.write_bytes(json.dumps(manifest).encode("utf-8"))
+
+    def test_capture_failure_quarantines_evidence_and_propagates(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root_dir = Path(temp)
+            xlsx = self._workbook_bytes(root_dir)
+            storage = self._staging(root_dir)
+            root = root_dir / "capture"
+            with self.assertRaises(GsaIolpBuildingsError) as ctx:
+                self._run_capture(root, storage, xlsx, file_status=404)
+            self.assertEqual(str(ctx.exception), "ckan_download_file_status_not_ok")
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "GsaIolpBuildingsError")
+            tokens = sorted((root_dir / "staging" / "_quarantine" / DATASET_SLUG).glob("*"))
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "GsaIolpBuildingsError")
+            self.assertEqual(failure["captured_names"], ["catalog_discovery"])
+            retained = (tokens[0] / "raw" / "catalog_discovery.body").read_bytes()
+            self.assertEqual(json.loads(retained), _catalog_record())
+            receipt = json.loads(
+                (tokens[0] / "raw" / "catalog_discovery.receipt.json").read_bytes())
+            self.assertEqual(receipt["url"], CATALOG_URL)
+            self.assertTrue(receipt["complete_body"])
+            with self.assertRaises(GsaIolpBuildingsError) as replay:
+                self._run_capture(root, storage, xlsx, refuse=True)
+            self.assertEqual(str(replay.exception), "capture_manifest_incomplete")
 
 
 if __name__ == "__main__":
