@@ -35,10 +35,10 @@ roster 1..656,986 (``returnIdsOnly`` works for this producer), so completeness
 is established by the pinned count, the pinned ID-roster digest (captured
 before and after the walk), the strict ascending OBJECTID keyset walk, the
 page-count ceiling, per-page ``exceededTransferLimit`` consistency and the
-empty tail-page witness. The per-value and per-geometry baseline digests stay
-unpinned until the first complete capture of this view; they are computed and
-reported by ``build_pad_us_protection_mechanism_category_baseline`` and then
-pinned as constants for later drift refusal.
+empty tail-page witness. The per-value and per-geometry baseline digests are
+pinned from the first complete capture of this view (sealed 2026-11-14);
+``build_pad_us_protection_mechanism_category_baseline`` recomputes them for
+verification, and later captures are refused and quarantined on drift.
 
 Scale note (observed on the superseded service 2026-11-13, carried forward as
 the working transfer model): the population's geometry weight is heavily
@@ -135,37 +135,37 @@ EXPECTED_COUNT = 656_986
 EXPECTED_MAX_RECORD_COUNT = 2000
 EXPECTED_SCHEMA_SHA256 = "020f3a55a746d9280b8750d6401a8fdd6c1579ffb6a0c8d325dd854ff4762f4a"
 EXPECTED_IDS_SHA256 = "136194b0dfac75e6d781c82e4d3d2a2a0e39074059326628c9182730bd312c7b"
-# The per-value and per-geometry baselines stay unpinned until the first
-# complete capture of the maintained view (656,986 features ≈ 657 pages);
-# build_pad_us_protection_mechanism_category_baseline computes them from a
-# completed capture for the maintainer to pin.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = 0
+# Pinned from the first complete capture of the maintained USGS-linked view
+# (657 keyset pages, 656,986 features, sealed 2026-11-14; count, ID roster and
+# schema digests verified unchanged before and after the walk).
+EXPECTED_RECORD_SHA256 = "9e9581c01249866a808d340892e89b6562f0dc063241cb66d038bdf2dd17c6a3"
+EXPECTED_GEOMETRY_SHA256 = "81d48e7d8e2f52f5f72034a8519944174c8af824416900fd6d46b3307ad84d61"
+EXPECTED_NULL_GEOMETRY_COUNT = 6
 # Producer-served features whose rings cannot form a valid OGC polygon are
-# gated, never silently coerced. Pending the first complete capture of the
-# maintained view the pinned families are empty, so any occurrence fails the
-# capture closed and is recorded; the observed counts are then pinned exactly
-# as the superseded service's capture did (302 degenerate rings, 40 unassigned
-# holes observed there).
+# gated, never silently coerced. The first complete capture of the maintained
+# view failed closed on these counts and they are now pinned as observed; any
+# change fails the next capture and is quarantined.
 UNUSABLE_GEOMETRY_MODES = frozenset({
     "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
     "source_polygon_hole_unassigned",
 })
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {}
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {
+    "source_polygon_exterior_missing": 12,
+    "source_polygon_hole_unassigned": 66,
+    "source_polygon_ring_degenerate": 792,
+}
 # Producer-served polygons that form valid rings but fail OGC validity
 # (self-intersections and similar defects) are retained verbatim in the
-# candidate, never repaired; pending the first complete capture of the
-# maintained view the pinned count is zero, so any occurrence fails the
-# capture closed and is recorded before the observed count is pinned.
-EXPECTED_INVALID_GEOMETRY_COUNT = 0
+# candidate, never repaired; the count is pinned from the first complete
+# capture of the maintained view and any change fails the next capture.
+EXPECTED_INVALID_GEOMETRY_COUNT = 1948
 EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0672, "ymin": -1733741.441300001,
                          "xmax": 20037507.067199998, "ymax": 12930675.6069}
 BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests are unpinned pending the first "
+    "The record and geometry baseline digests are pinned from the first "
     "complete capture of the maintained USGS-linked view (656,986 features, "
-    "657 retained keyset pages); later captures are gated against them and "
-    "quarantined on drift.")
+    "657 retained keyset pages sealed 2026-11-14); later captures are gated "
+    "against them and quarantined on drift.")
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),

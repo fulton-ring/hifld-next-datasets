@@ -92,13 +92,29 @@ Anonymous JSON access verified on the maintained view:
   1,000-feature pages, empty tail-page witness), not fixed `resultOffset`
   requests.
 
-No complete capture of the maintained view, candidate, or production
-materialization has been produced yet; the draft module retains every response
-and wire receipt in a resumable capture directory, re-verifies the pinned
-count/IDs/schema/extent before and after the walk, quarantines incomplete or
-drifted captures, and keeps all release approvals false with the refresh
-schedule stopped. The per-value and per-geometry baseline digests stay
-unpinned until the first complete capture of this view (656,986 features,
-~657 pages); the superseded service's sealed capture (record `19b85e32...`,
-geometry `368ea3a4...`, 342 unusable-ring features, 3,479 OGC-invalid
-polygons) belongs to the retired source and is never an input.
+## First complete capture of the maintained view (2026-11-14)
+
+The module's resumable gzip keyset walk retained all 657 data pages of
+1,000 features (656,986 features, OBJECTIDs 1..656,986), the empty tail-page
+witness (`OBJECTID>656986`), and the layer/service/count/roster documents
+before and after the walk (all equal; the roster digest and schema digest
+matched the pinned probe values at both ends). The retained capture is
+complete and structurally verified; the producer's own documents were
+re-checked live at the start and end of the walk.
+
+The capture failed closed on the pending-pin comparisons (as designed): the
+view serves producer-served defects that the draft refuses until pinned. A
+measurement pass over the retained pages (the module's own per-feature
+validation, ring semantics and OGC-validity checks) observed:
+
+- record digest `9e9581c01249866a808d340892e89b6562f0dc063241cb66d038bdf2dd17c6a3`
+- geometry digest `81d48e7d8e2f52f5f72034a8519944174c8af824416900fd6d46b3307ad84d61`
+- 6 true null geometries, 870 unusable-ring features (792 degenerate rings,
+  66 unassigned holes, 12 missing exteriors — gated to null candidate
+  geometry, never coerced), and 1,948 OGC-invalid polygons (retained
+  verbatim, never repaired)
+
+These observed values are now pinned in the source module; later captures are
+refused and quarantined on drift. Publication stays blocked pending the
+maintainer acceptance decisions; all runtime approval flags remain false and
+the draft refresh schedule is stopped.

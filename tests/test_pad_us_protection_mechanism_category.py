@@ -257,6 +257,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
         patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}),
         patch.object(src, "EXPECTED_INVALID_GEOMETRY_COUNT", 0),
         patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
+        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", 0),
         patch.object(asset_module, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
@@ -317,16 +318,19 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
         self.assertEqual(len(src.NATIVE_FIELDS), 37)
         self.assertEqual(src.MIN_FREE_BYTES, 25_000_000_000)
         self.assertEqual(src.ACCEPT_ENCODING, "gzip")
-        # The per-value and per-geometry baselines stay unpinned until the
-        # first complete capture of the maintained view; the ID roster and
-        # schema digests are pinned from the 2026-11-14 probes.
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
+        # The per-value and per-geometry baselines are pinned from the first
+        # complete capture of the maintained view; the ID roster and schema
+        # digests are pinned from the 2026-11-14 probes.
+        self.assertEqual(src.EXPECTED_RECORD_SHA256, "9e9581c01249866a808d340892e89b6562f0dc063241cb66d038bdf2dd17c6a3")
+        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "81d48e7d8e2f52f5f72034a8519944174c8af824416900fd6d46b3307ad84d61")
         self.assertEqual(src.EXPECTED_IDS_SHA256,
                          "136194b0dfac75e6d781c82e4d3d2a2a0e39074059326628c9182730bd312c7b")
         self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
                          "020f3a55a746d9280b8750d6401a8fdd6c1579ffb6a0c8d325dd854ff4762f4a")
-        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
+                         {"source_polygon_exterior_missing": 12,
+                          "source_polygon_hole_unassigned": 66,
+                          "source_polygon_ring_degenerate": 792})
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
@@ -335,25 +339,23 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
     def test_blocking_completeness_check_gates_the_pinned_null_contract(self):
         # Every producer null geometry is either a true null or an
         # unusable-ring gate, so the blocking check must accept exactly the
-        # pinned contract and reject any drift from it. Pending the first
-        # complete capture of the maintained view the pinned families are
-        # empty, so any null geometry fails the capture closed.
+        # pinned contract and reject any drift from it.
         contract = (src.EXPECTED_NULL_GEOMETRY_COUNT
                     + sum(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values()))
-        self.assertEqual(contract, 0)
         self.assertTrue(pad_us_protection_mechanism_category_complete_contract(
             {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": contract}))
         self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
             {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": contract + 1}))
         self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
             {"feature_count": src.EXPECTED_COUNT - 1, "source_null_geometry_count": contract}))
-        # Once observed counts are pinned (as the superseded service's capture
-        # pinned 302 degenerate rings and 40 unassigned holes), the contract
-        # gates exactly those gated nulls.
+        # A counterfactual contract (the superseded service's observed
+        # families) gates exactly its own pinned nulls and nothing else.
         import dagster_hifld.assets.pad_us_protection_mechanism_category as asset_module
-        with patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
-                          {"source_polygon_ring_degenerate": 302,
-                           "source_polygon_hole_unassigned": 40}), \
+        with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0), \
+                patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
+                             {"source_polygon_ring_degenerate": 302,
+                              "source_polygon_hole_unassigned": 40}), \
+                patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", 0), \
                 patch.object(asset_module, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
                              {"source_polygon_ring_degenerate": 302,
                               "source_polygon_hole_unassigned": 40}):
@@ -369,13 +371,15 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
     def test_pinned_producer_geometry_defect_contract(self):
         # Producer-served unusable rings are gated to explicit nulls and
         # OGC-invalid (self-intersecting) polygons are retained verbatim; both
-        # counts are pinned from a complete capture and any change fails the
-        # next capture. Pending the first complete capture of the maintained
-        # view the pins are empty/zero, so any occurrence fails closed.
-        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
-        self.assertEqual(src.EXPECTED_INVALID_GEOMETRY_COUNT, 0)
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
+        # counts are pinned from the first complete capture of the maintained
+        # view and any change fails the next capture.
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
+                         {"source_polygon_exterior_missing": 12,
+                          "source_polygon_hole_unassigned": 66,
+                          "source_polygon_ring_degenerate": 792})
+        self.assertEqual(src.EXPECTED_INVALID_GEOMETRY_COUNT, 1948)
+        self.assertNotEqual(src.EXPECTED_RECORD_SHA256, "")
+        self.assertNotEqual(src.EXPECTED_GEOMETRY_SHA256, "")
 
     def test_nonnullable_oid_value_null_is_refused(self):
         # OBJECTID is the only non-nullable source attribute (the view layer
@@ -637,6 +641,8 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
             sealed = json.loads((root / "staging" / prefix / "metadata"
                                  / "source_audit.json").read_bytes())
             self.assertEqual(sealed["source_feature_count"], FIXTURE_COUNT)
+            # The seal above ran under fixture_mode with the baseline pins
+            # blanked, so the audit reports the baseline as pending.
             self.assertTrue(sealed["baseline_pending_complete_capture"])
             self.assertEqual(sealed["pagination"]["mode"], "objectid_keyset_asc")
             self.assertTrue(sealed["pagination"]["resumable"])
