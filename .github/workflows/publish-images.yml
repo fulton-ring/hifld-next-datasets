@@ -71,7 +71,8 @@ jobs:
             -m unittest tests.test_schedule_config_validation
 
   publish:
-    if: github.event_name != 'pull_request'
+    # Forks verify the build only; images are published from the upstream repository.
+    if: github.event_name != 'pull_request' && !github.event.repository.fork
     needs: build-only
     runs-on: ubuntu-latest
     permissions:
