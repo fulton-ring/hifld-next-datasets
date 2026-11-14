@@ -54,6 +54,32 @@ def load_staged_geodata(
         return gdf
 
 
+def _pinned_producer_geometry_defects(
+    staging: StagingStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+) -> dict | None:
+    """Pinned producer geometry-defect contract from the staged source audit.
+
+    The catalog population-quality gate must not reject a faithful staged
+    population for producer-served geometry defects that the dataset's own
+    capture pinned and gated upstream. The contract is honored only when the
+    audit pins both counts explicitly; datasets without such a pin keep the
+    strict zero-defect gate.
+    """
+    key = f"{dataset_slug}/{file_slug}/{version}/metadata/source_audit.json"
+    if not staging.object_exists(key):
+        return None
+    audit = json.loads(staging.read_bytes(dataset_slug, file_slug, version,
+                                          "metadata/source_audit.json").decode("utf-8"))
+    if not isinstance(audit, dict) or "producer_invalid_geometry_count" not in audit \
+            or "null_geometry_count" not in audit:
+        return None
+    return {"null_geometry_count": audit["null_geometry_count"],
+            "producer_invalid_geometry_count": audit["producer_invalid_geometry_count"]}
+
+
 def summarize_staged_catalog(
     staging: StagingStorageResource,
     dataset_slug: str,
@@ -77,8 +103,10 @@ def summarize_staged_catalog(
     if not has_other_source(staging, prefix):
         proposed = source_metadata if source_metadata is not None else resolve_native_metadata(staging, prefix)
         if prebuilt_output_spec(proposed, "geoparquet") is not None:
+            defects = _pinned_producer_geometry_defects(staging, dataset_slug, file_slug, version)
             with pinned_native_path(staging, prefix, proposed) as native_path:
-                quality, native_dictionary = summarize_native_path(native_path, dictionary_name, proposed)
+                quality, native_dictionary = summarize_native_path(
+                    native_path, dictionary_name, proposed, producer_geometry_defects=defects)
             dictionary = generate_data_dictionary(gpd.GeoDataFrame(), dictionary_name, source_metadata=proposed)
             dictionary.update(native_dictionary)
             return CatalogSummary(quality, dictionary)

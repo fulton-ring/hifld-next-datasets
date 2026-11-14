@@ -58,6 +58,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Mapping
 from urllib.parse import urlencode, urlsplit
+
+from shapely import from_wkb as _shapely_from_wkb
 from uuid import uuid4
 
 import httpx
@@ -139,6 +141,11 @@ EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {
     "source_polygon_ring_degenerate": 302,
     "source_polygon_hole_unassigned": 40,
 }
+# Producer-served polygons that form valid rings but fail OGC validity
+# (self-intersections and similar defects) are retained verbatim in the
+# candidate, never repaired; the count below is pinned from the first complete
+# capture (442 pages sealed 2026-11-14) and any change fails the next capture.
+EXPECTED_INVALID_GEOMETRY_COUNT = 3479
 EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0642, "ymin": -1733741.441300001,
                          "xmax": 20037507.140600003, "ymax": 12930677.553099995}
 BASELINE_PENDING_NOTE = (
@@ -630,6 +637,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     record_hash, geometry_hash = hashlib.sha256(), hashlib.sha256()
     last_objectid = 0
     null_geometry_count = 0
+    invalid_geometry_count = 0
     ring_count = 0
     vertex_count = 0
     unusable_geometry: dict[str, int] = {}
@@ -704,6 +712,12 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                             unusable_geometry.get(unusable_mode, 0) + 1
                     else:
                         geometries.append(wkb)
+                        # OGC self-intersection and similar defects are
+                        # producer facts of the faithful capture: retained
+                        # verbatim in digests and geometry, counted against
+                        # the pinned contract, never repaired or coerced.
+                        if not _shapely_from_wkb(wkb).is_valid:
+                            invalid_geometry_count += 1
                     geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
                 featclass = attrs["FeatClass"]
                 featclass_distribution[featclass] = \
@@ -731,6 +745,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             raise PadUsProtectionError("source_null_geometry_count_drift")
         if unusable_geometry != EXPECTED_UNUSABLE_GEOMETRY_COUNTS:
             raise PadUsProtectionError("source_unusable_geometry_count_drift")
+        if invalid_geometry_count != EXPECTED_INVALID_GEOMETRY_COUNT:
+            raise PadUsProtectionError("source_invalid_geometry_count_drift")
         if tmp_path is not None:
             tmp_path.replace(sink_path)
     finally:
@@ -748,6 +764,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     return {"fields": fields, "schema_sha": schema_sha, "record_sha": record_sha,
             "geometry_sha": geometry_sha, "ids_sha": ids_sha,
             "null_geometry_count": null_geometry_count, "parquet_path": sink_path,
+            "invalid_geometry_count": invalid_geometry_count,
             "ring_count": ring_count, "vertex_count": vertex_count,
             "unusable_geometry": unusable_geometry,
             "featclass_distribution": featclass_distribution, "observed_bounds": bounds,
@@ -907,6 +924,9 @@ def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, clie
         "source_schema_sha256": extracted["schema_sha"],
         "source_feature_count": EXPECTED_COUNT,
         "source_max_objectid": extracted["max_objectid"],
+        "source_null_geometry_count": extracted["null_geometry_count"],
+        "source_unusable_geometry_counts": dict(sorted(extracted["unusable_geometry"].items())),
+        "source_invalid_geometry_count": extracted["invalid_geometry_count"],
         "resumed_pages": len(pages),
         "first_captured_at": first_captured_at, "last_captured_at": last_captured_at,
     }) + b"\n")
@@ -944,6 +964,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "geometry_type": "Polygon / MultiPolygon",
         "null_geometry_count": extracted["null_geometry_count"],
         "unique_source_id_count": EXPECTED_COUNT,
+        "producer_invalid_geometry_count": extracted["invalid_geometry_count"],
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
         "source_max_objectid": extracted["max_objectid"],

@@ -239,6 +239,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
         patch.object(src, "EXPECTED_IDS_SHA256", _FIXTURE_IDS_SHA),
         patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0),
         patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}),
+        patch.object(src, "EXPECTED_INVALID_GEOMETRY_COUNT", 0),
         patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
         patch.object(asset_module, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}),
         patch.object(src, "_default_client",
@@ -320,6 +321,60 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
             {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": contract + 1}))
         self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
             {"feature_count": src.EXPECTED_COUNT - 1, "source_null_geometry_count": contract}))
+
+    def test_pinned_producer_geometry_defect_contract(self):
+        # Producer-served unusable rings are gated to explicit nulls and
+        # OGC-invalid (self-intersecting) polygons are retained verbatim; both
+        # counts are pinned from the first complete capture and any change
+        # fails the next capture.
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
+                         {"source_polygon_ring_degenerate": 302,
+                          "source_polygon_hole_unassigned": 40})
+        self.assertEqual(src.EXPECTED_INVALID_GEOMETRY_COUNT, 3479)
+        self.assertNotEqual(src.EXPECTED_RECORD_SHA256, "")
+        self.assertNotEqual(src.EXPECTED_GEOMETRY_SHA256, "")
+
+    def test_native_catalog_quality_honors_the_pinned_defect_contract(self):
+        # The full-population native catalog gate must accept a staged
+        # population that exactly matches the pinned producer-defect contract,
+        # refuse any drift, and keep the strict zero-defect rule when no
+        # contract is pinned (other datasets are unaffected).
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        from dagster_hifld.native_geoparquet_catalog import summarize_native_path
+        from shapely import to_wkb, Polygon
+        good = Polygon([(0, 0), (1, 0), (1, 1), (0, 0)])
+        bow_tie = Polygon([(0, 0), (1, 1), (1, 0), (0, 1), (0, 0)])
+        self.assertFalse(bow_tie.is_valid)
+        schema = pa.schema([("OBJECTID", pa.int64()), ("geometry", pa.binary())])
+        table = pa.Table.from_arrays([
+            pa.array([1, 2, 3], type=pa.int64()),
+            pa.array([to_wkb(good), to_wkb(bow_tie), None], type=pa.binary()),
+        ], schema=schema)
+        geo = json.dumps({"version": "1.0.0", "primary_column": "geometry",
+                          "columns": {"geometry": {"encoding": "WKB",
+                                                   "geometry_types": ["Polygon"],
+                                                   "bbox": [0.0, 0.0, 1.0, 1.0]}},
+                          }, sort_keys=True).encode()
+        table = table.replace_schema_metadata({"geo": geo})
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "candidate.parquet"
+            pq.write_table(table, path)
+            strict, _ = summarize_native_path(path, "probe", {})
+            self.assertFalse(strict["quality_check_passed"])
+            self.assertEqual(strict["invalid_geometry_count"], 1)
+            self.assertEqual(strict["null_geometry_count"], 1)
+            defects = {"null_geometry_count": 1, "producer_invalid_geometry_count": 1}
+            matched, _ = summarize_native_path(path, "probe", {}, producer_geometry_defects=defects)
+            self.assertTrue(matched["quality_check_passed"])
+            self.assertTrue(matched["producer_geometry_defects_verified"])
+            self.assertNotIn("producer_geometry_defects_verified", strict)
+            drifted, _ = summarize_native_path(
+                path, "probe", {},
+                producer_geometry_defects={"null_geometry_count": 1,
+                                           "producer_invalid_geometry_count": 2})
+            self.assertFalse(drifted["quality_check_passed"])
+            self.assertFalse(drifted["producer_geometry_defects_verified"])
 
     def test_keyset_pagination_contract_is_ordered_and_bounded(self):
         url = src._page_url(15000000)
