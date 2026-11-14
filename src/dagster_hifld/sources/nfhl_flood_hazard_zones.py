@@ -67,6 +67,7 @@ from __future__ import annotations
 import hashlib
 import html as html_module
 import json
+import os
 import re
 import shutil
 import time
@@ -817,18 +818,42 @@ def _upload_immutable_file(storage: StagingStorageResource, key: str, source: Pa
     if snapshot is None:
         if not source.exists():
             raise ValueError("source_raw_evidence_missing_for_staging:" + source.name)
-        storage.upload_local_file(source, key)
+        if storage.use_local and not storage.prefix:
+            # Zero-copy install when the source and the staging destination
+            # share a filesystem: hard-link the source inode into the staging
+            # key and atomically rename it into place, falling back to the
+            # resource's byte copy only across filesystems. The staged bytes
+            # are identical either way, and the readback below still verifies
+            # them against the receipt descriptor; this keeps the staged
+            # candidate (raw zips plus the parquet, which may live on a
+            # different local filesystem than the capture volume) within the
+            # capture disk instead of doubling the parquet at staging time.
+            destination = Path(storage.local_dir).resolve() / key
+            incoming = destination.with_name(f"{destination.name}.incoming")
+            try:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                incoming.unlink(missing_ok=True)
+                os.link(source, incoming)
+                os.replace(incoming, destination)
+            except OSError:
+                incoming.unlink(missing_ok=True)
+                if shutil.disk_usage(source).st_dev == shutil.disk_usage(
+                        destination.parent).st_dev:
+                    raise
+                storage.upload_local_file(source, key)
+        else:
+            storage.upload_local_file(source, key)
         snapshot = storage.object_snapshot(key)
     if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
         raise ValueError("candidate_output_physical_readback_failed:" + key)
     if consume_source and storage.use_local:
         # The staged object is now the verified durable copy of this raw
-        # evidence (the local backend stages by copying), and the raw
-        # descriptors come from the receipts, so a staging run interrupted
-        # after some uploads resumes from the already-staged objects without
-        # re-downloading their products; releasing each capture-directory
-        # source as it is staged keeps this layer's ~89 GiB raw staging
-        # within one disk.
+        # evidence (linked or copied above, verified by readback), and the
+        # raw descriptors come from the receipts, so a staging run
+        # interrupted after some uploads resumes from the already-staged
+        # objects without re-downloading their products; releasing each
+        # capture-directory source as it is staged keeps this layer's ~93 GB
+        # raw staging within one disk.
         source.unlink()
 
 
