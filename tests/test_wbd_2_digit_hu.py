@@ -195,6 +195,14 @@ def _encode(document) -> bytes:
     return json.dumps(document, ensure_ascii=False, allow_nan=False).encode()
 
 
+def _receipt_url(name: str, roster: list[int], expected_urls: dict[str, str]) -> str:
+    if name in expected_urls:
+        return expected_urls[name]
+    if name.endswith("_refusal"):
+        return expected_urls[name[:-len("_refusal")].rstrip("ab")]
+    return source._part_url(roster, int(name[5:9]), name)
+
+
 def _write_capture_root(root: Path, documents: dict) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     roster = documents["ids_before"]["objectIds"]
@@ -202,7 +210,8 @@ def _write_capture_root(root: Path, documents: dict) -> Path:
     for name, document in documents.items():
         body = _encode(document)
         wire = b"wire:" + body[:32]
-        receipt = {"method": "GET", "url": expected_urls[name], "final_url": expected_urls[name],
+        url = _receipt_url(name, roster, expected_urls)
+        receipt = {"method": "GET", "url": url, "final_url": url,
                    "observed_at": "2026-11-14T12:00:00.000000Z", "status": 200,
                    "complete_body": True, "bytes": len(body), "sha256": _digest(body),
                    "wire_bytes": len(wire), "wire_sha256": _digest(wire),
@@ -212,6 +221,27 @@ def _write_capture_root(root: Path, documents: dict) -> Path:
         (root / f"{name}.wire").write_bytes(wire)
         (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
     return root
+
+
+def _seal_manifest(root: Path, documents: dict, *, page_parts: dict | None = None,
+                   page_refusals: list[str] | None = None) -> None:
+    manifest = {"complete": True, "captured_at": "2026-11-14T12:00:00.000000Z",
+                "receipts": {}, "artifact_roster": {},
+                "page_parts": page_parts or {},
+                "page_refusals": page_refusals or []}
+    for name in sorted(documents):
+        body = (root / f"{name}.body").read_bytes()
+        wire = (root / f"{name}.wire").read_bytes()
+        receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
+        receipt_body = (root / f"{name}.receipt.json").read_bytes()
+        manifest["receipts"][name] = receipt
+        manifest["artifact_roster"][f"{name}.body"] = {
+            "bytes": len(body), "sha256": _digest(body)}
+        manifest["artifact_roster"][f"{name}.wire"] = {
+            "bytes": len(wire), "sha256": _digest(wire)}
+        manifest["artifact_roster"][f"{name}.receipt.json"] = {
+            "bytes": len(receipt_body), "sha256": _digest(receipt_body)}
+    (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
 
 
 class Wbd10DigitHuTests(unittest.TestCase):
@@ -347,6 +377,53 @@ class Wbd10DigitHuTests(unittest.TestCase):
                                       **gate_counts, "source_polygon_ring_degenerate": 2}):
                     source._validate_stream(root, parquet_sink=None)
 
+    def test_refused_window_bisection_streams_and_replays_to_the_same_population(self):
+        documents = _documents()
+        roster = list(_TEST_ROSTER)
+        refusal = b'{"error": {"code": 500, "message": "Error performing query operation", ' \
+                  b'"details": []}}'
+        first, second = documents["page_0001"]["features"]
+        documents["page_0001_refusal"] = refusal
+        documents["page_0001a"] = {**documents["page_0001"], "features": [first],
+                                   "exceededTransferLimit": True}
+        documents["page_0001b"] = {**documents["page_0001"], "features": [second],
+                                   "exceededTransferLimit": None}
+        del documents["page_0001"]
+        temporary = tempfile.TemporaryDirectory(prefix="wbd-2-digit-hu-bisect-")
+        self.addCleanup(temporary.cleanup)
+        page_parts = {"page_0001": ["page_0001a", "page_0001b"]}
+        with relaxed_pins():
+            root = _write_capture_root(Path(temporary.name) / "captures", documents)
+            audit, _derived = source._validate_stream(root, parquet_sink=None,
+                                                      page_parts=page_parts)
+        self.assertEqual(audit["source_feature_count"], len(roster))
+        self.assertEqual(audit["source_id_sha256"], _digest(_canonical(roster)))
+        expected_record, expected_geometry = hashlib.sha256(), hashlib.sha256()
+        for oid in roster:
+            expected_record.update(_canonical(_attributes(oid)) + source.DIGEST_SEPARATOR)
+            if oid not in _GATE_FEATURES:
+                expected_geometry.update(
+                    _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
+        self.assertEqual(audit["source_record_sha256"], expected_record.hexdigest())
+        self.assertEqual(audit["source_geometry_sha256"], expected_geometry.hexdigest())
+        self.assertEqual(audit["page_parts"], dict(sorted(page_parts.items())))
+        _seal_manifest(root, documents, page_parts=page_parts, page_refusals=["page_0001"])
+        with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)), DISK_FLOOR_BYTES=1):
+            captures, replay_parts = source._read_replay(root)
+            self.assertEqual(replay_parts, page_parts)
+            self.assertEqual(set(captures), set(documents))
+            audit, _derived = source._validate_stream(root, parquet_sink=None,
+                                                      page_parts=replay_parts)
+            self.assertEqual(audit["source_feature_count"], len(roster))
+        mutated = json.loads(json.dumps(documents))
+        mutated["page_0001a"]["features"][0]["attributes"]["name"] = "Renamed HU"
+        with relaxed_pins(EXPECTED_RECORD_SHA256=expected_record.hexdigest(),
+                          EXPECTED_GEOMETRY_SHA256=expected_geometry.hexdigest(),
+                          EXPECTED_ID_SHA256=_digest(_canonical(roster))):
+            with self.assertRaisesRegex(ValueError, "source_record_baseline_drift"):
+                source._validate_stream(self._capture_root(mutated), parquet_sink=None,
+                                        page_parts=page_parts)
+
     def test_wkb_preserves_ring_structure_and_declared_types(self):
         single = source._assemble_geometry(_feature_rings(11)[:1])
         self.assertEqual(struct.unpack("<BI", single[:5]), (1, 3))
@@ -372,21 +449,7 @@ class Wbd10DigitHuTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         with relaxed_pins():
             root = _write_capture_root(Path(temporary.name) / "captures", documents)
-        manifest = {"complete": True, "captured_at": "2026-11-14T12:00:00.000000Z",
-                    "receipts": {}, "artifact_roster": {}}
-        for name in sorted(documents):
-            body = (root / f"{name}.body").read_bytes()
-            wire = (root / f"{name}.wire").read_bytes()
-            receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
-            receipt_body = (root / f"{name}.receipt.json").read_bytes()
-            manifest["receipts"][name] = receipt
-            manifest["artifact_roster"][f"{name}.body"] = {
-                "bytes": len(body), "sha256": _digest(body)}
-            manifest["artifact_roster"][f"{name}.wire"] = {
-                "bytes": len(wire), "sha256": _digest(wire)}
-            manifest["artifact_roster"][f"{name}.receipt.json"] = {
-                "bytes": len(receipt_body), "sha256": _digest(receipt_body)}
-        (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
+        _seal_manifest(root, documents)
         with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)),
                           DISK_FLOOR_BYTES=1):
             captures, replay_parts = source._read_replay(root)

@@ -583,12 +583,11 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
             page_ids = []
             columns: dict[str, list] = {field: [] for field in names}
             geometries: list[bytes | None] = []
+            if len(part_names) not in (1, 2):
+                raise ValueError("source_page_parts_naming_drift:" + name)
             for part_no, part_name in enumerate(part_names):
-                if part_no == 0 and part_name != name:
-                    raise ValueError("source_page_parts_missing_nominal:" + name)
-                if part_no > 0 and (not part_name.startswith(name)
-                                    or len(part_name) != len(name) + 1
-                                    or part_name[-1] not in ("a", "b")):
+                expected_name = name if len(part_names) == 1 else f"{name}{'ab'[part_no]}"
+                if part_name != expected_name:
                     raise ValueError("source_page_parts_naming_drift:" + name)
                 body, _wire, receipt = _load_capture(root, part_name)
                 expected_url = (expected_urls[name] if len(part_names) == 1
@@ -828,9 +827,8 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
         raise ValueError("retained_capture_manifest_invalid")
     page_parts = manifest.get("page_parts") or {}
     if not isinstance(page_parts, dict) or not all(
-            isinstance(parts, list) and len(parts) in (1, 2) and parts[0] == page
-            and (len(parts) == 1 or (isinstance(parts[1], str) and parts[1] == page + "b"))
-            and all(isinstance(part, str) for part in parts)
+            isinstance(parts, list)
+            and (parts == [page] or parts == [page + "a", page + "b"])
             for page, parts in page_parts.items()):
         raise ValueError("retained_capture_page_parts_invalid")
     part_names = {part for parts in page_parts.values() for part in parts}
