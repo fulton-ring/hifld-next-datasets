@@ -17,6 +17,7 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.wbd_12_digit_hu import (
     wbd_12_digit_hu, wbd_12_digit_hu_complete, wbd_12_digit_hu_draft_schedule,
 )
+from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wbd_12_digit_hu as source
 from dagster_hifld.sources.usace_obstruction_lines import _canonical
@@ -153,11 +154,15 @@ def _documents() -> dict:
              "typeIdField": None, "isDataVersioned": False, "isDataArchived": False,
              "extent": {**source.EXPECTED_EXTENT, "spatialReference": dict(_SR)},
              "advancedQueryCapabilities": {"supportsPagination": True},
-             "sourceSpatialReference": dict(_SR), "spatialReference": dict(_SR),
+             "sourceSpatialReference": dict(_SR),
              "fields": json.loads(json.dumps(source.EXPECTED_LAYER_FIELDS))}
     features = {}
     for oid in _TEST_ROSTER:
-        features[oid] = {"attributes": _attributes(oid), "geometry": {"rings": _feature_rings(oid)}}
+        rings = _feature_rings(oid)
+        geometry = {"rings": rings}
+        if oid == 12:
+            geometry["ids"] = [[index] * len(ring) for index, ring in enumerate(rings)]
+        features[oid] = {"attributes": _attributes(oid), "geometry": geometry}
     pages = {}
     for index in range(_TEST_PAGE_COUNT):
         page_ids = _TEST_ROSTER[index * _TEST_PAGE_SIZE:(index + 1) * _TEST_PAGE_SIZE]
@@ -294,6 +299,7 @@ class Wbd12DigitHuTests(unittest.TestCase):
             (mode, sum(1 for value in _GATE_FEATURES.values() if value == mode))
             for mode in set(_GATE_FEATURES.values()))))
         self.assertEqual(audit["source_crs"], "EPSG:3857")
+        self.assertEqual(audit["source_ids_member_feature_count"], 1)
         self.assertLess(audit["geometry_bounds"][0], -13_100_000)
         self.assertEqual(sorted(derived["geometry_types"]), ["MultiPolygon", "Polygon"])
 
@@ -373,7 +379,10 @@ class Wbd12DigitHuTests(unittest.TestCase):
         with relaxed_pins():
             root = _write_capture_root(Path(temporary.name) / "captures", documents)
         manifest = {"complete": True, "captured_at": "2026-11-14T12:00:00.000000Z",
-                    "receipts": {}, "artifact_roster": {}}
+                    "receipts": {}, "artifact_roster": {},
+                    "page_parts": {f"page_{index:04d}": [f"page_{index:04d}"]
+                                   for index in range(_TEST_PAGE_COUNT)},
+                    "page_refusals": []}
         for name in sorted(documents):
             body = (root / f"{name}.body").read_bytes()
             wire = (root / f"{name}.wire").read_bytes()
@@ -389,7 +398,7 @@ class Wbd12DigitHuTests(unittest.TestCase):
         (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)),
                           DISK_FLOOR_BYTES=1):
-            captures = source._read_replay(root)
+            captures, _parts, _refusals = source._read_replay(root)
             self.assertEqual(set(captures), set(documents))
             audit, _derived = source._validate_stream(root, parquet_sink=None)
             self.assertEqual(audit["source_id_sha256"], _digest(_canonical(roster)))
@@ -398,6 +407,137 @@ class Wbd12DigitHuTests(unittest.TestCase):
         with relaxed_pins():
             with self.assertRaisesRegex(ValueError, "source_id_roster_changed_during_capture"):
                 source._validate_stream(self._capture_root(mutated), parquet_sink=None)
+
+    _REFUSAL_BODY = b'{"error":{"code":500,"message":"Error performing query operation","details":[]}}'
+
+    @staticmethod
+    def _write_capture_files(root: Path, name: str, url: str, body: bytes) -> None:
+        wire = b"wire:" + body[:32]
+        receipt = {"method": "GET", "url": url, "final_url": url,
+                   "observed_at": "2026-11-14T12:00:00.000000Z", "status": 200,
+                   "complete_body": True, "bytes": len(body), "sha256": _digest(body),
+                   "wire_bytes": len(wire), "wire_sha256": _digest(wire),
+                   "content_encoding": None, "content_length": None,
+                   "error_code": None, "error_type": None}
+        (root / f"{name}.body").write_bytes(body)
+        (root / f"{name}.wire").write_bytes(wire)
+        (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+
+    def test_page_window_bisection_recurses_and_retains_refusal_evidence(self):
+        roster = [11, 12, 501, 100_003]
+        temporary = tempfile.TemporaryDirectory(prefix="wbd-12-digit-hu-bisect-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name) / "captures"
+        root.mkdir(parents=True)
+        refusal_names = {"page_0000", "page_0000a"}
+        requested = {}
+
+        def fake_capture(_client, url, target_root, name, max_bytes=source.PAGE_MAX_BYTES):
+            requested[name] = url
+            body = self._REFUSAL_BODY if name in refusal_names else b'{"features":[]}'
+            self._write_capture_files(target_root, name, url, body)
+            return body, json.loads((target_root / f"{name}.receipt.json").read_bytes())
+
+        with patches(source, _capture=fake_capture, PAGE_SIZE=4, PAGE_COUNT=1,
+                     EXPECTED_COUNT=4, EXPECTED_ID_MIN=11, EXPECTED_ID_MAX=100_003):
+            parts, refusals = source._capture_page_window(None, roster, 0, root)
+            self.assertEqual(sorted(parts),
+                             ["page_0000_refusal", "page_0000a_refusal",
+                              "page_0000aa", "page_0000ab", "page_0000b"])
+            self.assertEqual(refusals, ["page_0000", "page_0000a"])
+            self.assertEqual(requested["page_0000"],
+                             dict(source._capture_roster(roster))["page_0000"])
+            self.assertEqual(requested["page_0000aa"],
+                             source._page_part_url(roster, 0, "page_0000aa"))
+            self.assertEqual(requested["page_0000ab"],
+                             source._page_part_url(roster, 0, "page_0000ab"))
+            self.assertEqual(requested["page_0000b"],
+                             source._page_part_url(roster, 0, "page_0000b"))
+        self.assertFalse((root / "page_0000.body").exists())
+        self.assertTrue((root / "page_0000_refusal.body").read_bytes().startswith(b'{"error"'))
+        self.assertTrue((root / "page_0000a_refusal.receipt.json").exists())
+
+    def test_refused_single_feature_window_fails_the_capture(self):
+        roster = [11]
+        temporary = tempfile.TemporaryDirectory(prefix="wbd-12-digit-hu-single-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name) / "captures"
+        root.mkdir(parents=True)
+
+        def fake_capture(_client, url, target_root, name, max_bytes=source.PAGE_MAX_BYTES):
+            self._write_capture_files(target_root, name, url, self._REFUSAL_BODY)
+            return self._REFUSAL_BODY, json.loads(
+                (target_root / f"{name}.receipt.json").read_bytes())
+
+        with patches(source, _capture=fake_capture, PAGE_SIZE=1, PAGE_COUNT=1,
+                     EXPECTED_COUNT=1, EXPECTED_ID_MIN=11, EXPECTED_ID_MAX=11):
+            with self.assertRaisesRegex(ValueError, "source_page_window_refused_single:page_0000"):
+                source._capture_page_window(None, roster, 0, root)
+
+    def test_refused_windows_replay_and_stream_match_the_nominal_baselines(self):
+        documents = _documents()
+        roster = list(_TEST_ROSTER)
+        refused_pages = ("page_0000", "page_0001")
+        leaf_ids = {"page_0000a": [11], "page_0000b": [12],
+                    "page_0001a": [501], "page_0001b": [100_003]}
+        temporary = tempfile.TemporaryDirectory(prefix="wbd-12-digit-hu-parts-")
+        self.addCleanup(temporary.cleanup)
+        with relaxed_pins():
+            root = _write_capture_root(Path(temporary.name) / "captures", documents)
+            expected_urls = dict(source._capture_roster(roster))
+            for page in refused_pages:
+                for suffix in (".body", ".wire", ".receipt.json"):
+                    (root / (page + suffix)).unlink()
+                self._write_capture_files(root, page + "_refusal", expected_urls[page],
+                                          self._REFUSAL_BODY)
+            for leaf, ids in leaf_ids.items():
+                index = int(leaf[5:9])
+                page_doc = documents[f"page_{index:04d}"]
+                part_doc = dict(page_doc, features=[feature for feature in page_doc["features"]
+                                                    if feature["attributes"]["objectid"] in ids])
+                self._write_capture_files(root, leaf,
+                                          source._page_part_url(roster, int(leaf[5:9]), leaf),
+                                          _encode(part_doc))
+        names = [*(name for name in documents if name not in refused_pages),
+                 "page_0000a", "page_0000b",
+                 "page_0001a", "page_0001b", "page_0000_refusal", "page_0001_refusal"]
+        manifest = {"complete": True, "captured_at": "2026-11-14T12:00:00.000000Z",
+                    "receipts": {name: json.loads((root / f"{name}.receipt.json").read_bytes())
+                                 for name in names},
+                    "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
+                    "page_parts": {"page_0000": ["page_0000a", "page_0000b"],
+                                   "page_0001": ["page_0001a", "page_0001b"],
+                                   "page_0002": ["page_0002"]},
+                    "page_refusals": ["page_0000_refusal", "page_0001_refusal"]}
+        (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
+        with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)), DISK_FLOOR_BYTES=1):
+            captures, page_parts, refusals = source._read_replay(root)
+            self.assertEqual(refusals, ["page_0000_refusal", "page_0001_refusal"])
+            self.assertEqual(page_parts["page_0000"], ["page_0000a", "page_0000b"])
+            audit, _derived = source._validate_stream(root, parquet_sink=None,
+                                                      page_parts=page_parts)
+        pristine = self._capture_root(documents)
+        with relaxed_pins():
+            reference, _derived = source._validate_stream(pristine, parquet_sink=None)
+        self.assertEqual(set(captures), set(names))
+        self.assertEqual(audit["source_record_sha256"], reference["source_record_sha256"])
+        self.assertEqual(audit["source_geometry_sha256"], reference["source_geometry_sha256"])
+        self.assertEqual(audit["source_id_sha256"], reference["source_id_sha256"])
+        self.assertEqual(audit["null_geometry_count"], reference["null_geometry_count"])
+        self.assertEqual(audit["unusable_geometry_counts"], reference["unusable_geometry_counts"])
+        self.assertEqual(audit["source_ids_member_feature_count"],
+                         reference["source_ids_member_feature_count"])
+        (root / "page_0000_refusal.body").write_bytes(b'{"not_error":1}')
+        self._write_capture_files(root, "page_0000_refusal", expected_urls["page_0000"],
+                                  b'{"not_error":1}')
+        manifest["receipts"]["page_0000_refusal"] = json.loads(
+            (root / "page_0000_refusal.receipt.json").read_bytes())
+        manifest["artifact_roster"] = capture_roster_digests(
+            root, exclude={"capture_manifest.json"})
+        (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
+        with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)), DISK_FLOOR_BYTES=1):
+            with self.assertRaisesRegex(ValueError, "retained_capture_refusal_document_drift"):
+                source._read_replay(root)
 
     def test_population_schema_transfer_crs_alias_and_parity_drift_fail_closed(self):
         documents = _documents()
@@ -461,6 +601,8 @@ class Wbd12DigitHuTests(unittest.TestCase):
              "source_layer_identity_or_extent_drift"),
             ("layer type field", lambda d: d["layer_before"].update(typeIdField="hutype"),
              "source_layer_identity_or_extent_drift"),
+            ("layer spatial reference", lambda d: d["layer_before"].update(
+                spatialReference={"wkid": 4326}), "source_layer_crs_drift"),
             ("layer geometry props", lambda d: d["layer_before"]["geometryProperties"].update(units="esriFeet"),
              "source_layer_identity_or_extent_drift"),
             ("layer versioned", lambda d: d["layer_before"].update(isDataVersioned=True),
