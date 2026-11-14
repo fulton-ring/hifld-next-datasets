@@ -32,6 +32,7 @@ from fiona.io import MemoryFile
 from shapely.geometry import mapping, shape
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 
 SLUG = "airspace-boundaries-1"
@@ -460,12 +461,13 @@ def _stage_candidate(storage: StagingStorageResource, directory: pathlib.Path,
     # width inference. Its full roundtrip is checked before any candidate write.
     with tempfile.TemporaryDirectory(prefix="faa-native-gpkg-") as tmp:
         gpkg_path = pathlib.Path(tmp) / "airspace.gpkg"
-        pyogrio.write_arrow(table, gpkg_path, driver="GPKG", layer="airspace",
-                            geometry_name="geometry", geometry_type="Unknown", crs="EPSG:4269",
-                            layer_options={"GEOMETRY_NAME": "geometry", "GEOMETRY_NULLABLE": "NO"})
         # Container change time is the pinned fetch time, never source release time.
         observed = metadata["source-native"].get("checked_at", "2000-01-01T00:00:00+00:00")
         changed = datetime.datetime.fromisoformat(observed).astimezone(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        with with_geopackage_creation_time(changed):
+            pyogrio.write_arrow(table, gpkg_path, driver="GPKG", layer="airspace",
+                                geometry_name="geometry", geometry_type="Unknown", crs="EPSG:4269",
+                                layer_options={"GEOMETRY_NAME": "geometry", "GEOMETRY_NULLABLE": "NO"})
         with sqlite3.connect(gpkg_path) as database:
             database.execute("UPDATE gpkg_contents SET last_change = ?", (changed,))
         gpkg_metadata, restored = pyogrio.read_arrow(gpkg_path)

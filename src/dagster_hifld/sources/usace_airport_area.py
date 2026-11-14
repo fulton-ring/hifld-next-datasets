@@ -34,6 +34,14 @@ from dagster_hifld.sources.usace_pylon_areas import (
 DATASET_SLUG = "airport-area-usace-ienc"
 FILE_SLUG = DATASET_SLUG
 LAYER_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/AIRPORT_AREA/MapServer/57"
+SERVICE_URL = LAYER_URL.rsplit("/", 1)[0]
+SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson"
+# BTS's earlier IENC MapServer item is no longer anonymously readable. Its public
+# replacement is a PDF catalog record that still links the producer's Feature
+# Classes service. Treat that catalog succession as unaccepted.
+PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
+BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
 EXPECTED_COUNT = 72
 EXPECTED_FIELDS = [
@@ -70,7 +78,9 @@ def _capture_started_at(captures: dict[str, tuple[bytes, dict]]) -> str:
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("layer_before", LAYER_URL + "?f=pjson"),
+    urls = [("bts_item", BTS_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
+            ("service_before", SERVICE_URL + "?f=pjson"),
+            ("layer_before", LAYER_URL + "?f=pjson"),
             ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
             ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
     for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
@@ -80,12 +90,37 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
             "outSR":"4326", "orderByFields":"OBJECTID ASC", "f":"json"})))
     urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
                  ("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                 ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))])
+                 ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
+                 ("service_after", SERVICE_URL + "?f=pjson")])
     return urls
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
+    if not {"ids_seed","bts_item","service_directory","service_before","service_after",
+            "layer_before","count_before","ids_before","layer_after","count_after","ids_after"} <= set(captures):
+        raise ValueError("source_capture_roster_incomplete")
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    item = docs["bts_item"]
+    if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
+            or item.get("type") != "PDF" or item.get("access") != "public"):
+        raise ValueError("bts_ienc_item_identity_drift")
+    item_description = " ".join(str(item.get(key, "")) for key in ("title", "description"))
+    if ("Inland Electronic Navigational Charts" not in item_description
+            or "updated bi-monthly" not in item_description
+            or SERVICE_DIRECTORY_URL.split("?")[0] not in item_description
+            or "USACE_IENC_Master_Service_gdb.zip" not in item_description):
+        raise ValueError("bts_ienc_official_distribution_link_drift")
+    directory = docs["service_directory"]
+    if not any(service.get("name") == "IENC_Feature_Classes/AIRPORT_AREA"
+               and service.get("type") == "MapServer" for service in directory.get("services", [])):
+        raise ValueError("official_ienc_service_directory_drift")
+    service = docs["service_before"]
+    if (service.get("mapName") != "AIRPORT_AREA" or service.get("copyrightText") != "USACE IENC"
+            or [(layer.get("id"), layer.get("name"), layer.get("geometryType")) for layer in service.get("layers", [])]
+            != [(57, "AIRPORT_AREA", "esriGeometryPolygon")]):
+        raise ValueError("official_airport_area_service_drift")
+    if docs["service_after"] != service:
+        raise ValueError("source_service_changed_during_capture")
     layer = docs["layer_before"]
     fields = layer.get("fields")
     projected=[{key:f[key] for key in ("name","type","alias","length","domain","nullable") if key in f}
@@ -152,7 +187,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "source_geometry_type":"esriGeometryPolygon","source_wkid":4326,
         "source_has_z":bool(layer.get("hasZ")),"source_has_m":bool(layer.get("hasM")),
         "source_coverage_scope":"Complete official IENC AIRPORT_AREA feature class; not a claim of all national airports.",
-        "drift_guard":"Exact layer id/name, count, field names/types, CRS, page errors, and before/after ID membership are checked."}
+        "bts_catalog_item_id":BTS_ITEM_ID,
+        "prior_bts_catalog_item_id":PRIOR_BTS_ITEM_ID,
+        "bts_catalog_item_successor_review_pending":True,
+        "drift_guard":f"Current public BTS IENC item {BTS_ITEM_ID} distribution/delegation link; prior item {PRIOR_BTS_ITEM_ID} succession is pending. Official service-directory membership, service/layer identity, field names/types, CRS, page errors, and before/after exact ID roster are checked."}
 
 
 def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
@@ -193,7 +231,7 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
             ids_body,ids_receipt=_load_replay(root,"ids_before")
             ids=json.loads(ids_body).get("objectIds")
             if not isinstance(ids,list): raise ValueError("retained_id_seed_invalid")
-            names=["ids_seed","layer_before","count_before","ids_before",*[f"page_{i:03d}" for i in range((len(ids)+PAGE_SIZE-1)//PAGE_SIZE)],"layer_after","count_after","ids_after"]
+            names=["ids_seed",*[name for name,_url in _capture_roster(ids)]]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
             captures={name:_load_replay(root,name) for name in names}
@@ -245,10 +283,30 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"Official layer metadata does not establish the source release date."} for name,(_body,receipt) in sorted(captures.items())]
-    manifest={"schema_version":1,"approved":False,"title":"Airport Area (USACE IENC)","description":"Complete official USACE IENC AIRPORT_AREA feature class; unapproved faithful candidate. Does not assert national airport coverage or compatibility with the historical HIFLD/FEMA baseline.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":"USDOT BTS IENC inventory item 3607d485a9854d6fa458bf507058ceae links the official USACE IENC Feature Classes service and native file geodatabase. This candidate represents only that full official AIRPORT_AREA layer.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/airport-area-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":UNSUPPORTED_OUTPUT_FORMATS}
+    inputs=[{"input_id":name,
+             "producer":"USDOT Bureau of Transportation Statistics (BTS)" if name == "bts_item" else PUBLISHER,
+             "host":urlsplit(receipt["url"]).hostname,
+             "role":"official_distributor" if name == "bts_item" else "producer_publication",
+             "canonical_url":BTS_ITEM_URL if name == "bts_item" else LAYER_URL,
+             "retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],
+             "retrieved_at":receipt["observed_at"],"http_status":receipt["status"],
+             "bytes":receipt["bytes"],"sha256":receipt["sha256"],
+             "license":"Unresolved; rights review pending.",
+             "attribution":"USACE IENC; rights review pending.",
+             "release_date":None,
+             "release_date_unknown_reason":("The BTS item describes bi-monthly updates but does not provide a release date for this extracted layer snapshot."
+                 if name == "bts_item" else "Official layer metadata does not establish the source release date."),
+             **({"distributor":"USACE IENC Feature Classes service",
+                 "delegation_evidence":{"bts_item_url":BTS_ITEM_URL,
+                 "bts_item_id":BTS_ITEM_ID,"bts_item_owner":"USDOT_BTS",
+                 "official_service_directory":SERVICE_DIRECTORY_URL,
+                 "linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
+                 "prior_bts_item_id":PRIOR_BTS_ITEM_ID}}
+                if name == "bts_item" else {})}
+            for name,(_body,receipt) in sorted(captures.items())]
+    manifest={"schema_version":1,"approved":False,"title":"Airport Area (USACE IENC)","description":"Complete official USACE IENC AIRPORT_AREA feature class; unapproved faithful candidate. Does not assert national airport coverage or compatibility with the historical HIFLD/FEMA baseline.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; BTS catalog-item succession, source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":f"Current public USDOT BTS IENC PDF item {BTS_ITEM_ID} links the official USACE IENC Feature Classes service and native master file geodatabase. The prior BTS map-service item {PRIOR_BTS_ITEM_ID} returned an anonymous-access denial and is retained only as a historical, unaccepted attribution; current-item succession is not approved. This candidate represents only that full official AIRPORT_AREA layer.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/airport-area-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":UNSUPPORTED_OUTPUT_FORMATS}
     validate_release_provenance(manifest); validate_output_policy(manifest)
-    audit.update({"source_fields":fields,"official_layer_name":"AIRPORT_AREA","official_source_item":"USDOT_BTS 3607d485a9854d6fa458bf507058ceae","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
+    audit.update({"source_fields":fields,"official_layer_name":"AIRPORT_AREA","official_source_item":"USDOT_BTS " + BTS_ITEM_ID,"prior_source_item":"USDOT_BTS " + PRIOR_BTS_ITEM_ID,"source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
     attempts={}
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
@@ -257,7 +315,7 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
     outputs={"geoparquet/airport-area-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
-    ready={"approved":False,"version":version,"objects":{"geoparquet/airport-area-usace-ienc.parquet":{"bytes":len(parquet),"sha256":_sha(parquet)}},"source_population_complete":True,"source_record_sha256":audit["source_record_sha256"],"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+    ready={"approved":False,"version":version,"objects":{"geoparquet/airport-area-usace-ienc.parquet":{"bytes":len(parquet),"sha256":_sha(parquet)}},"source_population_complete":True,"source_record_sha256":audit["source_record_sha256"],"source_item_succession_accepted":False,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     outputs["metadata/candidate_ready.json"]=_canonical(ready)+b"\n"
     fingerprint=_sha(_canonical(identity)); state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
     receipts={n:r for n,(_b,r) in captures.items()}
@@ -290,10 +348,11 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
             "source_release_accepted":False,"source_freshness_accepted":False,
             "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,
             "rights_accepted":False,"mapping_approved":False,"release_accepted":False,
+            "source_item_succession_accepted":False,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
     )
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_empty_geometry_count":audit["source_empty_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_empty_geometry_count":audit["source_empty_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

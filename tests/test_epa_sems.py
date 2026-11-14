@@ -32,6 +32,31 @@ def page():
 def decode(p):return f.decode_pages([p],[2**31,2**31+1])
 
 
+DRIFT_IDS=[2**31,2**31+1]
+
+
+def drift_packet(ids,*,registry_ids=('000000000001','000000000002'),count_before=None,count_after=None,ids_after=None):
+    """Complete synthetic packet at the pinned shape; knobs inject one drift at a time."""
+    p=page()
+    for feature,rid in zip(p['features'],registry_ids):feature['attributes']['REGISTRY_ID']=rid
+    layer={'id':0,'name':'FRS_INTERESTS_SEMS','fields':f.FIELD_DEFINITIONS,'objectIdField':'OBJECTID','geometryType':'esriGeometryPoint','hasZ':False,'hasM':False,'extent':{'spatialReference':{'wkid':4269,'latestWkid':4269}},'maxRecordCount':2000,'editingInfo':{'lastEditDate':123},'dateFieldsTimeReference':{'timeZone':'UTC','timeZoneIANA':'Etc/UTC','respectsDaylightSaving':False}}
+    before={'objectIdFieldName':'OBJECTID','objectIds':list(ids)}
+    value={'catalog':(f.SERVICE+' '+f.ITEM).encode(),'epa_frs':b'explicit synthetic EPA landing fixture',
+        'epa_item':f.encode({'id':f.ITEM,'owner':'EPA_GEO','orgId':'cJ9YHowT8TU7DUyn','url':f.SERVICE}),
+        'epa_service':f.encode({'serviceItemId':f.ITEM,'layers':[{'id':0}]}),
+        'epa_layer':f.encode(layer),
+        'count_before':f.encode({'count':len(ids) if count_before is None else count_before}),'ids_before':f.encode(before),
+        'layer_after':f.encode(layer),
+        'count_after':f.encode({'count':len(ids) if count_after is None else count_after}),
+        'ids_after':f.encode(before if ids_after is None else {'objectIdFieldName':'OBJECTID','objectIds':list(ids_after)}),
+        'page_00000':json.dumps(p).encode()}
+    captures={}
+    for name,url in f.capture_urls(sorted(ids)).items():
+        body=value[name]
+        captures[name]=(body,{'url':url,'final_url':url,'status':200,'bytes':len(body),'sha256':f.digest(body),'complete_body':True,'observed_at':'2026-10-19T00:00:00+00:00'})
+    return captures
+
+
 class SEMSTests(unittest.TestCase):
     def test_native_identifiers_dates_types_nulls_and_original_geometry(self):
         t=decode(page());self.assertEqual(t.num_rows,2);self.assertEqual(t.num_columns,33)
@@ -202,6 +227,59 @@ class SEMSTests(unittest.TestCase):
             source_snapshot.unlink()
             with self.assertRaisesRegex(ValueError,'cached_source_manifest_snapshot_incomplete'):
                 f.validate_candidate(root,table,identity,captures,audit,manifest,version,cached=True,storage=storage)
+
+    def test_pinned_count_snapshot_drift_fails_closed(self):
+        with mock.patch.object(f,'INITIAL_COUNT',2):
+            _,audit=f.inspect_captures(drift_packet(DRIFT_IDS));self.assertEqual(audit['count'],2)
+            for knob in('count_before','count_after'):
+                with self.assertRaisesRegex(ValueError,'complete_count_drift_requires_review'):
+                    f.inspect_captures(drift_packet(DRIFT_IDS,**{knob:31_947}))
+        live_roster=f.encode({'objectIdFieldName':'OBJECTID','objectIds':list(range(1,31_948))})
+        with self.assertRaisesRegex(ValueError,'invalid_complete_OID_witness'):
+            f.id_roster(live_roster,f.INITIAL_COUNT)
+        self.assertEqual(f.INITIAL_COUNT,14242)
+
+    def test_extraction_ID_roster_drift_fails_closed(self):
+        with mock.patch.object(f,'INITIAL_COUNT',2):
+            with self.assertRaisesRegex(ValueError,'source_ID_roster_changed_during_extraction'):
+                f.inspect_captures(drift_packet(DRIFT_IDS,ids_after=[2**31,2**31+2]))
+            with self.assertRaisesRegex(ValueError,'invalid_complete_OID_witness'):
+                f.inspect_captures(drift_packet(DRIFT_IDS,ids_after=[2**31,2**31+1,9]))
+
+    def test_value_reassignment_under_constant_roster_gets_new_draft_namespace(self):
+        with mock.patch.object(f,'INITIAL_COUNT',2):
+            before=drift_packet(DRIFT_IDS);_,audit=f.inspect_captures(before)
+            self.assertEqual(audit['registry_ID_unique_count'],2)
+            swapped=drift_packet(DRIFT_IDS,registry_ids=('000000000002','000000000001'))
+            _,reassigned=f.inspect_captures(swapped)
+            for key in('count','original_ID_sha256','registry_ID_unique_count','program_ID_unique_count','interest_types'):
+                self.assertEqual(reassigned[key],audit[key],key)
+            self.assertNotEqual(f.source_fingerprint(swapped),f.source_fingerprint(before))
+            self.assertEqual(f.source_fingerprint(drift_packet(DRIFT_IDS)),f.source_fingerprint(before))
+            version=lambda captures:'v0.0.0-draft-epa-sems-'+f.source_fingerprint(captures)[:16]
+            self.assertNotEqual(version(swapped),version(before))
+
+    def test_seed_drift_quarantines_partial_capture_and_refuses_rebaseline(self):
+        layer={'id':0,'name':'FRS_INTERESTS_SEMS','fields':f.FIELD_DEFINITIONS,'objectIdField':'OBJECTID','geometryType':'esriGeometryPoint','hasZ':False,'hasM':False,'extent':{'spatialReference':{'wkid':4269,'latestWkid':4269}},'maxRecordCount':2000,'editingInfo':{'lastEditDate':123},'dateFieldsTimeReference':{'timeZone':'UTC','timeZoneIANA':'Etc/UTC','respectsDaylightSaving':False}}
+        files={'catalog':(f.SERVICE+' '+f.ITEM).encode(),'epa_frs':b'explicit synthetic EPA landing fixture',
+            'epa_item':f.encode({'id':f.ITEM,'owner':'EPA_GEO','orgId':'cJ9YHowT8TU7DUyn','url':f.SERVICE}),
+            'epa_service':f.encode({'serviceItemId':f.ITEM,'layers':[{'id':0}]}),'epa_layer':f.encode(layer)}
+        for count,ids,refusal in[({'count':3},[1,2,3],'source_acquisition_failed:invalid_complete_OID_witness'),({'count':3},[1,2],'source_acquisition_failed:initial_count_or_ID_coverage_drift_requires_review')]:
+            with tempfile.TemporaryDirectory()as d,mock.patch.object(f,'INITIAL_COUNT',2):
+                root=Path(d);c=root/'captures';c.mkdir()
+                for name,body in{**files,'count_before':f.encode(count),'ids_before':f.encode({'objectIdFieldName':'OBJECTID','objectIds':ids})}.items():
+                    (c/(name+'.body')).write_bytes(body)
+                    receipt={'url':f.URLS[name],'final_url':f.URLS[name],'status':200,'bytes':len(body),'sha256':f.digest(body),'complete_body':True,'observed_at':'2026-10-19T00:00:00+00:00'}
+                    (c/(name+'.receipt.json')).write_bytes(f.encode(receipt))
+                stage=root/'stage'
+                with self.assertRaisesRegex(ValueError,refusal):f.acquire(StagingStorageResource(local_dir=str(stage)),c)
+                quarantine=next((stage/'_quarantine'/f.SLUG).iterdir())
+                expected=sorted([n+ext for n in files for ext in('.body','.receipt.json')]+['count_before.body','count_before.receipt.json','ids_before.body','ids_before.receipt.json','reason.json'])
+                self.assertEqual(sorted(p.name for p in quarantine.iterdir()),expected)
+                self.assertEqual(json.loads((quarantine/'reason.json').read_bytes()),{'approved':False,'reason':refusal.split(':',1)[1]})
+                self.assertEqual((quarantine/'ids_before.body').read_bytes(),f.encode({'objectIdFieldName':'OBJECTID','objectIds':ids}))
+                self.assertFalse((stage/f.SLUG).exists());self.assertFalse((stage/'_construction-state').exists())
+        self.assertEqual(f.INITIAL_COUNT,14242)
 
 
 @unittest.skipUnless(os.environ.get('EPA_SEMS_TEST_CAPTURE_DIR'),'Complete official real capture is explicit external input')

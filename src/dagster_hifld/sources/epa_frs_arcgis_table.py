@@ -237,7 +237,7 @@ def capture_table(
         raise ArcGISTableCaptureError("source_service_table_or_vintage_changed")
     table_before = request("table_before", profile.table_url, {"f": "json"})
     fields = _metadata_contract(table_before, profile)
-    count_query = {"where": "1=1", "returnCountOnly": "true", "f": "json"}
+    count_query = {"where": "OBJECTID>0", "returnCountOnly": "true", "f": "json"}
     ids_query = {"where": "1=1", "returnIdsOnly": "true", "f": "json"}
     count_before = request("count_before", profile.table_url + "/query", count_query).get("count")
     ids_before = request("ids_before", profile.table_url + "/query", ids_query).get("objectIds")

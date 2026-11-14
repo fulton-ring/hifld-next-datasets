@@ -9,7 +9,7 @@ from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.usace_distance_marks import (
-    DATASET_SLUG, FILE_SLUG, capture,
+    DATASET_SLUG, FILE_SLUG, capture_validated,
 )
 
 _DESCRIPTION = (
@@ -38,7 +38,7 @@ def usace_distance_marks_usace_ienc(context, staging_storage: StagingStorageReso
     if staging_storage.list_keys(DATASET_SLUG, FILE_SLUG, version):
         raise ValueError("source_capture_version_already_exists")
     retained_version = context.op_config.get("retained_source_version") or None
-    result = capture(staging_storage, version, retained_source_version=retained_version)
+    result = capture_validated(staging_storage, version, retained_source_version=retained_version)
     context.add_output_metadata({
         "feature_count": MetadataValue.int(result["feature_count"]),
         "source_ids_sha256": MetadataValue.text(result["ids_sha256"]),

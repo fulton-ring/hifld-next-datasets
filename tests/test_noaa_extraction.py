@@ -1,5 +1,6 @@
 """Draft NOAA extraction behavior; synthetic snapshots grant no real acceptance."""
 import base64
+import contextlib
 import json
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ from unittest.mock import patch
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import fiona
 from shapely import from_wkb
 
 from dagster_hifld.noaa_extract import (
@@ -267,6 +269,21 @@ class NoaaExtractionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "provenance semantics changed"):
                     stage_noaa_candidate(expected_layer_url=TEST_LAYER, **args)
             self.assertTrue((Path(directory) / first["candidate_key"]).exists())
+
+    def test_typed_bridge_geopackage_bytes_ignore_ambient_creation_dates(self):
+        captures, kwargs = fixture()
+        for first_ambient, second_ambient in (("2099-12-31T23:59:59.999Z", None), (None, "2020-01-01T00:00:00.000Z")):
+            with self.subTest(first=first_ambient, second=second_ambient), tempfile.TemporaryDirectory() as directory:
+                storage = StagingStorageResource(local_dir=directory, use_local=True)
+                args = {"staging": storage, "dataset_slug": "synthetic", "file_slug": "synthetic", "captures": captures, "receipts": receipt_fixture(captures), **kwargs}
+                with patch("dagster_hifld.noaa_extract.verifier_implementation_sha256", return_value="a" * 64):
+                    def ambient(value):
+                        return fiona.Env(OGR_CURRENT_DATE=value) if value else contextlib.nullcontext()
+                    with ambient(first_ambient):
+                        first = stage_noaa_candidate(expected_layer_url=TEST_LAYER, **args)
+                    with ambient(second_ambient):
+                        second = stage_noaa_candidate(expected_layer_url=TEST_LAYER, **args)
+                    self.assertEqual(first, second)
 
     def test_bounded_application_error_retries_retain_failed_raw_body(self):
         class Response:

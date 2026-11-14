@@ -34,6 +34,7 @@ import pyogrio
 import pyproj
 import shapely
 from shapely.geometry import shape
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle,load_first_construction,seal_first_construction
 from dagster_hifld.provenance import provenance_projection
@@ -365,8 +366,9 @@ def compare_published(captures,table,audit):
 
 
 def write_geopackage(table,path):
-    pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='geometry',geometry_type='Unknown',
-        crs='EPSG:4326',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'geometry'})
+    with with_geopackage_creation_time('2000-01-01T00:00:00.000Z'):
+        pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='geometry',geometry_type='Unknown',
+            crs='EPSG:4326',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'geometry'})
     with sqlite3.connect(path)as db:db.execute("UPDATE gpkg_contents SET last_change='2000-01-01T00:00:00.000Z'")
 
 

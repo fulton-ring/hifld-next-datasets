@@ -1,4 +1,4 @@
-"""Shared native extractor for named layers in the 2024 Census school GDB."""
+"""Shared native extractor for named layers in the Census school GDB."""
 from __future__ import annotations
 
 import hashlib
@@ -7,7 +7,7 @@ import json
 import os
 import tempfile
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -52,10 +52,18 @@ class SchoolDistrictLayerConfig:
     coverage_statement: str
     source_url: str = "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_school.gdb.zip"
     source_host: str = "www2.census.gov"
+    source_vintage: str = "2024"
+    expected_source_fields: list[tuple[str, pa.DataType]] = field(
+        default_factory=lambda: list(EXPECTED_SOURCE_FIELDS))
 
     @property
     def file_slug(self) -> str:
         return self.dataset_slug
+
+    @property
+    def output_fields(self) -> list[str]:
+        attribute_names = [name for name, _ in self.expected_source_fields if name != "SHAPE"]
+        return ["OBJECTID", *attribute_names, "geometry"]
 
 
 SOURCE_URL = "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_school.gdb.zip"
@@ -194,7 +202,7 @@ def _native_table(archive_path: Path, config: SchoolDistrictLayerConfig) -> tupl
         if geometry_name != "SHAPE":
             raise ValueError("source_geometry_column_drift")
         actual = [(field.name, field.type) for field in table.schema]
-        if actual != EXPECTED_SOURCE_FIELDS or table.num_rows != config.expected_count:
+        if actual != config.expected_source_fields or table.num_rows != config.expected_count:
             raise ValueError("source_schema_or_feature_count_drift")
         fid_frame = pyogrio.read_dataframe(archive_path, layer=config.layer_name, fid_as_index=True, read_geometry=False, use_arrow=True)
         ids = [int(value) for value in fid_frame.index.tolist()]
@@ -233,7 +241,7 @@ def _build_geoparquet(table: pa.Table, ids: list[int], config: SchoolDistrictLay
     if geometry_types != {"MultiPolygon"}:
         raise ValueError("source_geometry_type_drift")
 
-    names = [name for name, _ in EXPECTED_SOURCE_FIELDS if name != "SHAPE"]
+    names = [name for name, _ in config.expected_source_fields if name != "SHAPE"]
     columns = [pa.array(ids, type=pa.int64())]
     columns.extend(table.column(name) for name in names)
     columns.append(table.column("SHAPE"))
@@ -258,11 +266,11 @@ def _build_geoparquet(table: pa.Table, ids: list[int], config: SchoolDistrictLay
 
 def _assert_full_parity(source: pa.Table, ids: list[int], parquet: bytes, config: SchoolDistrictLayerConfig) -> None:
     output = pq.read_table(pa.BufferReader(parquet))
-    if output.num_rows != config.expected_count or output.column_names != EXPECTED_OUTPUT_FIELDS:
+    if output.num_rows != config.expected_count or output.column_names != config.output_fields:
         raise ValueError("native_output_population_or_field_roster_drift")
     if output.column("OBJECTID").to_pylist() != ids:
         raise ValueError("native_output_id_parity_drift")
-    for source_name, output_name in [(name, name) for name, _ in EXPECTED_SOURCE_FIELDS if name != "SHAPE"]:
+    for source_name in [name for name, _ in config.expected_source_fields if name != "SHAPE"]:
         if output.column(source_name).to_pylist() != source.column(source_name).to_pylist():
             raise ValueError("native_output_attribute_parity_drift:" + source_name)
     if output.column("geometry").to_pylist() != source.column("SHAPE").to_pylist():
@@ -271,11 +279,13 @@ def _assert_full_parity(source: pa.Table, ids: list[int], parquet: bytes, config
         raise ValueError("native_output_duplicate_ids")
 
 
-def _source_records_sha256(table: pa.Table, ids: list[int]) -> str:
+def _source_records_sha256(table: pa.Table, ids: list[int],
+                           config: SchoolDistrictLayerConfig | None = None) -> str:
+    fields = config.expected_source_fields if config is not None else EXPECTED_SOURCE_FIELDS
     records = []
-    columns = {name: table.column(name).to_pylist() for name, _ in EXPECTED_SOURCE_FIELDS}
+    columns = {name: table.column(name).to_pylist() for name, _ in fields}
     for index, identity in enumerate(ids):
-        records.append({"OBJECTID": identity, **{name: (columns[name][index].hex() if name == "SHAPE" else columns[name][index]) for name, _ in EXPECTED_SOURCE_FIELDS}})
+        records.append({"OBJECTID": identity, **{name: (columns[name][index].hex() if name == "SHAPE" else columns[name][index]) for name, _ in fields}})
     return _sha256(_json_bytes(records))
 
 
@@ -326,8 +336,8 @@ def _capture(
         output_key = f"geoparquet/{config.file_slug}.parquet"
         staging.write(config.dataset_slug, config.file_slug, version, output_key, parquet)
         ids_sha = _sha256(_json_bytes(ids))
-        records_sha = _source_records_sha256(table, ids)
-        source_schema = [{"name": name, "type": str(kind)} for name, kind in EXPECTED_SOURCE_FIELDS]
+        records_sha = _source_records_sha256(table, ids, config)
+        source_schema = [{"name": name, "type": str(kind)} for name, kind in config.expected_source_fields]
         archive_sha = receipt["raw_sha256"]
         retrieved_at = receipt["observed_at"]
         identity = processing_identity(Path(__file__).parents[3])
@@ -341,7 +351,7 @@ def _capture(
         manifest = {
             "schema_version": 1,
             "title": config.title,
-            "description": f"Draft extraction of the complete 2024 Census TIGER/Line {config.layer_name} layer. It is a proposed source route for HIFLD inventory issue #{config.issue_number}; historical HIFLD archive equivalence and release acceptance remain unresolved.",
+            "description": f"Draft extraction of the complete {config.source_vintage} Census TIGER/Line {config.layer_name} layer. It is a proposed source route for HIFLD inventory issue #{config.issue_number}; historical HIFLD archive equivalence and release acceptance remain unresolved.",
             "publisher": "U.S. Census Bureau",
             "agency": "National Center for Education Statistics (HIFLD inventory attribution; source producer is U.S. Census Bureau)",
             "source_url": config.source_url,
@@ -350,7 +360,7 @@ def _capture(
             "processing_identity": identity,
             "supplied_code_commit_claim": supplied_claim,
             "inputs": [{
-                "input_id": "census_tigerline_2024_school_geodatabase",
+                "input_id": f"census_tigerline_{config.source_vintage}_school_geodatabase",
                 "producer": "U.S. Census Bureau",
                 "host": config.source_host,
                 "role": "producer_publication",
@@ -362,17 +372,17 @@ def _capture(
                 "http_status": receipt["status"],
                 "release_date_unknown_reason": "No explicit release date was established from the archive; the HTTP Last-Modified value is retained in the receipt and is not treated as a producer release date.",
                 "license": "Not adjudicated; source reuse terms and rights require maintainer review before release.",
-                "attribution": "U.S. Census Bureau, TIGER/Line 2024; historical HIFLD attribution and reuse terms remain under review.",
+                "attribution": f"U.S. Census Bureau, TIGER/Line {config.source_vintage}; historical HIFLD attribution and reuse terms remain under review.",
             }],
             "transformations": [
                 {"name": "extract_geodatabase_layer", "parameters": {"layer": config.layer_name, "field_subset": "none", "geometry_simplification": "none", "reprojection": "none"}},
                 {"name": "write_geoparquet", "parameters": {"compression": "zstd", "geometry_encoding": "WKB", "native_crs": "EPSG:4269"}},
             ],
-            "lineage": f"Direct extraction from the official U.S. Census Bureau TIGER/Line 2024 nationwide school geodatabase. This is a proposed source route for HIFLD inventory {config.inventory_id} / issue #{config.issue_number}, not proof of byte/row equivalence with its DataLumos archive or DHS crosswalk entry.",
+            "lineage": f"Direct extraction from the official U.S. Census Bureau TIGER/Line {config.source_vintage} nationwide school geodatabase. This is a proposed source route for HIFLD inventory {config.inventory_id} / issue #{config.issue_number}, not proof of byte/row equivalence with its DataLumos archive or DHS crosswalk entry.",
             "prebuilt_output_policy": {
                 "schema_version": 1,
                 "formats": {"geoparquet": {
-                    "reason": "Source-faithful preservation of all 2024 native layer attributes, FIDs, WKB geometries, and EPSG:4269 coordinates in one pinned object; this is a draft conversion only.",
+                    "reason": f"Source-faithful preservation of all {config.source_vintage} native layer attributes, FIDs, WKB geometries, and EPSG:4269 coordinates in one pinned object; this is a draft conversion only.",
                     "objects": [{"path": output_key, "sha256": parquet_sha, "bytes": len(parquet)}],
                 }},
             },
@@ -402,7 +412,7 @@ def _capture(
                 "runtime_package_source_sha256": _packaged_code_sha256(),
                 "python": identity["python"],
             },
-            "coverage_statement": f"Full {config.expected_count}-feature population of the named 2024 Census source layer. {config.coverage_statement} Equivalence to HIFLD archive coverage remains unverified.",
+            "coverage_statement": f"Full {config.expected_count}-feature population of the named {config.source_vintage} Census source layer. {config.coverage_statement} Equivalence to HIFLD archive coverage remains unverified.",
             "capture_replay": {
                 "mode": "retained_transfer_replay" if replayed else "live_http_capture",
                 "original_retrieved_at": retrieved_at,

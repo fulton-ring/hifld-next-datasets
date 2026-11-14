@@ -36,6 +36,7 @@ import shapely
 from fiona.io import ZipMemoryFile
 from shapely.geometry import shape
 
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
 from dagster_hifld.construction_state import (
@@ -316,8 +317,9 @@ def parquet_bytes(table):
 
 
 def write_geopackage(table, path):
-    pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='geometry',geometry_type='Unknown',
-                       crs='EPSG:3857',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'geometry'})
+    with with_geopackage_creation_time('2022-07-18T00:00:00.000Z'):
+        pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='geometry',geometry_type='Unknown',
+                           crs='EPSG:3857',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'geometry'})
     with sqlite3.connect(path) as db: db.execute("UPDATE gpkg_contents SET last_change='2022-07-18T00:00:00.000Z'")
 
 

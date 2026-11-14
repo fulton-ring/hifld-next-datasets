@@ -84,10 +84,15 @@
   "source": {
     "delegation_evidence": {
       "bts_description": "IENC dataset updated bi-monthly by USACE/AGC; links official USACE IENC Feature Classes services and master geodatabase",
-      "bts_item_url": "https://www.arcgis.com/home/item.html?id=3607d485a9854d6fa458bf507058ceae",
+      "bts_item_id": "7ec34864c8804468a9cf52d437fe4b6c",
+      "bts_item_observed_at": "2026-11-09",
+      "bts_item_url": "https://www.arcgis.com/home/item.html?id=7ec34864c8804468a9cf52d437fe4b6c",
       "bts_owner": "USDOT_BTS",
       "layer_id": 44,
       "layer_name": "OVERHEAD_PIPELINE_LINE",
+      "prior_bts_item_id": "3607d485a9854d6fa458bf507058ceae",
+      "prior_bts_item_observed_at": "2026-11-09",
+      "prior_bts_item_status": "anonymous access denied (HTTP transport 200 carrying ArcGIS error code 403 GWM_0003); succession unverified",
       "release_date": null,
       "release_date_reason": "BTS item describes the overall twice-monthly delivery cadence, not this layer release date.",
       "service_copyright": "USACE IENC",

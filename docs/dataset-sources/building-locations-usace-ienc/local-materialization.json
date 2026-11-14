@@ -1,0 +1,73 @@
+{
+  "supersedes_prior_materialization": {
+    "note": "Earlier local materializations are retained and are not re-claimed at the current head: the 2026-10-20 capture at the retired candidate base (runs c1cb6e04-edab-43a5-939d-3d7c8db34883, 863cfd9b-9f74-4abe-aedf-b1c853473561, e8ac0cd5-e69e-4e29-9e43-e8b6f2ee6fa7, refusal 1c6158bf-d1bf-4dda-b974-40e690302422, candidate v3e88b53ee70c4c0297e87d7a7029f83e), the 2026-11-10 BTS-guard re-verification sealed at code head 7586a387b571a843216a5dcfaea8d563a596229c (capture evidence f81a5a1657011355617db453fdba2fd1f5ab4719857d3abff44d13ed6ab6ce96; runs cee4feee-df35-4334-b917-32a60ac6f790, 1a734960-e0a0-4b5b-8315-4767e4c67eb6, a0ea84a9-305f-4dee-9ef1-a9ca46211a45, refusal 65a1e179-92cf-43df-8c31-576dc831ccff) and the 2026-11-11 reconciliation lifecycle sealed at code head ba93d5645cb25ea5c3f3837d9001e7084d853f9a (capture evidence 2aea60c67cef0978885705066c3d1df90d0fbaadd563c17a1c80e52cfeb3eb26; runs 55f9bf44-cce1-43cb-9a5e-633c604b5ec8, dbbd2ae0-99ec-4116-98ea-989fc7b15fbb, ff097857-3e42-4277-9c70-7fb35d025d8b, 4052fb0d-dfdb-4c15-92d6-d0a315e969f0, refusals 6c7707cb-c4b5-4966-ac5d-d7c6a555a814 and 70a75ef5-ca93-4271-a909-e215f38ea012; candidate vaa348a734b035ff917abe462277bdb0c) recorded in PR #25 comments.",
+    "prior_candidate_version": "vaa348a734b035ff917abe462277bdb0c",
+    "prior_capture_directory": "/tmp/hifld-native-reconstruction/building-locations/v20261111T002335Z-e1985ebc97fc4ede9cfe25451ac02bf0"
+  },
+  "code_head": "243b306a8a72eda0003a9a6238cef67d0ee74696",
+  "base_reconciliation_note": "Head 243b306a merges current main 4bf585f86901181d51acff06152977734ad2795b (FUDS public properties pipeline) into the building-locations branch; no building-locations source/asset/test bytes changed, and the fresh lifecycle below seals byte-identical candidate content (geoparquet sha256 unchanged) under the head-bound content_derived_version label vceb8daaefe5120bfe81c31af2a7cca8f.",
+  "captured_at_utc": "2026-11-11T03:07:36Z",
+  "source": "USACE IENC Master MapServer layer 5 BUILDING_SINGLE_POINT; BTS NTAD PDF item 7ec34864c8804468a9cf52d437fe4b6c (owner USDOT_BTS) fetched as current official distribution evidence; prior BTS item 3607d485a9854d6fa458bf507058ceae retained as historical with unaccepted succession",
+  "capture_directory": "/tmp/hifld-native-reconstruction/building-locations/v20261111T030736Z-7f36492be58f4d6e837744b3dfed03a2",
+  "capture_evidence_sha256": "b9df91da08c03a8f9f05b7eeab3756551abb8508f4e8ac6a3bd55a03b5e64b45",
+  "dagster_runs": {
+    "source_extraction": {
+      "run_id": "3886ce9f-cfae-4507-97fb-003ca2fb02e8",
+      "success": true
+    },
+    "immutable_cache_replay": {
+      "run_id": "7f8aef7f-0070-46f5-91e6-4bbd68f68e9f",
+      "success": true,
+      "reused": true
+    },
+    "catalog_and_quality": {
+      "run_id": "8b78e40f-3cdf-4fb6-9522-bcfefc8e2747",
+      "success": true
+    },
+    "prepare_release_metadata": {
+      "run_id": "eb671b8c-c3b0-4f59-9adc-8255aefd1dae",
+      "success": true
+    },
+    "release_verification": {
+      "run_id": "4f2098cc-0089-4268-8e6f-c17dcaffb337",
+      "success": false,
+      "refusal": "missing_or_ambiguous_exact_object_approval"
+    },
+    "absent_registry_fail_closed_probe": {
+      "run_id": "def9aacb-3ab0-4658-b7dc-114c8997fb52",
+      "success": false,
+      "refusal": "missing_independent_release_approval_registry"
+    }
+  },
+  "candidate": {
+    "version": "vceb8daaefe5120bfe81c31af2a7cca8f",
+    "feature_count": 892,
+    "source_id_sha256": "683cd4972133d31f7ac111fa459a538c1ccbc59c38838a65bb6d8d850f73bff0",
+    "source_schema_sha256": "4035cbde0e95aa48fbc54ca27f978577d5b981c1e328efdd98d0566d4558528e",
+    "geoparquet_sha256": "9302457bc3b57d5b96e1b064bd9119b1ef4b9fedd650aa1598c81f676b2de509",
+    "geoparquet_bytes": 39858,
+    "geoparquet_rows": 892,
+    "native_crs": "EPSG:4326"
+  },
+  "negative_gate": {
+    "approval_registry": "empty isolated local registry (HIFLD_RELEASE_APPROVALS)",
+    "published_inventory_before_equals_after": true,
+    "published_inventory_sentinel_sha256": "d52a98488561eb64930d9d952c8cc84397df3fbd871b5e6c03d84d71ed3a25f9"
+  },
+  "decisions_pending": [
+    "exact producer/distributor linkage for this MapServer route",
+    "source edition/release date and freshness",
+    "BTS item succession (7ec34864 vs prior 3607d485) and archive equivalence",
+    "HIFLD/DataLumos-to-IENC crosswalk and field mapping approval",
+    "baseline and geographic coverage acceptance",
+    "rights determination and exact-object release approval"
+  ],
+  "quality": {
+    "scope": "all_rows",
+    "passed": true,
+    "geometry_type": "Point",
+    "invalid_geometry_count": 0,
+    "null_geometry_count": 0,
+    "empty_geometry_count": 0
+  }
+}

@@ -3,8 +3,9 @@
 The caller owns safe sinks, disk reservation, response acceptance, retries and
 receipts. Sinks must retain the whole supplied block or raise; their persisted
 bytes still need caller readback checks. No URL, source or release is approved
-here. Limits can overshoot by one delivered wire block (HTTPX controls its size)
-or one bounded decoded block so evidence is never silently clipped.
+here. Callers can reject an oversized delivered wire block before persistence
+with ``max_wire_block_bytes``; uncapped callers retain the prior one-block
+overshoot behavior so evidence is never silently clipped.
 """
 from __future__ import annotations
 
@@ -118,6 +119,7 @@ def capture_http_response(
     *,
     max_wire_bytes: int,
     max_decoded_bytes: int,
+    max_wire_block_bytes: int | None = None,
     reserve: Callable[[CaptureProgress], None],
     retain_wire: Callable[[bytes], None],
     retain_decoded: Callable[[bytes], None],
@@ -129,7 +131,8 @@ def capture_http_response(
     CRC/trailer and decoder EOF are checked even when HTTPX considers transport
     complete. Content-Length is checked against wire bytes, never decoded size.
     ``reserve`` must raise on insufficient capacity; it runs before EVERY next
-    (including the possible EOF read) and before each bounded decompression.
+    (including the possible EOF read), again with actual wire-block size before
+    persistence, and before each bounded decompression.
     Ordinary transport, reserve, decoder and sink exceptions become incomplete
     results; process interruption exceptions propagate with prior sink evidence
     intact. No exception messages/URLs/credentials are copied into results.
@@ -137,6 +140,8 @@ def capture_http_response(
     for name, value in (("max_wire_bytes", max_wire_bytes), ("max_decoded_bytes", max_decoded_bytes)):
         if type(value) is not int or value < 0:
             raise ValueError(f"{name}_must_be_nonnegative_integer")
+    if max_wire_block_bytes is not None and (type(max_wire_block_bytes) is not int or max_wire_block_bytes < 0):
+        raise ValueError("max_wire_block_bytes_must_be_nonnegative_integer")
     if not isinstance(response, httpx.Response):
         raise TypeError("response_must_be_httpx_response")
     if not all(callable(callback) for callback in (reserve, retain_wire, retain_decoded)):
@@ -198,12 +203,22 @@ def capture_http_response(
                 received += len(block)
                 received_hash.update(block)
                 pending_wire = block
+                if (max_wire_block_bytes is not None
+                        and (len(block) > max_wire_block_bytes or received > max_wire_bytes)):
+                    # The transport has already yielded this block, so account
+                    # for what was observed, but refuse it before any sink can
+                    # persist bytes beyond the caller's declared bounds.
+                    failure = ("wire_block_limit_exceeded" if len(block) > max_wire_block_bytes
+                               else "wire_limit_exceeded")
+                    break
+                if max_wire_block_bytes is not None:
+                    reservation("wire_block", len(block))
                 phase = "wire_sink"
                 retain_wire(block)
                 retained += len(block)
                 retained_hash.update(block)
                 pending_wire = b""
-                if received > max_wire_bytes:
+                if max_wire_block_bytes is None and received > max_wire_bytes:
                     failure = "wire_limit_exceeded"
                     break
                 if decoder is None:

@@ -110,8 +110,8 @@ class CensusBlockGroupsTests(unittest.TestCase):
         self.assertEqual(census_block_groups_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
         scheduled_config = census_block_groups_draft_schedule._run_config_fn(None)
         source_config = scheduled_config["ops"]["ingest__census_block_groups_3__census_block_groups_3"]["config"]
-        self.assertEqual(source_config["archive_path"], "CENSUS_BLOCK_GROUPS_ARCHIVE_PATH")
-        self.assertEqual(source_config["receipt_path"], "CENSUS_BLOCK_GROUPS_RECEIPT_PATH")
+        self.assertEqual(source_config["archive_path"], {"env": "CENSUS_BLOCK_GROUPS_ARCHIVE_PATH"})
+        self.assertEqual(source_config["receipt_path"], {"env": "CENSUS_BLOCK_GROUPS_RECEIPT_PATH"})
         self.assertIn("census_block_groups_draft_refresh", {job.name for job in defs.resolve_all_job_defs()})
         self.assertEqual(
             defs.resolve_schedule_def("census_block_groups_draft_refresh_schedule").default_status,

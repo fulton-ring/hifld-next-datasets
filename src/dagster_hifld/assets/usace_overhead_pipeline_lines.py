@@ -1,4 +1,4 @@
-"""Explicit stopped-refresh Dagster asset for USACE IENC overhead cables."""
+"""Explicit stopped-refresh Dagster asset for USACE IENC overhead pipeline lines."""
 from dagster import (
     AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
     ScheduleDefinition, asset, asset_check, define_asset_job,

@@ -19,7 +19,7 @@ from uuid import uuid4
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
-_MAX_BODY = 2 * 1024 * 1024
+_MAX_BODY = 8 * 1024 * 1024
 
 
 class ConstructionStateError(ValueError):

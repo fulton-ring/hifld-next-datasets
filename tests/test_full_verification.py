@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from dagster import DagsterInstance, Definitions, define_asset_job
@@ -24,7 +25,7 @@ from dagster_hifld.release_approval import (
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import _merge_manifest_layers, load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.provenance import provenance_projection
-from dagster_hifld.validation import ComparisonLimits, compare_full_rows, sha256_file
+from dagster_hifld.validation import ComparisonLimits, _file_identity, compare_full_rows, sha256_file
 
 
 CONTRACT = {
@@ -243,6 +244,49 @@ class FullPopulationTests(unittest.TestCase):
                                            baseline_sha256=original(baseline), candidate_sha256=original(candidate),
                                            baseline_reference=baseline_reference(baseline))
             self.assertEqual(report["status"], "blocked")
+
+    def test_input_identity_ignores_access_time_only_changes(self):
+        # Reads legitimately update the access timestamp on some filesystems
+        # (the pre-a91d9cac full-stat guard failed every comparison there), so
+        # atime must not contribute to input identity; ctime and mtime still do.
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "input.jsonl"
+            stream(path, [feature()])
+            stat = os.stat(path)
+            fields = {name: getattr(stat, name) for name in dir(stat) if name.startswith("st_")}
+            def identity_with(**changed):
+                altered = SimpleNamespace(**{**fields, **changed})
+                with patch.object(Path, "stat", return_value=altered):
+                    return _file_identity(path)
+            baseline_identity = _file_identity(path)
+            self.assertEqual(identity_with(st_atime_ns=stat.st_atime_ns + 1_000_000_000), baseline_identity)
+            self.assertNotEqual(identity_with(st_ctime_ns=stat.st_ctime_ns + 1_000_000_000), baseline_identity)
+            self.assertNotEqual(identity_with(st_mtime_ns=stat.st_mtime_ns + 1_000_000_000), baseline_identity)
+
+    def test_input_mtime_only_update_during_comparison_is_blocked(self):
+        # A modification-time change with identical content is still a blocked
+        # input change; only read-mutated access times are tolerated.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            baseline, candidate = root / "baseline.jsonl", root / "candidate.jsonl"
+            stream(baseline, [feature()])
+            stream(candidate, [feature()])
+            original = sha256_file
+            touched = False
+            def touch_modification_time(path):
+                nonlocal touched
+                result = original(path)
+                if not touched and Path(path) == candidate:
+                    touched = True
+                    stat = os.stat(candidate)
+                    os.utime(candidate, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+                return result
+            with patch("dagster_hifld.validation.sha256_file", side_effect=touch_modification_time):
+                report = compare_full_rows(baseline, candidate, CONTRACT, root / "out",
+                                           baseline_sha256=original(baseline), candidate_sha256=original(candidate),
+                                           baseline_reference=baseline_reference(baseline))
+            self.assertEqual(report["status"], "blocked")
+            self.assertTrue(any("Input changed during comparison" in code for code in report["reason_codes"]))
 
     def test_multi_input_provenance_merge_preserves_identity_and_rejects_conflicts(self):
         one, two = {"input_id": "a", "producer": "Agency A"}, {"input_id": "b", "producer": "Agency B"}

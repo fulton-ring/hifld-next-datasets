@@ -33,6 +33,7 @@ import pyproj
 import shapely
 from shapely.geometry import mapping, shape
 
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
@@ -399,9 +400,10 @@ def local_candidate_path(storage: StagingStorageResource, prefix: str, *, allow_
 
 def write_native_geopackage(rows: list[dict], path: Path) -> None:
     """The original deterministic canonical writer, including SQLite metadata."""
-    with fiona.open(path, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
-                    schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
-        destination.writerecords(rows)
+    with with_geopackage_creation_time('2024-12-19T00:00:00.000Z'):
+        with fiona.open(path, 'w', driver='GPKG', layer=SLUG, crs='EPSG:4269',
+                        schema={'properties': SCHEMA, 'geometry': 'Polygon'}) as destination:
+            destination.writerecords(rows)
     with sqlite3.connect(path) as db:
         db.execute("UPDATE gpkg_contents SET last_change='2024-12-19T00:00:00.000Z'")
 

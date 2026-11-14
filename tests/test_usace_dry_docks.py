@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import struct
 import tempfile
@@ -83,8 +84,12 @@ class UsaceDryDocksTests(unittest.TestCase):
         self.assertEqual(table["Feature_ID"].to_pylist(), ["U3 1589847816 00001", "U3 1392960548 00001"])
         self.assertEqual(table["geometry"][0].as_py(), source._polygon_wkb({"rings": [ring1]}))
 
+    @unittest.skipUnless(
+        os.environ.get("HIFLD_DRY_DOCKS_CAPTURE_DIR"),
+        "Set HIFLD_DRY_DOCKS_CAPTURE_DIR to the retained original USACE capture",
+    )
     def test_retained_capture_is_complete_and_matches_pinned_native_snapshot(self):
-        capture_root = Path("/tmp/58-dry-docks-capture-20261021")
+        capture_root = Path(os.environ["HIFLD_DRY_DOCKS_CAPTURE_DIR"])
         captures = source._read_replay(capture_root)
         fields, features, audit = source._validate(captures)
         self.assertEqual(len(features), 2)
