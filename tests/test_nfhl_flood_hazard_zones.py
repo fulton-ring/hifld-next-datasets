@@ -752,9 +752,8 @@ class NfhlFloodHazardZonesProducerTextTests(unittest.TestCase):
         offsets = [0]
         for raw in raw_values:
             offsets.append(offsets[-1] + len(raw))
-        offsets_data = pa.array(offsets, type=pa.int32()).buffers()[1]
-        return pa.StringArray.from_buffers(pa.string(), len(raw_values),
-                                           [None, offsets_data, pa.py_buffer(data)])
+        offsets_buffer = pa.array(offsets, type=pa.int32()).buffers()[1]
+        return pa.StringArray.from_buffers(len(raw_values), offsets_buffer, pa.py_buffer(data))
 
     def test_string_column_values_retain_invalid_utf8_bytes(self):
         good = "Shaded Zone AE".encode("utf-8")
@@ -778,8 +777,7 @@ class NfhlFloodHazardZonesProducerTextTests(unittest.TestCase):
     def test_record_canonical_escapes_producer_surrogates(self):
         body = source._record_canonical({"STUDY_TYP": "less than 1\udce2"})
         self.assertEqual(json.loads(body), {"STUDY_TYP": "less than 1\udce2"})
-        self.assertEqual(body,
-                         '{"STUDY_TYP":"less than 1\\\\udce2"}'.encode("ascii"))
+        self.assertEqual(body, '{"STUDY_TYP":"less than 1\\udce2"}'.encode("ascii"))
 
     def test_record_canonical_is_deterministic_and_sorted(self):
         first = source._record_canonical({"B": 1, "A": "x"})

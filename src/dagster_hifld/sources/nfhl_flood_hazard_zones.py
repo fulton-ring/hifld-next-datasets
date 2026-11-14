@@ -207,11 +207,13 @@ def _string_array_from_values(values: list[object], arrow_type: pa.DataType) -> 
         offsets = [0]
         for raw in raw_list:
             offsets.append(offsets[-1] + (len(raw) if raw is not None else 0))
-        offsets_data = pa.array(offsets, type=pa.int32()).buffers()[1]
+        offsets_buffer = pa.array(offsets, type=pa.int32()).buffers()[1]
         nulls = [value is None for value in values]
-        validity = None if not any(nulls) else pa.array(nulls, type=pa.bool_()).buffers()[0]
-        return pa.StringArray.from_buffers(arrow_type, len(values),
-                                           [validity, offsets_data, pa.py_buffer(data)])
+        if any(nulls):
+            null_bitmap = pa.array(nulls, type=pa.bool_()).buffers()[0]
+            return pa.StringArray.from_buffers(len(values), offsets_buffer, pa.py_buffer(data),
+                                               null_bitmap=null_bitmap, null_count=sum(nulls))
+        return pa.StringArray.from_buffers(len(values), offsets_buffer, pa.py_buffer(data))
 
 
 def _sha(data: bytes) -> str:
