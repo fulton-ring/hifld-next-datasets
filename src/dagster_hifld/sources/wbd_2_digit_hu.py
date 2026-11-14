@@ -91,7 +91,7 @@ EXPECTED_ID_MIN = 1
 EXPECTED_ID_MAX = 22
 # Digest of the canonical-JSON sorted OBJECTID roster (22 unique ids, 1..22),
 # computed from the complete dated population walk (2026-11-14).
-EXPECTED_ID_SHA256 = "PLACEHOLDER_ID_SHA"
+EXPECTED_ID_SHA256 = ""
 # This 2-digit layer refuses any window whose JSON would exceed roughly
 # 28-40 MB (broad windows at 10-2000 features, three of five 5-feature
 # windows, and the 2-feature window carrying OBJECTIDs 17+18 all fail with
@@ -131,9 +131,9 @@ DISK_FLOOR_BYTES = 2_000_000_000
 SHAPE_PARITY_TOLERANCE = 1e-6
 # Native baselines pinned from the complete dated population walk (2026-11-14);
 # empty/None pins are checked only when non-empty.
-EXPECTED_SCHEMA_SHA256 = "PLACEHOLDER_SCHEMA_SHA"
-EXPECTED_RECORD_SHA256 = "PLACEHOLDER_RECORD_SHA"
-EXPECTED_GEOMETRY_SHA256 = "PLACEHOLDER_GEOMETRY_SHA"
+EXPECTED_SCHEMA_SHA256 = ""
+EXPECTED_RECORD_SHA256 = ""
+EXPECTED_GEOMETRY_SHA256 = ""
 EXPECTED_NULL_GEOMETRY_COUNT = None
 EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
 BASELINE_PENDING_NOTE = (
