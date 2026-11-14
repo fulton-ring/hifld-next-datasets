@@ -294,10 +294,12 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
         self.assertEqual(len(src.NATIVE_FIELDS), 37)
         self.assertEqual(src.MIN_FREE_BYTES, 25_000_000_000)
         self.assertEqual(src.ACCEPT_ENCODING, "gzip")
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
+        self.assertNotEqual(src.EXPECTED_RECORD_SHA256, "")
+        self.assertNotEqual(src.EXPECTED_GEOMETRY_SHA256, "")
         self.assertNotEqual(src.EXPECTED_IDS_SHA256, "")
-        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
+                         {"source_polygon_ring_degenerate": 302,
+                          "source_polygon_hole_unassigned": 40})
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]

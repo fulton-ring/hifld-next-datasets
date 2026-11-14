@@ -126,27 +126,30 @@ EXPECTED_IDS_SHA256 = "6971d2092b3ae91a8f3ec092687fd184a1057ce622d832e9686e9b6fa
 # complete capture of the 441,609-feature population; they are pinned here as
 # empty (checked only when non-empty) and recorded by the first complete
 # capture for the maintainer to pin.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
+# Pinned from the complete 442-page capture sealed 2026-11-14
+# (capture_state.json complete; ids and schema digests verified unchanged).
+EXPECTED_RECORD_SHA256 = "19b85e326bd07a070260be52591719f0bf3956f8f77fbd3b4509d686af8d6619"
+EXPECTED_GEOMETRY_SHA256 = "368ea3a499b84d5bc587e65a58023dde27334aeb10035b4e6173191accb5f707"
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 # Producer-served features whose rings cannot form a valid OGC polygon are
-# gated, never silently coerced. No such feature was observed in the bounded
-# 2026-11-13 probes (4,098 rings over 3,200 features), so the pinned counts
-# start empty; any occurrence in the first complete capture fails closed and
-# is then recorded for the maintainer decision.
+# gated, never silently coerced. The first complete capture (442 keyset pages
+# sealed 2026-11-14) failed closed on these counts and they are now pinned as
+# observed; any change fails the next capture and is quarantined.
 UNUSABLE_GEOMETRY_MODES = frozenset({
     "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
     "source_polygon_hole_unassigned",
 })
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {}
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {
+    "source_polygon_ring_degenerate": 302,
+    "source_polygon_hole_unassigned": 40,
+}
 EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0642, "ymin": -1733741.441300001,
                          "xmax": 20037507.140600003, "ymax": 12930677.553099995}
 BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests are not pinned yet: the "
-    "441,609-feature population cannot be captured inside one session, so no "
-    "complete capture existed when this draft was implemented (observed "
-    "2026-11-13). build_pad_us_protection_mechanism_category_baseline computes them from a completed "
-    "resumable capture directory for the maintainer to pin.")
+    "The record and geometry baseline digests are pinned from the first complete "
+    "capture of the 441,609-feature population (442 retained keyset pages sealed "
+    "2026-11-14, ids and schema digests unchanged from the 2026-11-13 probes); "
+    "later captures are gated against them and quarantined on drift.")
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),
@@ -571,8 +574,12 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     docs = {name: json.loads(_read_capture(capture_root, name)[0])
             for name in METADATA_NAMES if name != "service_doc"}
     service_doc_body = _read_capture(capture_root, "service_doc")[0]
-    if (SERVICE_URL.encode("utf-8") not in service_doc_body
-            or VIEW_ITEM_ID.encode("utf-8") not in service_doc_body):
+    # The USGS GAP program page (the retained service documentation) links the
+    # PAD-US ArcGIS Online item by id (usgs.maps.arcgis.com/home/item.html?id=
+    # <VIEW_ITEM_ID>, observed 2026-11-14 in the first complete capture); it
+    # never embeds the REST endpoint string, whose identity stays pinned by the
+    # retained service/layer documents and the endpoint receipts.
+    if VIEW_ITEM_ID.encode("utf-8") not in service_doc_body:
         raise PadUsProtectionError("usgs_service_documentation_link_drift")
     _validate_item_document(docs["view_item"], VIEW_ITEM_ID, "view_item")
     _validate_item_document(docs["service_item"], SERVICE_ITEM_ID, "service_item")

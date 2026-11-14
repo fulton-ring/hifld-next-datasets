@@ -79,3 +79,22 @@ the probes; the draft module retains every response and wire receipt in a
 resumable capture directory, re-verifies the pinned count/IDs/schema/extent
 before and after the walk, quarantines incomplete or drifted captures, and
 keeps all release approvals false with the refresh schedule stopped.
+
+## Complete capture (2026-11-14)
+
+- The resumable gzip keyset walk completed: all 442 1,000-feature pages plus
+  the empty tail-page witness (OBJECTID>441,609) were retained with
+  per-response receipts between 2026-11-14T02:59Z and 2026-11-14T03:47Z, and
+  count/IDs/schema/extent were re-verified unchanged before and after the walk
+  (ids `6971d209...`, schema `2afc737f...`, count 441,609).
+- The full pass over the retained population computed the per-value and
+  per-geometry baselines now pinned in the source module: record
+  `19b85e32...8d6619`, geometry `368ea3a4...cb5f707`.
+- The producer serves 342 features whose rings cannot form a valid OGC polygon
+  (302 `source_polygon_ring_degenerate`, 40 `source_polygon_hole_unassigned`).
+  The first capture attempt failed closed on them as designed; the observed
+  counts are now pinned, their candidate geometries stay explicitly null-gated
+  (never silently coerced), and no producer null geometries exist beyond them.
+- No production materialization was published; pipeline verification ran on
+  isolated local staging, and all release approvals remain false with the
+  refresh schedule stopped.
