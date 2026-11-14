@@ -156,7 +156,6 @@ from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
 from dagster_hifld.assets.national_transit_map_agencies import bts_national_transit_map_agencies
 from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
 
-
 hifld_ingest_assets = [
     bts_ferry_terminals,
     smithsonian_holocene_volcanoes,
