@@ -676,6 +676,9 @@ class UsCoalFieldsRealCaptureTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.package_tmp.cleanup()
 
+    def _local_path(self, storage, key):
+        return Path(storage.local_dir) / key
+
     def _real_capture(self, version: str = "v20261114T000000Z"):
         temporary = tempfile.TemporaryDirectory(prefix="us-coal-fields-real-")
         self.addCleanup(temporary.cleanup)
