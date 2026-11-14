@@ -91,10 +91,16 @@ keeps all release approvals false with the refresh schedule stopped.
   per-geometry baselines now pinned in the source module: record
   `19b85e32...8d6619`, geometry `368ea3a4...cb5f707`.
 - The producer serves 342 features whose rings cannot form a valid OGC polygon
-  (302 `source_polygon_ring_degenerate`, 40 `source_polygon_hole_unassigned`).
-  The first capture attempt failed closed on them as designed; the observed
-  counts are now pinned, their candidate geometries stay explicitly null-gated
-  (never silently coerced), and no producer null geometries exist beyond them.
+  (302 `source_polygon_ring_degenerate`, 40 `source_polygon_hole_unassigned`)
+  and 3,479 further polygons that fail OGC validity (self-intersections and
+  similar producer defects; verified independently over the retained pages).
+  The first capture attempt failed closed on the unusable rings as designed;
+  both observed counts are now pinned, the unusable-ring candidate geometries
+  stay explicitly null-gated (never silently coerced), the invalid-but-usable
+  polygons are retained verbatim without repair, and no producer null
+  geometries exist beyond the gated ones. The pinned counts are part of the
+  gated-null contract the blocking ingest check and the catalog population
+  gates verify; any change fails the next capture and is quarantined.
 - No production materialization was published; pipeline verification ran on
   isolated local staging, and all release approvals remain false with the
   refresh schedule stopped.
