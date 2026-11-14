@@ -1,0 +1,107 @@
+{
+  "inventory_id": "paging-transmission-towers",
+  "inventory_title": "Paging Transmission Towers",
+  "inventory_publisher": "Federal Communications Commission (FCC)",
+  "inventory_archive": {
+    "url": "https://www.datalumos.org/datalumos/project/240567/version/V1/view",
+    "archive_modified_date": "2024-07-06",
+    "date_meaning": "Inventory archive modification date; not a source release date",
+    "authority": "DataLumos is a rescue archive, not a maintained agency feed; never a pipeline input"
+  },
+  "research_status": "official maintained FCC ULS producer feed identified and payload-verified in this environment on 2026-11-13; draft ingest asset implemented and locally materialized (PR #532)",
+  "crosswalk": {
+    "dhs_crosswalk_doi": "https://doi.org/10.3886/E241367V1",
+    "prior_audit": "https://github.com/fulton-ring/agent-content-demos/issues/40#issuecomment-6253017620",
+    "match_status": "probable title/description match; DOI unreachable from this environment on 2026-10-20 and not re-fetched 2026-11-13"
+  },
+  "producer": {
+    "name": "Federal Communications Commission (FCC), Wireless Telecommunications Bureau, Universal Licensing System (ULS)",
+    "maintained_feed": "ULS weekly complete public access files for Paging (47 CFR Part 22) at https://data.fcc.gov/download/pub/uls/complete/l_paging.zip, linked from the FCC Daily & Weekly Transaction Files page https://www.fcc.gov/uls/transactions/daily-weekly",
+    "url_history": "FCC Public Access Updates notice dated 2026-10-20 page https://www.fcc.gov/wireless/data/public-access-updates records a 2021-07-07 'Transaction Files URL Source Changing' change: daily/weekly download URLs moved to https://data.fcc.gov/download/. The earlier host wireless2.fcc.gov/uls/data/... is retired and now returns Akamai 403 from this environment (2026-11-13); the 2026-10-20 audit probed the retired host, which was the wrong candidate.",
+    "cadence": "Complete (weekly) files are created early Sunday morning; daily transaction files Tue-Sat (FCC pubacc_intro_11122014.pdf). Current weekly build observed 2026-11-08.",
+    "lineage_claim": "HIFLD description says the layer is derived from the FCC Licensing Database; per-location records in the former HIFLD copy (UniqSysID, LocNum, DMS coordinates) correspond to ULS PUBACC_LO joined to PUBACC_HD."
+  },
+  "official_source": {
+    "role": "FCC ULS producer bulk-download (weekly complete license file, Paging)",
+    "paging_zip_url": "https://data.fcc.gov/download/pub/uls/complete/l_paging.zip",
+    "directory_url": "https://data.fcc.gov/download/pub/uls/complete/",
+    "publisher": "Federal Communications Commission (FCC)",
+    "verified_from_this_environment": "2026-11-13: HTTP 206 ranged GET on the zip (Apache), full download 6,684,961 bytes, sha256 56bb56ee9c679aff3da9db0fe0c2b4f1718fe80bfdf4e4fa79dfc8644d29e752; directory listing shows l_paging.zip modified 2026-11-08 10:03:45 with 6,684,961 bytes; zip counts file states 'File Creation Date: Sun Nov  8 10:03:43 EST 2026'.",
+    "documentation": [
+      "https://www.fcc.gov/wireless/data/public-access-files-database-downloads (Definitions effective 2026-03-19; SQL definitions effective 2025-04-17)",
+      "https://www.fcc.gov/sites/default/files/public_access_database_definitions_20260319.pdf",
+      "https://www.fcc.gov/sites/default/files/public_access_database_definitions_sql_20250417.txt",
+      "https://www.fcc.gov/wireless/data/public-access-updates (2026-07-20 ULS data type update notice)",
+      "https://www.fcc.gov/sites/default/files/pubacc_intro_11122014.pdf (file naming, weekly Sunday build, join keys)"
+    ],
+    "payload_verified": {
+      "tables": "zip contains pipe-delimited .dat tables for the Paging service (HD, LO, EN, AN, and others) plus a counts file",
+      "hd_rows": 9604,
+      "hd_fields": 59,
+      "lo_rows": 31951,
+      "lo_fields": 51,
+      "field_counts_match": "PUBACC_HD 59 columns and PUBACC_LO 51 columns match the official public_access_database_definitions_sql_20250417.txt exactly (verified 2026-11-13)",
+      "hd_license_status_counts": "A=1137 active, C=4799 cancelled, E=2986 expired, T=682 terminated",
+      "lo_rows_with_active_license": 6389,
+      "lo_rows_with_full_dms_coordinates": 31778,
+      "former_hifld_copy_feature_count": 6541,
+      "baseline_note": "LO rows joined to license_status='A' (6,389) are close to the former HIFLD copy's 6,541 features, consistent with an older HIFLD edition; exact accepted-baseline mapping and any status filter require maintainer approval and are not implemented as a silent filter."
+    }
+  },
+  "candidates": [
+    {
+      "role": "retired FCC host; superseded",
+      "paging_table_url": "https://wireless2.fcc.gov/uls/data/complete/l_paging.zip",
+      "audit_status": "HTTP 403 AkamaiGHost from this environment on 2026-10-20 and 2026-11-13; FCC's 2021-07-07 notice moved these files to https://data.fcc.gov/download/. Do not use; superseded by the official_source above.",
+      "location_table_url_note": "l_location.zip does not exist on the current host; location data is the LO table inside each service zip."
+    },
+    {
+      "role": "Esri-hosted HIFLD-labeled copy; authority unresolved; never a pipeline input",
+      "owner": "tqd32886_USG",
+      "item_id": "50887498d8ac41d7ac9c65790706c615",
+      "service_url": "https://services2.arcgis.com/PYn6bWCjT6bhw1z3/arcgis/rest/services/HIFLD_Paging_Transmission_Towers/FeatureServer",
+      "authority_assessment": "Item owner is not an identified FCC account; no delegation evidence. Former-HIFLD research context only; its 6,541 features are used only as a historical baseline hint."
+    },
+    {
+      "role": "HIFLD Open residual copy under Oregon OEM account; mirror",
+      "owner": "Oregon_OEM",
+      "item_id": "059c1852661443549e60e26190484ae2",
+      "authority_assessment": "Mirror owned by Oregon OEM, not FCC; never a pipeline input."
+    }
+  ],
+  "proposed_raw_schema_contract": {
+    "status": "unapproved; based on verified payload and official definitions",
+    "tables": "Preserve PUBACC_HD (59 columns) and PUBACC_LO (51 columns) with exact official SQL names, order, values, and precision; retain the original .dat files losslessly. PUBACC_LO names from official definitions: record_type, unique_system_identifier, uls_file_number, ebf_number, call_sign, location_action_performed, location_type_code, location_class_code, location_number, site_status, corresponding_fixed_location, location_address, location_city, location_county, location_state, radius_of_operation, area_of_operation_code, clearance_indicator, ground_elevation, lat_degrees, lat_minutes, lat_seconds, lat_direction, long_degrees, long_minutes, long_seconds, long_direction, max_lat_degrees, max_lat_minutes, max_lat_seconds, max_lat_direction, max_long_degrees, max_long_minutes, max_long_seconds, max_long_direction, nepa, quiet_zone_notification_date, tower_registration_number, height_of_support_structure, overall_height_of_structure, structure_type, airport_id, location_name, units_hand_held, units_mobile, units_temp_fixed, units_aircraft, units_itinerant, status_code, status_date, earth_agree.",
+    "identity": "Identity is the source pair (unique_system_identifier, location_number); unique_system_identifier replaces call_sign per FCC intro doc. Do not promote row numbers or generate substitute IDs.",
+    "drift_policy": "Field-count or name change vs the official definitions, changed status mix, or coverage/geometry drift requires quarantine and maintainer review. FCC documents type changes (2026-07-20 notice); watch for future notices."
+  },
+  "published_contract": {
+    "status": "pending maintainer approval and accepted-baseline comparison",
+    "candidate_reconstruction": "One point feature per PUBACC_LO row whose PUBACC_HD license is active (license_status='A'), geometry from lat/long DMS fields (degrees/minutes/seconds/direction) converted to decimal degrees (EPSG:4326); carry source columns including unique_system_identifier, location_number, call_sign, tower_registration_number, structure_type, heights, site fields. Status filter and column mapping are proposals requiring approval, not silent defaults.",
+    "baseline": "No accepted HIFLD Next dataset/version verified; former HIFLD copy (6,541 features) vs current active-license reconstruction (6,389 locations) difference needs an accepted-baseline decision."
+  },
+  "refresh_and_idempotency": {
+    "cadence": "weekly complete file (created early Sunday); ingest should version by the counts-file creation date, not fetch time",
+    "idempotency_key": "sha256 of l_paging.zip plus counts-file creation date",
+    "completeness_gate": "row counts from the counts file must match parsed rows per table; HD/LO join coverage reported",
+    "quarantine": "Do not replace an accepted release when the file is incomplete, schema-drifted, or cannot be authenticated as FCC."
+  },
+  "implementation_plan": {
+    "status": "draft implemented in PR #532 (source adapter src/dagster_hifld/sources/paging_transmission_towers.py, asset src/dagster_hifld/assets/paging_transmission_towers.py, focused tests, counts-file completeness gate); local staging materialization with real DAGSTER_HOME recorded on the PR; catalog/publish assets derive automatically",
+    "steps": [
+      "Ingest asset fcc_uls_paging: download l_paging.zip, verify sha256/size, stage raw zip and extracted HD.dat/LO.dat/counts under a source format directory with the counts creation date as version evidence",
+      "Parse positionally against the official 59/51-column definitions; fail loudly on field-count mismatch (drift quarantine)",
+      "Convert HD+LO to staged point features per the approved contract only; keep the status filter explicit and configurable, defaulting to documented pending-approval behavior",
+      "Focused tests: column-count drift, join integrity, DMS conversion including W/S hemispheres, active-license filter, idempotency on repeat download",
+      "Local staging materialization with real DAGSTER_HOME before review"
+    ],
+    "access_note": "wireless2.fcc.gov is edge-blocked from this environment, but data.fcc.gov (the maintained host) is fully reachable, so no external capture is required for implementation."
+  },
+  "audit": {
+    "latest_retrieved_at_utc": "2026-11-13T21:10Z",
+    "runtime_evidence_directory": "untracked scratch outside Git: downloaded zip, extracted .dat files, directory listing, FCC documentation captures, SHA-256",
+    "prior_audit": "2026-10-20 probes (recorded in PR #532 history) hit the retired wireless2.fcc.gov host and the Esri copies; superseded by this audit for source selection.",
+    "release_date": "weekly build 2026-11-08 (zip counts file creation marker)",
+    "freshness_conclusion": "Official maintained weekly feed verified live and current (2026-11-08 build) on the FCC's documented current host."
+  }
+}
