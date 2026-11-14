@@ -1,7 +1,7 @@
 import copy
 import unittest
 
-from dagster_hifld.provenance import validate_provenance
+from dagster_hifld.provenance import provenance_projection, validate_provenance
 from dagster_hifld.release_approval import ReleaseApprovalError, validate_release_provenance
 
 
@@ -18,6 +18,23 @@ def provenance_fixture():
 
 
 class ProvenanceTests(unittest.TestCase):
+    def test_packaged_processing_code_survives_catalog_provenance_projection(self):
+        value = provenance_fixture()
+        value["processing_code"] = {
+            "scheme": "sha256-packaged-dagster_hifld-py-v1",
+            "sha256": "a" * 64,
+            "runtime_versions": {"python": "3.12.14", "gdal": "3.10.3"},
+        }
+        projected = provenance_projection(value)
+        self.assertEqual(projected["processing_code"], value["processing_code"])
+
+    def test_versioned_packaged_processing_identity_is_valid_provenance(self):
+        value = provenance_fixture()
+        value["code_commit"] = "packaged-sha256:" + "a" * 64
+        value["code_identity_scheme"] = "sha256-packaged-dagster-hifld-v1"
+        validate_provenance(value)
+        validate_release_provenance(value)
+
     def test_timezone_aware_retrieval_and_separate_release_dates_remain_unmodified(self):
         for timestamp in ["2026-10-19T01:02:03Z", "2026-10-19T01:02:03.123456789+02:30", "2026-10-19T01:02:03-05:00"]:
             for release in [None, "2025-10-19", "2025-10-19T05:00:00+00:00"]:

@@ -8,7 +8,6 @@ from dagster_hifld.catalog import (
     summarize_staged_catalog,
     write_catalog_metadata,
 )
-from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILES
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import (
@@ -48,9 +47,21 @@ def _build_catalog_output_metadata(
     return metadata
 
 
-_SUPPORTED_BY_PAIR = {
-    (spec.dataset_slug, spec.file_slug): spec for spec in SUPPORTED_DATASET_FILES
-}
+# Resolve the support list lazily: this module is imported during ingest
+# discovery, before the registry finishes appending discovered assets, so an
+# eager snapshot could miss discovery-registered datasets.
+_supported_by_pair_cache: dict[tuple[str, str], object] | None = None
+
+
+def _supported_by_pair() -> dict[tuple[str, str], object]:
+    global _supported_by_pair_cache
+    if _supported_by_pair_cache is None:
+        from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILES
+
+        _supported_by_pair_cache = {
+            (spec.dataset_slug, spec.file_slug): spec for spec in SUPPORTED_DATASET_FILES
+        }
+    return _supported_by_pair_cache
 
 
 @asset(
@@ -62,7 +73,7 @@ _SUPPORTED_BY_PAIR = {
 def publish_catalog(context, staging_storage: StagingStorageResource) -> Output[dict]:
     dataset_slug, file_slug, version = parse_publish_partition_key(context.partition_key)
     snapshot_source_metadata(staging_storage, dataset_slug, file_slug, version)
-    spec = _SUPPORTED_BY_PAIR.get((dataset_slug, file_slug))
+    spec = _supported_by_pair().get((dataset_slug, file_slug))
     description = (
         spec.description if spec else f"Staged dataset file {dataset_slug}/{file_slug}."
     )

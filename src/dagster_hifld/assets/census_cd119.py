@@ -7,7 +7,14 @@ the official directory.
 
 from __future__ import annotations
 
-from dagster import AssetKey, asset
+from dagster import (
+    AssetKey,
+    AssetSelection,
+    DefaultScheduleStatus,
+    ScheduleDefinition,
+    asset,
+    define_asset_job,
+)
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.census_cd119 import stage_cd119_candidate
@@ -51,3 +58,19 @@ def census_119th_congressional_districts(
         CD119_DATASET_SLUG,
         CD119_FILE_SLUG,
     )
+
+
+cd119_source_refresh_job = define_asset_job(
+    name="census_cd119_source_refresh",
+    selection=AssetSelection.assets(census_119th_congressional_districts),
+)
+cd119_source_refresh_schedule = ScheduleDefinition(
+    name="census_cd119_monthly_source_refresh",
+    job=cd119_source_refresh_job,
+    cron_schedule="0 10 1 * *",
+    default_status=DefaultScheduleStatus.STOPPED,
+)
+
+INGEST_ASSETS = [census_119th_congressional_districts]
+JOBS = [cd119_source_refresh_job]
+SCHEDULES = [cd119_source_refresh_schedule]
