@@ -279,8 +279,14 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
     body, receipt = _capture(client, nominal_url, root, name)
     if not _is_refusal(body):
         return {name: (body, receipt)}, refusals
-    refusals.append(name)
-    parts[f"{name}_refusal"] = (body, receipt)
+    # Retain the refusal document as evidence under its own slot name: the
+    # nominal slot is never served a feature page for this window, so the
+    # refusal body, wire and receipt are bound to the nominal GET URL under
+    # the refusal name and the window is re-fetched as two half-size parts.
+    for suffix in (".body", ".wire", ".receipt.json"):
+        (root / (name + suffix)).replace(root / (name + "_refusal" + suffix))
+    refusals.append(name + "_refusal")
+    parts[name + "_refusal"] = (body, receipt)
     slice_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
     half = (len(slice_ids) + 1) // 2
     for tag, sub in (("a", slice_ids[:half]), ("b", slice_ids[half:])):
@@ -576,11 +582,12 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
             columns: dict[str, list] = {field: [] for field in names}
             geometries: list[bytes | None] = []
             for part_no, part_name in enumerate(part_names):
-                if part_no == 0 and part_name != name:
-                    raise ValueError("source_page_parts_missing_nominal:" + name)
-                if part_no > 0 and (not part_name.startswith(name)
-                                    or len(part_name) != len(name) + 1
-                                    or part_name[-1] not in ("a", "b")):
+                if len(part_names) == 1:
+                    if part_name != name:
+                        raise ValueError("source_page_parts_naming_drift:" + name)
+                elif (not part_name.startswith(name)
+                      or len(part_name) != len(name) + 1
+                      or part_name[-1] not in ("a", "b")):
                     raise ValueError("source_page_parts_naming_drift:" + name)
                 body, _wire, receipt = _load_capture(root, part_name)
                 expected_url = (expected_urls[name] if len(part_names) == 1
@@ -820,9 +827,8 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
         raise ValueError("retained_capture_manifest_invalid")
     page_parts = manifest.get("page_parts") or {}
     if not isinstance(page_parts, dict) or not all(
-            isinstance(parts, list) and len(parts) in (1, 2) and parts[0] == page
-            and (len(parts) == 1 or (isinstance(parts[1], str) and parts[1] == page + "b"))
-            and all(isinstance(part, str) for part in parts)
+            isinstance(parts, list) and len(parts) in (1, 2)
+            and (parts == [page] or parts == [page + "a", page + "b"])
             for page, parts in page_parts.items()):
         raise ValueError("retained_capture_page_parts_invalid")
     part_names = {part for parts in page_parts.values() for part in parts}
@@ -830,8 +836,12 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
     if not isinstance(refusals, list) or not all(
             isinstance(entry, str) and (entry.endswith("_refusal")) for entry in refusals):
         raise ValueError("retained_capture_page_refusals_invalid")
-    expected_names = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT)),
-                      *part_names, *refusals}
+    # A bisected window has no nominal artifact: its evidence is the retained
+    # refusal document plus the two half-size parts.
+    bisected = {page for page, parts in page_parts.items() if len(parts) == 2}
+    nominal = {f"page_{index:04d}" for index in range(PAGE_COUNT)}
+    expected_names = ({*METADATA_NAMES, *(nominal - bisected)}
+                      | part_names | set(refusals))
     roster_files = manifest.get("artifact_roster")
     if not isinstance(roster_files, dict) or set(manifest["receipts"]) != expected_names:
         raise ValueError("retained_capture_roster_or_names_invalid")
@@ -846,8 +856,9 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
         if name.endswith("_refusal"):
-            bound = next(page for page in expected_urls if name.startswith(page)) \
-                if False else name[:-len("_refusal")].rstrip("ab")
+            bound = name[:-len("_refusal")]
+            if bound not in expected_urls:
+                raise ValueError("retained_capture_refusal_slot_invalid:" + name)
             _validate_capture_request_identity(name, receipt, expected_urls[bound])
             if not _is_refusal(body):
                 raise ValueError("retained_capture_refusal_document_drift:" + name)

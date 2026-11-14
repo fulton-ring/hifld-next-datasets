@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import shutil
 import struct
 import tempfile
 import unittest
@@ -523,6 +524,146 @@ class Wbd10DigitHuTests(unittest.TestCase):
                 self.assertEqual(decoded.area, reference.area)
                 self.assertEqual(decoded.length, reference.length)
         self.assertEqual(derived["parquet_path"], sink)
+
+    def test_refusing_window_bisects_and_replays_with_retained_refusal_artifacts(self):
+        documents = _documents()
+        roster = list(_TEST_ROSTER)
+        refusal = {"error": {"code": 500, "message": "Error performing query operation",
+                             "details": []}}
+
+        def part_page(ids: list[int], exceeded: bool) -> dict:
+            return {"displayFieldName": "NAME", "exceededTransferLimit": exceeded,
+                    "features": [{"attributes": _attributes(oid),
+                                  "geometry": {"rings": _feature_rings(oid)}} for oid in ids],
+                    "fieldAliases": {field["name"]: field["alias"]
+                                     for field in source.EXPECTED_PAGE_FIELD_DECLARATIONS},
+                    "fields": json.loads(json.dumps(source.EXPECTED_PAGE_FIELD_DECLARATIONS)),
+                    "geometryType": "esriGeometryPolygon", "spatialReference": dict(_SR)}
+
+        # Page 0001 covers roster[2:4] = [501, 100_003]; bisection halves it.
+        part_a, part_b = part_page([501], True), part_page([100_003], False)
+        with relaxed_pins():
+            nominal_url = dict(source._capture_roster(roster))["page_0001"]
+            url_a = source._part_url(roster, 1, "page_0001a")
+            url_b = source._part_url(roster, 1, "page_0001b")
+        self.assertIn("resultRecordCount=1", url_a)
+        self.assertIn("resultRecordCount=1", url_b)
+        self.assertNotEqual(url_a, url_b)
+
+        def scripted_capture(script: dict):
+            calls: list[str] = []
+
+            def fake_capture(_client, url, root, name, max_bytes=0):
+                calls.append(name)
+                body = _encode(script[name])
+                wire = b"wire:" + body[:32]
+                receipt = {"method": "GET", "url": url, "final_url": url,
+                           "observed_at": "2026-11-14T12:00:00.000000Z", "status": 200,
+                           "complete_body": True, "bytes": len(body), "sha256": _digest(body),
+                           "wire_bytes": len(wire), "wire_sha256": _digest(wire),
+                           "content_encoding": None, "content_length": None,
+                           "error_code": None, "error_type": None}
+                (root / f"{name}.body").write_bytes(body)
+                (root / f"{name}.wire").write_bytes(wire)
+                (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+                return body, receipt
+
+            return calls, fake_capture
+
+        temporary = tempfile.TemporaryDirectory(prefix="wbd-10-digit-hu-bisect-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name) / "captures"
+        root.mkdir(parents=True)
+        with relaxed_pins():
+            calls, fake_capture = scripted_capture({
+                "page_0001": refusal, "page_0001a": part_a, "page_0001b": part_b})
+            with patches(source, _capture=fake_capture):
+                parts, refusals = source._capture_page_window(None, roster, 1, root)
+        self.assertEqual(calls, ["page_0001", "page_0001a", "page_0001b"])
+        self.assertEqual(set(parts), {"page_0001_refusal", "page_0001a", "page_0001b"})
+        self.assertEqual(refusals, ["page_0001_refusal"])
+        self.assertTrue((root / "page_0001_refusal.body").exists())
+        self.assertFalse((root / "page_0001.body").exists())
+        with relaxed_pins():
+            with self.assertRaisesRegex(ValueError, "source_page_window_refused_after_bisection"):
+                calls, fake_capture = scripted_capture({
+                    "page_0001": refusal, "page_0001a": refusal, "page_0001b": part_b})
+                with patches(source, _capture=fake_capture):
+                    (root / "refused").mkdir()
+                    source._capture_page_window(None, roster, 1, root / "refused")
+
+        # A bisected capture replays: the nominal slot holds no artifact, the
+        # refusal evidence is bound to the nominal GET URL and the two half
+        # parts reassemble the exact same validated population.
+        replay_documents = {**{name: document for name, document in documents.items()
+                               if name != "page_0001"},
+                            "page_0001_refusal": refusal, "page_0001a": part_a,
+                            "page_0001b": part_b}
+        slot_urls = {}
+        with relaxed_pins():
+            roster_urls = dict(source._capture_roster(roster))
+        for name in (*source.METADATA_NAMES, "page_0000", "page_0002"):
+            slot_urls[name] = roster_urls[name]
+        slot_urls["page_0001_refusal"] = roster_urls["page_0001"]
+        slot_urls["page_0001a"], slot_urls["page_0001b"] = url_a, url_b
+        replay_root = self._capture_root_with_urls(replay_documents, slot_urls)
+        manifest = {"complete": True, "captured_at": "2026-11-14T12:00:00.000000Z",
+                    "receipts": {name: json.loads(
+                        (replay_root / f"{name}.receipt.json").read_bytes())
+                        for name in sorted(replay_documents)},
+                    "artifact_roster": source.capture_roster_digests(
+                        replay_root, exclude={"capture_manifest.json"}),
+                    "page_parts": {"page_0001": ["page_0001a", "page_0001b"]},
+                    "page_refusals": ["page_0001_refusal"]}
+        (replay_root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
+        with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)), DISK_FLOOR_BYTES=1):
+            captures, replay_parts = source._read_replay(replay_root)
+            self.assertEqual(set(captures), set(replay_documents))
+            self.assertEqual(replay_parts, {"page_0001": ["page_0001a", "page_0001b"]})
+            audit, _derived = source._validate_stream(replay_root, parquet_sink=None,
+                                                      page_parts=replay_parts)
+        reference_root = self._capture_root(documents)
+        with relaxed_pins():
+            reference_audit, _unused = source._validate_stream(reference_root,
+                                                               parquet_sink=None)
+        for key in ("source_record_sha256", "source_geometry_sha256",
+                    "source_id_sha256", "source_vertex_count"):
+            self.assertEqual(audit[key], reference_audit[key])
+        self.assertEqual(audit["page_parts"], {"page_0001": ["page_0001a", "page_0001b"]})
+
+        incomplete = json.loads(json.dumps(manifest))
+        incomplete["receipts"].pop("page_0001_refusal")
+        with relaxed_pins():
+            with self.assertRaisesRegex(ValueError, "retained_capture_roster_or_names_invalid"):
+                source._read_replay(self._root_with_manifest(replay_root, incomplete))
+
+    def _capture_root_with_urls(self, documents: dict, slot_urls: dict) -> Path:
+        temporary = tempfile.TemporaryDirectory(prefix="wbd-10-digit-hu-slots-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name) / "captures"
+        root.mkdir(parents=True)
+        for name, document in documents.items():
+            body = _encode(document)
+            wire = b"wire:" + body[:32]
+            url = slot_urls[name]
+            receipt = {"method": "GET", "url": url, "final_url": url,
+                       "observed_at": "2026-11-14T12:00:00.000000Z", "status": 200,
+                       "complete_body": True, "bytes": len(body), "sha256": _digest(body),
+                       "wire_bytes": len(wire), "wire_sha256": _digest(wire),
+                       "content_encoding": None, "content_length": None,
+                       "error_code": None, "error_type": None}
+            (root / f"{name}.body").write_bytes(body)
+            (root / f"{name}.wire").write_bytes(wire)
+            (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+        return root
+
+    def _root_with_manifest(self, source_root: Path, manifest: dict) -> Path:
+        temporary = tempfile.TemporaryDirectory(prefix="wbd-10-digit-hu-manifest-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name) / "captures"
+        shutil.copytree(source_root, root)
+        (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
+        return root
 
     def test_unsafe_capture_version_is_refused(self):
         temporary = tempfile.TemporaryDirectory(prefix="wbd-10-digit-hu-version-")
