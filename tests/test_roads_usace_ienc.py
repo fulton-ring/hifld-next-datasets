@@ -237,6 +237,58 @@ class RoadsUsaceIencTests(unittest.TestCase):
                 source.capture_roads_usace_ienc(storage, version="../outside")
 
 
+class RoadsUsaceTransientRetryTests(unittest.TestCase):
+    def test_transient_incomplete_capture_is_retried_with_partial_files_cleared(self):
+        calls = []
+        sentinel = (b"body", {"status": 200})
+
+        def flaky_capture_get(client, url, root, name, max_bytes):
+            calls.append(name)
+            if len(calls) == 1:
+                (root / f"{name}.body").write_bytes(b"partial")
+                (root / f"{name}.wire").write_bytes(b"partial")
+                (root / f"{name}.receipt.json").write_bytes(b"{}")
+                raise ValueError(f"incomplete_source_capture:{name}")
+            self.assertFalse((root / f"{name}.body").exists())
+            self.assertFalse((root / f"{name}.receipt.json").exists())
+            return sentinel
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(source, "_TRANSIENT_RETRY_DELAYS", (0.0, 0.0)), \
+                patch.object(source, "capture_get", flaky_capture_get):
+            root = Path(tmp)
+            result = source._capture(None, "https://example.invalid/query", root, "page_000")
+        self.assertEqual(result, sentinel)
+        self.assertEqual(calls, ["page_000", "page_000"])
+
+    def test_non_transient_capture_failure_is_not_retried(self):
+        calls = []
+
+        def failing_capture_get(client, url, root, name, max_bytes):
+            calls.append(name)
+            raise ValueError("source_capture_budget_exceeded_before_request")
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(source, "capture_get", failing_capture_get):
+            with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
+                source._capture(None, "https://example.invalid/query", Path(tmp), "page_000")
+        self.assertEqual(len(calls), 1)
+
+    def test_persistently_incomplete_capture_fails_after_bounded_retries(self):
+        calls = []
+
+        def failing_capture_get(client, url, root, name, max_bytes):
+            calls.append(name)
+            raise ValueError(f"incomplete_source_capture:{name}")
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(source, "_TRANSIENT_RETRY_DELAYS", (0.0, 0.0)), \
+                patch.object(source, "capture_get", failing_capture_get):
+            with self.assertRaisesRegex(ValueError, "incomplete_source_capture:page_000"):
+                source._capture(None, "https://example.invalid/query", Path(tmp), "page_000")
+        self.assertEqual(len(calls), 3)
+
+
 class RoadsUsaceLiveRosterTests(unittest.TestCase):
     def test_live_page_roster_covers_106747_ids_in_427_pages(self):
         self.assertEqual(source.EXPECTED_COUNT, 106747)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -79,14 +80,37 @@ def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
 
+_TRANSIENT_RETRY_DELAYS = (5.0, 15.0, 45.0, 90.0)
+
+
 def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    # Roads-specific bounded budget: the 107-page roadway capture is roughly an
-    # order of magnitude larger than the shared obstruction-lines allowance.
+    # Roads-specific bounded budget: the roadway capture is roughly an order of
+    # magnitude larger than the shared obstruction-lines allowance.
     retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire") for path in root.glob(suffix)
                    if path.is_file())
     if retained + 2 * PAGE_MAX_BYTES > MAX_CAPTURE_BYTES:
         raise ValueError("source_capture_budget_exceeded_before_request")
-    return capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
+    # The gateway intermittently answers sustained sequential walks with
+    # transient drops (observed 2026-11-14: HTTP 503 "The service is
+    # unavailable." at page_253 of 427). Retrying the same bounded request with
+    # backoff keeps one complete walk obtainable; partial attempt files are
+    # removed first because capture_get retains in append mode. Only
+    # incomplete-capture failures retry; anything else fails closed immediately.
+    for attempt, extra_delay in enumerate((0.0, *_TRANSIENT_RETRY_DELAYS)):
+        if attempt:
+            for suffix in (".body", ".wire", ".receipt.json"):
+                path = root / f"{name}{suffix}"
+                if path.exists():
+                    path.unlink()
+            if extra_delay:
+                time.sleep(extra_delay)
+        try:
+            return capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
+        except ValueError as exc:
+            if (attempt == len(_TRANSIENT_RETRY_DELAYS)
+                    or not str(exc).startswith(f"incomplete_source_capture:{name}")):
+                raise
+    raise ValueError(f"incomplete_source_capture:{name}")
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
