@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import httpx
 import numpy as np
+import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 
@@ -733,6 +734,58 @@ class NfhlFloodHazardZonesGeometryTests(unittest.TestCase):
             [(-190.0, 32.5), (-86.0, 32.5), (-86.0, 32.6), (-190.0, 32.6), (-190.0, 32.5)]))
         with self.assertRaisesRegex(ValueError, "source_coordinate_range_drift"):
             source._validate_feature_geometry(wkb, [None, None, None, None], counters)
+
+
+class NfhlFloodHazardZonesProducerTextTests(unittest.TestCase):
+    """FEMA's own DBFs carry a few values that are not valid UTF-8.
+
+    Live capture 2026-11-13: STUDY_TYP is a 38-byte field and FEMA's writer
+    truncated 'Shaded Zone X with depths less than 1…' mid ellipsis in 6
+    products (~10.6k records), leaving a lone 0xE2 lead byte; 51177C carries
+    one CP1252 0x92 byte. The candidate retains those producer bytes
+    verbatim in the string column and escapes them in the record digest.
+    """
+
+    @staticmethod
+    def _raw_string_array(raw_values):
+        data = b"".join(raw_values)
+        offsets = [0]
+        for raw in raw_values:
+            offsets.append(offsets[-1] + len(raw))
+        offsets_data = pa.array(offsets, type=pa.int32()).buffers()[1]
+        return pa.StringArray.from_buffers(pa.string(), len(raw_values),
+                                           [None, offsets_data, pa.py_buffer(data)])
+
+    def test_string_column_values_retain_invalid_utf8_bytes(self):
+        good = "Shaded Zone AE".encode("utf-8")
+        broken = b"Shaded Zone X with depths less than 1\xe2"
+        column = self._raw_string_array([good, broken])
+        values = source._string_column_values(column)
+        self.assertEqual(values[0], "Shaded Zone AE")
+        self.assertEqual(values[1].encode("utf-8", "surrogateescape"), broken)
+
+    def test_string_column_values_strict_path_unchanged(self):
+        column = pa.array(["AE", "VE", None], type=pa.string())
+        self.assertEqual(source._string_column_values(column), ["AE", "VE", None])
+
+    def test_string_array_from_values_round_trips_producer_bytes(self):
+        good = "Shaded Zone AE"
+        broken = "Shaded Zone X with depths less than 1\udce2"
+        array = source._string_array_from_values([good, broken], pa.string())
+        self.assertEqual(array.buffers()[2], pa.py_buffer(
+            good.encode("utf-8") + b"Shaded Zone X with depths less than 1\xe2"))
+
+    def test_record_canonical_escapes_producer_surrogates(self):
+        body = source._record_canonical({"STUDY_TYP": "less than 1\udce2"})
+        self.assertEqual(json.loads(body), {"STUDY_TYP": "less than 1\udce2"})
+        self.assertEqual(body,
+                         '{"STUDY_TYP":"less than 1\\\\udce2"}'.encode("ascii"))
+
+    def test_record_canonical_is_deterministic_and_sorted(self):
+        first = source._record_canonical({"B": 1, "A": "x"})
+        second = source._record_canonical({"A": "x", "B": 1})
+        self.assertEqual(first, second)
+        self.assertEqual(first, b'{"A":"x","B":1}')
 
 
 class NfhlFloodHazardZonesReuseTests(unittest.TestCase):

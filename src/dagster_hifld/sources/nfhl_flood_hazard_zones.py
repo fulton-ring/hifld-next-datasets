@@ -145,6 +145,75 @@ def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
+def _record_canonical(attributes: Mapping[str, object]) -> bytes:
+    """Canonical bytes for one feature's attribute record.
+
+    Record digests escape non-ASCII and lone-surrogate code points
+    (``ensure_ascii=True``) so a digest still covers the exact producer bytes
+    when FEMA's own DBF text is not valid UTF-8; see
+    ``_string_column_values``. No pins were established before this digest
+    definition, so it is fixed here once for the dataset.
+    """
+    return json.dumps(attributes, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=True, allow_nan=False).encode("ascii")
+
+
+def _string_column_values(column: pa.Array) -> list[object]:
+    """Decode one arrow utf8 string column to Python values.
+
+    Producer DBFs can carry byte sequences that are not valid UTF-8 (FEMA's
+    NFHL ``STUDY_TYP`` is field-width truncated mid multi-byte ellipsis in a
+    few products and carries one CP1252 punctuation byte). pyarrow's strict
+    ``to_pylist()`` fails closed on them; the bytes themselves are the
+    producer's value, so they are retained verbatim via ``surrogateescape``.
+    """
+    try:
+        return column.to_pylist()
+    except UnicodeDecodeError:
+        buffers = column.buffers()
+        offsets_buffer, data_buffer = buffers[1], buffers[2]
+        offsets = memoryview(offsets_buffer).cast("i")
+        data = bytes(data_buffer) if data_buffer is not None else b""
+        null_flags = column.is_null().to_pylist()
+        values: list[object] = []
+        for relative in range(len(column)):
+            if null_flags[relative]:
+                values.append(None)
+                continue
+            absolute = column.offset + relative
+            raw = data[offsets[absolute]:offsets[absolute + 1]]
+            try:
+                values.append(raw.decode("utf-8"))
+            except UnicodeDecodeError:
+                values.append(raw.decode("utf-8", "surrogateescape"))
+        return values
+
+
+def _string_array_from_values(values: list[object], arrow_type: pa.DataType) -> pa.Array:
+    """Build a utf8 array, retaining producer byte sequences verbatim.
+
+    Values carrying surrogate-escaped producer bytes are written with their
+    original raw bytes (``encode('utf-8', 'surrogateescape')``), so the
+    published string column carries the DBF's own byte values; strict-UTF-8
+    text readers must read those few values as bytes. Documented in the
+    capture manifest transformations.
+    """
+    try:
+        return pa.array(values, type=arrow_type)
+    except (UnicodeEncodeError, UnicodeDecodeError, ValueError):
+        raw_list = [value.encode("utf-8", "surrogateescape") if isinstance(value, str) else value
+                    for value in values]
+        data = b"".join(raw for raw in raw_list if raw is not None)
+        offsets = [0]
+        for raw in raw_list:
+            offsets.append(offsets[-1] + (len(raw) if raw is not None else 0))
+        offsets_data = pa.array(offsets, type=pa.int32()).buffers()[1]
+        nulls = [value is None for value in values]
+        validity = None if not any(nulls) else pa.array(nulls, type=pa.bool_()).buffers()[0]
+        return pa.StringArray.from_buffers(arrow_type, len(values),
+                                           [validity, offsets_data, pa.py_buffer(data)])
+
+
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -624,13 +693,14 @@ def _stream_validate(products: list[dict[str, str]], capture_root: Path,
             field_names = [field[0] for field in running_signature]
             try:
                 for batch in table.to_batches(max_chunksize=4096):
-                    columns = {field: batch.column(field).to_pylist() for field in field_names}
+                    columns = {field: _string_column_values(batch.column(field))
+                               for field in field_names}
                     wkbs = batch.column("wkb_geometry").to_pylist()
                     shapes: list[bytes | None] = []
                     for position in range(batch.num_rows):
                         attributes = {field: columns[field][position] for field in field_names}
                         try:
-                            record_canonical = _canonical(attributes)
+                            record_canonical = _record_canonical(attributes)
                         except (TypeError, ValueError) as exc:
                             raise ValueError("source_record_value_drift") from exc
                         if not first_feature:
@@ -647,8 +717,12 @@ def _stream_validate(products: list[dict[str, str]], capture_root: Path,
                             geometry_digest.update(wkb)
                         shapes.append(_validate_feature_geometry(wkb, bounds, counters))
                         counters["features"] += 1
-                    parquet_columns = {field: pa.array(columns[field], type=arrow_schema.field(field).type)
-                                       for field in field_names}
+                    parquet_columns = {}
+                    for field in field_names:
+                        field_type = arrow_schema.field(field).type
+                        parquet_columns[field] = (_string_array_from_values(columns[field], field_type)
+                                                  if field_type == pa.string()
+                                                  else pa.array(columns[field], type=field_type))
                     parquet_columns["SHAPE"] = pa.array(shapes, type=pa.binary())
                     writer.write_table(pa.Table.from_pydict(parquet_columns, schema=arrow_schema))
             finally:
@@ -976,6 +1050,19 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
                                                              "are the producer's -9999 sentinel, "
                                                              "retained verbatim); SHAPE is the "
                                                              "original shapefile geometry as WKB",
+                                            "attribute_text": "Producer attribute text is retained "
+                                                              "verbatim: DBF character values are "
+                                                              "published as UTF-8 strings, and where "
+                                                              "FEMA's own DBF bytes are not valid "
+                                                              "UTF-8 (the producer's field-width "
+                                                              "truncated ellipsis and one CP1252 "
+                                                              "punctuation byte in STUDY_TYP, 7 of "
+                                                              "the 2,676 products) the producer's raw "
+                                                              "bytes are carried byte-verbatim in the "
+                                                              "string column and escaped in the "
+                                                              "record digest; the raw evidence zips "
+                                                              "under raw/ remain the lossless source "
+                                                              "of every byte",
                                             "source_ids": "Preserve producer DFIRM_ID, FLD_AR_ID "
                                                           "and all source attribute values "
                                                           "unchanged; no substitute IDs, casts, "
