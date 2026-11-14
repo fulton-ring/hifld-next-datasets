@@ -193,11 +193,15 @@ def _ids_url() -> str:
     return _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
 
 
-def _page_url(last_objectid: int) -> str:
+def _page_window_url(last_objectid: int, record_count: int) -> str:
     return _query({"where": f"objectid>{last_objectid}", "outFields": "*",
                    "returnGeometry": "true", "returnZ": "true", "returnM": "true",
                    "orderByFields": "objectid ASC",
-                   "resultRecordCount": str(PAGE_SIZE), "f": "json"})
+                   "resultRecordCount": str(record_count), "f": "json"})
+
+
+def _page_url(last_objectid: int) -> str:
+    return _page_window_url(last_objectid, PAGE_SIZE)
 
 
 def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
