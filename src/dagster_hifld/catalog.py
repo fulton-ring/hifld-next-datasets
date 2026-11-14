@@ -69,10 +69,13 @@ def _pinned_producer_geometry_defects(
     strict zero-defect gate.
     """
     key = f"{dataset_slug}/{file_slug}/{version}/metadata/source_audit.json"
-    if not staging.object_exists(key):
+    snapshot = staging.object_snapshot(key)
+    if snapshot is None:
         return None
-    audit = json.loads(staging.read_bytes(dataset_slug, file_slug, version,
-                                          "metadata/source_audit.json").decode("utf-8"))
+    if snapshot.size > 32 * 1024 * 1024:
+        return None
+    body = staging.read_key_range(key, 0, snapshot.size, expected_snapshot=snapshot)
+    audit = json.loads(body.decode("utf-8"))
     if not isinstance(audit, dict) or "producer_invalid_geometry_count" not in audit \
             or "null_geometry_count" not in audit:
         return None
