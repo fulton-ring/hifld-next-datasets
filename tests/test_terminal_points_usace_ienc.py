@@ -213,7 +213,7 @@ class TerminalPointsUsaceIencTests(unittest.TestCase):
             self.assertIn(f"{prefix}/metadata/candidate_ready.json", staged)
             audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
             self.assertEqual(audit["feature_id_distinct_count"], 16)
-            self.assertEqual(audit["source_date_span"], None)
+            self.assertEqual(audit["source_date_span"], {"min": "Source_Date-1", "max": "Source_Date-9"})
             second = source.capture_terminal_points_usace_ienc(storage, version="regression",
                                                                capture_directory=str(root))
             self.assertTrue(second["reused"])
