@@ -22,12 +22,12 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.sources.levee_areas_usace_ienc import _esri_polygon_wkb
 from dagster_hifld.sources.usace_obstruction_lines import (
-    _canonical, _capture, _capture_identity, _load_capture, _sha,
+    _canonical, _capture_identity, _load_capture, _sha,
     _validate_capture_request_identity, _validate_spatial_reference,
 )
 
@@ -116,6 +116,21 @@ CAPTURE_NAMES = {"catalog_item", "service_before", "layer_before", "count_before
 
 def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
+
+
+# The complete district page decodes to about 17 MB (521k vertices); the shared
+# 8 MB page budget cannot hold it, so this dataset carries its own limits.
+PAGE_MAX_BYTES = 32_000_000
+CAPTURE_MAX_BYTES = 256_000_000
+
+
+def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
+    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire")
+                   for path in root.glob(suffix) if path.is_file())
+    if retained + 2 * PAGE_MAX_BYTES > CAPTURE_MAX_BYTES:
+        raise ValueError("source_capture_budget_exceeded_before_request")
+    body, receipt = capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
+    return body, receipt
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
