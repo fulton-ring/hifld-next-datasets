@@ -34,7 +34,7 @@ import pyproj
 import shapely
 
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "voting-districts"
@@ -270,7 +270,8 @@ def capture_limits() -> dict[str, int]:
 
 
 def _safe_local_staging(storage: StagingStorageResource) -> Path:
-    if storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
+    if (isinstance(storage, PublishedStorageResource) or storage.bucket
+            or not storage.use_local or not storage.local_dir or storage.prefix):
         raise VotingDistrictsError("explicit_unprefixed_local_staging_required")
     root = Path(storage.local_dir).absolute()
     if any(path.is_symlink() for path in [root, *root.parents]):

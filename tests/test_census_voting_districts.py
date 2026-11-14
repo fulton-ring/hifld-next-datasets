@@ -81,11 +81,18 @@ class CaptureMechanicsTests(unittest.TestCase):
             self.assertEqual(retained["attempt"], 3)
 
     def test_published_bucket_and_prefixed_storage_are_refused(self):
-        for storage in (PublishedStorageResource(local_dir="/tmp"),
-                        StagingStorageResource(bucket="never"),
-                        StagingStorageResource(local_dir="/tmp", prefix="unexpected")):
-            with self.assertRaises(ValueError):
-                vtd._safe_local_staging(storage)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "real").mkdir()
+            alias = root / "alias"
+            alias.symlink_to(root / "real")
+            cases = (PublishedStorageResource(local_dir=str(root / "real")),
+                     StagingStorageResource(bucket="never"),
+                     StagingStorageResource(local_dir=str(root / "real"), prefix="unexpected"),
+                     StagingStorageResource(local_dir=str(alias)))
+            for storage in cases:
+                with self.assertRaises(ValueError, msg=type(storage).__name__):
+                    vtd._safe_local_staging(storage)
 
     def test_changed_bytes_fail_pin_validation_and_are_retained(self):
         payload = b"changed census archive bytes"
