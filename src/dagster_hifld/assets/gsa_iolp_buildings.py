@@ -1,4 +1,6 @@
 """Stopped, source-only draft asset for the GSA IOLP Buildings candidate."""
+from datetime import timezone
+
 from dagster import (AssetCheckResult, AssetKey, AssetSelection, Config,
                      DefaultScheduleStatus, RunRequest, ScheduleDefinition, SkipReason,
                      asset, asset_check, define_asset_job)
