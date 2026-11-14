@@ -231,11 +231,9 @@ def _validate_service_directory(directory: dict) -> None:
 
 
 def _validate_service(service: dict) -> None:
-    text = str(service.get("serviceDescription", ""))
     if (service.get("serviceItemId") != ITEM_ID
             or type(service.get("maxRecordCount")) is not int or service["maxRecordCount"] < 1
-            or "Polygons showing USACE Civil Works District boundaries" not in text
-            or "NRCS Watershed Boundary Dataset" not in text):
+            or service.get("serviceDescription") != "USACE Civil Works District Boundaries"):
         raise ValueError("official_usace_cw_districts_service_drift")
 
 

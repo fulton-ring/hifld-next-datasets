@@ -38,7 +38,7 @@ _ITEM = {
 }
 _SERVICE_DIRECTORY = {"services": [{"name": "usace_cw_districts", "type": "FeatureServer"}]}
 _SERVICE = {"serviceItemId": source.ITEM_ID, "maxRecordCount": 1000,
-            "serviceDescription": _ITEM["description"]}
+            "serviceDescription": "USACE Civil Works District Boundaries"}
 _LAYER = {
     "id": source.LAYER_ID, "name": "USACE Districts", "geometryType": "esriGeometryPolygon",
     "maxRecordCount": 1000, "hasZ": False, "hasM": False,
