@@ -785,6 +785,15 @@ class NfhlFloodHazardZonesProducerTextTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(first, b'{"A":"x","B":1}')
 
+    def test_id_sort_key_orders_null_ids_deterministically(self):
+        entries = [["48085C-NFHL", "22", "5"], ["01101C-NFHL", None, "9"],
+                   ["01101C-NFHL", "7", "3"]]
+        ordered = sorted(entries, key=source._id_sort_key)
+        self.assertEqual(ordered, sorted(entries, key=source._id_sort_key))
+        self.assertEqual(ordered[0], ["01101C-NFHL", None, "9"])
+        self.assertEqual([entry[0] for entry in ordered],
+                         ["01101C-NFHL", "01101C-NFHL", "48085C-NFHL"])
+
 
 class NfhlFloodHazardZonesReuseTests(unittest.TestCase):
     @classmethod

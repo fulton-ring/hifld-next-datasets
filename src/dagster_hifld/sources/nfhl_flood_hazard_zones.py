@@ -158,6 +158,16 @@ def _record_canonical(attributes: Mapping[str, object]) -> bytes:
                       ensure_ascii=True, allow_nan=False).encode("ascii")
 
 
+def _id_sort_key(entry: list) -> str:
+    """Total-order sort key for source id triples.
+
+    A few FEMA features carry a null DFIRM_ID or FLD_AR_ID; the roster digest
+    keeps those nulls (they are producer values) and orders entries by their
+    canonical JSON so the sort is total and deterministic.
+    """
+    return json.dumps(entry, separators=(",", ":"), ensure_ascii=True)
+
+
 def _string_column_values(column: pa.Array) -> list[object]:
     """Decode one arrow utf8 string column to Python values.
 
@@ -739,7 +749,7 @@ def _stream_validate(products: list[dict[str, str]], capture_root: Path,
             "geometry_sha256": geometry_digest.hexdigest(),
             "schema_sha256": _sha(_canonical(running_signature)),
             "schema_signature": running_signature,
-            "id_sha256": _sha(_canonical(sorted(ids))),
+            "id_sha256": _sha(_canonical(sorted(ids, key=_id_sort_key))),
             "id_count": len(ids),
             "bounds": bounds,
             "counters": counters}
