@@ -13,10 +13,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 import fiona
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from dagster_hifld.assets.mirta_dod_sites_points import mirta_dod_sites_points_draft_schedule
 from dagster_hifld.sources.mirta_dod_sites_points import (
-    DATASET_SLUG, EXPECTED_COUNT, EXPECTED_FIELDS, FIELD_ORDER, ID_SHA, RECORD_SHA,
+    DATASET_SLUG, EXPECTED_COUNT, EXPECTED_FID_COLUMN, EXPECTED_FID_FIRST, EXPECTED_FID_LAST,
+    EXPECTED_FIELDS, FIELD_ORDER, FID_SHA, ID_SHA, RECORD_SHA,
     RELEASE_NOTES_URL, SOURCE_RELEASE, SOURCE_URL, _canonical, _load_capture,
     _parquet, _sha,
 )
@@ -29,16 +32,17 @@ _BOUNDARY_LAYER = "FY24MirtaLocations_A"
 def _rows():
     return [
         {"geometry": {"type": "Point", "coordinates": (-78.6558, 35.9206)},
-         "properties": {"countryName": "usa", "featureDescription": "na", "featureName": "Fort Example",
-                        "isCui": "no", "isFirrmaSite": "yes", "isJointBase": "no", "mediaId": "na",
-                        "mirtaLocationsIdpk": " ", "sdsId": None, "siteName": "Fort Example",
-                        "siteOperationalStatus": "act", "siteReportingComponent": "usa",
-                        "stateNameCode": "nc"}},
+         "properties": {"OBJECTID": 764, "countryName": "usa", "featureDescription": "na",
+                        "featureName": "Fort Example", "isCui": "no", "isFirrmaSite": "yes",
+                        "isJointBase": "no", "mediaId": "na", "mirtaLocationsIdpk": " ",
+                        "sdsId": None, "siteName": "Fort Example", "siteOperationalStatus": "act",
+                        "siteReportingComponent": "usa", "stateNameCode": "nc"}},
         {"geometry": {"type": "Point", "coordinates": (-119.6856, 34.4214)},
-         "properties": {"countryName": "usa", "featureDescription": "na", "featureName": "NG Example TS",
-                        "isCui": "no", "isFirrmaSite": "no", "isJointBase": "yes", "mediaId": "na",
-                        "mirtaLocationsIdpk": " ", "sdsId": "{049FEB34-6C2D-4A6F-B3F3-2CF8E78ED47D}",
-                        "siteName": "NG Example TS", "siteOperationalStatus": "Excs",
+         "properties": {"OBJECTID": 1604, "countryName": "usa", "featureDescription": "na",
+                        "featureName": "NG Example TS", "isCui": "no", "isFirrmaSite": "no",
+                        "isJointBase": "yes", "mediaId": "na", "mirtaLocationsIdpk": " ",
+                        "sdsId": "{049FEB34-6C2D-4A6F-B3F3-2CF8E78ED47D}", "siteName": "NG Example TS",
+                        "siteOperationalStatus": "Excs",
                         "siteReportingComponent": "armyNationalGuard", "stateNameCode": "ca"}},
     ]
 
@@ -53,11 +57,12 @@ def _gdb_layer_roster(gdb):
 
 def _observe(rows, root: Path):
     """Mirror the module's own extraction to derive the fixture's pin set."""
-    attrs, geoms = [], []
+    attrs, geoms, fids = [], [], []
     with fiona.open(str(root / _GDB), layer=_POINTS_LAYER) as src:
         schema = dict(src.schema["properties"])
         bounds = list(map(float, src.bounds))
         for feature in src:
+            fids.append(int(feature["id"]))
             row = []
             for name in FIELD_ORDER:
                 value = feature["properties"][name]
@@ -70,7 +75,7 @@ def _observe(rows, root: Path):
         infos = [i for i in z.infolist() if not (i.is_dir() or i.filename.endswith("/"))]
         members = {i.filename.split("/", 1)[1] for i in infos}
         dates = {i.date_time[:3] for i in infos}
-    return attrs, geoms, {
+    return attrs, geoms, fids, {
         "EXPECTED_ZIP_BYTES": (root / "mirta.zip").stat().st_size,
         "EXPECTED_ZIP_SHA256": _sha((root / "mirta.zip").read_bytes()),
         "EXPECTED_GDB_MEMBERS": frozenset(members),
@@ -79,6 +84,8 @@ def _observe(rows, root: Path):
         "EXPECTED_FIELDS": schema,
         "EXPECTED_COUNT": len(rows),
         "EXPECTED_BOUNDS": bounds,
+        "EXPECTED_FID_FIRST": fids[0],
+        "EXPECTED_FID_LAST": fids[-1],
         "EXPECTED_CONSTANT_FIELDS": {name: rows[0]["properties"][name]
                                      for name in ("countryName", "featureDescription", "isCui", "mediaId")},
         "EXPECTED_IDPK_VALUE": rows[0]["properties"]["mirtaLocationsIdpk"],
@@ -91,8 +98,10 @@ def _observe(rows, root: Path):
         "EXPECTED_SDS_GUID_COUNT": sum(1 for row in rows if row["properties"]["sdsId"] is not None),
         "RECORD_SHA": _sha(_canonical(attrs)),
         "GEOMETRY_SHA": _sha(_canonical(geoms)),
+        "FID_SHA": _sha(_canonical(fids)),
         "ID_SHA": _sha(_canonical([row[id_position] for row in attrs])),
-        "SCHEMA_SHA": _sha(_canonical([[name, schema[name]] for name in FIELD_ORDER])),
+        "SCHEMA_SHA": _sha(_canonical([["OBJECTID", "int64"],
+                                       *[[name, schema[name]] for name in FIELD_ORDER]])),
     }
 
 
@@ -104,7 +113,8 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             gdb = root / _GDB
-            point_schema = {"geometry": "Point", "properties": dict(EXPECTED_FIELDS)}
+            point_schema = {"geometry": "Point", "properties": {"OBJECTID": "int64",
+                                                                **dict(EXPECTED_FIELDS)}}
             with fiona.open(str(gdb), "w", driver="OpenFileGDB", layer=_POINTS_LAYER,
                             crs="EPSG:4326", schema=point_schema) as sink:
                 for row in rows:
@@ -122,7 +132,7 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
                 for item in sorted(gdb.rglob("*")):
                     if item.is_file():
                         zf.write(item, item.relative_to(root))
-            pins = _observe(rows, root)[2]
+            pins = _observe(rows, root)[3]
             with patch.multiple(src, **pins):
                 yield src, root, archive.read_bytes()
 
@@ -134,7 +144,11 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
         self.assertEqual(EXPECTED_COUNT, 831)
         self.assertEqual(list(FIELD_ORDER), list(EXPECTED_FIELDS))
         self.assertEqual(EXPECTED_FIELDS["mirtaLocationsIdpk"], "str:40")
+        self.assertEqual(EXPECTED_FID_COLUMN, "OBJECTID")
+        self.assertEqual(EXPECTED_FID_FIRST, 764)
+        self.assertEqual(EXPECTED_FID_LAST, 1604)
         self.assertEqual(ID_SHA, "919641a22c1c507a0bf9e644b75eacf95c0e790551f3789a230867bf2f502505")
+        self.assertEqual(FID_SHA, "38387a209371837d6a52ce4b5dcf2b694cbc4b47f9ae7ec858402d582a300b5b")
         self.assertEqual(RECORD_SHA, "734ff19e5fc28e447bedae993ce34b82c8b5436fb17afad5f7cd91ab632f1b30")
 
     def test_refresh_schedule_is_stopped(self):
@@ -143,11 +157,16 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
     def test_pinned_release_validates_with_degenerate_id_preserved(self):
         with self._fixture() as (src, root, body):
             with tempfile.TemporaryDirectory() as tmp:
-                attrs, geoms, audit = src._decode(body, Path(tmp))
+                attrs, geoms, fids, audit = src._decode(body, Path(tmp))
             self.assertEqual(len(attrs), 2)
+            self.assertEqual(fids, [764, 1604])
             self.assertEqual(audit["source_feature_count"], 2)
             self.assertEqual(audit["source_id_degenerate"], True)
             self.assertEqual(audit["source_id_unique"], False)
+            self.assertEqual(audit["source_fid_column"], "OBJECTID")
+            self.assertEqual(audit["source_fid_unique"], True)
+            self.assertEqual(audit["source_fid_first"], 764)
+            self.assertEqual(audit["source_fid_last"], 1604)
             self.assertEqual(audit["source_id_field"], "mirtaLocationsIdpk")
             self.assertEqual(audit["source_geometry_null_count"], 0)
             self.assertEqual(audit["source_release_date"], "2025-09-02")
@@ -155,12 +174,25 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
             self.assertEqual(audit["source_null_counts"]["sdsId"], 1)
             self.assertEqual(audit["source_null_counts"]["mirtaLocationsIdpk"], 0)
 
+    def test_noncontiguous_native_fids_survive_roundtrip(self):
+        with self._fixture() as (src, root, body):
+            with tempfile.TemporaryDirectory() as tmp:
+                attrs, geoms, fids, audit = src._decode(body, Path(tmp))
+            self.assertEqual(fids, [764, 1604])
+            self.assertNotEqual(fids[1] - fids[0], 1)
+            self.assertEqual(audit["source_fid_sha256"], _sha(_canonical(fids)))
+            payload = _parquet(attrs, geoms, fids)
+            table = pq.read_table(io.BytesIO(payload))
+            self.assertEqual(table["OBJECTID"].type, pa.int64())
+            self.assertEqual(table["OBJECTID"].to_pylist(), [764, 1604])
+            self.assertEqual(table["siteName"].to_pylist(), ["Fort Example", "NG Example TS"])
+            self.assertEqual(table["mirtaLocationsIdpk"].to_pylist(), [" ", " "])
+
     def test_parquet_roundtrip_preserves_native_values(self):
         with self._fixture() as (src, root, body):
-            import pyarrow.parquet as pq
             with tempfile.TemporaryDirectory() as tmp:
-                attrs, geoms, _ = src._decode(body, Path(tmp))
-            payload = _parquet(attrs, geoms)
+                attrs, geoms, fids, _ = src._decode(body, Path(tmp))
+            payload = _parquet(attrs, geoms, fids)
             table = pq.read_table(io.BytesIO(payload))
             self.assertEqual(table.num_rows, 2)
             self.assertEqual(table["mirtaLocationsIdpk"].to_pylist(), [" ", " "])

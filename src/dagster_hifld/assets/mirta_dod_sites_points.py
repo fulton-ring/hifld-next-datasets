@@ -6,6 +6,7 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.mirta_dod_sites_points import (
     DATASET_SLUG,
     EXPECTED_COUNT,
+    EXPECTED_FID_COLUMN,
     FILE_SLUG,
     capture_mirta_dod_sites_points,
 )
@@ -21,8 +22,9 @@ class MirtaDodSitesPointsConfig(Config):
     compute_kind="http",
     description=(
         "DISDI Program (OASD EI&E) public FY24 MIRTA release, DoD Sites points layer, from the "
-        "producer's own acq.osd.mil ZIP. Draft only; the DHS GII continuation of the former HIFLD "
-        "Open layer is credential-gated, the published primary key is degenerate, and source, "
+        "producer's own acq.osd.mil ZIP. Native OBJECTID feature IDs are preserved verbatim as the "
+        "leading integer column. Draft only; the DHS GII continuation of the former HIFLD "
+        "Open layer is credential-gated, the published property key is degenerate, and source, "
         "schema/ID, coverage, rights and release acceptance remain pending."
     ),
 )
@@ -45,11 +47,15 @@ def mirta_dod_sites_points(context, config: MirtaDodSitesPointsConfig,
 def mirta_dod_sites_points_complete(candidate: dict) -> AssetCheckResult:
     passed = (candidate.get("feature_count") == EXPECTED_COUNT
               and candidate.get("candidate_ready") is not None
+              and candidate.get("source_fid_unique") is True
               and candidate.get("source_id_degenerate") is True)
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_fid_column": EXPECTED_FID_COLUMN,
+            "source_fid_unique": candidate.get("source_fid_unique"),
+            "source_fid_sha256": candidate.get("source_fid_sha256", "missing"),
             "source_id_field": "mirtaLocationsIdpk",
             "source_id_degenerate": candidate.get("source_id_degenerate"),
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),

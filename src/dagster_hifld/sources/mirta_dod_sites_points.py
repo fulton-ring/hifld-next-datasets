@@ -6,7 +6,8 @@ Ranges, and Training Areas (MIRTA) dataset publicly on its own acq.osd.mil
 distribution as a File Geodatabase ZIP. The DHS crosswalk moves the former
 HIFLD Open FY22 points layer to the credential-gated GII Portal, so this
 producer-side public release is the pipeline input; DataLumos and other
-mirrors are research context only, never inputs.
+mirrors are research context only, never inputs. The native FileGDB feature
+ID column OBJECTID is preserved verbatim as the leading integer column.
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ import fiona
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pyogrio
 import pyproj
 from shapely.geometry import Point
 
@@ -132,6 +134,16 @@ EXPECTED_FIELDS = {
     "siteOperationalStatus": "str:4", "siteReportingComponent": "str:22", "stateNameCode": "str:5",
 }
 EXPECTED_BOUNDS = [-167.98785503299996, 13.428655045000028, 174.10714007400009, 71.32619497400003]
+# The native FileGDB feature ID column. GDAL's OpenFileGDB driver maps the
+# Esri OBJECTID field to the OGR feature ID (pyogrio.read_info fid_column is
+# "OBJECTID" and the field is not part of the fiona property schema); Fiona
+# exposes each feature's OBJECTID value as feature["id"]. The 831 native IDs
+# are distinct, positive, and noncontiguous (first 764, last 1604, with gaps),
+# so they are the only usable native row identifier and are preserved
+# verbatim, never renumbered.
+EXPECTED_FID_COLUMN = "OBJECTID"
+EXPECTED_FID_FIRST = 764
+EXPECTED_FID_LAST = 1604
 EXPECTED_CONSTANT_FIELDS = {"countryName": "usa", "featureDescription": "na", "isCui": "no",
                             "mediaId": "na"}
 EXPECTED_IDPK_VALUE = " "
@@ -153,7 +165,8 @@ EXPECTED_SDS_GUID_COUNT = 41
 RECORD_SHA = "734ff19e5fc28e447bedae993ce34b82c8b5436fb17afad5f7cd91ab632f1b30"
 GEOMETRY_SHA = "b35cada34c097504eb723f5742fa12455b25a463e2957e11dfb6901a4d6df7d4"
 ID_SHA = "919641a22c1c507a0bf9e644b75eacf95c0e790551f3789a230867bf2f502505"
-SCHEMA_SHA = "d863fd1b94db6d1dcadff489dd5e3e9e42e5e3a9bd072ede57d5f5acabfba964"
+FID_SHA = "38387a209371837d6a52ce4b5dcf2b694cbc4b47f9ae7ec858402d582a300b5b"
+SCHEMA_SHA = "f6146f5c63181deba69c1510d3e23d657a1f2f7b64ade3d129ef886fc0047b00"
 WGS84 = pyproj.CRS.from_epsg(4326)
 _EXPECTED_URLS = {"release_notes": RELEASE_NOTES_URL, "mirta_zip": SOURCE_URL}
 MAX_CAPTURE_BYTES = 12_000_000
@@ -216,7 +229,10 @@ def _decode(body: bytes, tmp: Path):
     gdb_path = str(tmp / EXPECTED_GDB_DIR)
     if fiona.listlayers(gdb_path) != EXPECTED_GDB_LAYER_ROSTER:
         raise ValueError("source_gdb_layer_roster_drift")
-    attrs, geoms = [], []
+    info = pyogrio.read_info(gdb_path, layer=EXPECTED_LAYER)
+    if info.get("fid_column") != EXPECTED_FID_COLUMN:
+        raise ValueError("source_fid_column_drift")
+    attrs, geoms, fids = [], [], []
     with fiona.open(gdb_path, layer=EXPECTED_LAYER) as src:
         if src.schema["geometry"] != "Point" or list(src.schema["properties"]) != list(FIELD_ORDER) \
                 or dict(src.schema["properties"]) != EXPECTED_FIELDS:
@@ -226,6 +242,15 @@ def _decode(body: bytes, tmp: Path):
         if list(map(float, src.bounds)) != EXPECTED_BOUNDS:
             raise ValueError("source_bounds_drift")
         for feature in src:
+            fid_raw = feature["id"]
+            if isinstance(fid_raw, bool) or not isinstance(fid_raw, (int, str)):
+                raise ValueError("source_fid_type_drift")
+            try:
+                fid = int(fid_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("source_fid_type_drift") from exc
+            if fid < 1:
+                raise ValueError("source_fid_type_drift")
             properties = dict(feature["properties"])
             geometry = feature["geometry"]
             if geometry is None or geometry["type"] != "Point":
@@ -240,9 +265,13 @@ def _decode(body: bytes, tmp: Path):
                     raise ValueError("source_attribute_type_drift:" + name)
                 row.append(value)
             attrs.append(row)
+            fids.append(fid)
             geoms.append([float(x), float(y)])
     if len(attrs) != EXPECTED_COUNT:
         raise ValueError("source_feature_count_drift")
+    if fids[0] != EXPECTED_FID_FIRST or fids[-1] != EXPECTED_FID_LAST \
+            or len(set(fids)) != len(fids):
+        raise ValueError("source_fid_roster_drift")
     names = list(FIELD_ORDER)
     index = {name: position for position, name in enumerate(names)}
     if any(row[index["featureName"]] != row[index["siteName"]] for row in attrs):
@@ -280,9 +309,11 @@ def _decode(body: bytes, tmp: Path):
     record_sha = _sha(_canonical(attrs))
     geometry_sha = _sha(_canonical(geoms))
     id_sha = _sha(_canonical([row[index["mirtaLocationsIdpk"]] for row in attrs]))
-    schema_sha = _sha(_canonical([[name, EXPECTED_FIELDS[name]] for name in FIELD_ORDER]))
+    fid_sha = _sha(_canonical(fids))
+    schema_sha = _sha(_canonical([[EXPECTED_FID_COLUMN, "int64"],
+                                  *[[name, EXPECTED_FIELDS[name]] for name in FIELD_ORDER]]))
     if record_sha != RECORD_SHA or geometry_sha != GEOMETRY_SHA or id_sha != ID_SHA \
-            or schema_sha != SCHEMA_SHA:
+            or fid_sha != FID_SHA or schema_sha != SCHEMA_SHA:
         raise ValueError("source_content_snapshot_drift")
     null_counts = {name: sum(1 for row in attrs if row[index[name]] is None) for name in FIELD_ORDER}
     audit = {
@@ -293,11 +324,18 @@ def _decode(body: bytes, tmp: Path):
                                         "2025-09-02, agreeing with the release notes.",
         "source_id_field": "mirtaLocationsIdpk", "source_id_unique": False,
         "source_id_degenerate": True,
-        "source_id_degenerate_reason": "The producer's primary key mirtaLocationsIdpk is the single "
+        "source_id_degenerate_reason": "The property-level key mirtaLocationsIdpk is the single "
                                        "space character for all 831 features and sdsId GUIDs are "
-                                       "populated for only 41 of 831 features; no usable native row "
-                                       "identifier is published. Values are preserved verbatim and no "
+                                       "populated for only 41 of 831 features. The native FileGDB "
+                                       "feature ID column OBJECTID is distinct across all 831 "
+                                       "features (first 764, last 1604, noncontiguous) and is "
+                                       "preserved verbatim as the leading integer OBJECTID column, "
+                                       "so a usable native row identifier is published; no "
                                        "substitute identifiers are generated.",
+        "source_fid_column": EXPECTED_FID_COLUMN,
+        "source_fid_unique": len(set(fids)) == len(fids),
+        "source_fid_first": fids[0], "source_fid_last": fids[-1],
+        "source_fid_sha256": fid_sha,
         "source_id_sha256": id_sha, "source_record_sha256": record_sha,
         "source_geometry_sha256": geometry_sha, "source_schema_sha256": schema_sha,
         "source_gdb_schema": EXPECTED_FIELDS, "source_crs": "EPSG:4326",
@@ -310,15 +348,17 @@ def _decode(body: bytes, tmp: Path):
                                  "territories are published in this public release.",
         "hifld_inventory_id": "mirta-dod-sites-points",
         "drift_guard": "Pinned official ZIP checksum and member roster with 2025-09-02 timestamps and "
-                       "CRC integrity, exact GDB layer roster, field names/types/order, feature "
+                       "CRC integrity, exact GDB layer roster, native OBJECTID feature ID column and "
+                       "per-feature ID digest, field names/types/order, feature "
                        "count, degenerate-ID and attribute value populations, SDS GUID counts, "
                        "unique siteName/featureName equality, CRS, native XY and bounds.",
     }
-    return attrs, geoms, audit
+    return attrs, geoms, fids, audit
 
 
-def _parquet(attrs: list[list], geoms: list[list]) -> bytes:
-    arrays, fields = [], []
+def _parquet(attrs: list[list], geoms: list[list], fids: list[int]) -> bytes:
+    arrays = [pa.array(fids, type=pa.int64())]
+    fields = [pa.field(EXPECTED_FID_COLUMN, pa.int64(), nullable=False)]
     for position, name in enumerate(FIELD_ORDER):
         arrays.append(pa.array([row[position] for row in attrs], type=pa.string()))
         fields.append(pa.field(name, pa.string(), nullable=True))
@@ -333,6 +373,10 @@ def _parquet(attrs: list[list], geoms: list[list]) -> bytes:
     table = pq.read_table(pa.BufferReader(sink.getvalue()))
     if table.num_rows != len(attrs):
         raise ValueError("candidate_row_count_readback_drift")
+    if table[EXPECTED_FID_COLUMN].type != pa.int64():
+        raise ValueError("candidate_fid_type_readback_drift")
+    if table[EXPECTED_FID_COLUMN].to_pylist() != fids:
+        raise ValueError("candidate_fid_readback_drift")
     for position, name in enumerate(FIELD_ORDER):
         if table[name].type != pa.string():
             raise ValueError("candidate_attribute_type_readback_drift:" + name)
@@ -421,6 +465,9 @@ def _candidate_result(version: str, audit: Mapping[str, object], prefix: str, *,
               "source_schema_sha256": audit["source_schema_sha256"],
               "source_release": audit["source_release"],
               "source_release_date": audit["source_release_date"],
+              "source_fid_column": audit["source_fid_column"],
+              "source_fid_unique": audit["source_fid_unique"],
+              "source_fid_sha256": audit["source_fid_sha256"],
               "source_id_degenerate": audit["source_id_degenerate"],
               "source_coverage_scope": audit["source_coverage_scope"],
               "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": reused,
@@ -451,8 +498,8 @@ def capture_mirta_dod_sites_points(storage: StagingStorageResource, *, version: 
     root = requested or Path("/tmp/hifld-native-reconstruction/157/captures") / (version + "-" + uuid4().hex)
     caps = _capture(root, storage, version)
     with tempfile.TemporaryDirectory() as tmp:
-        attrs, geoms, audit = _decode(caps["mirta_zip"][0], Path(tmp))
-        parquet = _parquet(attrs, geoms)
+        attrs, geoms, fids, audit = _decode(caps["mirta_zip"][0], Path(tmp))
+        parquet = _parquet(attrs, geoms, fids)
     identity = processing_identity(Path(__file__).parents[3])
     evidence_sha = _sha(_canonical({name: {"body_sha256": caps[name][2]["sha256"],
                                            "wire_sha256": caps[name][2]["wire_sha256"]}
@@ -500,9 +547,12 @@ def capture_mirta_dod_sites_points(storage: StagingStorageResource, *, version: 
         "transformations": [{"operation": "Native FileGDB attributes and EPSG:4326 point layer to GeoParquet",
                              "parameters": {"source_fields": "all native GDB fields preserved in order, "
                                                             "declared string widths and values",
-                                            "source_ids": "mirtaLocationsIdpk and sdsId retained "
-                                                          "verbatim including nulls and blank values; "
-                                                          "no synthetic identifiers generated",
+                                            "source_ids": "native OBJECTID feature IDs retained "
+                                                          "verbatim as the leading integer OBJECTID "
+                                                          "column; mirtaLocationsIdpk and sdsId "
+                                                          "retained verbatim including nulls and "
+                                                          "blank values; no synthetic identifiers "
+                                                          "generated",
                                             "geometry": "native WGS84 XY retained without reprojection",
                                             "source_release": SOURCE_RELEASE,
                                             "candidate_status": "unapproved; source, schema/ID contract, "
