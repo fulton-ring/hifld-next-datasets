@@ -146,7 +146,7 @@ def _documents() -> dict:
                           for layer_id, name in source.EXPECTED_SERVICE_LAYERS]}
     layer = {"id": source.LAYER_ID, "name": source.LAYER_NAME, "type": "Feature Layer",
              "geometryType": "esriGeometryPolygon", "maxRecordCount": 2000,
-             "copyrightText": "U.S. Geological Survey", "displayField": "NAME",
+             "copyrightText": "U.S. Geological Survey", "displayField": "Name",
              "geometryField": {"name": "shape"},
              "geometryProperties": {"shapeAreaFieldName": "shape_Area",
                                     "shapeLengthFieldName": "shape_Length",
@@ -163,7 +163,7 @@ def _documents() -> dict:
     for index in range(_TEST_PAGE_COUNT):
         page_ids = _TEST_ROSTER[index * _TEST_PAGE_SIZE:(index + 1) * _TEST_PAGE_SIZE]
         pages[f"page_{index:04d}"] = {
-            "displayFieldName": "NAME",
+            "displayFieldName": "Name",
             "exceededTransferLimit": index < _TEST_PAGE_COUNT - 1,
             "features": [features[oid] for oid in page_ids],
             "fieldAliases": {field["name"]: field["alias"]
