@@ -264,6 +264,24 @@ def _schema_identity(metadata: dict) -> dict:
             "maxRecordCount": metadata.get("maxRecordCount"), "supportsPagination": metadata.get("advancedQueryCapabilities", {}).get("supportsPagination")}
 
 
+_EDITING_INFO_MEMBERS = ("dataLastEditDate", "lastEditDate", "schemaLastEditDate")
+
+
+def _editing_witness(metadata: dict) -> dict | None:
+    """Observed ArcGIS editingInfo data-update timestamps; never a release date.
+
+    The full member set participates in the before/after comparison because
+    attribute or geometry edits with an unchanged schema, count and ID roster
+    must still reject a mixed snapshot.
+    """
+    info = metadata.get("editingInfo")
+    if info is None:
+        return None
+    if not isinstance(info, dict) or set(info) - set(_EDITING_INFO_MEMBERS) or any(type(value) is not int for value in info.values()):
+        raise USACEOfficesSourceError("source_editing_info_invalid")
+    return dict(info)
+
+
 def _validate_layer_schema(metadata: dict) -> None:
     fields = metadata.get("fields")
     if type(fields) is not list:
@@ -292,16 +310,25 @@ def _source_contract(metadata: dict, count_before: int, count_after: int, before
     names = tuple(f["name"] for f in metadata.get("fields", []))
     if object_id not in names or metadata.get("geometryType") != "esriGeometryPoint":
         raise USACEOfficesSourceError("source_identity_or_geometry_contract_changed")
+    witness = _editing_witness(metadata)
     quality = []
     if count_before != count_after or count_before != len(before_ids) or count_after != len(after_ids): quality.append("source_count_or_id_roster_changed_during_capture")
     if before_ids != after_ids: quality.append("source_id_roster_changed_during_capture")
     if len(features) != count_before: quality.append("source_full_feature_count_mismatch")
     if count_before > MAX_COUNT: quality.append("source_count_exceeds_adapter_limit")
     quality.extend(_validate_rows(features, names, object_id, before_ids))
+    if witness:
+        release_date_reason = ("Observed ArcGIS editingInfo timestamps are recorded as the editing_witness data-update observation; "
+            "they are not treated as a producer release date, so source_release_date stays unset pending acceptance; fetch time is retained separately")
+    else:
+        release_date_reason = ("This capture exposed no ArcGIS editingInfo timestamps and no producer release-date field; fetch time is retained separately")
     return {"count_before": count_before, "count_after": count_after, "feature_count": len(features),
             "object_id_field": object_id, "id_roster_sha256": hashlib.sha256(_json(before_ids)).hexdigest(),
-            "id_roster_preserved": before_ids == after_ids, "source_release_date": None,
-            "release_date_reason": "USACE layer has no editFieldsInfo/source timestamp; fetch time is retained separately",
+            "id_roster_preserved": before_ids == after_ids,
+            "editing_witness": witness, "editing_witness_is_source_release_date": False,
+            "source_data_last_edit_date": (witness or {}).get("dataLastEditDate"),
+            "source_release_date": None,
+            "release_date_reason": release_date_reason,
             "quality_errors": sorted(set(quality))}
 
 
@@ -447,8 +474,14 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
         ids_field_after, ids_after = _object_ids(get(client, "ids_after", _query_url(where="1=1", returnIdsOnly="true")))
 
     schema_drift = _schema_identity(layer_before) != _schema_identity(layer_after)
+    witness_before, witness_after = _editing_witness(layer_before), _editing_witness(layer_after)
     if schema_drift or ids_field_after != layer_after.get("objectIdField"):
         raise USACEOfficesSourceError("source_metadata_drift_during_capture")
+    # A mid-capture edit with unchanged schema, count and ID roster would
+    # otherwise seal a mixed snapshot; reject changed data-update witnesses
+    # before the contract, the table build or first-construction sealing.
+    if witness_before != witness_after:
+        raise USACEOfficesSourceError("source_editing_witness_changed_during_capture")
     audit = _source_contract(layer_before, count_before, count_after, ids_before, ids_after, features)
     table, geometry_quality = _table(layer_before, features)
     audit["quality_errors"] = sorted(set(audit["quality_errors"] + geometry_quality))
@@ -478,6 +511,11 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
             payloads[f"raw/{name}.receipt.json"] = _json(receipt)
         parquet_descriptor = {"path": f"geoparquet/{SLUG}.parquet", "bytes": len(payloads[f"geoparquet/{SLUG}.parquet"]), "sha256": hashlib.sha256(payloads[f"geoparquet/{SLUG}.parquet"]).hexdigest()}
         provenance_inputs = []
+        if audit["editing_witness"]:
+            release_reason = ("Observed ArcGIS editingInfo timestamps are recorded as the source audit editing_witness "
+                "data-update observation, not a producer release date; release_date stays unset pending acceptance.")
+        else:
+            release_reason = "This capture exposed no ArcGIS editingInfo timestamps and no producer release-date field."
         for name, (_body, receipt) in sorted(captures.items()):
             decoded_info = receipt["decoded"]
             provenance_inputs.append({"input_id": "usace-offices-" + name, "producer": "U.S. Army Corps of Engineers",
@@ -485,7 +523,7 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
                 "retrieved_at": receipt["retrieved_at"], "sha256": decoded_info["sha256"], "bytes": decoded_info["bytes"],
                 "license": "USACE layer does not state a license; no rights acceptance is inferred.",
                 "attribution": "USACE metadata copyright text: USACE ArcGIS Online.", "role": "producer_publication", "http_status": receipt["status"],
-                "release_date": None, "release_date_unknown_reason": "The USACE layer has no editFieldsInfo/source timestamp or producer release-date field."})
+                "release_date": None, "release_date_unknown_reason": release_reason})
         manifest = {"schema_version": 1, "title": "USACE District, Division and Research Lab Locations", "description": layer_before.get("description", ""),
             "publisher": "U.S. Army Corps of Engineers", "agency": "U.S. Army Corps of Engineers",
             "source_url": BASE, "license": "USACE layer metadata does not state a license; no rights acceptance is inferred.",
