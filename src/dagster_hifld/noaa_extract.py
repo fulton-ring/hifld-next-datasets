@@ -78,8 +78,8 @@ def noaa_capture_urls(layer_url: str) -> dict[str, str]:
     prefix = "/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/"
     if (parsed.scheme != "https" or parsed.netloc != "maritimeboundaries.noaa.gov"
             or parsed.query or parsed.fragment or not parsed.path.startswith(prefix)
-            or parsed.path[len(prefix):] not in {"1", "2", "3"}):
-        raise ValueError("NOAA expected layer must be an exact official HTTPS layer1/2/3 URL")
+            or parsed.path[len(prefix):] not in {"1", "2", "3", "4"}):
+        raise ValueError("NOAA expected layer must be an exact official HTTPS layer1/2/3/4 URL")
     query = layer_url.rstrip("/") + "/query?where=1%3D1&"
     return {
         "layer": layer_url + "?f=pjson",
