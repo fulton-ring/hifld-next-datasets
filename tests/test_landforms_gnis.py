@@ -16,8 +16,10 @@ from dagster_hifld.assets.landforms_gnis import (
     landforms_gnis,
     landforms_gnis_complete,
 )
+from dagster_hifld.catalog import summarize_staged_catalog
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.sources import epa_frs_common
 from dagster_hifld.sources import landforms_gnis as src
 
@@ -151,7 +153,8 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
                     {"error": {"code": 500, "message": "Error performing query "
                                                       "operation", "details": []}}),
                     headers={"content-type": "application/json"})
-            by_id = {row["attributes"]["OBJECTID"]: row for row in rows}
+            provided = rows(requested) if callable(rows) else rows
+            by_id = {row["attributes"]["OBJECTID"]: row for row in provided}
             return httpx.Response(200, stream=JSONStream(
                 {"displayFieldName": "gaz_name", "hasZ": True,
                  "geometryType": src.GEOMETRY_TYPE,
@@ -176,13 +179,55 @@ def _fixture_distributions() -> dict[str, dict]:
     }
 
 
+# The real production roster size: the regression replays the exact
+# production pagination (243,708 ids captured at the pinned 1000 ids/page
+# start, i.e. 244 pages) that the bounded catalog reader must be able to
+# summarize.
+BULK_COUNT = 243_708
+
+
+def _bulk_attrs(oid: int) -> dict:
+    return {"OBJECTID": oid,
+            "gaz_id": 2400 + (oid % 997),
+            "gaz_name": f"Feature {oid} (landform)",
+            "gaz_featureclass": FEATURECLASSES[oid % len(FEATURECLASSES)],
+            "fcode": 61500 + (oid % 11),
+            "state_alpha": "GA",
+            "county_name": "Chattooga" if oid % 5 else None,
+            "objectid_1": 102047 + (oid % 13),
+            "isunknowncoords": 2}
+
+
+def _bulk_geometry(oid: int) -> object:
+    if oid % 97 == 0:
+        return None
+    return {"hasZ": True,
+            "points": [[-9496939.5726 - (oid % 1000) * 0.5,
+                        4081865.4846 + (oid % 997) * 0.5, 0.0]]}
+
+
+def _bulk_rows(requested: list[int]) -> list[dict]:
+    return [{"attributes": _bulk_attrs(oid), "geometry": _bulk_geometry(oid)}
+            for oid in requested]
+
+
+def _bulk_distributions() -> dict[str, dict]:
+    featureclass: dict[str, int] = {}
+    for oid in range(1, BULK_COUNT + 1):
+        value = FEATURECLASSES[oid % len(FEATURECLASSES)]
+        featureclass[value] = featureclass.get(value, 0) + 1
+    return {"featureclass": featureclass, "isunknowncoords": {2: BULK_COUNT}}
+
+
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_size=4,
-                 mock_construction_validators=True):
+                 count=None, distributions=None, mock_construction_validators=True):
     import dagster_hifld.assets.landforms_gnis as asset_module
-    distributions = _fixture_distributions()
+    roster_count = count if count is not None else FIXTURE_COUNT
+    distributions = (distributions if distributions is not None
+                     else _fixture_distributions())
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
+        patch.object(src, "EXPECTED_COUNT", roster_count),
         patch.object(src, "EXPECTED_IDS_SHA256", ""),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
         patch.object(src, "EXPECTED_RECORD_SHA256", ""),
@@ -200,7 +245,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
         patch.object(src, "PAGE_START_RECORDS", segment_size),
         patch.object(src, "PAGE_PROBE_BASE_DELAY_SECONDS", 0.0),
         patch.object(src, "DOC_CAPTURE_BASE_DELAY_SECONDS", 0.0),
-        patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
+        patch.object(asset_module, "EXPECTED_COUNT", roster_count),
         patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
@@ -497,6 +542,63 @@ class LandformsGnisTests(unittest.TestCase):
                 [(0, 2), (2, 2), (4, 4), (8, 1)])
             for name, body in survivor_bodies.items():
                 self.assertEqual((capture_root / f"{name}.body").read_bytes(), body)
+
+    def test_full_roster_manifest_fits_bounded_catalog_reader(self):
+        """Full-size roster: compact page provenance keeps ingest-to-catalog working.
+
+        Regression for the bounded-reader finding: with the production roster
+        (243,708 ids captured at the pinned 1000 ids/page start, i.e. 244
+        pages) the sealed source manifest must stay within the bounded catalog
+        reader limit, and the real catalog path (load_resolved_source_manifest
+        plus summarize_staged_catalog, exactly as the catalog asset calls
+        them) must summarize the sealed candidate end to end.
+        """
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(_bulk_rows, count=BULK_COUNT,
+                                   ids=list(range(1, BULK_COUNT + 1)))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport, segment_size=1000,
+                              count=BULK_COUNT, distributions=_bulk_distributions()):
+                storage = _staging(root)
+                result = src.capture_landforms_gnis(
+                    storage, version="full-roster-run",
+                    capture_directory=str(capture_root))
+                self.assertFalse(result["reused"])
+                self.assertEqual(result["feature_count"], BULK_COUNT)
+                manifest_bytes = (root / "staging" / src.DATASET_SLUG
+                                  / src.FILE_SLUG / result["version"]
+                                  / "metadata" / "source_manifest.json").read_bytes()
+                self.assertLessEqual(len(manifest_bytes),
+                                     src.CATALOG_READER_MAX_MANIFEST_BYTES)
+                manifest = json.loads(manifest_bytes)
+                pages = [entry for entry in manifest["inputs"]
+                         if entry["input_id"].startswith("page_")]
+                self.assertEqual(len(pages), 244)
+                for entry in pages:
+                    self.assertTrue(entry["retrieval_query_redacted"])
+                    self.assertEqual(entry["retrieval_url"], src.LAYER_URL + "/query")
+                    self.assertNotIn("objectIds", entry["retrieval_url"])
+                    self.assertNotIn("observed_final_url", entry)
+                documents = [entry for entry in manifest["inputs"]
+                             if not entry["input_id"].startswith("page_")]
+                self.assertEqual(len(documents), 9)
+                self.assertTrue(all("observed_final_url" in entry
+                                    for entry in documents))
+                self.assertFalse(any("retrieval_query_redacted" in entry
+                                     for entry in documents))
+                resolved = load_resolved_source_manifest(
+                    storage, src.DATASET_SLUG, src.FILE_SLUG, result["version"])
+                summary = summarize_staged_catalog(
+                    storage, src.DATASET_SLUG, src.FILE_SLUG, result["version"],
+                    src.DATASET_SLUG, source_metadata=resolved.metadata)
+                self.assertEqual(summary.quality_manifest["feature_count"],
+                                 BULK_COUNT)
+                self.assertEqual(summary.quality_manifest["null_geometry_count"],
+                                 len([oid for oid in range(1, BULK_COUNT + 1)
+                                      if oid % 97 == 0]))
+                self.assertEqual(summary.data_dictionary["name"], src.DATASET_SLUG)
 
     def test_unservable_single_feature_refuses_explicitly(self):
         rows = _fixture_rows()

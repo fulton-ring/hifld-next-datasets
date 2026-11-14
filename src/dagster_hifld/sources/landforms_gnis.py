@@ -108,6 +108,13 @@ PAGE_START_RECORDS = 1000
 # repaired capture re-bisects differently than the first run, and the sealed
 # candidate must stay reusable under the content-derived version.
 PARQUET_FLUSH_ROWS = 1000
+# Bounded catalog readers read each staged source manifest with a hard 2 MiB
+# limit (literal_geojson_catalog.resolve_literal_metadata ->
+# load_resolved_source_manifest(max_layer_bytes=2*1024*1024)). Sealing mirrors
+# that limit so a manifest the reader could never accept fails at ingest with
+# a clear code instead of at catalog; page provenance stays compact (redacted
+# page request URLs, exact per-page URLs only in the retained raw receipts).
+CATALOG_READER_MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_BODY_BYTES = 96 * 1024 * 1024
 MAX_CAPTURE_BYTES = 512 * 1024 * 1024
 MIN_FREE_BYTES = 2_000_000_000
@@ -1258,6 +1265,45 @@ def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
     return {name: _load_receipt(capture_root, name) for name in names}
 
 
+def _manifest_input(name: str, receipt: Mapping[str, object]) -> dict[str, object]:
+    """One manifest input entry; page requests keep compact redacted URLs.
+
+    The bounded catalog reader caps each staged manifest at
+    ``CATALOG_READER_MAX_MANIFEST_BYTES``, so an accepted page's entry records
+    the shared layer query endpoint with ``retrieval_query_redacted`` instead
+    of repeating a request URL whose ``objectIds`` parameter enumerates its
+    roster slice. The exact per-page request URL (which ``_load_receipt``
+    pins equal to the final observed URL) is retained verbatim in the sealed
+    candidate under ``raw/{name}.receipt.json`` with the page body and wire
+    bytes. Metadata documents carry short URLs and keep them exactly.
+    """
+    entry: dict[str, object] = {
+        "input_id": name, "producer": PUBLISHER,
+        "host": urlsplit(str(receipt["url"])).hostname,
+        "role": "producer_publication", "canonical_url": SERVICE_URL,
+        "retrieved_at": receipt["observed_at"],
+        "http_status": receipt["status"],
+        "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+        "release_date": None,
+        "release_date_unknown_reason":
+            "The geonames MapServer publishes no per-snapshot release date; "
+            "its copyrightText records a service refresh (October 2026) and "
+            "USGS documents that GNIS names data products are refreshed every "
+            "other month.",
+        "license": "Public domain (U.S. Government work) per the producer "
+                   "service; rights acceptance pending.",
+        "attribution": "USGS The National Map: Geographic Names Information "
+                       "System (GNIS); formal attribution terms require "
+                       "maintainer review."}
+    if _PAGE_NAME_PATTERN.fullmatch(name) is not None:
+        entry["retrieval_url"] = LAYER_URL + "/query"
+        entry["retrieval_query_redacted"] = True
+    else:
+        entry["retrieval_url"] = receipt["url"]
+        entry["observed_final_url"] = receipt["final_url"]
+    return entry
+
+
 class _RetainedCaptureViews(Mapping):
     """Lazily materialize one capture view per access so quarantine stays bounded."""
 
@@ -1339,7 +1385,17 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                            "pages are bisected until served; accepted pages must "
                            "tile the sorted roster exactly and before/after "
                            "count/roster brackets prove nothing was skipped, "
-                           "duplicated or reordered."},
+                           "duplicated or reordered.",
+                       "page_request_provenance":
+                           "Manifest entries for accepted pages record the shared "
+                           "layer query endpoint with retrieval_query_redacted=true "
+                           "because each page's exact request URL enumerates its "
+                           "sorted roster slice in the objectIds parameter. The "
+                           "exact per-page request URLs (pinned equal to the final "
+                           "observed URL by the retained receipts), page bodies and "
+                           "wire bytes are retained verbatim in raw/{page}."
+                           "receipt.json, raw/{page}.body and raw/{page}.wire in "
+                           "the sealed candidate."},
         "capture_window_utc": {"first_page": first_captured_at,
                                "last_page": last_captured_at},
         "freshness_accepted": False, "schema_contract_accepted": False,
@@ -1368,25 +1424,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                    "access or use constraints. Rights acceptance pending.",
         "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
-        "inputs": [{"input_id": name, "producer": PUBLISHER,
-                    "host": urlsplit(receipt["url"]).hostname,
-                    "role": "producer_publication", "canonical_url": SERVICE_URL,
-                    "retrieval_url": receipt["url"],
-                    "observed_final_url": receipt["final_url"],
-                    "retrieved_at": receipt["observed_at"],
-                    "http_status": receipt["status"],
-                    "bytes": receipt["bytes"], "sha256": receipt["sha256"],
-                    "release_date": None,
-                    "release_date_unknown_reason":
-                        "The geonames MapServer publishes no per-snapshot release "
-                        "date; its copyrightText records a service refresh (October "
-                        "2026) and USGS documents that GNIS names data products are "
-                        "refreshed every other month.",
-                    "license": "Public domain (U.S. Government work) per the producer "
-                               "service; rights acceptance pending.",
-                    "attribution": "USGS The National Map: Geographic Names "
-                                   "Information System (GNIS); formal attribution "
-                                   "terms require maintainer review."}
+        "inputs": [_manifest_input(name, receipt)
                    for name, receipt in sorted(receipts.items())],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {
@@ -1444,6 +1482,12 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     }
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
+    manifest_body = _canonical(manifest) + b"\n"
+    # Mirror the bounded catalog reader's per-layer manifest limit at seal
+    # time: a manifest the reader could never accept fails ingest with a clear
+    # code (and quarantines) instead of failing catalog downstream.
+    if len(manifest_body) > CATALOG_READER_MAX_MANIFEST_BYTES:
+        raise LandformsGnisError("source_manifest_exceeds_catalog_reader_limit")
     ready = {"approved": False, "version": version, "objects": source_objects,
              "source_record_sha256": audit["source_record_sha256"],
              "succession_accepted": False, "freshness_accepted": False,
@@ -1452,7 +1496,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "mapping_approved": False, "release_accepted": False}
     metadata_outputs: dict[str, bytes] = {
         parquet_name: parquet_body,
-        "metadata/source_manifest.json": _canonical(manifest) + b"\n",
+        "metadata/source_manifest.json": manifest_body,
         "metadata/source_audit.json": _canonical(audit) + b"\n",
         "metadata/processing_identity.json": _canonical(identity) + b"\n",
         "metadata/candidate_ready.json": _canonical(ready) + b"\n",
