@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "inventory_id": "nerc-reliability-coordinators-1",
+  "title": "NERC Reliability Coordinators",
+  "agency": "Department of Homeland Security",
+  "publisher": "DHS Homeland Infrastructure Program (HIFLD Open re-host; shut down 2025-08-26). Crosswalk attributes the data to Oak Ridge National Laboratory (ORNL); the subject-matter producer is the North American Electric Reliability Corporation (NERC).",
+  "research_only": true,
+  "pipeline_input_urls": [],
+  "pipeline_input_note": "No pipeline or ingest asset exists: no acceptable, anonymously fetchable source was verified, so the pipeline fetches no URLs.",
+  "crosswalk_match": {
+    "crosswalk": "DHS HIFLD Open crosswalk, DOI 10.3886/E241367V1 (DataLumos/ICPSR copy not fetched; host excluded by source policy). Copy used for research: https://atcoordinates.info/wp-content/uploads/2025/08/hifld_open_crosswalk_geoplatform.xlsx",
+    "copy_sha256": "7f3394fed2712fdcc176b7ce658293fdded656b9b719f0d90154c07dc38772bc",
+    "copy_bytes": 61689,
+    "copy_last_modified": "2025-08-08T13:27:30Z",
+    "copy_fetched_utc": "2026-11-12T11:45:00Z",
+    "byte_identity_with_official_crosswalk": "Not established.",
+    "sheet": "Crosswalk (306 rows: 254 Deprecate, 51 Migrated; column dictionary on sheet 2)",
+    "row": {
+      "Status": "Migrated",
+      "Layer Name": "NERC Reliability Coordinators",
+      "Old Hosting Location": "https://geoplatform.maps.arcgis.com/home/item.html?id=ee47fbb73fc04d609510f340e1c1952c",
+      "New Hosting Location": "GII Portal",
+      "DUA Required": "No",
+      "GII Access Required": "Yes",
+      "Deprecation Justification": "Migrated to GII due to the deprecation of HILFD Open",
+      "Agency": "Oak Ridge National Laboratory (ORNL)",
+      "External Landing Page": null,
+      "Open REST Service": "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/NERC_Reliability_Coordinators/FeatureServer",
+      "Old Secure ID": "Please see GII",
+      "New ID": "Please see GII",
+      "Open ID": "ee47fbb73fc04d609510f340e1c1952c"
+    },
+    "match_quality": "Exact title match on the single inventory row nerc-reliability-coordinators-1."
+  },
+  "official_successor": {
+    "name": "DHS Geospatial Information Infrastructure (GII) / HIFLD Secure portal",
+    "program_page": "https://www.dhs.gov/gmo/hifld",
+    "access": "GII account, profile, and (per DHS CISA program text) signed DUA; DHS users via PIV/CAC, non-DHS users via a DHS-authorized Login.gov account. The crosswalk marks this row DUA Required: No and GII Access Required: Yes.",
+    "anonymous_access_probes": [
+      {
+        "url": "https://gii.dhs.gov/gii/home/",
+        "observed": "HTTP 200 single-page application; no anonymous data access offered.",
+        "observed_utc": "2026-11-12T11:46:09Z"
+      },
+      {
+        "url": "https://gii.dhs.gov/gii/rest/services?f=json",
+        "observed": "ArcGIS Web Adaptor application-error page, no anonymous service listing.",
+        "observed_utc": "2026-11-12T11:47:00Z"
+      }
+    ]
+  },
+  "probes": [
+    {
+      "url": "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/NERC_Reliability_Coordinators/FeatureServer?f=pjson",
+      "observed": "400 Invalid URL; the former HIFLD Open REST service is gone.",
+      "observed_utc": "2026-11-12T11:49:02Z"
+    },
+    {
+      "url": "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services?f=json",
+      "observed": "GeoPlatform org service directory lists 532 services; none matching NERC.",
+      "observed_utc": "2026-11-12T11:49:02Z"
+    },
+    {
+      "url": "https://www.arcgis.com/sharing/rest/content/items/ee47fbb73fc04d609510f340e1c1952c?f=pjson",
+      "observed": "CONT_0001 Item does not exist or is inaccessible (former HIFLD Open item).",
+      "observed_utc": "2026-11-12T11:49:02Z"
+    },
+    {
+      "url": "https://www.nerc.com/programs/bulk-power-system-awareness/reliability-coordinators",
+      "observed": "Current official NERC page is a Code|Name table of certified Reliability Coordinators (BCRC, ERCOT, FRCC, HQT, ISNE, MISO, NBSO, NYIS, ONT, PJM, RCW, SPC, SOCO, SPP/SPPW, TVA, VACS, AESO). No polygons, no machine-readable GIS.",
+      "observed_utc": "2026-11-12T11:36:00Z"
+    },
+    {
+      "url": "https://www.nerc.com/sitemap.xml",
+      "observed": "3,356 URLs enumerated; no GIS/shapefile/geojson/KMZ/map-download endpoints; only glossary and program pages mention Reliability Coordinators.",
+      "observed_utc": "2026-11-12T11:44:00Z"
+    },
+    {
+      "url": "https://www.arcgis.com/sharing/rest/search?q=%22NERC%20Reliability%20Coordinators%22&f=json&num=20",
+      "observed": "Four public items; owners are sarah.idczak_DEQ (OR DEQ subset, 2025-08-26), HSEMA_PPD (DC agency, 2023-02-06), Ali.Rebollo (individual, 2021-02-25), tporetro (web map, 2018-02-12). None owned by NERC, ORNL, or a DHS HIFLD account.",
+      "observed_utc": "2026-11-12T11:41:00Z"
+    },
+    {
+      "url": "https://www.arcgis.com/sharing/rest/content/items/62d651654f0e4007b54478ad322d34e1?f=json",
+      "observed": "WECC SPDP 'NERC RCs' Feature Service, owner chelsandrews (WECC org z5VWEXupJpBJnZRq), modified 2025-03-26; self-described 'Approximate boundaries of the Reliability Coordinators within North America'. WECC is a NERC Regional Entity, not the producing agency, and disclaims sourcing authority ('receives data from a wide variety of sources').",
+      "observed_utc": "2026-11-12T11:41:30Z"
+    },
+    {
+      "url": "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/nerc-reliability-coordinators",
+      "observed": "ORNL OpenEnergyDataPortal shell: has_records false, records_count 0, attachments [], alternative_exports [], dcat creator 'HostedByHIFLD', issued 2017-09-19, created 2025-11-18. A HIFLD harvest placeholder, not a maintained feed.",
+      "observed_utc": "2026-11-12T11:40:00Z"
+    },
+    {
+      "url": "https://catalog.data.gov/api/3/action/package_search?q=%22NERC+Reliability+Coordinators%22",
+      "observed": "CKAN search API retired (404). The SciCrunch-harvested catalog.data.gov record (published 2017-01-01) exposes no resources.",
+      "observed_utc": "2026-11-12T11:49:17Z"
+    }
+  ],
+  "excluded_candidates": [
+    {
+      "name": "DataLumos / ICPSR project 239751 (DOI 10.3886/E239751V1)",
+      "kind": "HIFLD rescue archive",
+      "reason": "Excluded as pipeline input by source policy; inventory archive pointer only."
+    },
+    {
+      "name": "PASDA HIFLD_FEMA MapServer layer 104 (mapservices.pasda.psu.edu)",
+      "kind": "HIFLD rescue mirror (banned host)",
+      "reason": "Never fetched, even as research capture; schema known from published layer metadata only."
+    },
+    {
+      "name": "NASA NCCS hifld_open/energy MapServer (maps.nccs.nasa.gov), layer nerc_reliability_coordinators",
+      "kind": "Frozen HIFLD Open rescue copy (May 2019)",
+      "reason": "Rescue copy, not a maintained feed; excluded as pipeline input."
+    },
+    {
+      "name": "ORNL OpenEnergyDataPortal shell (dataset_uid da_43hl3z)",
+      "kind": "HIFLD metadata harvest placeholder with no data",
+      "reason": "0 records, no attachments; not a usable feed."
+    },
+    {
+      "name": "Data Rescue Project portal record",
+      "kind": "HIFLD rescue archive index",
+      "reason": "Rescue copy index; excluded as pipeline input."
+    },
+    {
+      "name": "ArcGIS items owned by Ali.Rebollo (2021), HSEMA_PPD (2023), sarah.idczak_DEQ (OR subset), tporetro (2018)",
+      "kind": "Third-party re-publications",
+      "reason": "ArcGIS items owned by entities other than the producing agency; excluded by source policy."
+    },
+    {
+      "name": "WECC SPDP 'NERC RCs' Feature Service (owner chelsandrews, WECC org)",
+      "kind": "Regional Entity approximation",
+      "reason": "Not the producing agency; 'approximate boundaries'; no delegation from NERC; would require an explicit maintainer source decision."
+    },
+    {
+      "name": "NERC.com RC table and NERCipedia glossary",
+      "kind": "Entity roster / definition",
+      "reason": "No geometry; cannot reconstruct RC area polygons."
+    }
+  ],
+  "historical_layer_schema": {
+    "source": "Published layer metadata of the former HIFLD Open layer (NERC_Reliability_Coordinators, esriGeometryPolygon, EPSG:4326, extent -124.7465..-66.95 / 24.5211..49.3843)",
+    "fields": ["OBJECTID", "ID", "NAME", "ADDRESS", "CITY", "STATE", "ZIP", "TELEPHONE", "COUNTRY", "SOURCE", "SOURCEDATE", "VAL_METHOD", "VAL_DATE", "WEBSITE", "ABBRV"],
+    "note": "Research context only; no payload was captured from any mirror, so no schema contract is proposed."
+  },
+  "acceptance": {
+    "source_release_accepted": false,
+    "source_freshness_accepted": false,
+    "historical_baseline_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false
+  },
+  "next_requirement": "DHS GII access grant (non-DHS route: DHS-authorized Login.gov account plus GII account/profile) to reach the migrated NERC Reliability Coordinators item on the GII portal and inspect its actual payload; or an explicit maintainer decision on a substitute source product (none identified is acceptable under current policy)."
+}
