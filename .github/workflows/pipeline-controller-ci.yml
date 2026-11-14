@@ -1,0 +1,24 @@
+name: Pipeline controller checks
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/pipeline-*.yml'
+      - 'tools/pipeline_workers/**'
+      - 'tests/pipeline_workers/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pipeline-*.yml'
+      - 'tools/pipeline_workers/**'
+      - 'tests/pipeline_workers/**'
+permissions:
+  contents: read
+jobs:
+  controller-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python -m unittest discover -s tests/pipeline_workers -v

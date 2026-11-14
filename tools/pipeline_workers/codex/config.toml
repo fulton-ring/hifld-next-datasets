@@ -1,0 +1,22 @@
+# Named profiles are required: built-in :workspace/:read-only disable command
+# networking. Source discovery and independent verification need public HTTP.
+[features]
+network_proxy = true
+
+[permissions.worker-public]
+extends = ":workspace"
+
+[permissions.worker-public.network]
+enabled = true
+
+[permissions.worker-public.network.domains]
+"*" = "allow"
+
+[permissions.reviewer-public]
+extends = ":read-only"
+
+[permissions.reviewer-public.network]
+enabled = true
+
+[permissions.reviewer-public.network.domains]
+"*" = "allow"
