@@ -1660,8 +1660,6 @@ def capture_nhd_waterbody(storage: StagingStorageResource, *, version: str,
     if ".." in base.parts or any(parent.is_symlink() for parent in (base, *base.parents)):
         raise NhdWaterbodyError("unsafe_local_staging_root")
     base.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(base).free < MIN_FREE_BYTES:
-        raise NhdWaterbodyError("disk_floor_before_acquisition")
     attempt_root = Path(capture_directory) if capture_directory \
         else Path("/data/workspace/scratch/nhd-waterbody/captures")
     capture_root = Path(capture_directory).absolute() if capture_directory \
@@ -1669,6 +1667,14 @@ def capture_nhd_waterbody(storage: StagingStorageResource, *, version: str,
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise NhdWaterbodyError("unsafe_capture_directory")
+    # The floor gates acquisition: a capture directory that already holds the
+    # complete pure-local state (the retained empty tail page) performs no
+    # fetches on resume, and its only write is the in-place candidate parquet
+    # rewrite, so refusing it for entry-level free space would block sealed
+    # reuse on a lease that already holds the staged candidate.
+    retained_tail = (capture_root / "page_tail.body").exists()
+    if not retained_tail and shutil.disk_usage(base).free < MIN_FREE_BYTES:
+        raise NhdWaterbodyError("disk_floor_before_acquisition")
     resumed_pages = len(_load_state(capture_root).get("pages", [])) \
         if (capture_root / "capture_state.json").exists() else 0
     try:

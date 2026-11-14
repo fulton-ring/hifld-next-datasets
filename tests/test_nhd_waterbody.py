@@ -503,6 +503,28 @@ class NhdWaterbodyTests(unittest.TestCase):
             self.assertFalse((root / "capture").exists())
             self.assertFalse(any((root / "staging").iterdir()))
 
+    def test_complete_capture_resume_skips_the_acquisition_floor(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport, page_size=2):
+                storage = _staging(root)
+                first = src.capture_nhd_waterbody(storage, version="floor-resume-1",
+                                                  capture_directory=str(capture_root))
+                self.assertFalse(first["reused"])
+                # The retained tail page makes the resumed walk pure-local, so
+                # the acquisition floor must not gate a sealed reuse that only
+                # revalidates and rewrites the candidate parquet in place.
+                with patch.object(src.shutil, "disk_usage",
+                                  return_value=SimpleNamespace(free=src.MIN_FREE_BYTES - 1)):
+                    second = src.capture_nhd_waterbody(storage, version="floor-resume-2",
+                                                       capture_directory=str(capture_root))
+            self.assertTrue(second["reused"])
+            self.assertEqual(second["version"], first["version"])
+
     def test_complete_fixture_capture_materializes_and_repeats(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
