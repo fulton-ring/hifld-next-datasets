@@ -175,6 +175,10 @@ EXPECTED_ATTRIBUTE_NAMES = tuple(name for name, _type, _length in NATIVE_FIELDS)
 METADATA_NAMES = ("item_before", "service_before", "layer_before", "count_before",
                   "ids_seed", "ids_before")
 AFTER_NAMES = ("layer_after", "service_after", "count_after", "ids_after", "item_after")
+# AGOL portal item usage counters change whenever the item page is viewed and
+# are not dataset metadata; both drifted inside the 2026-11-14 capture window
+# while the layer, service, count and roster brackets stayed byte-identical.
+_ITEM_VOLATILE_FIELDS = frozenset({"lastViewed", "numViews"})
 INTEGER_TYPES = ("esriFieldTypeOID", "esriFieldTypeInteger", "esriFieldTypeSmallInteger")
 
 _ARROW_TYPES: dict[str, pa.DataType] = {
@@ -1112,7 +1116,15 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         mirror = {"layer_after": "layer_before", "service_after": "service_before",
                   "count_after": "count_before",
                   "item_after": "item_before"}[name]
-        if json.loads(body) != docs[mirror]:
+        observed = json.loads(body)
+        if name == "item_after":
+            observed = {key: value for key, value in observed.items()
+                        if key not in _ITEM_VOLATILE_FIELDS}
+            mirror_doc = {key: value for key, value in docs[mirror].items()
+                          if key not in _ITEM_VOLATILE_FIELDS}
+        else:
+            mirror_doc = docs[mirror]
+        if observed != mirror_doc:
             raise UsLandslideRegionsError(
                 "source_metadata_or_count_changed_during_capture")
     after_fields = json.loads(_read_capture(capture_root, "layer_after")[0]).get("fields")

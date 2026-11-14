@@ -527,6 +527,47 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                     capture_directory=str(capture_root))
                 self.assertTrue(resumed["reused"])
 
+    def test_item_usage_counter_drift_between_brackets_is_tolerated(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        before_doc = {**_fixture_item_doc(), "lastViewed": 1794672000000,
+                      "numViews": 236313}
+        counter_drift = {**before_doc, "lastViewed": 1794690000000,
+                         "numViews": 236351}
+        real_drift = {**counter_drift, "title": "Drifted title"}
+        item_path = f"/sharing/rest/content/items/{src.AGOL_ITEM_ID}"
+        for after_doc, expected_error in ((counter_drift, None),
+                                          (real_drift,
+                                           "source_metadata_or_count_changed_during_capture")):
+            with self.subTest(drift=expected_error):
+                inner = make_responder(rows)
+                docs = [before_doc, after_doc]
+
+                def respond(request, docs=docs, inner=inner):
+                    if urlsplit(str(request.url)).path == item_path:
+                        return _json_response(
+                            docs.pop(0) if len(docs) > 1 else docs[0])
+                    return inner.handler(request)
+
+                transport = httpx.MockTransport(respond)
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    capture_root = root / "capture"
+                    with fixture_mode(schema_sha, transport):
+                        if expected_error is None:
+                            result = src.capture_us_landslide_regions(
+                                _staging(root), version="item-drift-run",
+                                capture_directory=str(capture_root))
+                            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+                            self.assertTrue((capture_root
+                                             / "computed_baseline.json").exists())
+                        else:
+                            with self.assertRaises(src.UsLandslideRegionsError) as raised:
+                                src.capture_us_landslide_regions(
+                                    _staging(root), version="item-drift-run",
+                                    capture_directory=str(capture_root))
+                            self.assertIn(expected_error, str(raised.exception))
+
     def test_unservable_single_feature_refuses_explicitly(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
