@@ -37,6 +37,7 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "Integrated Compliance Information System (ICIS) Wastewater Treatment Plants"
 DATASET_SLUG = "icis-wastewater-treatment-plants"
 FILE_SLUG = DATASET_SLUG
+DEFAULT_CAPTURE_ROOT = "/tmp/hifld-native-reconstruction/118/captures"
 PUBLISHER = "U.S. Environmental Protection Agency (EPA_GEO hosted FeatureServer)"
 SCHEMA_SHA256 = "db38c1a62fdf82b3bd94acc81d88e776fe1b94f533b2fe8a8f28875222bb0b34"
 PAGE_SIZE = 250
@@ -272,12 +273,20 @@ def _native_parquet(fields: list[dict], features: list[dict]) -> bytes:
 
 
 def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str,
+                                dataset_slug: str = DATASET_SLUG,
                                 capture_directory: str | None = None,
                                 retained_capture_directory: str | None = None,
                                 retained_capture_manifest_sha256: str | None = None,
                                 max_capture_bytes: int = MAX_CAPTURE_BYTES,
-                                max_response_bytes: int = MAX_RESPONSE_BYTES) -> dict:
-    """Bracket a complete ID-paged capture and retain every source response."""
+                                max_response_bytes: int = MAX_RESPONSE_BYTES,
+                                default_capture_root: str = DEFAULT_CAPTURE_ROOT) -> dict:
+    """Bracket a complete ID-paged capture and retain every source response.
+
+    The capture is shared by the sibling HIFLD inventory entries for this EPA
+    layer; ``dataset_slug`` and ``default_capture_root`` only relocate the
+    candidate prefix, construction state and local capture directory.
+    """
+    file_slug = dataset_slug
     _validate_capture_limits(max_capture_bytes, max_response_bytes)
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ValueError("explicit_local_staging_resource_required")
@@ -290,7 +299,7 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
     if not retained_capture_directory and retained_capture_manifest_sha256 is not None:
         raise ValueError("retained_capture_manifest_digest_without_directory")
     capture_root = (Path(retained_capture_directory).absolute() if retained_capture_directory else
-                    Path(capture_directory or "/tmp/hifld-native-reconstruction/118/captures").absolute() / version)
+                    Path(capture_directory or default_capture_root).absolute() / version)
     if retained_capture_directory:
         if not capture_root.is_dir() or capture_root.is_symlink():
             raise ValueError("retained_capture_directory_invalid")
@@ -421,7 +430,7 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
         if offline_receipts is not None and set(captures) != set(offline_receipts):
             raise ValueError("retained_capture_request_roster_mismatch")
     except Exception as exc:
-        if captures: quarantine_incomplete_capture(storage,capture_root,DATASET_SLUG,version,captures,type(exc).__name__)
+        if captures: quarantine_incomplete_capture(storage,capture_root,dataset_slug,version,captures,type(exc).__name__)
         raise
     if retained_capture_directory:
         capture_manifest, capture_manifest_sha = offline_manifest, offline_manifest_sha
@@ -432,9 +441,9 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
         raise ValueError("capture_manifest_request_roster_mismatch")
     record_sha=_sha(_canonical(features)); geom_sha=_sha(_canonical([[x["attributes"]["OBJECTID"],None if x["geometry"] is None else x["geometry"]] for x in features]))
     identity=processing_identity(Path(__file__).parents[3]); schema_sha=SCHEMA_SHA256
-    native=_native_parquet(fields,features); version=content_derived_version(record_sha,geom_sha,schema_sha,identity); prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
+    native=_native_parquet(fields,features); version=content_derived_version(record_sha,geom_sha,schema_sha,identity); prefix=candidate_prefix(dataset_slug,file_slug,version)
     null_geometry_count=sum(x["geometry"] is None for x in features)
-    native_name=f"geoparquet/{DATASET_SLUG}.parquet"
+    native_name=f"geoparquet/{dataset_slug}.parquet"
     audit={"feature_count":count,"source_id_sha256":_sha(_canonical(seed)),"source_record_sha256":record_sha,"source_geometry_sha256":geom_sha,"source_schema_sha256":schema_sha,"source_crs_epsg":4269,"geometry_type":"Point","null_geometry_count":null_geometry_count,"all_ids_captured_once":True,"ids_equal_before_after":True,"portal_item_id":ITEM_ID,"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_vintage":None,"source_vintage_note":"No source release vintage was asserted; the item modified timestamp is not evidence of source vintage."}
     manifest={"schema_version":1,"approved":False,"title":LAYER_NAME,"publisher":PUBLISHER,"agency":"Environmental Protection Agency","source_url":LAYER_URL,"source_release_date":None,"source_modified":None,"portal_item_modified_epoch_ms":portal_item["modified"],"portal_item_modified_is_source_release_date":False,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"source_item_id":ITEM_ID,"source_vintage":None,"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":PORTAL_ITEM_URL.split("?",1)[0] if n=="portal_item" else SERVICE_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"wire_bytes":r["wire_bytes"],"wire_sha256":r["wire_sha256"],"license":"Unreviewed; no license claim made.","attribution":"EPA_GEO ArcGIS item attribution has not been reviewed.","release_date":None,"release_date_unknown_reason":"The service and item metadata do not establish an EPA producer release date."} for n,(_,r) in sorted(captures.items())],"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"layer_id":LAYER_ID,"fields":"all 63 fields retained in source order and declared physical types","geometry":"native point coordinates retained as WKB in EPSG:4269","capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}}],"prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri attributes, source IDs, and point coordinates are preserved without public mapping; approval gates remain open.","objects":[{"path":native_name,"bytes":len(native),"sha256":_sha(native)}]}}},"unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No approved display transformation."}}
     validate_release_provenance(manifest)
@@ -443,7 +452,7 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
     for name,(body,receipt) in captures.items(): outputs.update({f"raw/{name}.body":body,f"raw/{name}.wire":(capture_root/f"{name}.wire").read_bytes(),f"raw/{name}.receipt.json":_canonical(receipt)+b"\n"})
     ready={"approved":False,"version":version,"objects":{native_name:{"bytes":len(native),"sha256":_sha(native)},"metadata/capture_manifest.json":{"bytes":len(outputs["metadata/capture_manifest.json"]),"sha256":_sha(outputs["metadata/capture_manifest.json"])},**{k:{"bytes":len(v),"sha256":_sha(v)} for k,v in outputs.items() if k.startswith("raw/")}},"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     outputs["metadata/candidate_ready.json"]=_canonical(ready)+b"\n"
-    state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
+    state_key=f"_construction-state/{dataset_slug}/{version}.json"
     fingerprint=_sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
         sealed=json.loads(load_first_construction(storage,state_key,version,fingerprint))
@@ -452,7 +461,7 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,
             identity,record_sha,schema_sha,payload.get("objects",{}),payload.get("capture_receipts",{}))
         if set(payload["objects"])!=set(outputs): raise ValueError("cached_candidate_roster_changed")
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":count,
+        return {"dataset_slug":dataset_slug,"file_slug":file_slug,"version":version,"feature_count":count,
                 "source_null_geometry_count":null_geometry_count,"candidate_ready":f"{prefix}/metadata/candidate_ready.json",
                 "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,
                 "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,
@@ -472,4 +481,4 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
                          "capture_receipts":{name:receipt for name,(_body,receipt) in captures.items()},
                          "objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":count,"source_null_geometry_count":null_geometry_count,"candidate_ready":f"{prefix}/metadata/candidate_ready.json","source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root),"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":retained_bytes,"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes}
+    return {"dataset_slug":dataset_slug,"file_slug":file_slug,"version":version,"feature_count":count,"source_null_geometry_count":null_geometry_count,"candidate_ready":f"{prefix}/metadata/candidate_ready.json","source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root),"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":retained_bytes,"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes}

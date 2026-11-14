@@ -28,6 +28,7 @@ from shapely.errors import GEOSException
 
 from dagster_hifld.output_policy import prebuilt_output_spec
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import BOUNDED_SOURCE_MANIFEST_READ_BYTES
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
 from dagster_hifld.validation import sha256_file
@@ -37,6 +38,10 @@ SAMPLE_BYTES=64*1024*1024
 BATCH_ROWS=128
 BATCH_BYTES=128*1024*1024
 GEOMETRY_TYPES={'Point','LineString','Polygon','MultiPoint','MultiLineString','MultiPolygon','GeometryCollection'}
+# GeoParquet 1.1 geometry_types dimension suffixes (ISO WKB ordinate grammar);
+# measured (M) ordinates are legal served content and stay readable by the
+# 2D/3D shapely parsing used below, so declared M-suffixed types are accepted.
+GEOMETRY_DIMENSIONS=('',' Z',' M',' ZM')
 
 
 def _pairs(items):
@@ -109,7 +114,7 @@ def _manifest_snapshots(storage,metadata):
             raise ValueError('native_geoparquet_unsafe_manifest_identity')
         if storage.use_local or not storage.bucket:_safe_local_key(storage,storage._ensure_prefixed(key))
         snapshot=storage.object_snapshot(key)
-        if snapshot is None or snapshot.size>2*1024*1024:raise ValueError('native_geoparquet_missing_or_oversized_source_manifest')
+        if snapshot is None or snapshot.size>BOUNDED_SOURCE_MANIFEST_READ_BYTES:raise ValueError('native_geoparquet_missing_or_oversized_source_manifest')
         body=storage.read_key_range(key,0,snapshot.size,expected_snapshot=snapshot)
         if hashlib.sha256(body).hexdigest()!=expected:raise ValueError('native_geoparquet_source_manifest_identity_changed')
         pins.append((key,snapshot,expected))
@@ -167,7 +172,7 @@ def geometry_metadata(schema):
     if type(column)is not dict or column.get('encoding')!='WKB' or not(pa.types.is_binary(schema.field(primary).type)or pa.types.is_large_binary(schema.field(primary).type)):
         raise ValueError('native_geoparquet_requires_binary_WKB')
     kinds=column.get('geometry_types')
-    if(type(kinds)is not list or any(type(v)is not str or v.removesuffix(' Z')not in GEOMETRY_TYPES for v in kinds)or len(kinds)!=len(set(kinds))):
+    if(type(kinds)is not list or any(type(v)is not str or not any(v==base+dimension for dimension in GEOMETRY_DIMENSIONS for base in GEOMETRY_TYPES)for v in kinds)or len(kinds)!=len(set(kinds))):
         raise ValueError('native_geoparquet_invalid_declared_geometry_types')
     if column.get('edges','planar')!='planar':raise ValueError('native_geoparquet_spherical_edges_not_supported')
     if 'crs'in column and column['crs']is None:raise ValueError('native_geoparquet_explicit_null_crs_unknown')
@@ -276,6 +281,25 @@ def _finite_geometry_coordinates(geometry):
     return True,z_bounds
 
 
+def geometry_dimension_suffix(geometry):
+    """Observed GeoParquet dimension suffix from the parsed WKB ordinates.
+
+    The declared ``geometry_types`` grammar accepts Z/M/ZM (GeoParquet 1.1), so
+    the observed side must derive its suffix from the actual geometry
+    dimensions, not from ``has_z`` alone: a measured population declared as
+    'Point M' otherwise fails the subset gate, and an undeclared measured
+    population otherwise passes as a plain 2D type.
+    """
+    has_z=bool(geometry.has_z);has_m=bool(geometry.has_m)
+    return ' ZM'if has_z and has_m else' Z'if has_z else' M'if has_m else''
+
+
+def _base_geometry_type(kind):
+    for suffix in GEOMETRY_DIMENSIONS[1:]:
+        if kind.endswith(suffix):return kind[:-len(suffix)]
+    return kind
+
+
 def summarize_native_path(path:Path,name:str,metadata:dict,*,producer_geometry_defects:dict|None=None):
     """Full batched population/geometry quality, bounded typed dictionary sample.
 
@@ -304,7 +328,7 @@ def summarize_native_path(path:Path,name:str,metadata:dict,*,producer_geometry_d
             if geometry is None:unparseable+=1;invalid+=1;continue
             if geometry.is_empty:empty+=1;continue
             finite,current_z=_finite_geometry_coordinates(geometry)
-            kind=geometry.geom_type+(' Z'if geometry.has_z or current_z is not None else'');types.add(kind)
+            kind=geometry.geom_type+geometry_dimension_suffix(geometry);types.add(kind)
             if not finite:invalid+=1;nonfinite=True;continue
             if not geometry.is_valid:invalid+=1
             current=geometry.bounds
@@ -325,7 +349,7 @@ def summarize_native_path(path:Path,name:str,metadata:dict,*,producer_geometry_d
         defects_matched=False
     sample=pa.Table.from_batches(samples,schema=schema)if samples else pa.Table.from_batches([],schema=schema)
     names=[name for name in schema.names if name!=primary]
-    quality={'version':'v1','feature_count':rows,'bounds':None if nonfinite else bounds,'geometry_type':next(iter(types)).removesuffix(' Z')if len(types)==1 else'Mixed'if types else None,
+    quality={'version':'v1','feature_count':rows,'bounds':None if nonfinite else bounds,'geometry_type':_base_geometry_type(next(iter(types)))if len(types)==1 else'Mixed'if types else None,
         'invalid_geometry_count':invalid,'null_geometry_count':nulls,'empty_geometry_count':empty,'unparseable_geometry_count':unparseable,
         'quality_check_passed':(rows>0 and defects_matched)if producer_geometry_defects is not None else(rows>0 and invalid==0 and nulls==0 and empty==0),
         'columns_hash':hashlib.sha256(json.dumps(names,sort_keys=True).encode()).hexdigest(),
