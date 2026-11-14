@@ -303,6 +303,7 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
         _validate_request_scope(name, receipt, ids_before)
     _validate_dimensions_probe(docs["dimensions_probe"], ids_before[0])
     names = [f["name"] for f in fields]
+    names_lower = [name.lower() for name in names]
     record_sha = hashlib.sha256()
     geometry_sha = hashlib.sha256()
     bounds = [math.inf, math.inf, -math.inf, -math.inf]
@@ -324,9 +325,15 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
             raise ValueError("trails_page_population_incomplete:" + name)
         for feature in rows:
             raw_attrs = feature.get("attributes")
-            if not isinstance(raw_attrs, dict) or [str(k).lower() for k in raw_attrs] != names:
+            # Esri field names are case-insensitive and the producer serves
+            # 'shape_length' for the declared 'shape_Length'; compare the
+            # served key order case-insensitively and re-key each feature by
+            # the declared name.
+            raw_lower = ({str(key).lower(): value for key, value in raw_attrs.items()}
+                         if isinstance(raw_attrs, dict) else {})
+            if list(raw_lower) != names_lower:
                 raise ValueError("trails_attribute_roster_drift")
-            attrs = {str(key).lower(): value for key, value in raw_attrs.items()}
+            attrs = {name: raw_lower[name.lower()] for name in names}
             feature["attributes"] = attrs
             oid = attrs["objectid"]
             if type(oid) is not int or oid not in expected or oid in seen:
