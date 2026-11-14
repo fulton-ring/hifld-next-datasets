@@ -184,7 +184,14 @@ def _validate_polyline_geometry(geometry: object) -> None:
             if not isinstance(point, list) or len(point) not in (2, 3):
                 raise ValueError("trails_polyline_geometry_drift")
             if len(point) == 3 and point[2] is not None:
-                raise ValueError("trails_unhandled_z_or_m_ordinate")
+                # The layer declares hasM: true (observed 2026-11-14), so a
+                # populated served m ordinate is within the producer's own
+                # declared schema and is retained verbatim; it must still be a
+                # finite number. Any served z fails closed.
+                if type(point[2]) not in (int, float):
+                    raise ValueError("trails_polyline_geometry_drift")
+                if not math.isfinite(point[2]):
+                    raise ValueError("trails_nonfinite_geometry")
             if type(point[0]) not in (int, float) or type(point[1]) not in (int, float):
                 raise ValueError("trails_polyline_geometry_drift")
             if not math.isfinite(point[0]) or not math.isfinite(point[1]):
@@ -211,6 +218,7 @@ def _fields(layer: dict) -> list[dict]:
     fields = layer.get("fields")
     if (layer.get("id") != LAYER_ID or layer.get("name") != "Trails"
             or layer.get("geometryType") != "esriGeometryPolyline"
+            or layer.get("hasM") is not True
             or not isinstance(fields, list)
             or [field.get("name") for field in fields] != [*EXPECTED_FIELD_NAMES, "shape", "shape_Length"]
             or layer.get("geometryField", {}).get("name") != "shape"):
@@ -308,6 +316,7 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
     geometry_sha = hashlib.sha256()
     bounds = [math.inf, math.inf, -math.inf, -math.inf]
     missing_geometry = []
+    populated_m_features = 0
     null_counts = {name: 0 for name in names}
     seen = set()
     page_names = sorted(n for n in docs if n.startswith("page_"))
@@ -359,6 +368,8 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
                 missing_geometry.append(oid)
             else:
                 _validate_polyline_geometry(geometry)
+                if _populated_m(geometry["paths"]):
+                    populated_m_features += 1
                 for path in geometry["paths"]:
                     for point in path:
                         bounds[0] = min(bounds[0], point[0]); bounds[1] = min(bounds[1], point[1])
@@ -369,6 +380,7 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
         raise ValueError("trails_feature_roster_mismatch")
     audit = {
         "feature_count": len(seen), "missing_geometry_objectids": missing_geometry,
+        "populated_m_feature_count": populated_m_features,
         "id_sha256": _sha(_canonical(sorted(seen))), "schema_sha256": _sha(_canonical(fields)),
         "record_sha256": record_sha.hexdigest(), "geometry_sha256": geometry_sha.hexdigest(),
         "native_crs": "EPSG:3857", "native_bounds": bounds,
@@ -378,16 +390,48 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
     return layer, audit
 
 
+# ISO WKB dimension offsets: base geometry type + 1000 (Z) / 2000 (M).
+_WKB_MULTILINESTRING = 5
+_WKB_LINESTRING = 2
+_WKB_M_OFFSET = 2000
+
+
+def _populated_m(paths: list) -> bool:
+    """True when any served vertex of the feature carries a populated m ordinate."""
+    return any(len(point) == 3 and point[2] is not None for path in paths for point in path)
+
+
 def _wkb_polyline(paths: list) -> bytes:
+    # Served third ordinates are retained verbatim: a feature whose served m
+    # ordinates are all null is emitted as plain 2D WKB (the served nulls
+    # carry no value), while a feature with any populated m ordinate is
+    # emitted as WKB MultiLineString M with the served values verbatim (a
+    # served null inside such a feature encodes as NaN, the WKB null-m
+    # convention).
+    has_m = _populated_m(paths)
     out = bytearray()
-    out += struct.pack("<BI", 1, 5)
+    out += struct.pack("<BI", 1, _WKB_MULTILINESTRING + (_WKB_M_OFFSET if has_m else 0))
     out += struct.pack("<I", len(paths))
     for path in paths:
-        out += struct.pack("<BI", 1, 2)
+        out += struct.pack("<BI", 1, _WKB_LINESTRING + (_WKB_M_OFFSET if has_m else 0))
         out += struct.pack("<I", len(path))
         for point in path:
-            out += struct.pack("<dd", float(point[0]), float(point[1]))
+            if has_m:
+                m = float(point[2]) if len(point) == 3 and point[2] is not None else math.nan
+                out += struct.pack("<ddd", float(point[0]), float(point[1]), m)
+            else:
+                out += struct.pack("<dd", float(point[0]), float(point[1]))
     return bytes(out)
+
+
+def _geometry_types(features: list[dict]) -> list[str]:
+    types = set()
+    for feature in features:
+        geometry = feature.get("geometry")
+        if geometry is None:
+            continue
+        types.add("MultiLineString M" if _populated_m(geometry["paths"]) else "MultiLineString")
+    return sorted(types)
 
 
 def _parquet(features: list[dict], fields: list[dict], count: int) -> bytes:
@@ -412,7 +456,7 @@ def _parquet(features: list[dict], fields: list[dict], count: int) -> bytes:
               for path in f["geometry"]["paths"] for p in path]
     bbox = [min(p[0] for p in coords), min(p[1] for p in coords), max(p[0] for p in coords), max(p[1] for p in coords)]
     geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {"geometry": {
-        "encoding": "WKB", "geometry_types": ["MultiLineString"], "crs": EXPECTED_CRS.to_json_dict(), "bbox": bbox}}}
+        "encoding": "WKB", "geometry_types": _geometry_types(features), "crs": EXPECTED_CRS.to_json_dict(), "bbox": bbox}}}
     table = pa.Table.from_arrays(arrays, schema=pa.schema(schema, metadata={b"geo": _canonical(geo)}))
     sink = io.BytesIO()
     pq.write_table(table, sink, compression="zstd", use_dictionary=False)
@@ -439,7 +483,7 @@ def _parquet(features: list[dict], fields: list[dict], count: int) -> bytes:
     metadata = json.loads(readback.schema.metadata[b"geo"])
     declared_crs = CRS.from_json_dict(metadata["columns"]["geometry"]["crs"])
     if (metadata["columns"]["geometry"].get("encoding") != "WKB"
-            or metadata["columns"]["geometry"].get("geometry_types") != ["MultiLineString"]
+            or metadata["columns"]["geometry"].get("geometry_types") != _geometry_types(features)
             or not declared_crs.equals(EXPECTED_CRS, ignore_axis_order=True)):
         raise ValueError("trails_parquet_crs_or_encoding_drift")
     return body
@@ -534,7 +578,7 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
         "processing_identity":identity,"inputs":inputs,
         "transformations":[{"operation":"Native ArcGIS polyline feature capture to typed GeoParquet WKB","parameters":{
             "attributes":"All 39 declared layer attributes retained verbatim, including the served virtual shape_Length and the producer's 'sourcedatadecscription' spelling. Source ESRI declarations are recorded verbatim in source_audit; output Arrow types use the explicit esri_to_arrow_type_mapping below. No schema conversion contract is approved.",
-            "geometry":"Native EPSG:3857 polylines preserved; no reprojection, geocoding, repair, or row dropping. M-ordinates are served as null and must stay null; any populated m or z fails closed.",
+            "geometry":"Native EPSG:3857 polylines preserved; no reprojection, geocoding, repair, or row dropping. The layer declares hasM: true and serves [x, y, m] vertices; served m ordinates are retained verbatim, not repaired: a feature whose served m ordinates are all null is emitted as 2D WKB MultiLineString, while a feature with any served m ordinate is emitted as WKB MultiLineString M with the served values verbatim (a served null inside such a feature encodes as NaN, the WKB null-m convention). Any served z ordinate, non-finite ordinate, or unexpected geometry member fails closed.",
             "source_population":"Exact objectid roster and count captured before and after all pages, with the pinned sorted-roster digest; complete current layer only."}}],
         "lineage":{"layer_id":LAYER_ID,"layer_name":"Trails","native_crs":"EPSG:3857","feature_count":EXPECTED_COUNT,
             "source_id_sha256":audit["id_sha256"],"source_schema_sha256":audit["schema_sha256"],"source_record_sha256":audit["record_sha256"],
@@ -576,6 +620,7 @@ def _parquet_pages(root: Path, fields: list[dict], count: int) -> bytes:
     names = [f["name"] for f in fields]
     arrays = {name: [] for name in names}
     wkb = []
+    geometry_types = set()
     page_names = sorted(f"page_{start:05d}" for start in range(0, count, BATCH_SIZE))
     for name in page_names:
         body = (root / f"{name}.body").read_bytes()
@@ -591,13 +636,16 @@ def _parquet_pages(root: Path, fields: list[dict], count: int) -> bytes:
                     value = None if value is None else float(value)
                 arrays[field["name"]].append(value)
             geometry = feature.get("geometry")
+            if geometry is not None:
+                geometry_types.add("MultiLineString M" if _populated_m(geometry["paths"])
+                                   else "MultiLineString")
             wkb.append(None if geometry is None else _wkb_polyline(geometry["paths"]))
     schema_fields = [pa.field(f["name"], ARROW_TYPES[f["type"]], nullable=f.get("nullable") is not False) for f in fields]
     schema_fields.append(pa.field("geometry", pa.binary(), nullable=True))
     arrays["geometry"] = wkb
     table = pa.Table.from_pydict(arrays, schema=pa.schema(schema_fields, metadata=None))
     geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {"geometry": {
-        "encoding": "WKB", "geometry_types": ["MultiLineString"], "crs": EXPECTED_CRS.to_json_dict()}}}
+        "encoding": "WKB", "geometry_types": sorted(geometry_types), "crs": EXPECTED_CRS.to_json_dict()}}}
     table = table.replace_schema_metadata({b"geo": _canonical(geo)})
     sink = io.BytesIO()
     pq.write_table(table, sink, compression="zstd", use_dictionary=False)

@@ -1,5 +1,7 @@
 import copy
 import io
+import json
+import math
 import struct
 from datetime import datetime, timezone
 import unittest
@@ -30,6 +32,7 @@ def _layer_metadata():
              "globalid": "esriFieldTypeGlobalID"}
     return {
         "id": 37, "name": "Trails", "geometryType": "esriGeometryPolyline",
+        "hasM": True,
         "geometryField": {"name": "shape"},
         "extent": {"spatialReference": {"wkid": 102100, "latestWkid": 3857}},
         "fields": ([{"name": name, "type": types.get(name, "esriFieldTypeString")}
@@ -94,16 +97,25 @@ class TrailsUSGSTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "trails_page_geometry_type_drift"):
             _validate_page_metadata(wrong_geometry, "page_00000")
 
-    def test_polyline_geometry_requires_finite_xy_paths_with_null_m(self):
+    def test_polyline_geometry_retains_served_m_and_fails_closed_on_drift(self):
+        # The layer declares hasM: true (observed 2026-11-14), so served
+        # [x, y, m] vertices are within the producer's declared schema: null m
+        # and finite populated m are both retained; z and non-finite fail closed.
         _validate_polyline_geometry({"hasM": True, "paths": [[[1.5, -2.5, None], [3.0, 4.0, None]]]})
         _validate_polyline_geometry({"hasM": True, "paths": [[[1.5, -2.5], [3.0, 4.0]]]})
+        _validate_polyline_geometry({"hasM": True, "paths": [[[1.5, -2.5, None], [3.0, 4.0, 7.25]]]})
+        _validate_polyline_geometry({"hasM": True, "paths": [[[1.5, -2.5, 1274473973.0000002]]]})
         for bad in (
-            {"hasM": True, "paths": [[[1.5, -2.5, None], [3.0, 4.0, 7.0]]]},
             {"hasM": True, "paths": [[[1.5, -2.5], [float("nan"), 4.0]]]},
+            {"hasM": True, "paths": [[[1.5, -2.5, float("nan")]]]},
+            {"hasM": True, "paths": [[[1.5, -2.5, float("inf")]]]},
+            {"hasM": True, "paths": [[[1.5, -2.5, "x"]]]},
             {"hasM": True, "paths": [[[1.5, -2.5], ["x", 4.0]]]},
             {"hasM": True, "paths": [[[1.5, -2.5]]], "z": 3},
+            {"hasM": True, "paths": [[[1.5, -2.5]]], "m": 3},
             {"hasM": True, "paths": []},
             {"hasM": True, "paths": [[[1.5]]]},
+            {"hasM": True, "paths": [[[1.5, -2.5, None, 3.0]]]},
         ):
             with self.subTest(bad=bad), self.assertRaisesRegex(
                     ValueError, "trails_(unhandled_z_or_m_ordinate|polyline_geometry_drift|nonfinite_geometry)"):
@@ -114,15 +126,24 @@ class TrailsUSGSTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "trails_unhandled_z_or_m_ordinate"):
             _validate_polyline_geometry(geometry)
 
-    def test_dimensions_probe_pins_requested_oid_and_rejects_m_values(self):
+    def test_layer_pins_declared_m_dimension(self):
+        layer = copy.deepcopy(_layer_metadata())
+        layer["hasM"] = False
+        with self.assertRaisesRegex(ValueError, "trails_layer_schema_drift"):
+            _fields(layer)
+        layer = copy.deepcopy(_layer_metadata())
+        layer.pop("hasM")
+        with self.assertRaisesRegex(ValueError, "trails_layer_schema_drift"):
+            _fields(layer)
+
+    def test_dimensions_probe_pins_requested_oid_and_retains_m_values(self):
         probe = {"geometryType": "esriGeometryPolyline",
                  "spatialReference": {"wkid": 102100, "latestWkid": 3857},
                  "features": [{"attributes": {"objectid": 1475127},
                                "geometry": {"hasM": True, "paths": [[[1.0, 2.0, None]]]}}]}
         _validate_dimensions_probe(probe, 1475127)
         probe["features"][0]["geometry"]["paths"][0][0][2] = 4.0
-        with self.assertRaisesRegex(ValueError, "trails_unhandled_z_or_m_ordinate"):
-            _validate_dimensions_probe(probe, 1475127)
+        _validate_dimensions_probe(probe, 1475127)
 
     def test_capture_receipt_scope_pins_native_id_roster_request(self):
         ids = [101, 102]
@@ -152,6 +173,43 @@ class TrailsUSGSTests(unittest.TestCase):
         self.assertEqual(EXPECTED_COUNT % BATCH_SIZE, EXPECTED_COUNT % BATCH_SIZE)
         self.assertGreater(EXPECTED_COUNT, BATCH_SIZE)
         self.assertEqual(len(EXPECTED_ID_SHA256), 64)
+
+    def test_wkb_retains_populated_m_ordinates_verbatim(self):
+        served = [[[1.5, -2.5, 7.25], [3.0, 4.0, 9.5]]]
+        body = _wkb_polyline(served)
+        self.assertEqual(body[:9], struct.pack("<BII", 1, 2005, 1))
+        self.assertEqual(body[9:18], struct.pack("<BII", 1, 2002, 2))
+        self.assertEqual(body[18:], struct.pack("<ddd", 1.5, -2.5, 7.25) + struct.pack("<ddd", 3.0, 4.0, 9.5))
+        # All-null served m keeps the established 2D emission.
+        plain = _wkb_polyline([[[1.5, -2.5, None], [3.0, 4.0, None]]])
+        self.assertEqual(plain[:9], struct.pack("<BII", 1, 5, 1))
+        self.assertEqual(plain[9:18], struct.pack("<BII", 1, 2, 2))
+        self.assertEqual(plain[18:], struct.pack("<dddd", 1.5, -2.5, 3.0, 4.0))
+        # A served null inside a populated-m feature encodes as NaN, the WKB
+        # null-m convention, while populated values stay verbatim.
+        mixed = _wkb_polyline([[[1.5, -2.5, None], [3.0, 4.0, 9.5]]])
+        self.assertEqual(mixed[:9], struct.pack("<BII", 1, 2005, 1))
+        x0, y0, m0 = struct.unpack("<ddd", mixed[18:42])
+        x1, y1, m1 = struct.unpack("<ddd", mixed[42:66])
+        self.assertEqual((x0, y0), (1.5, -2.5))
+        self.assertTrue(math.isnan(m0))
+        self.assertEqual((x1, y1, m1), (3.0, 4.0, 9.5))
+
+    def test_sample_population_parquet_declares_served_m_dimension(self):
+        fields = _fields(_layer_metadata())
+        features = [
+            _feature(0, [[[20.0, 20.0, 7.25], [30.0, 25.0, 9.5]]]),
+            _feature(1, [[[0.0, 0.0, None], [10.0, 5.0, None]]]),
+            _feature(2, [[[40.0, 40.0, None], [50.0, 45.0, 11.0]]]),
+        ]
+        body = _parquet(features, fields, len(features))
+        table = pq.read_table(io.BytesIO(body))
+        for row_number, feature in enumerate(features):
+            self.assertEqual(table.column("geometry")[row_number].as_py(),
+                             _wkb_polyline(feature["geometry"]["paths"]))
+        metadata = json.loads(table.schema.metadata[b"geo"])
+        self.assertEqual(metadata["columns"]["geometry"]["geometry_types"],
+                         ["MultiLineString", "MultiLineString M"])
 
     def test_sample_population_parquet_round_trips_attributes_and_native_multilinestring_wkb(self):
         fields = _fields(_layer_metadata())
