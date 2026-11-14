@@ -1,4 +1,4 @@
-"""Stopped refresh asset for the official Census TIGER/Line 2020 Urban Areas."""
+"""Stopped refresh asset for the official Census TIGER/Line 2026 Urban Areas."""
 from dagster import (
     AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
     ScheduleDefinition, asset, asset_check, define_asset_job,
@@ -21,9 +21,10 @@ class UrbanAreasConfig(Config):
     group_name="census_bureau",
     compute_kind="http",
     description=(
-        "Official Census TIGER/Line 2020 national Urban Areas archive "
-        "(the producer interface's designated '2020 Urban Areas (current)' national file). "
-        "Candidate only: the DHS crosswalk row, the producer's corrected-file choice and "
+        "Official Census TIGER/Line 2026 national Urban Areas archive (the producer's "
+        "maintained UAC20 national file, released 2026-10-14, incorporating the "
+        "producer's corrections to the 2020 base vintage). "
+        "Candidate only: the DHS crosswalk row and "
         "baseline compatibility are unresolved, and source, freshness, schema/ID contract, "
         "coverage, rights and release remain pending."
     ),

@@ -1,15 +1,20 @@
-"""Candidate-only acquisition of the official Census TIGER/Line 2020 Urban Areas.
+"""Candidate-only acquisition of the official Census TIGER/Line 2026 Urban Areas.
 
 Inventory entry ``urban-areas-1`` ("Urban Areas", agency U.S. Census Bureau).
-The producer's own 2020 TIGER/Line web interface lists
-``tl_2020_us_uac20.zip`` as the "2020 Urban Areas (current)" national file and
-the TIGER/Line page documents the 2020 Urban Areas layer addition as released
-2023-01-06 (all legal boundaries as of January 1, 2020). The producer also
-publishes correction products alongside it
-(``tl_2020_us_uac20_corrected.zip``, per-area June 2023 update ZIPs); they are
-recorded here as producer publications but are not the interface-designated
-national file, and no substitution decision is made silently. The DataLumos
-project archive is banned identification context only and is never fetched.
+The producer's maintained publication is the current TIGER/Line UAC20 national
+file (``tl_2026_us_uac20.zip`` under ``TIGER2026/UAC20``); the TIGER/Line page
+documents the 2026 TIGER/Line Shapefiles as released 2026-10-14 (legal
+boundaries as of January 1, 2026). The project source policy requires the
+latest TIGER vintage, so the superseded 2020 vintage base ZIP
+(``tl_2020_us_uac20.zip``, released 2023-01-06) and its correction products
+are recorded here as producer publications only, never fetched. The 2026
+national file incorporates the producer's own corrections relative to the 2020
+base (GEOID20 47778 "Laplace--Lutcher--Gramercy, LA" dropped; UATYP20 removed
+and GEOIDFQ20 added, matching the 2020-corrected field roster; ALAND/AWATER
+and interior points refreshed; names and UACE20 unchanged for every shared
+GEOID), so the prior corrected-vs-base product choice is dissolved by using
+the maintained successor. The DataLumos project archive is banned
+identification context only and is never fetched.
 """
 from __future__ import annotations
 
@@ -37,24 +42,24 @@ from dagster_hifld.sources.epa_frs_common import (
 
 DATASET_SLUG = "urban-areas-1"
 FILE_SLUG = DATASET_SLUG
-SOURCE_VINTAGE = "2020"
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2020/UAC/tl_2020_us_uac20.zip"
-SOURCE_FILE = "tl_2020_us_uac20.zip"
+SOURCE_VINTAGE = "2026"
+SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2026/UAC20/tl_2026_us_uac20.zip"
+SOURCE_FILE = "tl_2026_us_uac20.zip"
 PUBLISHER = "U.S. Census Bureau, Geography Division"
-EXPECTED_SHA256 = "dbd0e57862580d32c1e76139edb4a641333f8a7c8a983c4e58ab4d5ada72a35b"
-EXPECTED_BYTES = 72_646_273
-EXPECTED_FEATURE_COUNT = 2_645
+EXPECTED_SHA256 = "e054bb650a5d839e9051391275883335d4c277a3d32537d3b6e3d6c80a0d8310"
+EXPECTED_BYTES = 74_053_106
+EXPECTED_FEATURE_COUNT = 2_644
 EXPECTED_FIELDS = [
-    "UACE20", "GEOID20", "NAME20", "NAMELSAD20", "LSAD20", "MTFCC20",
-    "UATYP20", "FUNCSTAT20", "ALAND20", "AWATER20", "INTPTLAT20", "INTPTLON20",
+    "UACE20", "GEOID20", "GEOIDFQ20", "NAME20", "NAMELSAD20", "LSAD20",
+    "MTFCC20", "FUNCSTAT20", "ALAND20", "AWATER20", "INTPTLAT20", "INTPTLON20",
 ]
 INT_FIELDS = ("ALAND20", "AWATER20")
 EXPECTED_CRS = "EPSG:4269"
 EXPECTED_BOUNDS = [-170.78931, -14.365419, 145.791574, 64.928893]
-EXPECTED_ID_SHA256 = "c5d31fe00b14001ba4801b6ffcba2bad50335d3d294703b81e0dd7496aa2d272"
-EXPECTED_SCHEMA_SHA256 = "484a3ea7aeadd620a6b8e97ed6d86b0f0270e2caacac8d169d6e95d241211996"
+EXPECTED_ID_SHA256 = "070585bfb52feea75c1d2a39d18dc6d2363805004adbbebb813647d35e3ea305"
+EXPECTED_SCHEMA_SHA256 = "b0b6d296d2b92a05b2223c185f68df038323069c81864c8d69dc2a3cc8f7e540"
 EXPECTED_GEOID_LENGTH = 5
-EXPECTED_CONSTANT_VALUES = {"MTFCC20": {"G3500"}, "UATYP20": {"U"}, "FUNCSTAT20": {"S"}, "LSAD20": {"67"}}
+EXPECTED_CONSTANT_VALUES = {"MTFCC20": {"G3500"}, "FUNCSTAT20": {"S"}, "LSAD20": {"67"}}
 EXPECTED_GEOMETRY_TYPES = {"Polygon", "MultiPolygon"}
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 90_000_000
@@ -206,9 +211,9 @@ def _capture(
 
 def _inspect_archive(body: bytes) -> dict[str, object]:
     expected_members = {
-        "tl_2020_us_uac20.cpg", "tl_2020_us_uac20.dbf", "tl_2020_us_uac20.prj",
-        "tl_2020_us_uac20.shp", "tl_2020_us_uac20.shp.ea.iso.xml",
-        "tl_2020_us_uac20.shp.iso.xml", "tl_2020_us_uac20.shx",
+        "tl_2026_us_uac20.cpg", "tl_2026_us_uac20.dbf", "tl_2026_us_uac20.prj",
+        "tl_2026_us_uac20.shp", "tl_2026_us_uac20.shp.ea.iso.xml",
+        "tl_2026_us_uac20.shp.iso.xml", "tl_2026_us_uac20.shx",
     }
     import io
 
@@ -225,7 +230,7 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
             raise ValueError("tiger_archive_crc_failure:" + bad_member)
         with tempfile.TemporaryDirectory(prefix="census-urban-areas-") as tmp:
             archive.extractall(tmp)
-            path = Path(tmp) / "tl_2020_us_uac20.shp"
+            path = Path(tmp) / "tl_2026_us_uac20.shp"
             frame = gpd.read_file(path, engine="pyogrio")
     fields = list(frame.columns[:-1])
     if fields != EXPECTED_FIELDS or str(frame.crs) != EXPECTED_CRS:
@@ -303,12 +308,12 @@ def capture_census_urban_areas(
         "code_commit": code_commit,
         "processing_code": processing_code,
         "title": "Urban Areas",
-        "description": "2020 Census TIGER/Line national urban areas (urbanized areas) shapefile. Candidate only; crosswalk row, historical compatibility and any corrected-product choice remain unresolved.",
+        "description": "2020 Census-delineated national urban areas (urbanized areas) as of January 1, 2026, from the maintained TIGER/Line UAC20 national shapefile. Candidate only; crosswalk row and historical compatibility remain unresolved.",
         "publisher": PUBLISHER,
         "agency": "U.S. Census Bureau",
         "source_url": SOURCE_URL,
         "license": "U.S. government work; source license and downstream redistribution terms require maintainer review.",
-        "source_modified": "2023-01-06",
+        "source_modified": "2026-10-14",
         "date_issued": SOURCE_VINTAGE,
         "inputs": [{
             "input_id": SOURCE_URL,
@@ -322,11 +327,11 @@ def capture_census_urban_areas(
             "license": "https://www.usa.gov/government-works",
             "attribution": PUBLISHER,
             "role": "producer_publication",
-            "release_date": "2023-01-06",
-            "release_date_basis": "census.gov TIGER/Line Shapefiles page: 'The 2020 Urban Areas were delineated using 2020 Blocks and have been added to this product. Released January 6, 2023.' The HTTP Last-Modified date of the ZIP (2024-05-14) is packaging evidence recorded in the audit and is not the source data release date.",
+            "release_date": "2026-10-14",
+            "release_date_basis": "census.gov TIGER/Line Shapefiles page: 'All legal boundaries and names are as of January 1, 2026. The 2026 TIGER/Line Shapefiles were released on October 14, 2026.' The HTTP Last-Modified date of the ZIP (2026-10-07) is packaging evidence recorded in the audit and is not the source data release date.",
         }],
         "transformations": ["Preserve the complete source ZIP and all sidecars; catalog the urban areas Shapefile without ID synthesis or attribute mapping."],
-        "lineage": "Official Census Bureau Geography Division TIGER/Line 2020 Urban Areas product (the producer web interface lists this file as the '2020 Urban Areas (current)' national download). The producer also publishes tl_2020_us_uac20_corrected.zip (modified 2024-09-24, 2,644 features, different field roster) and two per-area June 2023 update ZIPs; choosing between them is an unresolved source-product decision and no substitution was made. The DHS crosswalk row and equivalence to the archived HIFLD publication remain unverified. DataLumos is banned identification context only.",
+        "lineage": "Official Census Bureau Geography Division TIGER/Line 2026 Urban Areas product (UAC20), the producer's currently maintained national publication under the project source policy requiring the latest TIGER vintage. The 2026 file incorporates the producer's own corrections relative to the 2020 base ZIP (tl_2020_us_uac20.zip, released 2023-01-06): GEOID20 47778 (Laplace--Lutcher--Gramercy, LA) dropped, UATYP20 removed and GEOIDFQ20 added (matching the producer's 2020-corrected field roster), and ALAND/AWATER/interior points refreshed; names and UACE20 are unchanged for every shared GEOID, so the earlier corrected-vs-base product choice is dissolved by the successor vintage. The 2020 base and correction ZIPs remain recorded producer publications that are never fetched. The DHS crosswalk row and equivalence to the archived HIFLD publication remain unverified. DataLumos is banned identification context only.",
     }
     manifest_key = f"{prefix}/metadata/source_manifest.json"
     if staging_storage.object_exists(manifest_key):
@@ -345,7 +350,7 @@ def capture_census_urban_areas(
         "method", "url", "final_url", "status", "complete_body", "wire_bytes",
         "wire_sha256", "bytes", "sha256", "content_encoding", "content_length",
     )}
-    audit_doc = {"source": {"url": SOURCE_URL, "vintage": SOURCE_VINTAGE, "release_date": "2023-01-06", "archive_sha256": EXPECTED_SHA256, "archive_bytes": EXPECTED_BYTES}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit}
+    audit_doc = {"source": {"url": SOURCE_URL, "vintage": SOURCE_VINTAGE, "release_date": "2026-10-14", "archive_sha256": EXPECTED_SHA256, "archive_bytes": EXPECTED_BYTES}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit}
     audit_key = f"{prefix}/metadata/source_audit.json"
     write_immutable(staging_storage, audit_key, _canonical(audit_doc) + b"\n")
     return {
@@ -357,7 +362,7 @@ def capture_census_urban_areas(
         "code_commit": code_commit,
         "code_identity_scheme": CODE_IDENTITY_SCHEME, "code_sha256": code_sha256,
         "processing_runtime_versions": processing_code["runtime_versions"],
-        "source_id_field": "GEOID20", "source_coverage_scope": "U.S., Puerto Rico and Island Areas Census 2020 urban areas, 2020 vintage",
+        "source_id_field": "GEOID20", "source_coverage_scope": "U.S., Puerto Rico and Island Areas Census 2020-delineated urban areas as of January 1, 2026 (TIGER/Line 2026 UAC20 vintage)",
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
