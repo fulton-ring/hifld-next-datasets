@@ -13,11 +13,14 @@ from dagster_hifld.checks.common import (
     read_quality_check_result,
 )
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.assets.state_emergency_operations_centers import (
+    ASSET_CHECKS as EOC_ASSET_CHECKS,
+)
 
 
 class CheckTests(unittest.TestCase):
     def test_quality_checks_target_catalog_assets(self):
-        for check_def in hifld_asset_checks:
+        for check_def in [*hifld_asset_checks, *EOC_ASSET_CHECKS]:
             spec = next(iter(check_def.check_specs))
             self.assertIn(
                 tuple(spec.asset_key.path),
@@ -35,15 +38,16 @@ class CheckTests(unittest.TestCase):
             for check_def in hifld_asset_checks
         }
 
+        self.assertEqual(asset_paths, {("publish", "catalog"), ("publish", "verify")})
+        self.assertEqual(len(hifld_asset_checks), 2)
+
+    def test_eoc_source_quality_check_registered_from_module_list(self):
         self.assertEqual(
-            asset_paths,
-            {
-                ("publish", "catalog"),
-                ("publish", "verify"),
-                ("ingest", "state-emergency-operations-centers-eoc", "state-emergency-operations-centers-eoc"),
-            },
+            {tuple(next(iter(check_def.check_specs)).asset_key.path) for check_def in EOC_ASSET_CHECKS},
+            {("ingest", "state-emergency-operations-centers-eoc", "state-emergency-operations-centers-eoc")},
         )
-        self.assertEqual(len(hifld_asset_checks), 3)
+        self.assertEqual(len(EOC_ASSET_CHECKS), 1)
+        self.assertTrue(all(next(iter(check_def.check_specs)).blocking for check_def in EOC_ASSET_CHECKS))
 
     def test_read_quality_check_result_reads_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
