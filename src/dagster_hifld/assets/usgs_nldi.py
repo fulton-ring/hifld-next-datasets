@@ -84,18 +84,23 @@ ASSET_PATH = "geojson/usgs_nldi_gages.geojson"
 DEFAULT_CAPTURE_ROOT = ("/data/workspace/scratch/nhd/"
                         "usgs-hydro-nldi-streamgage-monitoring-locations/captures/default")
 # Walk-derived content pins from the dated complete capture; unpinned values
-# ("" / None) are checked only once pinned. See BASELINE_NOTE.
-EXPECTED_COUNT = None
-EXPECTED_UNIQUE_ID_COUNT = None
-EXPECTED_IDS_SHA256 = ""
-EXPECTED_SCHEMA_SHA256 = ""
-EXPECTED_ASSET_SHA256 = ""
-EXPECTED_FIRST_ID = None
-EXPECTED_LAST_ID = None
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_OBSERVED_BOUNDS = None
-EXPECTED_DUPLICATE_FEATURE_COUNT = None
-EXPECTED_DUPLICATE_IDS = None
+# ("" / None) are checked only once pinned. See BASELINE_NOTE. The pinned walk
+# captured the live ref_gage collection from 2026-11-13 through 2026-11-14
+# 02:02Z (815 retained pages of 250 features); the served collection contained
+# 9 source-served duplicate rows, which the pins below record.
+EXPECTED_COUNT = 203534
+EXPECTED_UNIQUE_ID_COUNT = 203525
+EXPECTED_IDS_SHA256 = "ad0d18efc004cae9dc9dc528385c0766abea6412a068ddd1d05f2d3515be0b96"
+EXPECTED_SCHEMA_SHA256 = "fd3201fb6cc21bd290f063b89a593d285176dc87cc856e89056a6b33eb61bcf5"
+EXPECTED_ASSET_SHA256 = "c25ca611ebd4b3f666bec059daa63e3db2619386b5ade1bc51303caccbb488d1"
+EXPECTED_FIRST_ID = "1000001"
+EXPECTED_LAST_ID = "1203554"
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -176.714978, "ymin": -14.33588056,
+                            "xmax": 179.9097916, "ymax": 71.38736618}
+EXPECTED_DUPLICATE_FEATURE_COUNT = 9
+EXPECTED_DUPLICATE_IDS = ["1185576", "1186504", "1187113", "1187630", "1188361",
+                          "1189602", "1191120", "1191142", "1192659"]
 BASELINE_NOTE = (
     "The complete-population count, unique-identifier roster digest, property "
     "schema digest, composed-asset digest and source-served duplicate-row "
