@@ -9,10 +9,11 @@ used for identification only). The layer is continuously updated and publishes
 no per-snapshot release date; source freshness, rights, and public-schema
 compatibility are not accepted by this draft.
 
-Scale and resumability: the producer reported 15,270,272 features for this
-layer on 2026-11-12 (returnCountOnly, observed twice in agreement), roughly
-ten times the sibling Base Flood Elevations layer, so the capture is
-deliberately resumable. Every served roster segment is persisted under the
+Scale and resumability: the producer reported 15,682,383 features for this
+layer on 2026-11-14 (returnCountOnly, observed three times in agreement
+across ten minutes; up from 15,270,272 observed 2026-11-12 with the OBJECTID
+span unchanged), roughly ten times the sibling Base Flood Elevations layer,
+so the capture is deliberately resumable. Every served roster segment is persisted under the
 capture directory with its wire copy and hash-pinned receipt; a restarted
 capture re-verifies and reuses each complete segment instead of refetching
 it, and never treats a stale or mismatched segment as evidence. The capture
@@ -116,15 +117,16 @@ SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # established pattern as the sibling Flood Hazard Zones capture.
 DOC_CAPTURE_MAX_BYTES = 256 * 1024 * 1024
 ROSTER_WINDOW = 1_000_000
-# Structural pins below are the observed 2026-11-12 producer contract,
+# Structural pins below are the observed 2026-11-14 producer contract,
 # established by dated anonymous queries of the producer's own endpoints
-# (returnCountOnly agreed twice, the complete OBJECTID roster assembled from
-# range-window id queries, and the layer/service metadata documents); the
-# module's own capture must reproduce every pin. The population digest pins
-# (record, geometry, null/nan counts, observed bounds) are None until a first
-# complete capture establishes them; see the module docstring. They fail
-# closed, so the capture can never stage an unverified candidate.
-EXPECTED_COUNT = 15270272
+# (returnCountOnly agreed three times across >=10 minutes on 2026-11-14:
+# 15,682,383, up from the 15,270,272 observed 2026-11-12 with the OBJECTID
+# span 3414..72008786 unchanged, and the layer/service metadata documents);
+# the module's own capture must reproduce every pin. The population digest
+# pins (record, geometry, null/nan counts, observed bounds) are None until a
+# first complete capture establishes them; see the module docstring. They
+# fail closed, so the capture can never stage an unverified candidate.
+EXPECTED_COUNT = 15682383
 EXPECTED_ID_SHA256: str | None = None
 EXPECTED_SCHEMA_SHA256 = "3218e41168e49ca448b3e782a7eee571f24ef33996afd64f6f4e6736959ec1a5"
 EXPECTED_RECORD_SHA256: str | None = None
