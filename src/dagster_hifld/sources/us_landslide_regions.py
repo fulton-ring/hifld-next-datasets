@@ -113,7 +113,11 @@ WEB_MERCATOR_X_LIMIT = 20_037_508.342789244
 WEB_MERCATOR_Y_LIMIT = 20_048_966.1040146
 MAX_RECORD_COUNT = 2000
 PAGE_START_RECORDS = 1000
-MAX_BODY_BYTES = 96 * 1024 * 1024
+# Observed layer 12 pages in the giant-polygon band (offset >= 224000) exceed
+# 96 MiB decoded from a handful of multi-megabyte features alone, so a smaller
+# cap only ever produced truncated refusals there; individual features stay far
+# below this bound and the bisection still handles any larger segment.
+MAX_BODY_BYTES = 512 * 1024 * 1024
 MAX_CAPTURE_BYTES = 8 * 1024 * 1024 * 1024
 MIN_FREE_BYTES = 8_000_000_000
 DOC_CAPTURE_ATTEMPTS = 4
