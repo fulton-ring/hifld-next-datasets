@@ -27,6 +27,7 @@ from dagster_hifld.portolan.workflow import (
     PortolanPublishRequest,
     _ensure_absolute_self_link,
     _prepare_portolan_record,
+    _catalog_record_from_storage,
     _promote_source_metadata,
     _promote_staged_data,
     _publish_catalog,
@@ -253,6 +254,180 @@ class PortolanWorkflowTests(PublicationMechanicsMixin, unittest.TestCase):
                 [column.name for column in record.columns], ["ID", "Shape"]
             )
             self.assertEqual(record.feature_count, 2)
+
+    @staticmethod
+    def _write_defects_verified_fixture(
+        root: Path, quality: dict
+    ) -> tuple[PortolanPublishRequest, StagingStorageResource, PublishedStorageResource]:
+        promoted = StagingStorageResource(
+            local_dir=str(root / "promoted"), use_local=True, prefix="hifld"
+        )
+        request = PortolanPublishRequest(
+            "hifld",
+            "dataset",
+            "file",
+            "v1.1.0",
+            "File",
+            "Data",
+            "Agency",
+            public_root="https://example.test/catalog",
+            archive_public_domain=True,
+        )
+        dictionary = {
+            "publisher": "Original Synthetic Agency",
+            "columns": [
+                {"name": "ID", "type": "string", "nullable": False},
+                {"name": "geometry", "type": "geometry", "nullable": False},
+            ],
+            "schema_version": 1,
+            "processor": "HIFLD Next",
+            "code_commit": "synthetic-fixture-only",
+            "transformations": [
+                {"name": "identity archival conversion", "parameters": {"repair": False}}
+            ],
+            "inputs": [
+                {
+                    "input_id": "producer",
+                    "producer": "Original Synthetic Agency",
+                    "host": "example.invalid",
+                    "canonical_url": "https://example.invalid/release",
+                    "retrieval_url": "https://example.invalid/archive.zip",
+                    "role": "producer_publication",
+                    "retrieved_at": "2026-11-14T01:02:03Z",
+                    "release_date_unknown_reason": "The publisher supplies no separately versioned release date",
+                    "sha256": "a" * 64,
+                    "bytes": 123,
+                    "license": "Captured source notice; synthetic fixture",
+                    "attribution": "Original Synthetic Agency; original wording retained",
+                }
+            ],
+        }
+        promoted.write_key(
+            "dataset/file/v1.1.0/metadata/data_dictionary.json",
+            json.dumps(dictionary).encode(),
+        )
+        promoted.write_key(
+            "dataset/file/v1.1.0/metadata/quality_manifest.json",
+            json.dumps(quality).encode(),
+        )
+        geo = {
+            "version": "1.1.0",
+            "primary_column": "geometry",
+            "columns": {
+                "geometry": {
+                    "encoding": "WKB",
+                    "crs": "OGC:CRS84",
+                    "geometry_types": ["Point"],
+                }
+            },
+        }
+        table = pa.table(
+            {
+                "ID": ["0001", "0002"],
+                "geometry": [Point(-77, 38).wkb, Point(-76, 39).wkb],
+            }
+        ).replace_schema_metadata({b"geo": json.dumps(geo).encode()})
+        parquet = root / "data.parquet"
+        pq.write_table(table, parquet)
+        promoted.write_key(
+            "dataset/file/v1.1.0/geoparquet/data.parquet", parquet.read_bytes()
+        )
+        published = PublishedStorageResource(
+            local_dir=str(promoted.local_dir), use_local=True, prefix="hifld"
+        )
+        return request, promoted, published
+
+    def test_catalog_record_preserves_verified_producer_defect_counts(self):
+        # The pinned-defect exception admits a staged population whose quality
+        # manifest attests the dataset's own pinned producer-defect audit. The
+        # record (and everything emitted from it: STAC hifld:quality and the
+        # catalog SQLite quality table) must carry the attested validated
+        # invalid-geometry count instead of re-reporting zero, while any
+        # unattested nonzero count keeps failing closed.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            quality = {
+                "version": "v1",
+                "feature_count": 2,
+                "quality_check_passed": True,
+                "invalid_geometry_count": 1948,
+                "null_geometry_count": 0,
+                "producer_geometry_defects_verified": True,
+            }
+            request, promoted, published = self._write_defects_verified_fixture(
+                root, quality
+            )
+            record = _catalog_record_from_storage(request, promoted)
+            self.assertEqual(record.invalid_geometry_count, 1948)
+            self.assertTrue(record.quality_passed)
+            self.assertEqual(record.null_geometry_count, 0)
+            generation = _publish_catalog(
+                (record,), request, published, use_release_pointer=True
+            )
+            catalog_storage = published.model_copy(update={"prefix": ""})
+            collection = json.loads(
+                catalog_storage.read_key(
+                    f"releases/{generation}/hifld/dataset/file/v1.1.0/collection.json"
+                )
+            )
+            emitted = collection["hifld:quality"]
+            self.assertEqual(emitted["invalid_geometry_count"], 1948)
+            self.assertTrue(emitted["passed"])
+            with sqlite3.connect(
+                Path(published.local_dir)
+                / f"releases/{generation}/_catalog/catalog.sqlite"
+            ) as conn:
+                row = conn.execute(
+                    "SELECT passed, invalid_geometry_count, null_geometry_count "
+                    "FROM quality WHERE version_path = ?",
+                    ("hifld/dataset/file/v1.1.0",),
+                ).fetchone()
+            self.assertEqual(row, (1, 1948, 0))
+
+    def test_catalog_record_refuses_unattested_producer_defects(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            attested = {
+                "version": "v1",
+                "feature_count": 2,
+                "quality_check_passed": True,
+                "invalid_geometry_count": 1948,
+                "null_geometry_count": 0,
+                "producer_geometry_defects_verified": True,
+            }
+            request, promoted, published = self._write_defects_verified_fixture(
+                root, attested
+            )
+            for attestation in (None, False):
+                with self.subTest(attestation=attestation):
+                    drifted = {
+                        key: value
+                        for key, value in attested.items()
+                        if key != "producer_geometry_defects_verified"
+                    }
+                    if attestation is False:
+                        drifted["producer_geometry_defects_verified"] = False
+                    promoted.write_key(
+                        "dataset/file/v1.1.0/metadata/quality_manifest.json",
+                        json.dumps(drifted).encode(),
+                    )
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "Promoted quality evidence does not describe a valid complete candidate",
+                    ):
+                        _catalog_record_from_storage(request, promoted)
+            strict = dict(
+                attested,
+                invalid_geometry_count=0,
+            )
+            strict.pop("producer_geometry_defects_verified")
+            promoted.write_key(
+                "dataset/file/v1.1.0/metadata/quality_manifest.json",
+                json.dumps(strict).encode(),
+            )
+            record = _catalog_record_from_storage(request, promoted)
+            self.assertEqual(record.invalid_geometry_count, 0)
+            self.assertTrue(record.quality_passed)
 
     def test_release_refresh_uses_dictionary_to_repair_retained_provider(self):
         with tempfile.TemporaryDirectory() as tmpdir:

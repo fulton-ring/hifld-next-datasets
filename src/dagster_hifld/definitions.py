@@ -152,6 +152,10 @@ from dagster_hifld.assets.nfhl_hydrologic_reaches import (
     nfhl_hydrologic_reaches_draft_schedule,
     fema_nfhl_hydrologic_reaches_complete,
 )
+from dagster_hifld.assets.nfhl_seclusion_boundaries import (
+    nfhl_seclusion_boundaries_draft_schedule,
+    fema_nfhl_seclusion_boundaries_complete,
+)
 from dagster_hifld.assets.fuds_district_boundaries import (
     fuds_district_boundaries_draft_schedule,
     usace_fuds_program_district_boundaries_complete,
@@ -653,6 +657,11 @@ from dagster_hifld.assets.fuds_mrs import (
     usace_fuds_munitions_response_sites_complete,
     fuds_mrs_draft_schedule,
 )
+from dagster_hifld.assets.final_critical_habitat import (
+    final_critical_habitat_complete,
+    final_critical_habitat_draft_job,
+    final_critical_habitat_draft_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -704,6 +713,12 @@ from dagster_hifld.assets.docks import (
     docks_source_population_complete,
     docks_source_geometry_quality,
     docks_release_acceptance_pending,
+)
+from dagster_hifld.assets.epa_frs_sic import (
+    epa_frs_sic_codes_complete,
+    epa_frs_sic_codes_draft_job,
+    epa_frs_sic_codes_draft_schedule,
+    epa_frs_sic_codes_publication_gates_pending,
 )
 from dagster_hifld.assets.epa_frs_tri import (
     epa_frs_toxic_release_inventory_complete,
@@ -1201,6 +1216,8 @@ defs = Definitions(
             epa_eez_full_quality,
             epa_regions_with_eez_full_quality,
             epa_frs_toxic_release_inventory_complete,
+            epa_frs_sic_codes_complete,
+            epa_frs_sic_codes_publication_gates_pending,
             epa_frs_tsca_complete,
             epa_frs_interests_complete,
             fdic_locations_full_quality,
@@ -1209,10 +1226,12 @@ defs = Definitions(
             bts_intermodal_freight_air_to_truck_complete,
             fema_nfhl_nodes_complete,
             fema_nfhl_hydrologic_reaches_complete,
+            fema_nfhl_seclusion_boundaries_complete,
             usace_fuds_munitions_response_sites_complete,
             usace_fuds_public_properties_complete,
             bts_national_transit_map_agencies_candidate_complete,
             bts_national_transit_map_agencies_release_gate,
+            final_critical_habitat_complete,
         ],
         discovered("ASSET_CHECKS"),
     ),
@@ -1332,11 +1351,13 @@ defs = Definitions(
             epa_eez_draft_job,
             epa_regions_with_eez_draft_job,
             epa_frs_tri_draft_job,
+            epa_frs_sic_codes_draft_job,
             epa_tsca_draft_job,
             epa_frs_interests_draft_job,
             fdic_locations_draft_job,
             fema_regions_draft_job,
             bts_national_transit_map_agencies_draft_job,
+            final_critical_habitat_draft_job,
         ],
         discovered("JOBS"),
     ),
@@ -1420,6 +1441,7 @@ defs = Definitions(
             fuds_projects_points_draft_schedule,
             nfhl_nodes_draft_schedule,
             nfhl_hydrologic_reaches_draft_schedule,
+            nfhl_seclusion_boundaries_draft_schedule,
             epa_frs_naics_draft_schedule,
             gcca_warehouses_draft_schedule,
             bsee_ocs_platforms_draft_schedule,
@@ -1469,6 +1491,7 @@ defs = Definitions(
             epa_eez_draft_schedule,
             epa_regions_with_eez_draft_schedule,
             epa_frs_tri_draft_schedule,
+            epa_frs_sic_codes_draft_schedule,
             epa_tsca_draft_schedule,
             epa_frs_interests_draft_schedule,
             fdic_locations_draft_schedule,
@@ -1480,6 +1503,7 @@ defs = Definitions(
             fuds_mrs_draft_schedule,
             fuds_public_properties_draft_schedule,
             bts_national_transit_map_agencies_draft_schedule,
+            final_critical_habitat_draft_schedule,
         ],
         discovered("SCHEDULES"),
     ),

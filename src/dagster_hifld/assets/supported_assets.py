@@ -43,11 +43,6 @@ def _from_ingest_assets() -> list[SupportedDatasetFile]:
 # Backfill-only datasets intentionally supported downstream without a live ingest asset.
 STAGING_ONLY_DATASET_FILES = [
     SupportedDatasetFile(
-        dataset_slug="119th-congressional-districts",
-        file_slug="119th-congressional-districts",
-        description="119th Congressional Districts legacy/backfilled dataset.",
-    ),
-    SupportedDatasetFile(
         dataset_slug="address-ranges",
         file_slug="address-ranges",
         description="Address Ranges legacy/backfilled dataset.",
