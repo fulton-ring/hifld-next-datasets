@@ -8,6 +8,7 @@ from dagster_hifld.sources.nfhl_water_areas import (
     EXPECTED_COUNT,
     EXPECTED_NAN_GEOMETRY_COUNT,
     EXPECTED_NULL_GEOMETRY_COUNT,
+    EXPECTED_EMPTY_GEOMETRY_COUNT,
     EXPECTED_UNPLACABLE_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_nfhl_water_areas,
@@ -45,7 +46,8 @@ def fema_nfhl_water_areas_complete(candidate: dict) -> AssetCheckResult:
               and candidate.get("candidate_ready") is not None
               and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
               and candidate.get("source_nan_string_geometry_count") == EXPECTED_NAN_GEOMETRY_COUNT
-              and candidate.get("source_unplacable_geometry_count") == EXPECTED_UNPLACABLE_GEOMETRY_COUNT)
+              and candidate.get("source_unplacable_geometry_count") == EXPECTED_UNPLACABLE_GEOMETRY_COUNT
+              and candidate.get("source_empty_geometry_count") == EXPECTED_EMPTY_GEOMETRY_COUNT)
     return AssetCheckResult(
         passed=passed,
         metadata={
@@ -53,6 +55,7 @@ def fema_nfhl_water_areas_complete(candidate: dict) -> AssetCheckResult:
             "source_null_geometry_count": candidate.get("source_null_geometry_count", 0),
             "source_nan_string_geometry_count": candidate.get("source_nan_string_geometry_count", 0),
             "source_unplacable_geometry_count": candidate.get("source_unplacable_geometry_count", 0),
+            "source_empty_geometry_count": candidate.get("source_empty_geometry_count", 0),
             "source_unassembled_polygon_count": candidate.get("source_unassembled_polygon_count", 0),
             "technical_geometry_quality_accepted": False,
             "source_release_accepted": False,

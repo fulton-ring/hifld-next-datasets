@@ -77,7 +77,7 @@ def _fixture():
     ids = [10, 11, 12, 13, 14, 15]
     schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f} for f in fields]
     attr_names = [f["name"] for f in fields if f["name"] != "SHAPE"]
-    geometry_records, null_count, nan_count, unplacable_count, bounds = source._classify_geometries(features, attr_names)
+    geometry_records, null_count, nan_count, unplacable_count, empty_count, bounds = source._classify_geometries(features, attr_names)
     crs = {"wkid": 4269, "latestWkid": 4269}
     page0 = {"features": features[:2], "spatialReference": crs, "exceededTransferLimit": True}
     page1 = {"features": features[2:4], "spatialReference": crs}
@@ -92,12 +92,12 @@ def _fixture():
                 for name, doc in docs.items()}
     captures["service_doc"] = (SERVICE_DOC_BODY, {"status": 200})
     geom = geometry_records
-    counts = (null_count, nan_count, unplacable_count)
+    counts = (null_count, nan_count, unplacable_count, empty_count)
     return fields, features, captures, schema, geom, counts, bounds
 
 
 def _pins(features, schema, geom, counts, bounds):
-    null_count, nan_count, unplacable_count = counts
+    null_count, nan_count, unplacable_count, empty_count = counts
     return dict(EXPECTED_COUNT=6, SEGMENT_START_RECORDS=2, EXPECTED_NULL_GEOMETRY_COUNT=null_count,
                 EXPECTED_NAN_GEOMETRY_COUNT=nan_count,
                 EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14, 15])).hexdigest(),
@@ -203,9 +203,9 @@ class NfhlWaterAreasTests(unittest.TestCase):
         out_of_domain = [[220.0, 40.0], [221.0, 40.0], [221.0, 39.0], [220.0, 39.0], [220.0, 40.0]]
         feature = {"attributes": {"OBJECTID": 98}, "geometry": {"rings": [out_of_domain]}}
         attr_names = ["OBJECTID"]
-        records, null_count, nan_count, unplacable_count, bounds = source._classify_geometries(
+        records, null_count, nan_count, unplacable_count, empty_count, bounds = source._classify_geometries(
             [feature], attr_names)
-        self.assertEqual((null_count, nan_count, unplacable_count), (0, 0, 1))
+        self.assertEqual((null_count, nan_count, unplacable_count, empty_count), (0, 0, 1, 0))
         self.assertEqual(records, [[98, [out_of_domain]]])
         self.assertIsNone(bounds)
         self.assertIsNone(source._polygon_wkb(feature["geometry"]))
@@ -214,10 +214,22 @@ class NfhlWaterAreasTests(unittest.TestCase):
         mixed = [[-80.0, 37.0], [220.0, 38.0], [-80.0, 38.0], [-80.0, 37.0]]
         mixed_feature = {"attributes": {"OBJECTID": 97}, "geometry": {"rings": [mixed]}}
         self.assertIsNone(source._polygon_wkb(mixed_feature["geometry"]))
-        records2, _, _, unplacable2, _ = source._classify_geometries(
+        records2, _, _, unplacable2, _, _ = source._classify_geometries(
             [{"attributes": {"OBJECTID": 97}, "geometry": {"rings": [mixed]}}], attr_names)
         self.assertEqual(unplacable2, 1)
         self.assertEqual(records2[0], [97, [mixed]])
+
+    def test_empty_rings_geometry_is_gated_not_coerced(self):
+        feature = {"attributes": {"OBJECTID": 96}, "geometry": {"rings": []}}
+        attr_names = ["OBJECTID"]
+        records, null_count, nan_count, unplacable_count, empty_count, bounds = \
+            source._classify_geometries([feature], attr_names)
+        self.assertEqual((null_count, nan_count, unplacable_count, empty_count), (0, 0, 0, 1))
+        self.assertEqual(records, [[96, []]])
+        self.assertIsNone(source._polygon_wkb(feature["geometry"]))
+        self.assertEqual(source._empty_object_ids([feature]), [96])
+        self.assertEqual(source._unplacable_object_ids([feature]), [])
+        self.assertEqual(source._unassembled_object_ids([feature]), [])
 
     def test_curve_rings_geometry_is_rejected(self):
         _, _, captures, schema, geom, counts, bounds = _fixture()

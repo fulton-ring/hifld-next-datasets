@@ -12,7 +12,9 @@ compatibility are not accepted by this draft. Producer rows may publish null
 geometry, string-"NaN" ordinates, numeric coordinates outside the NAD83
 geographic domain (a small set of producer rows in DFIRM 22051C carry
 coordinates that cannot be placed geographically, consistent with the
-layer's declared extent, which likewise is not a geographic envelope), or
+layer's declared extent, which likewise is not a geographic envelope),
+a non-null geometry that is an empty rings list (observed in DFIRM 39031C),
+or
 rings that cannot be assembled into a valid OGC polygon container
 (self-intersecting or overlapping rings); all such records are retained with
 null candidate geometry, raw evidence and audit object IDs intact, and never
@@ -107,6 +109,7 @@ EXPECTED_OBSERVED_BOUNDS = {"xmin": -180.0, "ymin": -90.0, "xmax": 180.0, "ymax"
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_NAN_GEOMETRY_COUNT = 0
 EXPECTED_UNPLACABLE_GEOMETRY_COUNT = 0
+EXPECTED_EMPTY_GEOMETRY_COUNT = 0
 EXPECTED_LAYER_EXTENT = {"xmin": -305.0788612945911, "ymin": -125.69290611810862,
                          "xmax": 2761.6811641840727, "ymax": 2253.8486798599915}
 EXPECTED_SERVICE_LAYER_ROSTER = [
@@ -275,6 +278,7 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
     null_geometry = 0
     nan_geometry = 0
     unplacable_geometry = 0
+    empty_geometry = 0
     geometry_records = []
     xmin = ymin = xmax = ymax = None
     for feature in features:
@@ -297,6 +301,14 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
                             and vertex[1] == "NaN"
                             for ring in raw for vertex in ring):
                 nan_geometry += 1
+                geometry_records.append([attrs["OBJECTID"], raw])
+                continue
+            if isinstance(geom, dict) and set(geom) == {"rings"} and raw == []:
+                # Producer rows whose geometry is an empty rings list
+                # (observed in DFIRM 39031C): retained verbatim in the record
+                # digest and audit, gated with null candidate geometry — never
+                # coerced to a location.
+                empty_geometry += 1
                 geometry_records.append([attrs["OBJECTID"], raw])
                 continue
             raise ValueError("source_polygon_geometry_invalid")
@@ -322,7 +334,7 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
                     ymax = y
         geometry_records.append([attrs["OBJECTID"], rings])
     observed_bounds = None if xmin is None else {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
-    return geometry_records, null_geometry, nan_geometry, unplacable_geometry, observed_bounds
+    return geometry_records, null_geometry, nan_geometry, unplacable_geometry, empty_geometry, observed_bounds
 
 
 def _assemble_polygons(rings: list) -> list:
@@ -385,6 +397,17 @@ def _polygon_wkb(geom: object) -> bytes | None:
     except ValueError:
         return None
     return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
+
+
+def _empty_object_ids(features: list[dict[str, object]]) -> list[int]:
+    """Object IDs whose geometry is a non-null empty rings list."""
+    empty = []
+    for feature in features:
+        attrs = feature.get("attributes", {})
+        geom = feature.get("geometry")
+        if isinstance(geom, dict) and set(geom) == {"rings"} and geom["rings"] == []:
+            empty.append(attrs["OBJECTID"])
+    return sorted(empty)
 
 
 def _unplacable_object_ids(features: list[dict[str, object]]) -> list[int]:
@@ -495,7 +518,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     for (offset, count), name in zip(segments, page_names):
         _collect_segment(offset, count, json.loads(captures[name][0]), ids, features)
     attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
-    geometry_records, null_geometry, nan_geometry, unplacable_geometry, bounds = _classify_geometries(features, attr_names)
+    geometry_records, null_geometry, nan_geometry, unplacable_geometry, empty_geometry, bounds = \
+        _classify_geometries(features, attr_names)
     unassembled_ids = _unassembled_object_ids(sorted(features, key=lambda row: row["attributes"]["OBJECTID"]))
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     record_sha = _list_sha(features)
@@ -512,6 +536,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "geometry_type": "Polygon", "null_geometry_count": null_geometry,
              "nan_string_geometry_count": nan_geometry,
              "unplacable_geometry_count": unplacable_geometry,
+             "empty_geometry_count": empty_geometry,
+             "empty_geometry_object_ids": _empty_object_ids(features),
              "unplacable_geometry_object_ids": _unplacable_object_ids(features),
              "unassembled_polygon_count": len(unassembled_ids),
              "unassembled_polygon_object_ids": unassembled_ids,
@@ -817,6 +843,7 @@ def capture_nfhl_water_areas(storage: StagingStorageResource, *, version: str,
                 "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
                 "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
                 "source_unplacable_geometry_count": audit["unplacable_geometry_count"],
+                "source_empty_geometry_count": audit["empty_geometry_count"],
                 "source_unassembled_polygon_count": audit["unassembled_polygon_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_release_accepted": False, "source_freshness_accepted": False,
@@ -843,6 +870,7 @@ def capture_nfhl_water_areas(storage: StagingStorageResource, *, version: str,
             "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
             "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
             "source_unplacable_geometry_count": audit["unplacable_geometry_count"],
+            "source_empty_geometry_count": audit["empty_geometry_count"],
             "source_unassembled_polygon_count": audit["unassembled_polygon_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
