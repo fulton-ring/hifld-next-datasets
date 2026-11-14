@@ -1042,12 +1042,10 @@ def _doc_client() -> httpx.Client:
     )
 
 
-def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
-    state = _load_state(capture_root)
-    names = [*METADATA_NAMES, *AFTER_NAMES,
-             *(str(entry["name"]) for entry in state.get("segments", [])
-               if isinstance(entry, dict) and entry.get("name"))]
-    return {name: _load_receipt(capture_root, name) for name in names}
+def _load_document_receipts(capture_root: Path) -> dict[str, dict[str, object]]:
+    """Receipts for the bounded metadata documents only; pages stay staged raw."""
+    return {name: _load_receipt(capture_root, name)
+            for name in sorted((*METADATA_NAMES, *AFTER_NAMES))}
 
 
 class _RetainedCaptureViews(Mapping):
@@ -1086,29 +1084,42 @@ def _document_input(name: str, receipt: Mapping[str, object]) -> dict[str, objec
                            "maintainer review."}
 
 
-def _segment_pages_input(capture_root: Path) -> dict[str, object]:
-    """One bounded provenance input carrying every accepted roster segment page.
+def _segment_page_rows(capture_root: Path) -> tuple[list[str], list[list], int]:
+    """Every accepted roster segment page as [name, offset, count, bytes, sha256, at].
 
     The catalog layer reads each manifest under a hard byte bound, so the
-    thousands of per-page HTTP responses cannot be listed as separate top-level
-    inputs; this aggregate input records the shared retrieval contract and every
-    page's own response digest, length and observation time.
+    thousands of per-page HTTP responses cannot be embedded in the manifest
+    itself; the rows are staged once as the candidate's segment-pages index
+    object and the manifest's aggregate provenance input pins that object's
+    digest while every page response is additionally retained as raw evidence.
     """
     state = _load_state(capture_root)
-    rows = []
+    names: list[str] = []
+    rows: list[list] = []
     total_bytes = 0
-    statuses = set()
+    statuses: set[int] = set()
     for entry in sorted((e for e in state.get("segments", []) if isinstance(e, dict)),
                         key=lambda e: (e.get("offset", -1), e.get("count", -1))):
-        receipt = _load_receipt(capture_root, str(entry["name"]))
+        name = str(entry["name"])
+        receipt = _load_receipt(capture_root, name)
         total_bytes += int(receipt["bytes"])
         statuses.add(int(receipt["status"]))
-        rows.append([str(entry["name"]), entry["offset"], entry["count"],
+        names.append(name)
+        rows.append([name, entry["offset"], entry["count"],
                      receipt["bytes"], receipt["sha256"], receipt["observed_at"]])
     if not rows:
         raise PadUsManagerNameError("segment_pages_input_empty")
     if statuses != {200}:
         raise PadUsManagerNameError("segment_pages_input_status_drift")
+    return names, rows, total_bytes
+
+
+def _segment_pages_index_body(rows: list[list]) -> bytes:
+    return _canonical({"schema_version": 1, "pages": rows}) + b"\n"
+
+
+def _segment_pages_input(index_body: bytes, rows: list[list], total_bytes: int) -> dict[str, object]:
+    """One bounded provenance input covering every accepted roster segment page."""
     return {
         "input_id": "PADUS4_1ManagerName_roster_segment_pages",
         "producer": PUBLISHER,
@@ -1118,13 +1129,18 @@ def _segment_pages_input(capture_root: Path) -> dict[str, object]:
         "retrieval_url": _segment_query(0, MAX_RECORD_COUNT),
         "retrieved_at": rows[-1][5],
         "http_status": 200,
-        "bytes": total_bytes,
-        "sha256": _sha(_canonical(rows)),
-        "sha256_basis": "sha256 of the canonical JSON encoding of this input's pages "
-                        "array; each row is [segment name, roster offset, record count, "
-                        "response bytes, response sha256, observed_at] for one accepted "
-                        "producer page, and every page response is additionally retained "
-                        "as raw evidence in the candidate.",
+        "bytes": len(index_body),
+        "sha256": _sha(index_body),
+        "sha256_basis": "sha256 of the staged candidate object "
+                        "metadata/segment_pages_index.json; its pages array holds one "
+                        "[segment name, roster offset, record count, response bytes, "
+                        "response sha256, observed_at] row per accepted producer page, "
+                        "and every page response is additionally retained as raw "
+                        "evidence in the candidate.",
+        "pages_count": len(rows),
+        "pages_bytes_total": total_bytes,
+        "pages_index": {"path": "metadata/segment_pages_index.json",
+                        "bytes": len(index_body), "sha256": _sha(index_body)},
         "release_date": None,
         "release_date_unknown_reason":
             "The PAD-US 4.1 release is a fixed dated USGS data release "
@@ -1135,7 +1151,6 @@ def _segment_pages_input(capture_root: Path) -> dict[str, object]:
         "attribution": "U.S. Geological Survey (USGS) Gap Analysis Project "
                        "(GAP), PAD-US 4.1; formal attribution terms require "
                        "maintainer review.",
-        "pages": rows,
     }
 
 
@@ -1227,7 +1242,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     parquet_body = Path(extracted["parquet_path"]).read_bytes()
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
-    receipts = _load_receipt_map(capture_root)
+    doc_receipts = _load_document_receipts(capture_root)
+    segment_names, page_rows, page_bytes_total = _segment_page_rows(capture_root)
+    segment_index_body = _segment_pages_index_body(page_rows)
     manifest = {
         "schema_version": 1, "approved": False,
         "title": "PAD-US Manager Name (USGS PAD-US 4.1)",
@@ -1244,9 +1261,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                    "no-warranty statement. Rights acceptance pending.",
         "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
-        "inputs": [*(_document_input(name, receipts[name])
-                     for name in sorted((*METADATA_NAMES, *AFTER_NAMES))),
-                   _segment_pages_input(capture_root)],
+        "inputs": [*(_document_input(name, doc_receipts[name])
+                     for name in sorted(doc_receipts)),
+                   _segment_pages_input(segment_index_body, page_rows, page_bytes_total)],
         "transformations": [{"operation": "native_esri_pbf_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "population": "the complete enumerated OBJECTID "
@@ -1327,12 +1344,13 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "metadata/source_audit.json": _canonical(audit) + b"\n",
         "metadata/processing_identity.json": _canonical(identity) + b"\n",
         "metadata/candidate_ready.json": _canonical(ready) + b"\n",
+        "metadata/segment_pages_index.json": segment_index_body,
     }
     descriptors: dict[str, dict[str, object]] = {}
     for relative, body in metadata_outputs.items():
         write_immutable(storage, f"{prefix}/{relative}", body)
         descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted(receipts):
+    for name in sorted((*METADATA_NAMES, *AFTER_NAMES, *segment_names)):
         body, receipt = _read_capture(capture_root, name)
         wire = (capture_root / f"{name}.wire").read_bytes()
         for suffix, blob in (("body", body), ("wire", wire),
@@ -1344,7 +1362,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     payload = {"processing_identity": identity,
                "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": receipts, "objects": descriptors}
+               "capture_receipts": doc_receipts, "objects": descriptors}
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])

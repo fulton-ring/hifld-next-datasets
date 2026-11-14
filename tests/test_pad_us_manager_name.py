@@ -437,6 +437,30 @@ class PadUsManagerNameTests(unittest.TestCase):
                              / f"{src.DATASET_SLUG}.parquet").read_bytes()
             self.assertEqual(pq.read_table(io.BytesIO(parquet_bytes)).num_rows, FIXTURE_COUNT)
 
+    def test_tampered_staged_page_evidence_refuses_reuse(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                storage = _staging(root)
+                first = src.capture_pad_us_manager_name(
+                    storage, version="tamper-run", capture_directory=str(capture_root))
+            self.assertFalse(first["reused"])
+            prefix = f"{src.DATASET_SLUG}/{src.FILE_SLUG}/{first['version']}"
+            state = json.loads((capture_root / "capture_state.json").read_bytes())
+            page = str(state["segments"][0]["name"])
+            body_path = root / "staging" / prefix / "raw" / f"{page}.body"
+            body_path.write_bytes(body_path.read_bytes() + b"trailing-tamper")
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(
+                        ValueError, "cached_candidate_object_integrity_failed"):
+                    src.capture_pad_us_manager_name(
+                        _staging(root), version="tamper-run-2",
+                        capture_directory=str(capture_root))
+
     def test_refused_pages_bisect_down_to_singles(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
