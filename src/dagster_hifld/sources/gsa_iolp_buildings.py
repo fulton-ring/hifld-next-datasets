@@ -369,7 +369,7 @@ def _point_wkb(x: float, y: float) -> bytes:
     return struct.pack("<BIdd", 1, 1, float(x), float(y))
 
 
-def _parquet(columns: dict, count: int) -> bytes:
+def _parquet(columns: dict, count: int, bbox: list[float]) -> bytes:
     arrays, fields = [], []
     for name, kind in EXPECTED_FIELDS:
         arrays.append(pa.array(columns[name], type=pa.type_for_alias(kind), safe=True))
@@ -381,7 +381,7 @@ def _parquet(columns: dict, count: int) -> bytes:
     geo = {"version": "1.1.0", "primary_column": "geometry",
            "columns": {"geometry": {"encoding": "WKB", "geometry_types": GEOMETRY_TYPES,
                                     "crs": WGS84.to_json_dict(),
-                                    "bbox": [-180.0, -90.0, 180.0, 90.0], "epoch": None}}}
+                                    "bbox": bbox, "epoch": None}}}
     schema = pa.schema(fields, metadata={b"geo": _canonical(geo)})
     sink = pa.BufferOutputStream()
     pq.write_table(pa.Table.from_arrays(arrays, schema=schema), sink,
@@ -506,7 +506,10 @@ def capture_gsa_iolp_buildings(storage: StagingStorageResource, *, version: str,
     root = captured["capture_root"]
     with tempfile.TemporaryDirectory() as tmp:
         decoded = _decode_workbook(captured["body"], Path(tmp))
-        parquet = _parquet(decoded["columns"], decoded["count"])
+        audit_bounds = decoded["audit"]["source_bounds"]
+        parquet = _parquet(decoded["columns"], decoded["count"],
+                           [audit_bounds["lon_min"], audit_bounds["lat_min"],
+                            audit_bounds["lon_max"], audit_bounds["lat_max"]])
     audit = decoded["audit"]
     identity_pkg = processing_identity(Path(__file__).parents[3])
     evidence_sha = _sha(_canonical({

@@ -192,7 +192,10 @@ class GsaIolpBuildingsDecodeTest(unittest.TestCase):
             self.assertEqual(audit["source_null_counts"]["Construction Date"], 1)
             self.assertEqual(audit["source_value_distributions"]["Owned or Leased"],
                              {"LEASED": 1, "OWNED": 1})
-            parquet = _parquet(decoded["columns"], decoded["count"])
+            bounds = audit["source_bounds"]
+            parquet = _parquet(decoded["columns"], decoded["count"],
+                               [bounds["lon_min"], bounds["lat_min"],
+                                bounds["lon_max"], bounds["lat_max"]])
             table = pq.read_table(pa.BufferReader(parquet))
             self.assertEqual(table.num_rows, 2)
             zips = table.column("Zip Code").to_pylist()
