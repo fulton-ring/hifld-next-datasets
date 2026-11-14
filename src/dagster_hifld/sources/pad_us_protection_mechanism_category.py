@@ -6,46 +6,51 @@ Survey, USGS Gap Analysis Project) is the producer's combined
 fee/designation/easement/marine/proclamation protection-mechanism view. USGS's
 own PAD-US Web Services page links the feature-layer view (ArcGIS item
 ``80c7a138989c4cf8937c4502371d6e99``, owned by a usgs.gov account in USGS's
-ArcGIS Online organization ``v01gqwM5QqNysAAi``), backed by the USGS-owned
-hosted service item ``22670023fd124c799d5ddd08297dde85``; its public layer is
-``services.arcgis.com`` ``Protection_Mechanism_Category/FeatureServer/0``.
-That explicitly USGS-linked publication is captured here; the DataLumos project
-240685 archive copy is identification context only and is never fetched.
+ArcGIS Online organization ``v01gqwM5QqNysAAi``); that item's service URL is
+the maintained combined view
+``services.arcgis.com`` ``Protection_Mechanism_Category_PADUS/FeatureServer/0``
+(layer ``PADUS4_1ProtMechCat``), whose ``/0/sources`` document identifies the
+underlying source layer ``ProtMechCat_A/FeatureServer/0`` (hosted service item
+``126eef9409ce48b0a9e55c2fe8fd77b8``; both the item document and the source
+service answer anonymous requests with permission errors, so the relationship
+is pinned from the anonymously readable sources document). That explicitly
+USGS-linked publication is captured here; the DataLumos project 240685 archive
+copy is identification context only and is never fetched.
 
-Version relationship (observed 2026-11-13, documented, unaccepted): the
-service's own labels are stale producer labels — the layer is named
-"...(PAD-US) v3.0" and the copyright cites the 2022 PAD-US 3.0 release (DOI
-10.5066/P9Q9LQ4B) — while the service's data was last edited 2024-03-20
-(``editingInfo.lastEditDate``) and USGS's published FGDC metadata for this
-service describes it as PAD-US 4.0 (publication date 2024-04-25, processing
-environment ``PADUS4_0Geodatabase.gdb``). The PAD-US 4.1 Full Inventory
-Database (2024, DOI 10.5066/P96WBCHS, ScienceBase item
-``652d4fc5d34e44db0e2ee45e``, observed HTTP 200 anonymously on 2026-11-13) is
-the current national database release, but it publishes the separate PAD-US
-feature classes, not this combined producer view, so the draft pins the
-maintained USGS-linked view service as the source and records the version gap
-as an unaccepted maintainer freshness/succession decision.
+Version relationship (observed 2026-11-14, documented, unaccepted): the view
+service's layer copyright cites the current PAD-US 4.1 release ("2025,
+Protected Areas Database of the United States (PAD-US) 4.1", DOI
+10.5066/P96WBCHS — the same release DOI as the PAD-US 4.1 Full Inventory
+Database, ScienceBase item ``652d4fc5d34e44db0e2ee45e``), the layer is named
+``PADUS4_1ProtMechCat``, and the service data was last edited 2025-06-04
+(``editingInfo.dataLastEditDate``; schema last edit 2026-04-22). The view is
+therefore the producer's 4.1-labeled combined view. The previously captured
+combined service ``Protection_Mechanism_Category/FeatureServer`` (hosted item
+``22670023fd124c799d5ddd08297dde85``, 441,609 features, layer self-labeled
+"PAD-US v3.0", data last edited 2024-03-20) is superseded by this USGS-linked
+view and stays research context only; it is never fetched by the pipeline.
 
-The layer held 441,609 features on 2026-11-13 with a contiguous OBJECTID
-roster 1..441,609 (``returnIdsOnly`` works for this producer), so completeness
+The layer held 656,986 features on 2026-11-14 with a contiguous sorted OBJECTID
+roster 1..656,986 (``returnIdsOnly`` works for this producer), so completeness
 is established by the pinned count, the pinned ID-roster digest (captured
 before and after the walk), the strict ascending OBJECTID keyset walk, the
 page-count ceiling, per-page ``exceededTransferLimit`` consistency and the
 empty tail-page witness. The per-value and per-geometry baseline digests stay
-unpinned until the first complete capture; they are computed and reported by
-``build_pad_us_protection_mechanism_category_baseline`` and then pinned as
-constants for later drift refusal.
+unpinned until the first complete capture of this view; they are computed and
+reported by ``build_pad_us_protection_mechanism_category_baseline`` and then
+pinned as constants for later drift refusal.
 
-Scale note (observed 2026-11-13): the population's geometry weight is heavily
-skewed — the first ~1,000 features alone transfer ~82 MB of gzip wire (~251 s)
-while most later pages run ~0.3-0.8 MB per 1,000 features — so the module
-requests gzip content coding and retains both the gzip wire and the decoded
-identity body per page. The capture state file makes every session resumable;
-the disk floor below refuses to start where the complete capture cannot fit.
-Retaining the raw pages inside the sealed candidate follows the repository's
-established fidelity contract. Publication stays blocked pending the
-succession, freshness, schema/ID contract, rights and release decisions; all
-runtime approval flags are false and the draft refresh schedule is stopped.
+Scale note (observed on the superseded service 2026-11-13, carried forward as
+the working transfer model): the population's geometry weight is heavily
+skewed — the first ~1,000 features alone transferred ~82 MB of gzip wire
+(~251 s) while most later pages ran ~0.3-0.8 MB per 1,000 features — so the
+module requests gzip content coding and retains both the gzip wire and the
+decoded identity body per page. The capture state file makes every session
+resumable; the disk floor below refuses to start where the complete capture
+cannot fit. Retaining the raw pages inside the sealed candidate follows the
+repository's established fidelity contract. Publication stays blocked pending
+the schema/ID contract, rights and release decisions; all runtime approval
+flags are false and the draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
@@ -84,17 +89,23 @@ from dagster_hifld.validation import sha256_file
 DATASET_SLUG = "pad-us-protection-mechanism-category"
 FILE_SLUG = DATASET_SLUG
 SERVICE_URL = ("https://services.arcgis.com/v01gqwM5QqNysAAi"
-               "/ArcGIS/rest/services/Protection_Mechanism_Category/FeatureServer")
-# USGS-owned ArcGIS Online items captured as identity evidence (the view item
-# linked by USGS's PAD-US Web Services page and the hosted service item that
-# backs it; both owners are usgs.gov accounts in the USGS organization).
+               "/ArcGIS/rest/services/Protection_Mechanism_Category_PADUS/FeatureServer")
+# USGS-owned ArcGIS Online evidence: the view item linked by USGS's PAD-US Web
+# Services page (owner mcroft@usgs.gov_USGS, org v01gqwM5QqNysAAi), and the
+# anonymously readable view-layer sources document that names the underlying
+# source layer. The source layer's own service item (126eef94...) answers
+# anonymous item requests with HTTP 403 and its service requires a token, so
+# neither is fetched; the sources document is the pinned view-to-input
+# relationship evidence.
 VIEW_ITEM_ID = "80c7a138989c4cf8937c4502371d6e99"
-SERVICE_ITEM_ID = "22670023fd124c799d5ddd08297dde85"
+SOURCE_SERVICE_ITEM_ID = "126eef9409ce48b0a9e55c2fe8fd77b8"
+SOURCE_LAYER_URL = ("https://services.arcgis.com/v01gqwM5QqNysAAi"
+                    "/ArcGIS/rest/services/ProtMechCat_A/FeatureServer/0")
 SHARING_ITEM_URL = "https://www.arcgis.com/sharing/rest/content/items/{item}?f=json"
 SERVICE_DOC_URL = ("https://www.usgs.gov/programs/gap-analysis-project/"
                    "science/pad-us-web-services")
 LAYER_ID = 0
-LAYER_NAME = "Protected Areas Database of the United States (PAD-US) v3.0"
+LAYER_NAME = "PADUS4_1ProtMechCat"
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 GEOMETRY_TYPE = "esriGeometryPolygon"
 PUBLISHER = "U.S. Geological Survey"
@@ -109,50 +120,52 @@ MIN_FREE_BYTES = 25_000_000_000
 # The producer answers gzip when it is requested (observed 2026-11-13); the
 # receipt keeps the gzip wire and the decoded identity body side by side.
 ACCEPT_ENCODING = "gzip"
-# The service's own copyright label is a stale producer label (observed
-# 2026-11-13): it cites the 2022 PAD-US 3.0 release while the service data was
-# last edited 2024-03-20 and USGS's published metadata describes the service as
-# PAD-US 4.0. It is pinned as the observed identity statement, not as a
-# freshness or release claim.
-EXPECTED_COPYRIGHT_TEXT = ("U.S. Geological Survey (USGS) Gap Analysis Project (GAP), 2022, "
-                           "Protected Areas Database of the United States (PAD-US) 3.0: "
-                           "U.S. Geological Survey (USGS), https://doi.org/10.5066/P9Q9LQ4B .")
-EXPECTED_SERVICE_DESCRIPTION = ("Protection mechanism category-fee simple, internal designations, "
-                                "easements, leases and agreements, and Marine Areas. "
-                                "Proclamation outlines.")
+# The combined view service document publishes an empty copyrightText and
+# serviceDescription (observed 2026-11-14); the producer identity statement is
+# carried by the layer document below.
+EXPECTED_COPYRIGHT_TEXT = ("U.S. Geological Survey (USGS) Gap Analysis Project (GAP), 2025, "
+                           "Protected Areas Database of the United States (PAD-US) 4.1: "
+                           "U.S. Geological Survey data release, "
+                           "https://doi.org/10.5066/P96WBCHS")
+# The view service document's own description field is empty as served; it is
+# pinned as the observed identity statement, not as a content description.
+EXPECTED_SERVICE_DESCRIPTION = ""
 EXPECTED_SERVICE_LAYERS = [(0, LAYER_NAME)]
-EXPECTED_COUNT = 441_609
-EXPECTED_SCHEMA_SHA256 = "2afc737fbcf4bca1d622a0b73582d1fc2a643ae280cfbadcc10bb3a04125310e"
-EXPECTED_IDS_SHA256 = "6971d2092b3ae91a8f3ec092687fd184a1057ce622d832e9686e9b6fa677d765"
-# Pinned from the complete 442-page capture sealed 2026-11-14
-# (capture_state.json complete; ids and schema digests verified unchanged).
-EXPECTED_RECORD_SHA256 = "19b85e326bd07a070260be52591719f0bf3956f8f77fbd3b4509d686af8d6619"
-EXPECTED_GEOMETRY_SHA256 = "368ea3a499b84d5bc587e65a58023dde27334aeb10035b4e6173191accb5f707"
+EXPECTED_COUNT = 656_986
+EXPECTED_MAX_RECORD_COUNT = 2000
+EXPECTED_SCHEMA_SHA256 = "020f3a55a746d9280b8750d6401a8fdd6c1579ffb6a0c8d325dd854ff4762f4a"
+EXPECTED_IDS_SHA256 = "136194b0dfac75e6d781c82e4d3d2a2a0e39074059326628c9182730bd312c7b"
+# The per-value and per-geometry baselines stay unpinned until the first
+# complete capture of the maintained view (656,986 features ≈ 657 pages);
+# build_pad_us_protection_mechanism_category_baseline computes them from a
+# completed capture for the maintainer to pin.
+EXPECTED_RECORD_SHA256 = ""
+EXPECTED_GEOMETRY_SHA256 = ""
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 # Producer-served features whose rings cannot form a valid OGC polygon are
-# gated, never silently coerced. The first complete capture (442 keyset pages
-# sealed 2026-11-14) failed closed on these counts and they are now pinned as
-# observed; any change fails the next capture and is quarantined.
+# gated, never silently coerced. Pending the first complete capture of the
+# maintained view the pinned families are empty, so any occurrence fails the
+# capture closed and is recorded; the observed counts are then pinned exactly
+# as the superseded service's capture did (302 degenerate rings, 40 unassigned
+# holes observed there).
 UNUSABLE_GEOMETRY_MODES = frozenset({
     "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
     "source_polygon_hole_unassigned",
 })
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {
-    "source_polygon_ring_degenerate": 302,
-    "source_polygon_hole_unassigned": 40,
-}
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {}
 # Producer-served polygons that form valid rings but fail OGC validity
 # (self-intersections and similar defects) are retained verbatim in the
-# candidate, never repaired; the count below is pinned from the first complete
-# capture (442 pages sealed 2026-11-14) and any change fails the next capture.
-EXPECTED_INVALID_GEOMETRY_COUNT = 3479
-EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0642, "ymin": -1733741.441300001,
-                         "xmax": 20037507.140600003, "ymax": 12930677.553099995}
+# candidate, never repaired; pending the first complete capture of the
+# maintained view the pinned count is zero, so any occurrence fails the
+# capture closed and is recorded before the observed count is pinned.
+EXPECTED_INVALID_GEOMETRY_COUNT = 0
+EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0672, "ymin": -1733741.441300001,
+                         "xmax": 20037507.067199998, "ymax": 12930675.6069}
 BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests are pinned from the first complete "
-    "capture of the 441,609-feature population (442 retained keyset pages sealed "
-    "2026-11-14, ids and schema digests unchanged from the 2026-11-13 probes); "
-    "later captures are gated against them and quarantined on drift.")
+    "The record and geometry baseline digests are unpinned pending the first "
+    "complete capture of the maintained USGS-linked view (656,986 features, "
+    "657 retained keyset pages); later captures are gated against them and "
+    "quarantined on drift.")
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),
@@ -188,12 +201,15 @@ NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("Comments", "esriFieldTypeString", True, 255),
     ("EsmtHldr", "esriFieldTypeString", True, 100),
     ("EHoldTyp", "esriFieldTypeString", True, 50),
-    ("WebMercAc", "esriFieldTypeInteger", True, None),
+    ("WebServiceMangName", "esriFieldTypeString", True, 150),
+    ("TranspPct", "esriFieldTypeSmallInteger", True, None),
     ("Shape__Area", "esriFieldTypeDouble", True, None),
     ("Shape__Length", "esriFieldTypeDouble", True, None),
-    ("GlobalID", "esriFieldTypeGlobalID", False, 38),
 )
-METADATA_NAMES = ("service_doc", "view_item", "service_item", "service_before",
+# The view layer declares no GlobalID field (objectIdField OBJECTID only,
+# globalIdField empty as served 2026-11-14).
+LAYER_GLOBAL_ID_FIELD = ""
+METADATA_NAMES = ("service_doc", "view_item", "layer_sources", "service_before",
                   "layer_before", "count_before", "ids_before")
 # Data-page receipts are staged verbatim per page; the bounded source-manifest
 # layer represents them with one aggregate input whose digest covers the full
@@ -275,7 +291,8 @@ def _polygon_wkb(geometry: object) -> tuple[bytes | None, str | None]:
     """WKB for one feature's Esri rings under the producer's verified ring semantics.
 
     Esri JSON (verified on the 2026-11-13 probes: 4,098 rings over 3,200
-    features): the layer has no Z or M, every vertex carries exactly two
+    features of the superseded service, and on the 2026-11-14 probes of this
+    view): the layer has no Z or M, every vertex carries exactly two
     ordinates, every ring is explicitly closed, clockwise rings are exteriors
     and counter-clockwise rings are holes. Vertices are passed to shapely
     verbatim; exteriors with no claimable hole keep their ring order and holes
@@ -513,19 +530,46 @@ def _validate_item_document(item: object, item_id: str, label: str) -> None:
 def _validate_service_document(service: object, label: str) -> None:
     if not isinstance(service, dict):
         raise PadUsProtectionError("source_service_or_layer_document_invalid")
-    if service.get("copyrightText") != EXPECTED_COPYRIGHT_TEXT:
+    # The combined view service document carries an empty copyrightText and
+    # serviceDescription as served (observed 2026-11-14); the producer
+    # identity statement is pinned on the layer document instead.
+    # The combined view service document carries an empty copyrightText and
+    # serviceDescription as served (observed 2026-11-14); the producer
+    # identity statement is pinned on the layer document instead.
+    if service.get("copyrightText") != "":
         raise PadUsProtectionError("usgs_padus_service_identity_drift:" + label)
+    if str(service.get("serviceDescription", "")) != EXPECTED_SERVICE_DESCRIPTION:
+        raise PadUsProtectionError("usgs_padus_service_description_drift:" + label)
     layers = service.get("layers")
     roster = [(entry.get("id"), entry.get("name")) for entry in layers
               if isinstance(entry, dict)] if isinstance(layers, list) else None
     if roster != EXPECTED_SERVICE_LAYERS:
         raise PadUsProtectionError("usgs_padus_service_layer_roster_drift:" + label)
-    description = str(service.get("serviceDescription", ""))
-    if description != EXPECTED_SERVICE_DESCRIPTION:
-        raise PadUsProtectionError("usgs_padus_service_description_drift:" + label)
     reference = service.get("spatialReference")
     if not isinstance(reference, dict) or reference.get("latestWkid") != NATIVE_LAYER_SR["latestWkid"]:
         raise PadUsProtectionError("source_service_spatial_reference_drift:" + label)
+
+
+def _validate_sources_document(document: object) -> None:
+    """Pin the actual view-to-input relationship of the USGS-linked view.
+
+    The combined view's ``/0/sources`` document names the source layer that
+    backs it; it is the anonymously readable evidence that this pipeline
+    captures the producer's maintained view rather than an unrelated service.
+    The source service itself answers anonymous requests with permission
+    errors (item HTTP 403, service token-required, observed 2026-11-14), so
+    only this document is retained.
+    """
+    if not isinstance(document, dict):
+        raise PadUsProtectionError("usgs_padus_sources_document_invalid")
+    layers = document.get("layers")
+    if not isinstance(layers, list) or len(layers) != 1 or not isinstance(layers[0], dict):
+        raise PadUsProtectionError("usgs_padus_sources_document_invalid")
+    entry = layers[0]
+    if (entry.get("name") != LAYER_NAME
+            or entry.get("serviceItemId") != SOURCE_SERVICE_ITEM_ID
+            or entry.get("url") != SOURCE_LAYER_URL):
+        raise PadUsProtectionError("usgs_padus_view_source_relationship_drift")
 
 
 def _validate_layer_document(layer: object) -> tuple[list[dict[str, object]], str]:
@@ -534,13 +578,17 @@ def _validate_layer_document(layer: object) -> tuple[list[dict[str, object]], st
     if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
             or layer.get("type") != "Feature Layer" or layer.get("geometryType") != GEOMETRY_TYPE):
         raise PadUsProtectionError("exact_padus_protection_mechanism_layer_metadata_drift")
+    if layer.get("copyrightText") != EXPECTED_COPYRIGHT_TEXT:
+        raise PadUsProtectionError("usgs_padus_layer_identity_drift")
     if layer.get("hasZ") is not False or layer.get("hasM") is not False:
         raise PadUsProtectionError("source_layer_z_or_m_contract_drift")
-    if layer.get("objectIdField") != "OBJECTID" or layer.get("globalIdField") != "GlobalID":
+    if (layer.get("objectIdField") != "OBJECTID"
+            or layer.get("globalIdField") != LAYER_GLOBAL_ID_FIELD):
         raise PadUsProtectionError("source_id_field_changed")
     if layer.get("advancedQueryCapabilities", {}).get("supportsPagination") is not True:
         raise PadUsProtectionError("source_pagination_capability_changed")
-    if layer.get("maxRecordCount") != 2000 or PAGE_SIZE > 2000:
+    if layer.get("maxRecordCount") != EXPECTED_MAX_RECORD_COUNT \
+            or PAGE_SIZE > EXPECTED_MAX_RECORD_COUNT:
         raise PadUsProtectionError("source_record_limit_drift")
     source_reference = layer.get("sourceSpatialReference")
     if (source_reference is not None
@@ -585,7 +633,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     if VIEW_ITEM_ID.encode("utf-8") not in service_doc_body:
         raise PadUsProtectionError("usgs_service_documentation_link_drift")
     _validate_item_document(docs["view_item"], VIEW_ITEM_ID, "view_item")
-    _validate_item_document(docs["service_item"], SERVICE_ITEM_ID, "service_item")
+    _validate_sources_document(docs["layer_sources"])
     service, layer = docs["service_before"], docs["layer_before"]
     _validate_service_document(service, "service_before")
     fields, schema_sha = _validate_layer_document(layer)
@@ -826,7 +874,7 @@ def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, clie
         for name in METADATA_NAMES:
             url = {"service_doc": SERVICE_DOC_URL,
                    "view_item": SHARING_ITEM_URL.format(item=VIEW_ITEM_ID),
-                   "service_item": SHARING_ITEM_URL.format(item=SERVICE_ITEM_ID),
+                   "layer_sources": LAYER_URL + "/sources?f=pjson",
                    "service_before": SERVICE_URL + "?f=pjson",
                    "layer_before": LAYER_URL + "?f=pjson",
                    "count_before": _count_url(),
@@ -953,6 +1001,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
+             "source_ids_sha256": extracted["ids_sha"],
              "source_schema_sha256": extracted["schema_sha"]},
             parquet_descriptor)
     audit = {
@@ -975,7 +1024,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "source_fields": extracted["fields"],
         "official_layer_name": LAYER_NAME, "layer_id": LAYER_ID,
         "service_url": SERVICE_URL, "view_item_id": VIEW_ITEM_ID,
-        "service_item_id": SERVICE_ITEM_ID,
+        "source_service_item_id": SOURCE_SERVICE_ITEM_ID,
+        "source_layer_url": SOURCE_LAYER_URL,
         "service_doc_url": SERVICE_DOC_URL,
         "crosswalk_doi": "10.3886/E241367V1",
         "crosswalk_row_note": "The DHS HIFLD Open crosswalk (created by DHS in August 2025) "
@@ -989,19 +1039,18 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
-            "The service's own labels are stale producer labels: the layer name and "
-            "copyrightText cite the 2022 PAD-US 3.0 release (DOI 10.5066/P9Q9LQ4B) while the "
-            "service data was last edited 2024-03-20 (editingInfo.lastEditDate) and USGS's "
-            "published FGDC metadata for this service describes it as PAD-US 4.0 "
-            "(publication date 2024-04-25). No per-snapshot release date is published by the "
-            "service; the version relationship is an unaccepted maintainer decision.",
+            "The service publishes no per-snapshot release date: the layer copyrightText "
+            "cites the PAD-US 4.1 data release (2025, DOI 10.5066/P96WBCHS), the layer is "
+            "named PADUS4_1ProtMechCat, and the service data was last edited 2025-06-04 "
+            "(editingInfo.dataLastEditDate; schema last edit 2026-04-22). The exact "
+            "source release date is an unaccepted maintainer freshness decision.",
         "pagination": {"mode": "objectid_keyset_asc", "page_size": PAGE_SIZE,
                        "pages": (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE,
                        "tail_witness_page": True, "resumable": True,
                        "resumed_pages": resumed_pages,
                        "id_roster_enumeration_note":
-                           "returnIdsOnly works for this producer (441,609 contiguous ids "
-                           "1..441,609 observed 2026-11-13); completeness uses the pinned "
+                           "returnIdsOnly works for this producer (656,986 contiguous ids "
+                           "1..656,986 observed 2026-11-14); completeness uses the pinned "
                            "count, the pinned sorted-roster digest captured before and after "
                            "the walk, the strict ascending OBJECTID walk, the page-count "
                            "ceiling and the empty tail-page witness.",
@@ -1017,10 +1066,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     source_objects = {parquet_name: parquet_descriptor}
     receipts = _load_receipt_map(capture_root)
     _unknown_release_reason = (
-        "The service publishes no per-snapshot release date; its copyrightText records the "
-        "2022 PAD-US 3.0 release while its data was last edited 2024-03-20 and USGS's "
-        "published metadata describes the service as PAD-US 4.0 (2024-04-25). The version "
-        "relationship is an unaccepted maintainer decision.")
+        "The service publishes no per-snapshot release date; its layer copyrightText "
+        "records the PAD-US 4.1 data release (2025, DOI 10.5066/P96WBCHS) and its data "
+        "was last edited 2025-06-04 (editingInfo.dataLastEditDate). The exact source "
+        "release date is an unaccepted maintainer freshness decision.")
     _input_license = ("Public domain (U.S. Government work) per the producer metadata; "
                       "rights acceptance pending.")
     _input_attribution = ("USGS Gap Analysis Project (GAP), Protected Areas Database of the "
@@ -1069,16 +1118,18 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "title": "PAD-US Protection Mechanism Category (USGS GAP)",
         "description": "USGS Gap Analysis Project (GAP) PAD-US Protection Mechanism Category "
                        "feature-layer view (services.arcgis.com "
-                       "Protection_Mechanism_Category/FeatureServer/0, USGS-owned ArcGIS "
-                       "items " + VIEW_ITEM_ID + " and " + SERVICE_ITEM_ID + "), captured "
-                       "completely from the producer's own REST publication as the maintained "
-                       "USGS-linked publication named by the HIFLD Open inventory entry "
+                       "Protection_Mechanism_Category_PADUS/FeatureServer/0, layer "
+                       "PADUS4_1ProtMechCat; USGS-owned ArcGIS view item " + VIEW_ITEM_ID +
+                       ", whose anonymously readable /0/sources document names the "
+                       "underlying source layer " + SOURCE_LAYER_URL + ", hosted service "
+                       "item " + SOURCE_SERVICE_ITEM_ID + "), captured completely from the "
+                       "producer's own REST publication as the maintained USGS-linked "
+                       "publication named by the HIFLD Open inventory entry "
                        "pad-us-protection-mechanism-category. Complete source attributes and "
                        "EPSG:4326 polygon geometry are represented in the candidate. The "
-                       "service's own labels cite PAD-US 3.0 (2022) while its data was last "
-                       "edited 2024-03-20 and USGS metadata describes the service as PAD-US "
-                       "4.0; succession, freshness, schema/ID contract, coverage, rights and "
-                       "release acceptance remain unresolved and unapproved.",
+                       "layer copyright cites PAD-US 4.1 (2025, DOI 10.5066/P96WBCHS) and "
+                       "its data was last edited 2025-06-04; schema/ID contract, coverage, "
+                       "rights and release acceptance remain unresolved and unapproved.",
         "publisher": PUBLISHER, "agency": "U.S. Geological Survey", "source_url": LAYER_URL,
         "license": "Public domain (U.S. Government work); producer metadata states no access "
                    "or use constraints. Rights acceptance pending.",
@@ -1095,9 +1146,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                                              "producer order and declared physical "
                                                              "types, including the service-generated "
                                                              "Shape__Area and Shape__Length doubles",
-                                            "source_ids": "Preserve producer OBJECTID and GlobalID "
-                                                          "values unchanged; no substitute IDs, "
-                                                          "casts or joins",
+                                             "source_ids": "Preserve producer OBJECTID values "
+                                                           "unchanged (the view layer declares "
+                                                           "no GlobalID field); no substitute "
+                                                           "IDs, casts or joins",
                                             "geometry": "Source EPSG:4326 polygon rings retained "
                                                         "as WKB without projection or repair under "
                                                         "the producer's verified ring semantics "
@@ -1120,22 +1172,26 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                    "designations, easements, leases and agreements, marine areas, proclamation "
                    "outlines). USGS's own PAD-US Web Services page links the feature-layer view "
                    "(ArcGIS item 80c7a138989c4cf8937c4502371d6e99, owner "
-                   "mcroft@usgs.gov_USGS, org v01gqwM5QqNysAAi) backed by the USGS-owned hosted "
-                   "service item 22670023fd124c799d5ddd08297dde85; both item documents are "
-                   "captured as identity evidence. The service's own layer name and "
-                   "copyrightText cite PAD-US 3.0 (2022, DOI 10.5066/P9Q9LQ4B) while the "
-                   "service data was last edited 2024-03-20 (editingInfo.lastEditDate) and "
-                   "USGS's published FGDC metadata for this service describes it as PAD-US 4.0 "
-                   "(publication date 2024-04-25, processing environment PADUS4_0Geodatabase.gdb). "
-                   "The PAD-US 4.1 Full Inventory Database (2024, DOI 10.5066/P96WBCHS, "
-                   "ScienceBase item 652d4fc5d34e44db0e2ee45e, observed HTTP 200 anonymously on "
-                   "2026-11-13) is the current national database release but publishes the "
-                   "separate PAD-US feature classes, not this combined producer view, so the "
-                   "draft pins the maintained USGS-linked view service and the version "
-                   "relationship remains an unaccepted maintainer freshness/succession "
-                   "decision. The DataLumos project 240685 archive copy (archive modification "
-                   "2025-06-04) is identification and comparison context only and is never "
-                   "fetched.",
+                   "mcroft@usgs.gov_USGS, org v01gqwM5QqNysAAi); that item's service URL is the "
+                   "combined view Protection_Mechanism_Category_PADUS/FeatureServer (layer "
+                   "PADUS4_1ProtMechCat), whose anonymously readable /0/sources document names "
+                   "the underlying source layer ProtMechCat_A/FeatureServer/0 (hosted service "
+                   "item 126eef9409ce48b0a9e55c2fe8fd77b8; both that item document and the "
+                   "source service answer anonymous requests with permission errors, so only "
+                   "the sources document is retained as the view-to-input relationship "
+                   "evidence). The layer copyright cites PAD-US 4.1 (2025, DOI 10.5066/P96WBCHS "
+                   "- the release DOI of the PAD-US 4.1 Full Inventory Database, ScienceBase "
+                   "item 652d4fc5d34e44db0e2ee45e, observed HTTP 200 anonymously on "
+                   "2026-11-13) and the service data was last edited 2025-06-04 "
+                   "(editingInfo.dataLastEditDate). The previously captured combined service "
+                   "Protection_Mechanism_Category/FeatureServer (hosted item "
+                   "22670023fd124c799d5ddd08297dde85; 441,609 features; layer self-labeled "
+                   "PAD-US v3.0 with copyright citing the 2022 PAD-US 3.0 release, DOI "
+                   "10.5066/P9Q9LQ4B; data last edited 2024-03-20; USGS FGDC metadata "
+                   "describing it as PAD-US 4.0, publication date 2024-04-25) is superseded by "
+                   "this USGS-linked view and stays research context only. The DataLumos "
+                   "project 240685 archive copy (archive modification 2025-06-04) is "
+                   "identification and comparison context only and is never fetched.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "Complete native source fields, IDs, values, physical nulls and "
                       "polygon geometry retained in the producer page CRS; all succession, "
@@ -1228,7 +1284,7 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
             # unusable-gated ones (read live so fixture overrides hold).
             "source_null_geometry_count": (EXPECTED_NULL_GEOMETRY_COUNT
                                            + sum(EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values())),
-            "source_id_sha256": audit.get("source_ids_sha256", ""),
+            "source_id_sha256": audit["source_ids_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_release_accepted": False, "source_freshness_accepted": False,

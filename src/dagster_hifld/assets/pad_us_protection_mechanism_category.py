@@ -35,13 +35,14 @@ class PadUsProtectionMechanismCategoryConfig(Config):
     compute_kind="http",
     description=(
         "USGS GAP PAD-US Protection Mechanism Category FeatureServer layer 0 "
-        "(441,609 source features observed 2026-11-13) as the maintained "
+        "(656,986 source features observed 2026-11-14) as the maintained "
         "USGS-linked publication named by the HIFLD inventory entry "
-        "pad-us-protection-mechanism-category. Resumable gzip keyset-streamed "
-        "complete capture; unapproved faithful candidate. The service's own "
-        "labels cite PAD-US 3.0 (2022) while its data was last edited "
-        "2024-03-20 and USGS metadata describes the service as PAD-US 4.0; "
-        "version, freshness, schema/ID contract, rights and release decisions "
+        "pad-us-protection-mechanism-category: the combined view "
+        "Protection_Mechanism_Category_PADUS/FeatureServer (layer "
+        "PADUS4_1ProtMechCat) linked by USGS's PAD-US Web Services page, whose "
+        "layer copyright cites PAD-US 4.1 (2025) and whose data was last edited "
+        "2025-06-04. Resumable gzip keyset-streamed complete capture; unapproved "
+        "faithful candidate. Schema/ID contract, rights and release decisions "
         "remain pending."
     ),
 )

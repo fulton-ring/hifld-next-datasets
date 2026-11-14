@@ -72,10 +72,10 @@ def _fixture_attrs(oid: object) -> dict:
         "Comments": None,
         "EsmtHldr": "Fixture Holder" if index == 2 else None,
         "EHoldTyp": "NGO" if index == 2 else None,
-        "WebMercAc": 456 + index,
+        "WebServiceMangName": "FWS" if index == 0 else None,
+        "TranspPct": 40 + index if index % 2 == 0 else None,
         "Shape__Area": 9564422.8 + index,
         "Shape__Length": 61.22714663080581 + index,
-        "GlobalID": f"{{00000000-0000-0000-0000-{oid:012d}}}",
     }
 
 
@@ -107,7 +107,9 @@ def _fixture_layer_fields() -> list[dict]:
 def _fixture_layer_doc(fields: list[dict]) -> dict:
     return {"id": src.LAYER_ID, "name": src.LAYER_NAME, "type": "Feature Layer",
             "geometryType": src.GEOMETRY_TYPE, "hasZ": False, "hasM": False,
-            "maxRecordCount": 2000, "objectIdField": "OBJECTID", "globalIdField": "GlobalID",
+            "copyrightText": src.EXPECTED_COPYRIGHT_TEXT,
+            "maxRecordCount": src.EXPECTED_MAX_RECORD_COUNT,
+            "objectIdField": "OBJECTID", "globalIdField": src.LAYER_GLOBAL_ID_FIELD,
             "advancedQueryCapabilities": {"supportsPagination": True},
             "spatialReference": dict(src.NATIVE_LAYER_SR),
             "extent": {**src.EXPECTED_LAYER_EXTENT,
@@ -115,8 +117,17 @@ def _fixture_layer_doc(fields: list[dict]) -> dict:
             "fields": fields}
 
 
+def _fixture_sources_doc() -> dict:
+    return {"currentVersion": 12,
+            "layers": [{"name": src.LAYER_NAME, "serviceItemId": src.SOURCE_SERVICE_ITEM_ID,
+                        "url": src.SOURCE_LAYER_URL}]}
+
+
 def _fixture_service_doc() -> dict:
-    return {"copyrightText": src.EXPECTED_COPYRIGHT_TEXT,
+    # The combined view service document carries an empty copyrightText and
+    # serviceDescription as served (observed 2026-11-14); the layer document
+    # carries the producer copyright.
+    return {"copyrightText": "",
             "serviceDescription": src.EXPECTED_SERVICE_DESCRIPTION,
             "spatialReference": {"wkid": 102100, "latestWkid": 3857},
             "layers": [{"id": layer_id, "name": name}
@@ -154,7 +165,8 @@ class JSONStream(httpx.SyncByteStream):
 
 def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=None,
                    layer=None, geometry=None, doc_page=None, item_owner=None,
-                   data_rows=None, page_has_z: bool | None = False) -> httpx.MockTransport:
+                   data_rows=None, page_has_z: bool | None = False,
+                   layer_sources=None) -> httpx.MockTransport:
     count = count if count is not None else len(rows)
     layer_fields = layer_fields if layer_fields is not None else _fixture_layer_fields()
     data_rows = data_rows if data_rows is not None else rows
@@ -167,6 +179,7 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
         return _fixture_layer_doc(layer_fields)
 
     service_doc = service if service is not None else _fixture_service_doc()
+    sources_doc = layer_sources if layer_sources is not None else _fixture_sources_doc()
 
     def respond(request: httpx.Request) -> httpx.Response:
         path = urlparse(str(request.url)).path
@@ -186,6 +199,9 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
                                   headers={"content-type": "application/json"})
         if path.rstrip("/").endswith("FeatureServer"):
             return httpx.Response(200, stream=JSONStream(service_doc),
+                                  headers={"content-type": "application/json"})
+        if path.rstrip("/").endswith("/sources"):
+            return httpx.Response(200, stream=JSONStream(sources_doc),
                                   headers={"content-type": "application/json"})
         if path.rstrip("/").endswith(f"/{src.LAYER_ID}"):
             return httpx.Response(200, stream=JSONStream(layer_doc()),
@@ -287,52 +303,86 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
         self.assertEqual(
             src.SERVICE_URL,
             "https://services.arcgis.com/v01gqwM5QqNysAAi/ArcGIS/rest/services"
-            "/Protection_Mechanism_Category/FeatureServer")
+            "/Protection_Mechanism_Category_PADUS/FeatureServer")
+        self.assertEqual(src.VIEW_ITEM_ID, "80c7a138989c4cf8937c4502371d6e99")
+        self.assertEqual(src.SOURCE_SERVICE_ITEM_ID, "126eef9409ce48b0a9e55c2fe8fd77b8")
+        self.assertEqual(src.SOURCE_LAYER_URL,
+                         "https://services.arcgis.com/v01gqwM5QqNysAAi/ArcGIS/rest/services"
+                         "/ProtMechCat_A/FeatureServer/0")
         self.assertEqual(src.LAYER_ID, 0)
-        self.assertEqual(src.LAYER_NAME,
-                         "Protected Areas Database of the United States (PAD-US) v3.0")
+        self.assertEqual(src.LAYER_NAME, "PADUS4_1ProtMechCat")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPolygon")
-        self.assertEqual(src.EXPECTED_COUNT, 441_609)
+        self.assertEqual(src.EXPECTED_COUNT, 656_986)
         self.assertEqual(src.PAGE_SIZE, 1000)
         self.assertEqual(len(src.NATIVE_FIELDS), 37)
         self.assertEqual(src.MIN_FREE_BYTES, 25_000_000_000)
         self.assertEqual(src.ACCEPT_ENCODING, "gzip")
-        self.assertNotEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertNotEqual(src.EXPECTED_GEOMETRY_SHA256, "")
-        self.assertNotEqual(src.EXPECTED_IDS_SHA256, "")
-        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
-                         {"source_polygon_ring_degenerate": 302,
-                          "source_polygon_hole_unassigned": 40})
+        # The per-value and per-geometry baselines stay unpinned until the
+        # first complete capture of the maintained view; the ID roster and
+        # schema digests are pinned from the 2026-11-14 probes.
+        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
+        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
+        self.assertEqual(src.EXPECTED_IDS_SHA256,
+                         "136194b0dfac75e6d781c82e4d3d2a2a0e39074059326628c9182730bd312c7b")
+        self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
+                         "020f3a55a746d9280b8750d6401a8fdd6c1579ffb6a0c8d325dd854ff4762f4a")
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
                             for key in keys))
 
     def test_blocking_completeness_check_gates_the_pinned_null_contract(self):
-        # Every producer null geometry in the complete capture is an
+        # Every producer null geometry is either a true null or an
         # unusable-ring gate, so the blocking check must accept exactly the
-        # pinned gated-null contract and reject any drift from it.
+        # pinned contract and reject any drift from it. Pending the first
+        # complete capture of the maintained view the pinned families are
+        # empty, so any null geometry fails the capture closed.
         contract = (src.EXPECTED_NULL_GEOMETRY_COUNT
                     + sum(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values()))
-        self.assertEqual(contract, 342)
+        self.assertEqual(contract, 0)
         self.assertTrue(pad_us_protection_mechanism_category_complete_contract(
             {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": contract}))
         self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
             {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": contract + 1}))
         self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
             {"feature_count": src.EXPECTED_COUNT - 1, "source_null_geometry_count": contract}))
+        # Once observed counts are pinned (as the superseded service's capture
+        # pinned 302 degenerate rings and 40 unassigned holes), the contract
+        # gates exactly those gated nulls.
+        import dagster_hifld.assets.pad_us_protection_mechanism_category as asset_module
+        with patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
+                          {"source_polygon_ring_degenerate": 302,
+                           "source_polygon_hole_unassigned": 40}), \
+                patch.object(asset_module, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
+                             {"source_polygon_ring_degenerate": 302,
+                              "source_polygon_hole_unassigned": 40}):
+            pinned = (src.EXPECTED_NULL_GEOMETRY_COUNT
+                      + sum(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values()))
+            self.assertEqual(pinned, 342)
+            self.assertTrue(pad_us_protection_mechanism_category_complete_contract(
+                {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": pinned}))
+            self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
+                {"feature_count": src.EXPECTED_COUNT,
+                 "source_null_geometry_count": pinned + 1}))
 
     def test_pinned_producer_geometry_defect_contract(self):
         # Producer-served unusable rings are gated to explicit nulls and
         # OGC-invalid (self-intersecting) polygons are retained verbatim; both
-        # counts are pinned from the first complete capture and any change
-        # fails the next capture.
-        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
-                         {"source_polygon_ring_degenerate": 302,
-                          "source_polygon_hole_unassigned": 40})
-        self.assertEqual(src.EXPECTED_INVALID_GEOMETRY_COUNT, 3479)
-        self.assertNotEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertNotEqual(src.EXPECTED_GEOMETRY_SHA256, "")
+        # counts are pinned from a complete capture and any change fails the
+        # next capture. Pending the first complete capture of the maintained
+        # view the pins are empty/zero, so any occurrence fails closed.
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
+        self.assertEqual(src.EXPECTED_INVALID_GEOMETRY_COUNT, 0)
+        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
+        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
+
+    def test_nonnullable_oid_value_null_is_refused(self):
+        # OBJECTID is the only non-nullable source attribute (the view layer
+        # declares no GlobalID field); a null must be refused at the value gate.
+        with self.assertRaisesRegex(src.PadUsProtectionError,
+                                    "source_nonnullable_value_is_null:OBJECTID"):
+            src._validate_value("OBJECTID", "esriFieldTypeOID", False, None)
 
     def test_native_catalog_quality_honors_the_pinned_defect_contract(self):
         # The full-population native catalog gate must accept a staged
@@ -642,6 +692,13 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                                                      capture_directory=str(capture_root))
             self.assertTrue(reused["reused"])
             self.assertFalse(fresh["reused"])
+            # The validated producer ID-roster digest must survive the cached
+            # reuse path: first seal and reuse report the same non-empty
+            # digest (regression for the dropped source_ids_sha256 pass-through).
+            self.assertEqual(first["source_id_sha256"], _FIXTURE_IDS_SHA)
+            self.assertEqual(reused["source_id_sha256"], first["source_id_sha256"])
+            self.assertEqual(fresh["source_id_sha256"], first["source_id_sha256"])
+            self.assertNotEqual(first["source_id_sha256"], "")
             self.assertEqual(fresh["version"], first["version"])
             self.assertEqual(fresh["feature_count"], FIXTURE_COUNT)
             sealed = (f"{src.DATASET_SLUG}/{src.FILE_SLUG}/{first['version']}"
@@ -654,7 +711,7 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
     def test_stream_validate_extrema_are_running_and_memory_bounded(self):
         """Bounds stay four running extrema; per-vertex retention is refused.
 
-        Holding both ordinate floats for every vertex of the 441,609-feature
+        Holding both ordinate floats for every vertex of the 656,986-feature
         population would retain gigabytes during the streaming validation, so
         this regression walks many vertex-heavy pages and requires the traced
         peak to stay below the accumulation the old list layout needed.
@@ -848,6 +905,13 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
             "usgs_padus_service_description_drift:service_before": dict(
                 service={**_fixture_service_doc(),
                          "serviceDescription": "legacy NHD service."}),
+            "usgs_padus_view_source_relationship_drift": dict(
+                layer_sources={"layers": [{"name": src.LAYER_NAME,
+                                           "serviceItemId": "00000000000000000000000000000000",
+                                           "url": src.SOURCE_LAYER_URL}]}),
+            "usgs_padus_layer_identity_drift": dict(
+                layer={**_fixture_layer_doc(_fixture_layer_fields()),
+                       "copyrightText": "PAD-US 3.0 (2022)."}),
             "exact_padus_protection_mechanism_layer_metadata_drift": dict(
                 layer={**_fixture_layer_doc(_fixture_layer_fields()),
                        "geometryType": "esriGeometryPolyline"}),
@@ -878,17 +942,17 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
             "source_object_id_type_changed": dict(
                 data_rows=[{**rows[0], "attributes": {**rows[0]["attributes"], "OBJECTID": None}},
                            *rows[1:]]),
+            "source_native_type_changed:TranspPct": dict(rows=[
+                {**rows[0], "attributes": {**rows[0]["attributes"], "TranspPct": "40"}},
+                *rows[1:]]),
             "source_native_type_changed:GIS_Acres": dict(rows=[
                 {**rows[0], "attributes": {**rows[0]["attributes"], "GIS_Acres": "123"}},
                 *rows[1:]]),
             "source_native_type_changed:Shape__Area": dict(rows=[
                 {**rows[0], "attributes": {**rows[0]["attributes"], "Shape__Area": "big"}},
                 *rows[1:]]),
-            "source_nonnullable_value_is_null:GlobalID": dict(rows=[
-                {**rows[0], "attributes": {**rows[0]["attributes"], "GlobalID": None}},
-                *rows[1:]]),
             "source_record_schema_or_geometry_drift": dict(rows=[
-                {**rows[0], "attributes": {"OBJECTID": 1, "GlobalID": "x"}},
+                {**rows[0], "attributes": {"OBJECTID": 1, "Category": "Fee"}},
                 *rows[1:]]),
             "usgs_service_documentation_link_drift": dict(
                 doc_page=b"<html>an unrelated page without the service host</html>"),
