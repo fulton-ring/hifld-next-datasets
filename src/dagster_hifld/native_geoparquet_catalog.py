@@ -37,6 +37,10 @@ SAMPLE_BYTES=64*1024*1024
 BATCH_ROWS=128
 BATCH_BYTES=128*1024*1024
 GEOMETRY_TYPES={'Point','LineString','Polygon','MultiPoint','MultiLineString','MultiPolygon','GeometryCollection'}
+# GeoParquet 1.1 geometry_types dimension suffixes (ISO WKB ordinate grammar);
+# measured (M) ordinates are legal served content and stay readable by the
+# 2D/3D shapely parsing used below, so declared M-suffixed types are accepted.
+GEOMETRY_DIMENSIONS=('',' Z',' M',' ZM')
 
 
 def _pairs(items):
@@ -167,7 +171,7 @@ def geometry_metadata(schema):
     if type(column)is not dict or column.get('encoding')!='WKB' or not(pa.types.is_binary(schema.field(primary).type)or pa.types.is_large_binary(schema.field(primary).type)):
         raise ValueError('native_geoparquet_requires_binary_WKB')
     kinds=column.get('geometry_types')
-    if(type(kinds)is not list or any(type(v)is not str or v.removesuffix(' Z')not in GEOMETRY_TYPES for v in kinds)or len(kinds)!=len(set(kinds))):
+    if(type(kinds)is not list or any(type(v)is not str or not any(v==base+dimension for dimension in GEOMETRY_DIMENSIONS for base in GEOMETRY_TYPES)for v in kinds)or len(kinds)!=len(set(kinds))):
         raise ValueError('native_geoparquet_invalid_declared_geometry_types')
     if column.get('edges','planar')!='planar':raise ValueError('native_geoparquet_spherical_edges_not_supported')
     if 'crs'in column and column['crs']is None:raise ValueError('native_geoparquet_explicit_null_crs_unknown')
