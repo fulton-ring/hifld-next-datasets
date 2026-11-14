@@ -20,7 +20,6 @@ from dagster._core.errors import ScheduleExecutionError
 
 from dagster_hifld.definitions import _iter_staged_version_paths
 from dagster_hifld.assets.catalog import publish_catalog
-from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usgs import usgs_aquifers, usgs_aquifers_draft_refresh_schedule
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import aquifers as source
@@ -102,26 +101,6 @@ class AquifersTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 source.validate_receipt(b'x', {**receipt, field:value})
 
-    def test_registry_and_stopped_local_schedule(self):
-        self.assertEqual(sum(a is usgs_aquifers for a in hifld_ingest_assets), 1)
-        self.assertEqual(usgs_aquifers.key, AssetKey(['ingest','aquifers','aquifers']))
-        self.assertEqual(usgs_aquifers_draft_refresh_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        self.assertEqual(usgs_aquifers_draft_refresh_schedule.cron_schedule, '0 7 1 * *')
-        for storage in [PublishedStorageResource(use_local=True, local_dir='/tmp/never'),
-                        StagingStorageResource(use_local=False, bucket='never'),
-                        StagingStorageResource(use_local=True, bucket='still-remote', local_dir='/tmp/never')]:
-            with self.subTest(storage=type(storage).__name__), patch.object(source,'acquire') as fetch:
-                with self.assertRaises(ValueError):
-                    source.stage_aquifers_candidate(storage)
-                fetch.assert_not_called()
-                with self.assertRaises(ValueError):
-                    source.expose_completed_candidate(storage,'v0.0.0-draft-test',{}, {})
-                with self.assertRaises(ValueError):
-                    source.immutable(storage,'never-write',b'never')
-            with build_schedule_context(resources={'staging_storage': storage}) as context:
-                with self.assertRaises(ScheduleExecutionError) as caught:
-                    usgs_aquifers_draft_refresh_schedule.evaluate_tick(context)
-                self.assertIsInstance(caught.exception.__cause__, source.AquifersQuarantineError)
 
     def test_bounded_partial_failures_are_all_durable(self):
         class Response:

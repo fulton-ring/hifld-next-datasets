@@ -28,6 +28,7 @@ from shapely.errors import GEOSException
 
 from dagster_hifld.output_policy import prebuilt_output_spec
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.source_manifest import BOUNDED_SOURCE_MANIFEST_READ_BYTES
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
 from dagster_hifld.validation import sha256_file
@@ -109,7 +110,7 @@ def _manifest_snapshots(storage,metadata):
             raise ValueError('native_geoparquet_unsafe_manifest_identity')
         if storage.use_local or not storage.bucket:_safe_local_key(storage,storage._ensure_prefixed(key))
         snapshot=storage.object_snapshot(key)
-        if snapshot is None or snapshot.size>2*1024*1024:raise ValueError('native_geoparquet_missing_or_oversized_source_manifest')
+        if snapshot is None or snapshot.size>BOUNDED_SOURCE_MANIFEST_READ_BYTES:raise ValueError('native_geoparquet_missing_or_oversized_source_manifest')
         body=storage.read_key_range(key,0,snapshot.size,expected_snapshot=snapshot)
         if hashlib.sha256(body).hexdigest()!=expected:raise ValueError('native_geoparquet_source_manifest_identity_changed')
         pins.append((key,snapshot,expected))

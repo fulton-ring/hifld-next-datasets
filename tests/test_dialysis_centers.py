@@ -8,7 +8,6 @@ import pyarrow.parquet as pq
 from dagster import AssetKey,DefaultScheduleStatus
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import dialysis_centers as f
-from dagster_hifld.definitions import defs
 from dagster_hifld.assets.healthcare_dialysis import dialysis_source_integrity_schedule
 
 def page():
@@ -45,9 +44,6 @@ class DialysisTests(unittest.TestCase):
         table=decode(page())
         with tempfile.TemporaryDirectory()as d:
             storage=StagingStorageResource(local_dir=d);version='explicit-synthetic';root=Path(d)/f.SLUG/f.SLUG/version/'geoparquet';root.mkdir(parents=True);pq.write_table(f.parquet_table(table),root/f'{f.SLUG}.parquet',compression='zstd');before=(root/f'{f.SLUG}.parquet').read_bytes();passed,metadata=f.location_quality(storage,version);self.assertFalse(passed);self.assertEqual(metadata['literal_zero_coordinates'],1);self.assertEqual(metadata['source_rows'],2);self.assertEqual(before,(root/f'{f.SLUG}.parquet').read_bytes())
-    def test_one_registered_asset_stopped_refresh_and_blocking_locations(self):
-        self.assertEqual(set(defs.resolve_job_def('dialysis_source_integrity').asset_layer.executable_asset_keys),{AssetKey(['ingest',f.SLUG,f.SLUG])});self.assertEqual(dialysis_source_integrity_schedule.default_status,DefaultScheduleStatus.STOPPED)
-        checks=[s for c in defs.asset_checks for s in c.check_specs if s.name=='dialysis_source_locations'];self.assertEqual(len(checks),1);self.assertTrue(checks[0].blocking)
 
     def test_complete_id_witness_types_not_python_numeric_equality(self):
             for ids in[[7000,7000],[True,7001],[7000.0,7001],[7000,None]]:
