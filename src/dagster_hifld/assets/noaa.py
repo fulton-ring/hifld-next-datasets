@@ -5,14 +5,12 @@ import json
 from pathlib import Path
 
 from dagster import (
-    AssetKey, AssetSelection, DefaultScheduleStatus, Field, RunRequest,
-    ScheduleDefinition, SkipReason, asset, define_asset_job, schedule,
+    AssetKey, AssetSelection, DefaultScheduleStatus, Field, ScheduleDefinition,
+    asset, define_asset_job,
 )
 
 from dagster_hifld.download import build_version_id, download_convert_and_stage
-from dagster_hifld.noaa_overview import SLUG as _OVERVIEW_SLUG, ingest_candidate
-from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.noaa_extract import fetch_noaa_layer, stage_noaa_candidate
 
 _NOAA_MAPSERVER_BASE = (
@@ -198,58 +196,3 @@ noaa_territorial_draft_weekly_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
     description="Stopped weekly Monday 06:00 America/New_York local-draft refresh; activation requires an explicit operator action.",
 )
-
-
-@asset(
-    key=AssetKey(["ingest", _OVERVIEW_SLUG, _OVERVIEW_SLUG]),
-    group_name="noaa",
-    compute_kind="http",
-    description=(
-        "NOAA OCS US Maritime Limits & Boundaries Overview (HIFLD inventory). "
-        "The complete 260-feature polyline layer includes territorial/contiguous "
-        "zones, EEZ and maritime boundaries, and land boundary features. The "
-        "source is proposed and the historical mapping remains unapproved."
-    ),
-    config_schema={"capture_dir": Field(str, default_value="", is_required=False)},
-)
-def noaa_maritime_limits_overview(context, staging_storage: StagingStorageResource) -> dict:
-    capture_dir = context.op_config.get("capture_dir", "")
-    result = ingest_candidate(
-        staging_storage, Path(capture_dir) if capture_dir else None
-    )
-    partition_key = build_publish_partition_key(result["dataset_slug"], result["file_slug"], result["version"])
-    context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [partition_key])
-    return {**result, "partition_key": partition_key}
-
-
-noaa_overview_draft_refresh_job = define_asset_job(
-    "noaa_overview_draft_refresh",
-    selection=AssetSelection.assets(noaa_maritime_limits_overview),
-    tags={"hifld/draft": "true", "hifld/promotion_allowed": "false"},
-)
-
-
-@schedule(
-    job=noaa_overview_draft_refresh_job,
-    cron_schedule="0 6 1 * *",
-    execution_timezone="America/New_York",
-    default_status=DefaultScheduleStatus.STOPPED,
-    required_resource_keys={"staging_storage"},
-)
-def noaa_overview_draft_refresh_schedule(context):
-    """Proposed monthly local check; source update frequency is event driven."""
-    storage = context.resources.staging_storage
-    if isinstance(storage, PublishedStorageResource) or not storage.use_local or storage.bucket:
-        return SkipReason("NOAA Overview refresh is limited to isolated local candidate storage")
-    if context.scheduled_execution_time is None:
-        return SkipReason("NOAA Overview refresh requires an explicit scheduled day")
-    day = context.scheduled_execution_time.date().isoformat()
-    return RunRequest(
-        run_key=f"noaa-overview-draft-{day}",
-        tags={"hifld/draft": "true", "hifld/promotion_allowed": "false"},
-    )
-
-
-INGEST_ASSETS = [noaa_maritime_limits_overview]
-JOBS = [noaa_overview_draft_refresh_job]
-SCHEDULES = [noaa_overview_draft_refresh_schedule]
