@@ -2,6 +2,7 @@ import copy
 import io
 import json
 import math
+import pathlib
 import struct
 from datetime import datetime, timezone
 import unittest
@@ -18,6 +19,7 @@ from dagster_hifld.sources.trails_usgs import (
     _fields,
     _layer_contract_unchanged,
     _parquet,
+    _parquet_pages,
     _validate_page_metadata,
     _validate_polyline_geometry,
     _validate_dimensions_probe,
@@ -230,6 +232,28 @@ class TrailsUSGSTests(unittest.TestCase):
         metadata = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(metadata["columns"]["geometry"]["geometry_types"],
                          ["MultiLineString", "MultiLineString M"])
+
+    def test_parquet_pages_rekeys_served_case_insensitive_attribute_keys(self):
+        # The producer serves the declared 'shape_Length' as 'shape_length';
+        # the page builder must read values through the lowercased served key
+        # while emitting the declared name in the schema (regression for the
+        # KeyError first reached after the geometry contract amendment).
+        import tempfile
+        fields = _fields(_layer_metadata())
+        feature = _feature(0, [[[1.5, -2.5, 7.25], [3.0, 4.0, None]]])
+        served = {"attributes": {key.lower(): value for key, value in feature["attributes"].items()},
+                  "geometry": feature["geometry"]}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "page_00000.body").write_bytes(json.dumps({"features": [served]}).encode())
+            body = _parquet_pages(root, fields, 1)
+        table = pq.read_table(io.BytesIO(body))
+        self.assertIn("shape_Length", table.schema.names)
+        self.assertEqual(table.column("shape_Length")[0].as_py(),
+                         float(feature["attributes"]["shape_Length"]))
+        self.assertEqual(table.column("geometry")[0].as_py(), _wkb_polyline(feature["geometry"]["paths"]))
+        metadata = json.loads(table.schema.metadata[b"geo"])
+        self.assertEqual(metadata["columns"]["geometry"]["geometry_types"], ["MultiLineString M"])
 
     def test_sample_population_parquet_round_trips_attributes_and_native_multilinestring_wkb(self):
         fields = _fields(_layer_metadata())

@@ -650,7 +650,11 @@ def _parquet_pages(root: Path, fields: list[dict], count: int) -> bytes:
             attrs = {str(key).lower(): value for key, value in feature["attributes"].items()}
             for field in fields:
                 kind = field["type"]
-                value = attrs[field["name"]]
+                # Esri field names are case-insensitive on the wire (the
+                # producer serves the declared 'shape_Length' as
+                # 'shape_length'); arrays are keyed by the declared name and
+                # values are read through the lowercased served key.
+                value = attrs[field["name"].lower()]
                 if kind == "esriFieldTypeDate":
                     value = None if value is None else datetime.fromtimestamp(value / 1000, tz=timezone.utc)
                 elif kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"}:
