@@ -1182,7 +1182,13 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
         snapshot = storage.object_snapshot(f"{prefix}/{name}")
         if snapshot is None or snapshot.size != len(body) or storage.sha256_key(f"{prefix}/{name}") != _sha(body):
             raise ValueError("candidate_output_physical_readback_failed:" + name)
-    _upload_immutable_file(storage, f"{prefix}/{parquet_rel}", parquet_path, source_objects[parquet_rel])
+    # The staged copy is verified before the capture-directory source is
+    # released (consume_source, the same receipt-consumed staging the raw
+    # evidence uses below); the capture parquet is recomputed from the raw
+    # evidence on any resumed capture, and releasing it keeps this layer's
+    # ~93 GB raw capture plus staging within one 100 GiB-class disk.
+    _upload_immutable_file(storage, f"{prefix}/{parquet_rel}", parquet_path, source_objects[parquet_rel],
+                           consume_source=True)
     # Only the two listing brackets carry body+wire capture receipts in the
     # construction payload (the shared candidate verifier reads those two
     # evidence shapes); every product zip's integrity is enforced through its

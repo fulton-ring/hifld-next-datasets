@@ -347,142 +347,6 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
     def test_live_mode_capture_writes_pins_and_stages_nothing(self):
         with tempfile.TemporaryDirectory(prefix="fhz-live-") as temporary:
             root = Path(temporary)
-            router = _Router(_default_listing(), self.zips)
-            with self.assertRaisesRegex(source._PinsPendingError, "source_population_pins_not_established"):
-                _run_capture(root, router)
-            self.assertEqual(set(), _root_keys(root))
-            attempt = _attempt(root)
-            contract = json.loads((attempt / "population_pins.json").read_bytes())
-            self.assertEqual(contract["expected_product_count"], 4)
-            self.assertEqual(contract["expected_count"], 5)
-            self.assertEqual(contract["expected_null_geometry_count"], 1)
-            self.assertEqual(contract["expected_nan_geometry_count"], 0)
-            for key in ("expected_product_roster_sha256", "expected_id_sha256",
-                        "expected_schema_sha256", "expected_record_sha256",
-                        "expected_geometry_sha256", "expected_observed_bounds"):
-                self.assertIn(key, contract)
-            manifest = json.loads((attempt / "capture_manifest.json").read_bytes())
-            self.assertTrue(manifest["complete"])
-            self.assertFalse(manifest["staged"])
-            self.assertEqual(manifest["reason_code"], "source_population_pins_not_established")
-
-    def test_pinned_capture_stages_candidate_and_preserves_values(self):
-        with tempfile.TemporaryDirectory(prefix="fhz-pinned-") as temporary:
-            root = Path(temporary)
-            with self.assertRaises(source._PinsPendingError):
-                _run_capture(root, _Router(_default_listing(), self.zips))
-            contract = json.loads((_attempt(root) / "population_pins.json").read_bytes())
-            router = _Router(_default_listing(), self.zips)
-            candidate, storage = _run_capture(root, _Router(_default_listing(), self.zips),
-                                              pins=_pins_from_contract(contract))
-            self.assertFalse(candidate["reused"])
-            self.assertEqual(candidate["feature_count"], 5)
-            self.assertEqual(candidate["source_null_geometry_count"], 1)
-            prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
-            staged = set(storage.list_prefix(prefix))
-            self.assertIn(f"{prefix}/metadata/candidate_ready.json", staged)
-            self.assertIn(f"{prefix}/geoparquet/{source.DATASET_SLUG}.parquet", staged)
-            self.assertIn(f"{prefix}/raw/{PRODUCT_P1[0]}.zip", staged)
-            self.assertIn(f"{prefix}/raw/{PRODUCT_P1[0]}.receipt.json", staged)
-            self.assertIn(f"{prefix}/raw/listing_before.body", staged)
-            self.assertIn(f"{prefix}/raw/listing_before.wire", staged)
-            ready = json.loads(storage.read_key(f"{prefix}/metadata/candidate_ready.json"))
-            self.assertFalse(ready["approved"])
-            self.assertFalse(ready["release_accepted"])
-            self.assertEqual(ready["source_record_sha256"], contract["expected_record_sha256"])
-            manifest = json.loads(storage.read_key(f"{prefix}/metadata/source_manifest.json"))
-            inputs = {entry["input_id"]: entry for entry in manifest["inputs"]}
-            self.assertEqual(len(inputs), 6)
-            self.assertEqual(inputs[PRODUCT_P1[0]]["release_date"], "2023-12-25")
-            self.assertEqual(inputs[PRODUCT_P1[0]]["http_status"], 200)
-            self.assertNotIn(" ", inputs[PRODUCT_P1[0]]["retrieval_url"])
-            parquet_path = root / "readback.parquet"
-            storage.download_key_to(f"{prefix}/geoparquet/{source.DATASET_SLUG}.parquet", parquet_path)
-            table = pq.read_table(parquet_path)
-            self.assertEqual(table.num_rows, 5)
-            self.assertEqual(table.column("DFIRM_ID").to_pylist(),
-                             ["01001C", "01001C", "01003C", "01003C", "560077"])
-            shapes = table.column("SHAPE").to_pylist()
-            self.assertIsNone(shapes[3])
-            geom = shapely.wkb.loads(shapes[0])
-            self.assertEqual(geom.geom_type, "Polygon")
-            self.assertEqual(len(list(geom.interiors)), 1)
-            geom = shapely.wkb.loads(shapes[1])
-            self.assertEqual(geom.geom_type, "MultiPolygon")
-            self.assertEqual(geom.bounds[0], -87.5)
-            self.assertEqual(table.column("STATIC_BFE").to_pylist()[4], -9999.0)
-            # Staging consumed the capture-directory zip sources.
-            self.assertFalse((_attempt(root) / f"{PRODUCT_P1[0]}.zip").exists())
-            manifest_json = json.loads((_attempt(root) / "capture_manifest.json").read_bytes())
-            self.assertTrue(manifest_json["complete"])
-            self.assertTrue(manifest_json["staged"])
-
-    def test_resume_downloads_only_missing_products(self):
-        with tempfile.TemporaryDirectory(prefix="fhz-resume-") as temporary:
-            root = Path(temporary)
-            router = _Router(_default_listing(), self.zips)
-            # Interrupt the first session after two product downloads.
-            router.static_failures = 0
-            listing_bodies = [_default_listing(), _default_listing()]
-            with patch.object(source.httpx, "Client", side_effect=_client_factory(router)):
-                storage = source.StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
-                # capture only the first two products, then simulate a crash by
-                # running a router whose third product download raises forever.
-                first = _Router(_default_listing(), self.zips, static_failures=0)
-                crash = _Router(_default_listing(), self.zips)
-                crash.static_downloads = 2  # next product download raises
-                crash.static_failures = 10**9
-                patcher = patch.object(source.httpx, "Client", side_effect=_client_factory(first))
-                patcher.start()
-                try:
-                    storage  # noqa: B018
-                    import shutil  # noqa: F401
-                finally:
-                    patcher.stop()
-                # run once with a router that fails the 3rd download persistently
-                with patch.multiple(source, **_speed_pins(), ZIP_ATTEMPTS=2):
-                    with self.assertRaises(ValueError):
-                        with patch.object(source.httpx, "Client", side_effect=_client_factory(crash)):
-                            source.capture_nfhl_flood_hazard_zones(
-                                storage, version="vfixture", capture_directory=str(root / "captures"))
-            attempt = _attempt(root)
-            done = {path.name for path in attempt.glob("*.zip")}
-            self.assertEqual(len(done), 2)
-            router = _Router(_default_listing(), self.zips)
-            contract = json.loads((attempt / "population_pins.json").read_bytes()) \
-                if (attempt / "population_pins.json").exists() else None
-            self.assertIsNone(contract)
-            candidate, storage = _run_capture(root, router,
-                                              pins=self._live_pins(root))
-            self.assertFalse(candidate["reused"])
-            # Only the two missing products were downloaded in the second run.
-            # (The first session's failures left no staged candidate; the pins
-            # come from a separate completing live run below.)
-            self.assertEqual(candidate["feature_count"], 5)
-
-    def _live_pins(self, root: Path) -> dict:
-        attempt = _attempt(root)
-        path = attempt / "population_pins.json"
-        if path.exists():
-            return _pins_from_contract(json.loads(path.read_bytes()))
-        with self.assertRaises(source._PinsPendingError):
-            _run_capture(root, _Router(_default_listing(), self.zips))
-        return _pins_from_contract(json.loads(path.read_bytes()))
-
-
-class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls._fixture_dir = tempfile.TemporaryDirectory(prefix="fhz-zips-")
-        cls.zips = _build_fixture_zips(Path(cls._fixture_dir.name))
-
-    @classmethod
-    def tearDownClass(cls):
-        cls._fixture_dir.cleanup()
-
-    def test_live_mode_capture_writes_pins_and_stages_nothing(self):
-        with tempfile.TemporaryDirectory(prefix="fhz-live-") as temporary:
-            root = Path(temporary)
             storage = _storage(root)
             with self.assertRaisesRegex(source._PinsPendingError, "source_population_pins_not_established"):
                 _run_capture(storage, root, _Router(_default_listing(), self.zips))
@@ -549,6 +413,10 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
             self.assertEqual(table.column("STATIC_BFE").to_pylist()[4], -9999.0)
             # Staging consumed the capture-directory zip sources.
             self.assertFalse((_attempt(root) / f"{PRODUCT_P1[0]}.zip").exists())
+            # Staging also consumed the capture-directory parquet source: the
+            # staged copy is the durable one and the candidate is recomputed
+            # from the raw evidence on any resumed capture.
+            self.assertFalse((_attempt(root) / f"{source.DATASET_SLUG}.parquet").exists())
             manifest_json = json.loads((_attempt(root) / "capture_manifest.json").read_bytes())
             self.assertTrue(manifest_json["complete"])
             self.assertTrue(manifest_json["staged"])
@@ -850,6 +718,44 @@ class NfhlFloodHazardZonesDiskFloorTests(unittest.TestCase):
         self.assertEqual(source._disk_floor_bytes(10 * 1024**3), 4_000_000_000)
         # Large capture volumes keep the historical 24 GB floor.
         self.assertEqual(source._disk_floor_bytes(600 * 1024**3), source.MIN_FREE_BYTES)
+
+    @staticmethod
+    def _disk(total: int, free: int):
+        usage = type("Usage", (), {"total": total, "free": free, "used": total - free})
+        return patch.object(source.shutil, "disk_usage", lambda path: usage)
+
+    @classmethod
+    def setUpClass(cls):
+        cls._fixture_dir = tempfile.TemporaryDirectory(prefix="fhz-floor-zips-")
+        cls.zips = _build_fixture_zips(Path(cls._fixture_dir.name))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._fixture_dir.cleanup()
+
+    def test_capture_runs_on_a_small_disk_with_the_raw_capture_resident(self):
+        # 100 GiB-class disk with the ~93 GB raw capture resident: free space
+        # ~6 GB clears the scaled floor and the live capture completes
+        # (writes population_pins.json, stages nothing).
+        with tempfile.TemporaryDirectory(prefix="fhz-smalldisk-") as temporary:
+            root = Path(temporary)
+            with self._disk(total=107_374_182_400, free=6_000_000_000):
+                with self.assertRaisesRegex(source._PinsPendingError,
+                                            "source_population_pins_not_established"):
+                    _run_capture(_storage(root), root, _Router(_default_listing(), self.zips))
+            self.assertTrue((_attempt(root) / "population_pins.json").exists())
+
+    def test_capture_refuses_below_the_scaled_floor_and_keeps_the_large_disk_floor(self):
+        with tempfile.TemporaryDirectory(prefix="fhz-floorrefuse-") as temporary:
+            root = Path(temporary)
+            # Small disk, free space below the scaled floor -> refuse.
+            with self._disk(total=107_374_182_400, free=3_000_000_000):
+                with self.assertRaisesRegex(ValueError, "disk_floor_before_acquisition"):
+                    _run_capture(_storage(root), root, _Router(_default_listing(), self.zips))
+            # Large capture volumes keep the historical 24 GB floor: 20 GB free is refused.
+            with self._disk(total=600 * 1024**3, free=20_000_000_000):
+                with self.assertRaisesRegex(ValueError, "disk_floor_before_acquisition"):
+                    _run_capture(_storage(root), root, _Router(_default_listing(), self.zips))
 
 
 class NfhlFloodHazardZonesWiringTests(unittest.TestCase):
