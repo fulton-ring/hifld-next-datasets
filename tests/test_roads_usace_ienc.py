@@ -105,7 +105,7 @@ class RoadsUsaceIencTests(unittest.TestCase):
         self.assertEqual(table.num_rows, 6)
         self.assertEqual(table.schema.field("Category_of_Road").type.__str__(), "string")
         self.assertEqual(table.schema.field("Scale_Minimum").type.__str__(), "int32")
-        self.assertEqual(table.schema.field("OBJECTID").to_pylist(), [1, 2, 3, 4, 5, 6])
+        self.assertEqual(table.column("OBJECTID").to_pylist(), [1, 2, 3, 4, 5, 6])
         first = struct.unpack("<BI", table.column("geometry")[0].as_py()[:5])
         self.assertEqual(first[1], 5)  # MultiLineString WKB header
 
