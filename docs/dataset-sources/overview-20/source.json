@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "inventory_id": "overview-20",
+  "dataset_slug": "overview-20",
+  "file_slug": "overview-20",
+  "producer": "National Oceanic and Atmospheric Administration, National Ocean Service, Office of Coast Survey",
+  "source": {
+    "service_url": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer",
+    "layer_id": 0,
+    "layer_name": "Overview",
+    "feature_query": "https://maritimeboundaries.noaa.gov/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/0/query?where=1%3D1&outFields=%2A&returnGeometry=true&orderByFields=OBJECTID&resultOffset=0&resultRecordCount=1000&f=pjson",
+    "product_page": "https://nauticalcharts.noaa.gov/data/us-maritime-limits-and-boundaries.html",
+    "metadata_record": "https://www.fisheries.noaa.gov/inport/item/39963",
+    "advertised_service_version": "4.1",
+    "advertised_revision_date": "2013-09-13",
+    "pinned_mapserver_edition_markers": {
+      "documentInfo.Title": "U.S. Maritime Limits and Boundaries (version 4.1)",
+      "serviceDescription_prefix": "(Version 4.1, 9/13/2013)"
+    },
+    "data_timeframe": "2002-2015",
+    "currentness_status": "unapproved; NOAA InPort notes an update is forthcoming"
+  },
+  "observed_snapshot": {
+    "retrieved_on": "2026-10-20",
+    "count_before_and_after": 260,
+    "id_field": "OBJECTID",
+    "sorted_id_roster_sha256": "ff1a9250b4f0b618e83644fc3f7057fccb141fc0e95725d6cec2ee149fad8006",
+    "field_signature_sha256": "b1ba8a90183c60d0895e176f6af4f1946ce73f27fe656573ac41e6b71a5e0ae2",
+    "geometry_type": "esriGeometryPolyline",
+    "native_crs": "EPSG:4326",
+    "terminal_page_empty": true,
+    "capture_bundle": "/workspace/work/hifld-coordinator/262/pipeline_capture"
+  },
+  "outputs": {
+    "local_candidate_formats": ["GeoPackage", "GeoParquet"],
+    "preserves_all_native_query_fields": true,
+    "preserves_source_id": true,
+    "preserves_native_geometry_coordinates": true,
+    "pmtiles": "withheld pending wrap/rendering review",
+    "shapefile_zip": "withheld pending DBF width/truncation review"
+  },
+  "approval": {
+    "status": "draft; not accepted for release",
+    "promotion_allowed": false,
+    "source_accepted": false,
+    "license": "unresolved",
+    "baseline": null,
+    "accepted_contract": null,
+    "crosswalk": "exact HIFLD crosswalk remains unverified",
+    "current_source_version": "not approved"
+  },
+  "comparative_source": {
+    "url": "https://maritimeboundaries.noaa.gov/downloads/USMaritimeLimitsAndBoundariesSHP.zip",
+    "captured_sha256": "48965b82bef1bc7611d94c2d52d4cd45ef5fd9e63897c650b00d9f739e9e11b6",
+    "result": "260 IDs and line coordinates match the REST layer; 16-column static representation differs and is not substituted"
+  },
+  "archive_reference": {
+    "project": "DataLumos 240571",
+    "doi": "10.3886/E240571V1",
+    "request_result": "HTTP 403; archive bodies and exact crosswalk not verified"
+  }
+}
