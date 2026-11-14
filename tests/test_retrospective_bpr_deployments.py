@@ -4,9 +4,12 @@ import hashlib
 import io
 import json
 import struct
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 import pyarrow.parquet as pq
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -20,6 +23,37 @@ def canonical(value):
 
 def html(body: bytes) -> bytes:
     return b"<!DOCTYPE html><html><head><title>" + body + b"</title></head></html>"
+
+
+class _ScriptedSource(httpx.BaseTransport):
+    """Serves the next scripted (url, body) pair and records the fetch order."""
+
+    def __init__(self, script: list[tuple[str, bytes]]):
+        self.script = script
+        self.fetched: list[str] = []
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        expected_url, body = self.script[len(self.fetched)]
+        if url != expected_url:
+            raise AssertionError("unexpected_acquisition_fetch_order:" + url)
+        self.fetched.append(url)
+        return httpx.Response(200, stream=httpx.ByteStream(body), request=request,
+                              headers={"content-type": "application/json"})
+
+
+class _TransportedHTTPX:
+    """httpx module proxy that wires the scripted transport into source clients."""
+
+    def __init__(self, real, transport: _ScriptedSource):
+        self._real, self._transport = real, transport
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def Client(self, **kwargs) -> httpx.Client:
+        kwargs["transport"] = self._transport
+        return self._real.Client(**kwargs)
 
 
 class RetrospectiveBprSourceTests(unittest.TestCase):
@@ -226,6 +260,103 @@ class RetrospectiveBprSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "explicit_isolated_local_staging_required"):
             source.capture_retrospective_bpr_deployments(
                 PublishedStorageResource(use_local=True, local_dir="/tmp/x"), version="v1")
+
+    def _patched_constants(self):
+        return patch.multiple(
+            source, EXPECTED_COUNT=2, EXPECTED_IDS=[1572, 1573], PAGE_SIZE=250,
+            EXPECTED_EXTENT=dict(self.FIXTURE_EXTENT),
+            EXPECTED_ID_SHA256=hashlib.sha256(canonical([1572, 1573])).hexdigest())
+
+    def _scripted(self, tmp, docs, *, edit_page=None, edit_layer_after=None):
+        with self._patched_constants():
+            urls = source._expected_capture_urls()
+
+        def body_of(name):
+            value = docs[name]
+            return value if isinstance(value, bytes) else canonical(value)
+
+        # The before and after witnesses share endpoints, so the script is an
+        # ordered (url, body) sequence: pre-page evidence, the page (possibly
+        # edited mid-capture), then possibly edited after witnesses.
+        script = [(urls[name], body_of(name)) for name in source._PRE_PAGE_CAPTURE_NAMES]
+        page = json.loads(body_of("page_000"))
+        if edit_page is not None:
+            edit_page(page)
+        script.append((urls["page_000"], canonical(page)))
+        for name in source._POST_PAGE_CAPTURE_NAMES:
+            body = body_of(name)
+            if name == "layer_after" and edit_layer_after is not None:
+                layer = json.loads(body)
+                edit_layer_after(layer)
+                body = canonical(layer)
+            script.append((urls[name], body))
+        transport = _ScriptedSource(script)
+        storage = StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
+        return transport, storage
+
+    def _run_acquisition(self, tmp, transport, storage):
+        with self._patched_constants(), \
+                patch.object(source, "httpx", _TransportedHTTPX(httpx, transport)), \
+                patch.object(source, "validate_construction_code_identity"), \
+                patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+            return source.capture_retrospective_bpr_deployments(
+                storage, version="draft", capture_directory=str(Path(tmp) / "captures"))
+
+    def _assert_three_phase_order(self, transport):
+        self.assertEqual(transport.fetched, [url for url, _body in transport.script])
+        self.assertEqual(len(transport.fetched),
+                         len(source._PRE_PAGE_CAPTURE_NAMES) + 1
+                         + len(source._POST_PAGE_CAPTURE_NAMES))
+
+    def test_acquisition_brackets_pages_between_before_and_after_witnesses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            transport, storage = self._scripted(tmp, self.fixture())
+            result = self._run_acquisition(tmp, transport, storage)
+            self._assert_three_phase_order(transport)
+            self.assertFalse(result["reused"])
+            self.assertTrue(result["source_population_complete"])
+            self.assertEqual(result["feature_count"], 2)
+            for flag in ("source_release_accepted", "source_freshness_accepted",
+                         "schema_contract_accepted", "id_contract_accepted", "baseline_accepted",
+                         "coverage_accepted", "rights_accepted", "mapping_approved",
+                         "release_accepted"):
+                self.assertFalse(result[flag])
+            audit = json.loads(storage.read_key(
+                f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{result['version']}"
+                "/metadata/source_audit.json"))
+            _fields, _features, expected = self.validate(self.fixture())
+            self.assertEqual(audit["source_record_sha256"], expected["source_record_sha256"])
+            self.assertEqual(audit["source_geometry_sha256"], expected["source_geometry_sha256"])
+            self.assertEqual(audit["source_schema_sha256"], expected["source_schema_sha256"])
+            self.assertEqual(audit["source_null_counts"], expected["source_null_counts"])
+            self.assertEqual(audit["source_last_edit_epoch_ms"],
+                             expected["source_last_edit_epoch_ms"])
+
+    def test_mid_page_edit_is_rejected_by_after_witness_comparison(self):
+        # An attribute is edited when the page is requested and the agency
+        # metadata witnesses record it (editingInfo moves); the after
+        # witnesses, fetched only after all pages, must expose the edit.
+        def edit_page(page):
+            page["features"][0]["attributes"]["COMMENTS"] = "Edited during pagination"
+
+        def edit_layer_after(layer):
+            layer["editingInfo"]["lastEditDate"] += 1
+
+        with tempfile.TemporaryDirectory() as tmp:
+            transport, storage = self._scripted(tmp, self.fixture(), edit_page=edit_page,
+                                                edit_layer_after=edit_layer_after)
+            with self.assertRaisesRegex(ValueError,
+                                        "source_service_or_layer_changed_during_capture"):
+                self._run_acquisition(tmp, transport, storage)
+            self._assert_three_phase_order(transport)
+            root = next((Path(tmp) / "captures" / "draft").iterdir())
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "ValueError")
+            quarantine = list((Path(tmp) / "staging").glob(
+                "_quarantine/retrospective-bpr-deployments/*/metadata/failure.json"))
+            self.assertEqual(len(quarantine), 1)
+            self.assertEqual(json.loads(quarantine[0].read_bytes())["reason_code"], "ValueError")
 
 
 class RetrospectiveBprRegistrationTests(unittest.TestCase):

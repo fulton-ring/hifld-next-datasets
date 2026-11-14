@@ -100,9 +100,15 @@ EXPECTED_EXTENT = {"xmin": -19627852.616669994, "ymin": -5930818.77964573,
 # within binary64 float-noise tolerance; drift outside either fails closed.
 EXTENT_TOLERANCE_METERS = 1e-6
 EXPECTED_CRS = CRS.from_epsg(3857)
-_BASE_CAPTURE_NAMES = ("ncei_landing", "ncei_map", "webmap", "service_item", "service_before",
-                       "layer_before", "count_before", "ids_before", "service_after",
-                       "layer_after", "count_after", "ids_after")
+# Acquisition order: producer/delegation evidence and before witnesses, then
+# every feature page, then the after witnesses. Bracketing the pagination with
+# the before/after metadata, count and ID-roster witnesses is what makes an
+# edit during pagination visible to _validate instead of sealing a
+# mixed-version candidate.
+_PRE_PAGE_CAPTURE_NAMES = ("ncei_landing", "ncei_map", "webmap", "service_item",
+                           "service_before", "layer_before", "count_before", "ids_before")
+_POST_PAGE_CAPTURE_NAMES = ("service_after", "layer_after", "count_after", "ids_after")
+_BASE_CAPTURE_NAMES = _PRE_PAGE_CAPTURE_NAMES + _POST_PAGE_CAPTURE_NAMES
 _HTML_CAPTURE_NAMES = frozenset({"ncei_landing", "ncei_map"})
 
 
@@ -519,12 +525,11 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
         root.mkdir(parents=True, exist_ok=False)
         captures = {}
         try:
+            urls = _expected_capture_urls()
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/ncei-retro-bpr-draft"}) as client:
-                for name, url in sorted(_expected_capture_urls().items()):
-                    if name.startswith("page_"):
-                        continue
-                    captures[name] = _capture(client, url, root, name)
+                for name in _PRE_PAGE_CAPTURE_NAMES:
+                    captures[name] = _capture(client, urls[name], root, name)
                 ids = json.loads(captures["ids_before"][0]).get("objectIds")
                 if (not isinstance(ids, list) or any(type(i) is not int for i in ids)
                         or sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT
@@ -533,9 +538,10 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
                 for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
                     page_ids = ids[start:start + PAGE_SIZE]
                     url = _query({"objectIds": ",".join(map(str, page_ids)), "outFields": "*",
-                                  "returnGeometry": "true", "orderByFields": "OBJECTID ASC",
-                                  "f": "json"})
+                                  "returnGeometry": "true", "orderByFields": "OBJECTID ASC", "f": "json"})
                     captures[f"page_{index:03d}"] = _capture(client, url, root, f"page_{index:03d}")
+                for name in _POST_PAGE_CAPTURE_NAMES:
+                    captures[name] = _capture(client, urls[name], root, name)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}
