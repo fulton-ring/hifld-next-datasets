@@ -89,6 +89,10 @@ SERVICE_DOC_URL = "https://www.usgs.gov/3d-hydrography-program/access-3dhp-data-
 LAYER_ID = 60
 LAYER_NAME = "Waterbody"
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
+# The producer's same-org alias publication serves the identical layer; the
+# geometry-refusal probe contacts both hosts through their own service paths
+# (see ``_record_url_on``), so the alias layer endpoint is a module constant.
+ALIAS_LAYER_URL = f"{ALIAS_SERVICE_URL}/{LAYER_ID}"
 GEOMETRY_TYPE = "esriGeometryPolygon"
 PUBLISHER = "U.S. Geological Survey"
 USER_AGENT = "hifld-next-datasets/nhd-waterbody-draft"
@@ -250,12 +254,24 @@ def _page_url(last_objectid: int, size: int) -> str:
                    "resultRecordCount": str(size), "f": "json"})
 
 
+def _record_url_on(layer_url: str, oid: int, *, geometry: bool) -> str:
+    """One single-record query URL on an explicit producer layer endpoint.
+
+    The producer's geometry refusal is probed on both same-org hosts (the
+    primary ``LAYER_URL`` and the ``ALIAS_LAYER_URL`` alias), so the URL must
+    carry the probed host's own service path: an alias-host refusal recorded
+    against the primary URL would be indistinguishable from a second primary
+    attempt and would overstate the refusal evidence.
+    """
+    return layer_url + "/query?" + urlencode({"objectIds": str(oid), "outFields": "*",
+                                              "returnGeometry": "true" if geometry else "false",
+                                              **({"returnZ": "true"} if geometry else {}),
+                                              **({"outSR": str(SOURCE_CRS_WKID)} if geometry else {}),
+                                              "f": "json"})
+
+
 def _record_url(oid: int, *, geometry: bool) -> str:
-    return _query({"objectIds": str(oid), "outFields": "*",
-                   "returnGeometry": "true" if geometry else "false",
-                   **({"returnZ": "true"} if geometry else {}),
-                   **({"outSR": str(SOURCE_CRS_WKID)} if geometry else {}),
-                   "f": "json"})
+    return _record_url_on(LAYER_URL, oid, geometry=geometry)
 
 
 def _attrs_keyset_url(last_objectid: int) -> str:
@@ -697,12 +713,19 @@ def _refuse_single_record(active: httpx.Client, alias_client: httpx.Client,
     attrs, attrs_receipt = _capture_attrs_row(active, capture_root, budget, oid)
     del attrs
     for attempt in range(1, PAGE_ATTEMPTS + 1):
-        for label, probe_client in (("primary", active), ("alias", alias_client)):
+        # Each producer host is probed through its own service path: the alias
+        # host (hydro.nationalmap.gov/3DHP_all) must be contacted on
+        # ALIAS_LAYER_URL so a two-host refusal is witnessed by two distinct
+        # host receipts, and a rescued record's receipt names the host that
+        # served it.
+        for label, probe_client, probe_url in (
+                ("primary", active, _record_url(oid, geometry=True)),
+                ("alias", alias_client, _record_url_on(ALIAS_LAYER_URL, oid, geometry=True))):
             probe_geo_name = f"refused_probe_{position:09d}_geo_{label}"
             _budget_check(budget)
             try:
                 body, geo_receipt = capture_get(
-                    probe_client, _record_url(oid, geometry=True), capture_root,
+                    probe_client, probe_url, capture_root,
                     probe_geo_name, max_bytes=MAX_BODY_BYTES,
                     before_retain=_budget_guard(budget))
             except (ValueError, httpx.HTTPError):
@@ -828,6 +851,12 @@ def fetch_nhd_waterbody_pages(capture_root: Path, *, client: httpx.Client | None
                     if not rescued:
                         refused[str(oid)] = {"attrs_name": f"refused_attrs_{oid:09d}",
                                              "captured_at": datetime.now(timezone.utc).isoformat()}
+                        persist()
+                    elif refused.pop(str(oid), None) is not None:
+                        # A record a producer host now serves must not keep a
+                        # stale refusal entry from an earlier attempt: the
+                        # refusal state has to match the actually retained
+                        # walk (served record, no null-geometry gate).
                         persist()
                     last_objectid = oid
                     break
@@ -1314,10 +1343,14 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     if storage.object_snapshot(state_key) is not None:
         parquet_body = Path(extracted["parquet_path"]).read_bytes()
+        # The reuse path must report the same validated digests the fresh seal
+        # reported, so the blocking check keeps its ID evidence for a reused
+        # candidate too.
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
-             "source_schema_sha256": extracted["schema_sha"]},
+             "source_schema_sha256": extracted["schema_sha"],
+             "source_ids_sha256": extracted["ids_sha"]},
             parquet_body)
     refused_oids = sorted(int(key) for key in
                           dict(_load_state(capture_root).get("refused", {})))
@@ -1638,7 +1671,7 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT,
             "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
-            "source_id_sha256": audit.get("source_ids_sha256", ""),
+            "source_id_sha256": audit["source_ids_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_release_accepted": False, "source_freshness_accepted": False,

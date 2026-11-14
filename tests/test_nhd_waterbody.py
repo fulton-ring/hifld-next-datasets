@@ -310,6 +310,26 @@ def _staging(root: Path) -> StagingStorageResource:
                                   prefix="", backend="local")
 
 
+def _recording_transport(base: httpx.MockTransport, seen: list[str]) -> httpx.MockTransport:
+    """Wrap one fixture transport so every request URL it answers is recorded.
+
+    The module's URL construction decides which producer host a probe talks
+    to, so the host of each recorded URL is the host the adapter actually
+    contacted regardless of which client issued the request.
+    """
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return base.handler(request)
+
+    return httpx.MockTransport(respond)
+
+
+def _probe_error_receipt_urls(capture_root: Path, pattern: str) -> list[str]:
+    return [json.loads(path.read_bytes())["url"]
+            for path in sorted(capture_root.glob(pattern))]
+
+
 class NhdWaterbodyTests(unittest.TestCase):
     def test_source_is_explicit_and_draft_only(self):
         self.assertEqual(src.DATASET_SLUG, "nhd-waterbody")
@@ -544,6 +564,12 @@ class NhdWaterbodyTests(unittest.TestCase):
                                                    capture_directory=str(capture_root))
             self.assertEqual(first["version"], second["version"])
             self.assertTrue(second["reused"])
+            # A reused candidate must report the same validated source digests
+            # the fresh seal reported, so the blocking check keeps its ID
+            # evidence on the repeat run too.
+            for key in ("version", "feature_count", "source_id_sha256",
+                        "source_schema_sha256"):
+                self.assertEqual(second[key], first[key], f"fresh/reused {key} mismatch")
             self.assertTrue((capture_root / "computed_baseline.json").exists())
             parquet_path = capture_root / f"{src.FILE_SLUG}.parquet"
             table = pq.read_table(parquet_path)
@@ -578,6 +604,14 @@ class NhdWaterbodyTests(unittest.TestCase):
                     candidate = result.output_for_node("ingest__nhd_waterbody__nhd_waterbody")
                     self.assertEqual(candidate["feature_count"], FIXTURE_COUNT)
                     self.assertTrue(candidate["reused"])
+                    # The blocking check retains the candidate's ID evidence
+                    # (metadata for a reused candidate must not degrade to an
+                    # empty digest).
+                    check_digest = check.metadata["source_id_sha256"]
+                    check_digest = getattr(check_digest, "value", check_digest)
+                    self.assertEqual(check_digest, candidate["source_id_sha256"])
+                    self.assertEqual(check_digest,
+                                     src._sha(src._canonical(list(FIXTURE_OBJECTIDS))))
 
     def test_retained_geoparquet_seals_into_staging(self):
         rows = _fixture_rows()
@@ -711,6 +745,21 @@ class NhdWaterbodyTests(unittest.TestCase):
                 self.assertEqual(sorted(map(int, state["refused"])), [5])
                 self.assertTrue((capture_root / "refused_attrs_000000005.body").exists())
                 self.assertTrue(sorted(capture_root.glob("refused_probe_000000004_geo_*")))
+                # Two-host refusal evidence: both same-org hosts are probed
+                # through their own service paths and every geometry-probe
+                # receipt records the host it actually contacted. A probe that
+                # sent the primary URL through both clients would leave alias
+                # receipts naming the primary host and could replace a served
+                # record with null geometry.
+                primary_receipts = _probe_error_receipt_urls(
+                    capture_root, "refused_probe_000000004_geo_primary.error-*.receipt.json")
+                alias_receipts = _probe_error_receipt_urls(
+                    capture_root, "refused_probe_000000004_geo_alias.error-*.receipt.json")
+                self.assertTrue(primary_receipts)
+                self.assertTrue(alias_receipts)
+                self.assertTrue(all(url.startswith(src.LAYER_URL) for url in primary_receipts))
+                self.assertTrue(all(url.startswith(src.ALIAS_LAYER_URL)
+                                    for url in alias_receipts))
                 baseline = json.loads((capture_root / "computed_baseline.json").read_bytes())
                 self.assertEqual(baseline["source_refused_ids"], [5])
                 parquet = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
@@ -718,12 +767,17 @@ class NhdWaterbodyTests(unittest.TestCase):
                                  list(FIXTURE_OBJECTIDS))
                 self.assertEqual(parquet.column("geometry").to_pylist()[3], None)
                 # Pin the refusal set and the null count from the baseline: the
-                # capture then re-verifies the pinned refusal evidence.
+                # capture then re-verifies the pinned refusal evidence, and the
+                # reused candidate reports the same ID digest as the fresh seal.
                 with patch.object(src, "EXPECTED_REFUSED_IDS", (5,)), \
                         patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 1):
                     pinned = src.capture_nhd_waterbody(storage, version="refused-pin",
                                                        capture_directory=str(capture_root))
                     self.assertTrue(pinned["reused"])
+                    for key in ("version", "feature_count", "source_id_sha256",
+                                "source_schema_sha256", "source_null_geometry_count"):
+                        self.assertEqual(pinned[key], result[key],
+                                         f"fresh/reused {key} mismatch")
                 with patch.object(src, "EXPECTED_REFUSED_IDS", (6,)):
                     with self.assertRaisesRegex(src.NhdWaterbodyError,
                                                 "source_refused_ids_drift"):
@@ -747,14 +801,18 @@ class NhdWaterbodyTests(unittest.TestCase):
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         primary_transport = make_responder(rows, refuse_geometry_oids={5})
         alias_transport = make_responder(rows)
-        clients = [httpx.Client(transport=primary_transport),
-                   httpx.Client(transport=alias_transport)]
+        primary_seen: list[str] = []
+        alias_seen: list[str] = []
+        probes = [_recording_transport(primary_transport, primary_seen),
+                  _recording_transport(alias_transport, alias_seen)]
         rotation = {"index": 0}
 
         def rotating_client():
-            client = clients[rotation["index"] % 2]
+            # A fresh client per call: the fetch owns and closes the clients it
+            # creates, so a reused client object would fail the resumed walk.
+            transport = probes[rotation["index"] % 2]
             rotation["index"] += 1
-            return client
+            return httpx.Client(transport=transport)
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -774,6 +832,118 @@ class NhdWaterbodyTests(unittest.TestCase):
                     self.assertEqual(rescued[0]["rescued_host"], "alias")
                     parquet = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
                     self.assertIsNotNone(parquet.column("geometry").to_pylist()[3])
+                    # Host-aware regression: the alias rescue must be witnessed
+                    # by a request to the alias host's own service path. The
+                    # refusal probe contacts the primary host first (its error
+                    # evidence is retained), then the alias host — a probe that
+                    # only ever sent the primary URL would record zero
+                    # hydro.nationalmap.gov geometry requests and could mask a
+                    # served record as a two-host refusal.
+                    self.assertTrue(src.ALIAS_LAYER_URL.startswith(
+                        "https://hydro.nationalmap.gov/arcgis/rest/services/3DHP_all/"
+                        f"FeatureServer/{src.LAYER_ID}"), src.ALIAS_LAYER_URL)
+                    geometry_probe = [url for url in alias_seen
+                                      if "objectIds=5" in url
+                                      and "returnGeometry=true" in url]
+                    self.assertEqual(len(geometry_probe), 1)
+                    self.assertTrue(geometry_probe[0].startswith(src.ALIAS_LAYER_URL),
+                                    geometry_probe[0])
+                    self.assertIn("hydro.nationalmap.gov", geometry_probe[0])
+                    self.assertFalse(any("3dhp.nationalmap.gov" in url
+                                         for url in alias_seen))
+                    # The primary host was probed first with the primary URL and
+                    # its refusal is retained as error evidence.
+                    primary_probes = [url for url in primary_seen
+                                      if "objectIds=5" in url
+                                      and "returnGeometry=true" in url]
+                    self.assertEqual(len(primary_probes), 1)
+                    self.assertTrue(primary_probes[0].startswith(src.LAYER_URL),
+                                    primary_probes[0])
+                    witnessed = _probe_error_receipt_urls(
+                        capture_root, "refused_probe_000000004_geo_primary.error-*.receipt.json")
+                    self.assertEqual(witnessed, primary_probes)
+                    # The retained rescued page receipt names the alias host.
+                    page_receipt = json.loads(
+                        (capture_root / "page_000000003_rec0001.receipt.json").read_bytes())
+                    self.assertEqual(page_receipt["url"], geometry_probe[0])
+
+    def test_resumed_capture_serves_record_the_alias_now_answers(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        primary_transport = make_responder(rows, refuse_geometry_oids={5})
+        alias_base = make_responder(rows)
+        alias_state = {"serves": False}
+
+        def alias_responder(request: httpx.Request) -> httpx.Response:
+            query = parse_qs(urlparse(str(request.url)).query)
+            if (not alias_state["serves"] and query.get("objectIds") == ["5"]
+                    and query.get("returnGeometry") == ["true"]):
+                return httpx.Response(200, stream=JSONStream(
+                    {"error": {"code": 500, "message": "Error performing query operation",
+                               "details": []}}),
+                    headers={"content-type": "application/json"})
+            return alias_base.handler(request)
+
+        alias_transport = httpx.MockTransport(alias_responder)
+        probes = [primary_transport, alias_transport]
+        rotation = {"index": 0}
+
+        def rotating_client():
+            # A fresh client per call: the fetch owns and closes the clients it
+            # creates, so a reused client object would fail the resumed walk.
+            transport = probes[rotation["index"] % 2]
+            rotation["index"] += 1
+            return httpx.Client(transport=transport)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, primary_transport, page_size=2):
+                with patch.object(src, "_default_client", side_effect=rotating_client):
+                    storage = _staging(root)
+                    first = src.capture_nhd_waterbody(storage, version="rescue-resume-1",
+                                                      capture_directory=str(capture_root))
+                    self.assertEqual(first["source_null_geometry_count"], 1)
+                    state = json.loads((capture_root / "capture_state.json").read_bytes())
+                    self.assertEqual(sorted(map(int, state["refused"])), [5])
+                # Simulate an interruption before the final data page and drop
+                # its tail witness, so the resumed walk re-enters the refused
+                # position instead of replaying a pure-local complete capture.
+                state["pages"] = state["pages"][:-1]
+                state["tail"] = None
+                state["complete"] = False
+                (capture_root / "capture_state.json").write_bytes(
+                    src._canonical(state) + b"\n")
+                for suffix in ("body", "wire", "receipt.json"):
+                    (capture_root / f"page_000000005_rec0002.{suffix}").unlink()
+                    (capture_root / f"page_tail.{suffix}").unlink()
+                # The alias now answers the geometry the primary still refuses.
+                alias_state["serves"] = True
+                with fixture_mode(schema_sha, primary_transport, page_size=2):
+                    with patch.object(src, "_default_client", side_effect=rotating_client):
+                        second = src.capture_nhd_waterbody(
+                            storage, version="rescue-resume-2",
+                            capture_directory=str(capture_root))
+                        self.assertEqual(second["feature_count"], FIXTURE_COUNT)
+                        self.assertEqual(second["source_null_geometry_count"], 0)
+                        state = json.loads((capture_root / "capture_state.json").read_bytes())
+                        # The stale refusal entry is gone: the state matches the
+                        # actually retained walk instead of replacing a served
+                        # record with null geometry forever.
+                        self.assertFalse(state["refused"])
+                        rescued = [entry for entry in state["pages"]
+                                   if entry.get("rescued_host") == "alias"]
+                        self.assertEqual(len(rescued), 1)
+                        self.assertEqual(rescued[0]["last_objectid"], 5)
+                    parquet = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+                    self.assertIsNotNone(parquet.column("geometry").to_pylist()[3])
+                alias_receipts = _probe_error_receipt_urls(
+                    capture_root, "refused_probe_000000004_geo_alias.error-*.receipt.json")
+                # The stale refusal was itself a witnessed alias-host refusal:
+                # every pass-1 alias probe receipt names the alias service path.
+                self.assertEqual(len(alias_receipts), src.PAGE_ATTEMPTS)
+                self.assertTrue(all(url.startswith(src.ALIAS_LAYER_URL)
+                                    for url in alias_receipts))
 
     def test_refused_identity_and_attrs_drift_are_refused(self):
         rows = _fixture_rows()
@@ -881,6 +1051,8 @@ class NhdWaterbodyTests(unittest.TestCase):
                     again = src.capture_nhd_waterbody(storage, version="pin-run-verify",
                                                       capture_directory=str(capture_root))
                     self.assertTrue(again["reused"])
+                    self.assertEqual(again["source_id_sha256"],
+                                     baseline["source_ids_sha256"])
                 with patch.object(src, "EXPECTED_IDS_SHA256", "0" * 64):
                     with self.assertRaisesRegex(src.NhdWaterbodyError,
                                                 "source_id_roster_drift"):
