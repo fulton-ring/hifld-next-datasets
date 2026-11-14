@@ -190,7 +190,7 @@ class LiteralCatalogTests(unittest.TestCase):
             with self.assertRaises(ValueError):summary(storage,metadata)
             self.assertEqual(outside.read_bytes(),body)
         with tempfile.TemporaryDirectory()as tmp:
-            root=Path(tmp);local,metadata=fixture(root);local.write_key(PREFIX+'/metadata/source_manifest.json',b' '* (module.MAX_PROBE_MANIFEST_BYTES+1));remote=Remote(local)
+            root=Path(tmp);local,metadata=fixture(root);local.write_key(PREFIX+'/metadata/source_manifest.json',b' '* (module.BOUNDED_SOURCE_MANIFEST_READ_BYTES+1));remote=Remote(local)
             with self.assertRaisesRegex(ValueError,'layer limit'):summary(remote,metadata)
             self.assertEqual(remote.downloads,[]);self.assertEqual(remote.ranges,[])
 
@@ -217,10 +217,10 @@ class LiteralCatalogTests(unittest.TestCase):
                       'transformations':[],'inputs':inputs}
             body=json.dumps(metadata).encode()
             self.assertGreater(len(body),2*1024*1024)
-            self.assertLess(len(body),module.MAX_PROBE_MANIFEST_BYTES)
+            self.assertLess(len(body),module.BOUNDED_SOURCE_MANIFEST_READ_BYTES)
             storage=StagingStorageResource(local_dir=str(root),prefix='')
             storage.write_key(PREFIX+'/metadata/source_manifest.json',body)
-            resolved=load_resolved_source_manifest(storage,*PREFIX.split('/'),max_layer_bytes=module.MAX_PROBE_MANIFEST_BYTES)
+            resolved=load_resolved_source_manifest(storage,*PREFIX.split('/'),max_layer_bytes=module.BOUNDED_SOURCE_MANIFEST_READ_BYTES)
             self.assertEqual(len(resolved.metadata['inputs']),2835)
             self.assertEqual(resolved.manifest_keys,[PREFIX+'/metadata/source_manifest.json'])
 

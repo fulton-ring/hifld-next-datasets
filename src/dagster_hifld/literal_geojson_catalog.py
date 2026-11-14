@@ -25,20 +25,15 @@ from dagster_hifld.native_geoparquet_catalog import (
     _safe_local_key, _manifest_snapshots, _check_manifests,
 )
 from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_PRECEDENCE
-from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.source_manifest import (
+    BOUNDED_SOURCE_MANIFEST_READ_BYTES, load_resolved_source_manifest,
+)
 from dagster_hifld.validation import sha256_file
 
 SAMPLE_ROWS = 5000
 EXAMPLE_BYTES = 64 * 1024
 TOTAL_EXAMPLE_BYTES = 4 * 1024 * 1024
 MAX_PROPERTIES = 4096
-# The literal-metadata probe reads the authored source manifest under a
-# bounded read. Whole-population captures retain one provenance entry per
-# producer page, so page-per-receipt manifests legitimately exceed the old
-# 2 MiB bound (observed 2026-11-14: 2,835 entries / 3.98 MB from the 3DHP
-# Waterbody Lake full capture). 16 MiB keeps the read bounded while
-# covering manifests of roughly ten thousand provenance entries.
-MAX_PROBE_MANIFEST_BYTES = 16 * 1024 * 1024
 
 
 def _encode(value):
@@ -97,7 +92,7 @@ def resolve_literal_metadata(storage, prefix, supplied=None):
                     f'{prefix}/metadata/source_manifest.json']:
             _safe_local_key(storage, storage._ensure_prefixed(key), required=False)
     actual = load_resolved_source_manifest(storage, dataset, file, version,
-                                           max_layer_bytes=MAX_PROBE_MANIFEST_BYTES).metadata
+                                           max_layer_bytes=BOUNDED_SOURCE_MANIFEST_READ_BYTES).metadata
     spec = literal_geojson_spec(actual)
     proposed = literal_geojson_spec(supplied or {})
     if proposed is not None and (spec is None or _encode(proposed) != _encode(spec)):
