@@ -276,8 +276,14 @@ def _finite_geometry_coordinates(geometry):
     return True,z_bounds
 
 
-def summarize_native_path(path:Path,name:str,metadata:dict):
-    """Full batched population/geometry quality, bounded typed dictionary sample."""
+def summarize_native_path(path:Path,name:str,metadata:dict,*,producer_geometry_defects:dict|None=None):
+    """Full batched population/geometry quality, bounded typed dictionary sample.
+
+    producer_geometry_defects pins the dataset's own producer-served defect
+    contract (staged source audit). When it is provided, the population passes
+    quality exactly when the staged population matches that pinned contract
+    with no empty or unparseable geometry; any drift keeps the strict gate.
+    """
     parquet=pq.ParquetFile(path);schema=parquet.schema_arrow;primary,geo,crs=geometry_metadata(schema)
     samples=[];sample_rows=0;sample_bytes=0;sample_closed=False;rows=0;nulls=0;empty=0;invalid=0;unparseable=0;types=set();bounds=None;z_bounds=None;nonfinite=False
     for batch in parquet.iter_batches(batch_size=BATCH_ROWS,use_threads=False):
@@ -311,16 +317,24 @@ def summarize_native_path(path:Path,name:str,metadata:dict):
     if declared is not None and bounds is not None and not nonfinite:
         actual=bounds if len(declared)==4 else None if z_bounds is None else[bounds[0],bounds[1],z_bounds[0],bounds[2],bounds[3],z_bounds[1]]
         if actual!=declared:raise ValueError('native_geoparquet_declared_bbox_mismatch')
+    if producer_geometry_defects is not None:
+        defects_matched=(unparseable==0 and empty==0 and not nonfinite
+            and nulls==producer_geometry_defects.get('null_geometry_count')
+            and invalid==producer_geometry_defects.get('producer_invalid_geometry_count'))
+    else:
+        defects_matched=False
     sample=pa.Table.from_batches(samples,schema=schema)if samples else pa.Table.from_batches([],schema=schema)
     names=[name for name in schema.names if name!=primary]
     quality={'version':'v1','feature_count':rows,'bounds':None if nonfinite else bounds,'geometry_type':next(iter(types)).removesuffix(' Z')if len(types)==1 else'Mixed'if types else None,
         'invalid_geometry_count':invalid,'null_geometry_count':nulls,'empty_geometry_count':empty,'unparseable_geometry_count':unparseable,
-        'quality_check_passed':rows>0 and invalid==0 and nulls==0 and empty==0,
+        'quality_check_passed':(rows>0 and defects_matched)if producer_geometry_defects is not None else(rows>0 and invalid==0 and nulls==0 and empty==0),
         'columns_hash':hashlib.sha256(json.dumps(names,sort_keys=True).encode()).hexdigest(),
         'catalog_mode':'native_geoparquet_full_population','spatial_status':'spatial'if types else'all_null_geometry',
         'sampled_feature_count':sample_rows,'sampled_bytes':sample_bytes,'population_quality_scope':'all_rows',
         'native_crs':crs.to_json_dict(),'crs_source':'explicit_PROJJSON'if'crs'in geo else'GeoParquet_normative_OGC_CRS84',
         'native_geometry_column':primary,'native_geo_metadata':geo,'originalArrowSchema':str(schema)}
+    if producer_geometry_defects is not None:
+        quality['producer_geometry_defects_verified']=defects_matched
     serialized_schema=schema.serialize().to_pybytes()
     if len(serialized_schema)>4*1024*1024:raise ValueError('native_geoparquet_schema_metadata_byte_limit')
     dictionary={'name':name,'columns':_dictionary(sample,schema,primary,name,metadata),'sampledFeatureCount':sample_rows,

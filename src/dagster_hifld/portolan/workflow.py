@@ -1066,8 +1066,13 @@ def _catalog_record_from_storage(request: PortolanPublishRequest, published: Sta
     with published.get_local_version_dir(request.dataset_slug, request.file_slug, request.version,
                                          include_directories=("geoparquet",)) as directory:
         facts = inspect_geoparquet(Path(directory))
+    # Producer-served OGC-invalid geometries are retained verbatim by datasets
+    # that pin them (the quality manifest attests producer_geometry_defects_
+    # verified only when the staged population matched the dataset's own
+    # pinned source audit exactly); any drift keeps the zero-defect gate.
+    defects_verified = quality.get("producer_geometry_defects_verified") is True
     if (quality.get("quality_check_passed") is not True or quality.get("feature_count") != facts.feature_count
-            or quality.get("invalid_geometry_count") != 0):
+            or (quality.get("invalid_geometry_count") != 0 and not defects_verified)):
         raise ValueError("Promoted quality evidence does not describe a valid complete candidate")
     columns = columns_from_dictionary(dictionary)
     validate_converted_columns(columns, facts)
