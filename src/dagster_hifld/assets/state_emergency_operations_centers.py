@@ -62,3 +62,9 @@ fema_state_eoc_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+INGEST_ASSETS = [fema_state_emergency_operations_centers]
+ASSET_CHECKS = [fema_state_eoc_source_quality]
+JOBS = [fema_state_eoc_draft_job]
+SCHEDULES = [fema_state_eoc_draft_schedule]

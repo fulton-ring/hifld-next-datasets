@@ -1,1 +1,1 @@
-"""Dataset-specific source adapters."""
+"""Explicit producer-specific candidate acquisition and validation."""

@@ -1,0 +1,423 @@
+{
+  "schema_version": 1,
+  "inventory_id": "pontoon-areas-usace-ienc",
+  "title": "Pontoon Areas (USACE IENC)",
+  "agency": "U.S. Army Corps of Engineers",
+  "publisher": "USACE Army Geospatial Center (IENC); the parent IENC item is cataloged by USDOT BTS",
+  "crosswalk": {
+    "doi": "10.3886/E241367V1",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "hifld_inventory_row": "pontoon-areas-usace-ienc, Pontoon Areas (USACE IENC)",
+    "archive_url": "https://www.datalumos.org/datalumos/project/239792/version/V1/view",
+    "archive_source_modified": "2025-04-08",
+    "archive_source_date": "2018-04-16",
+    "archive_role": "Historical HIFLD/DataLumos copy; portal modification date is not a current producer release date.",
+    "historical_id_and_geometry_match": "Not established; DataLumos page currently returned HTTP 403, and no historical file bytes were recovered in this run."
+  },
+  "source_relationship": "The current public USDOT BTS IENC PDF item 7ec34864c8804468a9cf52d437fe4b6c is owned by USDOT_BTS, describes USACE/AGC distribution, and links the master geodatabase and IENC Feature Classes service. The exact PONTOON_AREA layer is published by USACE IENC / AGC. The former BTS map-service item returned anonymous-access denial; the new catalog item repeats the distribution claims, but continuity between those records is recorded and remains unaccepted. Historical HIFLD/DataLumos continuity is also unestablished.",
+  "bts_item": {
+    "id": "7ec34864c8804468a9cf52d437fe4b6c",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "type": "PDF",
+    "access": "public",
+    "url": "https://www.arcgis.com/home/item.html?id=7ec34864c8804468a9cf52d437fe4b6c",
+    "description_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
+    "claims": "USACE/AGC bi-monthly IENC updates; links official Feature Classes service and master file geodatabase; warns chart-derived data may contain inaccuracies.",
+    "created": 1789069983000,
+    "item_modified": 1792524621000,
+    "item_modified_is_release_date": false,
+    "observed_at": "2026-10-21T15:18:11.284192+00:00",
+    "public_item_metadata_sha256": "28d292b46d982cb977619454b593811a4b2f5ecf9a346acca65c12642d848a06"
+  },
+  "official_landing": "https://ienccloud.us/",
+  "official_service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+  "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer",
+  "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73",
+  "master_geodatabase_url": "https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip",
+  "observed": {
+    "layer_id": 73,
+    "layer_name": "PONTOON_AREA",
+    "geometry_type": "esriGeometryPolygon",
+    "native_crs": "EPSG:4326",
+    "feature_count": 607,
+    "native_OBJECTID": "607 integer IDs, 1 through 607",
+    "native_OBJECTID_sha256_canonical_json": "58a5e4ae968b986b58149fcbb1bd7f90d5efe35aae32efd0ca9a0ccdbf33939b",
+    "fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID"
+      },
+      {
+        "name": "SHAPE",
+        "type": "esriFieldTypeGeometry"
+      },
+      {
+        "name": "Object_Name",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Information",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Date",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Indication",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Dataset",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Feature_ID",
+        "type": "esriFieldTypeString",
+        "length": 254
+      }
+    ],
+    "layer_extent": {
+      "xmin": -96.13541759999998,
+      "ymin": 33.97566980000005,
+      "xmax": -79.87675289999999,
+      "ymax": 44.570524000000034
+    },
+    "source_release_date": null,
+    "release_date_unknown_reason": "The layer declares no source edition or release date. BTS describes parent IENC updates as bi-monthly; that cadence does not date this layer snapshot.",
+    "native_feature_id_duplicate_count": 1,
+    "native_feature_id_distinct_count": 606,
+    "observation_date": "2026-10-21",
+    "source_record_sha256": "e634d430cccc6a8ebfcbaf3b69baac2ab48c293ff9d3d395da29164b21441d33",
+    "source_geometry_sha256": "a45a37768ee1cc19c8ffecd582000427eb076021a4c993421f6b405738a72c81",
+    "source_schema_sha256": "374a21be701d54c1dea5a0c413cfa00f43e2a988d0390dfc0b7501d2fa2ac48e",
+    "source_vertex_count": 6629
+  },
+  "capture_policy": "Retain decoded ESRI JSON response bodies, exact HTTP wire bodies, request receipts, native IDs, field declarations, attributes, rings and coordinate order. Candidate GeoParquet preserves declared source field types and native EPSG:4326 geometry without reprojection or repair.",
+  "completeness_policy": "Check source directory and layer identity, all declared field names/types, CRS representations, pinned layer extent, independent count/ID rosters before and after extraction, all explicit-ID pages, native attribute types, geometry structure/ordinates/validity and complete feature ID roster. Quarantine incomplete captures and drift.",
+  "coverage_scope": "Complete observed IENC PONTOON_AREA chart feature class for inland navigation coverage. Not a national census of pontoons or all navigable-waterway structures.",
+  "proposed_contract": {
+    "status": "Draft only; maintainer approval required.",
+    "native_identifier": "OBJECTID integer, unchanged; Feature_ID string, unchanged including source duplicates if any.",
+    "attributes": "Preserve all 6 non-geometry source attributes and values; no silent drop or mapping.",
+    "geometry": "Polygon in EPSG:4326, all source rings and coordinates unchanged.",
+    "unexpected_source_drift": "Quarantine and request maintainer review."
+  },
+  "approval": {
+    "historical_baseline_and_continuity": false,
+    "source_release_and_freshness": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "attribution": false,
+    "release": false,
+    "bts_item_succession_continuity": false,
+    "production_publication": false
+  },
+  "capture_evidence": {
+    "captured_at": "2026-10-21T15:18:16.547113+00:00",
+    "complete": true,
+    "capture_directory": "/workspace/work/273-clean-evidence/head-no-git/capture-current/v20261021T151810Z-6863c3a463354365b4c0e03960bcd77f",
+    "capture_manifest_sha256": "a37ce6f700ed398558f546eb187bb95c4a975545f40af6fd1e3b9b9bd5d3b380",
+    "request_count": 14,
+    "raw_body_wire_receipt_artifacts": 42,
+    "source_id_sha256": "58a5e4ae968b986b58149fcbb1bd7f90d5efe35aae32efd0ca9a0ccdbf33939b",
+    "source_record_sha256": "e634d430cccc6a8ebfcbaf3b69baac2ab48c293ff9d3d395da29164b21441d33",
+    "source_geometry_sha256": "a45a37768ee1cc19c8ffecd582000427eb076021a4c993421f6b405738a72c81",
+    "source_schema_sha256": "374a21be701d54c1dea5a0c413cfa00f43e2a988d0390dfc0b7501d2fa2ac48e",
+    "source_capture_sha256": "d6889369f65201b2c18980d38a6aae12a355fe95df65baf3f8942c8587cb17d8",
+    "artifacts": {
+      "bts_item": {
+        "request_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
+        "http_status": 200,
+        "body_bytes": 5579,
+        "body_sha256": "28d292b46d982cb977619454b593811a4b2f5ecf9a346acca65c12642d848a06",
+        "wire_bytes": 5579,
+        "wire_sha256": "28d292b46d982cb977619454b593811a4b2f5ecf9a346acca65c12642d848a06"
+      },
+      "count_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73/query?where=1%3D1&returnCountOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 13,
+        "body_sha256": "7066676f6ffe6032fe23e8943578d40c894857775b564684ebad0ebbb4f7f0b0",
+        "wire_bytes": 13,
+        "wire_sha256": "7066676f6ffe6032fe23e8943578d40c894857775b564684ebad0ebbb4f7f0b0"
+      },
+      "count_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73/query?where=1%3D1&returnCountOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 13,
+        "body_sha256": "7066676f6ffe6032fe23e8943578d40c894857775b564684ebad0ebbb4f7f0b0",
+        "wire_bytes": 13,
+        "wire_sha256": "7066676f6ffe6032fe23e8943578d40c894857775b564684ebad0ebbb4f7f0b0"
+      },
+      "ids_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 2366,
+        "body_sha256": "521d44c6ecd3132dd7493c7b7a575dc90b67c8e0146913a584bc0c1c4b1a4f0a",
+        "wire_bytes": 2366,
+        "wire_sha256": "521d44c6ecd3132dd7493c7b7a575dc90b67c8e0146913a584bc0c1c4b1a4f0a"
+      },
+      "ids_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 2366,
+        "body_sha256": "521d44c6ecd3132dd7493c7b7a575dc90b67c8e0146913a584bc0c1c4b1a4f0a",
+        "wire_bytes": 2366,
+        "wire_sha256": "521d44c6ecd3132dd7493c7b7a575dc90b67c8e0146913a584bc0c1c4b1a4f0a"
+      },
+      "ids_seed": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73/query?where=1%3D1&returnIdsOnly=true&f=json",
+        "http_status": 200,
+        "body_bytes": 2366,
+        "body_sha256": "521d44c6ecd3132dd7493c7b7a575dc90b67c8e0146913a584bc0c1c4b1a4f0a",
+        "wire_bytes": 2366,
+        "wire_sha256": "521d44c6ecd3132dd7493c7b7a575dc90b67c8e0146913a584bc0c1c4b1a4f0a"
+      },
+      "layer_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73?f=pjson",
+        "http_status": 200,
+        "body_bytes": 6601,
+        "body_sha256": "ba0368d376cdd8a9e962fc0c881cdc1c7979f59e6219b5f6cbfd61842ebbede9",
+        "wire_bytes": 6601,
+        "wire_sha256": "ba0368d376cdd8a9e962fc0c881cdc1c7979f59e6219b5f6cbfd61842ebbede9"
+      },
+      "layer_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73?f=pjson",
+        "http_status": 200,
+        "body_bytes": 6601,
+        "body_sha256": "ba0368d376cdd8a9e962fc0c881cdc1c7979f59e6219b5f6cbfd61842ebbede9",
+        "wire_bytes": 6601,
+        "wire_sha256": "ba0368d376cdd8a9e962fc0c881cdc1c7979f59e6219b5f6cbfd61842ebbede9"
+      },
+      "page_000": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73/query?objectIds=1%2C2%2C3%2C4%2C5%2C6%2C7%2C8%2C9%2C10%2C11%2C12%2C13%2C14%2C15%2C16%2C17%2C18%2C19%2C20%2C21%2C22%2C23%2C24%2C25%2C26%2C27%2C28%2C29%2C30%2C31%2C32%2C33%2C34%2C35%2C36%2C37%2C38%2C39%2C40%2C41%2C42%2C43%2C44%2C45%2C46%2C47%2C48%2C49%2C50%2C51%2C52%2C53%2C54%2C55%2C56%2C57%2C58%2C59%2C60%2C61%2C62%2C63%2C64%2C65%2C66%2C67%2C68%2C69%2C70%2C71%2C72%2C73%2C74%2C75%2C76%2C77%2C78%2C79%2C80%2C81%2C82%2C83%2C84%2C85%2C86%2C87%2C88%2C89%2C90%2C91%2C92%2C93%2C94%2C95%2C96%2C97%2C98%2C99%2C100%2C101%2C102%2C103%2C104%2C105%2C106%2C107%2C108%2C109%2C110%2C111%2C112%2C113%2C114%2C115%2C116%2C117%2C118%2C119%2C120%2C121%2C122%2C123%2C124%2C125%2C126%2C127%2C128%2C129%2C130%2C131%2C132%2C133%2C134%2C135%2C136%2C137%2C138%2C139%2C140%2C141%2C142%2C143%2C144%2C145%2C146%2C147%2C148%2C149%2C150%2C151%2C152%2C153%2C154%2C155%2C156%2C157%2C158%2C159%2C160%2C161%2C162%2C163%2C164%2C165%2C166%2C167%2C168%2C169%2C170%2C171%2C172%2C173%2C174%2C175%2C176%2C177%2C178%2C179%2C180%2C181%2C182%2C183%2C184%2C185%2C186%2C187%2C188%2C189%2C190%2C191%2C192%2C193%2C194%2C195%2C196%2C197%2C198%2C199%2C200%2C201%2C202%2C203%2C204%2C205%2C206%2C207%2C208%2C209%2C210%2C211%2C212%2C213%2C214%2C215%2C216%2C217%2C218%2C219%2C220%2C221%2C222%2C223%2C224%2C225%2C226%2C227%2C228%2C229%2C230%2C231%2C232%2C233%2C234%2C235%2C236%2C237%2C238%2C239%2C240%2C241%2C242%2C243%2C244%2C245%2C246%2C247%2C248%2C249%2C250&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true&outSR=4326&orderByFields=OBJECTID+ASC&f=json",
+        "http_status": 200,
+        "body_bytes": 168017,
+        "body_sha256": "729309a100bab5c3120accbf59eb4b40b3b6baf9b1c039b4de23f451c44a2080",
+        "wire_bytes": 168017,
+        "wire_sha256": "729309a100bab5c3120accbf59eb4b40b3b6baf9b1c039b4de23f451c44a2080"
+      },
+      "page_001": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73/query?objectIds=251%2C252%2C253%2C254%2C255%2C256%2C257%2C258%2C259%2C260%2C261%2C262%2C263%2C264%2C265%2C266%2C267%2C268%2C269%2C270%2C271%2C272%2C273%2C274%2C275%2C276%2C277%2C278%2C279%2C280%2C281%2C282%2C283%2C284%2C285%2C286%2C287%2C288%2C289%2C290%2C291%2C292%2C293%2C294%2C295%2C296%2C297%2C298%2C299%2C300%2C301%2C302%2C303%2C304%2C305%2C306%2C307%2C308%2C309%2C310%2C311%2C312%2C313%2C314%2C315%2C316%2C317%2C318%2C319%2C320%2C321%2C322%2C323%2C324%2C325%2C326%2C327%2C328%2C329%2C330%2C331%2C332%2C333%2C334%2C335%2C336%2C337%2C338%2C339%2C340%2C341%2C342%2C343%2C344%2C345%2C346%2C347%2C348%2C349%2C350%2C351%2C352%2C353%2C354%2C355%2C356%2C357%2C358%2C359%2C360%2C361%2C362%2C363%2C364%2C365%2C366%2C367%2C368%2C369%2C370%2C371%2C372%2C373%2C374%2C375%2C376%2C377%2C378%2C379%2C380%2C381%2C382%2C383%2C384%2C385%2C386%2C387%2C388%2C389%2C390%2C391%2C392%2C393%2C394%2C395%2C396%2C397%2C398%2C399%2C400%2C401%2C402%2C403%2C404%2C405%2C406%2C407%2C408%2C409%2C410%2C411%2C412%2C413%2C414%2C415%2C416%2C417%2C418%2C419%2C420%2C421%2C422%2C423%2C424%2C425%2C426%2C427%2C428%2C429%2C430%2C431%2C432%2C433%2C434%2C435%2C436%2C437%2C438%2C439%2C440%2C441%2C442%2C443%2C444%2C445%2C446%2C447%2C448%2C449%2C450%2C451%2C452%2C453%2C454%2C455%2C456%2C457%2C458%2C459%2C460%2C461%2C462%2C463%2C464%2C465%2C466%2C467%2C468%2C469%2C470%2C471%2C472%2C473%2C474%2C475%2C476%2C477%2C478%2C479%2C480%2C481%2C482%2C483%2C484%2C485%2C486%2C487%2C488%2C489%2C490%2C491%2C492%2C493%2C494%2C495%2C496%2C497%2C498%2C499%2C500&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true&outSR=4326&orderByFields=OBJECTID+ASC&f=json",
+        "http_status": 200,
+        "body_bytes": 154437,
+        "body_sha256": "cb8ef242d54e6602e4478ab173352de9be9fd7cd793c1f1d751ac7f8f58bc74e",
+        "wire_bytes": 154437,
+        "wire_sha256": "cb8ef242d54e6602e4478ab173352de9be9fd7cd793c1f1d751ac7f8f58bc74e"
+      },
+      "page_002": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer/73/query?objectIds=501%2C502%2C503%2C504%2C505%2C506%2C507%2C508%2C509%2C510%2C511%2C512%2C513%2C514%2C515%2C516%2C517%2C518%2C519%2C520%2C521%2C522%2C523%2C524%2C525%2C526%2C527%2C528%2C529%2C530%2C531%2C532%2C533%2C534%2C535%2C536%2C537%2C538%2C539%2C540%2C541%2C542%2C543%2C544%2C545%2C546%2C547%2C548%2C549%2C550%2C551%2C552%2C553%2C554%2C555%2C556%2C557%2C558%2C559%2C560%2C561%2C562%2C563%2C564%2C565%2C566%2C567%2C568%2C569%2C570%2C571%2C572%2C573%2C574%2C575%2C576%2C577%2C578%2C579%2C580%2C581%2C582%2C583%2C584%2C585%2C586%2C587%2C588%2C589%2C590%2C591%2C592%2C593%2C594%2C595%2C596%2C597%2C598%2C599%2C600%2C601%2C602%2C603%2C604%2C605%2C606%2C607&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true&outSR=4326&orderByFields=OBJECTID+ASC&f=json",
+        "http_status": 200,
+        "body_bytes": 115739,
+        "body_sha256": "32bf6ed216f5ff21665251358f9ddd169bd03527447d5c0dd24769a873704880",
+        "wire_bytes": 115739,
+        "wire_sha256": "32bf6ed216f5ff21665251358f9ddd169bd03527447d5c0dd24769a873704880"
+      },
+      "service_after": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer?f=pjson",
+        "http_status": 200,
+        "body_bytes": 5257,
+        "body_sha256": "68f9ef53fd7cbf99ef627d9fbbcf2c356d01f8101b17bac1ea06c2fc13604bdd",
+        "wire_bytes": 5257,
+        "wire_sha256": "68f9ef53fd7cbf99ef627d9fbbcf2c356d01f8101b17bac1ea06c2fc13604bdd"
+      },
+      "service_before": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer?f=pjson",
+        "http_status": 200,
+        "body_bytes": 5257,
+        "body_sha256": "68f9ef53fd7cbf99ef627d9fbbcf2c356d01f8101b17bac1ea06c2fc13604bdd",
+        "wire_bytes": 5257,
+        "wire_sha256": "68f9ef53fd7cbf99ef627d9fbbcf2c356d01f8101b17bac1ea06c2fc13604bdd"
+      },
+      "service_directory": {
+        "request_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+        "http_status": 200,
+        "body_bytes": 8518,
+        "body_sha256": "96ae7f7b77d76bfcd9dbaf94822c204c4285acf53f48b8b455519dddf944eaeb",
+        "wire_bytes": 8518,
+        "wire_sha256": "96ae7f7b77d76bfcd9dbaf94822c204c4285acf53f48b8b455519dddf944eaeb"
+      }
+    },
+    "bts_item_succession_accepted": false,
+    "note": "Current PDF item and PONTOON_AREA layer were captured together; prior catalog item denial remains a separate observation. The two BTS catalog records are not asserted equivalent."
+  },
+  "materialization_evidence": {
+    "runtime_without_git": true,
+    "git_executable_available": false,
+    "runtime_package_root": "/workspace/work/273-clean-evidence/head-no-git/runtime",
+    "persistent_dagster_home": "/workspace/work/273-clean-evidence/head-no-git/dagster_home",
+    "persistent_run_database": "/workspace/work/273-clean-evidence/head-no-git/dagster_home/history/runs.db",
+    "run_packet": "/workspace/work/273-clean-evidence/head-no-git/registered_no_git_run.json",
+    "source_run_id": "4c1fa127-3e33-498e-96bf-92dd998d2a35",
+    "source_run_success": true,
+    "catalog_run_id": "ecb2c44e-66fb-4440-bd39-c798cc8b32b8",
+    "catalog_run_success": true,
+    "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "code_commit": "packaged-sha256:2a1f7e652f98bbc584d1e48d8bd7b97398b5d747d050f03275e11aa2a91fc2da",
+    "code_identity_file_count": 87,
+    "candidate_version": "vcc62dfb8401464f8f6feff5d33562fbe",
+    "candidate_prefix": "pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/vcc62dfb8401464f8f6feff5d33562fbe",
+    "source_capture_sha256": "d6889369f65201b2c18980d38a6aae12a355fe95df65baf3f8942c8587cb17d8",
+    "source_feature_count": 607,
+    "source_vertex_count": 6629,
+    "source_id_sha256": "58a5e4ae968b986b58149fcbb1bd7f90d5efe35aae32efd0ca9a0ccdbf33939b",
+    "source_record_sha256": "e634d430cccc6a8ebfcbaf3b69baac2ab48c293ff9d3d395da29164b21441d33",
+    "source_geometry_sha256": "a45a37768ee1cc19c8ffecd582000427eb076021a4c993421f6b405738a72c81",
+    "source_schema_sha256": "374a21be701d54c1dea5a0c413cfa00f43e2a988d0390dfc0b7501d2fa2ac48e",
+    "feature_id_duplicate_count": 1,
+    "geoparquet_sha256": "88c6f3fdf05847d0122f1eaf948ea3f8821a38ec7e0270a8cb06ad84cd299c2f",
+    "geoparquet_bytes": 101029,
+    "geoparquet_rows": 607,
+    "all_native_attribute_values_identical": true,
+    "native_polygon_wkb_identical_after_esri_conversion": true,
+    "catalog_quality": {
+      "passed": true,
+      "feature_count": 607,
+      "empty_geometries": 0,
+      "invalid_geometries": 0
+    },
+    "quality_false_gate_run_id": "1ee3f92c-ce1f-4b26-bcc6-d669e9ece71c",
+    "quality_false_gate_success": false,
+    "quality_false_downstream_steps_started": [],
+    "quality_false_fixture_unchanged": true,
+    "verify_run_id": "f1fb0e9e-4445-4fdb-8179-47d3787712af",
+    "verify_success": false,
+    "verify_refusal_reason": "missing_or_ambiguous_exact_object_approval; publish__promote did not start",
+    "approval_registry_empty": true,
+    "approval_registry": "/workspace/work/273-clean-evidence/head-no-git/approval-registry.json",
+    "published_inventory_unchanged": true,
+    "published_fixture": "/workspace/work/273-clean-evidence/head-no-git/published/synthetic-accepted-fixture/preserved.bin",
+    "source_item_succession_accepted": false,
+    "source_release_accepted": false,
+    "source_freshness_accepted": false,
+    "schema_contract_accepted": false,
+    "id_contract_accepted": false,
+    "coverage_accepted": false,
+    "rights_accepted": false,
+    "mapping_approved": false,
+    "release_accepted": false,
+    "schedule": "STOPPED",
+    "production_publication": false,
+    "quality_manifest_path": "/workspace/work/273-clean-evidence/head-no-git/staging/pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/vcc62dfb8401464f8f6feff5d33562fbe/metadata/quality_manifest.json",
+    "source_manifest_path": "/workspace/work/273-clean-evidence/head-no-git/staging/pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/vcc62dfb8401464f8f6feff5d33562fbe/metadata/source_manifest.json",
+    "processing_identity_path": "/workspace/work/273-clean-evidence/head-no-git/staging/pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/vcc62dfb8401464f8f6feff5d33562fbe/metadata/processing_identity.json",
+    "geoparquet_path": "/workspace/work/273-clean-evidence/head-no-git/staging/pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/vcc62dfb8401464f8f6feff5d33562fbe/geoparquet/pontoon-areas-usace-ienc.parquet",
+    "prior_git_materialization": {
+      "processing_code_head": "361bb97",
+      "source_run_id": "a5a28eef-3462-45a5-894a-dc0b3f055b3d",
+      "catalog_run_id": "7d26688a-76ba-469b-ad89-3cff7373879a",
+      "post_catalog_cache_replay_run_id": "c57ff54f-5954-4676-9803-a43f6224033a",
+      "post_catalog_cache_replay_reused": true,
+      "candidate_version": "va5b5ff283db78ffbac3d09185074fa1c",
+      "candidate_prefix": "pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/va5b5ff283db78ffbac3d09185074fa1c",
+      "geoparquet_sha256": "88c6f3fdf05847d0122f1eaf948ea3f8821a38ec7e0270a8cb06ad84cd299c2f",
+      "geoparquet_rows": 607,
+      "geoparquet_physical_types": {
+        "OBJECTID": "int64",
+        "Object_Name": "string",
+        "Information": "string",
+        "Source_Date": "string",
+        "Source_Indication": "string",
+        "Source_Dataset": "string",
+        "Feature_ID": "string",
+        "geometry": "binary"
+      },
+      "geometry_crs": {
+        "authority": "EPSG",
+        "code": 4326
+      },
+      "all_native_attribute_values_identical": true,
+      "native_polygon_wkb_identical_after_esri_conversion": true,
+      "catalog_quality": {
+        "passed": true,
+        "scope": "all_rows",
+        "feature_count": 607,
+        "geometry_type": "Polygon",
+        "null_geometries": 0,
+        "empty_geometries": 0,
+        "invalid_geometries": 0,
+        "unparseable_geometries": 0
+      },
+      "verifier_run_id": "3c1af18b-c501-4c31-86ee-b90e72d5f91b",
+      "verifier_success": false,
+      "verifier_refusal_reason": "dagster_hifld.release_approval.ReleaseApprovalError: missing_or_ambiguous_exact_object_approval:pontoon-areas-usace-ienc/pontoon-areas-usace-ienc/va5b5ff283db78ffbac3d09185074fa1c/geoparquet/pontoon-areas-usace-ienc.parquet",
+      "approval_registry_empty": true,
+      "approval_registry_outside_source_and_published_roots": true,
+      "published_inventory_unchanged": true,
+      "published_inventory_count": 1,
+      "schedule": "STOPPED",
+      "production_publication": false
+    },
+    "processing_code_git_commit": "2d5c07d9b0476f054b964d3ddfdcb1cc900012e4",
+    "processing_code_scope_note": "No Git SHA was available to the Dagster runtime. Its installed source/dependency inventory used the versioned packaged identity scheme and was byte-identical to this commit inventory; this is an evidence link, not a claim that Dagster observed that Git commit."
+  },
+  "official_layer_item": {
+    "id": "5dcd2aa185d34ef4b7de100653fd04f8",
+    "owner": "usace_agc_dkd",
+    "access": "public",
+    "title": "PONTOON_AREA",
+    "type": "Map Service",
+    "url": "https://www.arcgis.com/home/item.html?id=5dcd2aa185d34ef4b7de100653fd04f8",
+    "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PONTOON_AREA/MapServer",
+    "item_modified_is_release_date": false
+  },
+  "archive_denial_observation": {
+    "observed_at": "2026-10-20",
+    "url": "https://www.datalumos.org/datalumos/project/239792/version/V1/view",
+    "http_status": 403,
+    "interpretation": "Access denial for this research session; it does not imply the archive is unavailable or the current USACE source is dead."
+  },
+  "prior_bts_item": {
+    "id": "3607d485a9854d6fa458bf507058ceae",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "url": "https://www.arcgis.com/home/item.html?id=3607d485a9854d6fa458bf507058ceae",
+    "description_url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+    "denial_observation": {
+      "observed_at": "2026-10-21T12:40:00Z",
+      "observed_http_status": 200,
+      "inner_error": {
+        "code": 403,
+        "messageCode": "GWM_0003",
+        "message": "You do not have permissions to access this resource or perform this operation."
+      },
+      "anonymous_search_result_total": 0,
+      "interpretation": "Prior map-service catalog item is no longer anonymously readable; current PDF item repeats IENC distribution links. Succession is unaccepted."
+    },
+    "status": "historical source authority observation only; not current delegation evidence"
+  },
+  "prior_capture_evidence": {
+    "captured_at": "2026-10-20T03:33:18.841886+00:00",
+    "complete": true,
+    "capture_directory": "/workspace/work/273/work/lifecycle/captures/v20261020T033315Z-a3ba435efe4c4fefacbea0bb7951f45e",
+    "requests": 14,
+    "raw_body_wire_receipt_artifacts": 42,
+    "source_id_sha256": "58a5e4ae968b986b58149fcbb1bd7f90d5efe35aae32efd0ca9a0ccdbf33939b",
+    "source_record_sha256": "e634d430cccc6a8ebfcbaf3b69baac2ab48c293ff9d3d395da29164b21441d33",
+    "source_geometry_sha256": "a45a37768ee1cc19c8ffecd582000427eb076021a4c993421f6b405738a72c81",
+    "source_schema_sha256": "374a21be701d54c1dea5a0c413cfa00f43e2a988d0390dfc0b7501d2fa2ac48e",
+    "source_capture_sha256": "218646e91813b2a9932be692acdffd552de0dc51a582dd7a824edb437101e2b9",
+    "vertex_count": 6629,
+    "geometry_valid_count": 607,
+    "geometry_empty_count": 0,
+    "geometry_invalid_count": 0,
+    "feature_id_duplicate_rows": 1,
+    "feature_id_duplicates_preserved": true,
+    "status": "Superseded for current authority by the 2026-10-21 capture; retained as historical capture using the prior BTS item."
+  },
+  "candidate_identity": {
+    "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+    "code_commit": "packaged-sha256:2a1f7e652f98bbc584d1e48d8bd7b97398b5d747d050f03275e11aa2a91fc2da",
+    "version": "vcc62dfb8401464f8f6feff5d33562fbe",
+    "candidate_only": true
+  }
+}

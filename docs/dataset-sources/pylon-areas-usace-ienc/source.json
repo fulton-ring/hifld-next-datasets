@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "inventory_id": "pylon-areas-usace-ienc",
+  "title": "Pylon Areas (USACE IENC)",
+  "agency": "U.S. Army Corps of Engineers",
+  "publisher": "USACE Army Geospatial Center (IENC); the parent IENC item is cataloged by USDOT BTS",
+  "crosswalk": {
+    "doi": "10.3886/E241367V1",
+    "url": "https://doi.org/10.3886/E241367V1",
+    "hifld_inventory_row": "pylon-areas-usace-ienc, Pylon Areas (USACE IENC)",
+    "archive_url": "https://www.datalumos.org/datalumos/project/240582/version/V1/view",
+    "archive_source_modified": "2025-04-08",
+    "archive_role": "Historical HIFLD/DataLumos copy; portal modification date is not a current producer release date.",
+    "historical_id_and_geometry_match": "Not established; the DataLumos page was not fetched in this run and no historical file bytes were recovered."
+  },
+  "source_relationship": "The USDOT BTS IENC item explicitly links USACE/AGC IENC bi-monthly distribution, the complete master geodatabase, and the official IENC Feature Classes service. The exact PYLONS_AREA layer is published by USACE IENC / AGC at ienccloud.us. This supports an official distribution path; exact continuity with the historical HIFLD/DataLumos entry is not established.",
+  "bts_item": {
+    "id": "7ec34864c8804468a9cf52d437fe4b6c",
+    "owner": "USDOT_BTS",
+    "title": "Inland Electronic Navigational Charts",
+    "type": "PDF",
+    "created": "2026-09-10",
+    "item_modified": "2026-10-20",
+    "url": "https://www.arcgis.com/home/item.html?id=7ec34864c8804468a9cf52d437fe4b6c",
+    "description_url": "https://www.arcgis.com/sharing/rest/content/items/7ec34864c8804468a9cf52d437fe4b6c?f=json",
+    "claims": "USACE/AGC updates IENC bi-monthly; links official Feature Classes service and master file geodatabase; warns chart-derived data may contain inaccuracies.",
+    "item_modified_is_release_date": false
+  },
+  "prior_bts_item_denial_observation": {
+    "observed_at": "2026-10-21T12:40:00Z",
+    "item_id": "3607d485a9854d6fa458bf507058ceae",
+    "url": "https://www.arcgis.com/sharing/rest/content/items/3607d485a9854d6fa458bf507058ceae?f=json",
+    "observed_http_status": 200,
+    "observed_body": {
+      "error": {
+        "code": 403,
+        "messageCode": "GWM_0003",
+        "message": "You do not have permissions to access this resource or perform this operation."
+      }
+    },
+    "anonymous_search_result_total": 0,
+    "interpretation": "The BTS map-service item pinned by related IENC drafts on 2026-10-20 is no longer anonymously readable and no longer appears in anonymous search. It was replaced by public PDF item 7ec34864c8804468a9cf52d437fe4b6c (created 2026-09-10, modified 2026-10-20) carrying the same distribution claims. Delegation continuity requires maintainer review."
+  },
+  "official_landing": "https://ienccloud.us/",
+  "official_service_directory": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson",
+  "service_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PYLONS_AREA/MapServer",
+  "layer_url": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PYLONS_AREA/MapServer/69",
+  "master_geodatabase_url": "https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip",
+  "observed": {
+    "layer_id": 69,
+    "layer_name": "PYLONS_AREA",
+    "geometry_type": "esriGeometryPolygon",
+    "native_crs": "EPSG:4326",
+    "feature_count": 6440,
+    "native_OBJECTID": "6440 integer IDs, 1 through 6440",
+    "native_OBJECTID_sha256_canonical_json": "8dc3b41f3a226207090e7b947380144179fcb92a90018eb15a7daf21aa821b4e",
+    "fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID"
+      },
+      {
+        "name": "SHAPE",
+        "type": "esriFieldTypeGeometry"
+      },
+      {
+        "name": "Category_of_Pylon",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Water_Level",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Condition",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Scale_Minimum",
+        "type": "esriFieldTypeInteger"
+      },
+      {
+        "name": "Source_Date",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Indication",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Information",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Source_Dataset",
+        "type": "esriFieldTypeString",
+        "length": 254
+      },
+      {
+        "name": "Feature_ID",
+        "type": "esriFieldTypeString",
+        "length": 254
+      }
+    ],
+    "layer_extent": {
+      "xmin": -96.41375809999994,
+      "ymin": 29.698064000000045,
+      "xmax": -79.47790829999997,
+      "ymax": 45.05736820000004
+    },
+    "max_record_count": 2000,
+    "source_release_date": null,
+    "release_date_unknown_reason": "The layer declares no source edition or release date. BTS describes parent IENC updates as bi-monthly; that cadence does not date this layer snapshot. Per-feature Source_Date values are source attribution dates, not a layer release date.",
+    "native_feature_id_duplicate_count": 1,
+    "native_feature_id_distinct_count": 6439,
+    "attribute_domains_observed": {
+      "Category_of_Pylon": [
+        "Bridge Pier (6,096)",
+        "Power Transmission Pylon/Pole (177)",
+        "Bridge Pylon (137)",
+        "Unknown (29)",
+        "Telephone/Telegraph Pylon Pole (1)"
+      ],
+      "Water_Level": [
+        "Always Dry (6,440)"
+      ],
+      "Condition": [
+        "'' (6,418)",
+        "Under Construction (17)",
+        "Ruined (5)"
+      ],
+      "Scale_Minimum": "integers 30000 and 60000"
+    }
+  },
+  "capture_policy": "Retain decoded ESRI JSON response bodies, exact HTTP wire bodies, request receipts, native IDs, field declarations, attributes, rings and coordinate order. Candidate GeoParquet preserves declared source field types and native EPSG:4326 geometry without reprojection or repair.",
+  "completeness_policy": "Check source directory and layer identity, all declared field names/types, CRS representations, pinned layer extent, independent count/ID rosters before and after extraction, all explicit-ID pages, native attribute types, geometry structure/ordinates/validity and complete feature ID roster. Quarantine incomplete captures and drift.",
+  "coverage_scope": "Complete observed IENC PYLONS_AREA chart feature class for inland navigation coverage. Not a national census of pylons or all navigable-waterway structures.",
+  "proposed_contract": {
+    "status": "Draft only; maintainer approval required.",
+    "native_identifier": "OBJECTID integer, unchanged; Feature_ID string, unchanged including the one source duplicate.",
+    "attributes": "Preserve all 9 non-geometry source attributes and values; no silent drop or mapping.",
+    "geometry": "Polygon in EPSG:4326, all source rings and coordinates unchanged.",
+    "unexpected_source_drift": "Quarantine and request maintainer review."
+  },
+  "approval": {
+    "historical_baseline_and_continuity": false,
+    "source_release_and_freshness": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "attribution": false,
+    "release": false
+  },
+  "capture_evidence": {
+    "captured_from": "2026-10-21T12:58:23.433354+00:00",
+    "captured_to": "2026-10-21T12:58:56.732661+00:00",
+    "complete": true,
+    "capture_directory": "/agent-data/tmp/opencode/pylon283/captures/adc164c6-bdd9-47cd-b8f9-a72da235fe50-68f64ca9cc574192b04ec0fb0bb1ac7f",
+    "requests": 37,
+    "raw_body_wire_receipt_artifacts": 111,
+    "source_id_sha256": "8dc3b41f3a226207090e7b947380144179fcb92a90018eb15a7daf21aa821b4e",
+    "source_record_sha256": "26a7efe3362f6a811c26b73d6e341ff9c41a27ca1195e516e860ee45d9b3d854",
+    "source_geometry_sha256": "2b071f32a3bd0de638122fdfb56240e8f201f9f9b413e8cd10d372e079a2a1b8",
+    "source_schema_sha256": "ee01bf8bcdad1418567f3c727a79cd92ad901759ed3b04a6cf696fecc018dfed",
+    "source_capture_sha256": "9ba4d1085430289ec645324ec49f00a231c0c9d969b662cc3789347dff5761e2",
+    "vertex_count": 169456,
+    "geometry_valid_count": 6440,
+    "geometry_empty_count": 0,
+    "geometry_invalid_count": 0,
+    "feature_id_duplicate_rows": 1,
+    "feature_id_duplicates_preserved": true
+  },
+  "server_throttling_observation": "Two earlier capture attempts (2026-10-21T12:43Z and 12:49Z) hit HTTP 503 on page_018 during rapid sequential extraction; the pipeline retains every failed attempt receipt and quarantines incomplete captures under _quarantine/ in staging. The final complete capture paced requests at 0.5s with backoff retries (schedule 0s/2s/8s) and observed no failures."
+}
