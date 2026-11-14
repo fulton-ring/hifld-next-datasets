@@ -540,12 +540,14 @@ class Wbd10DigitHuTests(unittest.TestCase):
                     "fields": json.loads(json.dumps(source.EXPECTED_PAGE_FIELD_DECLARATIONS)),
                     "geometryType": "esriGeometryPolygon", "spatialReference": dict(_SR)}
 
-        # Page 0001 covers roster[2:4] = [501, 100_003]; bisection halves it.
+        # Page 0001 covers roster[2:4] = [501, 100_003]; with the bisection
+        # floor relaxed to 1 the refusing 2-id window splits into 1-id leaves.
         part_a, part_b = part_page([501], True), part_page([100_003], False)
         with relaxed_pins():
-            nominal_url = dict(source._capture_roster(roster))["page_0001"]
-            url_a = source._part_url(roster, 1, "page_0001a")
-            url_b = source._part_url(roster, 1, "page_0001b")
+            roster_urls = dict(source._capture_roster(roster))
+            nominal_url = roster_urls["page_0001"]
+            url_a = source._window_url(roster, 1, "a")
+            url_b = source._window_url(roster, 1, "b")
         self.assertIn("resultRecordCount=1", url_a)
         self.assertIn("resultRecordCount=1", url_b)
         self.assertNotEqual(url_a, url_b)
@@ -577,7 +579,7 @@ class Wbd10DigitHuTests(unittest.TestCase):
         with relaxed_pins():
             calls, fake_capture = scripted_capture({
                 "page_0001": refusal, "page_0001a": part_a, "page_0001b": part_b})
-            with patches(source, _capture=fake_capture):
+            with patches(source, _capture=fake_capture, MIN_WINDOW_IDS=1):
                 parts, refusals = source._capture_page_window(None, roster, 1, root)
         self.assertEqual(calls, ["page_0001", "page_0001a", "page_0001b"])
         self.assertEqual(set(parts), {"page_0001_refusal", "page_0001a", "page_0001b"})
@@ -588,7 +590,7 @@ class Wbd10DigitHuTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_page_window_refused_after_bisection"):
                 calls, fake_capture = scripted_capture({
                     "page_0001": refusal, "page_0001a": refusal, "page_0001b": part_b})
-                with patches(source, _capture=fake_capture):
+                with patches(source, _capture=fake_capture, MIN_WINDOW_IDS=1):
                     (root / "refused").mkdir()
                     source._capture_page_window(None, roster, 1, root / "refused")
 

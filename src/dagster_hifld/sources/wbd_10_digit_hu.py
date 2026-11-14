@@ -92,6 +92,10 @@ EXPECTED_ID_SHA256 = ""
 # and serves 100 features (~16 MB of JSON) reliably (observed 2026-11-14).
 PAGE_SIZE = 100
 DECLARED_MAX_RECORD_COUNT = 2000
+# Deterministic bisection floor: a window this small that still refuses is a
+# producer failure for that id range, not a size limit (observed 2026-11-14:
+# 12/13-id windows answer where 25/50/100 refuse).
+MIN_WINDOW_IDS = 10
 EXPECTED_EXTENT = {"xmin": -19951755.682, "ymin": -1644316.000599999,
                    "xmax": 20021551.7474, "ymax": 11554273.612599999}
 # The declared extent is rounded relative to the served vertices by a few
@@ -204,20 +208,43 @@ def _page_url(last_objectid: int) -> str:
     return _page_window_url(last_objectid, PAGE_SIZE)
 
 
+def _window_slice(roster: list[int], index: int, path: str) -> list[int]:
+    """The roster ids one window of page ``index`` covers.
+
+    ``path`` is the bisection path from the nominal window: ``""`` is the full
+    page window and each further ``a``/``b`` selects the first/second half of
+    the previous window, so every served window and artifact is re-derivable
+    from the pinned roster alone.
+    """
+    sub = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
+    for char in path:
+        half = (len(sub) + 1) // 2
+        sub = sub[:half] if char == "a" else sub[half:]
+    return sub
+
+
+def _window_url(roster: list[int], index: int, path: str = "") -> str:
+    count = min(PAGE_SIZE, len(roster) - index * PAGE_SIZE)
+    if not path:
+        # Nominal pages follow the pinned keyset scheme: page N resumes after
+        # the last id of page N-1 (0 before the first page), requesting exactly
+        # the window's remaining id count.
+        last = 0 if index == 0 else roster[index * PAGE_SIZE - 1]
+        return _page_window_url(last, count)
+    sub = _window_slice(roster, index, path)
+    return _page_window_url(sub[0] - 1 if sub[0] > 1 else 0, len(sub))
+
+
 def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
     """Exact GET URL bound to every capture slot; page slots are derived from
     the sorted roster so a replay can re-derive each request without extra
-    state: page N refetches ``objectid>{last id of page N-1}``."""
+    state: page N resumes ``objectid>{last id of page N-1}``."""
     urls = [("service_doc", SERVICE_DOC_URL),
             ("service_before", SERVICE_URL + "?f=pjson"),
             ("layer_before", LAYER_URL + "?f=pjson"),
             ("count_before", _count_url()), ("ids_before", _ids_url())]
-    last = 0
-    for index in range(PAGE_COUNT):
-        urls.append((f"page_{index:04d}", _page_url(last)))
-        end = (index + 1) * PAGE_SIZE
-        if end < len(roster):
-            last = roster[end - 1]
+    urls.extend((f"page_{index:04d}", _window_url(roster, index))
+                for index in range(PAGE_COUNT))
     urls.extend([("count_after", _count_url()), ("ids_after", _ids_url()),
                  ("layer_after", LAYER_URL + "?f=pjson"),
                  ("service_after", SERVICE_URL + "?f=pjson")])
@@ -248,55 +275,44 @@ def _is_refusal(body: bytes) -> bool:
     return isinstance(error, dict) and type(error.get("code")) is int
 
 
-def _part_url(roster: list[int], index: int, part_name: str) -> str:
-    """Exact GET URL bound to a bisected part artifact, re-derived from the
-    pinned roster so replay needs no trusted extra state."""
-    slice_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
-    half = (len(slice_ids) + 1) // 2
-    if part_name.endswith("a"):
-        sub, last = slice_ids[:half], (slice_ids[0] - 1 if slice_ids[0] > 1 else 0)
-    else:
-        sub, last = slice_ids[half:], slice_ids[half] - 1
-    return _page_window_url(last, len(sub))
-
-
 def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
                          root: Path) -> tuple[dict[str, tuple[bytes, dict]], list[str]]:
-    """Capture one nominal page window, bisecting a refusing window once.
+    """Capture one nominal page window, bisecting refusing windows deterministically.
 
-    The producer persistently refuses some full-size windows (content-dependent
-    server-side failure, observed 2026-11-14); the refusal document is retained
-    as evidence and the window is re-fetched as two half-size parts whose URLs
-    are derived from the pinned roster. A refusing half fails the capture:
-    bisection is one level, never a repair loop.
+    The producer persistently refuses some windows (content-dependent
+    server-side failure, observed 2026-11-14: windows that answer without
+    geometry, or at half size earlier the same day, refuse with full geometry,
+    and a window that refuses at 50 ids answers at 25). Each refusal document
+    is retained as evidence under the refused window's own slot name, bound to
+    that window's exact GET URL, and the window is re-fetched as two half-size
+    parts whose URLs are re-derived from the pinned roster. Bisection is
+    bounded: a window at or below ``MIN_WINDOW_IDS`` that still refuses fails
+    the capture — never a repair loop.
     """
-    name = f"page_{index:04d}"
-    nominal_url = _page_window_url(
-        roster[index * PAGE_SIZE - 1] if index > 0 else 0,
-        min(PAGE_SIZE, len(roster) - index * PAGE_SIZE))
     parts: dict[str, tuple[bytes, dict]] = {}
     refusals: list[str] = []
-    body, receipt = _capture(client, nominal_url, root, name)
-    if not _is_refusal(body):
-        return {name: (body, receipt)}, refusals
-    # Retain the refusal document as evidence under its own slot name: the
-    # nominal slot is never served a feature page for this window, so the
-    # refusal body, wire and receipt are bound to the nominal GET URL under
-    # the refusal name and the window is re-fetched as two half-size parts.
-    for suffix in (".body", ".wire", ".receipt.json"):
-        (root / (name + suffix)).replace(root / (name + "_refusal" + suffix))
-    refusals.append(name + "_refusal")
-    parts[name + "_refusal"] = (body, receipt)
-    slice_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
-    half = (len(slice_ids) + 1) // 2
-    for tag, sub in (("a", slice_ids[:half]), ("b", slice_ids[half:])):
-        sub_name = f"{name}{tag}"
-        body, receipt = _capture(client, _part_url(roster, index, sub_name), root, sub_name)
-        if _is_refusal(body):
-            refusals.append(sub_name)
-            parts[f"{sub_name}_refusal"] = (body, receipt)
-            raise ValueError("source_page_window_refused_after_bisection:" + sub_name)
-        parts[sub_name] = (body, receipt)
+
+    def walk(path: str) -> None:
+        name = f"page_{index:04d}" + path
+        sub = _window_slice(roster, index, path)
+        body, receipt = _capture(client, _window_url(roster, index, path), root, name)
+        if not _is_refusal(body):
+            parts[name] = (body, receipt)
+            return
+        # Retain the refusal document as evidence under its own slot name: the
+        # window is never served a feature page, so the refusal body, wire and
+        # receipt are bound to the window's GET URL under the refusal name.
+        for suffix in (".body", ".wire", ".receipt.json"):
+            (root / (name + suffix)).replace(root / (name + "_refusal" + suffix))
+        refusals.append(name + "_refusal")
+        parts[name + "_refusal"] = (body, receipt)
+        if len(sub) <= MIN_WINDOW_IDS:
+            raise ValueError("source_page_window_refused_after_bisection:" + name)
+        half = (len(sub) + 1) // 2
+        walk(path + "a")
+        walk(path + "b")
+
+    walk("")
     return parts, refusals
 
 
@@ -577,25 +593,20 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
             name = f"page_{index:04d}"
             expected_page_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
             part_names = (page_parts or {}).get(name) or [name]
-            half = (len(expected_page_ids) + 1) // 2
             page_ids = []
             columns: dict[str, list] = {field: [] for field in names}
             geometries: list[bytes | None] = []
             for part_no, part_name in enumerate(part_names):
-                if len(part_names) == 1:
-                    if part_name != name:
+                path = part_name[len(name):] if part_name.startswith(name) else None
+                if part_name == name:
+                    if len(part_names) != 1:
                         raise ValueError("source_page_parts_naming_drift:" + name)
-                elif (not part_name.startswith(name)
-                      or len(part_name) != len(name) + 1
-                      or part_name[-1] not in ("a", "b")):
+                elif not path or set(path) - {"a", "b"} or len(part_names) == 1:
                     raise ValueError("source_page_parts_naming_drift:" + name)
                 body, _wire, receipt = _load_capture(root, part_name)
-                expected_url = (expected_urls[name] if len(part_names) == 1
-                                else _part_url(roster, index, part_name))
+                expected_url = _window_url(roster, index, path)
                 _validate_capture_request_identity(part_name, receipt, expected_url)
-                expected_part_ids = (expected_page_ids if len(part_names) == 1 else
-                                     (expected_page_ids[:half] if part_name.endswith("a")
-                                      else expected_page_ids[half:]))
+                expected_part_ids = _window_slice(roster, index, path)
                 page = json.loads(body)
                 if "error" in page:
                     raise ValueError("source_page_error:" + part_name)
@@ -827,8 +838,13 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
         raise ValueError("retained_capture_manifest_invalid")
     page_parts = manifest.get("page_parts") or {}
     if not isinstance(page_parts, dict) or not all(
-            isinstance(parts, list) and len(parts) in (1, 2)
-            and (parts == [page] or parts == [page + "a", page + "b"])
+            isinstance(parts, list) and parts and len(set(parts)) == len(parts)
+            and parts == sorted(parts)
+            and all(isinstance(part, str) and (part == page
+                    if len(parts) == 1 else
+                    part.startswith(page) and len(part) > len(page)
+                    and set(part[len(page):]) <= {"a", "b"})
+                for part in parts)
             for page, parts in page_parts.items()):
         raise ValueError("retained_capture_page_parts_invalid")
     part_names = {part for parts in page_parts.values() for part in parts}
@@ -837,8 +853,17 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
             isinstance(entry, str) and (entry.endswith("_refusal")) for entry in refusals):
         raise ValueError("retained_capture_page_refusals_invalid")
     # A bisected window has no nominal artifact: its evidence is the retained
-    # refusal document plus the two half-size parts.
-    bisected = {page for page, parts in page_parts.items() if len(parts) == 2}
+    # refusal documents plus the re-derived leaf windows.
+    bisected = {page for page, parts in page_parts.items()
+                if not (len(parts) == 1 and parts[0] == page)}
+    for page in bisected:
+        served_paths = [part[len(page):] for part in page_parts[page]]
+        if page + "_refusal" not in refusals or not all(
+                any(served.startswith(path) and len(served) > len(path)
+                    for served in served_paths)
+                for path in {entry[:-len("_refusal")][9:] for entry in refusals
+                             if entry.startswith(page)}):
+            raise ValueError("retained_capture_refusal_slot_invalid:" + page)
     nominal = {f"page_{index:04d}" for index in range(PAGE_COUNT)}
     expected_names = ({*METADATA_NAMES, *(nominal - bisected)}
                       | part_names | set(refusals))
@@ -856,16 +881,19 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
         if name.endswith("_refusal"):
-            bound = name[:-len("_refusal")]
-            if bound not in expected_urls:
+            leaf = name[:-len("_refusal")]
+            page, path = leaf[:9], leaf[9:]
+            if (page not in bisected or not page.startswith("page_")
+                    or set(path) - {"a", "b"} or not path.isascii()):
                 raise ValueError("retained_capture_refusal_slot_invalid:" + name)
-            _validate_capture_request_identity(name, receipt, expected_urls[bound])
+            _validate_capture_request_identity(name, receipt,
+                                               _window_url(ids, int(page[5:9]), path))
             if not _is_refusal(body):
                 raise ValueError("retained_capture_refusal_document_drift:" + name)
-        elif page_parts and any(name in parts for parts in page_parts.values()
-                                if len(parts) > 1):
-            page = next(page for page, parts in page_parts.items() if name in parts)
-            _validate_capture_request_identity(name, receipt, _part_url(ids, int(page[5:9]), name))
+        elif name[:9] in page_parts:
+            page = name[:9]
+            _validate_capture_request_identity(
+                name, receipt, _window_url(ids, int(page[5:9]), name[9:]))
         else:
             _validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
