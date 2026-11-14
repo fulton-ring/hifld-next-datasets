@@ -16,6 +16,7 @@ from dagster_hifld.sources.trails_usgs import (
     EXPECTED_ID_SHA256,
     LAYER_URL,
     _fields,
+    _layer_contract_unchanged,
     _parquet,
     _validate_page_metadata,
     _validate_polyline_geometry,
@@ -135,6 +136,25 @@ class TrailsUSGSTests(unittest.TestCase):
         layer.pop("hasM")
         with self.assertRaisesRegex(ValueError, "trails_layer_schema_drift"):
             _fields(layer)
+
+    def test_layer_before_after_gate_excludes_presentation_metadata(self):
+        # Observed 2026-11-14: the producer rotated drawingInfo.colorRamp
+        # colors across a 34-minute live capture while every data-contract
+        # member stayed identical; the gate must not fail on presentation.
+        after = copy.deepcopy(_layer_metadata())
+        after["drawingInfo"] = {"renderer": {"authoringInfo": {"colorRamp": {"fromColor": [1, 2, 3]}}}}
+        _layer_contract_unchanged(_layer_metadata(), after)
+        after["maxRecordCount"] = 1000
+        with self.assertRaisesRegex(ValueError, "trails_layer_changed_during_capture"):
+            _layer_contract_unchanged(_layer_metadata(), after)
+        after = copy.deepcopy(_layer_metadata())
+        after["fields"][3]["name"] = "icewatercraft_2"
+        with self.assertRaisesRegex(ValueError, "trails_layer_changed_during_capture"):
+            _layer_contract_unchanged(_layer_metadata(), after)
+        after = copy.deepcopy(_layer_metadata())
+        after["extent"]["spatialReference"] = {"wkid": 4269}
+        with self.assertRaisesRegex(ValueError, "trails_layer_changed_during_capture"):
+            _layer_contract_unchanged(_layer_metadata(), after)
 
     def test_dimensions_probe_pins_requested_oid_and_retains_m_values(self):
         probe = {"geometryType": "esriGeometryPolyline",

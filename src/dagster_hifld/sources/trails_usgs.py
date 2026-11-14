@@ -214,6 +214,28 @@ def _validate_dimensions_probe(probe: dict, expected_oid: int) -> None:
     _validate_polyline_geometry(features[0].get("geometry"))
 
 
+# The before/after layer gate pins the data-contract projection of the layer
+# document. The producer rotates the document's drawingInfo colorRamp
+# presentation within a capture window (observed 2026-11-14: colorRamp colors
+# changed across a 34-minute live capture while every data-contract member and
+# the whole service document stayed byte-identical), so whole-document
+# canonical equality can never hold reliably for this continuously-updated
+# layer; presentation metadata stays retained verbatim in the capture but is
+# excluded from the drift gate.
+_LAYER_CONTRACT_MEMBERS = ("id", "name", "type", "geometryType", "hasM", "hasZ",
+                           "extent", "fields", "geometryField", "maxRecordCount",
+                           "supportedQueryFormats")
+
+
+def _layer_contract(layer: dict) -> dict:
+    return {member: layer.get(member) for member in _LAYER_CONTRACT_MEMBERS}
+
+
+def _layer_contract_unchanged(layer_before: dict, layer_after: dict) -> None:
+    if _canonical(_layer_contract(layer_before)) != _canonical(_layer_contract(layer_after)):
+        raise ValueError("trails_layer_changed_during_capture")
+
+
 def _fields(layer: dict) -> list[dict]:
     fields = layer.get("fields")
     if (layer.get("id") != LAYER_ID or layer.get("name") != "Trails"
@@ -287,8 +309,7 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     layer = docs["layer_before"]
     fields = _fields(layer)
-    if _canonical(layer) != _canonical(docs["layer_after"]):
-        raise ValueError("trails_layer_changed_during_capture")
+    _layer_contract_unchanged(layer, docs["layer_after"])
     if docs["service_before"] != docs["service_after"]:
         raise ValueError("trails_service_changed_during_capture")
     ids_before = docs["ids_before"].get("objectIds")
