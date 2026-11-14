@@ -92,21 +92,24 @@ CROSSWALK_DEAD_REDIRECT_NOTE = (
     "no longer resolves (checked 2026-11-14); the same cadastre product is served "
     "first-party on BOEM's own gis.boem.gov server (layer 8).")
 # The per-value and per-geometry baselines, gate counts and observed bounds are
-# pinned from a complete dated capture (2026-11-14, task sandbox; captured
-# through capture_submerged_land_act_boundary with capture-summary.json
-# written). The producer republishes this service and can resequence all
-# OBJECTIDs between requests (observed 2026-11-14; see module docstring); a
-# later republish surfaces as an explicit drift refusal and the baselines are
-# re-pinned from a fresh complete capture with the republish documented.
-# Unpinned values (None or "") are checked only once pinned.
+# pinned from a complete dated capture (2026-11-14, task sandbox b452585c,
+# capture /tmp/sla-boundary-captures/live-verify-3bc3ad1e341a4449af53f329b2be9a71
+# at head 7956541a; candidate v33632441f00353756c8af5da5fac1a5d). The producer
+# republishes this service and can resequence all OBJECTIDs between requests
+# (observed 2026-11-14; see module docstring); a later republish surfaces as an
+# explicit roster, record or geometry drift refusal and the baselines are
+# re-pinned from a fresh complete capture with the republish documented
+# (the sibling lease-block module documents one such re-pin). Unpinned values
+# (None or "") are checked only once pinned.
 EXPECTED_COUNT = 5_746
-EXPECTED_IDS_SHA256 = ""
-EXPECTED_SCHEMA_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_PATH_COUNT_DISTRIBUTION = None
-EXPECTED_OBSERVED_BOUNDS = None
+EXPECTED_IDS_SHA256 = "4993608f0641ebb66dccb9b95f3e6a3072973aca1b529be93de93e5e520c7ac0"
+EXPECTED_SCHEMA_SHA256 = "4192cc66a498bcd20a264b1480657828aa834602d009d534450cadb0e7bcdafd"
+EXPECTED_RECORD_SHA256 = "acc89924fdf8caff09b43a8b39320ee12ad1cb46112e80c320eaf8d771388e75"
+EXPECTED_GEOMETRY_SHA256 = "d52150fa0c5419821114d3979913a99166f7d9cd5c5843f5178afc12ab144522"
+EXPECTED_NULL_GEOMETRY_COUNT = 4
+EXPECTED_PATH_COUNT_DISTRIBUTION = {1: 5_742}
+EXPECTED_OBSERVED_BOUNDS = [-171.95928955078125, 24.3953857421875,
+                            -66.9107666015625, 71.439208984375]
 BASELINE_PENDING_NOTE = (
     "The record and geometry baseline digests, gate counts and observed bounds "
     "are pinned from a completed capture; unpinned values are checked only once "
