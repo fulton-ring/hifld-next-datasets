@@ -87,6 +87,49 @@ class NativeCatalogTests(unittest.TestCase):
             self.assertTrue(summary.quality_manifest['quality_check_passed']);self.assertEqual(summary.quality_manifest['feature_count'],6)
             self.assertEqual(sha256_file(path),metadata['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]['sha256'])
 
+    def test_declared_measured_dimension_types_are_cataloged(self):
+        def build(root, declared, invalid=False):
+            geometry = [shapely.to_wkb(shapely.Point(1.0, 2.0)),
+                        shapely.to_wkb(shapely.from_wkt('POINT M (3.0 4.0 7.25)'), flavor='iso'),
+                        shapely.to_wkb(shapely.Point(5.0, 6.0))]
+            fields = [pa.field('id', pa.int64()), pa.field('native_shape', pa.binary())]
+            arrays = [pa.array([10, 11, 12], type=pa.int64()), pa.array(geometry, type=pa.binary())]
+            column = {'encoding': 'WKB', 'geometry_types': declared, 'crs': CRS(3857).to_json_dict()}
+            geo = {'version': '1.1.0', 'primary_column': 'native_shape', 'columns': {'native_shape': column}}
+            table = pa.Table.from_arrays(arrays, schema=pa.schema(fields, metadata={b'geo': json.dumps(geo).encode()}))
+            path = root / PREFIX / 'geoparquet/native.parquet'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            pq.write_table(table, path)
+            metadata = {'title': 'Synthetic native fixture; no dataset/source acceptance',
+                        'prebuilt_output_policy': {'schema_version': 1, 'formats': {'geoparquet': {
+                            'reason': 'SYNTHETIC native fidelity mechanics only; no source/contract/baseline/release approval.',
+                            'objects': [{'path': 'geoparquet/native.parquet', 'bytes': path.stat().st_size,
+                                         'sha256': sha256_file(path)}]}}}}
+            (root / PREFIX / 'metadata').mkdir(parents=True, exist_ok=True)
+            (root / PREFIX / 'metadata/source_manifest.json').write_text(json.dumps(metadata))
+            return metadata
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            metadata = build(root, ['Point', 'Point M'])
+            summary = summarize_staged_catalog(StagingStorageResource(local_dir=tmp), *PREFIX.split('/'), 'synthetic', source_metadata=metadata)
+            quality = summary.quality_manifest
+            self.assertTrue(quality['quality_check_passed'])
+            self.assertEqual(quality['feature_count'], 3)
+            self.assertEqual(quality['native_geo_metadata']['geometry_types'], ['Point', 'Point M'])
+            self.assertEqual(quality['geometry_type'], 'Point')
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            metadata = build(root, ['Point', 'Point ZM', 'Point M'])
+            summary = summarize_staged_catalog(StagingStorageResource(local_dir=tmp), *PREFIX.split('/'), 'synthetic', source_metadata=metadata)
+            self.assertTrue(summary.quality_manifest['quality_check_passed'])
+        for bad in (['Point', 'Foo M'], ['Point', 'Point M', 'Point M'], ['Point', 'Point W']):
+            with self.subTest(bad=bad), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                metadata = build(root, bad)
+                with self.assertRaisesRegex(ValueError, 'invalid_declared_geometry_types'):
+                    summarize_staged_catalog(StagingStorageResource(local_dir=tmp), *PREFIX.split('/'), 'synthetic', source_metadata=metadata)
+
     def test_full_population_after_5000_quality_bounds_and_nulls(self):
         for tail in ['invalid','null','extent']:
             with self.subTest(tail=tail),tempfile.TemporaryDirectory()as tmp:
