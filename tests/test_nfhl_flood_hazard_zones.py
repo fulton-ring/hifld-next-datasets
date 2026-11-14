@@ -841,6 +841,17 @@ class NfhlFloodHazardZonesReuseTests(unittest.TestCase):
             self.assertEqual(router.static_downloads, 0)
 
 
+class NfhlFloodHazardZonesDiskFloorTests(unittest.TestCase):
+    def test_floor_scales_with_the_capture_disk_within_bounds(self):
+        # The 100 GiB factory capture-disk cap keeps this ~93 GB raw capture
+        # capturable only with a floor that scales below the historical 24 GB.
+        self.assertEqual(source._disk_floor_bytes(107_374_182_400), 5_368_709_120)
+        self.assertEqual(source._disk_floor_bytes(2 * 1024**3), 4_000_000_000)
+        self.assertEqual(source._disk_floor_bytes(10 * 1024**3), 4_000_000_000)
+        # Large capture volumes keep the historical 24 GB floor.
+        self.assertEqual(source._disk_floor_bytes(600 * 1024**3), source.MIN_FREE_BYTES)
+
+
 class NfhlFloodHazardZonesWiringTests(unittest.TestCase):
     def test_module_lists_and_definitions_are_registered(self):
         from dagster_hifld.assets import nfhl_flood_hazard_zones as wiring

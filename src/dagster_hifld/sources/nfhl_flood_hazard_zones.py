@@ -117,7 +117,24 @@ LISTING_ATTEMPTS = 4
 LISTING_BASE_DELAY_SECONDS = 10.0
 ZIP_ATTEMPTS = 4
 ZIP_BASE_DELAY_SECONDS = 10.0
+# Historical acquisition floor: 24 GB on the large capture volumes this layer
+# was first captured on. The floor must never starve an in-flight product zip
+# (the roster's largest product is under 1 GiB, so its .partial plus final
+# copy is under 2 GiB) while staying capturable on smaller volumes, so the
+# enforced floor scales with the capture disk (bounded above by the
+# historical value, below by a multiple of the largest product).
 MIN_FREE_BYTES = 24_000_000_000
+MIN_FREE_FLOOR_BYTES = 4_000_000_000
+
+
+def _disk_floor_bytes(disk_total: int) -> int:
+    """Free-bytes floor for acquisition on a capture disk of ``disk_total`` bytes.
+
+    Five percent of the disk, bounded to at least ``MIN_FREE_FLOOR_BYTES``
+    (a comfortable multiple of the largest product's bounded attempt evidence)
+    and never above the historical ``MIN_FREE_BYTES``.
+    """
+    return min(MIN_FREE_BYTES, max(MIN_FREE_FLOOR_BYTES, disk_total // 20))
 # Population pins below are None until a dated complete capture of every
 # listed product establishes them; see the module docstring. In live mode the
 # capture completes, writes the computed contract to ``population_pins.json``,
@@ -926,7 +943,7 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
     if ".." in base.parts or any(parent.is_symlink() for parent in (base, *base.parents)):
         raise ValueError("unsafe_local_staging_root")
     base.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(base).free < MIN_FREE_BYTES:
+    if shutil.disk_usage(base).free < _disk_floor_bytes(shutil.disk_usage(base).total):
         raise ValueError("disk_floor_before_acquisition")
     attempt_root = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/194/captures")
     attempt_root.mkdir(parents=True, exist_ok=True)
@@ -949,7 +966,8 @@ def capture_nfhl_flood_hazard_zones(storage: StagingStorageResource, *, version:
             if reused is not None:
                 return reused
             for product in products:
-                if shutil.disk_usage(capture_root).free < MIN_FREE_BYTES:
+                disk = shutil.disk_usage(capture_root)
+                if disk.free < _disk_floor_bytes(disk.total):
                     raise ValueError("disk_floor_before_acquisition")
                 _capture_product_zip(client, product, capture_root,
                                      attempts=ZIP_ATTEMPTS, base_delay=ZIP_BASE_DELAY_SECONDS)
