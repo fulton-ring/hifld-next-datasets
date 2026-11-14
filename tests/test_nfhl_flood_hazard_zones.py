@@ -790,9 +790,10 @@ class NfhlFloodHazardZonesProducerTextTests(unittest.TestCase):
                    ["01101C-NFHL", "7", "3"]]
         ordered = sorted(entries, key=source._id_sort_key)
         self.assertEqual(ordered, sorted(entries, key=source._id_sort_key))
-        self.assertEqual(ordered[0], ["01101C-NFHL", None, "9"])
-        self.assertEqual([entry[0] for entry in ordered],
-                         ["01101C-NFHL", "01101C-NFHL", "48085C-NFHL"])
+        # Canonical-JSON keys order the string entry before the null entry.
+        self.assertEqual(ordered,
+                         [["01101C-NFHL", "7", "3"], ["01101C-NFHL", None, "9"],
+                          ["48085C-NFHL", "22", "5"]])
 
 
 class NfhlFloodHazardZonesReuseTests(unittest.TestCase):
