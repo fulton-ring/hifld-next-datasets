@@ -646,7 +646,11 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                 raise PadUsProtectionError("source_page_spatial_reference_drift:" + page_name)
             if page.get("objectIdFieldName") != "OBJECTID":
                 raise PadUsProtectionError("source_id_field_changed:" + page_name)
-            if page.get("hasZ") is not False or page.get("hasM") is not False:
+            # The producer's query responses omit the optional hasZ/hasM flags
+            # (observed 2026-11-14 across repeated page probes); the non-Z/M
+            # shape stays pinned by the layer document, and an explicit true
+            # remains drift.
+            if page.get("hasZ", False) is not False or page.get("hasM", False) is not False:
                 raise PadUsProtectionError("source_page_z_or_m_flag_drift:" + page_name)
             features = page.get("features")
             if not isinstance(features, list) or not features \

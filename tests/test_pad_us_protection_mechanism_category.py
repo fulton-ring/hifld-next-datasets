@@ -153,7 +153,7 @@ class JSONStream(httpx.SyncByteStream):
 
 def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=None,
                    layer=None, geometry=None, doc_page=None, item_owner=None,
-                   data_rows=None) -> httpx.MockTransport:
+                   data_rows=None, page_has_z: bool | None = False) -> httpx.MockTransport:
     count = count if count is not None else len(rows)
     layer_fields = layer_fields if layer_fields is not None else _fixture_layer_fields()
     data_rows = data_rows if data_rows is not None else rows
@@ -213,12 +213,15 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
             tail_oids = [row["attributes"]["OBJECTID"] for row in data_rows
                          if isinstance(row["attributes"]["OBJECTID"], int)]
             more = bool(page_oids) and max(page_oids) < max(tail_oids)
-        return httpx.Response(200, stream=JSONStream(
-            {"objectIdFieldName": "OBJECTID",
-             "spatialReference": {"wkid": src.SOURCE_CRS_WKID, "latestWkid": src.SOURCE_CRS_WKID},
-             "hasZ": False, "hasM": False, "features": page_rows,
-             "exceededTransferLimit": more}),
-            headers={"content-type": "application/json"})
+        page_doc = {"objectIdFieldName": "OBJECTID",
+                    "spatialReference": {"wkid": src.SOURCE_CRS_WKID,
+                                         "latestWkid": src.SOURCE_CRS_WKID},
+                    "features": page_rows, "exceededTransferLimit": more}
+        if page_has_z is not None:
+            page_doc["hasZ"] = page_has_z
+            page_doc["hasM"] = False
+        return httpx.Response(200, stream=JSONStream(page_doc),
+                              headers={"content-type": "application/json"})
 
     return httpx.MockTransport(respond)
 
@@ -478,6 +481,24 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                     candidate = result.output_for_node("ingest__pad_us_protection_mechanism_category__pad_us_protection_mechanism_category")
                     self.assertEqual(candidate["feature_count"], FIXTURE_COUNT)
                     self.assertTrue(candidate["reused"])
+
+    def test_producer_pages_may_omit_the_optional_z_and_m_flags(self):
+        # The live producer's query responses omit hasZ/hasM entirely
+        # (probed repeatedly 2026-11-14); the layer document keeps pinning the
+        # non-Z/M shape, so an absent flag must not block the seal while an
+        # explicit true stays drift (covered by the quarantine cases above).
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows, page_has_z=None)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport, page_size=2):
+                storage = _staging(root)
+                result = src.capture_pad_us_protection_mechanism_category(
+                    storage, version="flags-omitted", capture_directory=str(capture_root))
+                self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+                self.assertFalse(result["reused"])
 
     def test_retained_geoparquet_seals_into_staging(self):
         rows = _fixture_rows()
@@ -757,6 +778,7 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
             "exact_padus_protection_mechanism_layer_metadata_drift": dict(
                 layer={**_fixture_layer_doc(_fixture_layer_fields()),
                        "geometryType": "esriGeometryPolyline"}),
+            "source_page_z_or_m_flag_drift:page_000000": dict(page_has_z=True),
             "source_layer_z_or_m_contract_drift": dict(
                 layer={**_fixture_layer_doc(_fixture_layer_fields()), "hasZ": True}),
             "source_record_limit_drift": dict(
