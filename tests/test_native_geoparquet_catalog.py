@@ -88,12 +88,18 @@ class NativeCatalogTests(unittest.TestCase):
             self.assertEqual(sha256_file(path),metadata['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]['sha256'])
 
     def test_declared_measured_dimension_types_are_cataloged(self):
-        def build(root, declared, invalid=False):
-            geometry = [shapely.to_wkb(shapely.Point(1.0, 2.0)),
-                        shapely.to_wkb(shapely.from_wkt('POINT M (3.0 4.0 7.25)'), flavor='iso'),
-                        shapely.to_wkb(shapely.Point(5.0, 6.0))]
+        point_2d = shapely.to_wkb(shapely.Point(1.0, 2.0))
+        point_m = shapely.to_wkb(shapely.from_wkt('POINT M (3.0 4.0 7.25)'), flavor='iso')
+        point_zm = shapely.to_wkb(shapely.from_wkt('POINT ZM (3.0 4.0 5.5 7.25)'), flavor='iso')
+        point_z = shapely.to_wkb(shapely.from_wkt('POINT Z (3.0 4.0 5.5)'), flavor='iso')
+        # ISO WKB MultiLineString M (type word 2005), exactly what the measured
+        # Trails adapter emits for a populated-m feature.
+        multiline_m = shapely.to_wkb(shapely.from_wkt('MULTILINESTRING M ((0 0 1, 1 1 2))'), flavor='iso')
+
+        def build(root, declared, geometries=None):
+            geometry = geometries if geometries is not None else [point_2d, point_m, point_2d]
             fields = [pa.field('id', pa.int64()), pa.field('native_shape', pa.binary())]
-            arrays = [pa.array([10, 11, 12], type=pa.int64()), pa.array(geometry, type=pa.binary())]
+            arrays = [pa.array(list(range(len(geometry))), type=pa.int64()), pa.array(geometry, type=pa.binary())]
             column = {'encoding': 'WKB', 'geometry_types': declared, 'crs': CRS(3857).to_json_dict()}
             geo = {'version': '1.1.0', 'primary_column': 'native_shape', 'columns': {'native_shape': column}}
             table = pa.Table.from_arrays(arrays, schema=pa.schema(fields, metadata={b'geo': json.dumps(geo).encode()}))
@@ -109,26 +115,60 @@ class NativeCatalogTests(unittest.TestCase):
             (root / PREFIX / 'metadata/source_manifest.json').write_text(json.dumps(metadata))
             return metadata
 
+        def catalog(root, metadata):
+            return summarize_staged_catalog(StagingStorageResource(local_dir=str(root)), *PREFIX.split('/'),
+                                            'synthetic', source_metadata=metadata)
+
+        def dimension_roundtrip(geometries, declared):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                quality = catalog(root, build(root, declared, geometries)).quality_manifest
+                self.assertTrue(quality['quality_check_passed'])
+                return quality
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            metadata = build(root, ['Point', 'Point M'])
-            summary = summarize_staged_catalog(StagingStorageResource(local_dir=tmp), *PREFIX.split('/'), 'synthetic', source_metadata=metadata)
-            quality = summary.quality_manifest
+            quality = catalog(root, build(root, ['Point', 'Point M'])).quality_manifest
             self.assertTrue(quality['quality_check_passed'])
             self.assertEqual(quality['feature_count'], 3)
             self.assertEqual(quality['native_geo_metadata']['geometry_types'], ['Point', 'Point M'])
-            self.assertEqual(quality['geometry_type'], 'Point')
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            metadata = build(root, ['Point', 'Point ZM', 'Point M'])
-            summary = summarize_staged_catalog(StagingStorageResource(local_dir=tmp), *PREFIX.split('/'), 'synthetic', source_metadata=metadata)
-            self.assertTrue(summary.quality_manifest['quality_check_passed'])
+            # Observed dimensions are classified per geometry: 2D Point and
+            # measured Point M are distinct observed kinds, so the summary is
+            # Mixed (matching the existing mixed 2D/Z convention).
+            self.assertEqual(quality['geometry_type'], 'Mixed')
+        # A measured-only population passes only when the declaration states
+        # the served dimension, and fails closed against a 2D-only declaration.
+        quality = dimension_roundtrip([point_m, point_m], ['Point M'])
+        self.assertEqual(quality['geometry_type'], 'Point')
+        for geometries, declared in (
+                ([point_m, point_m], ['Point']),
+                ([point_zm], ['Point Z']),
+                ([point_zm], ['Point M']),
+                ([point_z], ['Point ZM']),
+                ([multiline_m], ['MultiLineString']),
+        ):
+            with self.subTest(geometries=geometries, declared=declared), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                with self.assertRaisesRegex(ValueError, 'declared_geometry_types_mismatch'):
+                    catalog(root, build(root, declared, geometries))
+        for geometries, declared in (
+                ([point_m, point_m], ['Point M']),
+                ([point_zm], ['Point ZM']),
+                ([point_z], ['Point Z']),
+                ([multiline_m], ['MultiLineString M']),
+                ([point_2d, point_zm, point_m], ['Point', 'Point ZM', 'Point M']),
+                ([point_m], ['Point M', 'Point Z']),
+        ):
+            with self.subTest(geometries=geometries, declared=declared), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                quality = catalog(root, build(root, declared, geometries)).quality_manifest
+                self.assertTrue(quality['quality_check_passed'])
         for bad in (['Point', 'Foo M'], ['Point', 'Point M', 'Point M'], ['Point', 'Point W']):
             with self.subTest(bad=bad), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 metadata = build(root, bad)
                 with self.assertRaisesRegex(ValueError, 'invalid_declared_geometry_types'):
-                    summarize_staged_catalog(StagingStorageResource(local_dir=tmp), *PREFIX.split('/'), 'synthetic', source_metadata=metadata)
+                    catalog(root, metadata)
 
     def test_full_population_after_5000_quality_bounds_and_nulls(self):
         for tail in ['invalid','null','extent']:
