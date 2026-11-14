@@ -960,7 +960,7 @@ def capture_wbd_2_digit_hu(storage: StagingStorageResource, *, version: str,
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
             "page_parts": dict(sorted(page_parts.items())),
             "page_refusals": sorted(page_refusals)}) + b"\n")
-        captures = _read_replay(root)
+        captures, page_parts = _read_replay(root)
 
     parquet_sink = staging / "_construction-tmp" / f"{DATASET_SLUG}-{version}.parquet"
     audit, derived = _validate_stream(root, parquet_sink=parquet_sink, page_parts=page_parts)
