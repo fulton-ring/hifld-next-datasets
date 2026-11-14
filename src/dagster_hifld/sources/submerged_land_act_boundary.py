@@ -561,9 +561,9 @@ def capture_submerged_land_act_boundary(storage: StagingStorageResource, *, vers
     base = Path(storage.local_dir).absolute()
     if ".." in base.parts or any(p.is_symlink() for p in (base, *base.parents)):
         raise ValueError("unsafe_local_staging_root")
+    base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 1_000_000_000:
         raise ValueError("unsafe_or_low_space_staging_root")
-    base.mkdir(parents=True, exist_ok=True)
     capture_parent = Path(capture_directory).absolute() if capture_directory \
         else Path(tempfile.gettempdir()) / "sla-boundary-captures"
     capture_root = capture_parent / f"{version}-{uuid4().hex}"
