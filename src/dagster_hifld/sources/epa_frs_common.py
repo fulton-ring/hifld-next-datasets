@@ -473,6 +473,34 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
                 or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
                 or receipt_body != _canonical(dict(receipt)) + b"\n"):
             raise ValueError("cached_original_capture_changed:" + name)
+    # Page evidence whose receipts are not duplicated into the construction
+    # state is still bound to the first construction through the state's own
+    # object descriptors above; here the staged receipt must self-canonicalize
+    # and bind exactly the staged body and wire bytes of its page.
+    doc_receipt_names = set(capture_receipts)
+    for name in sorted(expected_objects):
+        if not name.startswith("raw/") or not name.endswith(".body"):
+            continue
+        page = name[len("raw/"):-len(".body")]
+        if page in doc_receipt_names:
+            continue
+        wire_descriptor = expected_objects.get(f"raw/{page}.wire")
+        receipt_descriptor = expected_objects.get(f"raw/{page}.receipt.json")
+        if not isinstance(wire_descriptor, dict) or not isinstance(receipt_descriptor, dict):
+            raise ValueError("cached_page_evidence_descriptor_missing:" + page)
+        body = storage.read_key(f"{prefix}/{name}")
+        wire = storage.read_key(f"{prefix}/raw/{page}.wire")
+        receipt_body = storage.read_key(f"{prefix}/raw/{page}.receipt.json")
+        try:
+            receipt = json.loads(receipt_body)
+        except ValueError as exc:
+            raise ValueError("cached_original_capture_changed:" + page) from exc
+        if (not isinstance(receipt, dict)
+                or _canonical(receipt) + b"\n" != receipt_body
+                or receipt.get("complete_body") is not True or receipt.get("status") != 200
+                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+            raise ValueError("cached_original_capture_changed:" + page)
     _validate_cached_catalog_sidecars(storage, prefix, actual_keys)
     validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"], identity=identity)
     return {"version": version, "reused": True}

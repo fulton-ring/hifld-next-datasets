@@ -1,0 +1,309 @@
+{
+  "inventory_id": "pad-us-manager-name",
+  "inventory_title": "PAD-US Manager Name",
+  "inventory_agency": "US Geological Survey",
+  "inventory_publisher": "U.S. Geological Survey (USGS) Gap Analysis Project (GAP)",
+  "inventory_archive": {
+    "url": "https://www.datalumos.org/datalumos/project/240684/version/V1/view",
+    "inventory_date_issued": "2024-03-12",
+    "inventory_modified": "2025-06-04",
+    "classification": "historical archive; current response is an access-denied challenge, not a source freshness check"
+  },
+  "source": {
+    "classification": "USGS ArcGIS Online Feature Service published by a USGS organizational account",
+    "item_id": "d1c464bac63d44bc88a4a059dc69d259",
+    "item_url": "https://www.arcgis.com/home/item.html?id=d1c464bac63d44bc88a4a059dc69d259",
+    "owner": "mcroft@usgs.gov_USGS",
+    "item_created_utc": "2024-05-17T03:38:30Z",
+    "item_modified_utc": "2026-07-30T20:27:38Z",
+    "item_access": "public",
+    "service_url": "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Manager_Name_PADUS/FeatureServer",
+    "layer_url": "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Manager_Name_PADUS/FeatureServer/0",
+    "layer_name": "PADUS4_1ManagerName",
+    "source_release_citation": "U.S. Geological Survey (USGS) Gap Analysis Project (GAP), 2025, Protected Areas Database of the United States (PAD-US) 4.1: U.S. Geological Survey data release, https://doi.org/10.5066/P96WBCHS",
+    "release_evidence": "The service copyright text identifies the USGS PAD-US 4.1 data release and cites DOI 10.5066/P96WBCHS. The portal item's 2026 modification timestamp is metadata activity, not evidence of a 2026 data refresh.",
+    "landing_page": "https://www.usgs.gov/programs/gap-analysis-project/science/protected-areas-resources",
+    "lineage_statement": "The item snippet says this manager-name map is based on the PAD-US Combined Proclamation, Marine, Fee, Designation, Easement feature class. Exact equivalence or continuity with the DataLumos HIFLD item has not been established.",
+    "license_statement": "The ArcGIS item is public and its description identifies PAD-US 4.1 as a USGS data release. The item also publishes a USGS no-warranty statement. No separate rights review was performed.",
+    "official_download_reference": {
+      "page": "https://www.usgs.gov/programs/gap-analysis-project/science/protected-areas-resources",
+      "release_doi": "https://doi.org/10.5066/P96WBCHS",
+      "sciencebase_item_id": "652d4fc5d34e44db0e2ee45e",
+      "observation": "dataset-4 worker reports that the official PAD-US download page points to this national geodatabase item; HTTP GET returned 403 in that worker environment; archive size and contents were not observed"
+    }
+  },
+  "extraction_observation": {
+    "observed_utc": "2026-10-20",
+    "http_status": 200,
+    "layer_count": 655335,
+    "object_id_field": "OBJECTID",
+    "max_record_count": 2000,
+    "pagination_supported": true,
+    "geometry_type": "esriGeometryPolygon",
+    "service_spatial_reference": 102100,
+    "full_object_id_response_bytes": 4476286,
+    "sample_query": {
+      "url": "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Manager_Name_PADUS/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&resultOffset=0&resultRecordCount=100&outSR=3857&f=geojson",
+      "response_bytes": 1645553,
+      "feature_count": 100,
+      "sha256": "4a2407a4aab71698b901bd2eeae453d82abeacd7a9b1840d9ece693ce7c4e67e"
+    },
+    "full_extraction_status": "not performed",
+    "reason": "A complete lossless extract must be bounded against the official national GDB archive, not the FeatureServer JSON page extrapolation. A sibling worker found the official download page points to ScienceBase item 652d4fc5d34e44db0e2ee45e, but its GET returned HTTP 403; its size and contents remain unknown. The approximately 21 GB value is a simple 2,000-record GeoJSON page-size extrapolation, not measured full-source size or a proven working-storage requirement.",
+    "metadata_capture_sha256": {
+      "item": "7b67c9ce3e7032f5ac38cc8240c8b0dd5d602a58262b565d3717c3585bf43c4e",
+      "layer": "5c6d9ce496a290148dede2b991e75f8070afa5c95c0f204c7b080a46a11613f9",
+      "count": "df16a9a352bf52c5c0b7ecee1b8337fbfe26d95ccfaa235b0f55841fbc25388c",
+      "ids": "1061198516b5e03337a0cdfd7751c6e423f48b4c4d52efaa0bc34673f3d23d87"
+    },
+    "failed_archive_and_crosswalk_requests": [
+      {
+        "url": "https://www.datalumos.org/datalumos/project/240684/version/V1/view",
+        "http_status": 403,
+        "response_bytes": 6157,
+        "classification": "access challenge; no data evidence"
+      },
+      {
+        "url": "https://doi.org/10.3886/E241367V1",
+        "http_status": 403,
+        "response_bytes": 6157,
+        "classification": "redirected access challenge; crosswalk content not inspected"
+      }
+    ]
+  },
+  "schema_contract": {
+    "status": "proposed; maintainer approval required",
+    "rule": "Preserve every source field, declared ArcGIS type, nullability, length, value, OBJECTID and unmodified polygon coordinates. Do not derive substitute IDs, simplify geometry, or infer a published mapping from the title.",
+    "source_field_count": 37,
+    "fields": [
+      {
+        "name": "OBJECTID",
+        "type": "esriFieldTypeOID",
+        "nullable": false
+      },
+      {
+        "name": "FeatClass",
+        "type": "esriFieldTypeString",
+        "length": 12,
+        "nullable": true
+      },
+      {
+        "name": "Category",
+        "type": "esriFieldTypeString",
+        "length": 50,
+        "nullable": true
+      },
+      {
+        "name": "Own_Type",
+        "type": "esriFieldTypeString",
+        "length": 50,
+        "nullable": true
+      },
+      {
+        "name": "Own_Name",
+        "type": "esriFieldTypeString",
+        "length": 70,
+        "nullable": true
+      },
+      {
+        "name": "Loc_Own",
+        "type": "esriFieldTypeString",
+        "length": 250,
+        "nullable": true
+      },
+      {
+        "name": "Mang_Type",
+        "type": "esriFieldTypeString",
+        "length": 50,
+        "nullable": true
+      },
+      {
+        "name": "Mang_Name",
+        "type": "esriFieldTypeString",
+        "length": 70,
+        "nullable": true
+      },
+      {
+        "name": "Loc_Mang",
+        "type": "esriFieldTypeString",
+        "length": 250,
+        "nullable": true
+      },
+      {
+        "name": "Des_Tp",
+        "type": "esriFieldTypeString",
+        "length": 75,
+        "nullable": true
+      },
+      {
+        "name": "Loc_Ds",
+        "type": "esriFieldTypeString",
+        "length": 250,
+        "nullable": true
+      },
+      {
+        "name": "Unit_Nm",
+        "type": "esriFieldTypeString",
+        "length": 250,
+        "nullable": true
+      },
+      {
+        "name": "Loc_Nm",
+        "type": "esriFieldTypeString",
+        "length": 250,
+        "nullable": true
+      },
+      {
+        "name": "State_Nm",
+        "type": "esriFieldTypeString",
+        "length": 50,
+        "nullable": true
+      },
+      {
+        "name": "Agg_Src",
+        "type": "esriFieldTypeString",
+        "length": 150,
+        "nullable": true
+      },
+      {
+        "name": "GIS_Src",
+        "type": "esriFieldTypeString",
+        "length": 200,
+        "nullable": true
+      },
+      {
+        "name": "Src_Date",
+        "type": "esriFieldTypeString",
+        "length": 15,
+        "nullable": true
+      },
+      {
+        "name": "GIS_Acres",
+        "type": "esriFieldTypeInteger",
+        "nullable": true
+      },
+      {
+        "name": "Source_PAID",
+        "type": "esriFieldTypeString",
+        "length": 100,
+        "nullable": true
+      },
+      {
+        "name": "WDPA_Cd",
+        "type": "esriFieldTypeInteger",
+        "nullable": true
+      },
+      {
+        "name": "Pub_Access",
+        "type": "esriFieldTypeString",
+        "length": 20,
+        "nullable": true
+      },
+      {
+        "name": "Access_Src",
+        "type": "esriFieldTypeString",
+        "length": 150,
+        "nullable": true
+      },
+      {
+        "name": "Access_Dt",
+        "type": "esriFieldTypeString",
+        "length": 4,
+        "nullable": true
+      },
+      {
+        "name": "GAP_Sts",
+        "type": "esriFieldTypeString",
+        "length": 95,
+        "nullable": true
+      },
+      {
+        "name": "GAPCdSrc",
+        "type": "esriFieldTypeString",
+        "length": 150,
+        "nullable": true
+      },
+      {
+        "name": "GAPCdDt",
+        "type": "esriFieldTypeString",
+        "length": 4,
+        "nullable": true
+      },
+      {
+        "name": "IUCN_Cat",
+        "type": "esriFieldTypeString",
+        "length": 70,
+        "nullable": true
+      },
+      {
+        "name": "IUCNCtSrc",
+        "type": "esriFieldTypeString",
+        "length": 150,
+        "nullable": true
+      },
+      {
+        "name": "IUCNCtDt",
+        "type": "esriFieldTypeString",
+        "length": 4,
+        "nullable": true
+      },
+      {
+        "name": "Date_Est",
+        "type": "esriFieldTypeString",
+        "length": 4,
+        "nullable": true
+      },
+      {
+        "name": "Comments",
+        "type": "esriFieldTypeString",
+        "length": 255,
+        "nullable": true
+      },
+      {
+        "name": "EsmtHldr",
+        "type": "esriFieldTypeString",
+        "length": 100,
+        "nullable": true
+      },
+      {
+        "name": "EHoldTyp",
+        "type": "esriFieldTypeString",
+        "length": 50,
+        "nullable": true
+      },
+      {
+        "name": "WebServiceMangName",
+        "type": "esriFieldTypeString",
+        "length": 150,
+        "nullable": true
+      },
+      {
+        "name": "TranspPct",
+        "type": "esriFieldTypeSmallInteger",
+        "nullable": true
+      },
+      {
+        "name": "Shape__Area",
+        "type": "esriFieldTypeDouble",
+        "nullable": true
+      },
+      {
+        "name": "Shape__Length",
+        "type": "esriFieldTypeDouble",
+        "nullable": true
+      }
+    ],
+    "geometry": {
+      "type": "esriGeometryPolygon",
+      "spatial_reference_wkid": 102100,
+      "has_z": false,
+      "has_m": false
+    }
+  },
+  "decisions_required": [
+    "Match or explicitly declare unmatched the DHS crosswalk row and DataLumos item; the DOI/archive endpoints returned HTTP 403 challenge pages in this observation.",
+    "Provide an accessible retrieval path or a bounded execution/storage budget for the official national GDB at ScienceBase item 652d4fc5d34e44db0e2ee45e; its size/content are unknown because the request returned HTTP 403.",
+    "Approve whether PAD-US 4.1 is the intended historical baseline or a successor to the HIFLD card.",
+    "Approve source and published ID, field, type, geometry and rights contract before any promotion."
+  ]
+}
