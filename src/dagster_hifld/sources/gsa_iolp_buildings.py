@@ -380,8 +380,8 @@ def _parquet(columns: dict, count: int) -> bytes:
     fields.append(pa.field("geometry", pa.binary(), nullable=False))
     geo = {"version": "1.1.0", "primary_column": "geometry",
            "columns": {"geometry": {"encoding": "WKB", "geometry_types": GEOMETRY_TYPES,
-                                    "crs": WGS84.to_json_dict()},
-                       "bbox": [-180.0, -90.0, 180.0, 90.0], "epoch": None}}
+                                    "crs": WGS84.to_json_dict(),
+                                    "bbox": [-180.0, -90.0, 180.0, 90.0], "epoch": None}}}
     schema = pa.schema(fields, metadata={b"geo": _canonical(geo)})
     sink = pa.BufferOutputStream()
     pq.write_table(pa.Table.from_arrays(arrays, schema=schema), sink,
@@ -400,7 +400,7 @@ def _parquet(columns: dict, count: int) -> bytes:
     return body
 
 
-def _load_capture(root: Path, identity: dict) -> tuple[bytes, dict, dict]:
+def _load_capture(root: Path, identity: dict) -> dict:
     roster = capture_roster_digests(root, exclude={"capture_manifest.json"})
     if roster != identity.get("artifact_roster"):
         raise GsaIolpBuildingsError("capture_roster_digest_drift")
@@ -429,7 +429,9 @@ def _load_capture(root: Path, identity: dict) -> tuple[bytes, dict, dict]:
         raise GsaIolpBuildingsError("capture_redirect_receipt_invalid")
     if not body.startswith(ZIP_MAGIC):
         raise GsaIolpBuildingsError("capture_workbook_not_xlsx")
-    return catalog_body, body, {**receipt, "redirect": redirect_receipt}
+    return {"identity": identity, "catalog_body": catalog_body, "body": body,
+            "catalog_receipt": catalog_receipt, "receipt": receipt,
+            "redirect_receipt": redirect_receipt, "capture_root": root}
 
 
 def _capture(root: Path, storage: StagingStorageResource, version: str) -> dict:
@@ -445,12 +447,7 @@ def _capture(root: Path, storage: StagingStorageResource, version: str) -> dict:
             raise GsaIolpBuildingsError("capture_manifest_identity_invalid")
         validate_capture_roster(root, set(manifest.get("artifact_roster", {}))
                                 | {"capture_manifest.json"})
-        if manifest.get("artifact_roster") != capture_roster_digests(
-                root, exclude={"capture_manifest.json"}):
-            raise GsaIolpBuildingsError("capture_roster_digest_drift")
-        catalog_body, body, receipts = _load_capture(root, identity)
-        return {"identity": identity, "catalog_body": catalog_body, "body": body,
-                "receipts": receipts}
+        return _load_capture(root, identity)
     if any(root.glob("*")):
         raise GsaIolpBuildingsError("unsealed_capture_attempt")
     root.mkdir(parents=True, exist_ok=True)
@@ -458,7 +455,7 @@ def _capture(root: Path, storage: StagingStorageResource, version: str) -> dict:
         with httpx.Client(follow_redirects=False,
                           timeout=httpx.Timeout(60, connect=15),
                           headers={"User-Agent": "hifld-next-datasets/gsa-iolp-buildings-draft"}) as client:
-            catalog_body, _catalog_receipt = capture_get(
+            catalog_body, catalog_receipt = capture_get(
                 client, CATALOG_URL, root, "catalog_discovery", max_bytes=16 * 1024 * 1024)
             identity = select_buildings_distribution(_strict_json(catalog_body))
             body, receipt, redirect_receipt = _capture_ckan_download(
@@ -470,7 +467,8 @@ def _capture(root: Path, storage: StagingStorageResource, version: str) -> dict:
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
         }) + b"\n")
         return {"identity": identity, "catalog_body": catalog_body, "body": body,
-                "receipts": {**receipt, "redirect": redirect_receipt}}
+                "catalog_receipt": catalog_receipt, "receipt": receipt,
+                "redirect_receipt": redirect_receipt, "capture_root": root}
     except Exception as exc:
         receipts = {}
         for path in sorted(root.glob("*.receipt.json")):
@@ -504,15 +502,18 @@ def capture_gsa_iolp_buildings(storage: StagingStorageResource, *, version: str,
             / (version + "-" + uuid4().hex))
     captured = _capture(root, storage, version)
     identity = captured["identity"]
+    catalog_receipt, receipt = captured["catalog_receipt"], captured["receipt"]
+    root = captured["capture_root"]
     with tempfile.TemporaryDirectory() as tmp:
         decoded = _decode_workbook(captured["body"], Path(tmp))
         parquet = _parquet(decoded["columns"], decoded["count"])
     audit = decoded["audit"]
     identity_pkg = processing_identity(Path(__file__).parents[3])
     evidence_sha = _sha(_canonical({
-        "catalog_discovery": {"body_sha256": _sha(captured["catalog_body"])},
+        "catalog_discovery": {"body_sha256": _sha(captured["catalog_body"]),
+                              "wire_sha256": catalog_receipt["wire_sha256"]},
         "buildings_xlsx": {"body_sha256": _sha(captured["body"]),
-                           "wire_sha256": captured["receipts"]["wire_sha256"]}}))
+                           "wire_sha256": receipt["wire_sha256"]}}))
     audit.update({
         "source_capture_evidence_sha256": evidence_sha,
         "source_release_date": identity["release_date"],
@@ -533,8 +534,9 @@ def capture_gsa_iolp_buildings(storage: StagingStorageResource, *, version: str,
         {"input_id": "catalog_discovery", "producer": CATALOG_PUBLISHER,
          "host": urlsplit(CATALOG_URL).hostname, "role": "producer_publication",
          "canonical_url": CATALOG_URL, "retrieval_url": CATALOG_URL,
-         "retrieved_at": captured["receipts"].get("observed_at"),
-         "http_status": 200, "bytes": len(captured["catalog_body"]),
+         "retrieved_at": catalog_receipt.get("observed_at"),
+         "http_status": catalog_receipt["status"],
+         "bytes": len(captured["catalog_body"]),
          "sha256": _sha(captured["catalog_body"]),
          "release_date": identity["release_date"],
          "license": CATALOG_LICENSE,
@@ -546,12 +548,12 @@ def capture_gsa_iolp_buildings(storage: StagingStorageResource, *, version: str,
          "role": "producer_publication",
          "canonical_url": identity["download_url"],
          "retrieval_url": identity["download_url"],
-         "observed_final_url": captured["receipts"]["final_url"],
-         "retrieved_at": captured["receipts"]["observed_at"],
-         "http_status": captured["receipts"]["status"], "bytes": len(captured["body"]),
+         "observed_final_url": receipt["final_url"],
+         "retrieved_at": receipt["observed_at"],
+         "http_status": receipt["status"], "bytes": len(captured["body"]),
          "sha256": _sha(captured["body"]),
-         "wire_bytes": captured["receipts"]["wire_bytes"],
-         "wire_sha256": captured["receipts"]["wire_sha256"],
+         "wire_bytes": receipt["wire_bytes"],
+         "wire_sha256": receipt["wire_sha256"],
          "release_date": identity["release_date"],
          "license": CATALOG_LICENSE,
          "attribution": "GSA IOLP Buildings workbook '" + identity["title"] + "' on the GSA-operated "
@@ -615,12 +617,13 @@ def capture_gsa_iolp_buildings(storage: StagingStorageResource, *, version: str,
                     "id_contract_accepted": False, "rights_accepted": False,
                     "coverage_accepted": False, "release_accepted": False}) + b"\n",
                "raw/catalog_discovery.body": captured["catalog_body"],
+               "raw/catalog_discovery.wire": (root / "catalog_discovery.wire").read_bytes(),
+               "raw/catalog_discovery.receipt.json": (root / "catalog_discovery.receipt.json").read_bytes(),
                "raw/buildings_xlsx.body": captured["body"],
-               "raw/buildings_xlsx.receipt.json": _canonical(
-                   {key: value for key, value in captured["receipts"].items()
-                    if key != "redirect"}) + b"\n",
-               "raw/buildings_xlsx.redirect.receipt.json": _canonical(
-                   captured["receipts"]["redirect"]) + b"\n"}
+               "raw/buildings_xlsx.wire": (root / "buildings_xlsx.wire").read_bytes(),
+               "raw/buildings_xlsx.receipt.json": (root / "buildings_xlsx.receipt.json").read_bytes(),
+               "raw/buildings_xlsx.redirect.wire": (root / "buildings_xlsx.redirect.wire").read_bytes(),
+               "raw/buildings_xlsx.redirect.receipt.json": (root / "buildings_xlsx.redirect.receipt.json").read_bytes()}
     state = f"_construction-state/{DATASET_SLUG}/{cv}.json"
     fingerprint = _sha(_canonical({
         "identity": identity_pkg, "workbook_sha256": _sha(captured["body"]),
@@ -652,11 +655,8 @@ def capture_gsa_iolp_buildings(storage: StagingStorageResource, *, version: str,
         "processing_identity": identity_pkg,
         "source_record_sha256": audit["source_record_sha256"],
         "source_schema_sha256": audit["source_schema_sha256"],
-        "capture_receipts": {
-            "catalog_discovery": {"sha256": _sha(captured["catalog_body"]),
-                                  "bytes": len(captured["catalog_body"])},
-            "buildings_xlsx": {"sha256": _sha(captured["body"]), "bytes": len(captured["body"])},
-        },
+        "capture_receipts": {"catalog_discovery": dict(catalog_receipt),
+                             "buildings_xlsx": dict(receipt)},
         "objects": descriptors})
     validate_construction_code_identity(
         Path(__file__).parents[3], identity_pkg["code_commit"], identity_pkg["files"],
