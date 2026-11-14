@@ -141,7 +141,13 @@ DOC_USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 PAGE_MAX_BYTES = 48_000_000
 DOC_MAX_BYTES = 4_000_000
-CAPTURE_MAX_BYTES = 12_000_000_000
+# Retained-evidence budget. The 2026-11-14 complete walk showed the nominal
+# 207-page population alone retains about 10 GB of body+wire evidence and the
+# tail's giant subwatersheds are re-fetched as bisected single-feature parts
+# (each up to about 10 MB served) on top of the retained refusal documents,
+# pushing the complete walk past the draft's 12 GB budget; 16 GB bounds the
+# same runaway-evidence risk while fitting the observed complete walk.
+CAPTURE_MAX_BYTES = 16_000_000_000
 DISK_FLOOR_BYTES = 24_000_000_000
 # The live service computes shape_Area/shape_Length planarly in the layer's
 # web-mercator SR; the observed parity against a shapely recomputation peaked
