@@ -4,7 +4,6 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
-from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.uranium_vanadium_deposits import (
@@ -30,7 +29,7 @@ class UraniumVanadiumDepositsConfig(Config):
 def uranium_vanadium_deposits(context, config: UraniumVanadiumDepositsConfig,
                               staging_storage: StagingStorageResource) -> dict:
     result = capture_uranium_vanadium_deposits(
-        staging_storage, version=build_version_id(context),
+        staging_storage, version=candidate_version(),
         capture_directory=config.capture_directory or None,
     )
     context.instance.add_dynamic_partitions(
