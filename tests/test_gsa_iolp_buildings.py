@@ -1,6 +1,7 @@
 """Focused GSA IOLP Buildings source-contract, decode and validation checks."""
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -318,6 +319,21 @@ class _BodyStream(httpx.SyncByteStream):
         return None
 
 
+class _PartialThenErrorStream(httpx.SyncByteStream):
+    """Deliver a bounded prefix, then fail the transport mid-stream."""
+
+    def __init__(self, prefix: bytes, error: Exception):
+        self.prefix = prefix
+        self.error = error
+
+    def __iter__(self):
+        yield self.prefix
+        raise self.error
+
+    def close(self):
+        return None
+
+
 class GsaIolpBuildingsCaptureReplayTest(unittest.TestCase):
     """Sealed-capture first capture, no-network replay and failure quarantine."""
 
@@ -481,6 +497,108 @@ class GsaIolpBuildingsCaptureReplayTest(unittest.TestCase):
             with self.assertRaises(GsaIolpBuildingsError) as replay:
                 self._run_capture(root, storage, xlsx, refuse=True)
             self.assertEqual(str(replay.exception), "capture_manifest_incomplete")
+
+    def _capture_root_evidence(self, root: Path) -> tuple[bytes, bytes, dict]:
+        body = (root / "buildings_xlsx.body").read_bytes()
+        wire = (root / "buildings_xlsx.wire").read_bytes()
+        receipt = json.loads((root / "buildings_xlsx.receipt.json").read_bytes())
+        return body, wire, receipt
+
+    def _failing_transport(self, target_handler) -> httpx.MockTransport:
+        catalog_body = json.dumps(_catalog_record()).encode("utf-8")
+        target_path = urlsplit(self.SIGNED_S3_TARGET).path
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if url == CATALOG_URL:
+                return httpx.Response(200, stream=_BodyStream(catalog_body))
+            if urlsplit(url).path == self.DOWNLOAD_PATH:
+                return httpx.Response(302, stream=_BodyStream(b""),
+                                      headers={"location": self.SIGNED_S3_TARGET})
+            if urlsplit(url).path == target_path:
+                return target_handler(request)
+            raise AssertionError("unrouted request " + url)
+
+        return httpx.MockTransport(respond)
+
+    def _run_failing_capture(self, root: Path, storage: StagingStorageResource,
+                             transport: httpx.MockTransport):
+        real_client = httpx.Client
+        with patch("dagster_hifld.sources.gsa_iolp_buildings.httpx.Client",
+                   side_effect=lambda **kwargs: real_client(transport=transport, **kwargs)):
+            return _capture(root, storage, "vtest")
+
+    def _assert_quarantined_failure(self, root_dir: Path, root: Path, reason: str) -> None:
+        manifest = json.loads((root / "capture_manifest.json").read_bytes())
+        self.assertFalse(manifest["complete"])
+        tokens = sorted((root_dir / "staging" / "_quarantine" / DATASET_SLUG).glob("*"))
+        self.assertEqual(len(tokens), 1)
+        failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+        self.assertEqual(failure["reason_code"], reason)
+        self.assertEqual(failure["captured_names"], ["catalog_discovery"])
+        retained = (tokens[0] / "raw" / "catalog_discovery.body").read_bytes()
+        self.assertEqual(json.loads(retained), _catalog_record())
+
+    def test_capture_connection_failure_retains_evidence_and_propagates(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root_dir = Path(temp)
+            xlsx = self._workbook_bytes(root_dir)
+            storage = self._staging(root_dir)
+            root = root_dir / "capture"
+
+            def refuse_connection(request: httpx.Request) -> httpx.Response:
+                raise httpx.ConnectError("connection refused", request=request)
+
+            with self.assertRaises(GsaIolpBuildingsError) as ctx:
+                self._run_failing_capture(
+                    root, storage, self._failing_transport(refuse_connection))
+            self.assertEqual(str(ctx.exception), "ckan_download_file_request_error")
+            body, wire, receipt = self._capture_root_evidence(root)
+            self.assertEqual(body, b"")
+            self.assertEqual(wire, b"")
+            self.assertFalse(receipt["complete_body"])
+            self.assertIsNone(receipt["status"])
+            self.assertEqual(receipt["error_code"], "ckan_download_file_request_error")
+            self.assertEqual(receipt["bytes"], 0)
+            self.assertEqual(receipt["wire_bytes"], 0)
+            self.assertEqual(receipt["sha256"], hashlib.sha256(b"").hexdigest())
+            redacted_target = "https://" + urlsplit(self.SIGNED_S3_TARGET).netloc \
+                + urlsplit(self.SIGNED_S3_TARGET).path
+            self.assertEqual(receipt["url"], redacted_target)
+            self.assertIsNone(receipt["final_url"])
+            self._assert_quarantined_failure(root_dir, root, "GsaIolpBuildingsError")
+            with self.assertRaises(GsaIolpBuildingsError) as replay:
+                self._run_capture(root, storage, xlsx, refuse=True)
+            self.assertEqual(str(replay.exception), "capture_manifest_incomplete")
+
+    def test_capture_midstream_failure_retains_partial_evidence_and_propagates(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root_dir = Path(temp)
+            xlsx = self._workbook_bytes(root_dir)
+            storage = self._staging(root_dir)
+            root = root_dir / "capture"
+            prefix = b"PK\x03\x04partial"
+
+            def fail_midstream(request: httpx.Request) -> httpx.Response:
+                return httpx.Response(200, stream=_PartialThenErrorStream(
+                    prefix, httpx.ReadTimeout("timed out")))
+
+            with self.assertRaises(GsaIolpBuildingsError) as ctx:
+                self._run_failing_capture(
+                    root, storage, self._failing_transport(fail_midstream))
+            self.assertEqual(str(ctx.exception), "ckan_download_file_request_error")
+            body, wire, receipt = self._capture_root_evidence(root)
+            self.assertEqual(body, prefix)
+            self.assertEqual(wire, prefix)
+            self.assertFalse(receipt["complete_body"])
+            self.assertIsNone(receipt["status"])
+            self.assertEqual(receipt["error_code"], "ckan_download_file_request_error")
+            self.assertEqual(receipt["bytes"], len(prefix))
+            self.assertEqual(receipt["sha256"], hashlib.sha256(prefix).hexdigest())
+            self.assertEqual(receipt["wire_bytes"], len(prefix))
+            self.assertEqual(receipt["wire_sha256"], hashlib.sha256(prefix).hexdigest())
+            self.assertIsNone(receipt["final_url"])
+            self._assert_quarantined_failure(root_dir, root, "GsaIolpBuildingsError")
 
 
 if __name__ == "__main__":

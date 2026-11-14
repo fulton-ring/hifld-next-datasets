@@ -237,12 +237,13 @@ def _capture_ckan_download(client: httpx.Client, url: str, capture_root: Path, n
     redirect_receipt_path.write_bytes(_canonical(redirect_receipt) + b"\n")
     observed_final = datetime.now(timezone.utc).isoformat()
     error_code = None
+    final_url = None
+    body_chunks, wire_chunks = [], []
     try:
         with client.stream("GET", location, headers={"Accept-Encoding": "identity"}) as response:
             if response.status_code != 200:
-                error_code = "ckan_download_file_status_not_ok"
+                error_code = error_code or "ckan_download_file_status_not_ok"
             final_url = str(response.url)
-            body_chunks, wire_chunks = [], []
             for chunk in response.iter_raw():
                 if body_size + len(chunk) > max_bytes:
                     error_code = error_code or "ckan_download_file_oversized"
@@ -250,11 +251,15 @@ def _capture_ckan_download(client: httpx.Client, url: str, capture_root: Path, n
                 body_chunks.append(chunk); wire_chunks.append(chunk)
                 body_size += len(chunk); wire_size += len(chunk)
                 body_hash.update(chunk); wire_hash.update(chunk)
-            body_path.write_bytes(b"".join(body_chunks))
-            wire_path.write_bytes(b"".join(wire_chunks))
     except httpx.HTTPError:
         error_code = error_code or "ckan_download_file_request_error"
         final_url = None
+    finally:
+        # Retain bounded partial/empty body and wire evidence even when the
+        # transport fails mid-stream, so the sanitized incomplete receipt below
+        # is always persisted instead of a FileNotFoundError masking it.
+        body_path.write_bytes(b"".join(body_chunks))
+        wire_path.write_bytes(b"".join(wire_chunks))
     body, wire = body_path.read_bytes(), wire_path.read_bytes()
     receipt = {"method": "GET", "url": _redact_url(location), "final_url": _redact_url(final_url),
                "observed_at": observed_final, "status": None, "complete_body": False,
