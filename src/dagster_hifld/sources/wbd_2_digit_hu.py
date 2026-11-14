@@ -13,8 +13,8 @@ itself as compiled from USGS NHD and USDA NRCS WBD sources and is refreshed by
 USGS ("Data refreshed October, 2026" in the observed copyrightText). DataLumos
 project 240697 is archive identification context only and is never fetched.
 
-Scale (observed 2026-11-14): the layer holds 22 polygon features carrying about
-3.07M web-mercator vertices, and the declared ``maxRecordCount`` of 2000 cannot
+Scale (observed 2026-11-14): the layer holds 22 polygon features carrying
+3,552,737 web-mercator vertices, and the declared ``maxRecordCount`` of 2000 cannot
 actually be served for this geometry-heavy layer: query windows that decode to
 more than roughly 28-40 MB of JSON fail server-side with Esri error 500 "Error
 performing query operation" (observed: every broad window at 10-2000 features,
@@ -91,7 +91,7 @@ EXPECTED_ID_MIN = 1
 EXPECTED_ID_MAX = 22
 # Digest of the canonical-JSON sorted OBJECTID roster (22 unique ids, 1..22),
 # computed from the complete dated population walk (2026-11-14).
-EXPECTED_ID_SHA256 = ""
+EXPECTED_ID_SHA256 = "fd827f7c830e956e37ad3fb5b166b0b6379fd439549589cf735ffa11ac6f8124"
 # This 2-digit layer refuses any window whose JSON would exceed roughly
 # 28-40 MB (broad windows at 10-2000 features, three of five 5-feature
 # windows, and the 2-feature window carrying OBJECTIDs 17+18 all fail with
@@ -131,11 +131,11 @@ DISK_FLOOR_BYTES = 2_000_000_000
 SHAPE_PARITY_TOLERANCE = 1e-6
 # Native baselines pinned from the complete dated population walk (2026-11-14);
 # empty/None pins are checked only when non-empty.
-EXPECTED_SCHEMA_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
+EXPECTED_SCHEMA_SHA256 = "cc3308bf19b6db3ebdf0e125b91f829db672512b6f2188de03cb498c7d783845"
+EXPECTED_RECORD_SHA256 = "87a5b6a972cea49fd96efc22997a8a821b3ec08633170427a2324cb9a91e4439"
+EXPECTED_GEOMETRY_SHA256 = "af2458195c34d2cb32eeb08f0276834ba835c2624e28a5d2aebd1f437fc2d18f"
+EXPECTED_NULL_GEOMETRY_COUNT = 2
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {"source_polygon_ring_self_intersecting": 2}
 BASELINE_PENDING_NOTE = (
     "The record, geometry and ID-roster baselines and the geometry-gate counts "
     "are not pinned yet: no complete capture existed at draft time (observed "
