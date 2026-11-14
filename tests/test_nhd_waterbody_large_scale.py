@@ -293,11 +293,18 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
         self.assertEqual(src.PAGE_SIZE, 2500)
         self.assertEqual(len(src.NATIVE_FIELDS), 12)
         self.assertEqual(src.EXPECTED_FEATURETYPE_LABELS, {3: "Lake"})
-        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, None)
-        self.assertEqual(src.EXPECTED_REFUSED_IDS, None)
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
-        self.assertEqual(src.EXPECTED_IDS_SHA256, "")
+        # Pins transcribed from the complete 2026-11-13 capture
+        # (computed_baseline.json; any later drift fails closed).
+        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 0)
+        self.assertEqual(src.EXPECTED_REFUSED_IDS, ())
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
+                         {"source_polygon_ring_degenerate": 7})
+        self.assertEqual(src.EXPECTED_RECORD_SHA256,
+                         "a3eac7bb769a63a678c96955d96d7fddde54fa4414e4af06a3fbd5bc13b42073")
+        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256,
+                         "9a250fb41717baac97e7000469086bec2d0c13ae61686022818dcd661bfa8eae")
+        self.assertEqual(src.EXPECTED_IDS_SHA256,
+                         "b4c1d549b8a5fb8674d8d8fb6af55077cb8b1db2f00604e1324644e88a135b74")
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
@@ -401,6 +408,30 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
             self.assertEqual(fetches["count"], 0)
             self.assertFalse((root / "capture").exists())
             self.assertFalse(any((root / "staging").iterdir()))
+
+    def test_complete_capture_reuse_passes_the_acquisition_floor(self):
+        """Re-sealing a complete capture fetches nothing, so the acquisition
+        floor (which protects new producer bytes) does not apply: on a lease
+        that already holds the capture and its staged seal there is no room
+        for another floor-sized buffer (observed 2026-11-14)."""
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            storage = _staging(root)
+            with fixture_mode(schema_sha, transport, page_size=2):
+                first = src.capture_nhd_waterbody_large_scale(
+                    storage, version="floor-reuse-run", capture_directory=str(capture_root))
+                self.assertFalse(first["reused"])
+                with patch.object(src.shutil, "disk_usage",
+                                  return_value=SimpleNamespace(free=1)):
+                    again = src.capture_nhd_waterbody_large_scale(
+                        storage, version="floor-reuse-run-2",
+                        capture_directory=str(capture_root))
+                self.assertTrue(again["reused"])
+                self.assertEqual(again["version"], first["version"])
 
     def test_complete_fixture_capture_materializes_and_repeats(self):
         rows = _fixture_rows()

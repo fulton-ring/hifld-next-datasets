@@ -25,7 +25,9 @@ from dagster_hifld.native_geoparquet_catalog import (
     _safe_local_key, _manifest_snapshots, _check_manifests,
 )
 from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_PRECEDENCE
-from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.source_manifest import (
+    BOUNDED_SOURCE_MANIFEST_READ_BYTES, load_resolved_source_manifest,
+)
 from dagster_hifld.validation import sha256_file
 
 SAMPLE_ROWS = 5000
@@ -89,7 +91,8 @@ def resolve_literal_metadata(storage, prefix, supplied=None):
         for key in [f'{dataset}/metadata/source_manifest.json', f'{dataset}/{file}/metadata/source_manifest.json',
                     f'{prefix}/metadata/source_manifest.json']:
             _safe_local_key(storage, storage._ensure_prefixed(key), required=False)
-    actual = load_resolved_source_manifest(storage, dataset, file, version, max_layer_bytes=2*1024*1024).metadata
+    actual = load_resolved_source_manifest(storage, dataset, file, version,
+                                           max_layer_bytes=BOUNDED_SOURCE_MANIFEST_READ_BYTES).metadata
     spec = literal_geojson_spec(actual)
     proposed = literal_geojson_spec(supplied or {})
     if proposed is not None and (spec is None or _encode(proposed) != _encode(spec)):
