@@ -831,7 +831,6 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
             and (parts == [page] or parts == [page + "a", page + "b"])
             for page, parts in page_parts.items()):
         raise ValueError("retained_capture_page_parts_invalid")
-    part_names = {part for parts in page_parts.values() for part in parts}
     refusals = manifest.get("page_refusals") or []
     if not isinstance(refusals, list) or not all(
             isinstance(entry, str) and (entry.endswith("_refusal")) for entry in refusals):
@@ -839,7 +838,10 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
     page_slots = set()
     for index in range(PAGE_COUNT):
         page = f"page_{index:04d}"
-        page_slots.update(page_parts[page]) if page in page_parts else page_slots.add(page)
+        if page in page_parts:
+            page_slots.update(page_parts[page])
+        else:
+            page_slots.add(page)
     expected_names = {*METADATA_NAMES, *page_slots, *refusals}
     roster_files = manifest.get("artifact_roster")
     if not isinstance(roster_files, dict) or set(manifest["receipts"]) != expected_names:
