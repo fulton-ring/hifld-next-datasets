@@ -506,7 +506,7 @@ def capture_usace_military_districts(storage: StagingStorageResource, *, version
     receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
     inputs = [{"input_id": name, "producer": PUBLISHER,
         "host": urlsplit(receipt["url"]).hostname,
-        "role": "producer_catalog" if name == "catalog_item" else "producer_publication",
+        "role": "producer_publication",
         "canonical_url": CATALOG_ITEM_URL if name == "catalog_item" else LAYER_URL, "retrieval_url": receipt["url"],
         "observed_final_url": receipt["final_url"], "retrieved_at": receipt["observed_at"],
         "http_status": receipt["status"], "bytes": receipt["bytes"], "sha256": receipt["sha256"],
