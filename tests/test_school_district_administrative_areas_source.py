@@ -23,11 +23,13 @@ from dagster_hifld.sources.epa_frs_common import CODE_IDENTITY_PACKAGED, process
 
 def _fixture_table(rows=2):
     records = [
-        ("5000007", "9800000US5000007", "Barre Supervisory Union", "PK", "12", None,
-         89511436.0, 476697.0, "+44.1829932", "-72.4750500",
+        ("50", "00007", "5000007", "9800000US5000007", "Barre Supervisory Union", "00",
+         "PK", "12", "G5430", None, "E",
+         89511446.0, 476695.0, "+44.1829927", "-72.4750489",
          shapely.to_wkb(shapely.MultiPolygon([shapely.box(-72.5, 44.1, -72.4, 44.2)]))),
-        ("5000384", "9800000US5000384", "Rivendell Interstate Supervisory District", "PK", "12", "C",
-         203804729.0, 3502277.0, "+43.9385994", "-72.2468459",
+        ("50", "00384", "5000384", "9800000US5000384", "Rivendell Interstate Supervisory District", "00",
+         "PK", "12", "G5430", "C", "E",
+         203804736.0, 3502277.0, "+43.9385994", "-72.2468459",
          shapely.to_wkb(shapely.MultiPolygon([shapely.box(-72.3, 43.9, -72.2, 44.0)]))),
     ][:rows]
     columns = [
@@ -37,11 +39,16 @@ def _fixture_table(rows=2):
         pa.array([r[3] for r in records], type=pa.string()),
         pa.array([r[4] for r in records], type=pa.string()),
         pa.array([r[5] for r in records], type=pa.string()),
-        pa.array([r[6] for r in records], type=pa.float64()),
-        pa.array([r[7] for r in records], type=pa.float64()),
+        pa.array([r[6] for r in records], type=pa.string()),
+        pa.array([r[7] for r in records], type=pa.string()),
         pa.array([r[8] for r in records], type=pa.string()),
         pa.array([r[9] for r in records], type=pa.string()),
-        pa.array([r[10] for r in records], type=pa.binary()),
+        pa.array([r[10] for r in records], type=pa.string()),
+        pa.array([r[11] for r in records], type=pa.float64()),
+        pa.array([r[12] for r in records], type=pa.float64()),
+        pa.array([r[13] for r in records], type=pa.string()),
+        pa.array([r[14] for r in records], type=pa.string()),
+        pa.array([r[15] for r in records], type=pa.binary()),
     ]
     return pa.Table.from_arrays(columns, names=[name for name, _ in source.EXPECTED_SOURCE_FIELDS])
 
@@ -53,11 +60,17 @@ class SchoolDistrictAdministrativeAreasSourceTests(unittest.TestCase):
         self.assertEqual(source.EXPECTED_COUNT, 52)
         self.assertEqual(source.CONFIG.issue_number, 303)
         self.assertEqual(source.CONFIG.source_url,
-                         "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_school.gdb.zip")
+                         "https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_school.gdb.zip")
+        self.assertEqual(source.CONFIG.source_vintage, "2026")
         self.assertEqual(source.SOURCE_HOST, "www2.census.gov")
+        self.assertEqual([name for name, _ in source.EXPECTED_SOURCE_FIELDS],
+                         ["STATEFP", "SDADMLEA", "GEOID", "GEOIDFQ", "NAME", "LSAD", "LOGRADE",
+                          "HIGRADE", "MTFCC", "SDTYP", "FUNCSTAT", "ALAND", "AWATER",
+                          "INTPTLAT", "INTPTLON", "SHAPE"])
         self.assertEqual(source.EXPECTED_OUTPUT_FIELDS,
-                         ["OBJECTID", "GEOID", "GEOIDFQ", "NAME", "LOGRADE", "HIGRADE", "SDTYP",
-                          "ALAND", "AWATER", "INTPTLAT", "INTPTLON", "geometry"])
+                         ["OBJECTID", "STATEFP", "SDADMLEA", "GEOID", "GEOIDFQ", "NAME", "LSAD",
+                          "LOGRADE", "HIGRADE", "MTFCC", "SDTYP", "FUNCSTAT", "ALAND", "AWATER",
+                          "INTPTLAT", "INTPTLON", "geometry"])
 
     def test_build_geoparquet_preserves_all_attributes_ids_and_native_wkb(self):
         source_table = _fixture_table()

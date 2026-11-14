@@ -1,10 +1,12 @@
 """Issue #303 adapter over the shared Census school-district GDB extractor.
 
-Targets the complete 2024 U.S. Census TIGER/Line nationwide school geodatabase
-layer ``School_District_Administrative`` (52 Vermont supervisory unions and
-interstate supervisory districts, native EPSG:4269 MultiPolygons). This is the
-inventory's fourth school-district type; the unified, secondary and elementary
-siblings cover the other layers of the same official archive.
+Targets the complete current U.S. Census TIGER/Line nationwide school
+geodatabase layer ``School_District_Administrative`` in the maintained TGRGDB26
+archive (52 Vermont supervisory unions and interstate supervisory districts,
+native EPSG:4269 MultiPolygons, including the 2026 native STATEFP, SDADMLEA,
+LSAD, MTFCC and FUNCSTAT columns). This is the inventory's fourth
+school-district type; the unified and secondary siblings cover other layers of
+the same publication from their own pinned 2024 editions.
 """
 from __future__ import annotations
 
@@ -16,14 +18,33 @@ from dagster_hifld.sources import census_school_districts as _shared
 
 DATASET_SLUG = "school-district-administrative-areas"
 FILE_SLUG = DATASET_SLUG
-SOURCE_URL = _shared.SOURCE_URL
-SOURCE_HOST = _shared.SOURCE_HOST
+SOURCE_URL = "https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_school.gdb.zip"
+SOURCE_HOST = "www2.census.gov"
 LAYER_NAME = "School_District_Administrative"
 EXPECTED_COUNT = 52
 MAX_ARCHIVE_BYTES = _shared.MAX_ARCHIVE_BYTES
 MAX_UNCOMPRESSED_BYTES = _shared.MAX_UNCOMPRESSED_BYTES
-EXPECTED_SOURCE_FIELDS = _shared.EXPECTED_SOURCE_FIELDS
-EXPECTED_OUTPUT_FIELDS = _shared.EXPECTED_OUTPUT_FIELDS
+EXPECTED_SOURCE_FIELDS = [
+    ("STATEFP", pa.string()),
+    ("SDADMLEA", pa.string()),
+    ("GEOID", pa.string()),
+    ("GEOIDFQ", pa.string()),
+    ("NAME", pa.string()),
+    ("LSAD", pa.string()),
+    ("LOGRADE", pa.string()),
+    ("HIGRADE", pa.string()),
+    ("MTFCC", pa.string()),
+    ("SDTYP", pa.string()),
+    ("FUNCSTAT", pa.string()),
+    ("ALAND", pa.float64()),
+    ("AWATER", pa.float64()),
+    ("INTPTLAT", pa.string()),
+    ("INTPTLON", pa.string()),
+    ("SHAPE", pa.binary()),
+]
+EXPECTED_OUTPUT_FIELDS = ["OBJECTID", "STATEFP", "SDADMLEA", "GEOID", "GEOIDFQ", "NAME", "LSAD",
+                          "LOGRADE", "HIGRADE", "MTFCC", "SDTYP", "FUNCSTAT", "ALAND", "AWATER",
+                          "INTPTLAT", "INTPTLON", "geometry"]
 
 CONFIG = _shared.SchoolDistrictLayerConfig(
     dataset_slug=DATASET_SLUG,
@@ -33,12 +54,15 @@ CONFIG = _shared.SchoolDistrictLayerConfig(
     inventory_id=DATASET_SLUG,
     title="School District Administrative Areas",
     coverage_statement=(
-        "The complete observed 2024 administrative school district layer contains "
-        "52 features, all Vermont supervisory unions or interstate supervisory "
-        "districts (GEOID state 50); the Census publishes no administrative "
-        "districts for other states in this vintage. Equivalence to the historical "
-        "HIFLD archive population is not established."
+        "The complete observed current (TGRGDB26) administrative school district layer contains "
+        "52 features, all Vermont supervisory unions or interstate supervisory districts (STATEFP 50); "
+        "the Census publishes no administrative districts for other states in this vintage. All native "
+        "2026 columns, identifiers and coordinates are retained. Equivalence to the historical HIFLD "
+        "archive population is not established."
     ),
+    source_url=SOURCE_URL,
+    source_vintage="2026",
+    expected_source_fields=list(EXPECTED_SOURCE_FIELDS),
 )
 
 

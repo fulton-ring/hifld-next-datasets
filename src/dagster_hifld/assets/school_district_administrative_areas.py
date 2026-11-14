@@ -19,9 +19,9 @@ from dagster_hifld.sources.school_district_administrative_areas import (
 )
 
 _DESCRIPTION = (
-    "Draft extraction of the 2024 U.S. Census TIGER/Line School_District_Administrative "
-    "layer (52 Vermont supervisory unions and interstate supervisory districts, native "
-    "EPSG:4269). HIFLD archive equivalence and release approval remain unresolved."
+    "Draft extraction of the current U.S. Census TIGER/Line School_District_Administrative "
+    "layer (TGRGDB26 archive; 52 Vermont supervisory unions and interstate supervisory districts, "
+    "native EPSG:4269). HIFLD archive equivalence and release approval remain unresolved."
 )
 
 
