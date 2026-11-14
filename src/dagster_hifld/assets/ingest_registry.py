@@ -157,6 +157,7 @@ from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
 from dagster_hifld.assets.national_transit_map_agencies import bts_national_transit_map_agencies
 from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
 
+from dagster_hifld.assets.final_critical_habitat import final_critical_habitat_features
 hifld_ingest_assets = [
     bts_ferry_terminals,
     smithsonian_holocene_volcanoes,
@@ -245,6 +246,7 @@ hifld_ingest_assets = [
     eia_natural_gas_processing_plants_historical,
     eia_ethanol_plants,
     epa_frs_eia_860_power_generation_facilities_by_source,
+    final_critical_habitat_features,
     epa_icis_wastewater_treatment_plants,
     fuds_irm_property_point_ingest,
     fuds_irm_property_boundary_ingest,

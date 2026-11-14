@@ -657,6 +657,11 @@ from dagster_hifld.assets.fuds_mrs import (
     usace_fuds_munitions_response_sites_complete,
     fuds_mrs_draft_schedule,
 )
+from dagster_hifld.assets.final_critical_habitat import (
+    final_critical_habitat_complete,
+    final_critical_habitat_draft_job,
+    final_critical_habitat_draft_schedule,
+)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -1226,6 +1231,7 @@ defs = Definitions(
             usace_fuds_public_properties_complete,
             bts_national_transit_map_agencies_candidate_complete,
             bts_national_transit_map_agencies_release_gate,
+            final_critical_habitat_complete,
         ],
         discovered("ASSET_CHECKS"),
     ),
@@ -1351,6 +1357,7 @@ defs = Definitions(
             fdic_locations_draft_job,
             fema_regions_draft_job,
             bts_national_transit_map_agencies_draft_job,
+            final_critical_habitat_draft_job,
         ],
         discovered("JOBS"),
     ),
@@ -1496,6 +1503,7 @@ defs = Definitions(
             fuds_mrs_draft_schedule,
             fuds_public_properties_draft_schedule,
             bts_national_transit_map_agencies_draft_schedule,
+            final_critical_habitat_draft_schedule,
         ],
         discovered("SCHEDULES"),
     ),
