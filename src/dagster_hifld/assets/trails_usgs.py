@@ -60,3 +60,10 @@ trails_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+# Registered through module-level discovery (assets/discovery.py); catalog and
+# publish assets derive from the ingest registry, so shared files stay untouched.
+INGEST_ASSETS = [trails_usgs]
+ASSET_CHECKS = [trails_population_complete]
+JOBS = [trails_draft_job]
+SCHEDULES = [trails_draft_schedule]
