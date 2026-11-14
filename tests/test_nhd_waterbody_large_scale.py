@@ -409,6 +409,30 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
             self.assertFalse((root / "capture").exists())
             self.assertFalse(any((root / "staging").iterdir()))
 
+    def test_complete_capture_reuse_passes_the_acquisition_floor(self):
+        """Re-sealing a complete capture fetches nothing, so the acquisition
+        floor (which protects new producer bytes) does not apply: on a lease
+        that already holds the capture and its staged seal there is no room
+        for another floor-sized buffer (observed 2026-11-14)."""
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            storage = _staging(root)
+            with fixture_mode(schema_sha, transport, page_size=2):
+                first = src.capture_nhd_waterbody_large_scale(
+                    storage, version="floor-reuse-run", capture_directory=str(capture_root))
+                self.assertFalse(first["reused"])
+                with patch.object(src.shutil, "disk_usage",
+                                  return_value=SimpleNamespace(free=1)):
+                    again = src.capture_nhd_waterbody_large_scale(
+                        storage, version="floor-reuse-run-2",
+                        capture_directory=str(capture_root))
+                self.assertTrue(again["reused"])
+                self.assertEqual(again["version"], first["version"])
+
     def test_complete_fixture_capture_materializes_and_repeats(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]

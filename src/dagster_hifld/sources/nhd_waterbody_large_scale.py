@@ -1616,8 +1616,6 @@ def capture_nhd_waterbody_large_scale(storage: StagingStorageResource, *, versio
     if ".." in base.parts or any(parent.is_symlink() for parent in (base, *base.parents)):
         raise NhdWaterbodyLargeScaleError("unsafe_local_staging_root")
     base.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(base).free < MIN_FREE_BYTES:
-        raise NhdWaterbodyLargeScaleError("disk_floor_before_acquisition")
     attempt_root = Path(capture_directory) if capture_directory \
         else Path("/data/workspace/scratch/nhd-waterbody-large-scale-2/captures")
     capture_root = Path(capture_directory).absolute() if capture_directory \
@@ -1625,6 +1623,25 @@ def capture_nhd_waterbody_large_scale(storage: StagingStorageResource, *, versio
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise NhdWaterbodyLargeScaleError("unsafe_capture_directory")
+    # The floor protects the acquisition of new producer bytes. A capture
+    # directory whose state is already complete is revalidated and re-sealed
+    # purely locally (nothing is fetched; the parquet reconstruction only
+    # streams one page at a time), so enforcing the acquisition floor against
+    # the staged copy of the same capture would make the documented
+    # repeat/reuse verification impossible on a standard lease (observed
+    # 2026-11-14: capture + staged seal + the 60 GB floor exceed a 100 GiB
+    # disk). Revalidation itself still fails closed on any missing or torn
+    # retained byte.
+    capture_state_path = capture_root / "capture_state.json"
+    capture_already_complete = False
+    if capture_state_path.exists():
+        try:
+            capture_already_complete = bool(
+                json.loads(capture_state_path.read_bytes()).get("complete"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            capture_already_complete = False
+    if not capture_already_complete and shutil.disk_usage(base).free < MIN_FREE_BYTES:
+        raise NhdWaterbodyLargeScaleError("disk_floor_before_acquisition")
     resumed_pages = len(_load_state(capture_root).get("pages", [])) \
         if (capture_root / "capture_state.json").exists() else 0
     try:
