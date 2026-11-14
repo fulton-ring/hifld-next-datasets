@@ -227,6 +227,57 @@ class CensusMicropolitanStatisticalAreasTests(unittest.TestCase):
             staged_suffixes = {key.split(".")[-1] for key in shapefile_keys}
             self.assertEqual(staged_suffixes, {"shp", "shx", "dbf", "cpg", "prj"})
 
+    def test_real_archive_replay_pins_staged_dbf_date_across_dates(self):
+        path = os.environ.get("MICROPOLITAN_STATISTICAL_AREAS_TEST_ARCHIVE")
+        if not path:
+            self.skipTest("set MICROPOLITAN_STATISTICAL_AREAS_TEST_ARCHIVE to a retained official tl_2026_us_cbsa.zip")
+        body = Path(path).read_bytes()
+        digest = _sha(body)
+        receipt = {
+            "method": "GET", "url": SOURCE_URL, "final_url": SOURCE_URL,
+            "status": 200, "complete_body": True, "bytes": len(body),
+            "sha256": digest, "content_encoding": "identity",
+            "wire_bytes": len(body), "wire_sha256": digest,
+            "content_length": len(body), "observed_at": "2026-11-14T00:00:00+00:00",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            capture_dir = Path(tmp) / "capture"
+            capture_dir.mkdir()
+            (capture_dir / "source.body").write_bytes(body)
+            (capture_dir / "source.wire").write_bytes(body)
+            (capture_dir / "source.receipt.json").write_text(json.dumps(receipt))
+            storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "staging"))
+            candidate = capture_census_micropolitan_statistical_areas(
+                storage, version="vreplay", capture_directory=str(capture_dir),
+            )
+            dbf_key = next(
+                key for key in candidate["written_keys"]
+                if key.endswith("/shapefile/micropolitan-statistical-areas-3.dbf")
+            )
+            day_one = storage.read_key(dbf_key)
+            # DBF header bytes 1-3 store the last-update date as years-since-1900,
+            # month and day; the pinned source release date must win over the
+            # wall clock that GDAL would otherwise stamp in.
+            self.assertEqual(bytes(day_one[1:4]), bytes((2026 - 1900, 10, 14)))
+
+            replayed = capture_census_micropolitan_statistical_areas(
+                storage, version="vreplay", capture_directory=str(capture_dir),
+            )
+            self.assertEqual(replayed["source_cache_reused"], True)
+            self.assertEqual(storage.read_key(dbf_key), day_one)
+
+            # Reproduce a later replay day deterministically: GDAL writing the
+            # DBF with 2026-11-15 changes only the date field, and the immutable
+            # staging must refuse that drift at the same candidate version.
+            with patch.object(source_module, "SOURCE_RELEASE_DATE", "2026-11-15"):
+                with self.assertRaisesRegex(
+                    ValueError, r"immutable_staged_object_changed:.*micropolitan-statistical-areas-3\.dbf",
+                ):
+                    capture_census_micropolitan_statistical_areas(
+                        storage, version="vreplay", capture_directory=str(capture_dir),
+                    )
+            self.assertEqual(storage.read_key(dbf_key), day_one)
+
 
 if __name__ == "__main__":
     unittest.main()

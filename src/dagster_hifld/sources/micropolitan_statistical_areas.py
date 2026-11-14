@@ -56,6 +56,7 @@ EXPECTED_FIELDS = [
 ]
 INT_FIELDS = ("ALAND", "AWATER")
 EXPECTED_CRS = "EPSG:4269"
+SOURCE_RELEASE_DATE = "2026-10-14"
 EXPECTED_BOUNDS = [-160.600875, 17.862241, -66.166181, 58.971337]
 EXPECTED_ID_SHA256 = "6fec1d2ac539453efc104c7afd0aad03c1ecd122aad5cf131577865b4a074ff0"
 EXPECTED_SCHEMA_SHA256 = "a8269e456530dd9c644a9127094c0b2f3c9e0db4d6859751c969c5efb53a7fa3"
@@ -300,7 +301,11 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
 
 def _stage_subset_shapefile(subset: gpd.GeoDataFrame, target_dir: Path, cpg_body: bytes) -> None:
     stem = DATASET_SLUG
-    subset.to_file(target_dir / f"{stem}.shp", engine="pyogrio")
+    # GDAL defaults DBF_DATE_LAST_UPDATE to the write date; every same-version
+    # replay regenerates the sidecars and compares bytes, so an unpinned date
+    # would fail immutable_staged_object_changed on any later replay day. Pin
+    # the staged DBF to the source release date to keep the output date-stable.
+    subset.to_file(target_dir / f"{stem}.shp", engine="pyogrio", DBF_DATE_LAST_UPDATE=SOURCE_RELEASE_DATE)
     staged_names = {path.name for path in target_dir.iterdir()}
     required = {f"{stem}.shp", f"{stem}.shx", f"{stem}.dbf"}
     missing = sorted(required - staged_names)
@@ -367,7 +372,7 @@ def capture_census_micropolitan_statistical_areas(
         "agency": "U.S. Census Bureau",
         "source_url": SOURCE_URL,
         "license": "U.S. government work; source license and downstream redistribution terms require maintainer review.",
-        "source_modified": "2026-10-14",
+        "source_modified": SOURCE_RELEASE_DATE,
         "date_issued": SOURCE_VINTAGE,
         "inputs": [{
             "input_id": SOURCE_URL,
@@ -381,7 +386,7 @@ def capture_census_micropolitan_statistical_areas(
             "license": "https://www.usa.gov/government-works",
             "attribution": PUBLISHER,
             "role": "producer_publication",
-            "release_date": "2026-10-14",
+            "release_date": SOURCE_RELEASE_DATE,
             "release_date_basis": "census.gov TIGER/Line Shapefiles page: 'All legal boundaries and names are as of January 1, 2026. The 2026 TIGER/Line Shapefiles were released on October 14, 2026.' The HTTP Last-Modified date of the ZIP (2026-10-07) is packaging evidence recorded in the audit and is not the source data release date.",
         }],
         "transformations": ["Preserve the complete source ZIP and all sidecars; select the producer-defined micropolitan subset MEMI=2 from the Core_Based_Statistical_Area national file without ID synthesis, attribute mapping, reprojection or geometry repair."],
@@ -404,7 +409,7 @@ def capture_census_micropolitan_statistical_areas(
         "method", "url", "final_url", "status", "complete_body", "wire_bytes",
         "wire_sha256", "bytes", "sha256", "content_encoding", "content_length",
     )}
-    audit_doc = {"source": {"url": SOURCE_URL, "vintage": SOURCE_VINTAGE, "release_date": "2026-10-14", "archive_sha256": EXPECTED_SHA256, "archive_bytes": EXPECTED_BYTES}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit}
+    audit_doc = {"source": {"url": SOURCE_URL, "vintage": SOURCE_VINTAGE, "release_date": SOURCE_RELEASE_DATE, "archive_sha256": EXPECTED_SHA256, "archive_bytes": EXPECTED_BYTES}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit}
     audit_key = f"{prefix}/metadata/source_audit.json"
     write_immutable(staging_storage, audit_key, _canonical(audit_doc) + b"\n")
     return {
