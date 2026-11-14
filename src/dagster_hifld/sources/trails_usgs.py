@@ -258,10 +258,17 @@ def _validate_request_scope(name: str, receipt: dict, ids: list[int]) -> None:
         page_ids = ids[start:start + BATCH_SIZE]
         if not page_ids:
             raise ValueError("trails_unexpected_page:" + name)
+        # Pages walk the sorted roster with resultOffset/resultRecordCount
+        # pagination in producer order: a 2,000-id objectIds list is a ~20k
+        # character URI and the server answers it with HTTP 414 (observed
+        # 2026-11-14), while the equivalent resultOffset page serves the same
+        # ordered slice.
         expected_path, expected = urlsplit(LAYER_URL).path + "/query", {
-            "objectIds": [",".join(map(str, page_ids))], "outFields": ["*"],
-            "returnGeometry": ["true"], "returnZ": ["true"], "returnM": ["true"],
-            "orderByFields": ["objectid ASC"], "f": ["json"]}
+            "where": ["1=1"], "outFields": ["*"], "returnGeometry": ["true"],
+            "returnZ": ["true"], "returnM": ["true"],
+            "orderByFields": ["objectid ASC"],
+            "resultOffset": [str(start)], "resultRecordCount": [str(BATCH_SIZE)],
+            "f": ["json"]}
     else:
         raise ValueError("trails_unexpected_capture_name:" + name)
     if parsed.path != expected_path or params != expected:
@@ -309,7 +316,11 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
         rows = page.get("features")
         start = int(name.rsplit("_", 1)[1])
         expected = ids_before[start:start + BATCH_SIZE]
-        if not isinstance(rows, list) or len(rows) != len(expected) or docs[name].get("exceededTransferLimit"):
+        # A resultOffset page at the producer's record cap is exactly full and
+        # the server flags more rows with exceededTransferLimit; only a page
+        # below the cap claiming more rows is a truncation.
+        if (not isinstance(rows, list) or len(rows) != len(expected)
+                or (docs[name].get("exceededTransferLimit") and len(rows) != BATCH_SIZE)):
             raise ValueError("trails_page_population_incomplete:" + name)
         for feature in rows:
             raw_attrs = feature.get("attributes")
@@ -472,10 +483,11 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
                 captures["dimensions_probe"] = _capture(client, probe_url, root, "dimensions_probe", retained)
                 retained += captures["dimensions_probe"][1]["bytes"] + captures["dimensions_probe"][1]["wire_bytes"]
                 for start in range(0, len(ids), BATCH_SIZE):
-                    page_ids = ids[start:start + BATCH_SIZE]
                     name = f"page_{start:05d}"
-                    url = _query({"objectIds": ",".join(map(str, page_ids)), "outFields": "*", "returnGeometry": "true",
-                                  "returnZ": "true", "returnM": "true", "orderByFields": "objectid ASC", "f": "json"})
+                    url = _query({"where": "1=1", "outFields": "*", "returnGeometry": "true",
+                                  "returnZ": "true", "returnM": "true",
+                                  "orderByFields": "objectid ASC", "resultOffset": start,
+                                  "resultRecordCount": BATCH_SIZE, "f": "json"})
                     captures[name] = _capture(client, url, root, name, retained)
                     retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
                 for name, url in [("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),

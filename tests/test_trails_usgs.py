@@ -135,14 +135,18 @@ class TrailsUSGSTests(unittest.TestCase):
 
     def test_page_request_scope_explicitly_requests_z_and_m(self):
         ids = [101, 102]
-        params = {"objectIds": "101,102", "outFields": "*", "returnGeometry": "true",
-                  "returnZ": "true", "returnM": "true", "orderByFields": "objectid ASC", "f": "json"}
+        params = {"where": "1=1", "outFields": "*", "returnGeometry": "true",
+                  "returnZ": "true", "returnM": "true", "orderByFields": "objectid ASC",
+                  "resultOffset": "0", "resultRecordCount": str(BATCH_SIZE), "f": "json"}
         url = LAYER_URL + "/query?" + urlencode(params)
         _validate_request_scope("page_00000", {"url": url, "final_url": url}, ids)
         params.pop("returnM")
         url_without_m = LAYER_URL + "/query?" + urlencode(params)
         with self.assertRaisesRegex(ValueError, "trails_capture_request_scope_drift"):
             _validate_request_scope("page_00000", {"url": url_without_m, "final_url": url_without_m}, ids)
+        # A 2,000-id objectIds page URI was answered HTTP 414 by the producer
+        # (2026-11-14); the page contract must not reintroduce it.
+        self.assertNotIn("objectIds", url)
 
     def test_pinned_roster_constants_are_self_consistent(self):
         self.assertEqual(EXPECTED_COUNT % BATCH_SIZE, EXPECTED_COUNT % BATCH_SIZE)
