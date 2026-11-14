@@ -8,7 +8,9 @@ from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.wbd_hu8_subbasin import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_wbd_hu8_subbasin,
+    DATASET_SLUG, EXPECTED_COUNT, EXPECTED_EMPTY_GEOMETRY_COUNT,
+    EXPECTED_INVALID_GEOMETRY_COUNT, EXPECTED_INVALID_OBJECTIDS, FILE_SLUG,
+    capture_wbd_hu8_subbasin,
 )
 
 
@@ -44,9 +46,16 @@ def wbd_hu8_subbasin(context, config: WbdHu8SubbasinConfig,
 
 @asset_check(asset=wbd_hu8_subbasin, blocking=True)
 def wbd_hu8_subbasin_complete(candidate: dict) -> AssetCheckResult:
+    # The producer's own baseline carries exactly the pinned OGC-invalid ring
+    # self-intersections (source-invalid); the candidate written geometry must
+    # itself be valid (candidate-invalid must be zero after the pinned minimal
+    # repair). The two counts are distinct properties of distinct artifacts.
     passed = (candidate.get("feature_count") == EXPECTED_COUNT
-              and candidate.get("source_invalid_geometry_count") == 0
-              and candidate.get("source_empty_geometry_count") == 0
+              and candidate.get("source_invalid_geometry_count")
+              == EXPECTED_INVALID_GEOMETRY_COUNT
+              and candidate.get("source_invalid_geometry_ids") == EXPECTED_INVALID_OBJECTIDS
+              and candidate.get("candidate_invalid_geometry_count") == 0
+              and candidate.get("source_empty_geometry_count") == EXPECTED_EMPTY_GEOMETRY_COUNT
               and candidate.get("source_distinct_huc8_count") == EXPECTED_COUNT)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
@@ -55,11 +64,15 @@ def wbd_hu8_subbasin_complete(candidate: dict) -> AssetCheckResult:
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_vertex_count": candidate.get("source_vertex_count", 0),
         "source_invalid_geometry_count": candidate.get("source_invalid_geometry_count"),
+        "source_invalid_geometry_ids": candidate.get("source_invalid_geometry_ids"),
+        "source_repair_record_count": candidate.get("source_repair_record_count", 0),
+        "candidate_invalid_geometry_count": candidate.get("candidate_invalid_geometry_count"),
         "source_empty_geometry_count": candidate.get("source_empty_geometry_count"),
         "source_coverage_scope": (
             "Complete observed USGS The National Map WBD MapServer layer 4 "
             "'8-digit HU  (Subbasin)' (national 8-digit hydrologic unit population; "
             "the crosswalk-named successor of the retired HIFLD WBD feature service)."),
+        "geometry_repair_accepted": False,
         "baseline_comparison_accepted": False, "source_release_accepted": False,
         "source_freshness_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "coverage_accepted": False,

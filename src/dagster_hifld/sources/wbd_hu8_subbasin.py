@@ -27,13 +27,20 @@ The capture pages the complete enumerated OBJECTID roster (1..2456 observed
 layer refuses geometry queries carrying the ``objectIds`` parameter with a
 complete HTTP 200 Esri error envelope (verified 2026-11-14) and serves only
 about 25-40 geometry-bearing features per request. Segments tile the roster
-exactly; before/after service/layer/count/roster brackets and an independent
-attributes-only second extraction (two 2000-record pages) prove nothing was
-skipped, duplicated, reordered or altered between paths. All 16 source
-attributes (the ``shape`` geometry field carries no attribute value) and the
-server-reprojected EPSG:4326 polygon rings are retained; publication stays
-blocked pending succession, freshness, schema/ID contract, coverage, rights
-and release decisions.
+exactly, and the request order brackets the whole extraction window: the
+service/layer/count/roster documents are captured before the first segment,
+the independent attributes-only second extraction (two 2000-record pages)
+follows the segments, and the closing brackets are captured (refreshed on a
+resumed capture that filled segment gaps) after everything else, so producer
+changes during extraction fail the capture closed and nothing is skipped,
+duplicated, reordered or altered between paths. All 16 source attributes (the
+``shape`` geometry field carries no attribute value) are retained. The
+server-reprojected EPSG:4326 polygon rings are kept byte-exact in the raw
+evidence; the two pinned OGC-invalid ring self-intersections (OBJECTIDs 220
+and 897, valid under Esri semantics) are minimally repaired with
+``make_valid(method=structure)`` in the candidate only, under an explicit
+unaccepted repair gate. Publication stays blocked pending succession,
+freshness, schema/ID contract, coverage, rights and release decisions.
 """
 from __future__ import annotations
 
@@ -194,25 +201,38 @@ def _segment_name(offset: int, count: int) -> str:
     return f"seg_{offset:05d}_{count:03d}"
 
 
-def _doc_urls() -> list[tuple[str, str]]:
-    urls = [
+def _before_doc_urls() -> list[tuple[str, str]]:
+    """Opening brackets, captured before the first geometry segment request."""
+    return [
         ("service_before", SERVICE_URL + "?f=pjson"),
         ("layer_before", LAYER_URL + "?f=pjson"),
         ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
         ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
     ]
-    for offset in ATTRS_PAGE_OFFSETS:
-        urls.append((f"attrs_{offset:05d}", _query({
-            "where": "1=1", "outFields": "*", "returnGeometry": "false",
-            "resultOffset": str(offset), "resultRecordCount": str(ATTRS_PAGE_SIZE),
-            "f": "json"})))
-    urls.extend([
+
+
+def _attrs_doc_urls() -> list[tuple[str, str]]:
+    """Independent attributes-only second extraction, captured after every segment."""
+    return [(f"attrs_{offset:05d}", _query({
+        "where": "1=1", "outFields": "*", "returnGeometry": "false",
+        "resultOffset": str(offset), "resultRecordCount": str(ATTRS_PAGE_SIZE),
+        "f": "json"})) for offset in ATTRS_PAGE_OFFSETS]
+
+
+def _after_doc_urls() -> list[tuple[str, str]]:
+    """Closing brackets; they are only truthful after every segment and attrs page."""
+    return [
         ("service_after", SERVICE_URL + "?f=pjson"),
         ("layer_after", LAYER_URL + "?f=pjson"),
         ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
         ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-    ])
-    return urls
+    ]
+
+
+def _doc_urls() -> list[tuple[str, str]]:
+    """Every document URL in capture order: opening brackets, the independent
+    attributes-only extraction, then the closing brackets."""
+    return [*_before_doc_urls(), *_attrs_doc_urls(), *_after_doc_urls()]
 
 
 def _segment_url(offset: int, count: int) -> str:
@@ -534,6 +554,7 @@ class _StreamBuilder:
         self.invalid_geometry = 0
         self.invalid_geometry_ids: list[int] = []
         self.repair_records: list[dict[str, object]] = []
+        self.candidate_invalid_geometry = 0
         self.empty_geometry = 0
         self.huc8_codes: set[str] = set()
         self.null_attr_counts: dict[str, int] = {name: 0 for name in self.expected_names}
@@ -672,6 +693,9 @@ class _StreamBuilder:
                     self.invalid_geometry_ids.append(objectid)
                     if repair is not None:
                         self.repair_records.append(repair)
+            written = decoded if wkb is raw else from_wkb(wkb)
+            if not written.is_valid:
+                self.candidate_invalid_geometry += 1
             self.vertex_count += sum(len(ring) for ring in rings)
             huc8 = attrs.get("huc8")
             if not isinstance(huc8, str) or len(huc8) != 8:
@@ -720,6 +744,7 @@ class _StreamBuilder:
                 "invalid_geometry_count": self.invalid_geometry,
                 "invalid_geometry_ids": sorted(self.invalid_geometry_ids),
                 "repair_records": self.repair_records,
+                "candidate_invalid_geometry_count": self.candidate_invalid_geometry,
                 "empty_geometry_count": self.empty_geometry,
                 "distinct_huc8_count": len(self.huc8_codes),
                 "huc8_sha": _sha(_canonical(sorted(self.huc8_codes))),
@@ -822,6 +847,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     if (EXPECTED_EMPTY_GEOMETRY_COUNT is not None
             and summary["empty_geometry_count"] != EXPECTED_EMPTY_GEOMETRY_COUNT):
         raise WbdHu8SubbasinError("source_empty_geometry_count_drift")
+    if summary["candidate_invalid_geometry_count"]:
+        raise WbdHu8SubbasinError("candidate_invalid_geometry_drift")
     if (EXPECTED_NULL_ATTR_COUNTS is not None
             and summary["null_attr_counts"] != EXPECTED_NULL_ATTR_COUNTS):
         raise WbdHu8SubbasinError("source_null_attribute_count_drift")
@@ -834,6 +861,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "invalid_geometry_count": summary["invalid_geometry_count"],
             "invalid_geometry_ids": summary["invalid_geometry_ids"],
             "repair_records": summary["repair_records"],
+            "candidate_invalid_geometry_count": summary["candidate_invalid_geometry_count"],
             "empty_geometry_count": summary["empty_geometry_count"],
             "distinct_huc8_count": summary["distinct_huc8_count"],
             "null_attr_counts": summary["null_attr_counts"],
@@ -882,6 +910,27 @@ def _segment_gaps(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return gaps
 
 
+def _fetch_doc_group(client: httpx.Client, urls: list[tuple[str, str]], capture_root: Path,
+                     *, refresh: bool = False) -> None:
+    """Capture one ordered document group, retaining already-captured members.
+
+    With ``refresh`` the group's retained bodies/wires/receipts are discarded
+    first so every member is re-captured now (used for the closing brackets of
+    a resumed acquisition, which must postdate the most recent segment read).
+    """
+    if refresh:
+        for name, _url in urls:
+            for suffix in (".body", ".wire", ".receipt.json"):
+                (capture_root / f"{name}{suffix}").unlink(missing_ok=True)
+    for name, url in urls:
+        if (capture_root / f"{name}.body").exists():
+            _read_capture(capture_root, name)
+            continue
+        body, _receipt = _capture_with_retry(client, url, capture_root, name)
+        if _producer_error_doc(body):
+            raise WbdHu8SubbasinError("source_document_error_envelope:" + name)
+
+
 def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
     """Fetch (resumable) the complete metadata/roster/segment capture.
 
@@ -889,6 +938,13 @@ def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
     error envelope (observed 2026-11-14 for 25-feature pages around large
     subbasins); a refused window is bisected deterministically until served,
     and accepted segments must tile the enumerated roster exactly.
+
+    Request order brackets the whole extraction window: the opening
+    service/layer/count/roster documents precede every geometry segment, the
+    independent attributes-only second extraction follows the segments, and
+    the closing brackets are captured (or, on a resumed capture that filled
+    segment gaps, refreshed) after every segment and attributes page, so a
+    producer change during extraction fails the capture closed.
     """
     capture_root = Path(capture_root).absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent
@@ -900,17 +956,12 @@ def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
     state = _load_state(capture_root)
     spans = _covered_tiling(state)
     with _default_client() as client:
-        for name, url in _doc_urls():
-            if (capture_root / f"{name}.body").exists():
-                _read_capture(capture_root, name)
-                continue
-            body, _receipt = _capture_with_retry(client, url, capture_root, name)
-            if _producer_error_doc(body):
-                raise WbdHu8SubbasinError("source_document_error_envelope:" + name)
+        _fetch_doc_group(client, _before_doc_urls(), capture_root)
         seed = _roster(json.loads(_read_capture(capture_root, "ids_before")[0]), "ids_seed")
         if seed != EXPECTED_IDS:
             raise WbdHu8SubbasinError("source_id_roster_drift:ids_seed")
         segments = list(state.get("segments") or [])
+        filled_gaps = False
         work: list[tuple[int, int]] = []
         while True:
             spans = _covered_tiling({"segments": segments})
@@ -920,6 +971,7 @@ def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
                 state["complete"] = True
                 _save_state(capture_root, state)
                 break
+            filled_gaps = True
             if not work:
                 offset, length = gaps[0]
                 work.append((offset, min(PAGE_SIZE, length)))
@@ -947,6 +999,8 @@ def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
                              "captured_at": datetime.now(timezone.utc).isoformat()})
             state["segments"] = segments
             _save_state(capture_root, state)
+        _fetch_doc_group(client, _attrs_doc_urls(), capture_root)
+        _fetch_doc_group(client, _after_doc_urls(), capture_root, refresh=filled_gaps)
 
 
 def _receipt_map(capture_root: Path, segment_names: list[str]) -> dict[str, dict[str, object]]:
@@ -1008,6 +1062,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "candidate_geometry_types": extracted["geometry_types"],
         "vertex_count": extracted["vertex_count"],
         "invalid_geometry_count": extracted["invalid_geometry_count"],
+        "invalid_geometry_objectids": extracted["invalid_geometry_ids"],
+        "geometry_repair_records": extracted["repair_records"],
+        "candidate_invalid_geometry_count": extracted["candidate_invalid_geometry_count"],
+        "geometry_repair_accepted": False,
         "empty_geometry_count": extracted["empty_geometry_count"],
         "distinct_huc8_count": extracted["distinct_huc8_count"],
         "null_attribute_counts": extracted["null_attr_counts"],
@@ -1067,6 +1125,16 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     }
     ordered = _plan_segments(capture_root)
     receipts = _receipt_map(capture_root, [name for name, _offset, _count in ordered])
+    repaired_roster = ", ".join(str(oid) for oid in (EXPECTED_INVALID_OBJECTIDS or []))
+    repair_declaration = (
+        "minimally repairs exactly the pinned OGC-invalid ring self-intersections "
+        "(OBJECTIDs " + repaired_roster + ", valid under the producer's Esri topology "
+        "semantics) with shapely make_valid(method=structure), guarded to unchanged "
+        "area and bounds; repair acceptance is its own unaccepted gate "
+        "(geometry_repair_accepted is false)"
+        if repaired_roster else
+        "no pinned OGC-invalid rings exist and any source-invalid ring fails the "
+        "capture closed")
     manifest = {
         "schema_version": 1, "approved": False,
         "title": "8-digit HU (Subbasin) — USGS Watershed Boundary Dataset",
@@ -1100,15 +1168,16 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             "source_crs": "EPSG:4326 (server-reprojected page CRS; the layer's native "
                           "storage CRS is ESRI 102100 / EPSG:3857 and only its metadata "
                           "is pinned as such)",
-            "geometry": ("Source EPSG:4326 XY polygon rings retained verbatim as WKB "
-                         "without rounding, reprojection, densification or repair; "
-                         "ring order, winding and hole ownership are validated against "
-                         "the producer's ArcGIS convention and rejected on drift; the "
-                         "ESRI JSON 'ids' member the producer emits on a few features "
-                         "(per-part vertex identifier metadata) is kept byte-exact in "
-                         "the raw evidence and hashed into the source geometry "
-                         "identity, while the candidate geometry represents the rings "
-                         "only"),
+            "geometry": ("Source EPSG:4326 XY polygon rings retained as WKB without "
+                         "rounding, reprojection or densification; every source ring "
+                         "is kept byte-exact in the raw evidence, while the candidate "
+                         + repair_declaration + "; ring order, winding and hole "
+                         "ownership are validated against the producer's ArcGIS "
+                         "convention and rejected on drift; the ESRI JSON 'ids' "
+                         "member the producer emits on a few features (per-part "
+                         "vertex identifier metadata) is kept byte-exact in the raw "
+                         "evidence and hashed into the source geometry identity, "
+                         "while the candidate geometry represents the rings only"),
             "candidate_status": ("unapproved; publication blocked pending succession, "
                                  "freshness, schema/ID contract, coverage, attribution "
                                  "and release acceptance")}}],
@@ -1162,6 +1231,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "source_record_sha256": audit["source_record_sha256"],
              "source_schema_sha256": audit["source_schema_sha256"],
              "succession_accepted": False, "freshness_accepted": False,
+             "geometry_repair_accepted": False,
              "schema_contract_accepted": False, "id_contract_accepted": False,
              "coverage_accepted": False, "rights_accepted": False,
              "mapping_approved": False, "release_accepted": False}
@@ -1209,6 +1279,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             "feature_count": EXPECTED_COUNT,
             "source_vertex_count": extracted["vertex_count"],
             "source_invalid_geometry_count": extracted["invalid_geometry_count"],
+            "source_invalid_geometry_ids": extracted["invalid_geometry_ids"],
+            "source_repair_record_count": len(extracted["repair_records"]),
+            "candidate_invalid_geometry_count": extracted["candidate_invalid_geometry_count"],
+            "geometry_repair_accepted": False,
             "source_empty_geometry_count": extracted["empty_geometry_count"],
             "source_distinct_huc8_count": extracted["distinct_huc8_count"],
             "source_null_attribute_counts": extracted["null_attr_counts"],
@@ -1249,6 +1323,10 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
             "feature_count": EXPECTED_COUNT,
             "source_vertex_count": extracted["vertex_count"],
             "source_invalid_geometry_count": extracted["invalid_geometry_count"],
+            "source_invalid_geometry_ids": extracted["invalid_geometry_ids"],
+            "source_repair_record_count": len(extracted["repair_records"]),
+            "candidate_invalid_geometry_count": extracted["candidate_invalid_geometry_count"],
+            "geometry_repair_accepted": False,
             "source_empty_geometry_count": extracted["empty_geometry_count"],
             "source_distinct_huc8_count": extracted["distinct_huc8_count"],
             "source_null_attribute_counts": extracted["null_attr_counts"],
@@ -1327,6 +1405,9 @@ def build_wbd_hu8_subbasin_baseline(capture_root: str) -> dict[str, object]:
             "source_max_objectid": extracted["max_objectid"],
             "source_vertex_count": extracted["vertex_count"],
             "source_invalid_geometry_count": extracted["invalid_geometry_count"],
+            "source_invalid_geometry_ids": extracted["invalid_geometry_ids"],
+            "source_repair_record_count": len(extracted["repair_records"]),
+            "candidate_invalid_geometry_count": extracted["candidate_invalid_geometry_count"],
             "source_empty_geometry_count": extracted["empty_geometry_count"],
             "source_distinct_huc8_count": extracted["distinct_huc8_count"],
             "source_null_attribute_counts": extracted["null_attr_counts"],

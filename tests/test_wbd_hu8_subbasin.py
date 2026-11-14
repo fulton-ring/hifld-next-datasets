@@ -220,6 +220,46 @@ class _OfflineClient:
         raise AssertionError("offline fixture replay must not fetch")
 
 
+class _ContextClient:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+
+def _fixture_doc_bodies():
+    docs = {"service_before": _service_doc(), "layer_before": _layer_doc(),
+            "count_before": {"count": FIXTURE_COUNT},
+            "ids_before": {"objectIdFieldName": "objectid",
+                           "objectIds": list(range(1, FIXTURE_COUNT + 1))}}
+    docs["service_after"] = _service_doc()
+    docs["layer_after"] = _layer_doc()
+    docs["count_after"] = {"count": FIXTURE_COUNT}
+    docs["ids_after"] = dict(docs["ids_before"])
+    for offset in FIXTURE_ATTRS_OFFSETS:
+        count = min(FIXTURE_ATTRS_PAGE_SIZE, FIXTURE_COUNT - offset)
+        docs[f"attrs_{offset:05d}"] = _page_doc(offset, count, FIXTURE_COUNT,
+                                                with_geometry=False,
+                                                page_size=FIXTURE_ATTRS_PAGE_SIZE)
+    return docs
+
+
+def _fixture_segment_bodies():
+    bodies = {}
+    for offset in range(0, FIXTURE_COUNT, FIXTURE_PAGE_SIZE):
+        count = min(FIXTURE_PAGE_SIZE, FIXTURE_COUNT - offset)
+        bodies[source._segment_name(offset, count)] = _page_doc(
+            offset, count, FIXTURE_COUNT, with_geometry=True,
+            page_size=FIXTURE_PAGE_SIZE)
+    return bodies
+
+
+def _segment_names():
+    return [source._segment_name(offset, min(FIXTURE_PAGE_SIZE, FIXTURE_COUNT - offset))
+            for offset in range(0, FIXTURE_COUNT, FIXTURE_PAGE_SIZE)]
+
+
 class WbdHu8SubbasinTests(unittest.TestCase):
     def _patched(self, *extra):
         return _patch_all(*_PATCHES, *extra)
@@ -241,21 +281,63 @@ class WbdHu8SubbasinTests(unittest.TestCase):
             storage, version="vtest0000000000000000000000000000",
             capture_directory=str(root))
 
+    def _scripted_capture_get(self, documents, calls):
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            body = json.dumps(documents[name], separators=(",", ":"), ensure_ascii=False,
+                              allow_nan=False).encode("utf-8")
+            wire = body[::-1]
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(wire)
+            (capture_root / f"{name}.receipt.json").write_bytes(
+                _canonical(_retained_receipt(url, body, wire)) + b"\n")
+            return body, _retained_receipt(url, body, wire)
+        return fake_capture_get
+
+    def _mocked_acquisition(self, documents, calls):
+        return (patch.object(source, "capture_get",
+                             side_effect=self._scripted_capture_get(documents, calls)),
+                patch.object(source.httpx, "Client",
+                             side_effect=lambda *_args, **_kwargs: _ContextClient()))
+
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(wbd_hu8_subbasin, hifld_ingest_assets)
         self.assertEqual(wbd_hu8_subbasin_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         passed = wbd_hu8_subbasin_complete({
             "feature_count": source.EXPECTED_COUNT,
-            "source_invalid_geometry_count": 0, "source_empty_geometry_count": 0,
+            "source_invalid_geometry_count": source.EXPECTED_INVALID_GEOMETRY_COUNT,
+            "source_invalid_geometry_ids": source.EXPECTED_INVALID_OBJECTIDS,
+            "candidate_invalid_geometry_count": 0,
+            "source_empty_geometry_count": source.EXPECTED_EMPTY_GEOMETRY_COUNT,
             "source_distinct_huc8_count": source.EXPECTED_COUNT})
         self.assertTrue(passed.passed)
         self.assertFalse(passed.metadata["release_accepted"].value)
-        failed = wbd_hu8_subbasin_complete({
+        self.assertFalse(passed.metadata["geometry_repair_accepted"].value)
+        candidate_invalid = wbd_hu8_subbasin_complete({
             "feature_count": source.EXPECTED_COUNT,
-            "source_invalid_geometry_count": 1, "source_empty_geometry_count": 0,
+            "source_invalid_geometry_count": source.EXPECTED_INVALID_GEOMETRY_COUNT,
+            "source_invalid_geometry_ids": source.EXPECTED_INVALID_OBJECTIDS,
+            "candidate_invalid_geometry_count": 1,
+            "source_empty_geometry_count": 0,
             "source_distinct_huc8_count": source.EXPECTED_COUNT})
-        self.assertFalse(failed.passed)
+        self.assertFalse(candidate_invalid.passed)
+        roster_drift = wbd_hu8_subbasin_complete({
+            "feature_count": source.EXPECTED_COUNT,
+            "source_invalid_geometry_count": source.EXPECTED_INVALID_GEOMETRY_COUNT,
+            "source_invalid_geometry_ids": [source.EXPECTED_INVALID_OBJECTIDS[0]],
+            "candidate_invalid_geometry_count": 0,
+            "source_empty_geometry_count": 0,
+            "source_distinct_huc8_count": source.EXPECTED_COUNT})
+        self.assertFalse(roster_drift.passed)
+        source_drift = wbd_hu8_subbasin_complete({
+            "feature_count": source.EXPECTED_COUNT,
+            "source_invalid_geometry_count": source.EXPECTED_INVALID_GEOMETRY_COUNT + 1,
+            "source_invalid_geometry_ids": source.EXPECTED_INVALID_OBJECTIDS,
+            "candidate_invalid_geometry_count": 0,
+            "source_empty_geometry_count": 0,
+            "source_distinct_huc8_count": source.EXPECTED_COUNT})
+        self.assertFalse(source_drift.passed)
 
     def test_capture_roster_pages_tile_source_ids(self):
         from urllib.parse import parse_qs, urlsplit
@@ -316,6 +398,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         self.assertEqual(extracted["segments"], 3)
         self.assertEqual(extracted["vertex_count"], 50)
         self.assertEqual(extracted["invalid_geometry_count"], 0)
+        self.assertEqual(extracted["candidate_invalid_geometry_count"], 0)
         self.assertEqual(extracted["empty_geometry_count"], 0)
         self.assertEqual(extracted["distinct_huc8_count"], FIXTURE_COUNT)
         self.assertEqual(extracted["observed_bounds"]["ymin"], 40.0)
@@ -553,6 +636,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
             extracted = source._stream_validate(root, parquet_sink=sink)
             self.assertEqual(extracted["invalid_geometry_count"], 1)
             self.assertEqual(extracted["invalid_geometry_ids"], [3])
+            self.assertEqual(extracted["candidate_invalid_geometry_count"], 0)
             self.assertEqual(len(extracted["repair_records"]), 1)
             record = extracted["repair_records"][0]
             self.assertEqual(record["objectid"], 3)
@@ -561,6 +645,113 @@ class WbdHu8SubbasinTests(unittest.TestCase):
             repaired = from_wkb(table.column("geometry").to_pylist()[2])
             self.assertTrue(repaired.is_valid)
             self.assertGreater(repaired.area, 0)
+
+    def test_fresh_acquisition_request_order_brackets_the_segments(self):
+        calls: list[str] = []
+        documents = {**_fixture_doc_bodies(), **_fixture_segment_bodies()}
+        with self._patched(*self._mocked_acquisition(documents, calls)):
+            root = Path(self._tmpdir().name) / "captures"
+            source.fetch_wbd_hu8_subbasin_pages(root)
+        self.assertEqual(calls[:4], ["service_before", "layer_before",
+                                     "count_before", "ids_before"])
+        segments = _segment_names()
+        self.assertEqual([name for name in calls if name.startswith("seg_")], segments)
+        self.assertLess(calls.index("ids_before"), calls.index(segments[0]))
+        self.assertLess(calls.index(segments[-1]), calls.index("attrs_00000"))
+        self.assertLess(calls.index("attrs_00005"), calls.index("service_after"))
+        self.assertEqual(calls[-4:], ["service_after", "layer_after",
+                                      "count_after", "ids_after"])
+        self.assertEqual(len(calls), 4 + len(segments) + len(FIXTURE_ATTRS_OFFSETS) + 4)
+
+    def test_resumed_acquisition_refreshes_closing_brackets(self):
+        documents = {**_fixture_doc_bodies(), **_fixture_segment_bodies()}
+        with self._patched(*self._mocked_acquisition(documents, [])):
+            root = Path(self._tmpdir().name) / "captures"
+            source.fetch_wbd_hu8_subbasin_pages(root)
+        state = json.loads((root / "capture_state.json").read_bytes())
+        dropped = state["segments"].pop()
+        state["complete"] = False
+        (root / "capture_state.json").write_bytes(_canonical(state) + b"\n")
+        for suffix in (".body", ".wire", ".receipt.json"):
+            (root / f"{dropped['name']}{suffix}").unlink()
+        resume_calls: list[str] = []
+        with self._patched(*self._mocked_acquisition(documents, resume_calls)):
+            source.fetch_wbd_hu8_subbasin_pages(root)
+        self.assertEqual(resume_calls, [dropped["name"], "service_after", "layer_after",
+                                        "count_after", "ids_after"])
+        refreshed = json.loads((root / "ids_after.receipt.json").read_bytes())
+        self.assertEqual(refreshed["url"], source._query(
+            {"where": "1=1", "returnIdsOnly": "true", "f": "json"}))
+
+    def test_producer_change_during_extraction_fails_closed(self):
+        calls: list[str] = []
+        documents = {**_fixture_doc_bodies(), **_fixture_segment_bodies()}
+        documents["ids_after"] = {"objectIdFieldName": "objectid",
+                                  "objectIds": list(range(2, FIXTURE_COUNT + 2))}
+        with self._patched(*self._mocked_acquisition(documents, calls)):
+            root = Path(self._tmpdir().name) / "captures"
+            source.fetch_wbd_hu8_subbasin_pages(root)
+            self.assertEqual(calls[-1], "ids_after")
+            with self.assertRaisesRegex(
+                    source.WbdHu8SubbasinError,
+                    "source_metadata_or_count_changed_during_capture:ids_after"):
+                source._stream_validate(root, parquet_sink=None)
+
+    def test_sealed_manifest_declares_and_gates_the_pinned_repair(self):
+        spike = [[0.0, 0.0], [0.0, 4.0], [2.0, 4.0], [2.0, 2.0],
+                 [2.0, 4.0], [4.0, 4.0], [4.0, 0.0], [0.0, 0.0]]
+        from shapely.validation import explain_validity
+        with self._patched(
+                patch.object(source, "EXPECTED_INVALID_OBJECTIDS", [3]),
+                patch.object(source, "EXPECTED_INVALID_GEOMETRY_COUNT", 1),
+                patch.object(source, "EXPECTED_INVALID_VALIDITY_EXPLANATIONS",
+                             {3: explain_validity(from_wkb(source._esri_polygon_wkb(
+                                 {"rings": [spike]})))}),
+                patch.object(source, "processing_identity", lambda _root: dict(FAKE_IDENTITY)),
+                patch.object(source, "validate_construction_code_identity"),
+                patch.object(epa_frs_common, "validate_construction_code_identity"),
+                patch.object(source, "_default_client", _OfflineClient)):
+            tmp = self._tmpdir().name
+            storage = self._storage(tmp)
+            root = Path(tmp) / "captures"
+            _build_fixture_capture(root)
+            name = source._segment_name(0, FIXTURE_PAGE_SIZE)
+            path = root / f"{name}.body"
+            document = json.loads(path.read_bytes())
+            document["features"][2]["geometry"]["rings"] = [spike]
+            body = json.dumps(document, separators=(",", ":"), ensure_ascii=False,
+                              allow_nan=False).encode("utf-8")
+            path.write_bytes(body)
+            (root / f"{name}.wire").write_bytes(body[::-1])
+            receipt_path = root / f"{name}.receipt.json"
+            receipt = json.loads(receipt_path.read_bytes())
+            receipt.update({"bytes": len(body), "sha256": _sha(body),
+                            "wire_bytes": len(body), "wire_sha256": _sha(body[::-1])})
+            receipt_path.write_bytes(_canonical(receipt) + b"\n")
+            result = source.capture_wbd_hu8_subbasin(
+                storage, version="vtest0000000000000000000000000000",
+                capture_directory=str(root))
+            self.assertEqual(result["source_invalid_geometry_count"], 1)
+            self.assertEqual(result["source_invalid_geometry_ids"], [3])
+            self.assertEqual(result["candidate_invalid_geometry_count"], 0)
+            self.assertEqual(result["source_repair_record_count"], 1)
+            self.assertFalse(result["geometry_repair_accepted"])
+            prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{result['version']}"
+            audit = json.loads(storage.read_key(prefix + "/metadata/source_audit.json"))
+            self.assertEqual(audit["invalid_geometry_objectids"], [3])
+            self.assertEqual([entry["objectid"]
+                              for entry in audit["geometry_repair_records"]], [3])
+            self.assertEqual(audit["geometry_repair_records"][0]["operation"],
+                             "make_valid(method=structure)")
+            self.assertFalse(audit["geometry_repair_accepted"])
+            self.assertEqual(audit["candidate_invalid_geometry_count"], 0)
+            manifest = json.loads(storage.read_key(prefix + "/metadata/source_manifest.json"))
+            declaration = manifest["transformations"][0]["parameters"]["geometry"]
+            self.assertIn("make_valid(method=structure)", declaration)
+            self.assertIn("OBJECTIDs 3", declaration)
+            self.assertNotIn("densification or repair", declaration)
+            ready = json.loads(storage.read_key(prefix + "/metadata/candidate_ready.json"))
+            self.assertFalse(ready["geometry_repair_accepted"])
 
     def test_candidate_seal_and_cached_reuse(self):
         with self._patched(), \
@@ -592,6 +783,14 @@ class WbdHu8SubbasinTests(unittest.TestCase):
                                 for entry in manifest["inputs"]))
             self.assertTrue(manifest["transformations"][0]["parameters"]
                             ["candidate_status"].startswith("unapproved"))
+            audit = json.loads(storage.read_key(prefix + "/metadata/source_audit.json"))
+            self.assertEqual(audit["invalid_geometry_objectids"], [])
+            self.assertEqual(audit["geometry_repair_records"], [])
+            self.assertEqual(audit["candidate_invalid_geometry_count"], 0)
+            self.assertFalse(audit["geometry_repair_accepted"])
+            self.assertEqual(result["candidate_invalid_geometry_count"], 0)
+            self.assertEqual(result["source_repair_record_count"], 0)
+            self.assertFalse(result["geometry_repair_accepted"])
             parquet = pq.read_table(staged)
             self.assertEqual(parquet.num_rows, FIXTURE_COUNT)
             self.assertFalse(result["source_release_accepted"])
