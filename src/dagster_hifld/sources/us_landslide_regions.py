@@ -1536,7 +1536,7 @@ def capture_us_landslide_regions(
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise UsLandslideRegionsError("disk_floor_before_acquisition")
-    attempt_root = Path("/data/workspace/scratch-368/us-landslide-regions/captures")
+    attempt_root = Path("/tmp/hifld-native-reconstruction/368/captures")
     capture_root = Path(capture_directory).absolute() if capture_directory \
         else (attempt_root / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
