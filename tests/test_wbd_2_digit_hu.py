@@ -415,7 +415,8 @@ class Wbd10DigitHuTests(unittest.TestCase):
             audit, _derived = source._validate_stream(root, parquet_sink=None,
                                                       page_parts=replay_parts)
             self.assertEqual(audit["source_feature_count"], len(roster))
-        mutated = json.loads(json.dumps(documents))
+        mutated = json.loads(json.dumps({name: value for name, value in documents.items()
+                                         if not isinstance(value, bytes)}))
         mutated["page_0001a"]["features"][0]["attributes"]["name"] = "Renamed HU"
         with relaxed_pins(EXPECTED_RECORD_SHA256=expected_record.hexdigest(),
                           EXPECTED_GEOMETRY_SHA256=expected_geometry.hexdigest(),
