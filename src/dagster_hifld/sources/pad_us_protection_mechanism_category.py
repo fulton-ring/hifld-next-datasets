@@ -122,10 +122,6 @@ EXPECTED_SERVICE_LAYERS = [(0, LAYER_NAME)]
 EXPECTED_COUNT = 441_609
 EXPECTED_SCHEMA_SHA256 = "2afc737fbcf4bca1d622a0b73582d1fc2a643ae280cfbadcc10bb3a04125310e"
 EXPECTED_IDS_SHA256 = "6971d2092b3ae91a8f3ec092687fd184a1057ce622d832e9686e9b6fa677d765"
-# The per-value and per-geometry baselines cannot be computed without a
-# complete capture of the 441,609-feature population; they are pinned here as
-# empty (checked only when non-empty) and recorded by the first complete
-# capture for the maintainer to pin.
 # Pinned from the complete 442-page capture sealed 2026-11-14
 # (capture_state.json complete; ids and schema digests verified unchanged).
 EXPECTED_RECORD_SHA256 = "19b85e326bd07a070260be52591719f0bf3956f8f77fbd3b4509d686af8d6619"
@@ -1206,7 +1202,11 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
+            # Every producer null geometry is an unusable-ring gate, so the
+            # null-geometry contract is the pinned true nulls plus the
+            # unusable-gated ones (read live so fixture overrides hold).
+            "source_null_geometry_count": (EXPECTED_NULL_GEOMETRY_COUNT
+                                           + sum(EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values())),
             "source_id_sha256": audit.get("source_ids_sha256", ""),
             "source_schema_sha256": audit["source_schema_sha256"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,

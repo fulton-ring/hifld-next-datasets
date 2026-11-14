@@ -16,7 +16,8 @@ import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.assets.pad_us_protection_mechanism_category import (
-    pad_us_protection_mechanism_category, pad_us_protection_mechanism_category_complete)
+    pad_us_protection_mechanism_category, pad_us_protection_mechanism_category_complete,
+    pad_us_protection_mechanism_category_complete_contract)
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import epa_frs_common
@@ -239,6 +240,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
         patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0),
         patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}),
         patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
+        patch.object(asset_module, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
@@ -304,6 +306,20 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
                             for key in keys))
+
+    def test_blocking_completeness_check_gates_the_pinned_null_contract(self):
+        # Every producer null geometry in the complete capture is an
+        # unusable-ring gate, so the blocking check must accept exactly the
+        # pinned gated-null contract and reject any drift from it.
+        contract = (src.EXPECTED_NULL_GEOMETRY_COUNT
+                    + sum(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values()))
+        self.assertEqual(contract, 342)
+        self.assertTrue(pad_us_protection_mechanism_category_complete_contract(
+            {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": contract}))
+        self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
+            {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": contract + 1}))
+        self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
+            {"feature_count": src.EXPECTED_COUNT - 1, "source_null_geometry_count": contract}))
 
     def test_keyset_pagination_contract_is_ordered_and_bounded(self):
         url = src._page_url(15000000)

@@ -19,6 +19,7 @@ from dagster_hifld.sources.pad_us_protection_mechanism_category import (
     DATASET_SLUG,
     EXPECTED_COUNT,
     EXPECTED_NULL_GEOMETRY_COUNT,
+    EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
     FILE_SLUG,
     capture_pad_us_protection_mechanism_category,
 )
@@ -62,12 +63,19 @@ def pad_us_protection_mechanism_category(
     return result
 
 
+def pad_us_protection_mechanism_category_complete_contract(candidate: dict) -> bool:
+    """Every producer null geometry is an unusable-ring gate: the observed null
+    count must equal the pinned true nulls plus the unusable-gated ones."""
+    return (
+        candidate.get("feature_count") == EXPECTED_COUNT
+        and candidate.get("source_null_geometry_count")
+        == EXPECTED_NULL_GEOMETRY_COUNT + sum(EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values())
+    )
+
+
 @asset_check(asset=pad_us_protection_mechanism_category, blocking=True)
 def pad_us_protection_mechanism_category_complete(candidate: dict) -> AssetCheckResult:
-    passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
-    )
+    passed = pad_us_protection_mechanism_category_complete_contract(candidate)
     return AssetCheckResult(
         passed=passed,
         metadata={
