@@ -45,7 +45,9 @@ PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC F
 EXPECTED_COUNT = 106747
 EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
 EXPECTED_ID_SHA256 = "f7d6a5b235ab36d8e554bbbe253e7152bcf86c462aaac74cb46a48c7dfdfd160"
-PAGE_SIZE = 1000
+# 1000-objectIds query URLs exceed the ienccloud gateway's request-line limit
+# (observed HTTP 414 at five-digit ids), so pages stay at the family size 250.
+PAGE_SIZE = 250
 MAX_CAPTURE_BYTES = 400_000_000
 EXPECTED_FIELD_DECLARATIONS = [
     {"name": "OBJECTID", "type": "esriFieldTypeOID", "alias": "OBJECTID", "domain": None},

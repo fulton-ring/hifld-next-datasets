@@ -238,18 +238,23 @@ class RoadsUsaceIencTests(unittest.TestCase):
 
 
 class RoadsUsaceLiveRosterTests(unittest.TestCase):
-    def test_live_page_roster_covers_106747_ids_in_107_pages(self):
+    def test_live_page_roster_covers_106747_ids_in_427_pages(self):
         self.assertEqual(source.EXPECTED_COUNT, 106747)
         self.assertEqual(source.EXPECTED_IDS, list(range(1, 106748)))
         names = source._capture_names()
-        self.assertEqual(len([name for name in names if name.startswith("page_")]), 107)
+        self.assertEqual(len([name for name in names if name.startswith("page_")]), 427)
         urls = dict(source._capture_roster(source.EXPECTED_IDS))
         self.assertIn("objectIds=1%2C2%2C3", urls["page_000"])
-        self.assertIn("objectIds=106001", urls["page_106"])
-        self.assertNotIn("objectIds=106748", urls["page_106"])
-        self.assertEqual(len(urls["page_000"].split("objectIds=")[1].split("&")[0].split("%2C")), 1000)
-        self.assertEqual(len(urls["page_106"].split("objectIds=")[1].split("&")[0].split("%2C")), 747)
+        self.assertIn("objectIds=106501", urls["page_426"])
+        self.assertNotIn("objectIds=106748", urls["page_426"])
+        self.assertEqual(len(urls["page_000"].split("objectIds=")[1].split("&")[0].split("%2C")), 250)
+        self.assertEqual(len(urls["page_426"].split("objectIds=")[1].split("&")[0].split("%2C")), 247)
         self.assertEqual(source._sha(_canonical(source.EXPECTED_IDS)), source.EXPECTED_ID_SHA256)
+
+    def test_page_urls_stay_under_the_gateway_request_line_limit(self):
+        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        longest = max(len(url) for name, url in urls.items() if name.startswith("page_"))
+        self.assertLess(longest, 8000)
 
 
 if __name__ == "__main__":
