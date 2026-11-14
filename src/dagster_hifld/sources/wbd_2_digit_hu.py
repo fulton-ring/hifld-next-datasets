@@ -287,6 +287,10 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
     body, receipt = _capture(client, nominal_url, root, name)
     if not _is_refusal(body):
         return {name: (body, receipt)}, refusals
+    # Persist the refusing document under its evidence artifact name; the
+    # receipt describes the request/response, not the retained file name.
+    for suffix in (".body", ".wire", ".receipt.json"):
+        (root / (name + suffix)).replace(root / (f"{name}_refusal" + suffix))
     refusals.append(f"{name}_refusal")
     parts[f"{name}_refusal"] = (body, receipt)
     slice_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
