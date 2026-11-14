@@ -1,4 +1,4 @@
-"""USGS OFR 2012-1205 coal-fields capture; refresh is proposal-only and stopped by default."""
+"""USGS NCRDS CoalByRank coal-fields service capture; refresh is proposal-only and stopped by default."""
 
 from dagster import (
     AssetCheckResult, AssetKey, AssetSelection, DefaultScheduleStatus, Field, MetadataValue, RunRequest, SkipReason,
@@ -9,14 +9,15 @@ from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.us_coal_fields import (
-    DATASET_SLUG, DBF_RECORDS, FILE_SLUG, capture_validated,
+    DATASET_SLUG, EXPECTED_RECORD_COUNT, FILE_SLUG, capture_validated,
 )
 
 _DESCRIPTION = (
-    "US Coal Fields, captured from the producer publication USGS Open-File Report "
-    "2012-1205 Downloads package (GIS.zip member 'GIS/Updated Coal Fields/Coal_Fields.*'; "
-    "602 coal-field polygons, EPSG:4269). Unapproved candidate; edition, HIFLD continuity, "
-    "baseline, contract, coverage, rights and release decisions remain pending."
+    "US Coal Fields, captured from the maintained producer publication: the USGS Energy Resources "
+    "Program NCRDS 'CoalByRank' MapServer layer 'CoalFieldsbyRank' (602 coal-field polygons, served "
+    "Web Mercator EPSG:3857; origin publication USGS Open-File Report 2012-1205, which is never "
+    "fetched directly). Unapproved candidate; edition, HIFLD continuity, baseline, contract, "
+    "coverage, rights and release decisions remain pending."
 )
 
 
@@ -56,7 +57,7 @@ INGEST_ASSETS = [us_coal_fields]
 
 @asset_check(asset=us_coal_fields, blocking=True)
 def us_coal_fields_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == DBF_RECORDS and candidate.get("source_population_complete") is True
+    passed = candidate.get("feature_count") == EXPECTED_RECORD_COUNT and candidate.get("source_population_complete") is True
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_record_sha256": candidate.get("records_sha256", "missing"),
