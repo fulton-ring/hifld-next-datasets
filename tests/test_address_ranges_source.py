@@ -513,7 +513,8 @@ class ReplayTests(unittest.TestCase):
             "status": 200, "observed_at": "2026-11-15T14:40:00+00:00",
             "content_type": "application/zip",
             "last_modified": source.EXPECTED_ARCHIVE_LAST_MODIFIED,
-            "content_encoding": "identity", "wire_bytes_received": len(archive),
+            "content_encoding": "identity", "transfer_complete": True,
+            "decoded_bytes_produced": len(archive), "wire_bytes_received": len(archive),
             "wire_bytes_retained": len(archive), "wire_sha256": hashlib.sha256(archive).hexdigest(),
             "raw_archive_key": source.CANONICAL_SOURCE_KEY,
             "raw_sha256": hashlib.sha256(archive).hexdigest(),
@@ -560,6 +561,49 @@ class ReplayTests(unittest.TestCase):
             self.assertEqual(staged.read_bytes(), archive)
             self.assertEqual(json.loads(receipt_staged.read_bytes())["observed_at"],
                              "2026-11-15T14:40:00+00:00")
+
+    def test_replay_rejects_saved_receipts_that_capture_would_reject(self):
+        """A retained receipt rejected by the fresh-transfer acquisition policy
+        must fail replay closed with replay quarantine, never a normal manifest."""
+        archive = _canonical_archive()
+        identity = {"code_identity_scheme": "git-commit-blobs-v1", "code_commit": "fixture",
+                    "files": {}, "python": "3.12.0"}
+        drifted = {
+            "changed_last_modified": {"last_modified": "Thu, 30 Jul 2026 10:00:00 GMT"},
+            "foreign_producer_host": {"final_host": "mirror.example.net"},
+            "failed_incomplete_transfer": {"status": 503, "transfer_complete": False},
+            "missing_transfer_completeness": {"transfer_complete": None},
+            "inconsistent_wire_digest": {"wire_sha256": "1" * 64},
+        }
+        for label, drift in drifted.items():
+            with self.subTest(drift=label):
+                receipt = self._receipt(archive)
+                receipt.update(drift)
+                with tempfile.TemporaryDirectory() as directory:
+                    staging = StagingStorageResource(local_dir=directory)
+                    with patch.object(source, "EXPECTED_ARCHIVE_SHA256",
+                                      hashlib.sha256(archive).hexdigest()), \
+                            patch.object(source, "EXPECTED_ARCHIVE_BYTES", len(archive)), \
+                            patch.object(source, "processing_identity", return_value=identity), \
+                            patch.object(source, "validate_construction_code_identity"), \
+                            patch.object(source, "_validate_staged_population") as population:
+                        with self.assertRaisesRegex(
+                                ValueError, "source_archive_transfer_or_identity_drift"):
+                            source.replay_retained_capture(staging, "vreject", archive,
+                                                           json.dumps(receipt).encode())
+                    self.assertFalse(population.called)
+                    quarantine = json.loads(
+                        (Path(directory)
+                         / "address-ranges/address-ranges/vreject/metadata/quarantine.json").read_bytes())
+                    self.assertEqual(quarantine["status"], "quarantined")
+                    self.assertEqual(quarantine["failure_code"],
+                                     "source_archive_transfer_or_identity_drift")
+                    self.assertTrue(quarantine["replay"])
+                    self.assertFalse(quarantine["release_accepted"])
+                    self.assertFalse((Path(directory)
+                                      / "address-ranges/address-ranges/vreject/metadata/native_capture.json").exists())
+                    self.assertFalse((Path(directory)
+                                      / "address-ranges/address-ranges/vreject/metadata/source_manifest.json").exists())
 
 
 class _RecordingStorage:

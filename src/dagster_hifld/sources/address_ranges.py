@@ -158,6 +158,32 @@ def _reserve(current: int, upcoming: int) -> None:
         raise ValueError("source_archive_capture_budget_exceeded")
 
 
+def _require_accepted_transfer(receipt: dict, body: bytes) -> None:
+    """Apply the fresh-transfer acquisition policy to one transfer receipt.
+
+    Both the live capture and the retained-transfer replay must accept the
+    receipt's transfer completeness, HTTP status, final producer host,
+    encoding, headers and archive identity pins before any further
+    validation; a matching archive hash alone does not establish receipt or
+    source provenance.
+    """
+    if (
+        not receipt.get("transfer_complete")
+        or not isinstance(receipt.get("status"), int)
+        or not 200 <= receipt["status"] < 300
+        or receipt.get("content_encoding") != "identity"
+        or receipt.get("decoded_bytes_produced") != len(body)
+        or receipt.get("wire_bytes_received") != len(body)
+        or str(receipt.get("final_host") or "").lower() != SOURCE_HOST
+        or not str(receipt.get("content_type") or "").lower().startswith("application/zip")
+        or len(body) != EXPECTED_ARCHIVE_BYTES
+        or receipt.get("wire_sha256") != EXPECTED_ARCHIVE_SHA256
+        or receipt.get("raw_sha256") != EXPECTED_ARCHIVE_SHA256
+        or receipt.get("last_modified") != EXPECTED_ARCHIVE_LAST_MODIFIED
+    ):
+        raise ValueError("source_archive_transfer_or_identity_drift")
+
+
 def _capture_archive(staging: StagingStorageResource, version: str, client: httpx.Client) -> tuple[bytes, dict]:
     """Stream one exact official archive, receipt it, and stage its canonical copy."""
     wire = bytearray()
@@ -198,18 +224,7 @@ def _capture_archive(staging: StagingStorageResource, version: str, client: http
             staging.write(DATASET_SLUG, FILE_SLUG, version, "raw/source_archive.receipt.json",
                           _json_bytes(receipt))
             transfer_receipt_written = True
-            if (
-                not result.complete
-                or not 200 <= result.status_code < 300
-                or result.content_encoding != "identity"
-                or result.decoded_bytes_produced != len(body)
-                or final_host.lower() != SOURCE_HOST
-                or not str(response.headers.get("content-type", "")).lower().startswith("application/zip")
-                or len(body) != EXPECTED_ARCHIVE_BYTES
-                or result.wire_sha256 != EXPECTED_ARCHIVE_SHA256
-                or receipt["last_modified"] != EXPECTED_ARCHIVE_LAST_MODIFIED
-            ):
-                raise ValueError("source_archive_transfer_or_identity_drift")
+            _require_accepted_transfer(receipt, body)
             return body, receipt
     except ValueError as exc:
         if not transfer_receipt_written:
@@ -573,7 +588,10 @@ def replay_retained_capture(staging: StagingStorageResource, version: str, archi
     This path makes no new network request and does not invent a retrieval
     timestamp; it replays the byte-identical retained archive through the same
     validators so a completed transfer can be re-staged after a later step
-    failed without re-downloading 1.75 GB.
+    failed without re-downloading 1.75 GB. The retained receipt must satisfy
+    the same fresh-transfer acquisition policy as a live capture before the
+    replay proceeds; a matching archive hash alone does not establish receipt
+    or source provenance.
     """
     try:
         receipt = json.loads(receipt_bytes)
@@ -591,10 +609,11 @@ def replay_retained_capture(staging: StagingStorageResource, version: str, archi
     staging.write(DATASET_SLUG, FILE_SLUG, version, CANONICAL_SOURCE_KEY, archive)
     staging.write(DATASET_SLUG, FILE_SLUG, version, "raw/source_archive.receipt.json", receipt_bytes)
     identity = processing_identity(Path(__file__).parents[3])
-    validate_construction_code_identity(
-        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
-    )
     try:
+        _require_accepted_transfer(receipt, archive)
+        validate_construction_code_identity(
+            Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
+        )
         result = _validate_staged_population(staging, version, identity, receipt, replayed=True)
         result["replayed"] = True
         return result
