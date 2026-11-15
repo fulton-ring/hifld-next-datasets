@@ -1,6 +1,8 @@
 # Colleges and Universities Campuses — unapproved historical draft
 
-This implements a **2022 HIFLD/ORNL campus historical preservation candidate**, not a maintained current-source replacement. PASDA supplies two complete third-party historical mirrors. The original DHS catalog and independent ORNL publication establish the product family; neither establishes acceptance of these exact mirrored release bytes. The user-authorized draft scope permits implementation and local tests while source selection, compatibility and release decisions remain pending.
+This implements a **2022 HIFLD/ORNL campus historical preservation candidate**, not a maintained current-source replacement. PASDA supplies two complete third-party historical mirrors. The original DHS catalog and independent ORNL publication establish the product family; neither establishes acceptance of these exact mirrored release bytes. The execution evidence below records prior historical preservation work; it does not authorize those mirrors under the current source policy.
+
+**Current source policy, reviewed 2026-11-15:** PASDA and the other prohibited mirrors are not permitted pipeline inputs or fallback candidates. No mirror was fetched for this review. The historical counts, comparisons and runs below are prior unaccepted evidence, not current original-producer recovery or proof of NCES/ORNL parity. Obtain the producer's exact release or documented official delegation before further source work. [NCES reporting-institution points](../colleges-and-universities/README.md) are a separate successor candidate; they do not recover campus polygons, and no buffer or hull substitution is authorized.
 
 This clean-main recovery uses the six original body/receipt pairs restored from retained source commit `cb98e912ad6f55503c68d84faf539ad0dfc97482`. They are held outside Git at `/workspace/work/39-evidence/captures`; the source was not requested again. The validation and run records described later in this file belong to earlier legacy-branch checkpoints and do not establish a packaged-runtime replay for this clean-main implementation.
 
@@ -54,7 +56,7 @@ The runner creates isolated DAGSTER_HOME, staging and local output directories; 
 
 ## Decisions still required
 
-1. Verify the exact ORNL/HIFLD release/delegation or explicitly permit this named historical-mirror preservation scope. No current-source replacement is inferred.
+1. Verify the exact original-producer release or documented official delegation. The current source policy excludes historical mirrors as inputs; accepting a mirror is not an available fallback. No current-source replacement is inferred.
 2. Approve a baseline and contract covering original/published IDs (including duplicate published IDs), physical types, native geometry and historical precision differences. All destructive mappings and migrations remain quarantined proposals.
 3. Resolve the fifteen original invalid geometries without silently repairing them or accepting an exception. Full-population quality remains blocking.
 4. Approve rights/attribution and the exact independently reviewed release before promotion. No source/baseline/contract approval, merge, closure or production publication is performed here.
