@@ -1274,7 +1274,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
-             "source_schema_sha256": extracted["schema_sha"]},
+             "source_schema_sha256": extracted["schema_sha"],
+             "source_ids_sha256": extracted["ids_sha"],
+             "source_null_geometry_count": extracted["null_geometry_count"],
+             "source_invalid_geometry_count": extracted["invalid_geometry_count"]},
             parquet_body)
     audit = {
         "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
@@ -1534,7 +1537,10 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str,
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
+            "source_null_geometry_count": audit.get("source_null_geometry_count",
+                                                     EXPECTED_NULL_GEOMETRY_COUNT),
+            "source_invalid_geometry_count": audit.get("source_invalid_geometry_count",
+                                                       EXPECTED_INVALID_GEOMETRY_COUNT),
             "source_id_sha256": audit.get("source_ids_sha256", ""),
             "source_schema_sha256": audit["source_schema_sha256"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,

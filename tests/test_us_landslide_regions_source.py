@@ -457,6 +457,61 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                     self.assertEqual(candidate["feature_count"], FIXTURE_COUNT)
                     self.assertTrue(candidate["reused"])
 
+    def test_blocking_check_passes_on_reuse_with_pinned_gates(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                storage = _staging(root)
+                src.capture_us_landslide_regions(
+                    storage, version="pin-reuse-run", capture_directory=str(capture_root))
+                baseline = json.loads((capture_root / "computed_baseline.json")
+                                      .read_bytes())
+                import dagster_hifld.assets.us_landslide_regions as asset_module
+                with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT",
+                                  baseline["source_null_geometry_count"]), \
+                        patch.object(src, "EXPECTED_INVALID_GEOMETRY_COUNT",
+                                     baseline["source_invalid_geometry_count"]), \
+                        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT",
+                                     baseline["source_null_geometry_count"]), \
+                        patch.object(asset_module, "EXPECTED_INVALID_GEOMETRY_COUNT",
+                                     baseline["source_invalid_geometry_count"]):
+                    second = src.capture_us_landslide_regions(
+                        storage, version="pin-reuse-run-2",
+                        capture_directory=str(capture_root))
+                    self.assertTrue(second["reused"])
+                    self.assertEqual(second["source_invalid_geometry_count"],
+                                     baseline["source_invalid_geometry_count"])
+                    self.assertEqual(second["source_null_geometry_count"],
+                                     baseline["source_null_geometry_count"])
+                    instance_dir = root / "dagster"
+                    instance_dir.mkdir()
+                    (instance_dir / "dagster.yaml").write_text(
+                        "telemetry:\n  enabled: false\n")
+                    from dagster import DagsterInstance, materialize
+                    with DagsterInstance.from_config(str(instance_dir)) as instance:
+                        result = materialize(
+                            [us_landslide_regions, us_landslide_regions_complete],
+                            resources={"staging_storage": storage},
+                            instance=instance,
+                            run_config={"ops": {
+                                "ingest__us_landslide_regions__us_landslide_regions":
+                                    {"config": {"capture_directory":
+                                                str(capture_root)}}}},
+                        )
+                        self.assertTrue(result.success)
+                        checks = {check.check_name: check
+                                  for check in result.get_asset_check_evaluations()}
+                        self.assertTrue(checks["us_landslide_regions_complete"].passed)
+                        candidate = result.output_for_node(
+                            "ingest__us_landslide_regions__us_landslide_regions")
+                        self.assertTrue(candidate["reused"])
+                        self.assertEqual(candidate["source_invalid_geometry_count"],
+                                         baseline["source_invalid_geometry_count"])
+
     def test_sealed_candidate_manifest_and_audit_are_unapproved(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
