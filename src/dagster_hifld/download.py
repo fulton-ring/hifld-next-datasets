@@ -156,10 +156,6 @@ def _zip_source(primary: Path, destination: Path) -> None:
         else:
             for path in shapefile_dataset_files(primary):
                 archive.write(path, path.name)
-
-
-def _safe_layer_name(name: str) -> str:
-    """Sanitise a layer name for use in file names (matches process_gcs_datasets._safe_layer_suffix)."""
     return name.replace("/", "-").replace("\\", "-").replace(" ", "_")
 
 def download_convert_and_stage(
