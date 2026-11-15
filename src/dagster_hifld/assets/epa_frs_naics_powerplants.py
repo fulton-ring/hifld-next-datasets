@@ -158,7 +158,7 @@ def _reuse_candidate(
                       "metadata/processing_identity.json", "metadata/candidate_ready.json"}
     receipts = payload.get("capture_receipts")
     objects = payload.get("objects")
-    expected_receipt_names = {"service", "table_before", "count_before", "ids_before",
+    expected_receipt_names = {"service", "portal_item", "table_before", "count_before", "ids_before",
                               "table_after", "service_after", "count_after", "ids_after",
                               *(f"page_{index:03d}" for index in range((EXPECTED_SOURCE_ROWS + PAGE_SIZE - 1) // PAGE_SIZE))}
     if (not isinstance(receipts, dict) or not isinstance(objects, dict)
@@ -241,7 +241,7 @@ def capture_epa_frs_naics_table(
             capture_mode = "offline_retained_source_replay"
             source_prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, offline_capture_version)
             retained_names = {
-                "service", "table_before", "count_before", "ids_before", "table_after",
+                "service", "portal_item", "table_before", "count_before", "ids_before", "table_after",
                 "service_after", "count_after", "ids_after",
                 *(f"page_{index:03d}" for index in range(
                     (EXPECTED_SOURCE_ROWS + PAGE_SIZE - 1) // PAGE_SIZE

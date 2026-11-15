@@ -132,8 +132,8 @@ def _reuse(storage: StagingStorageResource, *, version: str, identity: dict[str,
     if not isinstance(payload, dict):
         raise EPAFRSSICError("cached_candidate_payload_missing")
     receipts, objects = payload.get("capture_receipts"), payload.get("objects")
-    expected_receipts = {"service", "service_after", "table_before", "count_before", "ids_before", "table_after",
-                         "count_after", "ids_after", "page_000"}
+    expected_receipts = {"service", "portal_item", "service_after", "table_before", "count_before",
+                         "ids_before", "table_after", "count_after", "ids_after", "page_000"}
     expected_objects = {"unknown/" + FILE_SLUG + ".parquet", "metadata/source_ids.json",
                         "metadata/published_candidate_ids.json", "metadata/source_capture.json",
                         "metadata/source_manifest.json", "metadata/source_audit.json",
@@ -196,8 +196,8 @@ def capture_epa_frs_sic_table(staging_storage: StagingStorageResource, *,
             source_prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, offline_capture_version)
             source_manifest = json.loads(staging_storage.read_key(f"{source_prefix}/metadata/source_capture.json"))
             retained_names = set(source_manifest.get("response_receipts", {}))
-            expected_names = {"service", "service_after", "table_before", "count_before", "ids_before",
-                              "table_after", "count_after", "ids_after", "page_000"}
+            expected_names = {"service", "portal_item", "service_after", "table_before", "count_before",
+                              "ids_before", "table_after", "count_after", "ids_after", "page_000"}
             if retained_names != expected_names:
                 raise EPAFRSSICError("retained_capture_roster_invalid")
             capture_root.mkdir(parents=True, exist_ok=True)
