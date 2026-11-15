@@ -16,7 +16,6 @@ gated as unusable geometry rather than silently coerced to a location.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 import time
@@ -43,6 +42,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "nfhl-coastal-gages"
 FILE_SLUG = DATASET_SLUG
@@ -97,14 +97,6 @@ EXPECTED_SERVICE_LAYER_ROSTER = [
     (13, "Station Start Points", "Feature Layer"), (26, "Hydrologic Reaches", "Feature Layer"),
     (30, "Alluvial Fans", "Feature Layer"), (31, "Subbasins", "Feature Layer"),
 ]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

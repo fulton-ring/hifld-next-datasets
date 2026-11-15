@@ -4,7 +4,6 @@ The BTS describes IPCD as a frozen publication whose latest information is from 
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import platform
 import shutil
@@ -32,6 +31,7 @@ from dagster_hifld.sources.epa_frs_common import (
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 ITEM_ID = "25d9314da4ec44088f1db9e9e11a19d6"
@@ -52,14 +52,6 @@ EXPECTED_GEOMETRY_SHA256 = "787e435912aa4eb66f960d15bf7ae6d3cf9627e03a17c81fbd50
 EXPECTED_SCHEMA_SHA256 = "870edc2ecd6994fb4d18769a57fcf0da9deafd12e529dcaca5f1d98639074142"
 PAGE_SIZE = 100
 MAX_BODY_BYTES = 32_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

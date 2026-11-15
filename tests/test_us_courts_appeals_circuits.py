@@ -17,7 +17,7 @@ from dagster_hifld.assets.us_courts_appeals_circuits import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import us_courts_appeals_circuits as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 # Real roster order as observed on 2026-11-14: OBJECTID 1..13 map to the twelve
 # geographic circuits plus the unassigned null-geometry 'XX' placeholder.

@@ -15,7 +15,7 @@ from dagster_hifld.assets.cable_areas_usace_ienc import (
     cable_areas_usace_ienc,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class CableAreasUsaceIencTests(unittest.TestCase):

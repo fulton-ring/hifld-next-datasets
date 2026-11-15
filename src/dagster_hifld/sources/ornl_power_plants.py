@@ -1,6 +1,6 @@
 """Pinned historical EIA Power Plants GIS candidate for issue #274."""
 from __future__ import annotations
-import hashlib, io, json, math, shutil, struct, tempfile, zipfile
+import io, json, math, shutil, struct, tempfile, zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -17,6 +17,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "power-plants-1"
 SOURCE_URL = "https://www.eia.gov/maps/map_data/PowerPlants_US_EIA.zip"
@@ -40,8 +41,7 @@ GEOMETRY_SHA="65728ac6666ed38eb75c0b88fbb88509e5a075716f29a2a3bd480f5dec6975df"
 BOUNDS=[-171.71243899999996,17.947115000000053,-65.27955999999995,71.29200000000003]
 WGS84=CRS.from_epsg(4326)
 
-def _canonical(x): return json.dumps(x,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode()
-def _sha(b): return hashlib.sha256(b).hexdigest()
+
 def _native(v):
     if hasattr(v,"item"): v=v.item()
     if v is None or (isinstance(v,float) and math.isnan(v)): return None

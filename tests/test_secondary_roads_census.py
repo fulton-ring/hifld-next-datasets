@@ -14,7 +14,7 @@ from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.sources import secondary_roads_census as source
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 # The live layer's 31212 OBJECTIDs are not contiguous; tests exercise the
 # identical logic against a small patched roster for speed.

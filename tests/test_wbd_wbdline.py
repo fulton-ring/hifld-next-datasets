@@ -20,7 +20,7 @@ from dagster_hifld.assets.wbd_wbdline import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wbd_wbdline as source
-from dagster_hifld.sources.usace_obstruction_lines import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 _TEST_COUNT = 9
 _TEST_PAGE_SIZE = 4

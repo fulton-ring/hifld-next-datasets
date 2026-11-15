@@ -9,7 +9,6 @@ pending; every candidate and publication gate is unapproved.
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import math
 import os
@@ -38,6 +37,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "national-inventory-of-dams-nid-1"
 PUBLISHER = "U.S. Army Corps of Engineers (USACE), National Inventory of Dams"
@@ -104,15 +104,6 @@ ARROW_TYPES = {
     'esriFieldTypeDouble': pa.float64(), 'esriFieldTypeDate': pa.int64(),
     'esriFieldTypeString': pa.string(), 'esriFieldTypeBlob': pa.binary(),
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False,
-                      allow_nan=False).encode('utf-8')
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _strict_json(body: bytes | str) -> object:

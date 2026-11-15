@@ -1,7 +1,6 @@
 """Bounded, source-faithful capture for the official USACE IENC submarine cable lines."""
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -28,6 +27,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "submarine-cable-lines-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -97,15 +97,6 @@ def _validate_spatial_reference(value: object, label: str, *, required: bool = T
     if required and not found:
         raise ValueError(f"{label}_crs_drift")
     return found
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _query(params: dict[str, object]) -> str:

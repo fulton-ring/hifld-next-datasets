@@ -30,9 +30,10 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
-    _canonical, _sha, candidate_prefix, processing_identity,
+    candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
 )
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.usace_pylon_areas import (
     _load_replay, _write_outputs,
     PAGE_SIZE,
@@ -303,13 +304,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "source_has_z":bool(layer.get("hasZ")),"source_has_m":bool(layer.get("hasM")),
         "source_coverage_scope":"Complete official IENC CRANES_POINT feature class; not a claim of all crane locations.",
         "drift_guard":"Exact layer id/name, count, field names/types, CRS, page errors, and before/after ID membership are checked."}
-
-
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
-            "esriFieldTypeSmallInteger": pa.int16(), "esriFieldTypeSingle": pa.float32(),
-            "esriFieldTypeDouble": pa.float64(), "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDate": pa.int64()}.get(field.get("type"), pa.string())
 
 
 def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:

@@ -27,6 +27,7 @@ from dagster_hifld.http_capture import capture_http_response, capture_roster_dig
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.epa_frs_common import (
@@ -61,15 +62,6 @@ EXPECTED_FIELD_DECLARATIONS = [
      **({"length":254} if kind == "esriFieldTypeString" else {})}
     for name,kind in EXPECTED_FIELDS
 ]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
