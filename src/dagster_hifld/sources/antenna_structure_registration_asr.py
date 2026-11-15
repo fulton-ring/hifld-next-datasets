@@ -129,12 +129,13 @@ PUBLISHED_COLUMN_NAMES = [name for name, _ in PUBLISHED_SCHEMA]
 RECORD_VALUE_NAMES = [name for name in PUBLISHED_COLUMN_NAMES if name != "geometry"]
 ROW_KEY_COLUMNS = ("ra_registration_number", "ra_unique_system_identifier", "co_coordinate_type")
 COVERAGE_SCOPE = (
-    "Every coordinate record of every antenna structure registration in the weekly FCC ULS "
-    "antenna structure registration tower public-access file (r_tower.zip), across the United "
-    "States and its territories. Registered antenna structures are point locations (one tower "
-    "coordinate row per registration, plus one array row for the 5236 array registrations); the "
-    "single registration without a coordinate row is retained in raw staging but has no published "
-    "row. This is the FCC's registered-structure population, not a census of physical towers."
+    "Every CO coordinate row joined to its RA registration in the pinned weekly FCC ASR "
+    "r_tower.zip: 198009 T (tower-coordinate) rows and 5236 A (array-coordinate) rows, "
+    "with all RA status and archive codes retained. These are registration-coordinate records, "
+    "not a physical tower census or an inventory of every member of an array. Of the A rows, "
+    "354 carry array_tower_position and 4882 do not; array_total_tower does not expand rows. "
+    "The single RA registration without CO is retained only in raw staging; 124 CO rows keep "
+    "null geometry. Completeness refers to this source-row population, not all structures."
 )
 # ASR coordinates are referenced to the North American Datum of 1983: the FCC's
 # ASR registration search states "Based on NAD83 (convert from NAD27)"
@@ -572,11 +573,13 @@ def capture_antenna_structure_registration_asr(storage: StagingStorageResource, 
         "license": "Unresolved; rights review pending.", "attribution": "FCC Wireless Telecommunications Bureau ULS public access ASR tower tables; attribution and rights review pending."}
         for name, receipt in sorted(receipts.items())]
     manifest = {"schema_version": 1, "approved": False, "title": "Antenna Structure Registration (FCC ASR)",
-        "description": ("Registered antenna structures from the FCC ULS weekly public access ASR tower "
+        "description": ("Registration-coordinate records from the FCC ULS weekly public access ASR tower "
                         "registration file r_tower.zip: one published row per CO coordinate row joined to its "
                         "RA registration row and the registration's unique EN owner entity row, with every "
                         "declared RA/CO/EN field retained verbatim plus DMS-derived latdec/londec and WKB Point "
-                        "geometry in the native NAD83 datum (EPSG:4269). Unapproved candidate; source edition, "
+                        "geometry in the native NAD83 datum (EPSG:4269). T and A coordinate types remain distinct; "
+                        "array totals do not expand into additional structures. All registration status and archive "
+                        "codes are retained; this is not a physical tower census. Unapproved candidate; source edition, "
                         "baseline, schema/ID contract, rights and release decisions remain pending."),
         "publisher": PUBLISHER, "agency": "Federal Communications Commission", "source_url": R_TOWER_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
@@ -586,7 +589,8 @@ def capture_antenna_structure_registration_asr(storage: StagingStorageResource, 
             "source_tables": "RA registration, CO coordinates and EN entity tables of r_tower.zip decoded as CRLF pipe-delimited UTF-8 records (trailing CR removed per line)",
             "population": ("one published row per CO coordinate row (198009 tower rows and 5236 array rows) "
                            "joined to its RA registration row and to the registration's unique EN owner entity "
-                           "row (entity_type O); the single registration without a coordinate row has no "
+                           "row (entity_type O), without status or archive filtering; A rows are retained as "
+                           "filed, not expanded into array members; the single registration without a coordinate row has no "
                            "published row and the 15 published rows whose registration carries no EN owner row "
                            "keep null joined EN fields"),
             "source_ids": ("ra_registration_number, ra_unique_system_identifier and co_coordinate_type retained "

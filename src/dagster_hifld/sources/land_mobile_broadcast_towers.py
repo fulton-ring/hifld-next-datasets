@@ -126,7 +126,7 @@ LOCATION_FIELDS: tuple[tuple[str, str], ...] = (
 LO_EXPECTED_FIELD_COUNT = len(LOCATION_FIELDS)
 LOCATION_TYPE_INDEX = [name for name, _ in LOCATION_FIELDS].index("location_type_code")
 
-# Fixed locations are the tower-bearing licensed sites. Per the ULS code
+# Fixed location filings do not establish physical tower identity. Per the ULS code
 # definitions, LO Location Type Code F = Fixed (fixed stations); M, I, L, T and
 # 6 are mobile, itinerant, temporary or control-station location types.
 FIXED_LOCATION_TYPE = "F"
@@ -296,7 +296,7 @@ def _point_wkb(longitude: float, latitude: float) -> bytes:
 
 
 def _join_features(tables: Mapping[str, bytes], counts: Mapping[str, object]) -> tuple[list[dict], dict]:
-    """Validate the official tables and build fixed-location tower features.
+    """Validate the official tables and build filed fixed-location points.
 
     Completeness is verified against the producer's own `counts` manifest: every
     listed table must contain exactly the declared number of records. Every fixed
@@ -456,7 +456,7 @@ def _parquet(features: list[dict]) -> bytes:
 
 
 def _decode(body: bytes) -> tuple[list[dict], dict, bytes]:
-    """Decode the weekly archive into validated tower features plus the audit."""
+    """Decode the weekly archive into validated license-location points plus the audit."""
     if len(body) > MAX_SOURCE_BYTES:
         raise ULSDraftError("uls_archive_size_limit")
     try:
@@ -633,10 +633,13 @@ def capture_land_mobile_broadcast_towers(storage: StagingStorageResource, *, ver
         "schema_version": 1,
         "approved": False,
         "title": "Land Mobile Broadcast Towers (FCC ULS Broadcast Auxiliary, weekly license extract)",
-        "description": ("Draft candidate of fixed-location tower features for the FCC Land "
+        "description": ("Draft candidate of filed fixed license-location records for the FCC Land "
                         "Mobile Broadcast Auxiliary services (LP, RP, LV) built from the "
                         "producer's own weekly Universal Licensing System license-records "
-                        "file. Not represented as an accepted HIFLD equivalent; the "
+                        "file, across all license statuses. Unmappable locations remain in raw staging; "
+                        "candidate rows require valid coordinates. Rows may share a structure; source "
+                        "completeness refers to this filtered file population, not a physical tower census. "
+                        "Not represented as an accepted HIFLD equivalent; the "
                         "historical HIFLD tower filter and published schema remain "
                         "unresolved and unapproved."),
         "publisher": PUBLISHER,
@@ -652,9 +655,10 @@ def capture_land_mobile_broadcast_towers(storage: StagingStorageResource, *, ver
             "parameters": {
                 "source_tables": ["LO", "HD", "EN"],
                 "feature_scope": ("Location Type Code F (Fixed) records of the official LO "
-                                  "table, one candidate feature per fixed licensed location; "
-                                  "mobile, itinerant, temporary and control-station location "
-                                  "types are not tower features."),
+                                  "table across all HD license statuses, one candidate row per "
+                                  "mappable fixed location; other location types and missing or "
+                                  "invalid coordinates are excluded from candidate points and "
+                                  "retained in raw staging. No physical structure identity is inferred."),
                 "field_preservation": ("Every official LO field is carried with its declared "
                                        "name, type and native value, including raw DMS "
                                        "components; no columns are dropped, renamed into new "
@@ -666,8 +670,8 @@ def capture_land_mobile_broadcast_towers(storage: StagingStorageResource, *, ver
                           "agreement are enforced and violations reject the capture; every "
                           "raw table is staged losslessly under raw/."),
                 "geometry": ("DMS converted to decimal degrees only for the geometry column; "
-                             "invalid or incomplete DMS keeps null geometry with raw values "
-                             "retained. No reprojection or coordinate repair."),
+                             "invalid or incomplete DMS is excluded from candidate points, counted "
+                             "in the audit and retained in raw staging. No reprojection or coordinate repair."),
                 "candidate_status": "draft, unapproved; historical equivalence unresolved",
             },
         }],

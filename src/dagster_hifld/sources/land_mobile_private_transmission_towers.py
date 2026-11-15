@@ -687,7 +687,9 @@ def capture_land_mobile_private_transmission_towers(storage: StagingStorageResou
                         "under the historical HIFLD Land Mobile Private Transmission Towers column contract. "
                         "Location records without a complete coordinate pair and location records in the FCC "
                         "do-not-convert local-datum territories (coordinates with no FCC-published conversion to "
-                        "NAD83, preserved in the audit) are excluded. Unapproved candidate; source edition, "
+                        "NAD83, preserved in the audit) are excluded. Filed license-location rows may share a "
+                        "structure; this is not a physical tower census. "
+                        "Source completeness refers only to the declared file and filters. Unapproved candidate; source edition, "
                         "baseline, schema/ID contract, rights and release decisions remain pending."),
         "publisher": PUBLISHER, "agency": "Federal Communications Commission", "source_url": L_LMPRIV_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
