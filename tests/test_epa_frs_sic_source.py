@@ -178,21 +178,19 @@ class EPAFRSSICTests(unittest.TestCase):
 
     def test_hosted_item_identity_and_relationship_contracts_are_all_or_none(self):
         with self.assertRaisesRegex(ValueError, "portal_item_contract_must_be_complete"):
-            replace(PROFILE, portal_item_id="item-1")
+            replace(PROFILE, portal_item_id=None)
         with self.assertRaisesRegex(ValueError, "relationship_contract_must_be_complete_or_undeclared"):
-            replace(PROFILE, relationship_name=None)
+            replace(PROFILE, relationship_name="POWERPLANT_LAYER")
         with self.assertRaisesRegex(ValueError, "source_identity_contract_required"):
-            replace(PROFILE, source_vintage=None)
+            replace(PROFILE, source_vintage=None, portal_item_id=None,
+                    portal_item_owner=None, portal_item_title=None)
 
     def test_complete_source_capture_brackets_exact_ids_and_retains_receipts(self):
         profile = replace(PROFILE, expected_rows=2)
         fields = [{"name": name, "type": esri_type, "nullable": nullable, "length": length}
                   for name, esri_type, nullable, length in profile.fields]
         table = {"name": profile.table_name, "geometryType": None, "fields": fields,
-                 "relationships": [{"name": profile.relationship_name,
-                                    "relatedTableId": profile.related_table_id,
-                                    "keyField": profile.relationship_key,
-                                    "cardinality": profile.relationship_cardinality}]}
+                 "relationships": []}
         service = {"description": "EIA data as of June 2014.",
                    "tables": [{"id": profile.table_id, "name": profile.table_name}]}
         rows = [
@@ -215,9 +213,9 @@ class EPAFRSSICTests(unittest.TestCase):
         def respond(request):
             path = urlparse(str(request.url)).path
             query = parse_qs(urlparse(str(request.url)).query)
-            if path.endswith("/MapServer"):
+            if path.rstrip("/").endswith("FeatureServer"):
                 payload = service
-            elif path.endswith("/15"):
+            elif path.endswith(f"/{profile.table_id}"):
                 payload = table
             elif query.get("returnCountOnly") == ["true"]:
                 payload = {"count": 2}
@@ -247,10 +245,7 @@ class EPAFRSSICTests(unittest.TestCase):
             "name": PROFILE.table_name,
             "geometryType": None,
             "fields": fields,
-            "relationships": [{"name": PROFILE.relationship_name,
-                               "relatedTableId": PROFILE.related_table_id,
-                               "keyField": PROFILE.relationship_key,
-                               "cardinality": PROFILE.relationship_cardinality}],
+            "relationships": [],
         }
         self.assertEqual(len(_metadata_contract(metadata, PROFILE)), 4)
         changed = {**metadata, "fields": fields + [{"name": "EXTRA", "type": "esriFieldTypeString",

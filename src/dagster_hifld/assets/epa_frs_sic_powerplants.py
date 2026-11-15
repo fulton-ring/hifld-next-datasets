@@ -28,25 +28,29 @@ from dagster_hifld.sources.epa_frs_common import (
 
 DATASET_SLUG = "epa-frs-eia-860-power-generation-facilities-sic-codes"
 FILE_SLUG = DATASET_SLUG
-SERVICE_URL = "https://geodata.epa.gov/arcgis/rest/services/OEI/FRS_PowerPlants/MapServer"
+ITEM_ID = "2a1459ac9b03469e87c2e7785cc188a9"
+SERVICE_URL = "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_PowerPlants/FeatureServer"
 PROFILE = ArcGISTableProfile(
-    service_url=SERVICE_URL, table_id=15, table_name="FRS_SIC_POWERPLANTS",
+    service_url=SERVICE_URL, table_id=2,
+    table_name="EPA Facility Registry Service - EIA-860 Power Generation Facilities SIC Codes",
     fields=(
         ("OBJECTID", "esriFieldTypeOID", False, None),
         ("REGISTRY_ID", "esriFieldTypeString", True, 12),
         ("SIC_CODE", "esriFieldTypeString", False, 4),
         ("PRIMARY_INDICATOR", "esriFieldTypeString", False, 10),
     ),
-    relationship_name="POWERPLANT_LAYER", related_table_id=12,
-    relationship_key="REGISTRY_ID", relationship_cardinality="esriRelCardinalityOneToMany",
-    source_vintage="2014-06", expected_rows=72,
+    relationship_name=None, related_table_id=None,
+    relationship_key=None, relationship_cardinality=None,
+    portal_item_id=ITEM_ID, portal_item_owner="EPA_GEO",
+    portal_item_title="FRS US Power Generation Facilities",
+    source_vintage="2014-06", expected_rows=1,
 )
 TABLE_URL = PROFILE.table_url
-EXPECTED_ROWS = 72
-EXPECTED_RECORD_SHA256 = "c21fed35ea448b9d34e6f41e2261ad2bccd58c7932bcfc086cc908cccd0fa77c"
-EXPECTED_IDS_SHA256 = "a41b29774d93b917cd36702e7c27e62b24a7d0200697a59789894aaed81f2344"
-EXPECTED_TRIPLETS_SHA256 = "6676be546d267c4587f389fafcbff65b56bead32a65294c00e9aaff0955e6c70"
-EXPECTED_SCHEMA_SHA256 = "d95302c6e626ef7806877b59e6b57c513fcb39c4ea65d630b411201eb6482aa3"
+EXPECTED_ROWS = 1
+EXPECTED_RECORD_SHA256 = "f9e1443421150d1ede07537bd93f6aa74e879ffae5b02f92a1aa9429c2df0b94"
+EXPECTED_IDS_SHA256 = "080a9ed428559ef602668b4c00f114f1a11c3f6b02a435f0bdc154578e4d7f22"
+EXPECTED_TRIPLETS_SHA256 = "ba0569f44ce58132f38c5989b8fa92f3871417b368faaec5589f52ee12d9156f"
+EXPECTED_SCHEMA_SHA256 = "648bedd9f9a74b32d4a5e8a214a66ea8ee8efcf3666d59b10f8b6ccda52f8378"
 PUBLISHED_ROWS = 74
 PUBLISHED_IDS = tuple(range(1, 75))  # Exact feature OBJECTID roster from the pinned public GeoJSON.
 PUBLISHED_IDS_SHA256 = "6de1799d84572b796f70a2087b5e26016f8a514824f437d72a3d7a8ced2db045"
@@ -271,14 +275,14 @@ def capture_epa_frs_sic_table(staging_storage: StagingStorageResource, *,
                                         "bytes": len(data), "sha256": _sha(data)}})
     source_manifest = {
         "title": "EPA Facility Registry Service - EIA-860 Power Generation Facilities SIC Codes",
-        "description": "EPA OEI FRS_POWERPLANTS MapServer table 15 FRS_SIC_POWERPLANTS; native nonspatial table. Service description dates the EIA-860 compilation to June 2014. The public HIFLD candidate has 74 rows and differs from the live table; publication is blocked pending maintainer decision.",
+        "description": "EPA_GEO hosted FRS_PowerPlants FeatureServer table 2 (EPA Facility Registry Service - EIA-860 Power Generation Facilities SIC Codes); native nonspatial table. The service description dates the joined EIA-860 compilation to June 2014, while EPA's FRS tables refresh process maintains the publication (tables last edited 2026-11-09). The maintained table carries 1 row where the June 2014 legacy-host table 15 carried 72 and the public HIFLD candidate 74; publication is blocked pending maintainer decision.",
         "publisher": "U.S. Environmental Protection Agency, Office of Environmental Information (EPA_GEO)",
         "agency": "Environmental Protection Agency", "source_url": TABLE_URL,
         "license": "U.S. EPA public domain (source service item license statement)",
         "date_issued": None, "date_modified": None, "source_modified": None,
-        "lineage": ["EPA OEI FRS_PowerPlants MapServer table 15: FRS_SIC_POWERPLANTS",
-                    "Declared one-to-many POWERPLANT_LAYER relationship to table 12 on REGISTRY_ID",
-                    "Service description states EIA-860 content was current as of June 2014"],
+        "lineage": ["EPA_GEO FRS_PowerPlants FeatureServer table 2: EPA Facility Registry Service - EIA-860 Power Generation Facilities SIC Codes",
+                    "No table relationship declared on the maintained FeatureServer",
+                    "Service description states EIA-860 content was current as of June 2014; tables last edited 2026-11-09 in the maintained FRS tables refresh batch"],
         "source_vintage": "2014-06", "native_geometry": "absent", "refresh_status": "STOPPED",
         "published_metadata_issue": "collection table:columns omits OBJECTID, while the three fetched published files contain it",
         "publication_approval": "not_established_by_source_capture",
