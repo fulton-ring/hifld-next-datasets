@@ -26,6 +26,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "state-legislative-districts-upper"
 FILE_SLUG = DATASET_SLUG
@@ -57,14 +58,6 @@ MAX_SOURCE_BYTES = 160_000_000
 MAX_UNCOMPRESSED_BYTES = 1_500_000_000
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 SOURCE_RELEASE_MODIFIED = "2026-11-09"
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _processing_runtime() -> dict[str, str]:

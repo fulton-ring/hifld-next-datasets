@@ -5,7 +5,6 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -33,6 +32,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "navigation-lights-usace-ienc-2"
 FILE_SLUG = DATASET_SLUG
@@ -88,15 +88,6 @@ ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["nam
 CAPTURE_NAMES = ({"bts_item", "service_directory", "service_before", "layer_before", "count_before",
                  "ids_before", "layer_after", "count_after", "ids_after", "service_after"}
                  | {f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)})
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
@@ -374,13 +365,6 @@ def _capture_identity(captures: dict[str, tuple[bytes, dict]], root: Path) -> di
 
 def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
     return _sha(_canonical(_capture_identity(captures, root)))
-
-
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
-            "esriFieldTypeSmallInteger": pa.int16(), "esriFieldTypeSingle": pa.float32(),
-            "esriFieldTypeDouble": pa.float64(), "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDate": pa.int64()}.get(field.get("type"), pa.string())
 
 
 def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:

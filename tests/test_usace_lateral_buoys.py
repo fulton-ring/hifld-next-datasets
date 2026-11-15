@@ -20,7 +20,7 @@ from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.release_approval import ReleaseApprovalError
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import usace_lateral_buoys as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usace_lateral_buoys import (
     usace_lateral_buoys_complete, usace_lateral_buoys_draft_schedule,

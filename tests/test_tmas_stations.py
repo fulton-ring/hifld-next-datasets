@@ -15,7 +15,7 @@ from dagster_hifld.assets.tmas_stations import (
 )
 from dagster_hifld.sources import tmas_stations as source
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 _REAL_HTTPX_CLIENT = __import__("httpx").Client
 

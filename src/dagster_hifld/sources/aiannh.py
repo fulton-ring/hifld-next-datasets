@@ -7,7 +7,6 @@ bytes, not an accepted HIFLD published schema, baseline or migration decision.
 from __future__ import annotations
 
 import collections
-import hashlib
 import io
 import json
 import struct
@@ -26,6 +25,7 @@ from shapely.geometry import mapping, shape
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.sources.esri_common import sha as _sha
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
 SLUG = 'aiannh-areas-1'
@@ -72,10 +72,6 @@ def _current_commit() -> str:
 
 def _json(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n').encode()
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _immutable_stage(storage: StagingStorageResource, key: str, body: bytes) -> None:

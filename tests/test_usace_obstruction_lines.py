@@ -13,7 +13,7 @@ from dagster_hifld.assets.usace_obstruction_lines import (
     usace_obstruction_lines_usace_ienc,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class UsaceObstructionLinesTests(unittest.TestCase):

@@ -55,6 +55,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "nfhl-study-info"
 FILE_SLUG = DATASET_SLUG
@@ -123,14 +124,6 @@ EXPECTED_PORTAL_ITEM = {"id": PORTAL_ITEM_ID, "owner": PORTAL_ITEM_OWNER,
                         "orgId": PORTAL_ITEM_ORG_ID, "title": PORTAL_ITEM_TITLE,
                         "type": "Map Service", "url": SERVICE_URL}
 EXPECTED_PORTAL_ORG = {"id": PORTAL_ITEM_ORG_ID, "name": PORTAL_ITEM_ORG_NAME}
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

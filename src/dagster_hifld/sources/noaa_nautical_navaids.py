@@ -32,6 +32,7 @@ from dagster_hifld.sources.epa_frs_common import (
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.release_approval import validate_release_provenance
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "nautical-navigation-aids-navaid-locations"
 FILE_SLUG = DATASET_SLUG
@@ -71,15 +72,6 @@ CAPTURE_URLS = {
     "layer_after": LAYER_URL + "?f=pjson", "service_after": SERVICE_URL + "?f=pjson",
     "count_after": COUNT_URL, "ids_after": IDS_URL,
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _replay_capture_bundle(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:

@@ -18,6 +18,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 try:  # geometry inspection needs shapely; import lazily-safe at module import time
     import geopandas as gpd
@@ -48,15 +49,6 @@ EXPECTED_GEOMETRY_TYPE_COUNTS = {"Polygon": 143, "MultiPolygon": 2}
 EXPECTED_GEOID_SHA256 = "3f5265bfb87cf1f6cabfd3de49d68cc695e01aa60f41c0852c9306ca07c7695a"
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 5_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 CODE_IDENTITY_SCHEME = "sha256-packaged-dagster_hifld-py-v1"

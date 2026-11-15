@@ -70,6 +70,7 @@ from dagster_hifld.sources.epa_frs_common import (
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "travel-monitoring-analysis-system-tmas-stations"
 FILE_SLUG = DATASET_SLUG
@@ -142,10 +143,6 @@ EXPECTED_FUNCTIONAL_CLASSES = {'1R', '1U', '2R', '2U', '3R', '3U', '4R', '4U',
                                '5R', '5U', '6R', '6U', '7R', '7U'}
 
 
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
 def _list_sha(items: list) -> str:
     """Streamed sha256 of the canonical JSON encoding of ``items``."""
     digest = hashlib.sha256()
@@ -156,11 +153,6 @@ def _list_sha(items: list) -> str:
         digest.update(_canonical(item))
     digest.update(b"]")
     return digest.hexdigest()
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

@@ -23,7 +23,6 @@ either dataset identity; the source pins are identical.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import platform
 import shutil
@@ -51,6 +50,7 @@ from dagster_hifld.sources.epa_frs_common import (
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 ITEM_ID = "2a1459ac9b03469e87c2e7785cc188a9"
@@ -80,14 +80,6 @@ EXPECTED_RECORD_SHA256 = "83dbd9547ac6714827cdf95490bd8ae58b51be1fecbbf943c84a3b
 EXPECTED_GEOMETRY_SHA256 = "090d60dfa6ca68758b88a411afea80b2cae3904803010b068d8055118a206985"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 8_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

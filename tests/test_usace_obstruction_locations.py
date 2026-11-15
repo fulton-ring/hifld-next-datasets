@@ -19,7 +19,7 @@ from dagster_hifld.assets.usace_obstruction_locations import (
     usace_obstruction_locations_usace_ienc,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 def _capture_doc_values(count=source.EXPECTED_COUNT):

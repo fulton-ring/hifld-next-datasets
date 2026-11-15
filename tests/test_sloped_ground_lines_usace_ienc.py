@@ -12,7 +12,7 @@ from dagster_hifld.assets.sloped_ground_lines_usace_ienc import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import sloped_ground_lines_usace_ienc as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class SlopedGroundLinesUsaceIencTests(unittest.TestCase):

@@ -42,6 +42,7 @@ from dagster_hifld.sources.epa_frs_common import (
     seal_ready_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 AUTHORITY_PAGE_URL = "https://www.epa.gov/frs/epa-state-combined-csv-download-files"
 NATIONAL_COMBINED_ZIP_URL = "https://ordsext.epa.gov/FLA/www3/state_files/national_combined.zip"
@@ -108,15 +109,6 @@ REQUIRED_CAPTURE_NAMES = frozenset({
 
 class EPAFRSNationalNAICSError(ValueError):
     """The EPA combined national NAICS delivery is incomplete or has drifted."""
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _require_disk_space(path: Path, reserve_bytes: int = 0) -> None:
