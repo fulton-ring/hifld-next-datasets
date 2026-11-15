@@ -85,6 +85,17 @@ not here.
 - If the only route to a current source needs a token or access grant, stop and
   ask. Do not substitute an older public file.
 
+## Engineering rules
+
+- Prefer native platform features and existing, well-maintained libraries
+  (GDAL/OGR, Shapely, pyogrio, pyarrow, httpx, Dagster, `uv`) over writing your
+  own. Do not hand-roll geometry assembly, format readers or writers, retry
+  loops, paging or schedulers when a library or platform feature already does it.
+- When you are about to copy a function, class or block from another module,
+  extract it into a shared helper module instead, and switch the existing copies
+  to it in the same PR (or open an issue that lists them if that is too large).
+  Two copies is the limit.
+
 ## Dataset pipeline conventions
 
 - A new dataset is normally three files: `sources/<x>.py`, `assets/<x>.py` and
@@ -137,8 +148,11 @@ not here.
 
 ## Pull requests
 
-- Target `main`. Put `Refs #<issue>` in the body. One open PR per issue: update
-  the existing PR rather than opening another.
+- Target `main`. When the PR completes an issue (meets its acceptance
+  criteria), write `Closes #<issue>` in the body so GitHub closes it on merge.
+  Use `Refs #<issue>` only for related or partially covered issues, and say what
+  remains. One open PR per issue: update the existing PR rather than opening
+  another.
 - In the PR body, list every URL the pipeline fetches, who publishes it, and its
   last data update.
 - Keep PRs focused. Add files only for runtime code, meaningful tests or essential
