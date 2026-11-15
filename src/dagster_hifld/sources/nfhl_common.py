@@ -1101,8 +1101,11 @@ def validate_in_memory_capture(contract: LayerContract, pins: PopulationPins,
         page_plans = [(i * contract.page_size, contract.page_size, fixed_page_name(i),
                        f"source_page_{i:03d}") for i in range(page_count)]
     else:
-        page_names = sorted(name for name in captures if name.startswith("page_"))
-        segments = [parse_segment_name(name) for name in page_names]
+        # Parse first, then sort numerically: mixed six/seven-digit offset
+        # names (layers spanning more than one million OBJECTIDs) sort
+        # lexicographically wrong by name.
+        segments = sorted(parse_segment_name(name) for name in captures if name.startswith("page_"))
+        page_names = [segment_name(offset, count) for offset, count in segments]
         position = 0
         for offset, count in segments:
             if offset != position:
