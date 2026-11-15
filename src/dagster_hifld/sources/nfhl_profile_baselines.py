@@ -47,7 +47,7 @@ Document captures (count/ID rosters, layer metadata) are always fetched fresh
 because the NFHL is continuously updated - observed on 2026-11-12/13, when
 FEMA edited this layer during a capture window (2,254 features added, 2,025
 removed) - and a reused page that no longer matches its roster slice is
-purged and re-captured fresh exactly once, so a resumed capture always
+archived and re-captured fresh exactly once, so a resumed capture always
 describes the current population.
 """
 from __future__ import annotations
@@ -123,7 +123,10 @@ MIN_FREE_BYTES = 80_000_000_000
 # single-record segment that keeps failing fails the capture explicitly.
 DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
-SEGMENT_PROBE_ATTEMPTS = 3
+# A wide failed request can always be retried as two complete smaller slices;
+# repeating its oversized payload first only delays the safe bisection.
+# Documents and an unservable single feature retain bounded retries below.
+SEGMENT_PROBE_ATTEMPTS = 1
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 10.0
 # The producer serves the same roster range without refusing minutes later
 # (verified 2026-11-12 at the dense roster region the first capture pass had
@@ -274,6 +277,9 @@ def _body_is_producer_error_doc(capture_root: Path, name: str) -> bool:
 
 
 def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
+    while any((capture_root / f"{name}.attempt-{attempt:02d}{suffix}").exists()
+              for suffix in (".body", ".wire", ".receipt.json")):
+        attempt += 1
     for suffix in (".body", ".wire", ".receipt.json"):
         path = capture_root / f"{name}{suffix}"
         if path.exists():
@@ -329,6 +335,9 @@ def _ensure_captured(client: httpx.Client, url: str, capture_root: Path, name: s
         cached = _reusable_receipt(capture_root, name)
         if cached is not None:
             return cached, True
+    # Retain prior generations, refused responses and partial transports before
+    # capture_get replaces the active request files.
+    _preserve_failed_attempt(capture_root, name, 1)
     for attempt in range(1, attempts + 1):
         try:
             capture_get(client, url, capture_root, name, max_bytes=max_bytes)
@@ -643,7 +652,7 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
     and fed to the streamed tallies immediately, so memory stays bounded by
     one page regardless of layer size; each settled page's receipt is recorded
     in ``receipts`` for the candidate evidence roster. A reused page that no
-    longer matches its roster slice is producer-stale evidence: it is purged
+    longer matches its roster slice is producer-stale evidence: it is archived
     and re-captured fresh once (the NFHL is continuously updated, and FEMA
     edited this layer during a capture window on 2026-11-12/13).
     """
@@ -714,8 +723,7 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
             if reused and str(exc).startswith("source_page_id_slice_incomplete_or_reordered") \
                     and name not in purged:
                 purged.add(name)
-                for suffix in (".body", ".wire", ".receipt.json"):
-                    (capture_root / f"{name}{suffix}").unlink(missing_ok=True)
+                _preserve_failed_attempt(capture_root, name, 1)
                 segments.appendleft((offset, count))
                 continue
             raise

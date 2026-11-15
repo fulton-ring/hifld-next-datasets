@@ -590,7 +590,7 @@ class RetryAndResumeTests(unittest.TestCase):
 
         with TemporaryDirectory() as temporary:
             root = Path(temporary) / "captures"
-            with patch.multiple(source, SEGMENT_START_RECORDS=4, SEGMENT_PROBE_ATTEMPTS=1,
+            with patch.multiple(source, SEGMENT_START_RECORDS=4,
                                 DOC_CAPTURE_ATTEMPTS=1, EXPECTED_COUNT=4), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
@@ -641,6 +641,18 @@ class RetryAndResumeTests(unittest.TestCase):
             self.assertEqual(stats.feature_count, 5)
             self.assertEqual(calls, ["page_000002_00001", "page_000003_00001", "page_000004_00001"])
             sleep.assert_not_called()
+
+    def test_failed_attempt_evidence_is_append_only(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _write_evidence(root, "probe", b"first observed response")
+            source._preserve_failed_attempt(root, "probe", 1)
+            first_receipt = (root / "probe.attempt-01.receipt.json").read_bytes()
+            _write_evidence(root, "probe", b"second observed response")
+            source._preserve_failed_attempt(root, "probe", 1)
+            self.assertEqual((root / "probe.attempt-01.body").read_bytes(), b"first observed response")
+            self.assertEqual((root / "probe.attempt-01.receipt.json").read_bytes(), first_receipt)
+            self.assertEqual((root / "probe.attempt-02.body").read_bytes(), b"second observed response")
 
     def test_unservable_single_feature_fails_explicitly(self):
         _, _, _, ids, attr_names = self._fixture_bodies()
