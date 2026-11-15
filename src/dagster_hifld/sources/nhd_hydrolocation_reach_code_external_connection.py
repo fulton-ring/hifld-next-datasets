@@ -37,13 +37,13 @@ reordered. A single-record segment the producer still refuses ends the capture
 explicitly rather than guessing.
 
 The per-value and per-geometry baseline digests, geometry gate counts and
-observed bounds are computed and reported by
-``build_nhd_hydrolocation_reach_code_external_connection_baseline`` from a
-completed capture directory and pinned as constants for later drift refusal;
-pins left empty (or ``None``) are checked only once pinned. Publication stays
-blocked pending the succession, freshness, schema/ID contract, rights and
-release decisions; all runtime approval flags are false and the draft refresh
-schedule is stopped.
+observed bounds were computed by
+``build_nhd_hydrolocation_reach_code_external_connection_baseline`` from the
+completed capture directory of the dated full extraction (1 roster segment,
+2026-11-15) and are pinned as module constants; every later capture is refused
+when its content drifts from these pins. Publication stays blocked pending the
+succession, freshness, schema/ID contract, rights and release decisions; all
+runtime approval flags are false and the draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
@@ -138,15 +138,17 @@ EXPECTED_COUNT = 25
 EXPECTED_SCHEMA_SHA256 = "4c4ab8e34f34e4705dd04722bc2e4e0c7cacc210c7bf7e0a34741b86cbebf981"
 EXPECTED_IDS_SHA256 = "282ce608cc55dd02654d6cf277afd460172b08417143a1518e8ad991eb0265ea"
 # The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (see the module docstring;
-# /data/workspace/scratch/nhd-hydrolocation-reach-code-external-connection in
-# the task sandbox); unpinned values ("", None) are checked only once pinned.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
+# bounds are pinned from the dated complete capture (1 roster segment,
+# 2026-11-15 03:56:02Z..03:56:04Z UTC, both producer hosts agreeing;
+# /workspace/captures403 in the task sandbox).
+EXPECTED_RECORD_SHA256 = "7ac018fdc534b84d7c9ca824c347821e5cb2d3fe7ac60574c3271352c1b73feb"
+EXPECTED_GEOMETRY_SHA256 = "6c10edb88892d8450c0f05ac142cc8beb982abfeadc0971ec65f6838749cbfed"
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_NAN_GEOMETRY_COUNT = 0
 EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = None
+EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = {
+    "xmin": -153.89018467406726, "ymin": 35.95984026105721,
+    "xmax": -72.77152786517681, "ymax": 66.9304234402229}
 # Per-feature hydrolocation category contract observed via grouped counts on
 # 2026-11-15 (sum 25; the producer's enumeration for this layer also defines
 # Reachcode Start (10) and Reachcode End (11), currently with zero features on
@@ -157,9 +159,9 @@ EXPECTED_LAYER_EXTENT = {"xmin": -17130976.996, "ymin": 4295096.859999999,
                          "xmax": -8100889.426200001, "ymax": 10136264.621600002}
 BASELINE_PENDING_NOTE = (
     "The record and geometry baseline digests, geometry gate counts and "
-    "observed bounds are pinned from a completed resumable capture directory "
-    "by build_nhd_hydrolocation_reach_code_external_connection_baseline; unpinned values are checked "
-    "only once pinned.")
+    "observed bounds are pinned from the dated complete resumable capture of "
+    "2026-11-15 (1 roster segment, 03:56:02Z..03:56:04Z, both producer hosts "
+    "agreeing); drift against these pins is refused and quarantined.")
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),

@@ -245,8 +245,10 @@ class NhdHydrolocationReachCodeExternalConnectionTests(unittest.TestCase):
                          "4c4ab8e34f34e4705dd04722bc2e4e0c7cacc210c7bf7e0a34741b86cbebf981")
         self.assertEqual(src.EXPECTED_IDS_SHA256,
                          "282ce608cc55dd02654d6cf277afd460172b08417143a1518e8ad991eb0265ea")
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
+        self.assertEqual(src.EXPECTED_RECORD_SHA256,
+                         "7ac018fdc534b84d7c9ca824c347821e5cb2d3fe7ac60574c3271352c1b73feb")
+        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256,
+                         "6c10edb88892d8450c0f05ac142cc8beb982abfeadc0971ec65f6838749cbfed")
         self.assertEqual(src.EXPECTED_FEATURETYPE_DISTRIBUTION, {9: 25})
         self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 0)
         self.assertTrue(src.BASELINE_PENDING_NOTE)
