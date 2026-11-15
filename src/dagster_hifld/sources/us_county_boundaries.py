@@ -357,7 +357,7 @@ def capture_us_county_boundaries(
             "license": "https://www.usa.gov/government-works",
             "attribution": PUBLISHER,
             "role": "producer_publication",
-            "release_date_unknown_reason": "The producer identifies this as the 2026 TIGER/Line vintage; a precise publication date was not established. The vintage year is not treated as the source data release date.",
+            "release_date_unknown_reason": "The producer identifies this as the 2026 TIGER/Line vintage; the TIGER/Line page records an October 14, 2026 release for the 2026 vintage. The vintage year and page date are not treated as an observed publication date for this exact archive.",
         }],
         "transformations": ["Preserve the complete source ZIP, wire response, and receipt under raw/; export its county features to GeoParquet without ID synthesis, schema widening, attribute mapping, geometry repair, or reprojection."],
         "lineage": "Official U.S. Census Bureau Geography Division TIGER/Line COUNTY product (producer publication), pinned to the 2026 vintage. No claim is made that this source replaces or matches a historical HIFLD baseline.",
