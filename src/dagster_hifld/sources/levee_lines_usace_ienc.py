@@ -22,11 +22,11 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.usace_obstruction_lines import (
     PAGE_MAX_BYTES, _canonical, _capture, _capture_identity, _esri_polyline_wkb,
-    _load_capture, _parquet_bytes, _sha, _validate_capture_request_identity,
-    _validate_spatial_reference,
+    _load_capture, _parquet_bytes, _sha,    _validate_spatial_reference,
 )
 
 DATASET_SLUG = "levee-lines-usace-ienc"
@@ -95,7 +95,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         capture_names=CAPTURE_NAMES,
         expected_urls=dict(_capture_roster(EXPECTED_IDS)),
         load_capture=_load_capture,
-        validate_request_identity=_validate_capture_request_identity,
+        validate_request_identity=validate_capture_request_identity,
     )
 
 

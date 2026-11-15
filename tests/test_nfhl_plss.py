@@ -12,6 +12,7 @@ import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.sources import nfhl_plss as source
+from dagster_hifld.sources import nfhl_common
 
 
 def _canonical(value):
@@ -418,7 +419,7 @@ class NfhlPlssTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins(features, schema, geom)), \
-                 patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies)), \
+                 patch.object(nfhl_common, "capture_get", side_effect=self._fake_capture_get(bodies)), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: self._EmptyClient()):
                 candidate = source.capture_nfhl_plss(storage, version="vfixture",
                                                      capture_directory=str(root / "captures"))
@@ -459,7 +460,7 @@ class NfhlPlssTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins(features, schema, geom)), \
-                 patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies)), \
+                 patch.object(nfhl_common, "capture_get", side_effect=self._fake_capture_get(bodies)), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: self._EmptyClient()):
                 with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
                     source.capture_nfhl_plss(storage, version="vfixture",
@@ -521,7 +522,7 @@ class NfhlPlssTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **pins), \
-                 patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies)), \
+                 patch.object(nfhl_common, "capture_get", side_effect=self._fake_capture_get(bodies)), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: self._EmptyClient()):
                 tracemalloc.start()
                 try:

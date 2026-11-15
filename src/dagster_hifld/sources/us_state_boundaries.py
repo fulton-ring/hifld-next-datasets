@@ -19,10 +19,10 @@ from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
+from dagster_hifld.sources import census_tiger_common
 from dagster_hifld.sources.epa_frs_common import (
     capture_get,
     processing_identity,
-    quarantine_incomplete_capture,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -81,35 +81,8 @@ def _quarantine_attempt(
     reason_code: str,
 ) -> str:
     """Retain all response bytes and a receipt before rejecting a bad capture."""
-    body_path = capture_root / "source.body"
-    wire_path = capture_root / "source.wire"
-    receipt_path = capture_root / "source.receipt.json"
-    body = body_path.read_bytes() if body_path.is_file() else b""
-    wire = wire_path.read_bytes() if wire_path.is_file() else b""
-    body_path.write_bytes(body)
-    wire_path.write_bytes(wire)
-    try:
-        receipt = json.loads(receipt_path.read_text("utf-8"))
-        if not isinstance(receipt, dict):
-            raise ValueError("receipt_not_object")
-    except (OSError, ValueError):
-        receipt = {
-            "method": "GET",
-            "url": SOURCE_URL,
-            "final_url": None,
-            "status": None,
-            "observed_at": None,
-            "complete_body": False,
-            "bytes": len(body),
-            "sha256": _sha(body),
-            "wire_bytes": len(wire),
-            "wire_sha256": _sha(wire),
-            "error_code": reason_code,
-        }
-        receipt_path.write_bytes(_canonical(receipt) + b"\n")
-    return quarantine_incomplete_capture(
-        storage, capture_root, DATASET_SLUG, version,
-        {"source": (body, receipt)}, reason_code,
+    return census_tiger_common.quarantine_tiger_capture_attempt(
+        storage, capture_root, DATASET_SLUG, SOURCE_URL, version, reason_code,
     )
 
 

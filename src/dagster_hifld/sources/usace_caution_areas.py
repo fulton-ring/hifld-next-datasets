@@ -24,6 +24,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -138,19 +139,13 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     return urls
 
 
-def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
-    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
-            or receipt.get("final_url") != expected_url):
-        raise ValueError("retained_capture_request_identity_mismatch:" + name)
-
-
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     return validate_retained_capture_replay(
         root,
         capture_names=CAPTURE_NAMES,
         expected_urls=dict(_capture_roster(EXPECTED_IDS)),
         load_capture=_load_capture,
-        validate_request_identity=_validate_capture_request_identity,
+        validate_request_identity=validate_capture_request_identity,
     )
 
 
