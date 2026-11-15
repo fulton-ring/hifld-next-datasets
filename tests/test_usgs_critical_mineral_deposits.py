@@ -218,7 +218,8 @@ class CaptureTests(unittest.TestCase):
             manifest=json.loads(original)
             self.assertFalse(manifest['approved']);self.assertIn('worldwide',manifest['lineage'])
             snapshot_source_metadata(staging,s.DATASET_SLUG,s.FILE_SLUG,first['version'])
-            summary=summarize_staged_catalog(staging,s.DATASET_SLUG,s.FILE_SLUG,first['version'],s.DATASET_SLUG,source_metadata=manifest)
+            resolved=load_resolved_source_manifest(staging,s.DATASET_SLUG,s.FILE_SLUG,first['version']).metadata
+            summary=summarize_staged_catalog(staging,s.DATASET_SLUG,s.FILE_SLUG,first['version'],s.DATASET_SLUG,source_metadata=resolved)
             self.assertTrue(summary.quality_manifest['quality_check_passed'])
             self.assertEqual(summary.quality_manifest['population_quality_scope'],'all_rows')
             write_catalog_metadata(staging,dataset_slug=s.DATASET_SLUG,file_slug=s.FILE_SLUG,version=first['version'],quality_dict=summary.quality_manifest,dictionary_dict=summary.data_dictionary)
