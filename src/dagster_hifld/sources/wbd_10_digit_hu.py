@@ -89,11 +89,11 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
-    seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_ready_candidate, validate_capture_request_identity,
+    verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.sources.usace_obstruction_lines import (
     _canonical, _load_capture, _sha,
-    _validate_capture_request_identity,
 )
 
 DATASET_SLUG = FILE_SLUG = "wbd-10-digit-hu-watershed"
@@ -962,7 +962,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
         raise ValueError("source_id_roster_changed_during_capture")
     expected_urls = dict(_capture_roster(roster))
     for name in METADATA_NAMES:
-        _validate_capture_request_identity(name, receipts[name], expected_urls[name])
+        validate_capture_request_identity(name, receipts[name], expected_urls[name])
 
     tmp_path = (parquet_sink.with_name(parquet_sink.name + ".construction-tmp")
                 if parquet_sink is not None else None)
@@ -1005,7 +1005,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                 body, _wire, receipt = _load_capture(root, part_name)
                 expected_url = _window_url(roster, index, path,
                                            fmt="pbf" if pbf_part else "json")
-                _validate_capture_request_identity(part_name, receipt, expected_url)
+                validate_capture_request_identity(part_name, receipt, expected_url)
                 expected_part_ids = _window_slice(roster, index, path)
                 if pbf_part:
                     page = _pbf_feature_result(body, part_name, expected_part_ids)
@@ -1404,7 +1404,7 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
                     or set(path) - {"a", "b"} or not path.isascii()
                     or (pbf_attempt and not path)):
                 raise ValueError("retained_capture_refusal_slot_invalid:" + name)
-            _validate_capture_request_identity(
+            validate_capture_request_identity(
                 name, receipt,
                 _window_url(ids, int(page[5:9]), path, fmt="pbf" if pbf_attempt else "json"))
             if pbf_attempt:
@@ -1420,11 +1420,11 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
                 path = path[:-len("_pbf")]
                 if not path:
                     raise ValueError("retained_capture_page_parts_invalid")
-            _validate_capture_request_identity(
+            validate_capture_request_identity(
                 name, receipt,
                 _window_url(ids, int(page[5:9]), path, fmt="pbf" if pbf_part else "json"))
         else:
-            _validate_capture_request_identity(name, receipt, expected_urls[name])
+            validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = receipt
     return captures, page_parts
 
