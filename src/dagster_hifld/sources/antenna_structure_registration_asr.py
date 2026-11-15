@@ -132,7 +132,7 @@ COVERAGE_SCOPE = (
     "Every CO coordinate row joined to its RA registration in the pinned weekly FCC ASR "
     "r_tower.zip: 198009 T (tower-coordinate) rows and 5236 A (array-coordinate) rows, "
     "with all RA status and archive codes retained. These are registration-coordinate records, "
-    "not a physical tower census or an inventory of every member of an array. Of the A rows, "
+    "not a census of physical towers or an inventory of every member of an array. Of the A rows, "
     "354 carry array_tower_position and 4882 do not; array_total_tower does not expand rows. "
     "The single RA registration without CO is retained only in raw staging; 124 CO rows keep "
     "null geometry. Completeness refers to this source-row population, not all structures."
