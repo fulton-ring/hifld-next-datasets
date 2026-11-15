@@ -11,7 +11,6 @@ null geometry instead of being dropped or repaired.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import re
@@ -45,6 +44,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "land-mobile-broadcast-towers-1"
 SOURCE_URL = "https://data.fcc.gov/download/pub/uls/complete/l_LMbcast.zip"
@@ -173,15 +173,6 @@ KNOWN_ERRORS_NOTE = ("The FCC states the licensing data contain known latitude, 
 
 class ULSDraftError(ValueError):
     """Incomplete, malformed, or drifted official FCC ULS response."""
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _records(table: bytes, name: str, required_field_count: int) -> list[list[str]]:

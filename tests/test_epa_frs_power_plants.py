@@ -17,7 +17,8 @@ from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import epa_frs_common
 from dagster_hifld.sources import epa_power_generation as src
-from dagster_hifld.sources.epa_power_generation import _canonical, _parquet_bytes, _sha
+from dagster_hifld.sources.epa_power_generation import _parquet_bytes
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 FIXTURE_COUNT = 5
 

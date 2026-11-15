@@ -18,7 +18,7 @@ from dagster_hifld.assets.wbd_hu8_subbasin import (
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import wbd_hu8_subbasin as source
 from dagster_hifld.sources import epa_frs_common
-from dagster_hifld.sources.epa_frs_common import _canonical, _sha
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 FIXTURE_COUNT = 8

@@ -20,6 +20,7 @@ from shapely.wkb import dumps as to_wkb
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
+from dagster_hifld.sources.esri_common import sha as _sha
 
 DATASET_SLUG = "electric-retail-service-territories"
 FILE_SLUG = DATASET_SLUG
@@ -47,10 +48,6 @@ _STRING_TYPES = {"esriFieldTypeString", "esriFieldTypeGUID", "esriFieldTypeGloba
 def _canonical(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
                        allow_nan=False) + "\n").encode("utf-8")
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _safe_local_storage(storage: StagingStorageResource) -> Path:

@@ -1,7 +1,6 @@
 """Native, unapproved capture of EPA's ICIS wastewater treatment plant layer."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import re
@@ -28,6 +27,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.http_capture import validate_capture_roster
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "0895b107f9184e7cb31707767b506a64"
 PORTAL_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"
@@ -50,14 +50,6 @@ MAX_CAPTURE_MANIFEST_BYTES = 1_000_000
 MAX_CAPTURE_REQUESTS = 256
 MAX_CAPTURE_RECEIPT_BYTES = 64_000
 MAX_CAPTURE_RECEIPT_TOTAL_BYTES = 4_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _validate_capture_limits(max_capture_bytes: int, max_response_bytes: int) -> None:

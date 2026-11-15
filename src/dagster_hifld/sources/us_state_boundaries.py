@@ -1,7 +1,6 @@
 """Candidate-only acquisition of the official Census TIGER/Line US state boundaries."""
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import tempfile
@@ -26,6 +25,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 try:  # geometry inspection needs geopandas; the runtime environment provides it
     import geopandas as gpd
@@ -62,15 +62,6 @@ EXPECTED_GEOIDS = [
 EXPECTED_GEOID_SHA256 = "da707aa61ecf29520f142ee144ef5e0417b9bc28b290e04eb38fe8036f9bfb15"
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 20_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def candidate_version(identity: Mapping[str, object]) -> str:

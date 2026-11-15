@@ -1,7 +1,6 @@
 """Exact BSEE Platforms Shapefile capture and native point candidate."""
 from __future__ import annotations
 
-import hashlib
 import html
 import json
 import re
@@ -29,6 +28,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "outer-continental-shelf-ocs-drilling-platforms"
@@ -40,14 +40,6 @@ SOURCE_URL = "https://www.data.bsee.gov/Mapping/Files/platform.zip"
 EXPECTED_COUNT = 7317
 MAX_BODY_BYTES = 32_000_000
 PHYSICAL_FIELDS = ["STRUCTURE_", "COMPLEX_ID", "STRUCTURE1", "INSTALL_DA", "REMOVAL_DA"]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _null(value: object) -> bool:

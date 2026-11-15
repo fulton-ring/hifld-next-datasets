@@ -14,7 +14,6 @@ from urllib.parse import urlsplit
 import geopandas as gpd
 import httpx
 import numpy as np
-import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
@@ -32,6 +31,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "public-schools"
@@ -66,15 +66,6 @@ INNER_MEMBERS = {
     "EDGE_GEOCODE_PUBLICSCH_2425.sbx", "EDGE_GEOCODE_PUBLICSCH_2425.shp",
     "EDGE_GEOCODE_PUBLICSCH_2425.shp.xml",
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _file_descriptor(body: bytes) -> dict[str, object]:
