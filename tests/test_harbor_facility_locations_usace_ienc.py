@@ -13,7 +13,7 @@ from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
     harbor_facility_locations_usace_ienc,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class HarborFacilityLocationsUsaceIencTests(unittest.TestCase):

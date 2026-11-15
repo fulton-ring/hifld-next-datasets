@@ -15,14 +15,14 @@ _DESCRIPTION = (
     "American Indian / Alaska Native / Native Hawaiian (AIANNH) Areas "
     "(HIFLD inventory). Publisher: Census Bureau. Federal and state "
     "American Indian reservations, off-reservation trust lands; from "
-    "TIGER/Line. Source: Census Bureau TIGER2023 AIANNH "
-    "(tl_2023_us_aiannh.zip)."
+    "TIGER/Line. Source: Census Bureau TIGER2026 AIANNH "
+    "(tl_2026_us_aiannh.zip)."
 )
 
 
 class AiannhIngestConfig(Config):
     """Explicit source selection; local paths replay pinned preserved captures."""
-    vintage: int = 2023
+    vintage: int = 2026
     archive_path: str | None = None
     code_commit: str | None = None
 
@@ -53,11 +53,11 @@ aiannh_source_integrity_refresh_job = define_asset_job(
     selection=AssetSelection.assets(census_bureau_aiannh_areas),
 )
 aiannh_source_integrity_refresh_schedule = ScheduleDefinition(
-    name="aiannh_tiger2023_monthly_integrity_refresh",
+    name="aiannh_tiger2026_monthly_integrity_refresh",
     job=aiannh_source_integrity_refresh_job,
     cron_schedule="0 3 1 * *",
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
-    run_config={"ops": {census_bureau_aiannh_areas.op.name: {"config": {"vintage": 2023}}}},
-    description="Inactive monthly03:00 America/New_York integrity refresh of fixed TIGER2023 into isolated local draft staging; no annual substitution or publication.",
+    run_config={"ops": {census_bureau_aiannh_areas.op.name: {"config": {"vintage": 2026}}}},
+    description="Inactive monthly03:00 America/New_York integrity refresh of fixed TIGER2026 (issue #777 vintage migration) into isolated local draft staging; no annual substitution or publication.",
 )

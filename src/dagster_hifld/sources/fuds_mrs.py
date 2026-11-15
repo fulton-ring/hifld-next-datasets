@@ -1,7 +1,6 @@
 """Lossless native capture of USACE FUDS Munitions Response Sites."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import struct
@@ -24,6 +23,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 SERVICE_URL = "https://geospatial.sec.usace.army.mil/server/rest/services/Military/FUDS_Data/MapServer"
 LAYER_ID = 3
@@ -42,15 +42,6 @@ EXPECTED_EXTENT = {"xmin": -178.14432731684448, "ymin": -14.27524421543228,
 EXTENT_TOLERANCE_DEGREES = 1e-9
 PAGE_SIZE = 250
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _plain_field(field: dict) -> dict:

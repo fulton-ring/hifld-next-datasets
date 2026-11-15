@@ -1,0 +1,88 @@
+"""BTS Intermodal Freight Facilities Pipeline Terminals native draft assets."""
+
+from dagster import (
+    AssetCheckResult,
+    AssetKey,
+    AssetSelection,
+    Config,
+    DefaultScheduleStatus,
+    ScheduleDefinition,
+    asset,
+    asset_check,
+    define_asset_job,
+)
+
+from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources.bts_pipeline_terminals import (
+    DATASET_SLUG, EXPECTED_SOURCE_COUNT, FILE_SLUG, capture_bts_pipeline_terminals,
+)
+
+
+class BtsPipelineTerminalsConfig(Config):
+    capture_directory: str = ""
+
+
+@asset(
+    key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]),
+    group_name="bts",
+    compute_kind="http",
+    description=(
+        "Exact BTS-maintained NTAD Pipeline Terminals point layer. The current schema, "
+        "ID, source vintage, and publication approvals remain pending."
+    ),
+)
+def bts_intermodal_freight_pipeline_terminals(
+    context, config: BtsPipelineTerminalsConfig, staging_storage: StagingStorageResource
+) -> dict:
+    result = capture_bts_pipeline_terminals(
+        staging_storage,
+        capture_directory=config.capture_directory or None,
+    )
+    context.instance.add_dynamic_partitions(
+        PUBLISH_PARTITION_NAME,
+        [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])],
+    )
+    context.add_output_metadata(result)
+    return result
+
+
+@asset_check(asset=bts_intermodal_freight_pipeline_terminals, blocking=True)
+def bts_intermodal_freight_pipeline_terminals_complete(candidate: dict) -> AssetCheckResult:
+    passed = (
+        candidate.get("source_population_complete") is True
+        and candidate.get("feature_count") == EXPECTED_SOURCE_COUNT
+        and candidate.get("source_null_geometry_count") == 0
+        and candidate.get("source_invalid_geometry_count") == 0
+    )
+    return AssetCheckResult(
+        passed=passed,
+        metadata={
+            "complete_source_population": candidate.get("feature_count", 0),
+            "source_release_accepted": False,
+            "source_freshness_accepted": False,
+            "schema_contract_accepted": False,
+            "id_contract_accepted": False,
+            "rights_accepted": False,
+            "mapping_approved": False,
+            "release_accepted": False,
+        },
+    )
+
+
+bts_pipeline_terminals_draft_job = define_asset_job(
+    "bts_pipeline_terminals_draft_refresh",
+    selection=AssetSelection.assets(bts_intermodal_freight_pipeline_terminals),
+)
+bts_pipeline_terminals_draft_schedule = ScheduleDefinition(
+    name="bts_pipeline_terminals_draft_refresh_schedule",
+    job=bts_pipeline_terminals_draft_job,
+    cron_schedule="0 8 1 * *",
+    execution_timezone="America/New_York",
+    default_status=DefaultScheduleStatus.STOPPED,
+)
+
+INGEST_ASSETS = [bts_intermodal_freight_pipeline_terminals]
+ASSET_CHECKS = [bts_intermodal_freight_pipeline_terminals_complete]
+JOBS = [bts_pipeline_terminals_draft_job]
+SCHEDULES = [bts_pipeline_terminals_draft_schedule]
