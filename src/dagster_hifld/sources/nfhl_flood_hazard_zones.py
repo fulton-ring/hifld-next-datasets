@@ -64,6 +64,7 @@ disk stays bounded.
 """
 from __future__ import annotations
 
+import errno
 import hashlib
 import html as html_module
 import json
@@ -832,8 +833,8 @@ def _upload_immutable_file(storage: StagingStorageResource, key: str, source: Pa
             # Zero-copy install when the source and the staging destination
             # share a filesystem: hard-link the source inode into the staging
             # key and atomically rename it into place, falling back to the
-            # resource's byte copy only across filesystems. The staged bytes
-            # are identical either way, and the readback below still verifies
+            # resource's byte copy across filesystems. The staged bytes are
+            # identical either way, and the readback below still verifies
             # them against the receipt descriptor; this keeps the staged
             # candidate (raw zips plus the parquet, which may live on a
             # different local filesystem than the capture volume) within the
@@ -841,15 +842,14 @@ def _upload_immutable_file(storage: StagingStorageResource, key: str, source: Pa
             destination = Path(storage.local_dir).resolve() / key
             incoming = destination.with_name(f"{destination.name}.incoming")
             try:
+                if os.stat(source).st_dev != os.stat(destination.parent).st_dev:
+                    raise OSError(errno.EXDEV, "staging destination on a different filesystem")
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 incoming.unlink(missing_ok=True)
-                os.link(source, incoming)
+                os.link(os.path.realpath(source), incoming)
                 os.replace(incoming, destination)
             except OSError:
                 incoming.unlink(missing_ok=True)
-                if shutil.disk_usage(source).st_dev == shutil.disk_usage(
-                        destination.parent).st_dev:
-                    raise
                 storage.upload_local_file(source, key)
         else:
             storage.upload_local_file(source, key)
