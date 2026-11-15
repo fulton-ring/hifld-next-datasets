@@ -19,7 +19,6 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
-from pyproj import CRS
 from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -28,6 +27,7 @@ from dagster_hifld.http_capture import capture_http_response, capture_roster_dig
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, processing_identity,
@@ -63,35 +63,6 @@ EXPECTED_FIELD_DECLARATIONS = [
      **({"length":254} if kind == "esriFieldTypeString" else {})}
     for name,kind in EXPECTED_FIELDS
 ]
-SOURCE_CRS = CRS.from_epsg(4326)
-
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Require every advertised ArcGIS CRS representation to agree with EPSG:4326."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
 
 
 def _canonical(value: object) -> bytes:
