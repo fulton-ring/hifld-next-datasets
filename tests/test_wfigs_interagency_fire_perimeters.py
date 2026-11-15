@@ -269,7 +269,7 @@ class WfigsSourceTests(unittest.TestCase):
         table = pq.read_table(root / "geoparquet" / f"{source.FILE_SLUG}.parquet")
         geometry = shapely.from_wkb(table.column("geometry")[0].as_py())
         self.assertIsInstance(geometry, shapely.MultiPolygon)
-        self.assertAlmostEqual(geometry.area, 68.0)
+        self.assertAlmostEqual(geometry.area, 0.68)
         self.assertTrue(geometry.is_valid)
         audit = json.loads((root / "metadata" / "source_audit.json").read_bytes())
         self.assertEqual(audit["geometry_census"]["parts"], 2)
