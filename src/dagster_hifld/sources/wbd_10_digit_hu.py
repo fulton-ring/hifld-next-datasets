@@ -31,6 +31,28 @@ the geometry-gate counts are pinned below from the complete dated population
 walk (2026-11-14). Publication stays blocked pending succession, freshness,
 schema/ID contract, coverage, rights and release acceptance; all runtime
 approval flags are false and the draft refresh schedule is stopped.
+
+Producer serialization defect and the bounded protobuf rescue (observed
+2026-11-14/15): the JSON serializer refuses exactly one feature (OBJECTID
+18342, TNMID {E9F9EA76-6BB8-4A45-8F7A-17BD8D27A3B9}, HUC10 0424000201 "Drummond
+Island") through every query form that returns stored JSON geometry (where,
+objectIds, envelope intersects, resultOffset, geojson; with/without Z/M;
+probed 19:19-19:24Z and re-probed 2026-11-15 through 14:54Z). The same
+first-party service serves that window through its documented protobuf
+serializer (``f=pbf``, esriPBuffer.FeatureCollectionPBuffer): the decoded
+window carries the identical attribute values (18/18 exact against the served
+JSON attribute record) and the full-resolution rings (25,306 rings / 1,556,124
+vertices for the refused feature; parity against the producer's own
+shape_Area/shape_Length peaked at 1.9e-14 / 1.1e-13 relative). Its coordinates
+are quantized onto the service's constant default grid (scale 0.0001,
+translate -20037700/-30241100, upperLeft origin; identical in every observed
+response, ring and vertex counts preserved, nanometre-scale rounding only).
+When the bounded bisection reaches its floor on a window the JSON serializer
+refuses, this module re-fetches that exact window through the protobuf
+serializer and validates the decoded window against the same row contracts;
+a window refused by both serializers still fails the capture — gate, never
+repair. The refusal and protobuf receipts for every rescue are retained as
+raw evidence like every other capture artifact.
 """
 from __future__ import annotations
 
@@ -39,6 +61,7 @@ import json
 import math
 import shutil
 import struct
+from decimal import Decimal
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -96,6 +119,16 @@ DECLARED_MAX_RECORD_COUNT = 2000
 # producer failure for that id range, not a size limit (observed 2026-11-14:
 # 12/13-id windows answer where 25/50/100 refuse).
 MIN_WINDOW_IDS = 10
+# The protobuf serializer's quantization transform, observed identical in
+# every f=pbf response on this layer (2026-11-15); pinned for drift refusal.
+# upperLeft origin (quantizeOriginPostion absent = 0), world coordinate
+# x = translate_x + coord_x * scale_x, y = translate_y - coord_y * scale_y.
+EXPECTED_PBF_SCALE = 0.0001
+EXPECTED_PBF_TRANSLATE = (-20037700.0, -30241100.0)
+# esriFieldType name -> FeatureCollectionPBuffer FieldType enum value.
+PBF_FIELD_TYPES = {"esriFieldTypeOID": 6, "esriFieldTypeString": 4,
+                   "esriFieldTypeDate": 5, "esriFieldTypeDouble": 3,
+                   "esriFieldTypeGlobalID": 11}
 EXPECTED_EXTENT = {"xmin": -19951755.682, "ymin": -1644316.000599999,
                    "xmax": 20021551.7474, "ymax": 11554273.612599999}
 # The declared extent is rounded relative to the served vertices by a few
@@ -197,11 +230,11 @@ def _ids_url() -> str:
     return _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
 
 
-def _page_window_url(last_objectid: int, record_count: int) -> str:
+def _page_window_url(last_objectid: int, record_count: int, *, fmt: str = "json") -> str:
     return _query({"where": f"objectid>{last_objectid}", "outFields": "*",
                    "returnGeometry": "true", "returnZ": "true", "returnM": "true",
                    "orderByFields": "objectid ASC",
-                   "resultRecordCount": str(record_count), "f": "json"})
+                   "resultRecordCount": str(record_count), "f": fmt})
 
 
 def _page_url(last_objectid: int) -> str:
@@ -223,16 +256,17 @@ def _window_slice(roster: list[int], index: int, path: str) -> list[int]:
     return sub
 
 
-def _window_url(roster: list[int], index: int, path: str = "") -> str:
+def _window_url(roster: list[int], index: int, path: str = "", *,
+                fmt: str = "json") -> str:
     count = min(PAGE_SIZE, len(roster) - index * PAGE_SIZE)
     if not path:
         # Nominal pages follow the pinned keyset scheme: page N resumes after
         # the last id of page N-1 (0 before the first page), requesting exactly
         # the window's remaining id count.
         last = 0 if index == 0 else roster[index * PAGE_SIZE - 1]
-        return _page_window_url(last, count)
+        return _page_window_url(last, count, fmt=fmt)
     sub = _window_slice(roster, index, path)
-    return _page_window_url(sub[0] - 1 if sub[0] > 1 else 0, len(sub))
+    return _page_window_url(sub[0] - 1 if sub[0] > 1 else 0, len(sub), fmt=fmt)
 
 
 def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
@@ -275,6 +309,320 @@ def _is_refusal(body: bytes) -> bool:
     return isinstance(error, dict) and type(error.get("code")) is int
 
 
+def _read_varint(body: bytes, pos: int) -> tuple[int, int]:
+    result = 0
+    shift = 0
+    while True:
+        if pos >= len(body):
+            raise ValueError("source_pbf_page_structure_drift")
+        byte = body[pos]
+        pos += 1
+        result |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            return result, pos
+        shift += 7
+
+
+def _pbf_fields(body: bytes) -> list[tuple[int, object]]:
+    """Every protobuf field of one message as (field number, payload) pairs.
+
+    Length-delimited and fixed payloads are returned as bytes; varints as
+    ints. Structural corruption raises ``source_pbf_page_structure_drift``.
+    """
+    out: list[tuple[int, object]] = []
+    pos = 0
+    end = len(body)
+    while pos < end:
+        key, pos = _read_varint(body, pos)
+        field_number, wire_type = key >> 3, key & 7
+        if field_number <= 0:
+            raise ValueError("source_pbf_page_structure_drift")
+        if wire_type == 0:
+            value, pos = _read_varint(body, pos)
+            out.append((field_number, value))
+        elif wire_type == 1:
+            out.append((field_number, body[pos:pos + 8]))
+            pos += 8
+        elif wire_type == 2:
+            length, pos = _read_varint(body, pos)
+            out.append((field_number, body[pos:pos + length]))
+            pos += length
+        elif wire_type == 5:
+            out.append((field_number, body[pos:pos + 4]))
+            pos += 4
+        else:
+            raise ValueError("source_pbf_page_structure_drift")
+        if pos > end:
+            raise ValueError("source_pbf_page_structure_drift")
+    return out
+
+
+def _pbf_packed_uints(payload: bytes) -> list[int]:
+    out = []
+    pos = 0
+    while pos < len(payload):
+        value, pos = _read_varint(payload, pos)
+        out.append(value)
+    return out
+
+
+def _pbf_packed_sint64s(payload: bytes) -> list[int]:
+    return [(value >> 1) ^ -(value & 1) for value in _pbf_packed_uints(payload)]
+
+
+def _pbf_doubles(payload: bytes) -> list[float]:
+    if len(payload) % 8:
+        raise ValueError("source_pbf_page_structure_drift")
+    return [struct.unpack("<d", payload[index:index + 8])[0]
+            for index in range(0, len(payload), 8)]
+
+
+def _pbf_double_map(payload: bytes, part_name: str) -> dict[int, float]:
+    """Parse a Scale/Translate sub-message: fields 1-4, each one fixed64 double."""
+    values: dict[int, float] = {}
+    for number, chunk in _pbf_fields(payload):
+        if number not in (1, 2, 3, 4) or not isinstance(chunk, bytes) or len(chunk) != 8:
+            raise ValueError("source_pbf_transform_drift:" + part_name)
+        values[number] = struct.unpack("<d", chunk)[0]
+    return values
+
+
+def _pbf_transform(transform: object, part_name: str) -> tuple[float, float, float, float]:
+    """Validate the pinned quantization transform; return (scale_x, scale_y,
+    translate_x, translate_y)."""
+    if not isinstance(transform, bytes):
+        raise ValueError("source_pbf_transform_drift:" + part_name)
+    scale: dict[int, float] = {}
+    translate: dict[int, float] = {}
+    for field_number, payload in _pbf_fields(transform):
+        if field_number == 1:
+            raise ValueError("source_pbf_transform_drift:" + part_name)
+        if field_number == 2:
+            scale = _pbf_double_map(payload, part_name)
+        elif field_number == 3:
+            translate = _pbf_double_map(payload, part_name)
+        else:
+            raise ValueError("source_pbf_transform_drift:" + part_name)
+    if (scale.get(1) != EXPECTED_PBF_SCALE or scale.get(2) != EXPECTED_PBF_SCALE
+            or translate.get(1) != EXPECTED_PBF_TRANSLATE[0]
+            or translate.get(2) != EXPECTED_PBF_TRANSLATE[1]):
+        raise ValueError("source_pbf_transform_drift:" + part_name)
+    return scale[1], scale[2], translate[1], translate[2]
+    if (scale.get(1) != EXPECTED_PBF_SCALE or scale.get(2) != EXPECTED_PBF_SCALE
+            or translate.get(1) != EXPECTED_PBF_TRANSLATE[0]
+            or translate.get(2) != EXPECTED_PBF_TRANSLATE[1]):
+        raise ValueError("source_pbf_transform_drift:" + part_name)
+    return scale[1], scale[2], translate[1], translate[2]
+
+
+_PBF_VALUE_STRING, _PBF_VALUE_FLOAT, _PBF_VALUE_DOUBLE = 1, 2, 3
+_PBF_VALUE_SINT, _PBF_VALUE_UINT, _PBF_VALUE_INT64 = 4, 5, 6
+_PBF_VALUE_UINT64, _PBF_VALUE_SINT64, _PBF_VALUE_BOOL, _PBF_VALUE_NULL = 7, 8, 9, 10
+
+
+def _pbf_value(payload: bytes, field: dict, part_name: str):
+    """Decode one Value message against the declared attribute field."""
+    kind = field["type"]
+    present = dict(_pbf_fields(payload)) if payload else {}
+    if _PBF_VALUE_NULL in present:
+        return None
+    if not present:
+        return None
+    if kind in {"esriFieldTypeString", "esriFieldTypeGlobalID"}:
+        if _PBF_VALUE_STRING not in present:
+            raise ValueError("source_pbf_attribute_value_drift:" + part_name)
+        try:
+            return present[_PBF_VALUE_STRING].decode()
+        except UnicodeDecodeError as exc:
+            raise ValueError("source_pbf_attribute_value_drift:" + part_name) from exc
+    if kind == "esriFieldTypeOID":
+        for wire in (_PBF_VALUE_SINT, _PBF_VALUE_UINT, _PBF_VALUE_INT64,
+                     _PBF_VALUE_UINT64, _PBF_VALUE_SINT64):
+            if wire in present:
+                value = present[wire]
+                if wire in (_PBF_VALUE_SINT, _PBF_VALUE_SINT64):
+                    value = (value >> 1) ^ -(value & 1)
+                return value
+        raise ValueError("source_pbf_attribute_value_drift:" + part_name)
+    if kind == "esriFieldTypeDate":
+        for wire in (_PBF_VALUE_DOUBLE, _PBF_VALUE_FLOAT, _PBF_VALUE_SINT,
+                     _PBF_VALUE_UINT, _PBF_VALUE_INT64, _PBF_VALUE_UINT64,
+                     _PBF_VALUE_SINT64):
+            if wire not in present:
+                continue
+            value = present[wire]
+            if wire == _PBF_VALUE_DOUBLE:
+                value = struct.unpack("<d", value)[0]
+            elif wire == _PBF_VALUE_FLOAT:
+                value = struct.unpack("<f", value)[0]
+            elif wire in (_PBF_VALUE_SINT, _PBF_VALUE_SINT64):
+                value = (value >> 1) ^ -(value & 1)
+            if type(value) is not int:
+                if not math.isfinite(value) or value != int(value):
+                    raise ValueError("source_date_value_type_drift:" + part_name)
+                value = int(value)
+            return value
+        raise ValueError("source_pbf_attribute_value_drift:" + part_name)
+    if kind == "esriFieldTypeDouble":
+        for wire in (_PBF_VALUE_DOUBLE, _PBF_VALUE_FLOAT, _PBF_VALUE_SINT,
+                     _PBF_VALUE_UINT, _PBF_VALUE_INT64, _PBF_VALUE_UINT64,
+                     _PBF_VALUE_SINT64):
+            if wire not in present:
+                continue
+            value = present[wire]
+            if wire == _PBF_VALUE_DOUBLE:
+                value = struct.unpack("<d", value)[0]
+            elif wire == _PBF_VALUE_FLOAT:
+                value = struct.unpack("<f", value)[0]
+            elif wire in (_PBF_VALUE_SINT, _PBF_VALUE_SINT64):
+                value = (value >> 1) ^ -(value & 1)
+            return float(value)
+        raise ValueError("source_pbf_attribute_value_drift:" + part_name)
+    raise ValueError("source_pbf_attribute_value_drift:" + part_name)
+
+
+def _pbf_expected_fields() -> list[tuple[str, int, str]]:
+    return [(field["name"], PBF_FIELD_TYPES[field["type"]], field["alias"])
+            for field in EXPECTED_PAGE_FIELD_DECLARATIONS]
+
+
+def _pbf_feature_result(body: bytes, part_name: str,
+                        expected_ids: list[int] | None = None) -> dict:
+    """Decode and structurally validate one protobuf feature window.
+
+    Returns a JSON-page-shaped document ({"features": [...],
+    "exceededTransferLimit": bool|None}) whose features carry the decoded
+    attribute object and decoded rings in served order, ready for the shared
+    row contracts. Every structural violation raises a fail-closed code bound
+    to the part name. ``expected_ids`` is enforced only when given.
+    """
+    top = _pbf_fields(body)
+    query_results = [payload for number, payload in top if number == 2]
+    if len(query_results) != 1 or any(number != 2 for number, _payload in top):
+        raise ValueError("source_pbf_page_structure_drift:" + part_name)
+    query_fields = _pbf_fields(query_results[0])
+    results = [payload for number, payload in query_fields if number == 1]
+    if len(results) != 1 or any(number != 1 for number, _payload in query_fields):
+        raise ValueError("source_pbf_page_structure_drift:" + part_name)
+    document: dict = {"features": [], "exceededTransferLimit": None}
+    scale_x = scale_y = translate_x = translate_y = None
+    for number, payload in _pbf_fields(results[0]):
+        if number == 7:
+            if payload != 3:
+                raise ValueError("source_pbf_page_identity_drift:" + part_name)
+        elif number == 8:
+            fields_seen = dict(_pbf_fields(payload))
+            if (fields_seen.get(1) not in (NATIVE_WKID,)
+                    or fields_seen.get(2) != NATIVE_LATEST_WKID
+                    or set(fields_seen) - {1, 2}):
+                raise ValueError("source_pbf_page_identity_drift:" + part_name)
+        elif number == 9:
+            if payload not in (0, 1):
+                raise ValueError("source_pbf_page_identity_drift:" + part_name)
+            document["exceededTransferLimit"] = bool(payload)
+        elif number in (10, 11):
+            if payload:
+                raise ValueError("source_pbf_page_identity_drift:" + part_name)
+        elif number == 12:
+            scale_x, scale_y, translate_x, translate_y = _pbf_transform(payload, part_name)
+        elif number == 13:
+            field = _pbf_fields(payload)
+            names = [payload if number2 == 1 else None
+                     for number2, payload in field if number2 == 1]
+            types = [payload if number2 == 2 else None
+                     for number2, payload in field if number2 == 2]
+            aliases = [payload if number2 == 3 else None
+                       for number2, payload in field if number2 == 3]
+            document.setdefault("fields", []).append(
+                (names[0].decode() if names else None,
+                 types[0] if types else None,
+                 aliases[0].decode() if aliases else None))
+        elif number == 15:
+            document["features"].append(payload)
+        elif number in (1, 2, 3, 4, 5, 6, 14, 16):
+            continue
+        else:
+            raise ValueError("source_pbf_page_structure_drift:" + part_name)
+    if scale_x is None:
+        raise ValueError("source_pbf_transform_drift:" + part_name)
+    if document.get("fields") != _pbf_expected_fields():
+        raise ValueError("source_pbf_field_schema_drift:" + part_name)
+    if expected_ids is not None and len(document["features"]) != len(expected_ids):
+        raise ValueError("source_pbf_page_population_incomplete:" + part_name)
+    expected_field_count = len(ATTRIBUTE_FIELDS)
+    features = []
+    for feature_payload in document["features"]:
+        values: list = []
+        rings_payload = None
+        for number, payload in _pbf_fields(feature_payload):
+            if number == 1:
+                values.append(payload)
+            elif number == 2:
+                if rings_payload is not None:
+                    raise ValueError("source_pbf_page_structure_drift:" + part_name)
+                rings_payload = payload
+            elif number in (3, 4, 5, 6, 7):
+                raise ValueError("source_pbf_page_identity_drift:" + part_name)
+            else:
+                raise ValueError("source_pbf_page_structure_drift:" + part_name)
+        if len(values) != expected_field_count:
+            raise ValueError("source_attribute_roster_or_order_drift:" + part_name)
+        attrs = {}
+        for field, payload in zip(EXPECTED_PAGE_FIELD_DECLARATIONS, values):
+            if not isinstance(payload, bytes):
+                raise ValueError("source_pbf_attribute_value_drift:" + part_name)
+            attrs[field["name"]] = _pbf_value(payload, field, part_name)
+        if rings_payload is None:
+            raise ValueError("source_pbf_page_structure_drift:" + part_name)
+        geometry_fields = _pbf_fields(rings_payload)
+        lengths_payloads = [payload for number, payload in geometry_fields if number == 2]
+        coords_payloads = [payload for number, payload in geometry_fields if number == 3]
+        ids_payloads = [payload for number, payload in geometry_fields if number == 4]
+        if (len(lengths_payloads) != 1 or len(coords_payloads) != 1 or ids_payloads
+                or [number for number, _payload in geometry_fields
+                    if number not in (1, 2, 3)]):
+            raise ValueError("source_pbf_page_structure_drift:" + part_name)
+        types = [payload for number, payload in geometry_fields if number == 1]
+        if len(types) != 1 or types[0] != 3:
+            raise ValueError("source_pbf_page_identity_drift:" + part_name)
+        lengths = _pbf_packed_uints(lengths_payloads[0])
+        coords = _pbf_packed_sint64s(coords_payloads[0])
+        if len(coords) != 2 * sum(lengths):
+            raise ValueError("source_pbf_page_structure_drift:" + part_name)
+        rings = []
+        cursor = 0
+        for ring_length in lengths:
+            xs: list[float] = []
+            ys: list[float] = []
+            delta_x = delta_y = 0
+            for _index in range(ring_length):
+                delta_x += coords[cursor]
+                delta_y += coords[cursor + 1]
+                cursor += 2
+                # Exact decimal grid reconstruction: the served integers are
+                # translate + k * scale in exact decimal arithmetic, rounded
+                # once to float, so the decoded value is the grid point the
+                # producer quantized to (nanometre-scale rounding only).
+                xs.append(float(Decimal(repr(translate_x)) + Decimal(delta_x) * Decimal(repr(scale_x))))
+                ys.append(float(Decimal(repr(translate_y)) - Decimal(delta_y) * Decimal(repr(scale_y))))
+            rings.append([[x, y] for x, y in zip(xs, ys)])
+        features.append({"attributes": attrs, "geometry": {"rings": rings}})
+    document["features"] = features
+    return document
+
+
+def _is_pbf_feature_result(body: bytes) -> bool:
+    try:
+        _pbf_feature_result(body, "probe")
+    except ValueError:
+        return False
+    return True
+
+
+def _is_pbf_refusal(body: bytes) -> bool:
+    return not _is_pbf_feature_result(body)
+
+
 def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
                          root: Path) -> tuple[dict[str, tuple[bytes, dict]], list[str]]:
     """Capture one nominal page window, bisecting refusing windows deterministically.
@@ -287,10 +635,20 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
     that window's exact GET URL, and the window is re-fetched as two half-size
     parts whose URLs are re-derived from the pinned roster. Bisection is
     bounded: a window at or below ``MIN_WINDOW_IDS`` that still refuses fails
-    the capture — never a repair loop.
+    the capture — unless the same first-party service serves the identical
+    window through its protobuf serializer (``f=pbf``), whose decoded window
+    is validated against the same row contracts and retained under the
+    window's own ``_pbf`` slot; a window refused by both serializers still
+    fails the capture — never a repair loop.
     """
     parts: dict[str, tuple[bytes, dict]] = {}
     refusals: list[str] = []
+
+    def retain(name: str, body: bytes, receipt: dict, suffix: str) -> None:
+        for file_suffix in (".body", ".wire", ".receipt.json"):
+            (root / (name + file_suffix)).replace(root / (name + suffix + file_suffix))
+        refusals.append(name + suffix)
+        parts[name + suffix] = (body, receipt)
 
     def walk(path: str) -> None:
         name = f"page_{index:04d}" + path
@@ -302,11 +660,17 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
         # Retain the refusal document as evidence under its own slot name: the
         # window is never served a feature page, so the refusal body, wire and
         # receipt are bound to the window's GET URL under the refusal name.
-        for suffix in (".body", ".wire", ".receipt.json"):
-            (root / (name + suffix)).replace(root / (name + "_refusal" + suffix))
-        refusals.append(name + "_refusal")
-        parts[name + "_refusal"] = (body, receipt)
+        retain(name, body, receipt, "_refusal")
         if len(sub) <= MIN_WINDOW_IDS:
+            # Bisection floor reached: rescue the exact window through the
+            # producer's protobuf serializer before failing the capture.
+            pbf_name = name + "_pbf"
+            pbf_body, pbf_receipt = _capture(
+                client, _window_url(roster, index, path, fmt="pbf"), root, pbf_name)
+            if not _is_pbf_refusal(pbf_body):
+                parts[pbf_name] = (pbf_body, pbf_receipt)
+                return
+            retain(pbf_name, pbf_body, pbf_receipt, "_refusal")
             raise ValueError("source_page_window_refused_after_bisection:" + name)
         half = (len(sub) + 1) // 2
         walk(path + "a")
@@ -598,23 +962,31 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
             geometries: list[bytes | None] = []
             for part_no, part_name in enumerate(part_names):
                 path = part_name[len(name):] if part_name.startswith(name) else None
+                pbf_part = False
+                if path and path.endswith("_pbf"):
+                    path, pbf_part = path[:-len("_pbf")], True
                 if part_name == name:
                     if len(part_names) != 1:
                         raise ValueError("source_page_parts_naming_drift:" + name)
                 elif not path or set(path) - {"a", "b"} or len(part_names) == 1:
                     raise ValueError("source_page_parts_naming_drift:" + name)
                 body, _wire, receipt = _load_capture(root, part_name)
-                expected_url = _window_url(roster, index, path)
+                expected_url = _window_url(roster, index, path,
+                                           fmt="pbf" if pbf_part else "json")
                 _validate_capture_request_identity(part_name, receipt, expected_url)
                 expected_part_ids = _window_slice(roster, index, path)
-                page = json.loads(body)
-                if "error" in page:
-                    raise ValueError("source_page_error:" + part_name)
-                if set(page) - {"displayFieldName", "exceededTransferLimit", "features",
-                                "fieldAliases", "fields", "geometryType", "spatialReference"}:
-                    raise ValueError("source_page_unexpected_member:" + part_name)
-                if page.get("displayFieldName") != DISPLAY_FIELD_NAME:
-                    raise ValueError("source_page_identity_drift:" + part_name)
+                if pbf_part:
+                    page = _pbf_feature_result(body, part_name, expected_part_ids)
+                else:
+                    page = json.loads(body)
+                if not pbf_part:
+                    if "error" in page:
+                        raise ValueError("source_page_error:" + part_name)
+                    if set(page) - {"displayFieldName", "exceededTransferLimit", "features",
+                                    "fieldAliases", "fields", "geometryType", "spatialReference"}:
+                        raise ValueError("source_page_unexpected_member:" + part_name)
+                    if page.get("displayFieldName") != DISPLAY_FIELD_NAME:
+                        raise ValueError("source_page_identity_drift:" + part_name)
                 exceeded = page.get("exceededTransferLimit")
                 if exceeded is not None and type(exceeded) is not bool:
                     raise ValueError("source_page_transfer_flag_drift:" + part_name)
@@ -626,17 +998,18 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                     raise ValueError("source_page_population_incomplete:" + part_name)
                 if len(part_names) == 1 and exceeded is True and len(rows) < PAGE_SIZE:
                     raise ValueError("source_page_transfer_truncated:" + part_name)
-                _validate_spatial_reference(page.get("spatialReference"),
-                                            "source_" + part_name + "_page")
-                if page.get("geometryType") != "esriGeometryPolygon":
-                    raise ValueError("source_page_identity_drift:" + part_name)
-                aliases = page.get("fieldAliases")
-                if (not isinstance(aliases, dict)
-                        or aliases != {field["name"]: field["alias"]
-                                       for field in EXPECTED_PAGE_FIELD_DECLARATIONS}):
-                    raise ValueError("source_page_alias_drift:" + part_name)
-                if page.get("fields") != EXPECTED_PAGE_FIELD_DECLARATIONS:
-                    raise ValueError("source_page_physical_schema_changed:" + part_name)
+                if not pbf_part:
+                    _validate_spatial_reference(page.get("spatialReference"),
+                                                "source_" + part_name + "_page")
+                    if page.get("geometryType") != "esriGeometryPolygon":
+                        raise ValueError("source_page_identity_drift:" + part_name)
+                    aliases = page.get("fieldAliases")
+                    if (not isinstance(aliases, dict)
+                            or aliases != {field["name"]: field["alias"]
+                                           for field in EXPECTED_PAGE_FIELD_DECLARATIONS}):
+                        raise ValueError("source_page_alias_drift:" + part_name)
+                    if page.get("fields") != EXPECTED_PAGE_FIELD_DECLARATIONS:
+                        raise ValueError("source_page_physical_schema_changed:" + part_name)
                 for feature in rows:
                     attrs, geometry = feature.get("attributes"), feature.get("geometry")
                     if (not isinstance(attrs, dict) or len(attrs) != len(ATTRIBUTE_FIELDS)
@@ -837,13 +1210,21 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
         raise ValueError("retained_capture_manifest_invalid")
     page_parts = manifest.get("page_parts") or {}
+
+    def part_base_path(page: str, part: str) -> str:
+        suffix = part[len(page):]
+        if suffix.endswith("_pbf"):
+            suffix = suffix[:-len("_pbf")]
+        return suffix
+
     if not isinstance(page_parts, dict) or not all(
             isinstance(parts, list) and parts and len(set(parts)) == len(parts)
             and parts == sorted(parts)
             and all(isinstance(part, str) and (part == page
                     if len(parts) == 1 else
                     part.startswith(page) and len(part) > len(page)
-                    and set(part[len(page):]) <= {"a", "b"})
+                    and part_base_path(page, part)
+                    and set(part_base_path(page, part)) <= {"a", "b"})
                 for part in parts)
             for page, parts in page_parts.items()):
         raise ValueError("retained_capture_page_parts_invalid")
@@ -853,17 +1234,37 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
             isinstance(entry, str) and (entry.endswith("_refusal")) for entry in refusals):
         raise ValueError("retained_capture_page_refusals_invalid")
     # A bisected window has no nominal artifact: its evidence is the retained
-    # refusal documents plus the re-derived leaf windows.
+    # refusal documents plus the re-derived leaf windows (a leaf the JSON
+    # serializer refused at the bisection floor is covered either by a served
+    # smaller window or by the exact leaf's protobuf-rescued part).
     bisected = {page for page, parts in page_parts.items()
                 if not (len(parts) == 1 and parts[0] == page)}
     for page in bisected:
-        served_paths = [part[len(page):] for part in page_parts[page]]
+        served_parts = page_parts[page]
+        served_paths = [part[len(page):] for part in served_parts]
+        leaf_paths = set()
+        for entry in refusals:
+            if not entry.startswith(page):
+                continue
+            leaf_path = entry[:-len("_refusal")][len(page):]
+            if leaf_path.endswith("_pbf"):
+                leaf_path = leaf_path[:-len("_pbf")]
+            leaf_paths.add(leaf_path)
         if page + "_refusal" not in refusals or not all(
                 any(served.startswith(path) and len(served) > len(path)
                     for served in served_paths)
-                for path in {entry[:-len("_refusal")][9:] for entry in refusals
-                             if entry.startswith(page)}):
+                or (page + path + "_pbf") in served_parts
+                for path in leaf_paths):
             raise ValueError("retained_capture_refusal_slot_invalid:" + page)
+    # A protobuf-rescued part is only legitimate for a leaf whose JSON fetch
+    # was refused and retained as evidence; it may never replace a served page.
+    for page, parts in page_parts.items():
+        for part in parts:
+            if not part.endswith("_pbf"):
+                continue
+            leaf_path = part[len(page):-len("_pbf")]
+            if not leaf_path or (page + leaf_path + "_refusal") not in refusals:
+                raise ValueError("retained_capture_refusal_slot_invalid:" + page)
     nominal = {f"page_{index:04d}" for index in range(PAGE_COUNT)}
     expected_names = ({*METADATA_NAMES, *(nominal - bisected)}
                       | part_names | set(refusals))
@@ -881,19 +1282,33 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
         if name.endswith("_refusal"):
-            leaf = name[:-len("_refusal")]
+            base = name[:-len("_refusal")]
+            pbf_attempt = base.endswith("_pbf")
+            leaf = base[:-len("_pbf")] if pbf_attempt else base
             page, path = leaf[:9], leaf[9:]
             if (page not in bisected or not page.startswith("page_")
-                    or set(path) - {"a", "b"} or not path.isascii()):
+                    or set(path) - {"a", "b"} or not path.isascii()
+                    or (pbf_attempt and not path)):
                 raise ValueError("retained_capture_refusal_slot_invalid:" + name)
-            _validate_capture_request_identity(name, receipt,
-                                               _window_url(ids, int(page[5:9]), path))
-            if not _is_refusal(body):
+            _validate_capture_request_identity(
+                name, receipt,
+                _window_url(ids, int(page[5:9]), path, fmt="pbf" if pbf_attempt else "json"))
+            if pbf_attempt:
+                if _is_pbf_feature_result(body):
+                    raise ValueError("retained_capture_refusal_document_drift:" + name)
+            elif not _is_refusal(body):
                 raise ValueError("retained_capture_refusal_document_drift:" + name)
         elif name[:9] in page_parts:
             page = name[:9]
+            pbf_part = name.endswith("_pbf")
+            path = name[len(page):]
+            if pbf_part:
+                path = path[:-len("_pbf")]
+                if not path:
+                    raise ValueError("retained_capture_page_parts_invalid")
             _validate_capture_request_identity(
-                name, receipt, _window_url(ids, int(page[5:9]), name[9:]))
+                name, receipt,
+                _window_url(ids, int(page[5:9]), path, fmt="pbf" if pbf_part else "json"))
         else:
             _validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
@@ -1082,7 +1497,11 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
                              "reprojection, repair or simplification; multi-owned holes "
                              "attach to the smallest containing exterior per the merged "
                              "USACE reservoir precedent and rows that still cannot form a "
-                             "valid OGC polygon are counted by failure mode; " + gate_note),
+                             "valid OGC polygon are counted by failure mode; windows the "
+                             "producer's JSON serializer refuses at the bisection floor "
+                             "are re-fetched through the same service's protobuf "
+                             "serializer (f=pbf, pinned default quantization transform) "
+                             "and validated against the same row contracts; " + gate_note),
                 "raw_evidence": "complete decoded response and wire bodies retained with "
                                 "checksummed receipts for every page and service document",
                 "candidate_status": "unapproved; baseline/schema/ID/coverage/rights/release "
