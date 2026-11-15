@@ -28,9 +28,11 @@ the counts pinned for later drift refusal after the first complete walk.
 
 The per-value record and geometry baseline digests, the ID roster digest and
 the geometry-gate counts are pinned below from the complete dated population
-walk (2026-11-14). Publication stays blocked pending succession, freshness,
-schema/ID contract, coverage, rights and release acceptance; all runtime
-approval flags are false and the draft refresh schedule is stopped.
+walk (2026-11-15; two independent walks produced identical digests, the
+second verifying the first's sealed candidate). Publication stays blocked
+pending succession, freshness, schema/ID contract, coverage, rights and
+release acceptance; all runtime approval flags are false and the draft
+refresh schedule is stopped.
 
 Producer serialization defect and the bounded protobuf rescue (observed
 2026-11-14/15): the JSON serializer refuses exactly one feature (OBJECTID
@@ -108,8 +110,8 @@ EXPECTED_COUNT = 18_911
 EXPECTED_ID_MIN = 1
 EXPECTED_ID_MAX = 19_567
 # Digest of the canonical-JSON sorted OBJECTID roster (18,911 unique ids,
-# 1..19,567), computed from the complete dated population walk (2026-11-14).
-EXPECTED_ID_SHA256 = ""
+# 1..19,567), computed from the complete dated population walk (2026-11-15).
+EXPECTED_ID_SHA256 = "f76070a8f58607499cb528be34afa191c2065faead0fab765c6990b86d8c384b"
 # The 12-digit sibling layer streams at 500; this 10-digit layer fails
 # server-side at 250/400/500 features ("Error performing query operation")
 # and serves 100 features (~16 MB of JSON) reliably (observed 2026-11-14).
@@ -157,19 +159,21 @@ DISK_FLOOR_BYTES = 24_000_000_000
 # at 5.5e-15 relative across a 100-feature probe (2026-11-14), so the parity
 # guard sits far above that and far below real drift.
 SHAPE_PARITY_TOLERANCE = 1e-6
-# Native baselines pinned from the complete dated population walk (2026-11-14);
-# empty/None pins are checked only when non-empty.
-EXPECTED_SCHEMA_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
-BASELINE_PENDING_NOTE = (
-    "The record, geometry and ID-roster baselines and the geometry-gate counts "
-    "are not pinned yet: the 18,911-feature population cannot be walked to "
-    "completion inside the session that drafted this module, so no complete "
-    "capture existed at draft time (observed 2026-11-14). The first complete "
-    "capture computes them for the maintainer to pin.")
+# Native baselines pinned from the complete dated population walk (2026-11-15,
+# two independent walks producing identical digests; the second walk verified
+# the first walk's sealed candidate). 18,911 rows: 18,903 valid served
+# polygons, 8 rows gate to null geometry (5 assemblies invalid, 3
+# self-intersecting exteriors), 91,144,356 served vertices, 177 multipart and
+# 48 with-hole features; the six windows the JSON serializer refuses at the
+# bisection floor (page_0178bbab, page_0182abab, page_0188aabb, page_0188abba,
+# page_0188baaa, page_0188baab) were served by the producer's protobuf
+# serializer and pass the same row contracts.
+EXPECTED_SCHEMA_SHA256 = "9d958f22b37d01eec29106caa71e17b908a331ce9c3101c7664dd06609b4192f"
+EXPECTED_RECORD_SHA256 = "a290786069b511921f22bbafae5015b8c753c41499bd191f733c52400eeb3cb3"
+EXPECTED_GEOMETRY_SHA256 = "643eab1c026f6a85cf45063718c0dd5eba00eddf078c116144e6cdf0e316810a"
+EXPECTED_NULL_GEOMETRY_COUNT = 8
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {
+    "source_polygon_assembly_invalid": 5, "source_polygon_ring_self_intersecting": 3}
 
 EXPECTED_PAGE_FIELD_DECLARATIONS = [{'name': 'objectid', 'type': 'esriFieldTypeOID', 'alias': 'ObjectID'}, {'name': 'tnmid', 'type': 'esriFieldTypeString', 'alias': 'TNMID', 'length': 40}, {'name': 'metasourceid', 'type': 'esriFieldTypeString', 'alias': 'MetaSourceID', 'length': 40}, {'name': 'sourcedatadesc', 'type': 'esriFieldTypeString', 'alias': 'SourceDataDesc', 'length': 100}, {'name': 'sourceoriginator', 'type': 'esriFieldTypeString', 'alias': 'SourceOriginator', 'length': 130}, {'name': 'sourcefeatureid', 'type': 'esriFieldTypeString', 'alias': 'SourceFeatureID', 'length': 40}, {'name': 'loaddate', 'type': 'esriFieldTypeDate', 'alias': 'LoadDate', 'length': 8}, {'name': 'referencegnis_ids', 'type': 'esriFieldTypeString', 'alias': 'ReferenceGNIS_IDs', 'length': 50}, {'name': 'areaacres', 'type': 'esriFieldTypeDouble', 'alias': 'AreaAcres'}, {'name': 'areasqkm', 'type': 'esriFieldTypeDouble', 'alias': 'AreaSqKm'}, {'name': 'states', 'type': 'esriFieldTypeString', 'alias': 'States', 'length': 50}, {'name': 'huc10', 'type': 'esriFieldTypeString', 'alias': 'HUC10', 'length': 10}, {'name': 'name', 'type': 'esriFieldTypeString', 'alias': 'Name', 'length': 120}, {'name': 'hutype', 'type': 'esriFieldTypeString', 'alias': 'HUType', 'length': 1}, {'name': 'humod', 'type': 'esriFieldTypeString', 'alias': 'HUMod', 'length': 30}, {'name': 'globalid', 'type': 'esriFieldTypeGlobalID', 'alias': 'globalid', 'length': 38}, {'name': 'shape_Length', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Length'}, {'name': 'shape_Area', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Area'}]
 EXPECTED_LAYER_FIELDS = [{'name': 'objectid', 'type': 'esriFieldTypeOID', 'alias': 'ObjectID', 'domain': None}, {'name': 'tnmid', 'type': 'esriFieldTypeString', 'alias': 'TNMID', 'length': 40, 'domain': None}, {'name': 'metasourceid', 'type': 'esriFieldTypeString', 'alias': 'MetaSourceID', 'length': 40, 'domain': None}, {'name': 'sourcedatadesc', 'type': 'esriFieldTypeString', 'alias': 'SourceDataDesc', 'length': 100, 'domain': None}, {'name': 'sourceoriginator', 'type': 'esriFieldTypeString', 'alias': 'SourceOriginator', 'length': 130, 'domain': None}, {'name': 'sourcefeatureid', 'type': 'esriFieldTypeString', 'alias': 'SourceFeatureID', 'length': 40, 'domain': None}, {'name': 'loaddate', 'type': 'esriFieldTypeDate', 'alias': 'LoadDate', 'length': 8, 'domain': None}, {'name': 'referencegnis_ids', 'type': 'esriFieldTypeString', 'alias': 'ReferenceGNIS_IDs', 'length': 50, 'domain': None}, {'name': 'areaacres', 'type': 'esriFieldTypeDouble', 'alias': 'AreaAcres', 'domain': None}, {'name': 'areasqkm', 'type': 'esriFieldTypeDouble', 'alias': 'AreaSqKm', 'domain': None}, {'name': 'states', 'type': 'esriFieldTypeString', 'alias': 'States', 'length': 50, 'domain': None}, {'name': 'huc10', 'type': 'esriFieldTypeString', 'alias': 'HUC10', 'length': 10, 'domain': None}, {'name': 'name', 'type': 'esriFieldTypeString', 'alias': 'Name', 'length': 120, 'domain': None}, {'name': 'hutype', 'type': 'esriFieldTypeString', 'alias': 'HUType', 'length': 1, 'domain': {'type': 'codedValue', 'name': 'HUType Domain', 'description': '', 'codedValues': [{'name': 'Standard', 'code': 'S'}, {'name': 'Closed Basin', 'code': 'C'}, {'name': 'Frontal', 'code': 'F'}, {'name': 'Multiple Outlet', 'code': 'M'}, {'name': 'Water', 'code': 'W'}, {'name': 'Island', 'code': 'I'}, {'name': 'Urban', 'code': 'U'}, {'name': 'Indeterminate', 'code': 'D'}], 'mergePolicy': 'esriMPTDefaultValue', 'splitPolicy': 'esriSPTDuplicate'}}, {'name': 'humod', 'type': 'esriFieldTypeString', 'alias': 'HUMod', 'length': 30, 'domain': None}, {'name': 'shape', 'type': 'esriFieldTypeGeometry', 'alias': 'Shape', 'domain': None}, {'name': 'globalid', 'type': 'esriFieldTypeGlobalID', 'alias': 'globalid', 'length': 38, 'domain': None}, {'name': 'shape_Length', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Length', 'domain': None}, {'name': 'shape_Area', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Area', 'domain': None}]
@@ -1412,10 +1416,6 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
         "release_accepted": False, "baseline_accepted": False})
-    if not EXPECTED_ID_SHA256 or not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256 \
-            or EXPECTED_NULL_GEOMETRY_COUNT is None or EXPECTED_UNUSABLE_GEOMETRY_COUNTS is None:
-        audit["baseline_pending_note"] = BASELINE_PENDING_NOTE
-        audit["baseline_pending_complete_capture"] = True
     content_version = "v" + _sha(_canonical({
         "source_record_sha256": audit["source_record_sha256"],
         "source_geometry_sha256": audit["source_geometry_sha256"],
