@@ -147,7 +147,7 @@ def _documents() -> dict:
                           for layer_id, name in source.EXPECTED_SERVICE_LAYERS]}
     layer = {"id": source.LAYER_ID, "name": source.LAYER_NAME, "type": "Feature Layer",
              "geometryType": "esriGeometryPolygon", "maxRecordCount": 2000,
-             "copyrightText": "U.S. Geological Survey", "displayField": "NAME",
+             "copyrightText": "USGS", "displayField": "NAME",
              "geometryField": {"name": "shape"},
              "geometryProperties": {"shapeAreaFieldName": "shape_Area",
                                     "shapeLengthFieldName": "shape_Length",
