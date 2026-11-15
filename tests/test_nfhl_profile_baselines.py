@@ -364,7 +364,8 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
         from dagster_hifld.resources import StagingStorageResource
         with TemporaryDirectory() as staging_dir:
             storage = StagingStorageResource(local_dir=staging_dir, use_local=True)
-            with self.assertRaisesRegex(ValueError, "source_population_pins_not_established"):
+            with patch.object(source, "EXPECTED_RECORD_SHA256", ""), \
+                 self.assertRaisesRegex(ValueError, "source_population_pins_not_established"):
                 source.capture_nfhl_profile_baselines(storage, version="vtest")
 
     def test_parquet_preserves_native_fields_and_zm_geometry(self):
@@ -598,11 +599,12 @@ class RetryAndResumeTests(unittest.TestCase):
             with patch.multiple(source, SEGMENT_START_RECORDS=4,
                                 DOC_CAPTURE_ATTEMPTS=1, EXPECTED_COUNT=4), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(source.time, "sleep") as sleep:
                 settled = source._capture_segments(None, root, sorted(ids), attr_names, source._StreamStats(), {})
             self.assertEqual(sorted(settled), [(0, 2), (2, 2), (4, 1)])
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), ERROR_BODY)
             self.assertEqual(calls.count("page_000000_00004"), 1)
+            sleep.assert_not_called()
 
     def test_resumed_bisection_uses_cached_children_without_retrying_parent(self):
         bodies, _, _, ids, attr_names = self._fixture_bodies()
@@ -658,6 +660,19 @@ class RetryAndResumeTests(unittest.TestCase):
             self.assertEqual((root / "probe.attempt-01.body").read_bytes(), b"first observed response")
             self.assertEqual((root / "probe.attempt-01.receipt.json").read_bytes(), first_receipt)
             self.assertEqual((root / "probe.attempt-02.body").read_bytes(), b"second observed response")
+
+    def test_throttling_error_documents_keep_bisection_backoff(self):
+        bodies, _, _, ids, attr_names = self._fixture_bodies()
+        for code in (429, 503):
+            with self.subTest(code=code), TemporaryDirectory() as temporary:
+                def capture(_client, _url, root, name, *, max_bytes):
+                    body = _canonical({"error": {"code": code, "message": "Try later"}}) if name == "page_000000_00004" else bodies[name]
+                    _write_evidence(root, name, body)
+                with patch.multiple(source, SEGMENT_START_RECORDS=4, EXPECTED_COUNT=5), \
+                     patch.object(source, "capture_get", side_effect=capture), \
+                     patch.object(source.time, "sleep") as sleep:
+                    source._capture_segments(None, Path(temporary), sorted(ids), attr_names, source._StreamStats(), {})
+                sleep.assert_called_once_with(source.SEGMENT_BISECT_COOLDOWN_SECONDS)
 
     def test_unservable_single_feature_fails_explicitly(self):
         _, _, _, ids, attr_names = self._fixture_bodies()

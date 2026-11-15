@@ -25,7 +25,14 @@ source's hasZ/hasM contract and per-ordinate null/NaN counts.
 X/Y ``"NaN"`` string vertices gate the record's candidate geometry to null
 (never a coerced location), raw evidence intact.
 
-The complete 338,416-feature layer cannot be materialized as one in-memory
+The contract is FEMA's published default REST linear XYZM representation:
+``returnTrueCurves`` is omitted (publisher default false). All returned source
+attributes and ordinates are retained without client densification or repair.
+The layer supports true-curve queries, but capability is not population evidence;
+eight spread explicit-true/default sample geometries matched exactly. National
+equivalence to backing-geodatabase true curves is not established or claimed.
+
+The national layer cannot be materialized as one in-memory
 feature list (observed per-feature response sizes range from under 1 KB to
 over 180 KB), so capture and validation are streamed: pages are captured as
 adaptively bisected segments of the sorted OBJECTID roster starting at the
@@ -127,14 +134,11 @@ DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 # Documents and an unservable single feature retain bounded retries below.
 SEGMENT_PROBE_ATTEMPTS = 1
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 10.0
-# The producer serves the same roster range without refusing minutes later
-# (verified 2026-11-12 at the dense roster region the first capture pass had
-# bisected down to 15-record segments), so refusals are throttling bursts, not
-# hard caps. A cooldown after every bisection decision keeps the halving from
-# compounding the load that triggered it.
+# Retain a pause for incomplete transports, throttling and unclassified
+# producer errors. The complete-200 query refusal observed on dense pages is
+# split promptly instead; all failed bytes/receipts remain evidence.
 SEGMENT_BISECT_COOLDOWN_SECONDS = 20.0
-# Pins below are the observed 2026-11-12 complete-layer population contract,
-# established by one dated complete capture (before/after count/id/metadata
+# Population pins require one dated complete capture (before/after count/id/metadata
 # brackets unchanged; every page validated against the sorted OBJECTID roster;
 # the module's own capture must reproduce every pin).
 EXPECTED_COUNT = 0
@@ -698,7 +702,14 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
             middle = count // 2
             segments.appendleft((offset + middle, count - middle))
             segments.appendleft((offset, middle))
-            time.sleep(SEGMENT_BISECT_COOLDOWN_SECONDS)
+            error = json.loads((capture_root / f"{name}.body").read_bytes()).get("error")
+            # The observed complete-200 query refusal resolves when its dense
+            # payload is split. It is not an HTTP throttle/transport failure;
+            # retain backoff for 429/503 and other unclassified errors.
+            if not (receipt.get("status") == 200 and isinstance(error, dict)
+                    and error.get("code") == 500
+                    and error.get("message") in ("Error performing query operation", "Error performing query operation.")):
+                time.sleep(SEGMENT_BISECT_COOLDOWN_SECONDS)
             continue
         snapshot = stats.snapshot()
         try:
@@ -1067,6 +1078,8 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
              "source_record_sha256": stats.record_sha256, "source_geometry_sha256": stats.geometry_sha256,
              "source_schema_sha256": contract["schema_sha256"], "source_crs_epsg": SOURCE_CRS_WKID,
              "geometry_type": "Polyline", "source_has_z": SOURCE_HAS_Z, "source_has_m": SOURCE_HAS_M,
+             "source_geometry_representation": "published_default_rest_linear_xyzm",
+             "backing_geodatabase_true_curve_equivalence_established": False,
              "source_height_model": EXPECTED_SOURCE_HEIGHT_MODEL,
              "null_geometry_count": stats.null_geometry_count,
              "null_geometry_object_ids": sorted(stats.null_geometry_ids),
@@ -1108,9 +1121,12 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                     "attribution": "FEMA National Flood Hazard Layer; formal attribution terms require maintainer "
                                    "review."}
                    for name, receipt in sorted(receipts.items())],
-        "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
+        "transformations": [{"operation": "published_fema_rest_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
-                                            "query": "where 1=1, all producer fields, geometry requested with "
+                                            "query": "Publisher default REST linear representation (returnTrueCurves "
+                                                     "omitted/default false); no client densification or repair; "
+                                                     "national backing-geodatabase true-curve equivalence unverified. "
+                                                     "where 1=1, all producer fields, geometry requested with "
                                                      "returnZ=true and returnM=true because the layer declares Z "
                                                      "(gravity-related NAVD88 height, US survey feet) and M "
                                                      "(route measure); every vertex is captured as the producer's "
@@ -1126,7 +1142,7 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                                             "source_ids": "Preserve producer OBJECTID, BASELN_ID, GFID and "
                                                           "GlobalID values unchanged; no substitute IDs, casts, "
                                                           "trimming, or joins",
-                                            "geometry": "Source NAD83 (EPSG:4269) polyline paths retained as PostGIS ISO WKB "
+                                            "geometry": "Source NAD83 (EPSG:4269) polyline paths retained as ISO WKB "
                                                         "LineString ZM / MultiLineString ZM without "
                                                         "projection; producer JSON null or string-'NaN' Z/M "
                                                         "ordinates map to WKB NaN (the OGC no-value measure "

@@ -38,7 +38,7 @@ SAMPLE_BYTES=64*1024*1024
 BATCH_ROWS=128
 BATCH_BYTES=128*1024*1024
 GEOMETRY_TYPES={'Point','LineString','Polygon','MultiPoint','MultiLineString','MultiPolygon','GeometryCollection'}
-# GeoParquet 1.1 geometry_types dimension suffixes (ISO WKB ordinate grammar);
+# GeoParquet 2 geometry_types dimension suffixes (ISO WKB ordinate grammar);
 # measured (M) ordinates are legal served content and stay readable by the
 # 2D/3D shapely parsing used below, so declared M-suffixed types are accepted.
 GEOMETRY_DIMENSIONS=('',' Z',' M',' ZM')
@@ -302,7 +302,7 @@ def _finite_geometry_coordinates(geometry):
 def geometry_dimension_suffix(geometry):
     """Observed GeoParquet dimension suffix from the parsed WKB ordinates.
 
-    The declared ``geometry_types`` grammar accepts Z/M/ZM (GeoParquet 1.1), so
+    The declared ``geometry_types`` grammar accepts Z/M/ZM (GeoParquet 2), so
     the observed side must derive its suffix from the actual geometry
     dimensions, not from ``has_z`` alone: a measured population declared as
     'Point M' otherwise fails the subset gate, and an undeclared measured
