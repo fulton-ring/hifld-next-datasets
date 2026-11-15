@@ -284,6 +284,15 @@ def _acquire_document(client: httpx.Client, root: Path, name: str, url: str) -> 
     return body, receipt
 
 
+def _offline_wire(root: Path, name: str, body: bytes, receipt: Mapping[str, object]) -> bytes:
+    wire_path = root / f"{name}.wire"
+    wire = wire_path.read_bytes() if wire_path.exists() else body
+    if (receipt.get("wire_bytes", len(body)) != len(wire)
+            or receipt.get("wire_sha256", _sha(body)) != _sha(wire)):
+        raise ValueError("offline_capture_wire_receipt_mismatch:" + name)
+    return wire
+
+
 def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
     summary = json.loads((root / "capture-summary.json").read_bytes())
     if summary.get("complete") is not True:
@@ -296,6 +305,7 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
         if (receipt.get("complete_body") is not True or receipt.get("status") != 200
                 or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
             raise ValueError("offline_capture_body_receipt_mismatch:" + name)
+        _offline_wire(root, name, body, receipt)
         receipt.update({"complete_body": True, "wire_bytes": receipt.get("wire_bytes", len(body)),
                         "wire_sha256": receipt.get("wire_sha256", _sha(body)),
                         "content_encoding": receipt.get("content_encoding", "identity"),
@@ -728,8 +738,9 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
     capture_root.mkdir(parents=True, exist_ok=True)
     if offline_capture_directory:
         captures = _load_offline(Path(offline_capture_directory))
-        for name, (body, _receipt) in captures.items():
-            (capture_root / f"{name}.wire").write_bytes(body)
+        for name, (body, receipt) in captures.items():
+            (capture_root / f"{name}.wire").write_bytes(
+                _offline_wire(Path(offline_capture_directory), name, body, receipt))
     else:
         captures = _acquire(capture_root, storage)
         (capture_root / "capture-summary.json").write_bytes(_canonical(

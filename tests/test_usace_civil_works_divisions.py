@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import gzip
 import json
 import tempfile
 import unittest
@@ -657,11 +658,46 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
                                 "item_before": (_body({"id": ucwd.ITEM_ID}), {}),
                                 "item_after": (_body({"id": ucwd.ITEM_ID}), {})})
 
+    def test_offline_replay_preserves_and_validates_compressed_wire_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp, fixture_pins():
+            root = Path(tmp)
+            capture = root / "capture"
+            capture.mkdir()
+            (capture / "capture-summary.json").write_text('{"complete":true}')
+            fixture = _fixture()
+            expected_wire = gzip.compress(fixture["page_000"][0])
+            for name, (body, receipt) in fixture.items():
+                wire = expected_wire if name == "page_000" else body
+                receipt.update(wire_bytes=len(wire), wire_sha256=hashlib.sha256(wire).hexdigest(),
+                               content_encoding="gzip" if name == "page_000" else "identity")
+                (capture / f"{name}.body").write_bytes(body)
+                (capture / f"{name}.wire").write_bytes(wire)
+                (capture / f"{name}.receipt.json").write_bytes(_body(receipt))
+            storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+            with patch.object(ucwd, "_geoparquet", return_value=b"candidate"), \
+                    patch.object(ucwd, "processing_identity", return_value={
+                        "code_commit": "a" * 40, "files": {"x.py": "b" * 64}}), \
+                    patch.object(ucwd, "validate_construction_code_identity", return_value=None), \
+                    patch.object(epa_frs_common, "validate_construction_code_identity", return_value=None):
+                result = ucwd.capture_usace_civil_works_divisions(
+                    storage, offline_capture_directory=str(capture),
+                    capture_directory=str(root / "replay"))
+            wire_key = result["candidate_ready"].replace(
+                "metadata/candidate_ready.json", "raw/page_000.wire")
+            self.assertEqual(storage.read_key(wire_key), expected_wire)
+            (capture / "page_000.wire").write_bytes(b"tampered")
+            with self.assertRaisesRegex(ValueError, "offline_capture_wire_receipt_mismatch"):
+                ucwd._load_offline(capture)
+
     def test_entrypoint_quarantines_acquisition_validation_failures(self):
         fixture = _fixture()
         doc = json.loads(fixture["page_000"][0])
         doc["features"].pop()
-        fixture["page_000"] = (_body(doc), fixture["page_000"][1])
+        body = _body(doc)
+        receipt = fixture["page_000"][1]
+        receipt.update(bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
+                       wire_bytes=len(body), wire_sha256=hashlib.sha256(body).hexdigest())
+        fixture["page_000"] = (body, receipt)
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(use_local=True, local_dir=tmp)
             with fixture_pins(), patch.object(ucwd, "_load_offline", return_value=fixture):
