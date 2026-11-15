@@ -116,7 +116,7 @@ def _typed_parquet(records: list[dict[str, Any]], fields: tuple[dict[str, Any], 
         arrow_fields,
         metadata={
             b"hifld:source_url": TABLE_URL.encode(),
-            b"hifld:source_table": b"FRS_NAICS_POWERPLANTS",
+            b"hifld:source_table": TABLE_PROFILE.table_name.encode(),
             b"hifld:geometry": b"absent",
         },
     )

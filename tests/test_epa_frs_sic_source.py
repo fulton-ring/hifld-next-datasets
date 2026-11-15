@@ -193,6 +193,11 @@ class EPAFRSSICTests(unittest.TestCase):
                  "relationships": []}
         service = {"description": "EIA data as of June 2014.",
                    "tables": [{"id": profile.table_id, "name": profile.table_name}]}
+        portal_item = {
+            "id": profile.portal_item_id, "owner": profile.portal_item_owner,
+            "title": profile.portal_item_title, "type": "Feature Service",
+            "url": profile.service_url, "modified": 1769190978000,
+        }
         rows = [
             {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
              "PRIMARY_INDICATOR": "PRIMARY"},
@@ -213,7 +218,9 @@ class EPAFRSSICTests(unittest.TestCase):
         def respond(request):
             path = urlparse(str(request.url)).path
             query = parse_qs(urlparse(str(request.url)).query)
-            if path.rstrip("/").endswith("FeatureServer"):
+            if "/sharing/rest/content/items/" in path:
+                payload = portal_item
+            elif path.rstrip("/").endswith("FeatureServer"):
                 payload = service
             elif path.endswith(f"/{profile.table_id}"):
                 payload = table
@@ -232,8 +239,8 @@ class EPAFRSSICTests(unittest.TestCase):
             self.assertEqual(captured, rows)
             self.assertTrue(manifest["source_ids_equal_before_after"])
             self.assertEqual(manifest["rows_captured"], 2)
-            self.assertEqual(set(receipts), {"service", "table_before", "count_before", "ids_before",
-                "page_000", "table_after", "service_after", "count_after", "ids_after"})
+            self.assertEqual(set(receipts), {"service", "portal_item", "table_before", "count_before",
+                "ids_before", "page_000", "table_after", "service_after", "count_after", "ids_after"})
             self.assertTrue(all(receipt["complete_body"] for receipt in manifest["response_receipts"].values()))
 
     def test_exact_nonspatial_schema_and_native_values_survive_parquet(self):
