@@ -61,8 +61,8 @@ GEOMETRY_TYPE = "esriGeometryPolygon"
 OBJECT_ID_FIELD = "OBJECTID"
 GLOBAL_ID_FIELD = "GlobalID"
 PAGE_SIZE = 2000
-MAX_RESPONSE_BYTES = 64_000_000
-MAX_CAPTURE_BYTES = 2_000_000_000
+MAX_RESPONSE_BYTES = 256 * 1024 * 1024
+MAX_CAPTURE_BYTES = 4_000_000_000
 NATIVE_CRS = CRS.from_epsg(4326)
 SERVICE_HOST = urlsplit(SERVICE_URL).hostname
 SHARING_HOST = urlsplit(ITEM_URL).hostname
@@ -511,7 +511,7 @@ def capture_wfigs_interagency_fire_perimeters(storage: StagingStorageResource, *
     if any(path.is_symlink() for path in (staging, *staging.parents)):
         raise ValueError("wfigs_unsafe_staging_root")
     staging.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(staging).free < 6_000_000_000:
+    if shutil.disk_usage(staging).free < 12_000_000_000:
         raise ValueError("wfigs_disk_floor_before_capture")
     requested = Path(capture_directory).absolute() if capture_directory else None
     replay = bool(requested and (requested / "capture_manifest.json").exists())
