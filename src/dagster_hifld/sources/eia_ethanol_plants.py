@@ -1,7 +1,6 @@
 """Pinned historical EIA Ethanol Plants shapefile candidate for issue #81."""
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -30,6 +29,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "ethanol-plants"
 SOURCE_URL = "https://www.eia.gov/maps/map_data/Ethanol_Plants_US_EIA.zip"
@@ -56,14 +56,6 @@ RECORD_SHA = "a64864ec9d78abfa2f209db5cf82915c3e38bf248d12a90bcaf604b43ec40013"
 GEOMETRY_SHA = "12f90b4e124fc38f2afbcb09b57b9e8a2273edeba1ef001123c7c91b67d93cb6"
 BOUNDS = [-121.33560000003301, 32.93949999967761, -76.38009999964684, 47.371400000248904]
 WGS84 = CRS.from_epsg(4326)
-
-
-def _canonical(x):
-    return json.dumps(x, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-
-
-def _sha(b):
-    return hashlib.sha256(b).hexdigest()
 
 
 def _native(v):

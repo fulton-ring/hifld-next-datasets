@@ -1,7 +1,6 @@
 """Draft native capture for the BTS NTAD rail TOFC/COFC layer."""
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -26,6 +25,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "e6332597fcd546d3899f60ec9b9157b9"
 SERVICE_URL = "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Intermodal_Freight_Facilities_Rail_TOFC_COFC/FeatureServer"
@@ -44,15 +44,6 @@ EXPECTED_SOURCE_ID_SHA256 = "d3cf1ddd67aa002b0a1409cd70096c18e40cb24a3ecb0609603
 EXPECTED_SOURCE_COUNT = 241
 EXPECTED_FIELD_NAMES = ["OBJECTID", "TERMINAL", "TERM_ADDRESS", "CITY", "STATE", "ZIP_CODE", "PORT", "RAIL_CO", "EQUIPMENT", "ACCESS_RD", "SPLC", "LAT", "LON"]
 EXPECTED_FIELD_TYPES = ["esriFieldTypeOID", *(["esriFieldTypeString"] * 10), "esriFieldTypeDouble", "esriFieldTypeDouble"]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

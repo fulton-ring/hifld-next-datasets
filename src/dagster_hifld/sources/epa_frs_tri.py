@@ -7,7 +7,6 @@ type proposals pending contract review.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -32,6 +31,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "de71cdcedc924aca86af4f838744fce7"
 SERVICE_URL = "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_INTERESTS_TRI/FeatureServer"
@@ -56,15 +56,6 @@ EXPECTED_FIELD_NAMES = [
     "PROGRAM_URL", "PGM_REPORT_URL", "PUBLIC_IND", "ACTIVE_STATUS", "FEDERAL_AGENCY_NAME",
     "HUC_12", "FEDERAL_LAND_IND", "FED_FACILITY_CODE", "EPA_REGION_CODE", "KEY_FIELD",
 ]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

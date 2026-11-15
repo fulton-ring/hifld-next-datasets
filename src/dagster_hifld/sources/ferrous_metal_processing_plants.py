@@ -14,7 +14,6 @@ never substitutes the DataLumos HIFLD mirror.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -45,6 +44,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "ferrous-metal-processing-plants"
 PUBLISHER = "U.S. Geological Survey National Atlas of the United States"
@@ -127,15 +127,6 @@ NATIVE_CRS_DECLARATION = (
 )
 MAX_PACKAGE_BYTES = 4_000_000
 MAX_METADATA_BYTES = 1_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _json_safe_row(row: dict[str, object]) -> dict[str, object]:

@@ -1,7 +1,6 @@
 """Bounded, source-faithful capture for the official USACE IENC obstruction lines."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -27,6 +26,9 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+# Re-export for sibling IENC/WBD modules that import `_canonical`/`_sha` from here;
+# the single implementation lives in sources.esri_common.
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "obstruction-lines-usace-ienc"
@@ -99,15 +101,6 @@ def _validate_spatial_reference(value: object, label: str, *, required: bool = T
     if required and not found:
         raise ValueError(f"{label}_crs_drift")
     return found
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _query(params: dict[str, object]) -> str:

@@ -19,7 +19,7 @@ from dagster_hifld.definitions import defs
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import mooring_facility_areas_usace_ienc as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 def _clockwise_square(x: float, y: float, d: float) -> list[list[float]]:

@@ -64,6 +64,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "antarctica"
 FILE_SLUG = DATASET_SLUG
@@ -158,15 +159,6 @@ EXPECTED_ALLNAMES_NULL_COUNTS = {
 }
 GPKG_WKB_POINT_Z_TYPE = 1001  # ISO SQL/MM WKB Point Z
 GPKG_HEADER_FLAGS_EXPECTED = 1  # little-endian WKB, no envelope, non-empty, standard binary
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _list_sha(items: list) -> str:
