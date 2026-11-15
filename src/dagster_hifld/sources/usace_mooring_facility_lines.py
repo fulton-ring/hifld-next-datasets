@@ -28,6 +28,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.validation import sha256_file
 
@@ -239,13 +240,6 @@ def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
     return body, wire, receipt
 
 
-def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
-    """Bind retained response bytes to the exact GET endpoint that names them."""
-    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
-            or receipt.get("final_url") != expected_url):
-        raise ValueError("retained_capture_request_identity_mismatch:" + name)
-
-
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     manifest = json.loads(_bounded_capture_read(manifest_path, CAPTURE_MANIFEST_MAX_BYTES, "capture_manifest.json"))
@@ -270,7 +264,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"][name]:
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
+        validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures
 

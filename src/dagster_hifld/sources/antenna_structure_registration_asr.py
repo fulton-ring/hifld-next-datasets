@@ -36,9 +36,10 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable, capture_get,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.usace_obstruction_lines import (
-    _canonical, _load_capture, _sha, _validate_capture_request_identity,
+    _canonical, _load_capture, _sha,
 )
 
 DATASET_SLUG = "antenna-structure-registration-asr"
@@ -190,7 +191,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, R_TOWER_URL)
+        validate_capture_request_identity(name, receipt, R_TOWER_URL)
         captures[name] = (body, receipt)
     return captures
 
@@ -258,7 +259,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[list], dict
     if set(captures) != CAPTURE_NAMES:
         raise ValueError("source_capture_name_roster_drift")
     body, receipt = captures["r_tower"]
-    _validate_capture_request_identity("r_tower", receipt, R_TOWER_URL)
+    validate_capture_request_identity("r_tower", receipt, R_TOWER_URL)
     if (receipt.get("status") != 200 or receipt.get("complete_body") is not True
             or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
         raise ValueError("source_capture_status_length_hash_or_completeness_drift")

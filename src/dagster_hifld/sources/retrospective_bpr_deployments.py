@@ -142,7 +142,7 @@ def _expected_capture_urls(ids: list[int] | None = None) -> dict[str, str]:
     return urls
 
 
-def _validate_capture_request_identity(name: str, receipt: dict, url: str) -> None:
+def _validate_capture_request_binding(name: str, receipt: dict, url: str) -> None:
     if not isinstance(receipt, dict) or receipt.get("url") != url:
         raise ValueError("capture_request_identity_drift:" + name)
     if receipt.get("final_url") != url:
@@ -226,7 +226,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("capture_receipt_manifest_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
+        _validate_capture_request_binding(name, receipt, expected_urls[name])
         result[name] = (body, receipt)
     return result
 
