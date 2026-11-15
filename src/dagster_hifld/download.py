@@ -156,7 +156,7 @@ def _zip_source(primary: Path, destination: Path) -> None:
         else:
             for path in shapefile_dataset_files(primary):
                 archive.write(path, path.name)
-    return name.replace("/", "-").replace("\\", "-").replace(" ", "_")
+
 
 def download_convert_and_stage(
     urls_and_names: list[tuple[str, str | None]],
