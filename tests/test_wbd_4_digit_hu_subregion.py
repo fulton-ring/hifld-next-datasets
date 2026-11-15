@@ -261,7 +261,7 @@ class Wbd4DigitHuSubregionTests(unittest.TestCase):
         self.assertEqual(source.LAYER_NAME, "4-digit HU (Subregion)")
         self.assertEqual(source.MAP_NAME, "wbd")
         self.assertEqual(source.EXPECTED_COUNT, 245)
-        self.assertEqual(source.PAGE_SIZE, 20)
+        self.assertEqual(source.PAGE_SIZE, 10)
         self.assertEqual(source.DECLARED_MAX_RECORD_COUNT, 2000)
         self.assertEqual((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE,
                          source.PAGE_COUNT)
@@ -308,7 +308,7 @@ class Wbd4DigitHuSubregionTests(unittest.TestCase):
         self.assertIn("returnZ=true", urls["page_0000"])
         self.assertIn("returnM=true", urls["page_0000"])
         self.assertIn("orderByFields=objectid+ASC", urls["page_0000"])
-        self.assertIn("resultRecordCount=20", source._page_url(0))
+        self.assertIn("resultRecordCount=10", source._page_url(0))
         self.assertEqual(urls["ids_before"], source._ids_url())
         self.assertEqual(urls["service_doc"], source.SERVICE_DOC_URL)
 

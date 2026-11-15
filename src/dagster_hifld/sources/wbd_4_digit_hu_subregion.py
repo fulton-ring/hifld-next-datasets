@@ -97,12 +97,14 @@ EXPECTED_ID_MAX = 246
 # query (observed 2026-11-15 UTC).
 EXPECTED_ID_SHA256 = "a930bde06abceaff0a06d933d31494c098e87a4545d05e51857a57966e6abf21"
 # This 4-digit layer refuses any window whose JSON would exceed roughly
-# 28-40 MB: a 50-feature window failed with Esri 500 "Error performing query
-# operation" while 20-feature windows up to 32.4 MB of JSON served
-# (observed 2026-11-15). Twenty features per page with one-level bisection of
-# a refusing window keeps every retained document inside the observed serving
-# envelope.
-PAGE_SIZE = 20
+# 28-40 MB: 50-feature and some 10-feature windows failed with Esri 500
+# "Error performing query operation" while other 20-feature windows up to
+# 32.4 MB of JSON served (observed 2026-11-15); the largest single served
+# feature is 5.1 MB (Arctic Alaska). Ten features per page with one-level
+# bisection of a refusing window keeps every retained document, including
+# five-feature halves of the largest ten-feature windows, inside the observed
+# serving envelope.
+PAGE_SIZE = 10
 DECLARED_MAX_RECORD_COUNT = 2000
 EXPECTED_EXTENT = {"xmin": -19951755.682, "ymin": -1644316.000599999,
                    "xmax": 20021551.7474, "ymax": 11554273.612599999}
