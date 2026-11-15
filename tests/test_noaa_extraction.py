@@ -20,6 +20,7 @@ from shapely import from_wkb
 from dagster_hifld.noaa_extract import (
     fetch_noaa_layer, noaa_capture_urls,
     noaa_reference_fingerprints, stage_noaa_candidate, validate_noaa_capture,
+    _write_typed_bridge_geopackage,
 )
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
@@ -269,6 +270,33 @@ class NoaaExtractionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "provenance semantics changed"):
                     stage_noaa_candidate(expected_layer_url=TEST_LAYER, **args)
             self.assertTrue((Path(directory) / first["candidate_key"]).exists())
+
+    def test_bridge_geopackage_bytes_are_identical_across_repeated_writes(self):
+        captures, kwargs = fixture()
+        table, _ = validate_noaa_capture(captures, **kwargs)
+        reference = None
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "bridge.gpkg"
+            for _ in range(30):
+                _write_typed_bridge_geopackage(path, table, "synthetic")
+                data = path.read_bytes()
+                if reference is None:
+                    reference = data
+                else:
+                    self.assertEqual(data, reference)
+                path.unlink()
+
+    def test_repeated_staging_of_same_candidate_keeps_geopackage_bytes_identical(self):
+        captures, kwargs = fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            storage = StagingStorageResource(local_dir=directory, use_local=True)
+            args = {"staging": storage, "dataset_slug": "synthetic", "file_slug": "synthetic", "captures": captures, "receipts": receipt_fixture(captures), **kwargs}
+            with patch("dagster_hifld.noaa_extract.verifier_implementation_sha256", return_value="b" * 64):
+                first = stage_noaa_candidate(expected_layer_url=TEST_LAYER, **args)
+                reference = storage.read_key(first["catalog_source_key"])
+                for _ in range(5):
+                    stage_noaa_candidate(expected_layer_url=TEST_LAYER, **args)
+                    self.assertEqual(storage.read_key(first["catalog_source_key"]), reference)
 
     def test_typed_bridge_geopackage_bytes_ignore_ambient_creation_dates(self):
         captures, kwargs = fixture()

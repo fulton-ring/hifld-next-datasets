@@ -755,12 +755,24 @@ def _reuse_existing_candidate(target: Path, fresh: dict[str, bytes],
     """Revalidate an existing content-addressed candidate against a fresh rebuild.
 
     The candidate is content-addressed by processing identity, so a rebuild from
-    the same captures must reproduce every stored byte. Retrieval timestamps are
-    the only nondeterministic field in the manifest and are taken from the stored
-    candidate before comparison.
+    the same captures must reproduce every stored source-owned byte. Retrieval
+    timestamps are the only nondeterministic field in the manifest and are taken
+    from the stored candidate before comparison. Catalog-owned metadata written
+    after staging (quality/data-dictionary/resolved-provenance documents and
+    metadata/source/ snapshots) is allowed as an extra without becoming
+    source-owned.
     """
     files = {path.relative_to(target).as_posix() for path in target.rglob("*") if path.is_file()}
-    if files != set(CANDIDATE_FILES) or any((target / name).is_symlink() for name in files):
+    catalog_owned = {
+        "metadata/quality_manifest.json", "metadata/data_dictionary.json",
+        "metadata/resolved_provenance.json",
+    }
+    extras = files - set(CANDIDATE_FILES)
+    unexpected = {name for name in extras
+                  if name not in catalog_owned and not name.startswith("metadata/source/")}
+    if unexpected or not set(CANDIDATE_FILES) <= files:
+        raise VotingDistrictsError("existing_candidate_roster_drift")
+    if any((target / name).is_symlink() for name in files):
         raise VotingDistrictsError("existing_candidate_roster_drift")
     stored_manifest = json.loads((target / "metadata/source_manifest.json").read_text("utf-8"))
     stored_times = {record["input_id"]: record["retrieved_at"]
