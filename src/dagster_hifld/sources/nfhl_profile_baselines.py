@@ -19,11 +19,10 @@ the installed shapely/GEOS stack parses for both LineString and MultiLineString,
 and interchangeably readable by GDAL): producer JSON ``null`` or string-``"NaN"``
 Z/M ordinates map to WKB NaN, the OGC "no value" measure convention, with every
 such vertex counted in the audit while the raw paths in the record digest keep
-the producer's original values. The GeoParquet ``geo`` metadata declares the
-advisory types "LineString Z"/"MultiLineString Z" - the maximal declaration the
-shared native-GeoParquet catalog machinery validates - while the WKB bytes
-themselves carry the full ZM ordinates and the audit records the source's
-hasZ/hasM contract and per-ordinate null/NaN counts.
+the producer's original values. The GeoParquet ``geo`` metadata declares
+"LineString ZM"/"MultiLineString ZM", matching the full four-ordinate WKB
+and the shared catalog dimension validator. The audit also records the
+source's hasZ/hasM contract and per-ordinate null/NaN counts.
 X/Y ``"NaN"`` string vertices gate the record's candidate geometry to null
 (never a coerced location), raw evidence intact.
 
@@ -108,6 +107,10 @@ SEGMENT_START_RECORDS = 2000
 # widest plausible served page, and narrower segments remain available through
 # bisection when the producer refuses.
 MAX_CAPTURE_BYTES = 512 * 1024 * 1024
+# Dense producer pages exceed 29 MB for just 100 records. Use the last served
+# page density to split subsequent requests before repeatedly hitting that cap.
+# This is a request-size hint; all records and geometry still validate below.
+TARGET_SEGMENT_BYTES = 16 * 1024 * 1024
 MIN_FREE_BYTES = 80_000_000_000
 # The producer's MapServer intermittently answers valid requests with complete
 # HTTP 200 Esri error documents or resets connections (observed 2026-11-12
@@ -609,11 +612,8 @@ class _StreamStats:
         if nan_paths:
             self.nan_geometry_count += 1
         else:
-            # Catalog-derivation labels: every candidate geometry carries the
-            # Z dimension by layer contract (M rides in the EWKB and is
-            # audited via the null/NaN vertex counts, not the advisory
-            # GeoParquet geometry_types hint).
-            self.geometry_types.add("MultiLineString Z" if len(geom["paths"]) > 1 else "LineString Z")
+            # Both dimensions remain in the EWKB, including no-value NaNs.
+            self.geometry_types.add("MultiLineString ZM" if len(geom["paths"]) > 1 else "LineString ZM")
 
     @property
     def record_sha256(self) -> str:
@@ -654,6 +654,7 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
     )
     settled: list[tuple[int, int]] = []
     purged: set[str] = set()
+    bytes_per_record = 0.0
     while segments:
         offset, count = segments.popleft()
         name = _segment_name(offset, count)
@@ -661,9 +662,9 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
         # Child evidence only chooses request boundaries; every leaf still
         # verifies its receipt and current roster slice below.
         middle = count // 2
-        if count > 1 and any(
+        if count > 1 and (count * bytes_per_record > TARGET_SEGMENT_BYTES or any(
                 (capture_root / f"{_segment_name(start, width)}.receipt.json").is_file()
-                for start, width in ((offset, middle), (offset + middle, count - middle))) \
+                for start, width in ((offset, middle), (offset + middle, count - middle)))) \
                 and _reusable_receipt(capture_root, name) is None:
             segments.appendleft((offset + middle, count - middle))
             segments.appendleft((offset, middle))
@@ -718,6 +719,7 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
                 segments.appendleft((offset, count))
                 continue
             raise
+        bytes_per_record = receipt["bytes"] / count
         settled.append((offset, count))
         receipts[name] = receipt
     return settled
@@ -1062,7 +1064,7 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                        "carries the producer's four ordinates. Complete source attributes and NAD83 (EPSG:4269) "
                        "polyline geometry with NAVD88 ftUS heights (Z) and route measures (M) are represented in "
                        "the candidate (EWKB XYZM bytes; the advisory GeoParquet geometry_types declare the "
-                       "catalog-supported ' Z' labels). The NFHL is continuously updated and publishes no "
+                       "four-ordinate ' ZM' labels). The NFHL is continuously updated and publishes no "
                        "per-snapshot release "
                        "date; freshness, rights, public schema/ID contract, and release acceptance remain "
                        "unresolved and unapproved.",
@@ -1096,12 +1098,12 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                                                              "WATER_TYP, STUDY_TYP, SHOWN_FIRM, R_ST_DESC, "
                                                              "R_END_DESC, V_DATM_OFF, DATUM_UNIT, FLD_PROB1-3, "
                                                              "SPEC_CONS1-2, START_ID, SOURCE_CIT); SHAPE is the "
-                                                             "original geometry field represented as ISO WKB XYZM",
+                                                             "original geometry field represented as PostGIS EWKB XYZM",
                                             "source_ids": "Preserve producer OBJECTID, BASELN_ID, GFID and "
                                                           "GlobalID values unchanged; no substitute IDs, casts, "
                                                           "trimming, or joins",
-                                            "geometry": "Source NAD83 (EPSG:4269) polyline paths retained as ISO "
-                                                        "WKB LineString ZM / MultiLineString ZM without "
+                                            "geometry": "Source NAD83 (EPSG:4269) polyline paths retained as PostGIS EWKB "
+                                                        "LineString ZM / MultiLineString ZM without "
                                                         "projection; producer JSON null or string-'NaN' Z/M "
                                                         "ordinates map to WKB NaN (the OGC no-value measure "
                                                         "convention) with each such vertex counted in the audit, "

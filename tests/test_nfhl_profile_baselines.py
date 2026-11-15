@@ -404,7 +404,7 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"]["code"], 4269)
         self.assertEqual(sorted(geo["columns"]["SHAPE"]["geometry_types"]),
-                         ["LineString Z", "MultiLineString Z"])
+                         ["LineString ZM", "MultiLineString ZM"])
 
     def test_missing_approval_preserves_populated_accepted_inventory(self):
         import os
@@ -615,6 +615,32 @@ class RetryAndResumeTests(unittest.TestCase):
             self.assertEqual(stats.feature_count, 5)
             sleep.assert_not_called()
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), ERROR_BODY)
+
+    def test_dense_page_sizes_bound_subsequent_requests(self):
+        bodies, _, _, ids, attr_names = self._fixture_bodies()
+        _, features, _, _, _, _, _ = _fixture()
+        calls = []
+
+        def capture(_client, _url, root, name, *, max_bytes):
+            calls.append(name)
+            offset, count = source._parse_segment_name(name)
+            body = json.dumps({"features": features[offset:offset + count],
+                               "spatialReference": {"wkid": 4269}}).encode()
+            _write_evidence(root, name, body)
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _write_evidence(root, "page_000000_00002", bodies["page_000000_00002"])
+            with patch.multiple(source, SEGMENT_START_RECORDS=2, EXPECTED_COUNT=5), \
+                 patch.object(source, "TARGET_SEGMENT_BYTES", len(bodies["page_000000_00002"]) // 2, create=True), \
+                 patch.object(source, "capture_get", side_effect=capture), \
+                 patch.object(source.time, "sleep") as sleep:
+                stats = source._StreamStats()
+                segments = source._capture_segments(None, root, sorted(ids), attr_names, stats, {})
+            self.assertEqual(segments, [(0, 2), (2, 1), (3, 1), (4, 1)])
+            self.assertEqual(stats.feature_count, 5)
+            self.assertEqual(calls, ["page_000002_00001", "page_000003_00001", "page_000004_00001"])
+            sleep.assert_not_called()
 
     def test_unservable_single_feature_fails_explicitly(self):
         _, _, _, ids, attr_names = self._fixture_bodies()
