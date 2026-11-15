@@ -1336,7 +1336,7 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
         root = requested
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
-        captures, page_parts = _read_replay(root)
+        captures, replay_parts = _read_replay(root)
     else:
         if requested and (any(requested.glob("*.body")) or any(requested.glob("*.wire"))
                           or any(requested.glob("*.receipt.json"))):
@@ -1399,10 +1399,10 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
             "page_parts": dict(sorted(page_parts.items())),
             "page_refusals": sorted(page_refusals)}) + b"\n")
-        captures = _read_replay(root)
+        captures, replay_parts = _read_replay(root)
 
     parquet_sink = staging / "_construction-tmp" / f"{DATASET_SLUG}-{version}.parquet"
-    audit, derived = _validate_stream(root, parquet_sink=parquet_sink, page_parts=page_parts)
+    audit, derived = _validate_stream(root, parquet_sink=parquet_sink, page_parts=replay_parts)
     identity = processing_identity(Path(__file__).parents[3])
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
