@@ -34,12 +34,12 @@ except ImportError:  # pragma: no cover - runtime environment always provides it
 
 DATASET_SLUG = "us-county-boundaries-1"
 FILE_SLUG = DATASET_SLUG
-SOURCE_VINTAGE = "2023"
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2023/COUNTY/tl_2023_us_county.zip"
-SOURCE_FILE = "tl_2023_us_county.zip"
+SOURCE_VINTAGE = "2026"
+SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2026/COUNTY/tl_2026_us_county.zip"
+SOURCE_FILE = "tl_2026_us_county.zip"
 PUBLISHER = "U.S. Census Bureau, Geography Division"
-EXPECTED_SHA256 = "692e12c30c83adcaabdbac0d3954fafa55e1c89a24b36d95e72e02dff938652e"
-EXPECTED_BYTES = 83_451_409
+EXPECTED_SHA256 = "b527c9ba7aeb8f17ef118f026eae5e5a938aa1d00b873bc32342d0dce59321c0"
+EXPECTED_BYTES = 83_378_454
 EXPECTED_FEATURE_COUNT = 3235
 EXPECTED_FIELDS = [
     "STATEFP", "COUNTYFP", "COUNTYNS", "GEOID", "GEOIDFQ", "NAME", "NAMELSAD",
@@ -138,6 +138,7 @@ def _capture(
             try:
                 with httpx.Client(timeout=httpx.Timeout(600.0, connect=30.0), follow_redirects=False) as client:
                     body, receipt = capture_get(client, SOURCE_URL, root, "source", max_bytes=MAX_SOURCE_BYTES)
+                wire = (root / "source.wire").read_bytes()
             except Exception as exc:
                 quarantine = _quarantine_attempt(staging_storage, root, version, type(exc).__name__)
                 raise ValueError(f"official_tiger_source_capture_failed; quarantined_at:{quarantine}") from exc
@@ -156,7 +157,7 @@ def _capture(
                 staging_storage, root, version, "official_tiger_archive_identity_or_release_drift",
             )
             raise ValueError(f"official_tiger_archive_identity_or_release_drift; quarantined_at:{quarantine}")
-        return body, receipt, wire, receipt_path.read_bytes()
+        return body, receipt, wire, (root / "source.receipt.json").read_bytes()
     finally:
         if temporary is not None:
             temporary.cleanup()
@@ -164,9 +165,9 @@ def _capture(
 
 def _inspect_archive_data(body: bytes) -> tuple[object, dict[str, object]]:
     expected_members = {
-        "tl_2023_us_county.cpg", "tl_2023_us_county.dbf", "tl_2023_us_county.prj",
-        "tl_2023_us_county.shp", "tl_2023_us_county.shp.ea.iso.xml",
-        "tl_2023_us_county.shp.iso.xml", "tl_2023_us_county.shx",
+        "tl_2026_us_county.cpg", "tl_2026_us_county.dbf", "tl_2026_us_county.prj",
+        "tl_2026_us_county.shp", "tl_2026_us_county.shp.ea.iso.xml",
+        "tl_2026_us_county.shp.iso.xml", "tl_2026_us_county.shx",
     }
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
         names = {Path(info.filename).name for info in archive.infolist() if not info.is_dir()}
@@ -181,7 +182,7 @@ def _inspect_archive_data(body: bytes) -> tuple[object, dict[str, object]]:
             raise ValueError("tiger_archive_crc_failure:" + bad_member)
         with tempfile.TemporaryDirectory(prefix="census-county-") as tmp:
             archive.extractall(tmp)
-            path = Path(tmp) / "tl_2023_us_county.shp"
+            path = Path(tmp) / "tl_2026_us_county.shp"
             frame = gpd.read_file(path, engine="pyogrio")
     fields = [name for name in frame.columns if name != "geometry"]
     if fields != EXPECTED_FIELDS or str(frame.crs) != EXPECTED_CRS:
@@ -328,7 +329,7 @@ def capture_us_county_boundaries(
         "code_commit": code_commit,
         "code_identity_scheme": identity["code_identity_scheme"],
         "title": "US County Boundaries",
-        "description": "2023 Census TIGER/Line US county (and county equivalent) shapefile. Candidate only; the raw/published schema and ID contract await maintainer approval and no promotion is authorized.",
+        "description": "2026 Census TIGER/Line US county (and county equivalent) shapefile. Candidate only; the raw/published schema and ID contract await maintainer approval and no promotion is authorized.",
         "publisher": PUBLISHER,
         "agency": "U.S. Census Bureau",
         "source_url": SOURCE_URL,
@@ -347,10 +348,10 @@ def capture_us_county_boundaries(
             "license": "https://www.usa.gov/government-works",
             "attribution": PUBLISHER,
             "role": "producer_publication",
-            "release_date_unknown_reason": "The producer identifies this as the 2023 TIGER/Line vintage; a precise publication date was not established. The vintage year is not treated as the source data release date.",
+            "release_date_unknown_reason": "The producer identifies this as the 2026 TIGER/Line vintage; the TIGER/Line page records an October 14, 2026 release for the 2026 vintage. The vintage year and page date are not treated as an observed publication date for this exact archive.",
         }],
         "transformations": ["Preserve the complete source ZIP, wire response, and receipt under raw/; export its county features to GeoParquet without ID synthesis, schema widening, attribute mapping, geometry repair, or reprojection."],
-        "lineage": "Official U.S. Census Bureau Geography Division TIGER/Line COUNTY product (producer publication), pinned to the 2023 vintage. No claim is made that this source replaces or matches a historical HIFLD baseline.",
+        "lineage": "Official U.S. Census Bureau Geography Division TIGER/Line COUNTY product (producer publication), pinned to the 2026 vintage. No claim is made that this source replaces or matches a historical HIFLD baseline.",
         "prebuilt_output_policy": {
             "schema_version": 1,
             "formats": {"geoparquet": {
@@ -441,7 +442,7 @@ def capture_us_county_boundaries(
         "code_commit": code_commit,
         "code_identity_scheme": identity["code_identity_scheme"],
         "source_id_field": "GEOID",
-        "source_coverage_scope": "All US counties and county equivalents (states, DC, Puerto Rico, island areas), 2023 vintage",
+        "source_coverage_scope": "All US counties and county equivalents (states, DC, Puerto Rico, island areas), 2026 vintage",
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
