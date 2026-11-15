@@ -236,12 +236,46 @@ def _storage(root: Path) -> source.StagingStorageResource:
     return source.StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
 
 
+_UNSET_PINS = {"EXPECTED_PRODUCT_COUNT": None, "EXPECTED_PRODUCT_ROSTER_SHA256": None,
+               "EXPECTED_COUNT": None, "EXPECTED_ID_SHA256": None, "EXPECTED_SCHEMA_SHA256": None,
+               "EXPECTED_RECORD_SHA256": None, "EXPECTED_GEOMETRY_SHA256": None,
+               "EXPECTED_OBSERVED_BOUNDS": None, "EXPECTED_NULL_GEOMETRY_COUNT": None,
+               "EXPECTED_NAN_GEOMETRY_COUNT": None}
+
+_FIXTURE_CONTRACT: dict = {}
+
+
+def _fixture_contract() -> dict:
+    """The fixture capture's own population contract, computed once.
+
+    The module's population pins are real now (established 2026-11-15), so a
+    capture test that does not pass pins explicitly simulates the pinned
+    module with the fixture's own contract; tests that need the unpinned
+    live-mode behavior pass pins="live".
+    """
+    if not _FIXTURE_CONTRACT:
+        holder = tempfile.TemporaryDirectory(prefix="fhz-fixture-contract-")
+        zips = _build_fixture_zips(Path(holder.name) / "zips")
+        root = Path(holder.name) / "capture"
+        router = _Router(_default_listing(), zips)
+        try:
+            _run_capture(_storage(root), root, router, pins=dict(_UNSET_PINS))
+        except source._PinsPendingError:
+            pass
+        attempt = next((root / "captures").iterdir())
+        _FIXTURE_CONTRACT.update(json.loads((attempt / "population_pins.json").read_bytes()))
+    return dict(_FIXTURE_CONTRACT)
+
+
 def _run_capture(storage, root: Path, router: _Router, *, pins=None, version="vfixture"):
+    if pins == "live":
+        pins = dict(_UNSET_PINS)
+    elif pins is None:
+        pins = _pins_from_contract(_fixture_contract())
     patchers = [patch.object(source.httpx, "Client", side_effect=_client_factory(router)),
                 patch.object(source, "capture_get", side_effect=_fake_capture_get(router)),
                 patch.multiple(source, **_speed_pins())]
-    if pins:
-        patchers.append(patch.multiple(source, **pins))
+    patchers.append(patch.multiple(source, **pins))
     for patcher in patchers:
         patcher.start()
     try:
@@ -349,7 +383,7 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
             root = Path(temporary)
             storage = _storage(root)
             with self.assertRaisesRegex(source._PinsPendingError, "source_population_pins_not_established"):
-                _run_capture(storage, root, _Router(_default_listing(), self.zips))
+                _run_capture(storage, root, _Router(_default_listing(), self.zips), pins="live")
             self.assertEqual(set(), set(storage.list_prefix()))
             attempt = _attempt(root)
             contract = json.loads((attempt / "population_pins.json").read_bytes())
@@ -370,7 +404,7 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="fhz-pinned-") as temporary:
             root = Path(temporary)
             with self.assertRaises(source._PinsPendingError):
-                _run_capture(_storage(root), root, _Router(_default_listing(), self.zips))
+                _run_capture(_storage(root), root, _Router(_default_listing(), self.zips), pins="live")
             contract = json.loads((_attempt(root) / "population_pins.json").read_bytes())
             storage = _storage(root)
             candidate = _run_capture(storage, root, _Router(_default_listing(), self.zips),
@@ -436,7 +470,7 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
             # completing live run writes the pins contract.
             router = _Router(_default_listing(), self.zips)
             with self.assertRaises(source._PinsPendingError):
-                _run_capture(storage, root, router)
+                _run_capture(storage, root, router, pins="live")
             self.assertEqual(router.static_downloads, 2)
             contract = json.loads((attempt / "population_pins.json").read_bytes())
             # Session 3 (pinned): no downloads at all; candidate stages.
@@ -452,7 +486,7 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
             storage = _storage(root)
             router = _Router(_default_listing(), self.zips, static_failures=1)
             with self.assertRaises(source._PinsPendingError):
-                _run_capture(storage, root, router)
+                _run_capture(storage, root, router, pins="live")
             attempt = _attempt(root)
             self.assertTrue((attempt / f"{PRODUCT_P1[0]}.attempt-01.receipt.json").exists())
             self.assertTrue((attempt / f"{PRODUCT_P1[0]}.attempt-01.zip").exists())
@@ -510,7 +544,7 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="fhz-drift-") as temporary:
             root = Path(temporary)
             with self.assertRaises(source._PinsPendingError):
-                _run_capture(_storage(root), root, _Router(_default_listing(), self.zips))
+                _run_capture(_storage(root), root, _Router(_default_listing(), self.zips), pins="live")
             attempt = _attempt(root)
             contract = json.loads((attempt / "population_pins.json").read_bytes())
             drifted = _listing_html([_row(*product) for product in PRODUCTS[:-1]]
@@ -564,7 +598,7 @@ class NfhlFloodHazardZonesCaptureTests(unittest.TestCase):
             root = Path(temporary)
             storage = _storage(root)
             with self.assertRaises(source._PinsPendingError):
-                _run_capture(storage, root, _Router(_default_listing(), self.zips))
+                _run_capture(storage, root, _Router(_default_listing(), self.zips), pins="live")
             attempt = _attempt(root)
             contract = json.loads((attempt / "population_pins.json").read_bytes())
             self.assertEqual(contract["expected_count"], 5)
@@ -679,7 +713,7 @@ class NfhlFloodHazardZonesReuseTests(unittest.TestCase):
             root = Path(temporary)
             storage = _storage(root)
             with self.assertRaises(source._PinsPendingError):
-                _run_capture(storage, root, _Router(_default_listing(), self.zips))
+                _run_capture(storage, root, _Router(_default_listing(), self.zips), pins="live")
             contract = json.loads((_attempt(root) / "population_pins.json").read_bytes())
             candidate = _run_capture(storage, root, _Router(_default_listing(), self.zips),
                                      pins=_pins_from_contract(contract))
@@ -697,7 +731,7 @@ class NfhlFloodHazardZonesReuseTests(unittest.TestCase):
             root = Path(temporary)
             storage = _storage(root)
             with self.assertRaises(source._PinsPendingError):
-                _run_capture(storage, root, _Router(_default_listing(), self.zips))
+                _run_capture(storage, root, _Router(_default_listing(), self.zips), pins="live")
             contract = json.loads((_attempt(root) / "population_pins.json").read_bytes())
             _run_capture(storage, root, _Router(_default_listing(), self.zips),
                          pins=_pins_from_contract(contract))
@@ -742,7 +776,7 @@ class NfhlFloodHazardZonesDiskFloorTests(unittest.TestCase):
             with self._disk(total=107_374_182_400, free=6_000_000_000):
                 with self.assertRaisesRegex(source._PinsPendingError,
                                             "source_population_pins_not_established"):
-                    _run_capture(_storage(root), root, _Router(_default_listing(), self.zips))
+                    _run_capture(_storage(root), root, _Router(_default_listing(), self.zips), pins="live")
             self.assertTrue((_attempt(root) / "population_pins.json").exists())
 
     def test_capture_refuses_below_the_scaled_floor_and_keeps_the_large_disk_floor(self):
