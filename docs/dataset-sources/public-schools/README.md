@@ -90,3 +90,33 @@ not an exhaustive census of physical towers. No FCC request, new weekly capture,
 row comparison or adoption was performed for this audit; FCC implementation work
 is coordinated separately under #955. Neither pilot establishes historical HIFLD
 identity or an accepted release baseline from a matching producer alone.
+
+### Current execution evidence
+
+At source commit `4dbabf09`, a fresh official archive GET at
+`2026-11-15T20:24:26.327625+00:00` returned HTTP 200, identity encoding and
+30,448,565 bytes, SHA-256
+`9dc51ecd5cdf6e38bdb679f7ac95e2bf73ee3fb48718b8612cf830800cffb288`.
+This matches the pinned archive; no newer public-school edition was acquired.
+Two isolated Dagster materializations of that retained response passed the ingest
+and blocking population check: `b1d59c08-ea22-4b2a-b751-aee63ad48f4b`
+(first construction) and `7c060859-59eb-4081-936d-434bd9a49fdf` (cache reuse).
+Both returned version `v85e48552129823430edfc1cf4e1e9644`, all 102,178 records,
+and source-capture SHA-256
+`c2b731db7e20cd6d2e207ca5a330a65aeae129fe864cd5b2e9ce19f617ed7897`.
+The candidate GeoParquet readback is 6,563,017 bytes, SHA-256
+`287cf32e965d6856c5c0e14d4e12169c3f1d9c7514182e72fa53bc66756cacd7`.
+Direct `require_release_approval` refused these actual objects with
+`missing_independent_release_approval_registry`; their bytes were unchanged and
+the isolated published destination remained empty. All acceptance flags stayed
+false. The eight focused tests include a registered Dagster HTTP-503 refusal with
+no asset materialization, archive-drift quarantine, invalid-ZIP refusal after live
+capture cleanup, row/ID/schema drift and native GeoParquet preservation.
+
+Evidence and scratch runners remain outside Git under `/tmp/hifld-957-evidence`
+and `/tmp/hifld-957-*.py`. An earlier concurrent native attempt was killed with
+exit 137; another pre-commit attempt refused mismatching construction code blobs.
+Neither is counted as successful execution. The successful committed-source runs
+were serialized. Catalog regeneration, a changed annual edition, an exhaustive
+prior-edition row diff, an accepted HIFLD baseline comparison and a full release
+Dagster graph were not run in this audit. These results grant no release acceptance.
