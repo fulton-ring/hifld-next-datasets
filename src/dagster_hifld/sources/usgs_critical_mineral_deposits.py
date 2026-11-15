@@ -267,7 +267,7 @@ def capture_deposits(storage: StagingStorageResource, *, capture_directory: str 
             for name,(_,receipt) in sorted(captures.items())],
         'transformations':[{'operation':'whole_token_commodity_subset','parameters':{
             'field':'CritMin','delimiter':',','tokens':['uranium','vanadium'],'comparison':'strip and casefold each complete comma-delimited token',
-            'source_population':1271,'selected_population':97,'attributes':'all 21 native DBF fields, names, physical types and logical values unchanged',
+            'source_population':audit['source_feature_count'],'selected_population':selected.num_rows,'attributes':'all 21 native DBF fields, names, physical types and logical values unchanged',
             'identifiers':'OGC_FID is the native reader per-file feature identifier; preserve unchanged; not a global or cross-release agency ID',
             'geometry':'original WGS84 Point coordinates, exact WKB; no repair or reprojection'}}],
         'lineage':'USGS ScienceBase item '+ITEM_ID+', DOI '+DOI+', v3.0 September 2026. User-authorized separate current-USGS candidate; original worldwide uranium-and-vanadium-deposits MRDS inventory remains parked. ZIP, native sidecars and HTTP captures retained losslessly; no mirrors or archive copies are inputs.',
