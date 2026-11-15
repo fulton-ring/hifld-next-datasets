@@ -27,6 +27,14 @@ SHELL_A = [[-81.0, 38.0], [-80.0, 38.0], [-80.0, 37.0], [-81.0, 37.0], [-81.0, 3
 HOLE_A = [[-80.9, 37.9], [-80.9, 37.5], [-80.5, 37.5], [-80.5, 37.9], [-80.9, 37.9]]
 SHELL_B = [[-83.0, 37.0], [-82.0, 37.0], [-82.0, 36.0], [-83.0, 36.0], [-83.0, 37.0]]
 ISLAND_IN_HOLE = [[-80.8, 37.7], [-80.8, 37.6], [-80.7, 37.6], [-80.7, 37.7], [-80.8, 37.7]]
+ISLAND_HOLE = [[-80.75, 37.65], [-80.75, 37.62], [-80.72, 37.62], [-80.72, 37.65], [-80.75, 37.65]]
+TOUCHING_SHELL = [[-80.0, 37.0], [-79.0, 37.0], [-79.0, 36.0], [-80.0, 36.0], [-80.0, 37.0]]
+EDGE_SHARE_SHELL = [[-81.0, 37.0], [-80.0, 37.0], [-80.0, 36.0], [-81.0, 36.0], [-81.0, 37.0]]
+OVERLAP_SHELL = [[-80.5, 37.5], [-79.5, 37.5], [-79.5, 36.5], [-80.5, 36.5], [-80.5, 37.5]]
+
+
+def _coords(ring):
+    return [(float(x), float(y)) for x, y in ring]
 
 
 def _fields():
@@ -252,10 +260,67 @@ class NfhlTopographicLowConfidenceAreasTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_polygon_geometry_invalid"):
                 source._validate_captures(captures)
 
-    def test_island_in_hole_nesting_is_rejected(self):
+    def test_island_in_hole_nesting_is_assembled_faithfully(self):
         rings = [SHELL_A, HOLE_A, ISLAND_IN_HOLE]
-        with self.assertRaisesRegex(ValueError, "source_polygon_island_in_hole_unsupported"):
-            source._assemble_polygons(rings)
+        parts = source._assemble_polygons(rings)
+        self.assertEqual(len(parts), 2)
+        self.assertTrue(all(part.is_valid for part in parts))
+        self.assertEqual(len(parts[0].interiors), 1)
+        self.assertEqual(list(parts[0].exterior.coords), _coords(SHELL_A))
+        self.assertEqual(list(parts[0].interiors[0].coords), _coords(HOLE_A))
+        self.assertEqual(list(parts[1].exterior.coords), _coords(ISLAND_IN_HOLE))
+        loaded = wkb.loads(source._polygon_wkb({"rings": rings}))
+        self.assertIsInstance(loaded, MultiPolygon)
+        self.assertEqual(len(loaded.geoms), 2)
+        self.assertTrue(loaded.is_valid)
+        self.assertEqual(
+            source._unassembled_object_ids(
+                [{"attributes": {"OBJECTID": 1981}, "geometry": {"rings": rings}}]), [])
+
+    def test_nested_island_hole_is_assembled_faithfully(self):
+        rings = [SHELL_A, HOLE_A, ISLAND_IN_HOLE, ISLAND_HOLE]
+        parts = source._assemble_polygons(rings)
+        self.assertEqual(len(parts), 2)
+        self.assertTrue(all(part.is_valid for part in parts))
+        self.assertEqual(len(parts[0].interiors), 1)
+        self.assertEqual(list(parts[0].exterior.coords), _coords(SHELL_A))
+        self.assertEqual(list(parts[0].interiors[0].coords), _coords(HOLE_A))
+        self.assertEqual(len(parts[1].interiors), 1)
+        self.assertEqual(list(parts[1].exterior.coords), _coords(ISLAND_IN_HOLE))
+        self.assertEqual(list(parts[1].interiors[0].coords), _coords(ISLAND_HOLE))
+        loaded = wkb.loads(source._polygon_wkb({"rings": rings}))
+        self.assertIsInstance(loaded, MultiPolygon)
+        self.assertEqual(len(loaded.geoms), 2)
+        self.assertTrue(loaded.is_valid)
+
+    def test_point_contact_parts_are_assembled_faithfully(self):
+        rings = [SHELL_A, TOUCHING_SHELL]
+        parts = source._assemble_polygons(rings)
+        self.assertEqual(len(parts), 2)
+        self.assertTrue(all(part.is_valid for part in parts))
+        self.assertEqual(list(parts[0].exterior.coords), _coords(SHELL_A))
+        self.assertEqual(list(parts[1].exterior.coords), _coords(TOUCHING_SHELL))
+        loaded = wkb.loads(source._polygon_wkb({"rings": rings}))
+        self.assertIsInstance(loaded, MultiPolygon)
+        self.assertEqual(len(loaded.geoms), 2)
+        self.assertTrue(loaded.is_valid)
+        self.assertEqual(list(loaded.geoms[0].exterior.coords), _coords(SHELL_A))
+        self.assertEqual(list(loaded.geoms[1].exterior.coords), _coords(TOUCHING_SHELL))
+        self.assertEqual(
+            source._unassembled_object_ids(
+                [{"attributes": {"OBJECTID": 1458}, "geometry": {"rings": rings}}]), [])
+
+    def test_shared_segment_and_area_overlap_parts_are_still_gated(self):
+        rings = [SHELL_A, EDGE_SHARE_SHELL]
+        self.assertIsNone(source._polygon_wkb({"rings": rings}))
+        self.assertEqual(
+            source._unassembled_object_ids(
+                [{"attributes": {"OBJECTID": 99}, "geometry": {"rings": rings}}]), [99])
+        rings = [SHELL_A, OVERLAP_SHELL]
+        self.assertIsNone(source._polygon_wkb({"rings": rings}))
+        self.assertEqual(
+            source._unassembled_object_ids(
+                [{"attributes": {"OBJECTID": 98}, "geometry": {"rings": rings}}]), [98])
 
     def test_self_intersecting_ring_is_gated_not_repaired(self):
         self_touching = [[-81.0, 38.0], [-80.0, 37.0], [-80.0, 38.0], [-81.0, 37.0], [-81.0, 38.0]]

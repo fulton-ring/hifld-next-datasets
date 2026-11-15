@@ -329,36 +329,56 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
     return geometry_records, null_geometry, nan_geometry, unplacable_geometry, empty_geometry, observed_bounds
 
 
+def _points_only(contact) -> bool:
+    """True when a contact between placed parts consists of points only.
+
+    OGC MultiPolygon validity allows separate parts to touch at finitely
+    many boundary points; a shared boundary segment or a shared area is
+    invalid.
+    """
+    if contact.is_empty:
+        return True
+    if contact.geom_type in ("Point", "MultiPoint"):
+        return True
+    if contact.geom_type == "GeometryCollection":
+        return all(_points_only(child) for child in contact.geoms)
+    return False
+
+
 def _assemble_polygons(rings: list) -> list:
     """Group producer rings into Polygon shells and holes without rewriting them.
 
     Rings are assigned by containment, largest first: each ring either becomes
-    a hole of the smallest already-placed shell that covers it, or starts a new
-    shell. A ring nested inside an existing hole (an island in a hole), a ring
-    overlapping a placed ring, or an assembled container that is geometrically
-    invalid fails the capture explicitly instead of being repaired or
-    reassembled; the raw evidence still carries the producer's rings verbatim.
+    a hole of the smallest already-placed shell that covers it, or starts a
+    new shell. A ring nested inside an assigned hole (an island) starts its
+    own shell, faithfully kept as a separate MultiPolygon part, and separate
+    parts that touch at boundary points are valid OGC MultiPolygon contacts;
+    neither is rewritten. A ring that meets a placed part across a shared
+    boundary segment or a shared area, or an assembled container that is
+    geometrically invalid, fails the capture explicitly instead of being
+    repaired or reassembled; the raw evidence still carries the producer's
+    rings verbatim.
     """
     polygons = {index: Polygon(ring) for index, ring in enumerate(rings)}
     order = sorted(range(len(rings)), key=lambda index: -abs(_signed_area(rings[index])))
     shells: list[dict[str, object]] = []
     for index in order:
-        # Containment is tested against each shell as currently assembled
-        # (outer ring with its already-assigned holes), so a ring inside an
-        # assigned hole is never mistaken for being covered by that shell.
-        covering = [shell for shell in shells
-                    if Polygon(rings[shell["shell"]], [rings[hole] for hole in shell["holes"]])
-                    .covers(polygons[index])]
+        covering = []
+        for shell in shells:
+            # Containment is tested against each shell as currently assembled
+            # (outer ring with its already-assigned holes), so a ring inside
+            # an assigned hole is never mistaken for being covered by that
+            # shell and a hole never hides a real overlap with the part's
+            # actual area.
+            container = Polygon(rings[shell["shell"]], [rings[hole] for hole in shell["holes"]])
+            if container.covers(polygons[index]):
+                covering.append(shell)
+            elif not _points_only(container.intersection(polygons[index])):
+                raise ValueError("source_polygon_shell_overlap_unsupported")
         if covering:
             smallest = min(covering, key=lambda shell: abs(_signed_area(rings[shell["shell"]])))
             smallest["holes"].append(index)
             continue
-        for shell in shells:
-            for hole in shell["holes"]:
-                if polygons[hole].covers(polygons[index]) or polygons[hole].intersects(polygons[index]):
-                    raise ValueError("source_polygon_island_in_hole_unsupported")
-            if polygons[shell["shell"]].intersects(polygons[index]):
-                raise ValueError("source_polygon_shell_overlap_unsupported")
         shells.append({"shell": index, "holes": []})
     result = []
     for shell in shells:
@@ -375,7 +395,8 @@ def _polygon_wkb(geom: object) -> bytes | None:
     ``None`` covers null geometry, string-"NaN" ordinates, producer rings with
     numeric coordinates outside the NAD83 geographic domain, and producer rings
     that cannot be assembled into a valid OGC Polygon/MultiPolygon container
-    (self-intersecting rings, overlapping parts); the raw rings remain in the
+    (self-intersecting rings, parts meeting across a shared boundary segment
+    or shared area); the raw rings remain in the
     record digest and audit either way, and such records are gated with null
     candidate geometry, never repaired or coerced.
     """
