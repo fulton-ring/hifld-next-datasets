@@ -412,6 +412,17 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
         self.assertEqual(sorted(geo["columns"]["SHAPE"]["geometry_types"]),
                          ["LineString ZM", "MultiLineString ZM"])
 
+    def test_parquet_writer_rejects_a_hardlink_to_existing_output(self):
+        fields = _fixture()[0]
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sealed = root / "independent-sealed.parquet"
+            sealed.write_bytes(b"existing immutable output")
+            (root / (source.DATASET_SLUG + ".parquet")).hardlink_to(sealed)
+            with self.assertRaisesRegex(ValueError, "not_single_regular_file"):
+                source._parquet_from_pages(root, [], fields)
+            self.assertEqual(sealed.read_bytes(), b"existing immutable output")
+
     def test_missing_approval_preserves_populated_accepted_inventory(self):
         import os
 
@@ -439,7 +450,7 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
             self.assertEqual(after, before)
 
 
-def _receipt(body: bytes, url: str = "https://producer.invalid/query") -> dict:
+def _receipt(body: bytes, url: str = "https://producer.invalid/page") -> dict:
     return {"method": "GET", "url": url, "final_url": url, "observed_at": "2026-11-12T00:00:00+00:00",
             "status": 200, "complete_body": True, "wire_bytes": len(body), "wire_sha256": hashlib.sha256(body).hexdigest(),
             "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(), "content_encoding": None,
@@ -450,7 +461,10 @@ def _write_evidence(capture_root: Path, name: str, body: bytes, receipt: dict | 
     capture_root.mkdir(parents=True, exist_ok=True)
     (capture_root / f"{name}.body").write_bytes(body)
     (capture_root / f"{name}.wire").write_bytes(body)
-    (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt or _receipt(body)) + b"\n")
+    if receipt is None:
+        url = source._segment_query(*source._parse_segment_name(name)) if source._SEGMENT_NAME_PATTERN.fullmatch(name) else "https://producer.invalid/page"
+        receipt = _receipt(body, url)
+    (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
 
 
 ERROR_BODY = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
@@ -553,6 +567,22 @@ class RetryAndResumeTests(unittest.TestCase):
             self.assertEqual(calls, [])
             self.assertTrue(reused)
             self.assertEqual(receipt["sha256"], hashlib.sha256(ok_body).hexdigest())
+
+    def test_verified_bytes_from_another_request_url_are_not_reused(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            old = b'{"objectIds": [1]}'
+            _write_evidence(root, "probe", old, _receipt(old, "https://producer.invalid/other"))
+            def capture(_client, url, capture_root, name, *, max_bytes):
+                body = b'{"objectIds": [2]}'
+                _write_evidence(capture_root, name, body, _receipt(body, url))
+            with patch.object(source, "capture_get", side_effect=capture) as download:
+                receipt, reused = source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
+                                                          max_bytes=1024, attempts=1, base_delay=0)
+            self.assertFalse(reused)
+            self.assertEqual(download.call_count, 1)
+            self.assertEqual(receipt["url"], "https://producer.invalid/page")
+            self.assertEqual((root / "probe.attempt-01.body").read_bytes(), old)
 
     def test_stale_or_tampered_evidence_is_not_reused(self):
         calls = []
@@ -674,6 +704,75 @@ class RetryAndResumeTests(unittest.TestCase):
                     source._capture_segments(None, Path(temporary), sorted(ids), attr_names, source._StreamStats(), {})
                 sleep.assert_called_once_with(source.SEGMENT_BISECT_COOLDOWN_SECONDS)
 
+    def test_acquisition_reserve_is_bounded_and_cache_needs_no_download(self):
+        from types import SimpleNamespace
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=0)), \
+                 patch.object(source, "capture_get", side_effect=AssertionError("download despite disk floor")) as download:
+                with self.assertRaisesRegex(ValueError, "disk_floor_before_acquisition"):
+                    source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
+                                            max_bytes=1024, attempts=1, base_delay=0)
+                _write_evidence(root, "probe", b'{"features": []}')
+                _, reused = source._ensure_captured(None, "https://producer.invalid/page", root, "probe",
+                                                   max_bytes=1024, attempts=1, base_delay=0)
+                self.assertTrue(reused)
+                download.assert_not_called()
+
+    def test_streamed_copy_is_immutable_and_does_not_alias_capture(self):
+        from dagster_hifld.resources import StagingStorageResource
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = root / "capture.parquet"
+            original.write_bytes(b"original complete candidate" * 100)
+            descriptor = {"bytes": original.stat().st_size, "sha256": hashlib.sha256(original.read_bytes()).hexdigest()}
+            storage = StagingStorageResource(local_dir=str(root / "staging"), use_local=True)
+            key = "candidate/geoparquet/result.parquet"
+            source._write_immutable_file(storage, key, original, descriptor)
+            target = Path(storage.local_dir) / key
+            self.assertNotEqual(original.stat().st_ino, target.stat().st_ino)
+            original.write_bytes(b"changed mutable capture")
+            self.assertEqual(storage.sha256_key(key), descriptor["sha256"])
+            changed = {"bytes": original.stat().st_size, "sha256": hashlib.sha256(original.read_bytes()).hexdigest()}
+            with self.assertRaisesRegex(ValueError, "immutable_staged_object_changed"):
+                source._write_immutable_file(storage, key, original, changed)
+            self.assertEqual(storage.sha256_key(key), descriptor["sha256"])
+
+    def test_streamed_copy_cannot_overwrite_a_concurrent_creator(self):
+        from dagster_hifld.resources import StagingStorageResource
+        original_copy = StagingStorageResource.copy_key_to_if_unchanged
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = root / "capture.parquet"
+            original.write_bytes(b"complete candidate")
+            descriptor = {"bytes": original.stat().st_size, "sha256": hashlib.sha256(original.read_bytes()).hexdigest()}
+            storage = StagingStorageResource(local_dir=str(root / "staging"), use_local=True)
+            key = "candidate/geoparquet/result.parquet"
+            def race(owner, destination, source_key, destination_key, *, source_snapshot, destination_snapshot):
+                destination.write_key_if_unchanged(destination_key, b"concurrent writer", None)
+                return original_copy(owner, destination, source_key, destination_key,
+                                     source_snapshot=source_snapshot, destination_snapshot=destination_snapshot)
+            with patch.object(StagingStorageResource, "copy_key_to_if_unchanged", autospec=True, side_effect=race):
+                with self.assertRaises(RuntimeError):
+                    source._write_immutable_file(storage, key, original, descriptor)
+            self.assertEqual(storage.read_key(key), b"concurrent writer")
+
+    def test_staging_space_preflight_precedes_any_candidate_write(self):
+        from types import SimpleNamespace
+        from dagster_hifld.resources import StagingStorageResource
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            parquet = root / (source.DATASET_SLUG + ".parquet")
+            parquet.write_bytes(b"candidate bytes" * 100)
+            descriptor = {"path": parquet, "bytes": parquet.stat().st_size,
+                          "sha256": hashlib.sha256(parquet.read_bytes()).hexdigest()}
+            storage = StagingStorageResource(local_dir=str(root / "staging"), use_local=True)
+            audit = {"candidate_version": "vfixture", "source_record_sha256": "a" * 64}
+            with patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=descriptor["bytes"])):
+                with self.assertRaisesRegex(ValueError, "disk_floor_before_staging"):
+                    source._write_candidate_outputs(storage, "candidate", root, {}, descriptor, {}, audit, {})
+            self.assertEqual(storage.list_prefix("candidate"), [])
+
     def test_unservable_single_feature_fails_explicitly(self):
         _, _, _, ids, attr_names = self._fixture_bodies()
         error_body = ERROR_BODY
@@ -721,8 +820,17 @@ class RetryAndResumeTests(unittest.TestCase):
 
         def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
             body = bodies[name]
-            _write_evidence(capture_root, name, body)
-            return body, _receipt(body, url)
+            receipt = _receipt(body, url)
+            if name.startswith("page_"):
+                receipt["observed_at"] = "2026-11-10T00:00:00+00:00"
+            _write_evidence(capture_root, name, body, receipt)
+            return body, receipt
+
+        original_read_bytes = Path.read_bytes
+        def bounded_read(path):
+            if path.suffix == ".parquet":
+                raise AssertionError("Parquet must stream, never buffer the whole file")
+            return original_read_bytes(path)
 
         class EmptyClient:
             def __enter__(self):
@@ -736,15 +844,21 @@ class RetryAndResumeTests(unittest.TestCase):
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins({}, schema, stats, ids)), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
+                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()), \
+                 patch.object(Path, "read_bytes", bounded_read):
                 candidate = source.capture_nfhl_profile_baselines(storage, version="vfixture",
                                                                   capture_directory=str(root / "captures"))
                 self.assertEqual(candidate["feature_count"], 5)
+                self.assertFalse(candidate["reused"])
                 self.assertEqual(candidate["source_null_geometry_count"], 1)
                 self.assertEqual(candidate["source_null_m_vertex_count"], 6)
                 prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
                 state_key = f"_construction-state/{source.DATASET_SLUG}/{candidate['version']}.json"
                 self.assertTrue(storage.object_snapshot(state_key))
+                audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
+                self.assertEqual(audit["source_page_observed_at_min"], "2026-11-10T00:00:00+00:00")
+                self.assertEqual(audit["source_page_observed_at_max"], "2026-11-10T00:00:00+00:00")
+                self.assertFalse(audit["source_atomic_snapshot_established"])
                 for name in ("ids_seed", "service_doc", "service_before", "layer_before", "count_before",
                              "ids_before", "page_000000_00002", "page_000002_00002",
                              "page_000004_00001", "layer_after", "service_after", "count_after",
@@ -763,8 +877,12 @@ class RetryAndResumeTests(unittest.TestCase):
                 write_catalog_metadata(storage, dataset_slug=source.DATASET_SLUG, file_slug=source.FILE_SLUG,
                                        version=candidate["version"], quality_dict=summary.quality_manifest,
                                        dictionary_dict=summary.data_dictionary)
-                reused = source.capture_nfhl_profile_baselines(storage, version="vfixture",
-                                                               capture_directory=str(root / "captures"))
+                from types import SimpleNamespace
+                with patch.object(source, "MIN_FREE_BYTES", 2_000_000_000), \
+                     patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=5_000_000_000)), \
+                     patch.object(source, "_parquet_from_pages", side_effect=AssertionError("sealed replay must not rebuild")):
+                    reused = source.capture_nfhl_profile_baselines(storage, version="vfixture",
+                                                                   capture_directory=str(root / "captures"))
                 self.assertTrue(reused["reused"])
                 self.assertEqual(reused["version"], candidate["version"])
 

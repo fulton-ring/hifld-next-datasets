@@ -81,6 +81,8 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.native_geoparquet_catalog import _safe_local_key
+from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -117,7 +119,9 @@ MAX_CAPTURE_BYTES = 512 * 1024 * 1024
 # page density to split subsequent requests before repeatedly hitting that cap.
 # This is a request-size hint; all records and geometry still validate below.
 TARGET_SEGMENT_BYTES = 16 * 1024 * 1024
-MIN_FREE_BYTES = 80_000_000_000
+# Keep a bounded reserve, plus the request's maximum wire/decoded bytes.
+# A complete replay does not need another national download's disk space.
+MIN_FREE_BYTES = 2_000_000_000
 # The producer's MapServer intermittently answers valid requests with complete
 # HTTP 200 Esri error documents or resets connections (observed 2026-11-12
 # while probing this layer; identical requests succeed moments later). Every
@@ -330,8 +334,11 @@ def _ensure_captured(client: httpx.Client, url: str, capture_root: Path, name: s
     """
     if reuse:
         cached = _reusable_receipt(capture_root, name)
-        if cached is not None:
+        if cached is not None and cached.get("url") == url:
             return cached, True
+    capture_root.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(capture_root).free < MIN_FREE_BYTES + 2 * max_bytes:
+        raise ValueError("disk_floor_before_acquisition")
     # Retain prior generations, refused responses and partial transports before
     # capture_get replaces the active request files.
     _preserve_failed_attempt(capture_root, name, 1)
@@ -916,6 +923,8 @@ def _parquet_from_pages(capture_root: Path, segments: list[tuple[int, int]],
         "crs": crs, "edges": "planar"}}}
     schema = pa.schema(schema_fields).with_metadata({b"geo": _canonical(geo)})
     path = capture_root / f"{DATASET_SLUG}.parquet"
+    _safe_local_key(StagingStorageResource(use_local=True, local_dir=str(capture_root), prefix=""),
+                    path.name, required=False)
     writer = pq.ParquetWriter(path, schema, compression="zstd")
     try:
         for offset, count in segments:
@@ -931,11 +940,13 @@ def _parquet_from_pages(capture_root: Path, segments: list[tuple[int, int]],
                 else:
                     values = [row["attributes"].get(name) for row in rows]
                 columns[name] = pa.array(values, type=schema.field(name).type)
-            writer.write_table(pa.Table.from_pydict(columns, schema=schema))
+            table = pa.Table.from_pydict(columns, schema=schema)
+            if shutil.disk_usage(capture_root).free < MIN_FREE_BYTES + table.nbytes:
+                raise ValueError("disk_floor_before_parquet_write")
+            writer.write_table(table)
     finally:
         writer.close()
-    body = path.read_bytes()
-    return {"bytes": len(body), "sha256": _sha(body), "path": path}
+    return {"bytes": path.stat().st_size, "sha256": sha256_file(path), "path": path}
 
 
 class _DiskCaptures(abc.Mapping):
@@ -961,6 +972,29 @@ def _code_identity() -> dict[str, object]:
     return identity
 
 
+def _write_immutable_file(storage: StagingStorageResource, key: str, source_path: Path,
+                          descriptor: Mapping[str, object]) -> None:
+    """Stream a local file through the storage resource's conditional copy.
+
+    The temporary copy is independent of the mutable capture file. Creation
+    remains exclusive and every existing/new object is checked at its snapshot.
+    """
+    _safe_local_key(storage, key, required=False)
+    snapshot = storage.object_snapshot(key)
+    if snapshot is None:
+        origin = StagingStorageResource(use_local=True, local_dir=str(source_path.parent), prefix="")
+        _safe_local_key(origin, source_path.name)
+        source_snapshot = origin.object_snapshot(source_path.name)
+        if source_snapshot is None or {"bytes": source_snapshot.size, "sha256": source_snapshot.sha256} != descriptor:
+            raise ValueError("candidate_source_file_changed:" + key)
+        origin.copy_key_to_if_unchanged(storage, source_path.name, key,
+                                        source_snapshot=source_snapshot, destination_snapshot=None)
+        snapshot = storage.object_snapshot(key)
+    if snapshot is None or {"bytes": snapshot.size, "sha256": snapshot.sha256} != descriptor \
+            or storage.object_snapshot(key) != snapshot:
+        raise ValueError("immutable_staged_object_changed:" + key)
+
+
 def _write_candidate_outputs(storage: StagingStorageResource, prefix: str, capture_root: Path,
                              receipts: Mapping[str, Mapping[str, object]], parquet: Mapping[str, object],
                              manifest: Mapping[str, object], audit: Mapping[str, object],
@@ -968,8 +1002,15 @@ def _write_candidate_outputs(storage: StagingStorageResource, prefix: str, captu
     """Stage every candidate object, streaming raw evidence from disk."""
     descriptors: dict[str, dict[str, object]] = {}
     rel = f"geoparquet/{DATASET_SLUG}.parquet"
-    write_immutable(storage, f"{prefix}/{rel}", (capture_root / f"{DATASET_SLUG}.parquet").read_bytes())
     descriptors[rel] = {"bytes": parquet["bytes"], "sha256": parquet["sha256"]}
+    files = {rel: (Path(parquet["path"]), descriptors[rel])}
+    for name, receipt in sorted(receipts.items()):
+        for suffix, descriptor in (
+                (".body", {"bytes": receipt["bytes"], "sha256": receipt["sha256"]}),
+                (".wire", {"bytes": receipt["wire_bytes"], "sha256": receipt["wire_sha256"]}),
+                (".receipt.json", {"bytes": len(_canonical(dict(receipt))) + 1,
+                                   "sha256": _sha(_canonical(dict(receipt)) + b"\n")})):
+            files[f"raw/{name}{suffix}"] = (capture_root / f"{name}{suffix}", descriptor)
     small_outputs = {
         "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n",
@@ -981,16 +1022,20 @@ def _write_candidate_outputs(storage: StagingStorageResource, prefix: str, captu
              "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
              "mapping_approved": False, "release_accepted": False}) + b"\n",
     }
+    # Count only bytes not already staged. Conditional writes still validate
+    # every existing object; this preflight grants no cache/source acceptance.
+    remaining = sum(descriptor["bytes"] for name, (_, descriptor) in files.items()
+                    if storage.object_snapshot(f"{prefix}/{name}") is None)
+    remaining += sum(len(body) for name, body in small_outputs.items()
+                     if storage.object_snapshot(f"{prefix}/{name}") is None)
+    if shutil.disk_usage(Path(storage.local_dir)).free < remaining + MIN_FREE_BYTES:
+        raise ValueError("disk_floor_before_staging")
+    for name, (path, descriptor) in files.items():
+        _write_immutable_file(storage, f"{prefix}/{name}", path, descriptor)
+        descriptors[name] = dict(descriptor)
     for name, body in small_outputs.items():
         write_immutable(storage, f"{prefix}/{name}", body)
         descriptors[name] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted(receipts):
-        for suffix in (".body", ".wire", ".receipt.json"):
-            body = (capture_root / f"{name}{suffix}").read_bytes()
-            key = f"raw/{name}{suffix}"
-            write_immutable(storage, f"{prefix}/{key}", body)
-            descriptors[key] = {"bytes": len(body), "sha256": _sha(body)}
-            del body
     return descriptors
 
 
@@ -1071,10 +1116,44 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                                           _DiskCaptures(capture_root, failure_receipts), type(exc).__name__)
         raise
     identity = _code_identity()
+    version = content_derived_version(stats.record_sha256, stats.geometry_sha256,
+                                      contract["schema_sha256"], identity)
+    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+    (capture_root / "capture_manifest.json").write_bytes(
+        _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
+                    "source_feature_count": stats.feature_count,
+                    "source_record_sha256": stats.record_sha256,
+                    "source_geometry_sha256": stats.geometry_sha256,
+                    "receipts": dict(sorted(receipts.items()))}) + b"\n")
+    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+    if storage.object_snapshot(state_key) is not None:
+        bundle = json.loads(load_first_construction(storage, state_key, version, _sha(_canonical(identity))))
+        payload = bundle.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("cached_first_candidate_invalid")
+        objects = payload.get("objects", {})
+        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
+                                _sha(_canonical(identity)), identity, stats.record_sha256,
+                                contract["schema_sha256"], objects, payload.get("capture_receipts", {}))
+        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+                "feature_count": stats.feature_count, "source_null_geometry_count": stats.null_geometry_count,
+                "source_empty_geometry_count": stats.empty_geometry_count,
+                "source_nan_string_geometry_count": stats.nan_geometry_count,
+                "source_null_m_vertex_count": stats.null_m_vertex_count,
+                "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
+                "source_release_accepted": False, "source_freshness_accepted": False,
+                "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
+                "mapping_approved": False, "release_accepted": False}
     parquet = _parquet_from_pages(capture_root, segments, contract["fields"])
     release_date_reason = ("FEMA updates the NFHL continuously and publishes no release date for this layer; "
                            "fetch time and the DataLumos archive modification date (2024-10-31) are not release dates.")
-    audit = {"source_feature_count": stats.feature_count, "source_id_sha256": EXPECTED_ID_SHA256,
+    page_times = [datetime.fromisoformat(receipt["observed_at"]) for name, receipt in receipts.items()
+                  if _SEGMENT_NAME_PATTERN.fullmatch(name)]
+    audit = {"source_page_observed_at_min": min(page_times).isoformat(),
+             "source_page_observed_at_max": max(page_times).isoformat(),
+             "source_atomic_snapshot_established": False,
+             "source_temporal_contract": "Receipt-dated REST pages; no atomic snapshot, as-of or national attribute-freshness guarantee.",
+             "source_feature_count": stats.feature_count, "source_id_sha256": EXPECTED_ID_SHA256,
              "source_record_sha256": stats.record_sha256, "source_geometry_sha256": stats.geometry_sha256,
              "source_schema_sha256": contract["schema_sha256"], "source_crs_epsg": SOURCE_CRS_WKID,
              "geometry_type": "Polyline", "source_has_z": SOURCE_HAS_Z, "source_has_m": SOURCE_HAS_M,
@@ -1188,31 +1267,6 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                                                          contract["schema_sha256"], identity)
     version = audit["candidate_version"]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    (capture_root / "capture_manifest.json").write_bytes(
-        _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
-                    "source_feature_count": stats.feature_count,
-                    "source_record_sha256": stats.record_sha256,
-                    "source_geometry_sha256": stats.geometry_sha256,
-                    "receipts": dict(sorted(receipts.items()))}) + b"\n")
-    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
-        bundle = json.loads(load_first_construction(storage, state_key, version, _sha(_canonical(identity))))
-        payload = bundle.get("payload")
-        if not isinstance(payload, dict):
-            raise ValueError("cached_first_candidate_invalid")
-        objects = payload.get("objects", {})
-        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
-                                _sha(_canonical(identity)), identity, stats.record_sha256,
-                                contract["schema_sha256"], objects, payload.get("capture_receipts", {}))
-        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-                "feature_count": stats.feature_count, "source_null_geometry_count": stats.null_geometry_count,
-                "source_empty_geometry_count": stats.empty_geometry_count,
-                "source_nan_string_geometry_count": stats.nan_geometry_count,
-                "source_null_m_vertex_count": stats.null_m_vertex_count,
-                "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
-                "source_release_accepted": False, "source_freshness_accepted": False,
-                "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
-                "mapping_approved": False, "release_accepted": False}
     descriptors = _write_candidate_outputs(storage, prefix, capture_root, receipts, parquet, manifest, audit,
                                            identity)
     _verify_staged_descriptors(storage, prefix, descriptors)
@@ -1231,4 +1285,4 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False,
-            "release_accepted": False, "capture_directory": str(capture_root)}
+            "release_accepted": False, "capture_directory": str(capture_root), "reused": False}
