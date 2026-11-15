@@ -153,7 +153,7 @@ def _documents() -> dict:
                                     "shapeLengthFieldName": "shape_Length",
                                     "units": "esriMeters", "mapUnits": {"uwkid": 9001}},
              "typeIdField": None, "isDataVersioned": False, "isDataArchived": False,
-             "extent": {**source.EXPECTED_EXTENT, "spatialReference": dict(_SR)},
+             "extent": {**source.EXPECTED_LAYER_EXTENT, "spatialReference": dict(_SR)},
              "advancedQueryCapabilities": {"supportsPagination": True},
              "sourceSpatialReference": dict(_SR), "spatialReference": None,
              "fields": json.loads(json.dumps(source.EXPECTED_LAYER_FIELDS))}
