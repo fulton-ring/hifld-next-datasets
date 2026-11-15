@@ -83,10 +83,10 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.usace_obstruction_lines import (
     _canonical, _capture_identity, _load_capture, _sha,
-    _validate_capture_request_identity,
 )
 
 DATASET_SLUG = FILE_SLUG = "wbd-12-digit-hu-subwatershed"
@@ -630,7 +630,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
         raise ValueError("source_id_roster_changed_during_capture")
     expected_urls = dict(_capture_roster(roster))
     for name in METADATA_NAMES:
-        _validate_capture_request_identity(name, receipts[name], expected_urls[name])
+        validate_capture_request_identity(name, receipts[name], expected_urls[name])
 
     tmp_path = (parquet_sink.with_name(parquet_sink.name + ".construction-tmp")
                 if parquet_sink is not None else None)
@@ -684,7 +684,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                 expected_url = (expected_urls[name] if part_name == name
                                 else _record_attrs_url(part_ids[0]) if attrs_part
                                 else _page_part_url(roster, index, part_name))
-                _validate_capture_request_identity(part_name, receipt, expected_url)
+                validate_capture_request_identity(part_name, receipt, expected_url)
                 page = json.loads(body)
                 if "error" in page:
                     raise ValueError("source_page_error:" + part_name)
@@ -976,7 +976,7 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]],
             bound = name[:-len("_refusal")]
             expected_url = (expected_urls[bound] if len(bound) == 9
                             else _page_part_url(ids, int(bound[5:9]), bound))
-            _validate_capture_request_identity(name, receipt, expected_url)
+            validate_capture_request_identity(name, receipt, expected_url)
             if not _is_refusal(body):
                 raise ValueError("retained_capture_refusal_document_drift:" + name)
         elif _is_attrs_part_name(name):
@@ -985,11 +985,11 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]],
             for tag in bound[9:]:
                 half = (len(sub) + 1) // 2
                 sub = sub[:half] if tag == "a" else sub[half:]
-            _validate_capture_request_identity(name, receipt, _record_attrs_url(sub[0]))
+            validate_capture_request_identity(name, receipt, _record_attrs_url(sub[0]))
         elif name in expected_urls:
-            _validate_capture_request_identity(name, receipt, expected_urls[name])
+            validate_capture_request_identity(name, receipt, expected_urls[name])
         else:
-            _validate_capture_request_identity(name, receipt,
+            validate_capture_request_identity(name, receipt,
                                                _page_part_url(ids, int(name[5:9]), name))
         captures[name] = (body, receipt)
     return captures, {page: list(parts) for page, parts in page_parts.items()}, \
