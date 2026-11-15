@@ -710,6 +710,10 @@ def capture_local_roads_census(storage: StagingStorageResource, *, version: str,
                          ("metadata/processing_identity.json", _canonical(identity) + b"\n"),
                          ("metadata/candidate_ready.json", _canonical(ready) + b"\n")):
         write_immutable(storage, f"{prefix}/{key}", payload)
+        snapshot = storage.object_snapshot(f"{prefix}/{key}")
+        descriptors[key] = {"bytes": len(payload), "sha256": _sha(payload)}
+        if snapshot is None or snapshot.size != len(payload) or storage.sha256_key(f"{prefix}/{key}") != descriptors[key]["sha256"]:
+            raise ValueError("candidate_object_readback_failed:" + key)
     seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
         "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
         "capture_receipts": {name: receipt for name, receipt in sorted(receipts.items())},
