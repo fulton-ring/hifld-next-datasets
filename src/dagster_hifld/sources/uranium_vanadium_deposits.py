@@ -13,29 +13,32 @@ outside the United States, and that Alaska is covered by the
 continuing-development Alaska Resource Data File. A frozen release with no
 maintained refresh cadence is not a pipeline input under the current source
 policy, so the earlier draft reconstruction of the mrds-trim digest subset was
-removed. The producer's current alternatives cannot recreate this nationwide
-uranium/vanadium deposit-point layer either: USMIN is a developing
-critical-minerals database whose published commodity packages include no
-uranium and no vanadium, ARDF covers Alaska only, and the Earth MRI focus-area
-release and the curated 681-deposit "Critical mineral deposits of the United
-States" release are materially different products. No maintained USGS producer
-publication capable of reconstructing the layer is known, so the dataset is
+removed. The assigned MRDS digest describes worldwide mineral occurrences;
+USMIN's separate commodity packages and Alaska-only ARDF do not recreate it.
+The current "Critical mineral deposits of the United States" version 3.0
+(September 2026), checked 2026-11-15, contains 1,271 deposits and explicitly
+adds uranium. Its CritMin field lists uranium for 81 deposits and vanadium
+for 38, with 22 in both sets: 97 distinct deposits. These curated U.S.
+production/resource-bearing deposits are an accessible changed-product
+candidate, not an established recreation of worldwide MRDS occurrences.
+No maintained exact recreation has been established, so the original scope is
 parked: every staging attempt fails closed and this module defines and
 performs no fetching, no decoding, no staging and no candidate output.
 Resuming requires an explicit maintainer decision (park permanently, retire,
-or name a maintained producer source).
+name an exact source, or accept a separately scoped current successor).
 """
 from __future__ import annotations
 from urllib.parse import urlsplit
 
 SLUG='uranium-and-vanadium-deposits'
 PARK_REASON='no_maintained_producer_publication_park_or_retire'
-PARK_STATEMENT=('no maintained USGS producer publication can recreate the retired '
-    'uranium-and-vanadium-deposits entity-point layer: the producer MRDS publication is frozen '
-    '(systematic updates ceased 2011), USMIN is a developing critical-minerals database with no '
-    'uranium or vanadium commodity packages, ARDF covers Alaska only, and the Earth MRI focus-area '
-    'and curated 681-deposit releases are materially different products; resuming requires an '
-    'explicit maintainer decision (park permanently, retire, or name a maintained producer source)')
+PARK_STATEMENT=('no maintained exact recreation of the worldwide MRDS uranium-and-vanadium '
+    'occurrence layer has been established: MRDS systematic updates ceased 2011; '
+    'the current USGS Critical mineral deposits v3.0 contains 1,271 curated U.S. deposits, '
+    'including 97 listing uranium or vanadium with production or resource evidence, '
+    'not the original worldwide occurrence population; resuming requires an explicit '
+    'maintainer decision (park permanently, retire, name an exact source, or accept a '
+    'separately scoped current successor)')
 class UraniumVanadiumDepositsQuarantineError(ValueError): pass
 
 # Producer-contract research record.  All objects are USGS-owned; the module
@@ -59,7 +62,7 @@ USMIN_STATUS_SENTENCE=('A developing national-scale geospatial database that wil
 USMIN_PACKAGE_COMMODITIES=('Cobalt','Gallium','Germanium','Graphite','Indium','Lithium','Niobium','REE',
                            'Rhenium','Sn','Tantalum','Tellurium','Tungsten_ver2')
 USMIN_PACKAGE_TRIPWIRES=('USGS_Uranium_US','USGS_Vanadium_US')
-PARK_EVIDENCE={'decision':'park or retire; no maintained USGS producer publication can recreate the assigned uranium-and-vanadium-deposits entity-point layer',
+PARK_EVIDENCE={'decision':'park or retire the exact worldwide MRDS scope; no maintained exact recreation has been established; a current curated U.S. successor is a separate product decision',
     'retired_hifld_item':{'item':'2c9b52ce91be4384931b64dd551cb6ea',
         'status':'retired HIFLD Open item; its services1.arcgis.com FeatureServer answered only ArcGIS "Invalid URL" error documents when probed 2026-11-14',
         'crosswalk':'DHS HIFLD Open crosswalk DOI 10.3886/E241367V1 row "Uranium and Vanadium Deposits": Status Deprecate, replacement pointer the USGS MRDS publication page'},
@@ -77,8 +80,21 @@ PARK_EVIDENCE={'decision':'park or retire; no maintained USGS producer publicati
          'finding':'the producer-designated continuing-development collection, but for Alaska locations only; no nationwide coverage of uranium or vanadium deposits'},
         {'product':'Earth MRI focus areas for 13 critical minerals including uranium and vanadium (Dicken and others, 2021)','doi':'10.5066/P9WA7JZY','check_date':'2026-11-14',
          'finding':'regional focus-area polygons with supplemental tables, not deposit points; cannot recreate the entity-point layer'},
-        {'product':'Critical mineral deposits of the United States (ver. 3.0, September 2026)','doi':'10.5066/p9k1hbnt','check_date':'2026-11-14',
-         'finding':'curated 681-deposit database gleaned from MRDS, ARDF, USMIN and literature for Earth MRI priorities; a materially different and far smaller population than the assigned layer'}]}
+        {'product':'Critical mineral deposits of the United States (ver. 3.0, September 2026)',
+         'doi':'10.5066/P9K1HBNT','check_date':'2026-11-15',
+         'url':'https://www.sciencebase.gov/catalog/item/6464de5bd34ec179a83d9e6c?format=json',
+         'source_file':'critical_mineral_deposits_v3.zip','bytes':272122,
+         'sha256':'e11c52c07c7fd6f0fef41e865c797e813683e2687252b37c2a79e418e8f9ca77',
+         'population':{'all_deposits':1271,'uranium':81,'vanadium':38,
+                       'both':22,'uranium_or_vanadium':97},
+         'finding':'version 3 adds uranium with the 2025 critical-mineral list; the complete '
+             '1,271-row shapefile has 81 uranium and 38 vanadium deposits in the tokenized CritMin '
+             'field, with 22 overlaps and 97 distinct deposits. The producer compiles U.S. '
+             'critical-mineral deposits from MRDS, ARDF, USMIN and literature, characterized by '
+             'production or resource/reserve evidence. This curated U.S. selection is narrower than '
+             'worldwide MRDS occurrences and does not retain their occurrence-ID contract. It is an accessible '
+             'changed-product candidate requiring explicit scope/ID approval, not a missing or '
+             'uranium-free publication and not demonstrated historical equivalence'}]}
 
 def producer_hosts():
     return {urlsplit(pin['url']).hostname for pin in PINS.values()}

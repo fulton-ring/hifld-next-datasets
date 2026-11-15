@@ -1,9 +1,9 @@
 """Parked ingest registration for the Uranium and Vanadium Deposits layer; always fails closed."""
 from dagster import AssetKey,AssetSelection,DefaultScheduleStatus,ScheduleDefinition,asset,define_asset_job
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.uranium_vanadium_deposits import PARK_REASON,SLUG,stage_uranium_vanadium_deposits
+from dagster_hifld.sources.uranium_vanadium_deposits import PARK_REASON,PARK_STATEMENT,SLUG,stage_uranium_vanadium_deposits
 
-@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='usgs',compute_kind='local',description='Parked; no maintained USGS producer publication (MRDS frozen with systematic updates ceased 2011; USMIN developing with no uranium or vanadium commodity packages; ARDF Alaska-only; Earth MRI focus-area and curated 681-deposit releases are materially different products). Every materialization fails closed with '+PARK_REASON+'. No fetching, staging or acceptance.')
+@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='usgs',compute_kind='local',description='Parked exact-scope reconstruction: '+PARK_STATEMENT+'. Every materialization fails closed with '+PARK_REASON+'. No fetching, staging or acceptance.')
 def uranium_vanadium_deposits_candidate(context,staging_storage:StagingStorageResource):
     stage_uranium_vanadium_deposits(staging_storage)
 

@@ -95,7 +95,15 @@ class StructuralUraniumVanadiumDepositsTests(unittest.TestCase):
         self.assertEqual(alternative('USMIN Mineral Deposit Database')['check_date'], '2026-11-14')
         self.assertIn('Alaska locations only', alternative('Alaska Resource Data File')['finding'])
         self.assertIn('not deposit points', alternative('Earth MRI focus areas')['finding'])
-        self.assertIn('681', alternative('Critical mineral deposits of the United States')['finding'])
+        critical = alternative('Critical mineral deposits of the United States')
+        self.assertEqual(critical['check_date'], '2026-11-15')
+        self.assertEqual(critical['population'], {
+            'all_deposits': 1271, 'uranium': 81, 'vanadium': 38,
+            'both': 22, 'uranium_or_vanadium': 97,
+        })
+        self.assertIn('worldwide MRDS occurrences', critical['finding'])
+        self.assertIn('production or resource', critical['finding'])
+        self.assertNotIn('681', critical['finding'])
 
     def test_pins_are_producer_owned_research_records(self):
         self.assertEqual(s.producer_hosts(), {'mrdata.usgs.gov'})
