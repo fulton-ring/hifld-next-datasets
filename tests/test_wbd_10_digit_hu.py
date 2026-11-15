@@ -656,6 +656,23 @@ class Wbd10DigitHuTests(unittest.TestCase):
                 self.assertEqual(decoded.length, reference.length)
         self.assertEqual(derived["parquet_path"], sink)
 
+    def test_row_groups_are_budgeted_by_served_geometry_bytes(self):
+        documents = _documents()
+        root = self._capture_root(documents)
+        temporary = tempfile.TemporaryDirectory(prefix="wbd-10-digit-hu-budget-")
+        self.addCleanup(temporary.cleanup)
+        sink = Path(temporary.name) / "wbd-10-digit-hu.parquet"
+        with relaxed_pins(ROW_GROUP_GEOMETRY_BUDGET_BYTES=1):
+            audit, derived = source._validate_stream(root, parquet_sink=sink)
+        self.assertTrue(sink.exists())
+        parquet = pq.ParquetFile(sink)
+        # Every row forms its own group when the budget is one byte; the
+        # population and digests are unchanged by the row-group structure.
+        self.assertEqual(parquet.metadata.num_row_groups, len(_TEST_ROSTER))
+        self.assertEqual(parquet.metadata.num_rows, len(_TEST_ROSTER))
+        table = pq.read_table(sink)
+        self.assertEqual(table.column("objectid").to_pylist(), _TEST_ROSTER)
+
     def test_refusing_window_bisects_and_replays_with_retained_refusal_artifacts(self):
         documents = _documents()
         roster = list(_TEST_ROSTER)

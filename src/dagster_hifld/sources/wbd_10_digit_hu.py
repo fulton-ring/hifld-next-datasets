@@ -159,6 +159,11 @@ DISK_FLOOR_BYTES = 24_000_000_000
 # at 5.5e-15 relative across a 100-feature probe (2026-11-14), so the parity
 # guard sits far above that and far below real drift.
 SHAPE_PARITY_TOLERANCE = 1e-6
+# Row groups are budgeted by served geometry bytes so the decoded batch of
+# any row group stays far below the shared catalog summarizer's 128 MB
+# decoded-batch refusal while the largest single served row (tens of
+# megabytes of WKB) still forms its own group (observed 2026-11-15).
+ROW_GROUP_GEOMETRY_BUDGET_BYTES = 64 * 1024 * 1024
 # Native baselines pinned from the complete dated population walk (2026-11-15,
 # two independent walks producing identical digests; the second walk verified
 # the first walk's sealed candidate). 18,911 rows: 18,903 valid served
@@ -1141,8 +1146,28 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
             if sorted(page_ids) != expected_page_ids or len(set(page_ids)) != len(page_ids):
                 raise ValueError("source_page_id_population_drift:" + name)
             if writer is not None:
-                writer.write_table(pa.Table.from_pydict(
-                    {**columns, "geometry": geometries}, schema=_native_schema()))
+                # Row groups are budgeted by served geometry bytes: rows are
+                # grouped consecutively so no row group's decoded geometry
+                # approaches the shared catalog summarizer's 128 MB
+                # decoded-batch refusal (some served rows carry tens of
+                # megabytes of WKB). At least one row is always written per
+                # group, so a single oversized row still forms its own group.
+                start = 0
+                total = len(page_ids)
+                while start < total:
+                    end = start + 1
+                    size = 0 if geometries[start] is None else len(geometries[start])
+                    while end < total:
+                        candidate = geometries[end]
+                        addition = 0 if candidate is None else len(candidate)
+                        if size + addition > ROW_GROUP_GEOMETRY_BUDGET_BYTES:
+                            break
+                        size += addition
+                        end += 1
+                    writer.write_table(pa.Table.from_pydict(
+                        {**{field: columns[field][start:end] for field in names},
+                         "geometry": geometries[start:end]}, schema=_native_schema()))
+                    start = end
         if writer is not None:
             writer.close()
             writer = None
