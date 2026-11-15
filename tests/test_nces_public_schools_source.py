@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import geopandas as gpd
@@ -47,6 +48,21 @@ def _frame() -> gpd.GeoDataFrame:
 
 
 class NcesPublicSchoolsSourceTest(unittest.TestCase):
+    def test_rejected_symlink_capture_is_not_read_into_quarantine(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            capture = root / "capture"
+            capture.mkdir()
+            private = root / "outside-capture"
+            private.write_bytes(b"must not be copied from a rejected symlink")
+            (capture / "source.body").symlink_to(private)
+            (capture / "source.wire").write_bytes(b"wire")
+            (capture / "source.receipt.json").write_bytes(b"{}")
+            storage = StagingStorageResource(local_dir=str(root / "staging"), use_local=True)
+            with self.assertRaisesRegex(ValueError, "capture_nonregular_file"):
+                source.capture_nces_public_schools(storage, capture_directory=capture)
+            self.assertEqual(storage.list_prefix(), [])
+
     def test_live_invalid_archive_retains_evidence_and_original_refusal(self) -> None:
         body = b"invalid zip from publisher"
         client = httpx.Client(transport=httpx.MockTransport(

@@ -35,7 +35,7 @@ The runtime has three distinct behaviors:
   can produce another candidate version even when source bytes are unchanged;
   a version change alone does not prove a new publisher edition.
 
-Acquisition, receipt and archive/conversion refusals retain bounded response evidence under unique `_quarantine/public-schools/`
+HTTP failures, archive-identity drift and archive/conversion refusals retain bounded response evidence under unique `_quarantine/public-schools/`
 keys, with no ready candidate or construction-state seal. This change repairs two
 losses: failed HTTP responses previously produced only a failure marker, and a
 post-download validation refusal tried reading the wire file after its temporary
@@ -109,9 +109,9 @@ The candidate GeoParquet readback is 6,563,017 bytes, SHA-256
 Direct `require_release_approval` refused these actual objects with
 `missing_independent_release_approval_registry`; their bytes were unchanged and
 the isolated published destination remained empty. All acceptance flags stayed
-false. The eight focused tests include a registered Dagster HTTP-503 refusal with
+false. The nine focused tests include a registered Dagster HTTP-503 refusal with
 no asset materialization, archive-drift quarantine, invalid-ZIP refusal after live
-capture cleanup, row/ID/schema drift and native GeoParquet preservation.
+capture cleanup, rejected replay symlinks, row/ID/schema drift and native GeoParquet preservation.
 
 Evidence and scratch runners remain outside Git under `/tmp/hifld-957-evidence`
 and `/tmp/hifld-957-*.py`. An earlier concurrent native attempt was killed with

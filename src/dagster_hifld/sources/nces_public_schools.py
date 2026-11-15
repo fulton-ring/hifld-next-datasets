@@ -341,7 +341,9 @@ def _capture(capture_directory: str | Path | None,
             raise ValueError("nces_public_schools_archive_identity_or_release_drift")
         return artifacts, {**receipt, "raw_receipt_sha256": _sha(artifacts["source.receipt.json"])}
     except Exception as exc:
-        if root.is_dir() and (root / "source.wire").is_file() and (root / "source.receipt.json").is_file():
+        if (root.is_dir() and not root.is_symlink()
+                and all((root / name).is_file() and not (root / name).is_symlink()
+                        for name in CAPTURE_FILES)):
             try:
                 artifacts = {name: (root / name).read_bytes() for name in CAPTURE_FILES}
                 receipt_raw = json.loads(artifacts["source.receipt.json"])
