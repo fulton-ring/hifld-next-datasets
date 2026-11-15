@@ -166,23 +166,32 @@ class WfigsSourceTests(unittest.TestCase):
         self.assertEqual(table.schema.names,
                          [field["name"] for field in FIELDS] + ["geometry"])
         self.assertEqual(str(table.schema.field("OBJECTID").type), "int64")
-        self.assertEqual(str(table.schema.field("poly_CreateDate").type), "timestamp[ms, UTC]")
+        self.assertEqual(str(table.schema.field("poly_CreateDate").type), "timestamp[ms, tz=UTC]")
         self.assertEqual(table.column("OBJECTID").to_pylist(), [11, 22, 33, 44, 55])
         manifest = json.loads((root / "metadata" / "source_manifest.json").read_bytes())
         self.assertFalse(manifest["approved"])
         self.assertEqual(manifest["lineage"]["item_owner"], "NIFC_Authoritative")
         audit = json.loads((root / "metadata" / "source_audit.json").read_bytes())
-        self.assertEqual(audit["geometry_census"]["holes"], 1)
+        self.assertEqual(audit["geometry_census"]["holes"], 2)
         self.assertEqual(audit["null_geometry_objectids"], [44])
         ready = json.loads((root / "metadata" / "candidate_ready.json").read_bytes())
         self.assertFalse(ready["release_accepted"])
 
     def test_replay_is_idempotent_and_immutable(self):
-        first = self.stage()
-        second = self.stage()
-        self.assertTrue(first["reused"] is False)
-        self.assertTrue(second["reused"] is True)
+        root = Path(self.tmp.name) / "capture"
+        _write_capture(root, _capture_docs(), 2)
+        first = source.capture_wfigs_interagency_fire_perimeters(
+            self.storage, capture_directory=str(root), page_size=2)
+        second = source.capture_wfigs_interagency_fire_perimeters(
+            self.storage, capture_directory=str(root), page_size=2)
+        self.assertTrue(first["reused"])
+        self.assertTrue(second["reused"])
         self.assertEqual(first["version"], second["version"])
+        first_parquet = (Path(self.storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG
+                         / first["version"] / "geoparquet" / f"{source.FILE_SLUG}.parquet").read_bytes()
+        second_parquet = (Path(self.storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG
+                          / second["version"] / "geoparquet" / f"{source.FILE_SLUG}.parquet").read_bytes()
+        self.assertEqual(first_parquet, second_parquet)
 
     def test_page_order_ids_and_geometry_drifts_fail_closed(self):
         docs = _capture_docs()
@@ -228,7 +237,7 @@ class WfigsSourceTests(unittest.TestCase):
         def service_changed(current):
             current["service_after"]["capabilities"] = "Query"
         def short_page_transfer_flag(current):
-            current["page_00002"]["exceededTransferLimit"] = True
+            current["page_00004"]["exceededTransferLimit"] = True
         for change in (drop_feature, duplicate_oid, out_of_order, extra_attribute, drop_attribute,
                        unclosed, out_of_range, nonfinite, type_drift, schema_changed, witness_drift,
                        count_drift, ids_drift, globalid_duplicate, item_drift, service_changed,
