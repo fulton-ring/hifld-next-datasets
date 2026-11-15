@@ -75,6 +75,7 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
                 *, max_bytes: int = 128 * 1024 * 1024,
                 max_wire_block_bytes: int | None = None,
                 include_observed_wire: bool = False,
+                accept_encoding: str = "identity",
                 reserve: Callable[[CaptureProgress], None] | None = None,
                 before_retain: Callable[[str, bytes], None] | None = None) -> tuple[bytes, dict[str, object]]:
     """Persist complete GET decoded and wire bodies plus a hash-pinned receipt.
@@ -83,6 +84,10 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
     bounded body/wire evidence and a receipt before this helper raises. When
     supplied, ``before_retain`` runs before each block is written, so an adapter
     can refuse an oversized delivered block without exceeding its disk budget.
+    ``accept_encoding`` selects the requested content coding ("identity" by
+    default); producers that answer gzip keep the receipt's wire side
+    compressed and the body side decoded, and the response is rejected when the
+    coding is neither identity, gzip nor deflate.
     """
     capture_root.mkdir(parents=True, exist_ok=True)
     wire_path, body_path = capture_root / f"{name}.wire", capture_root / f"{name}.body"
@@ -104,7 +109,7 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
             body_size += len(data); body_hash.update(data)
 
     try:
-        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
+        with client.stream("GET", url, headers={"Accept-Encoding": accept_encoding}) as response:
             result = capture_http_response(
                 response, max_wire_bytes=max_bytes, max_decoded_bytes=max_bytes,
                 max_wire_block_bytes=max_wire_block_bytes,

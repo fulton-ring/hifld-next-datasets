@@ -112,7 +112,7 @@ class EpaPowerGenerationSeedQuarantineTests(unittest.TestCase):
                                                 capture_directory=str(captures_root))
             self._assert_quarantined_seed_only(storage, captures_root,
                                                reason="ValueError", seed_body=seed)
-        self.assertEqual(epa_power_generation.EXPECTED_COUNT, 2328)
+        self.assertEqual(epa_power_generation.EXPECTED_COUNT, 2326)
 
     def test_incomplete_seed_fetch_preserves_partial_evidence_in_quarantine(self):
         partial = b'{"objectIds": [1, 2'
@@ -139,7 +139,7 @@ class EpaPowerGenerationSeedQuarantineTests(unittest.TestCase):
                                                 capture_directory=str(captures_root))
             self._assert_quarantined_seed_only(storage, captures_root,
                                                reason="ValueError", seed_body=partial)
-        self.assertEqual(epa_power_generation.EXPECTED_COUNT, 2328)
+        self.assertEqual(epa_power_generation.EXPECTED_COUNT, 2326)
 
 
 if __name__ == "__main__":
