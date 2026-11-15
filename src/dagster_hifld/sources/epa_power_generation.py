@@ -1,9 +1,19 @@
 """Draft extractor for EPA's exact FRS EIA-860 power generation layer.
 
-The EPA hosted FeatureServer remains live, while its own description dates the
-compiled EIA-860 content to June 2014. This module captures native Esri JSON and
-stages only an unapproved candidate; it does not establish currentness or permit
-publication.
+The EPA_GEO hosted FeatureServer is EPA's maintained publication of this
+population: its layer copyright states the layer is "Updated as part of the
+Facility Registry Service (FRS) tables refresh process", the layer data was
+last edited 2026-11-09 in the same refresh batch that updates the maintained
+FRS_INTERESTS services, and EPA's FRS program statistics record the EIA-860
+system in FRS as last refreshed 2026-06-30. The publisher's service description
+dates the joined EIA-860 attribute compilation to June 2014, so the content
+vintage stays pinned at 2014-06 and freshness acceptance remains blocked. The
+successor search (2026-11-15) found no other EPA publication of this population:
+the EPA_GEO catalog lists no other power-generation service, the OEI
+``geodata.epa.gov`` FRS_PowerPlants MapServer is the legacy-host copy of the
+same June 2014 compilation, and the FRS downloads do not carry the compiled
+EIA-860 attributes. This module captures native Esri JSON and stages only an
+unapproved candidate; it does not establish currentness or permit publication.
 
 Two HIFLD Open inventory entries describe this exact product (the
 ``epa-frs-eia-860-power-generation-facilities-by-source`` row and the duplicate
@@ -55,13 +65,19 @@ DATASET_SLUGS = (DATASET_SLUG, EPA_ITEM_DATASET_SLUG)
 _DEFAULT_CAPTURE_ROOTS = {DATASET_SLUG: "69", EPA_ITEM_DATASET_SLUG: "392"}
 PUBLISHER = "U.S. Environmental Protection Agency (EPA_GEO hosted FeatureServer); data sources EPA FRS and EIA"
 SOURCE_VINTAGE = "2014-06"
-SOURCE_VINTAGE_NOTE = "Service description states the EIA-860 compilation is most-current as of June 2014. The ArcGIS item modified timestamp is not a source release date."
+SOURCE_VINTAGE_NOTE = ("Service description states the EIA-860 compilation is most-current as of June 2014; the joined EIA-860 attribute compilation is the product's content vintage and is not re-cut by EPA. "
+                       "The publication itself is maintained: the layer copyright states it is updated as part of the FRS tables refresh process and the layer data was last edited 2026-11-09 in the same refresh batch as the maintained FRS_INTERESTS services. "
+                       "The ArcGIS item modified timestamp is not a source release date.")
 EPA_FRS_DATA_SOURCES_URL = "https://www.epa.gov/frs/frs-data-sources"
-EXPECTED_COUNT = 2328
+EXPECTED_COUNT = 2326
+# Dated baseline rebind (#669 pattern): EPA's FRS tables refresh process edits this
+# layer, so the 2026-11-08 roster/record pins (2,328 features) drifted 2,327 -> 2,326
+# before the maintained full roster was re-observed on 2026-11-15T02:46Z. Later
+# refresh drift still refuses closed for maintainer review instead of auto-refreshing.
 EXPECTED_SCHEMA_SHA256 = "5a8de30d69b9f91343f5cd85e21c0cda33bedb7b768551a126c9f77a28ffddff"
-EXPECTED_ID_SHA256 = "2e449cf11599a10b3657165b257f6694e3db0f099aba873b92994a720d5de3ca"
-EXPECTED_RECORD_SHA256 = "abb95ea9c72d7ecdc594b16398ad22229fef4f2a5117a148d8e11421cfb4d8d2"
-EXPECTED_GEOMETRY_SHA256 = "aedd2fc29320cb60fd97c4f49013e7e9720ccd050a545e2ab1360ac74718d32b"
+EXPECTED_ID_SHA256 = "7fc99aba5554106bc919293dfd235bb9ed395611d7657a575bc364bc29501f69"
+EXPECTED_RECORD_SHA256 = "83dbd9547ac6714827cdf95490bd8ae58b51be1fecbbf943c84a3b867187aa97"
+EXPECTED_GEOMETRY_SHA256 = "090d60dfa6ca68758b88a411afea80b2cae3904803010b068d8055118a206985"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 8_000_000
 
@@ -349,12 +365,12 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
     parquet_body = _parquet_bytes(fields, extracted["features"])
     source_objects = {f"geoparquet/{dataset_slug}.parquet":{"bytes":len(parquet_body),"sha256":_sha(parquet_body)}}
     manifest = {
-      "schema_version":1,"approved":False,"title":LAYER_NAME,"description":"Exact EPA_GEO hosted EPA FRS/EIA-860 power generation layer. EPA service describes EIA data vintage as June 2014; currentness and successor decision are pending.",
+      "schema_version":1,"approved":False,"title":LAYER_NAME,"description":"Exact EPA_GEO hosted EPA FRS/EIA-860 power generation layer, EPA's maintained publication of this population (layer updated by the FRS tables refresh process). The publisher dates the joined EIA-860 attribute compilation to June 2014; freshness and release acceptance remain blocked.",
       "publisher":PUBLISHER,"agency":"Environmental Protection Agency","source_url":LAYER_URL,"license":"https://www.usa.gov/publicdomain/label/1.0/",
       "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
       "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":EPA_FRS_DATA_SOURCES_URL if name == "epa_data_sources_page" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"https://www.usa.gov/publicdomain/label/1.0/","attribution":"ArcGIS item attribution: USEPA FRS, EIA. Item metadata states EPA-generated works are generally public domain; rights review remains pending.","release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in sorted(captures.items())],
       "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"feature_layer_id":LAYER_ID,"source_fields":"all 59 fields preserved in producer order and declared physical types","source_ids":"Preserve each OBJECTID, OBJECTID_1, REGISTRY_ID and EIA identifiers unchanged","geometry":"Esri point x/y retained as WKB at EPSG:3857; no reprojection or repair","candidate_status":"unapproved; production publication prohibited pending source freshness, schema/ID contract, rights and mapping acceptance"}}],
-      "lineage":"EPA_GEO ArcGIS item 2a1459ac9b03469e87c2e7785cc188a9 serves exact layer 4. EPA FRS identifies EIA-860 as its source; see https://www.epa.gov/frs/frs-data-sources. The service says the EIA-860 input was most-current as of June 2014. The ArcGIS item modification date is not a release date.",
+      "lineage":"EPA_GEO ArcGIS item 2a1459ac9b03469e87c2e7785cc188a9 serves exact layer 4. EPA FRS identifies EIA-860 as its source; see https://www.epa.gov/frs/frs-data-sources. The service says the EIA-860 attribute compilation was most-current as of June 2014; the maintained FRS tables refresh process keeps updating the layer (data last edited 2026-11-09). The ArcGIS item modification date is not a release date.",
       "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri query values, all attributes, IDs and source point geometry retained; source vintage and release approvals remain unresolved.","objects":[{"path":next(iter(source_objects)),**next(iter(source_objects.values()))}]}}},
       "unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No display transformation or generalized geometry approved."},
     }

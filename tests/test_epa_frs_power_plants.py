@@ -176,7 +176,7 @@ class RegistryEntryIdentityTests(unittest.TestCase):
         self.assertEqual(src.ITEM_ID, "2a1459ac9b03469e87c2e7785cc188a9")
         self.assertEqual(src.LAYER_ID, 4)
         self.assertEqual(src.LAYER_NAME, "EPA Facility Registry Service - EIA-860 Power Generation Facilities By Source")
-        self.assertEqual(src.EXPECTED_COUNT, 2328)
+        self.assertEqual(src.EXPECTED_COUNT, 2326)
         self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
                          "5a8de30d69b9f91343f5cd85e21c0cda33bedb7b768551a126c9f77a28ffddff")
         self.assertEqual(src.SOURCE_VINTAGE, "2014-06")
