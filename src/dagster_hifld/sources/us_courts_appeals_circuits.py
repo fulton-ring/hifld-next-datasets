@@ -26,7 +26,7 @@ from dagster_hifld.sources.epa_frs_common import (
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.sources.levee_areas_usace_ienc import _esri_polygon_wkb
-from dagster_hifld.sources.usace_obstruction_lines import (
+from dagster_hifld.sources.usace_ienc_common import (
     _canonical, _capture_identity, _load_capture, _sha,
     _validate_capture_request_identity, _validate_spatial_reference,
 )

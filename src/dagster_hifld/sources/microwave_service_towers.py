@@ -28,7 +28,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable, capture_get,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
+from dagster_hifld.sources.usace_ienc_common import (
     _canonical, _load_capture, _sha, _validate_capture_request_identity,
 )
 

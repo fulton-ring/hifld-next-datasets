@@ -5,6 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dagster import DefaultScheduleStatus
+from pyproj import CRS
+
 from dagster_hifld.sources import usace_obstruction_lines as source
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
@@ -130,7 +132,7 @@ class UsaceObstructionLinesTests(unittest.TestCase):
             ("feature wkid/latestWkid contradiction", lambda d: d["features"]["features"][0]["geometry"].update(
                 spatialReference={"wkid":3857,"latestWkid":4326})),
             ("feature WKT contradiction", lambda d: d["features"]["features"][0]["geometry"].update(
-                spatialReference={"latestWkid":4326,"wkt":source.CRS.from_epsg(3857).to_wkt()})),
+                spatialReference={"latestWkid":4326,"wkt":CRS.from_epsg(3857).to_wkt()})),
         ]
         for label, mutate in mutations:
             with self.subTest(label=label):
