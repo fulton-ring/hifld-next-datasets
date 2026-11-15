@@ -20,7 +20,7 @@ explains that a reporting institution can represent a main campus, a main campus
 with satellite/off-campus locations, a community-college district or a university
 system. These are reporting-institution points, not an exhaustive inventory of
 every physical campus or evidence of operating status today. `UNITID` is the
-native eight-character text identifier; it is not one-to-one with OPEID.
+native text identifier in a DBF C8 field; it is not one-to-one with OPEID.
 `OGC_FID` is a separate file-local index, not institutional identity or an approved
 historical published-ID mapping. The embedded metadata describes an annually
 updated IPEDS population of postsecondary institutions participating in federal
