@@ -48,10 +48,15 @@ baseline rather than hiding behind unchanged aggregate gate counts.
 
 The ID roster digest is pinned from the dated roster probes (2026-11-15). The
 per-value record and geometry baseline digests and the geometry-gate counts
-are pinned below from the complete dated population walk (2026-11-15).
-Publication stays blocked pending succession, freshness, schema/ID, rights or
-release approvals; all runtime approval flags are false and the draft refresh
-schedule is stopped.
+are pinned from the complete dated population walk (2026-11-15: 395,291
+features, 92,115,472 served web-mercator vertices, every feature a single
+served path, zero null or gated geometries, the producer's per-vertex ``ids``
+member on 328 features, served geometry bounds equal to the declared extent
+exactly; 17 refused windows were retained as evidence and every one served
+after roster-derived bisection, so the population is complete at native
+fidelity). Publication stays blocked pending succession, freshness, schema/ID,
+rights or release approvals; all runtime approval flags are false and the
+draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
@@ -166,13 +171,13 @@ SHAPE_PARITY_TOLERANCE = 1e-5
 # Native baselines pinned from the dated probes and the complete dated
 # population walk (2026-11-15); empty/None pins are checked only when non-empty.
 EXPECTED_SCHEMA_SHA256 = "9915218890bbae1273727a06e614e1de65cd01024f1faad24cbe4946bcf046cc"
-EXPECTED_RECORD_SHA256 = ""
+EXPECTED_RECORD_SHA256 = "6a297275443633f81b895c5c6346eab09bb9f03857774aa15c9963e1e7b5886d"
 # Geometry digest over every served row — one [objectid, served paths] document
 # per feature in ascending OBJECTID order, including the rows that gate to null
 # geometry — computed from the complete dated population walk (2026-11-15).
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
+EXPECTED_GEOMETRY_SHA256 = "cf4e10f87ea8ff6c78f3244726c99063747f9b1db850e1de5a4ce69ae1e8667f"
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
 BASELINE_PENDING_NOTE = (
     "The record and geometry baselines and the geometry-gate counts are "
     "pinned from the complete dated population walk (2026-11-15); this note "
