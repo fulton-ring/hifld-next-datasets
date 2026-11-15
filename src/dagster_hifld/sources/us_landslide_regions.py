@@ -132,14 +132,25 @@ EXPECTED_LAYER_EXTENT = {"xmin": -17337802.24197813, "ymin": 2031850.1690669723,
                          "xmax": -7339708.080696905, "ymax": 9269118.005589234}
 EXPECTED_IDS_SHA256 = "4ec0f351ecbd95ceb9115aff02a1360a65c77afb8682ad308aa99d475a97521d"
 EXPECTED_SCHEMA_SHA256 = "f137264736def9130497b117d8618a98ef972b7355e9701c0340dddf6a9873de"
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_EMPTY_GEOMETRY_COUNT = None
-EXPECTED_INVALID_GEOMETRY_COUNT = None
-EXPECTED_TOTAL_VERTEX_COUNT = None
-EXPECTED_RINGS_PER_FEATURE_DISTRIBUTION = None
-EXPECTED_OBSERVED_BOUNDS = None
+# Pinned 2026-11-15T01:26Z from the completed 681-page / 680,497-feature capture
+# (capture window 2026-11-14T17:05:03Z..2026-11-15T01:13:14Z, capture_state.json
+# complete:true) via computed_baseline.json written by
+# fetch_us_landslide_regions_pages; one topology-invalid polygon is counted,
+# never repaired.
+EXPECTED_RECORD_SHA256 = "acb037ae21cac8bb922081ed378ad4b489b793075d81f40e98f47dd099013ec8"
+EXPECTED_GEOMETRY_SHA256 = "19c7067f9b0a6e349e1486e7035479042596efdaaf38f6b2286278d737fb2995"
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_EMPTY_GEOMETRY_COUNT = 0
+EXPECTED_INVALID_GEOMETRY_COUNT = 1
+EXPECTED_TOTAL_VERTEX_COUNT = 52_132_718
+EXPECTED_RINGS_PER_FEATURE_DISTRIBUTION = {
+    1: 671_269, 2: 6_560, 3: 1_312, 4: 510, 5: 243, 6: 154, 7: 99, 8: 50, 9: 46,
+    10: 40, 11: 34, 12: 21, 13: 13, 14: 11, 15: 12, 16: 10, 17: 12, 18: 7, 19: 6,
+    20: 7, 21: 4, 22: 4, 23: 7, 24: 8, 25: 7, 26: 4, 27: 3, 28: 2, 29: 6, 31: 1,
+    32: 3, 33: 2, 34: 3, 36: 1, 37: 3, 38: 2, 39: 4, 40: 1, 41: 1, 43: 1, 45: 1,
+    47: 1, 49: 1, 52: 2, 53: 2, 58: 2, 74: 1, 75: 1, 83: 1, 119: 1, 193: 1}
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -17337802.2419781, "ymin": 2031850.16906697,
+                            "xmax": -7339708.08069691, "ymax": 9269118.00558923}
 BASELINE_PENDING_NOTE = (
     "The record and geometry baseline digests, geometry gate counts and "
     "observed bounds are pinned from a completed resumable capture directory "

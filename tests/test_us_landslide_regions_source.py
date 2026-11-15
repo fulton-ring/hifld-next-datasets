@@ -253,8 +253,8 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                          "USGS US Landslide version 3 polygons")
         self.assertTrue(src.EXPECTED_IDS_SHA256)
         self.assertTrue(src.EXPECTED_SCHEMA_SHA256)
-        self.assertFalse(src.EXPECTED_RECORD_SHA256)
-        self.assertFalse(src.EXPECTED_GEOMETRY_SHA256)
+        self.assertTrue(src.EXPECTED_RECORD_SHA256)
+        self.assertTrue(src.EXPECTED_GEOMETRY_SHA256)
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         self.assertEqual(src.EXPECTED_ATTRIBUTE_NAMES,
                          ("OBJECTID", "fid_1", "USGS_ID", "Date_Min", "Date_Max",
