@@ -140,16 +140,26 @@ def _disk_floor_bytes(disk_total: int) -> int:
 # listed product establishes them; see the module docstring. In live mode the
 # capture completes, writes the computed contract to ``population_pins.json``,
 # and fails closed without staging.
-EXPECTED_PRODUCT_COUNT = None
-EXPECTED_PRODUCT_ROSTER_SHA256 = None
-EXPECTED_COUNT = None
-EXPECTED_ID_SHA256 = None
-EXPECTED_SCHEMA_SHA256 = None
-EXPECTED_RECORD_SHA256 = None
-EXPECTED_GEOMETRY_SHA256 = None
-EXPECTED_OBSERVED_BOUNDS = None
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_NAN_GEOMETRY_COUNT = None
+# Established 2026-11-15T00:18:58Z by the live-mode complete capture of all
+# 2,676 products FEMA's NFHL Database search page listed (fresh roster fetched
+# 2026-11-14T21:15Z and again at this capture's own listing brackets; roster
+# sha 30e14e79…; 68 durable tar parts rehydrated byte-verified plus 743
+# products re-acquired live from FEMA with 0 failures — recovery of the
+# 2026-11-13 capture whose artifact parts 0075-0093 and final meta 230734
+# left the artifact store listing). Pins-pending run: 5,941,832 features,
+# 505 null geometries, 0 NaN string geometries, candidate parquet 48,497,512,142
+# bytes (zstd level 12); every product zip receipt-sha and CRC verified.
+EXPECTED_PRODUCT_COUNT = 2676
+EXPECTED_PRODUCT_ROSTER_SHA256 = "30e14e797a27c74883c9ef0652d98234e78d7ab3106adab96ddbb25a36bfe8cf"
+EXPECTED_COUNT = 5941832
+EXPECTED_ID_SHA256 = "e2d058e6c3b37ad35bc302af52d9545a0fd6f83ce4c4abbc5e780a927177d814"
+EXPECTED_SCHEMA_SHA256 = "529ca894622ab17339c1c3cf8b4d44b486eb32b62e72d3782062923bde0b8167"
+EXPECTED_RECORD_SHA256 = "0ff9fe8a1d4bd894ba5e970f09c18131a24bda886f015b5f08b4b3e5bf1e27e4"
+EXPECTED_GEOMETRY_SHA256 = "468de199f6b4975706c8d40aef42f6ef9707299feb40f1755ca40483323c94ee"
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -170.84840210923284, "ymin": -14.375160286190692,
+                            "xmax": 145.83219414839436, "ymax": 66.61058213599716}
+EXPECTED_NULL_GEOMETRY_COUNT = 505
+EXPECTED_NAN_GEOMETRY_COUNT = 0
 
 _ARROW_TYPES = {"string": pa.string(), "double": pa.float64(),
                 "int64": pa.int64(), "boolean": pa.bool_()}
