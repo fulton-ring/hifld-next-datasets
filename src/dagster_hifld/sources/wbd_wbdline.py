@@ -439,6 +439,27 @@ def _validate_spatial_reference(value: object, label: str, *, required: bool = T
     return found
 
 
+def _layer_stability_view(layer: dict) -> dict:
+    """Layer-document view used for the before/after stability comparison.
+
+    The served layer document is compared exactly between the start and the
+    end of the walk, except ``drawingInfo.renderer.authoringInfo.colorRamp``:
+    the producer's multipart renderer randomizes that color-ramp payload on
+    every response (observed 2026-11-15: two consecutive layer fetches differ
+    only in that member). It is display styling, not dataset data; every other
+    member of the layer document must match exactly.
+    """
+    view = json.loads(json.dumps(layer))
+    drawing_info = view.get("drawingInfo")
+    if isinstance(drawing_info, dict):
+        renderer = drawing_info.get("renderer")
+        if isinstance(renderer, dict):
+            authoring = renderer.get("authoringInfo")
+            if isinstance(authoring, dict):
+                authoring.pop("colorRamp", None)
+    return view
+
+
 def _validate_service(service: dict, label: str) -> None:
     if (service.get("currentVersion") != 11.3
             or service.get("mapName") != MAP_NAME
@@ -557,7 +578,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
     layer = json.loads(docs["layer_before"])
     _validate_layer(layer)
     if json.loads(docs["service_after"]) != json.loads(docs["service_before"]) \
-            or json.loads(docs["layer_after"]) != layer:
+            or _layer_stability_view(json.loads(docs["layer_after"])) != _layer_stability_view(layer):
         raise ValueError("source_service_or_layer_changed_during_capture")
     _validate_count(json.loads(docs["count_before"]), "before")
     _validate_count(json.loads(docs["count_after"]), "after")

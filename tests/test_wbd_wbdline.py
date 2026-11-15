@@ -127,6 +127,12 @@ def _documents() -> dict:
              "typeIdField": None, "isDataVersioned": False, "isDataArchived": False,
              "extent": {**source.EXPECTED_LAYER_EXTENT, "spatialReference": dict(_SR)},
              "advancedQueryCapabilities": {"supportsPagination": True},
+             "drawingInfo": {"renderer": {"authoringInfo": {
+                 "colorRamp": {"type": "multipart",
+                               "colorRamps": [{"type": "algorithmic",
+                                               "algorithm": "esriCIELabAlgorithm",
+                                               "fromColor": [236, 252, 204, 255],
+                                               "toColor": [236, 252, 204, 255]}]}}}},
              "sourceSpatialReference": dict(_SR), "spatialReference": None,
              "fields": json.loads(json.dumps(source.EXPECTED_LAYER_FIELDS))}
     features = {}
@@ -590,6 +596,13 @@ class WbdWbdlineTests(unittest.TestCase):
              "service_before_service_layer_roster_drift"),
             ("service changed during capture", lambda d: d["service_after"].update(mapName="other"),
              "source_service_or_layer_changed_during_capture"),
+            ("layer colorramp nondeterminism is not a data change", lambda d: d["layer_after"]
+             ["drawingInfo"]["renderer"]["authoringInfo"].update(
+                 colorRamp={"type": "multipart",
+                            "colorRamps": [{"type": "algorithmic",
+                                            "algorithm": "esriCIELabAlgorithm",
+                                            "fromColor": [1, 2, 3, 255],
+                                            "toColor": [4, 5, 6, 255]}]}), None),
             ("service doc drift", lambda d: d.update(service_doc="<html>unrelated</html>"),
              "usgs_service_documentation_drift"),
         ]
@@ -601,7 +614,7 @@ class WbdWbdlineTests(unittest.TestCase):
                     if expected is None:
                         audit, _derived = source._validate_stream(
                             self._capture_root(docs), parquet_sink=None)
-                        self.assertEqual(audit["null_geometry_count"], len(_GATE_FEATURES) + 1)
+                        self.assertEqual(audit["source_feature_count"], _TEST_COUNT)
                     else:
                         with self.assertRaisesRegex(ValueError, expected):
                             source._validate_stream(self._capture_root(docs), parquet_sink=None)
