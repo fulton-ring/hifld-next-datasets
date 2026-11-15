@@ -8,11 +8,9 @@ from dagster_hifld.http_capture import (
     capture_roster_digests,
     validate_retained_capture_replay,
 )
+from dagster_hifld.sources.epa_frs_common import validate_capture_request_identity
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.usace_obstruction_lines import (
-    _load_capture,
-    _validate_capture_request_identity,
-)
+from dagster_hifld.sources.usace_obstruction_lines import _load_capture
 
 NAMES = {"alpha", "beta"}
 URLS = {"alpha": "https://producer.example.invalid/service/alpha",
@@ -53,7 +51,7 @@ class ValidateRetainedCaptureReplayTests(unittest.TestCase):
             capture_names=capture_names,
             expected_urls=expected_urls,
             load_capture=_load_capture,
-            validate_request_identity=_validate_capture_request_identity,
+            validate_request_identity=validate_capture_request_identity,
         )
 
     def test_valid_capture_replays_with_same_bodies_and_receipts(self):
