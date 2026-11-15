@@ -14,14 +14,13 @@ both true, ``sourceHeightModelInfo`` gravity-related NAVD88 heights in US
 survey feet), so the capture requests ``returnZ=true&returnM=true`` and every
 vertex is taken as the producer's four-ordinate ``[x, y, z, m]`` form; a
 two-ordinate vertex would silently drop the elevation and measure ordinates.
-Candidate geometry is PostGIS EWKB XYZM (the one four-ordinate polyline flavor
-the installed shapely/GEOS stack parses for both LineString and MultiLineString,
-and interchangeably readable by GDAL): producer JSON ``null`` or string-``"NaN"``
+Candidate geometry is ISO WKB XYZM, stored with a native Parquet GEOMETRY
+logical annotation and GeoParquet 2.0 metadata (GeoParquet 1.1 cannot carry M): producer JSON ``null`` or string-``"NaN"``
 Z/M ordinates map to WKB NaN, the OGC "no value" measure convention, with every
 such vertex counted in the audit while the raw paths in the record digest keep
 the producer's original values. The GeoParquet ``geo`` metadata declares
 "LineString ZM"/"MultiLineString ZM", matching the full four-ordinate WKB
-and the shared catalog dimension validator. The audit also records the
+and native GEOMETRY CRS annotation. The audit also records the
 source's hasZ/hasM contract and per-ordinate null/NaN counts.
 X/Y ``"NaN"`` string vertices gate the record's candidate geometry to null
 (never a coerced location), raw evidence intact.
@@ -178,15 +177,9 @@ _SEED_DOC = "ids_seed"
 _DOC_NAMES = ("service_doc", "service_before", "layer_before", "count_before", "ids_before")
 _AFTER_DOC_NAMES = ("layer_after", "service_after", "count_after", "ids_after")
 
-# PostGIS EWKB dimension flags. The candidate WKB carries Z and M in the EWKB
-# flavor because it is the one XYZM polyline form the installed shapely/GEOS
-# stack parses for both LineString and MultiLineString (ISO type 3005 nested
-# headers are rejected by GEOS), and GDAL reads it interchangeably.
-EWKB_Z_FLAG = 0x80000000
-EWKB_M_FLAG = 0x40000000
-EWKB_ZM_FLAGS = EWKB_Z_FLAG | EWKB_M_FLAG
-EWKB_LINESTRING_ZM = 2 | EWKB_ZM_FLAGS
-EWKB_MULTILINESTRING_ZM = 5 | EWKB_ZM_FLAGS
+# ISO/IEC 13249-3 four-ordinate type codes, including each nested part header.
+ISO_LINESTRING_ZM = 3002
+ISO_MULTILINESTRING_ZM = 3005
 
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -621,7 +614,7 @@ class _StreamStats:
         if nan_paths:
             self.nan_geometry_count += 1
         else:
-            # Both dimensions remain in the EWKB, including no-value NaNs.
+            # Both dimensions remain in the ISO WKB, including no-value NaNs.
             self.geometry_types.add("MultiLineString ZM" if len(geom["paths"]) > 1 else "LineString ZM")
 
     @property
@@ -841,25 +834,24 @@ def _path_vertices(path: list) -> bytes:
 
 
 def _polyline_wkb_xyzm(type_code: int, paths: list) -> bytes:
-    """PostGIS EWKB XYZM for one LineString or MultiLineString.
+    """ISO WKB XYZM for one LineString or MultiLineString.
 
     A LineString body is the vertex count plus the vertices; a MultiLineString
-    body is the part count plus one full nested LineString (byte-order marker,
-    dimension-flagged type code, vertex count, vertices) per part, as the EWKB
-    flavor requires.
+    body is the part count plus one full nested ISO LineString (byte-order
+    marker, type 3002, vertex count, vertices) per part.
     """
-    if type_code == EWKB_LINESTRING_ZM:
+    if type_code == ISO_LINESTRING_ZM:
         return b"\x01" + struct.pack("<I", type_code) + _path_vertices(paths[0])
     out = bytearray(b"\x01")
     out += struct.pack("<II", type_code, len(paths))
     for path in paths:
-        out += b"\x01" + struct.pack("<I", EWKB_LINESTRING_ZM)
+        out += b"\x01" + struct.pack("<I", ISO_LINESTRING_ZM)
         out += _path_vertices(path)
     return bytes(out)
 
 
 def _line_wkb(geom: object) -> bytes | None:
-    """EWKB XYZM for a producer polyline geometry, or ``None`` when unusable.
+    """ISO WKB XYZM for a producer polyline geometry, or ``None`` when unusable.
 
     ``None`` is reserved for null source geometry and X/Y ``"NaN"`` planar
     ordinates; producer ``null``/``"NaN"`` Z/M ordinates map to WKB NaN (the
@@ -870,8 +862,28 @@ def _line_wkb(geom: object) -> bytes | None:
     if paths is None:
         return None
     if len(paths) == 1:
-        return _polyline_wkb_xyzm(EWKB_LINESTRING_ZM, [paths[0]])
-    return _polyline_wkb_xyzm(EWKB_MULTILINESTRING_ZM, paths)
+        return _polyline_wkb_xyzm(ISO_LINESTRING_ZM, [paths[0]])
+    return _polyline_wkb_xyzm(ISO_MULTILINESTRING_ZM, paths)
+
+
+class _GeometryWkbType(pa.ExtensionType):
+    """Arrow's geoarrow.wkb mapping emits Parquet's native GEOMETRY annotation.
+
+    GeoParquet 2.0 requires this physical annotation; file metadata alone is
+    insufficient: https://geoparquet.org/releases/v2.0.0/
+    No global extension registration is needed to write this type.
+    """
+
+    def __init__(self, crs: dict[str, object]) -> None:
+        self.crs = crs
+        super().__init__(pa.binary(), "geoarrow.wkb")
+
+    def __arrow_ext_serialize__(self) -> bytes:
+        return _canonical({"crs": self.crs, "edges": "planar"})
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, metadata):
+        return cls(json.loads(metadata)["crs"])
 
 
 def _parquet_from_pages(capture_root: Path, segments: list[tuple[int, int]],
@@ -881,14 +893,16 @@ def _parquet_from_pages(capture_root: Path, segments: list[tuple[int, int]],
     One row group per captured page keeps memory bounded by a single page;
     the resulting file is read back once for the staged candidate.
     """
+    crs = pyproj.CRS.from_epsg(SOURCE_CRS_WKID).to_json_dict()
+    geometry_type = _GeometryWkbType(crs)
     schema_fields = []
     for field in fields:
         name = field["name"]
-        typ = pa.binary() if name == "SHAPE" else _arrow_type(field)
+        typ = geometry_type if name == "SHAPE" else _arrow_type(field)
         schema_fields.append(pa.field(name, typ, nullable=True))
-    geo = {"version": "1.1.0", "primary_column": "SHAPE", "columns": {"SHAPE": {
+    geo = {"version": "2.0.0", "primary_column": "SHAPE", "columns": {"SHAPE": {
         "encoding": "WKB", "geometry_types": sorted(EXPECTED_GEOMETRY_TYPES or []),
-        "crs": pyproj.CRS.from_epsg(SOURCE_CRS_WKID).to_json_dict(), "edges": "planar"}}}
+        "crs": crs, "edges": "planar"}}}
     schema = pa.schema(schema_fields).with_metadata({b"geo": _canonical(geo)})
     path = capture_root / f"{DATASET_SLUG}.parquet"
     writer = pq.ParquetWriter(path, schema, compression="zstd")
@@ -901,6 +915,8 @@ def _parquet_from_pages(capture_root: Path, segments: list[tuple[int, int]],
                 name = field["name"]
                 if name == "SHAPE":
                     values = [_line_wkb(row.get("geometry")) for row in rows]
+                    columns[name] = pa.ExtensionArray.from_storage(geometry_type, pa.array(values, type=pa.binary()))
+                    continue
                 else:
                     values = [row["attributes"].get(name) for row in rows]
                 columns[name] = pa.array(values, type=schema.field(name).type)
@@ -1071,7 +1087,7 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                        "completely from the producer's own REST publication with returnZ/returnM so every vertex "
                        "carries the producer's four ordinates. Complete source attributes and NAD83 (EPSG:4269) "
                        "polyline geometry with NAVD88 ftUS heights (Z) and route measures (M) are represented in "
-                       "the candidate (EWKB XYZM bytes; the advisory GeoParquet geometry_types declare the "
+                       "the candidate (ISO WKB XYZM bytes; the advisory GeoParquet geometry_types declare the "
                        "four-ordinate ' ZM' labels). The NFHL is continuously updated and publishes no "
                        "per-snapshot release "
                        "date; freshness, rights, public schema/ID contract, and release acceptance remain "
@@ -1106,11 +1122,11 @@ def capture_nfhl_profile_baselines(storage: StagingStorageResource, *, version: 
                                                              "WATER_TYP, STUDY_TYP, SHOWN_FIRM, R_ST_DESC, "
                                                              "R_END_DESC, V_DATM_OFF, DATUM_UNIT, FLD_PROB1-3, "
                                                              "SPEC_CONS1-2, START_ID, SOURCE_CIT); SHAPE is the "
-                                                             "original geometry field represented as PostGIS EWKB XYZM",
+                                                             "original geometry field represented as ISO WKB XYZM",
                                             "source_ids": "Preserve producer OBJECTID, BASELN_ID, GFID and "
                                                           "GlobalID values unchanged; no substitute IDs, casts, "
                                                           "trimming, or joins",
-                                            "geometry": "Source NAD83 (EPSG:4269) polyline paths retained as PostGIS EWKB "
+                                            "geometry": "Source NAD83 (EPSG:4269) polyline paths retained as PostGIS ISO WKB "
                                                         "LineString ZM / MultiLineString ZM without "
                                                         "projection; producer JSON null or string-'NaN' Z/M "
                                                         "ordinates map to WKB NaN (the OGC no-value measure "

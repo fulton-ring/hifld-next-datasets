@@ -163,7 +163,7 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
         self.assertIsInstance(geom, LineString)
         self.assertTrue(geom.has_z and geom.has_m)
         self.assertEqual(list(geom.coords)[1], (-86.5, 34.2, 1033.19, 2795.88))
-        self.assertEqual(struct.unpack("<BII", wkb[:9])[1], source.EWKB_LINESTRING_ZM)
+        self.assertEqual(struct.unpack("<BII", wkb[:9])[1], 3002)
 
     def test_null_m_maps_to_wkb_nan_and_is_counted(self):
         line = {"hasZ": True, "hasM": True,
@@ -179,7 +179,7 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
                 "paths": [[[-87.0, 33.0, 0, None], [-87.2, 33.2, 0, None]],
                           [[-88.0, 32.0, 0, None], [-89.0, 31.0, 0, None]]]}
         wkb = source._line_wkb(line)
-        self.assertEqual(struct.unpack("<BII", wkb[:9])[1], source.EWKB_MULTILINESTRING_ZM)
+        self.assertEqual(struct.unpack("<BII", wkb[:9])[1], 3005)
         geom = shapely.from_wkb(wkb)
         self.assertIsInstance(geom, MultiLineString)
         self.assertEqual(len(geom.geoms), 2)
@@ -382,6 +382,10 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix=".parquet") as stream:
             stream.write(parquet_body)
             stream.flush()
+            parquet_file = pq.ParquetFile(stream.name)
+            logical = json.loads(parquet_file.schema.column(parquet_file.schema.names.index("SHAPE")).logical_type.to_json())
+            self.assertEqual(logical["Type"], "Geometry")
+            self.assertEqual(json.loads(logical["crs"])["id"]["code"], 4269)
             table = pq.read_table(stream.name)
         self.assertEqual(table.num_rows, 5)
         self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12, 13, 14])
@@ -402,6 +406,7 @@ class NfhlProfileBaselinesTests(unittest.TestCase):
         self.assertIsInstance(third, MultiLineString)
         self.assertEqual(len(third.geoms), 2)
         geo = json.loads(table.schema.metadata[b"geo"])
+        self.assertEqual(geo["version"], "2.0.0")
         self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"]["code"], 4269)
         self.assertEqual(sorted(geo["columns"]["SHAPE"]["geometry_types"]),
                          ["LineString ZM", "MultiLineString ZM"])
