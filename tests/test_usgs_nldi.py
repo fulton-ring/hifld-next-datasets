@@ -69,15 +69,28 @@ class JSONStream(httpx.SyncByteStream):
 
 
 def make_transport(rows: list[dict] | None = None, *, sources: list | dict | None = None,
-                   refuse_at_offset: int | None = None, extra_features: int = 0) -> httpx.MockTransport:
+                   refuse_at_offset: int | None = None, extra_features: int = 0,
+                   later_sources: list | dict | None = None,
+                   requests: list | None = None) -> httpx.MockTransport:
     rows = list(rows) if rows is not None else _fixture_rows()
     sources = sources if sources is not None else _fixture_sources()
+    served_sources = {"count": 0}
 
     def respond(request: httpx.Request) -> httpx.Response:
         parsed = urlparse(str(request.url))
         query = parse_qs(parsed.query)
+        if requests is not None:
+            if parsed.path.rstrip("/").endswith("/linked-data"):
+                requests.append("sources")
+            elif parsed.path.rstrip("/").endswith("/linked-data/ref_gage"):
+                requests.append(f"page:{query.get('offset', ['0'])[0]}")
+            else:
+                requests.append(str(request.url))
         if parsed.path.rstrip("/").endswith("/linked-data"):
-            return httpx.Response(200, stream=JSONStream(sources),
+            served_sources["count"] += 1
+            listing = sources if served_sources["count"] == 1 else (
+                sources if later_sources is None else later_sources)
+            return httpx.Response(200, stream=JSONStream(listing),
                                   headers={"content-type": "application/json"})
         if parsed.path.rstrip("/").endswith("/linked-data/ref_gage"):
             offset = int(query.get("offset", ["0"])[0])
@@ -314,7 +327,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "HTTP capture incomplete"):
                     nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=refusing))
             state = json.loads((capture_a / "capture_state.json").read_text())
-            self.assertEqual([entry["name"] for entry in state["pages"]], ["sources-before", "sources-after",
+            self.assertEqual([entry["name"] for entry in state["pages"]], ["sources-before",
                                                                            "page_000000000"])
             stale_path = next(entry for entry in state["pages"]
                               if entry["name"] == "page_000000000")["decoded_path"]
@@ -360,6 +373,79 @@ class USGSNLDIAssetTests(unittest.TestCase):
                 with patch.object(nldi, "EXPECTED_ASSET_SHA256", "0" * 64):
                     with self.assertRaisesRegex(ValueError, "candidate asset bytes drifted"):
                         nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+
+    def test_exact_multiple_population_recomposition_stays_valid(self):
+        rows = [_fixture_feature(index) for index in range(6)]
+        transport = make_transport(rows=rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            staging = _staging(root)
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                result = nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=transport))
+            self.assertEqual(result["feature_count"], 6)
+            state = json.loads((capture_root / "capture_state.json").read_text())
+            empty_page = next(entry for entry in state["pages"] if entry["name"] == "page_000000006")
+            self.assertEqual(empty_page["count"], 0)
+            prefix = Path(root) / "staging" / nldi.DATASET_SLUG / nldi.FILE_SLUG / result["version"]
+            composed = (prefix / nldi.ASSET_PATH).read_bytes()
+            self.assertTrue(composed.endswith(b"]}"))
+            self.assertFalse(composed.endswith(b",]}"))
+            collection = json.loads(composed)
+            self.assertEqual([feature["id"] for feature in collection["features"]],
+                             [_fixture_identifier(index) for index in range(6)])
+
+    def test_registration_change_during_walk_is_detected(self):
+        drifted = [entry for entry in _fixture_sources() if entry.get("source") != "ref_gage"]
+        requests: list[str] = []
+        transport = make_transport(later_sources=drifted, requests=requests)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                with self.assertRaisesRegex(ValueError, "NLDI ref_gage feature source is missing or ambiguous"):
+                    nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+            self.assertEqual(requests, ["sources", "page:0", "page:3", "page:6", "sources"])
+            quarantined = sorted((root / "staging" / "_quarantine" / nldi.DATASET_SLUG
+                                 / nldi.FILE_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_text())
+            self.assertEqual(failure["reason_code"], "nldi_feature_source_registration_drift")
+            state = json.loads((capture_root / "capture_state.json").read_text())
+            self.assertNotIn("sources-after", [entry["name"] for entry in state["pages"]])
+
+    def test_resumed_capture_with_corrupted_evidence_is_refused(self):
+        transport = make_transport()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+            wire_path = capture_root / "page_000000000.wire"
+            original_wire = wire_path.read_bytes()
+            wire_path.write_bytes(b"corrupted wire evidence")
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                with self.assertRaisesRegex(ValueError,
+                                            "retained NLDI wire evidence for page_000000000"):
+                    nldi.fetch_and_stage_nldi(_staging(root / "fresh-wire"))
+            quarantined = sorted((root / "fresh-wire" / "staging" / "_quarantine"
+                                 / nldi.DATASET_SLUG / nldi.FILE_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_text())
+            self.assertEqual(failure["reason_code"], "nldi_retained_evidence_integrity_failed")
+            wire_path.write_bytes(original_wire)
+            decoded_path = capture_root / "page_000000000.decoded"
+            original_decoded = decoded_path.read_bytes()
+            decoded_path.write_bytes(b"corrupted decoded evidence")
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                with self.assertRaisesRegex(ValueError,
+                                            "retained NLDI decoded evidence for page_000000000"):
+                    nldi.fetch_and_stage_nldi(_staging(root / "fresh-decoded"))
+            decoded_path.write_bytes(original_decoded)
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                result = nldi.fetch_and_stage_nldi(_staging(root / "fresh-recovered"))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertFalse(result["reused"])
 
 
 if __name__ == "__main__":

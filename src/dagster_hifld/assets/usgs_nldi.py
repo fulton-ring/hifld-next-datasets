@@ -13,7 +13,12 @@ endpoint without pagination was observed failing with a gateway timeout, so the
 capture walks the documented pagination: pages of 250 features from offset 0
 until a page returns fewer features than the limit, each page retained as raw
 evidence in a resumable capture directory before any candidate is sealed. The
-250-feature page size is chosen because larger pages were observed exceeding
+registered ``ref_gage`` feature-source listing brackets the complete walk on
+both sides (captured before the first page and again after the final page), so
+a registration change during the walk is observed. Every retained capture file
+is re-verified against its fetch receipt and its accepted roster entry before
+it is replayed into the audit or sealed into a candidate. The 250-feature page
+size is chosen because larger pages were observed exceeding
 the NLDI gateway's server-side budget under load (1000-feature pages answered
 with gateway-504 bodies or hung until read timeout, while smaller documented
 limit/offset pages completed), and any ``limit`` is a documented pagination
@@ -108,7 +113,8 @@ BASELINE_NOTE = (
     "unpinned values are checked only once pinned, and drift against a pinned "
     "value is refused and quarantined.")
 PAGE_NAME_PATTERN = re.compile(r"page_([0-9]{9})$")
-SOURCE_NAMES = ("sources-before", "sources-after")
+SOURCES_BEFORE_NAME = "sources-before"
+SOURCES_AFTER_NAME = "sources-after"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -289,6 +295,54 @@ def _retain(capture_root: Path, name: str, wire: bytes, decoded: bytes, receipt:
     return decoded_path
 
 
+def _read_evidence(capture_root: Path, name: str, suffix: str) -> bytes:
+    path = _evidence_path(capture_root, name, suffix)
+    return path.read_bytes() if path.is_file() else b""
+
+
+def _verify_retained_evidence(capture_root: Path, entry: dict) -> dict:
+    """Retained evidence must reproduce its receipt hashes, sizes and accepted state.
+
+    A capture directory is reused across runs; before any retained bytes are
+    replayed into an audit or sealed into a candidate, every retained file is
+    re-read and checked against the SHA-256 digests and byte counts its own
+    receipt recorded at fetch time, and against the digest the accepted roster
+    entry pinned. Inconsistent, incomplete or missing evidence is refused.
+    """
+    name = str(entry.get("name"))
+    if not name:
+        raise ValueError("retained NLDI evidence roster entry has no name")
+    receipt = _load_json(_read_evidence(capture_root, name, "receipt.json"),
+                         f"retained NLDI receipt {name}")
+    if (receipt.get("status_code") != 200 or receipt.get("complete") is not True
+            or type(receipt.get("wire_sha256")) is not str
+            or type(receipt.get("decoded_sha256")) is not str):
+        raise ValueError(f"retained NLDI receipt for {name} is not a complete 200 response")
+    for suffix, digest_key, size_key in (("wire", "wire_sha256", "wire_bytes"),
+                                         ("decoded", "decoded_sha256", "decoded_bytes")):
+        body = _read_evidence(capture_root, name, suffix)
+        if len(body) != receipt.get(size_key) or hashlib.sha256(body).hexdigest() != receipt[digest_key]:
+            raise ValueError(f"retained NLDI {suffix} evidence for {name} does not match its receipt")
+    if receipt["decoded_sha256"] != entry.get("sha256"):
+        raise ValueError(f"retained NLDI evidence for {name} does not match its accepted roster entry")
+    return receipt
+
+
+def _quarantine_retained(staging: StagingStorageResource, capture_root: Path, capture_version: str,
+                         entries: list[dict], reason: str) -> str:
+    captures = []
+    for entry in entries:
+        name = str(entry.get("name"))
+        receipt_body = _read_evidence(capture_root, name, "receipt.json")
+        try:
+            receipt = _load_json(receipt_body, f"retained NLDI receipt {name}") if receipt_body else {}
+        except ValueError:
+            receipt = {"receipt": "unreadable"}
+        captures.append((name, _read_evidence(capture_root, name, "wire"),
+                         _read_evidence(capture_root, name, "decoded"), receipt))
+    return _quarantine(staging, capture_version, captures, reason)
+
+
 class _CaptureState:
     """Resumable per-page evidence roster with atomic state persistence."""
 
@@ -439,21 +493,41 @@ class _WalkAudit:
         return len(ids), ids, audit
 
 
-def _compose_asset(pages: list[dict], capture_root: Path) -> bytes:
-    """Recompose the walked pages, retaining every serialized lexeme verbatim."""
+def _compose_asset(pages: list[dict], capture_root: Path, ids: list[str]) -> bytes:
+    """Recompose the walked pages, retaining every serialized lexeme verbatim.
+
+    The terminating page of an exact-multiple walk returns zero features, so
+    empty page interiors are excluded from the byte join instead of being
+    spliced in as empty strings. The recomposed bytes are then re-parsed and
+    every feature re-validated against the walked identifier roster before the
+    candidate can be sealed, so any broken recomposition is refused here rather
+    than staged as undecodable JSON.
+    """
     interiors = []
     total_features = 0
     for entry in pages:
         decoded_path = _evidence_path(capture_root, entry["name"], "decoded")
         if not decoded_path.exists():
             raise ValueError("retained page evidence is missing at composition time")
-        interiors.append(_page_slice(decoded_path.read_bytes()))
+        interior = _page_slice(decoded_path.read_bytes())
+        if entry["count"]:
+            interiors.append(interior)
         total_features += entry["count"]
-    body = (b'{"type":"FeatureCollection","features":[' + b",".join(interiors) + b"]}")
-    expected_length = (len(b'{"type":"FeatureCollection","features":[') + len(b"]}")) \
-        + sum(len(interior) for interior in interiors) + max(0, len(interiors) - 1)
-    if len(body) != expected_length or total_features == 0:
+    if total_features == 0 or not interiors:
         raise ValueError("composed candidate asset does not reproduce the walked features")
+    envelope = b'{"type":"FeatureCollection","features":['
+    body = envelope + b",".join(interiors) + b"]}"
+    expected_length = (len(envelope) + len(b"]}") + sum(len(interior) for interior in interiors)
+                       + max(0, len(interiors) - 1))
+    if len(body) != expected_length:
+        raise ValueError("composed candidate asset does not reproduce the walked features")
+    features = _page_collection(_load_json(body, "composed NLDI candidate asset"))
+    if len(features) != len(ids):
+        raise ValueError("the recomposed candidate does not reproduce the walked features")
+    for feature, identifier in zip(features, ids):
+        if _feature_identifier(feature) != identifier:
+            raise ValueError("the recomposed candidate identifiers do not match the walked roster")
+        _validate_feature(feature, identifier)
     return body
 
 
@@ -545,6 +619,60 @@ def _default_client() -> httpx.Client:
                         timeout=httpx.Timeout(60.0, read=240.0, write=60.0, pool=60.0))
 
 
+def _capture_sources_listing(staging: StagingStorageResource, session: httpx.Client,
+                             capture_root: Path, state: _CaptureState, label: str,
+                             capture_version: str, captures: list[tuple[str, bytes, bytes, dict]]) -> None:
+    """Fetch, validate and retain one NLDI feature-source listing bracket.
+
+    The ``sources-before`` listing is captured before the pagination walk and
+    the ``sources-after`` listing after its final page, so a feature-source
+    registration change during the walk is observed on both sides. A reused
+    retained listing is re-verified against its receipt, its accepted roster
+    entry and the pinned registration before it counts as evidence.
+    """
+    entry = state.accepted(label)
+    if entry is not None:
+        try:
+            _verify_retained_evidence(capture_root, entry)
+        except ValueError:
+            _quarantine_retained(staging, capture_root, capture_version, [entry],
+                                 "nldi_retained_evidence_integrity_failed")
+            raise
+        try:
+            document = json.loads(_read_evidence(capture_root, label, "decoded"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            _quarantine_retained(staging, capture_root, capture_version, [entry],
+                                 "nldi_source_listing_malformed_json")
+            raise ValueError(f"NLDI retained {label} listing was not valid JSON") from exc
+        try:
+            _sources_entry(document)
+        except ValueError:
+            _quarantine_retained(staging, capture_root, capture_version, [entry],
+                                 "nldi_feature_source_registration_drift")
+            raise
+        return
+    wire, decoded, receipt = _fetch(session, SOURCES_URL + "?f=json",
+                                    accept="application/json", limit=SOURCES_CAPTURE_BYTES)
+    captures.append((label, wire, decoded, receipt))
+    if receipt["status_code"] != 200 or not receipt["complete"]:
+        _quarantine(staging, capture_version, captures, "nldi_source_listing_http_capture_incomplete")
+        raise ValueError(f"NLDI {label} HTTP capture incomplete")
+    try:
+        document = json.loads(decoded)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        _quarantine(staging, capture_version, captures, "nldi_source_listing_malformed_json")
+        raise ValueError(f"NLDI {label} listing was not valid JSON") from exc
+    try:
+        _sources_entry(document)
+    except ValueError:
+        _quarantine(staging, capture_version, captures, "nldi_feature_source_registration_drift")
+        raise
+    decoded_path = _retain(capture_root, label, wire, decoded, receipt)
+    state.accept({"name": label, "offset": 0, "count": 0, "sha256": receipt["decoded_sha256"],
+                  "fetched_at": receipt["fetched_at"], "decoded_path": str(decoded_path)})
+    captures.clear()
+
+
 def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Client | None = None,
                          capture_directory: str | None = None) -> dict:
     """Walk the USGS NLDI ref_gage pagination, verify it completely, and stage one candidate."""
@@ -558,32 +686,8 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
     captures: list[tuple[str, bytes, bytes, dict]] = []
     capture_version = "unresolved-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     try:
-        for label in SOURCE_NAMES:
-            entry = state.accepted(label)
-            if entry is not None:
-                document = json.loads(_evidence_path(capture_root, label, "decoded").read_bytes())
-                _sources_entry(document)
-                continue
-            wire, decoded, receipt = _fetch(session, SOURCES_URL + "?f=json",
-                                            accept="application/json", limit=SOURCES_CAPTURE_BYTES)
-            captures.append((label, wire, decoded, receipt))
-            if receipt["status_code"] != 200 or not receipt["complete"]:
-                _quarantine(staging, capture_version, captures, "nldi_source_listing_http_capture_incomplete")
-                raise ValueError(f"NLDI {label} HTTP capture incomplete")
-            try:
-                document = json.loads(decoded)
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                _quarantine(staging, capture_version, captures, "nldi_source_listing_malformed_json")
-                raise ValueError(f"NLDI {label} listing was not valid JSON") from exc
-            try:
-                _sources_entry(document)
-            except ValueError:
-                _quarantine(staging, capture_version, captures, "nldi_feature_source_registration_drift")
-                raise
-            decoded_path = _retain(capture_root, label, wire, decoded, receipt)
-            state.accept({"name": label, "offset": 0, "count": 0, "sha256": receipt["decoded_sha256"],
-                          "fetched_at": receipt["fetched_at"], "decoded_path": str(decoded_path)})
-            captures.clear()
+        _capture_sources_listing(staging, session, capture_root, state, SOURCES_BEFORE_NAME,
+                                 capture_version, captures)
         pages: list[dict] = []
         audit = _WalkAudit()
         offset = 0
@@ -591,6 +695,12 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
             name = f"page_{offset:09d}"
             retained = state.accepted(name)
             if retained is not None:
+                try:
+                    _verify_retained_evidence(capture_root, retained)
+                except ValueError:
+                    _quarantine_retained(staging, capture_root, capture_version, [retained],
+                                         "nldi_retained_evidence_integrity_failed")
+                    raise
                 decoded = _evidence_path(capture_root, name, "decoded").read_bytes()
                 document = _load_json(decoded, f"retained NLDI page {name}")
                 features = _page_collection(document)
@@ -637,7 +747,12 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
                 raise ValueError("retained page evidence is outside the accepted walk")
         ids = audit.ids
         _validate_walk(pages, ids, audit.duplicate_rows)
-        body = _compose_asset(pages, capture_root)
+        # The after bracket is captured only once the walk is verified complete,
+        # so a registration change during the walk is detected by comparing the
+        # registered feature sources on both sides of the complete walk.
+        _capture_sources_listing(staging, session, capture_root, state, SOURCES_AFTER_NAME,
+                                 capture_version, captures)
+        body = _compose_asset(pages, capture_root, ids)
         feature_count, ids, audit = audit.finish()
         asset_sha256 = hashlib.sha256(body).hexdigest()
         audit["asset_sha256"] = asset_sha256
@@ -665,6 +780,15 @@ def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Clien
         if (EXPECTED_DUPLICATE_IDS is not None
                 and [row["id"] for row in audit["duplicate_rows"]] != EXPECTED_DUPLICATE_IDS):
             raise ValueError("NLDI ref_gage duplicate-row roster drifted from the pinned walk")
+        # Backstop integrity pass over every retained capture file before the
+        # capture is marked complete and its evidence is sealed into a candidate.
+        for entry in state.entries():
+            try:
+                _verify_retained_evidence(capture_root, entry)
+            except ValueError:
+                _quarantine_retained(staging, capture_root, capture_version, state.entries(),
+                                     "nldi_retained_evidence_integrity_failed")
+                raise
         state.data["complete"] = True
         state.save()
     finally:
