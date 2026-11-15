@@ -491,5 +491,124 @@ class EpaFrsInterestsTests(unittest.TestCase):
                 self.assertTrue(again["reused"])
 
 
+class EpaFacilityRegistryServiceFrsInterestsTests(unittest.TestCase):
+    """The duplicate ``epa-facility-registry-service-frs-interests`` inventory entry (issue #390).
+
+    The HIFLD Open catalog lists the same EPA full-universe FRS interests product
+    twice; this entry stages its own candidate identity from the same maintained
+    source and pins.
+    """
+
+    def test_registry_entry_is_registered_with_its_own_identity(self):
+        self.assertEqual(src.EPA_ITEM_DATASET_SLUG, "epa-facility-registry-service-frs-interests")
+        self.assertIn(src.EPA_ITEM_DATASET_SLUG, src.DATASET_SLUGS)
+        self.assertEqual(src._DEFAULT_CAPTURE_ROOTS[src.EPA_ITEM_DATASET_SLUG], "390")
+        keys = defs.resolve_asset_graph().get_all_asset_keys()
+        self.assertTrue(any(key.path == ["ingest", src.EPA_ITEM_DATASET_SLUG, src.EPA_ITEM_DATASET_SLUG]
+                            for key in keys))
+        check_keys = defs.resolve_asset_graph().asset_check_keys
+        self.assertTrue(any(key.to_user_string().endswith(":epa_facility_registry_service_frs_interests_complete")
+                            for key in check_keys))
+        job = defs.get_job_def("epa_facility_registry_service_frs_interests_draft_refresh")
+        self.assertIsNotNone(job)
+        schedule = defs.get_schedule_def("epa_facility_registry_service_frs_interests_draft_refresh_schedule")
+        self.assertIsNotNone(schedule)
+        self.assertEqual(schedule.default_status.value if hasattr(schedule.default_status, "value")
+                         else schedule.default_status, "STOPPED")
+
+    def test_unknown_dataset_slug_is_refused(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with fixture_mode(schema_sha, transport):
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                with self.assertRaisesRegex(src.EPAFRSInterestsError,
+                                            "unknown_dataset_slug:not-a-known-inventory-entry"):
+                    src.capture_epa_frs_interests(storage, version="slug-run",
+                                                  dataset_slug="not-a-known-inventory-entry")
+            self.assertEqual(sorted(p.name for p in (root / "staging").rglob("*") if p.is_file()), [])
+
+    def test_registry_entry_fixture_capture_stages_under_its_own_identity(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                first = src.capture_epa_frs_interests(
+                    storage, version="registry-entry-run", capture_directory=str(capture_root),
+                    dataset_slug=src.EPA_ITEM_DATASET_SLUG)
+                self.assertEqual(first["dataset_slug"], src.EPA_ITEM_DATASET_SLUG)
+                self.assertEqual(first["file_slug"], src.EPA_ITEM_DATASET_SLUG)
+                self.assertFalse(first["reused"])
+                self.assertFalse(first["release_accepted"])
+                second = src.capture_epa_frs_interests(
+                    storage, version="registry-entry-run-2", capture_directory=str(capture_root),
+                    dataset_slug=src.EPA_ITEM_DATASET_SLUG)
+            self.assertEqual(second["version"], first["version"])
+            self.assertTrue(second["reused"])
+            self.assertTrue((capture_root / f"{src.EPA_ITEM_DATASET_SLUG}.parquet").exists())
+            table = pq.read_table(capture_root / f"{src.EPA_ITEM_DATASET_SLUG}.parquet")
+            self.assertEqual(table.num_rows, FIXTURE_COUNT)
+            prefix = f"{src.EPA_ITEM_DATASET_SLUG}/{src.EPA_ITEM_DATASET_SLUG}/{first['version']}"
+            sealed = storage.read_key(f"{prefix}/geoparquet/{src.EPA_ITEM_DATASET_SLUG}.parquet")
+            self.assertEqual(pq.read_table(io.BytesIO(sealed)).num_rows, FIXTURE_COUNT)
+            manifest = json.loads(storage.read_key(f"{prefix}/metadata/source_manifest.json"))
+            self.assertEqual(manifest["title"], src.LAYER_NAME)
+            self.assertEqual(manifest["agency"], "Environmental Protection Agency")
+            self.assertFalse(manifest["approved"])
+            self.assertEqual(manifest["inputs"][0]["host"], "services.arcgis.com")
+            self.assertTrue(storage.read_key(f"{prefix}/raw/page_000000.receipt.json"))
+            self.assertTrue(storage.read_key(f"{prefix}/raw/portal_item.receipt.json"))
+
+    def test_registry_entry_drift_quarantines_under_its_own_slug(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                src.capture_epa_frs_interests(storage, version="registry-pin-run",
+                                              capture_directory=str(capture_root),
+                                              dataset_slug=src.EPA_ITEM_DATASET_SLUG)
+                with patch.object(src, "EXPECTED_RECORD_SHA256", "0" * 64):
+                    with self.assertRaisesRegex(src.EPAFRSInterestsError,
+                                                "source_value_or_geometry_baseline_drift"):
+                        src.capture_epa_frs_interests(
+                            storage, version="registry-pin-drift",
+                            capture_directory=str(capture_root),
+                            dataset_slug=src.EPA_ITEM_DATASET_SLUG)
+            quarantined = sorted((root / "staging" / "_quarantine"
+                                  / src.EPA_ITEM_DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "source_value_or_geometry_baseline_drift")
+
+    def test_registry_entry_resolves_its_own_inventory_row(self):
+        from dagster_hifld.source_manifest import _inventory_metadata_for
+
+        metadata = _inventory_metadata_for(src.EPA_ITEM_DATASET_SLUG, src.EPA_ITEM_DATASET_SLUG, "v1.0.0")
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["inventory_match_type"], "filename_same_root")
+        self.assertEqual(metadata["title"], "EPA Facility Registry Service (FRS) Interests")
+        self.assertEqual(metadata["publisher"],
+                         "U.S. Environmental Protection Agency, Office of Environmental Information")
+        self.assertEqual(metadata["agency"], "US Army Corps of Engineers")
+        other = _inventory_metadata_for(src.DATASET_SLUG, src.DATASET_SLUG, "v1.0.0")
+        self.assertIsNotNone(other)
+        self.assertEqual(other["inventory_match_type"], "filename_same_root")
+        self.assertEqual(other["title"], "FRS INTERESTS")
+        self.assertEqual(other["agency"], "Environmental Protection Agency")
+
+
 if __name__ == "__main__":
     unittest.main()
