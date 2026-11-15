@@ -20,8 +20,14 @@ librarian account) is a portal registration that points at
 i.e. it is not a separate source. That service is Esri-hosted content owned by the
 producing agency: AGOL item ``4cdab8820d7a4f58aaa003be63f059ac`` ("USACE Civil
 Works Divisions", owner ``usace_crrel_als``, organization
-``n1YM8pTrFmm7L4hs``), the same USACE-hosted ArcGIS Online organization and
-account that was verified hosting the DISDI MIRTA display channel on 2026-11-12
+``n1YM8pTrFmm7L4hs``), the same organization independently identified by the live
+``https://geospatial-usace.opendata.arcgis.com/`` site's ``domainInfo.orgId``
+and ``orgTitle`` (U.S. Army Corps of Engineers), checked 2026-11-15. The official
+USACE New Orleans District Geospatial Section page
+``https://www.mvn.usace.army.mil/Missions/Engineering/Geospatial-Section/``
+describes this Geospatial Open Data portal as the shared, trusted public agency
+catalog. The account was also verified hosting the DISDI MIRTA display channel
+on 2026-11-12
 (issue 157). The item description matches the HIFLD inventory description
 verbatim and the layer's ``editingInfo`` records a last data edit of
 2026-01-28T14:38:22Z, so this is treated as the current maintained producer
@@ -58,6 +64,7 @@ import json
 import math
 import shutil
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlencode, urlsplit
@@ -107,7 +114,6 @@ PAGE_SIZE = 200
 MAX_BODY_BYTES = 64_000_000
 SOURCE_SPATIAL_REFERENCE = {"wkid": 4140, "latestWkid": 4140}
 MAX_RECORD_COUNT = 1_000
-OBSERVED_LAST_DATA_EDIT = "2026-01-28T14:38:22.679000+00:00"
 # The per-value and per-geometry baselines, gate counts and observed bounds are
 # pinned from a complete dated capture (2026-11-14). Unpinned values (None or
 # "") are checked only once pinned; a later producer republish surfaces as an
@@ -580,6 +586,11 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
              for name in FIELD_NAMES}
     invalid_geometry_ids = [f["attributes"]["OBJECTID"] for f, geometry in zip(features, built)
                             if geometry is not None and not geometry.is_valid]
+    data_last_edit = layer.get("editingInfo", {}).get("dataLastEditDate")
+    if data_last_edit is not None and (type(data_last_edit) is not int or data_last_edit < 0):
+        raise ValueError("source_data_edit_timestamp_invalid")
+    observed_data_edit = (datetime.fromtimestamp(data_last_edit / 1000, timezone.utc).isoformat()
+                          if data_last_edit is not None else None)
     audit = {"feature_count": count, "unique_objectid_count": len(set(feature_ids)),
              "null_counts_by_field": nulls,
              "null_geometry_count": null_geometry,
@@ -596,7 +607,7 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
              "native_geometry_type": "Polygon",
              "native_dimension": 2,
              "source_release_date": None,
-             "observed_service_last_data_edit": OBSERVED_LAST_DATA_EDIT,
+             "observed_service_last_data_edit": observed_data_edit,
              "service_current_version": service.get("currentVersion"),
              "source_fields": fields,
              "baseline_pending_note": BASELINE_PENDING_NOTE,
@@ -776,9 +787,10 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
                "role": "producer_publication",
                "release_date": None,
                "release_date_unknown_reason": "The service publishes no dated source release "
-                                              "for the divisions layer; the AGOL item reports "
-                                              "a last data edit of 2026-01-28T14:38:22Z "
-                                              "(an editing timestamp, not a release date) and "
+                                              "for the divisions layer; layer editingInfo reports "
+                                              "a captured last data edit of "
+                                              + str(audit["observed_service_last_data_edit"])
+                                              + " (an editing timestamp, not a release date) and "
                                               "the producer description records a 04/16/20 "
                                               "boundary update."}
               for n, (_, receipt) in sorted(captures.items())]
@@ -798,7 +810,11 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
                     "4cdab8820d7a4f58aaa003be63f059ac owned by USACE account usace_crrel_als "
                     "in organization n1YM8pTrFmm7L4hs - the same USACE-hosted organization "
                     "and account verified hosting the DISDI MIRTA display channel on "
-                    "2026-11-12 (issue 157) - whose item description matches the HIFLD "
+                    "2026-11-12 (issue 157). Independently checked 2026-11-15: the official "
+                    "New Orleans District Geospatial Section describes the USACE Geospatial "
+                    "Open Data portal (https://geospatial-usace.opendata.arcgis.com/), whose "
+                    "live domainInfo identifies orgId n1YM8pTrFmm7L4hs and orgTitle U.S. Army "
+                    "Corps of Engineers. The divisions item description matches the HIFLD "
                     "inventory description verbatim, and which the HIFLD Open Data portal "
                     "item " + HIFLD_PORTAL_ITEM_ID + " (HIFLD librarian account "
                     "amber.dashnaw.ctr) registers as its source service. Source selection, "
@@ -844,7 +860,7 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
                             "National Atlas/Census administrative boundaries and USACE "
                             "District GIS POC submissions, with a 04/16/20 update for the "
                             "new LRC boundary. The layer's editingInfo reports a last data "
-                            "edit of 2026-01-28T14:38:22Z (observed 2026-11-14). An "
+                            "edit of " + str(audit["observed_service_last_data_edit"]) + ". An "
                             "ArcGIS Online-hosted service can be republished at any time "
                             "and can resequence OBJECTIDs between requests; the capture "
                             "brackets every document and fails closed on a mid-capture "

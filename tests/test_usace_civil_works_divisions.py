@@ -229,6 +229,25 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
         self.assertEqual(audit["source_crs_wkid"], 4140)
         self.assertEqual(audit["geometry_bounds"], [-170.0, -14.5, -70.0, 46.0])
 
+    def test_audit_reports_captured_data_edit_instead_of_historical_constant(self):
+        with fixture_pins():
+            captures = _fixture()
+            for name in ("layer_before", "layer_after"):
+                doc = json.loads(captures[name][0])
+                doc["editingInfo"] = {"dataLastEditDate": 1769702400000}
+                captures[name] = (_body(doc), captures[name][1])
+            audit = ucwd._validate(captures)[3]
+            self.assertEqual(audit["observed_service_last_data_edit"],
+                             "2026-01-29T16:00:00+00:00")
+            self.assertIsNone(ucwd._validate(_fixture())[3]["observed_service_last_data_edit"])
+            for invalid in (True, -1, "1769702400000"):
+                for name in ("layer_before", "layer_after"):
+                    doc = json.loads(captures[name][0])
+                    doc["editingInfo"]["dataLastEditDate"] = invalid
+                    captures[name] = (_body(doc), captures[name][1])
+                with self.assertRaisesRegex(ValueError, "source_data_edit_timestamp_invalid"):
+                    ucwd._validate(captures)
+
     def test_page_roster_walks_sorted_ids_without_overlap(self):
         ids = list(range(1, 451))
         urls = dict(ucwd._capture_names(sorted(ids)))
