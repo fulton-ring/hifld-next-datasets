@@ -245,7 +245,7 @@ def _seal_manifest(root: Path, documents: dict, *, page_parts: dict | None = Non
     (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
 
 
-class Wbd16DigitHuTests(unittest.TestCase):
+class Wbd14DigitHuTests(unittest.TestCase):
     def _capture_root(self, documents: dict) -> Path:
         temporary = tempfile.TemporaryDirectory(prefix="wbd-14-digit-hu-capture-")
         self.addCleanup(temporary.cleanup)
