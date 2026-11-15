@@ -18,7 +18,7 @@ from dagster_hifld.sources.epa_frs_arcgis_table import (
 
 
 class EPAFRSArcGISTableTests(unittest.TestCase):
-    def test_profile_captures_complete_native_pages_and_relationship(self):
+    def test_profile_captures_complete_native_pages_without_declared_relationship(self):
         profile = replace(TABLE_PROFILE, expected_rows=2, page_size=1)
         fields = [{"name": name, "type": kind, "nullable": nullable, "length": length}
                   for name, kind, nullable, length in profile.fields]
@@ -26,15 +26,15 @@ class EPAFRSArcGISTableTests(unittest.TestCase):
             "name": profile.table_name,
             "geometryType": None,
             "fields": fields,
-            "relationships": [{
-                "name": profile.relationship_name,
-                "relatedTableId": profile.related_table_id,
-                "keyField": profile.relationship_key,
-                "cardinality": profile.relationship_cardinality,
-            }],
+            "relationships": [],
         }
         service = {"description": "EIA-860 data most-current as of June 2014.",
                    "tables": [{"id": profile.table_id, "name": profile.table_name}]}
+        portal_item = {
+            "id": profile.portal_item_id, "owner": profile.portal_item_owner,
+            "title": profile.portal_item_title, "type": "Feature Service",
+            "url": profile.service_url, "modified": 1769190978000,
+        }
         rows = [
             {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "NAICS_CODE": "002211",
              "PRIMARY_INDICATOR": "PRIMARY"},
@@ -45,9 +45,11 @@ class EPAFRSArcGISTableTests(unittest.TestCase):
         def respond(request):
             parsed = urlparse(str(request.url))
             query = parse_qs(parsed.query)
-            if parsed.path.endswith("/MapServer"):
+            if "/sharing/rest/content/items/" in parsed.path:
+                payload = portal_item
+            elif parsed.path.rstrip("/").endswith("FeatureServer"):
                 payload = service
-            elif parsed.path.endswith("/14"):
+            elif parsed.path.endswith(f"/{profile.table_id}"):
                 payload = table
             elif query.get("returnCountOnly") == ["true"]:
                 payload = {"count": len(rows)}
@@ -73,28 +75,28 @@ class EPAFRSArcGISTableTests(unittest.TestCase):
         self.assertEqual(replay_manifest["rows_captured"], 2)
         self.assertTrue(manifest["source_ids_equal_before_after"])
         self.assertEqual(manifest["rows_captured"], 2)
-        self.assertEqual(manifest["relationship"][0]["name"], "POWERPLANT_LAYER")
+        self.assertEqual(manifest["relationship"], [])
+        self.assertIsNone(manifest["declared_relationship_contract"])
+        self.assertEqual(manifest["portal_item"]["owner"], "EPA_GEO")
         self.assertIn("page_001", receipts)
         self.assertTrue(all(receipt[1]["complete_body"] for receipt in receipts.values()))
 
     def test_incomplete_final_page_is_rejected(self):
-        profile = replace(TABLE_PROFILE, expected_rows=3, page_size=2)
+        profile = replace(TABLE_PROFILE, expected_rows=3, page_size=2,
+                          portal_item_id=None, portal_item_owner=None, portal_item_title=None)
         fields = [{"name": name, "type": kind, "nullable": nullable, "length": length}
                   for name, kind, nullable, length in profile.fields]
         table = {"name": profile.table_name, "geometryType": None, "fields": fields,
-                 "relationships": [{"name": profile.relationship_name,
-                                    "relatedTableId": profile.related_table_id,
-                                    "keyField": profile.relationship_key,
-                                    "cardinality": profile.relationship_cardinality}]}
+                 "relationships": []}
         service = {"description": "EIA-860 data most-current as of June 2014.",
                    "tables": [{"id": profile.table_id, "name": profile.table_name}]}
 
         def respond(request):
             parsed = urlparse(str(request.url))
             query = parse_qs(parsed.query)
-            if parsed.path.endswith("/MapServer"):
+            if parsed.path.rstrip("/").endswith("FeatureServer"):
                 payload = service
-            elif parsed.path.endswith("/14"):
+            elif parsed.path.endswith(f"/{profile.table_id}"):
                 payload = table
             elif query.get("returnCountOnly") == ["true"]:
                 payload = {"count": 3}

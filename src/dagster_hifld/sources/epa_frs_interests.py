@@ -5,6 +5,11 @@ Registry Service (FRS) interests. The layer holds millions of point features, so
 this module streams the source: each keyset page is retained as raw evidence in
 a resumable capture directory before any candidate is sealed. It stages only an
 unapproved candidate; it does not establish currentness or permit publication.
+
+Two HIFLD Open inventory entries describe this exact product (the ``frs-interests``
+row and the duplicate ``epa-facility-registry-service-frs-interests`` row, which
+share one description, publisher and office), so every capture can stage a
+candidate under either dataset identity; the source pins are identical.
 """
 from __future__ import annotations
 
@@ -37,6 +42,7 @@ from dagster_hifld.sources.epa_frs_common import (
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "cdff193a3e3743a5bc770e2743f215b3"
 ITEM_TITLE = "Facility Registry Service (FRS) Interests"
@@ -46,6 +52,9 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "FRS_INTERESTS"
 DATASET_SLUG = "frs-interests"
 FILE_SLUG = DATASET_SLUG
+EPA_ITEM_DATASET_SLUG = "epa-facility-registry-service-frs-interests"
+DATASET_SLUGS = (DATASET_SLUG, EPA_ITEM_DATASET_SLUG)
+_DEFAULT_CAPTURE_ROOTS = {DATASET_SLUG: "101", EPA_ITEM_DATASET_SLUG: "390"}
 PUBLISHER = "U.S. Environmental Protection Agency (EPA_GEO hosted FeatureServer); EPA Facility Registry Service full interest universe"
 SOURCE_VINTAGE = None
 SOURCE_VINTAGE_NOTE = ("The hosted service states it is updated weekly; no dated release "
@@ -107,15 +116,6 @@ class EPAFRSInterestsError(ValueError):
     def __init__(self, code: str):
         self.code = code
         super().__init__(code)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -428,13 +428,13 @@ def _code_identity() -> dict[str, object]:
 
 
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
-                    extracted: Mapping[str, object], *,
+                    extracted: Mapping[str, object], *, dataset_slug: str,
                     resumed_pages: int, first_captured_at: str, last_captured_at: str) -> dict[str, object]:
     identity = _code_identity()
     version = content_derived_version(extracted["record_sha"], extracted["geometry_sha"],
                                       extracted["schema_sha"], identity)
-    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+    prefix = candidate_prefix(dataset_slug, dataset_slug, version)
+    state_key = f"_construction-state/{dataset_slug}/{version}.json"
     if storage.object_snapshot(state_key) is not None:
         parquet_body = Path(extracted["parquet_path"]).read_bytes()
         return _verify_sealed_candidate(
@@ -442,7 +442,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             {"source_record_sha256": extracted["record_sha"],
              "source_schema_sha256": extracted["schema_sha"],
              "source_geometry_sha256": extracted["geometry_sha"]},
-            parquet_body)
+            parquet_body, dataset_slug=dataset_slug)
     audit = {
         "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"], "source_geometry_sha256": extracted["geometry_sha"],
@@ -466,7 +466,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
     }
     parquet_body = Path(extracted["parquet_path"]).read_bytes()
-    parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
+    parquet_name = f"geoparquet/{dataset_slug}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
     receipts = _load_receipt_map(capture_root)
     manifest = {
@@ -546,7 +546,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                "capture_receipts": receipts, "objects": descriptors}
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+    return {"dataset_slug": dataset_slug, "file_slug": dataset_slug, "version": version,
             "feature_count": EXPECTED_COUNT, "source_null_geometry_count": extracted["null_geometry_count"],
             "source_invalid_geometry_count": 0, "reused": False,
             "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
@@ -558,7 +558,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
 
 def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
                              version: str, identity: Mapping[str, object], audit: Mapping[str, object],
-                             current_parquet: bytes) -> dict[str, object]:
+                             current_parquet: bytes, *, dataset_slug: str) -> dict[str, object]:
     fingerprint = _sha(_canonical(identity))
     bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
     payload = bundle.get("payload")
@@ -573,10 +573,10 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
                             fingerprint, identity, audit["source_record_sha256"],
                             audit["source_schema_sha256"], expected_objects,
                             payload["capture_receipts"])
-    if expected_objects.get(f"geoparquet/{DATASET_SLUG}.parquet") != {"bytes": len(current_parquet), "sha256": _sha(current_parquet)}:
+    if expected_objects.get(f"geoparquet/{dataset_slug}.parquet") != {"bytes": len(current_parquet), "sha256": _sha(current_parquet)}:
         raise EPAFRSInterestsError("cached_native_candidate_changed")
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+    return {"dataset_slug": dataset_slug, "file_slug": dataset_slug, "version": version,
             "feature_count": EXPECTED_COUNT, "source_null_geometry_count": 0,
             "source_invalid_geometry_count": 0, "reused": True,
             "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
@@ -704,8 +704,15 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
 
 
 def capture_epa_frs_interests(storage: StagingStorageResource, *, version: str,
-                              capture_directory: str | None = None) -> dict[str, object]:
-    """Fetch (resumable), validate, and stage one complete unapproved source candidate."""
+                              capture_directory: str | None = None,
+                              dataset_slug: str = DATASET_SLUG) -> dict[str, object]:
+    """Fetch (resumable), validate, and stage one complete unapproved source candidate.
+
+    ``dataset_slug`` selects the HIFLD inventory identity the candidate is staged
+    under; both known identities share the same source and pins.
+    """
+    if dataset_slug not in DATASET_SLUGS:
+        raise EPAFRSInterestsError("unknown_dataset_slug:" + dataset_slug)
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise EPAFRSInterestsError("explicit_local_staging_resource_required")
     if not version or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_" for c in version):
@@ -716,7 +723,8 @@ def capture_epa_frs_interests(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000:
         raise EPAFRSInterestsError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/101/captures")
+    attempt_root = (Path(capture_directory) if capture_directory
+                    else Path(f"/tmp/hifld-native-reconstruction/{_DEFAULT_CAPTURE_ROOTS[dataset_slug]}/captures"))
     capture_root = Path(capture_directory).absolute() if capture_directory else (attempt_root / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise EPAFRSInterestsError("unsafe_capture_directory")
@@ -725,8 +733,9 @@ def capture_epa_frs_interests(storage: StagingStorageResource, *, version: str,
         fetch_frs_interests_pages(capture_root)
         state = _load_state(capture_root)
         captured = [page["captured_at"] for page in state["data_pages"]]
-        extracted = _stream_validate(capture_root, parquet_sink=capture_root / f"{FILE_SLUG}.parquet")
-        return _seal_candidate(storage, capture_root, extracted, resumed_pages=resumed_pages,
+        extracted = _stream_validate(capture_root, parquet_sink=capture_root / f"{dataset_slug}.parquet")
+        return _seal_candidate(storage, capture_root, extracted, dataset_slug=dataset_slug,
+                               resumed_pages=resumed_pages,
                                first_captured_at=captured[0], last_captured_at=str(state["tail"]["captured_at"]))
     except Exception as exc:
         valid_names = []
@@ -738,7 +747,7 @@ def capture_epa_frs_interests(storage: StagingStorageResource, *, version: str,
                 continue
             valid_names.append(name)
         if valid_names:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
+            quarantine_incomplete_capture(storage, capture_root, dataset_slug, version,
                                           _RetainedCaptureViews(capture_root, valid_names),
                                           getattr(exc, "code", type(exc).__name__) or type(exc).__name__)
         raise

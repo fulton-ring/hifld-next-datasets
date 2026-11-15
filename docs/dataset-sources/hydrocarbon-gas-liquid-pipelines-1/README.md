@@ -1,0 +1,43 @@
+# Hydrocarbon Gas Liquid Pipelines (hydrocarbon-gas-liquid-pipelines-1)
+
+## Historical source label (issue #775 research, 2026-11-15)
+
+The pipeline input for this dataset is EIA's own pinned historical GIS
+snapshot <https://www.eia.gov/maps/map_data/HGL_Pipelines_US_EIA.zip> (52,914
+bytes, server `Last-Modified: 2020-04-27T19:05:10Z`, re-verified 2026-11-15).
+The embedded layer `HGL_Pipelines_US_202001` identifies a January 2020 edition
+(133 features, EPSG:4326). This is a historical source, not a maintained feed:
+EIA stopped refreshing the `map_data` zips around 2020-2022.
+
+## Energy Atlas successor research (2026-11-15)
+
+No confirmed, agency-owned Energy Atlas successor exists for this layer.
+
+- The Energy Atlas Hub site (atlas.eia.gov, EIA ArcGIS Online organization
+  `FGr1D95XCGALKXqM`) publishes 74 items through its content groups
+  ("U.S. Energy Atlas - Content Library (EIA)" and "(Non-EIA)"), all shale
+  plays, PADDs, storage regions, census basemaps and live feeds. This layer is
+  not among them, and EIA's own publishing account (`EIA.gov`) owns 56 hosted
+  feature services, none of them HGL pipeline layers.
+- A hosted service named after this layer exists inside EIA's organization
+  cluster (`services7.arcgis.com/FGr1D95XCGALKXqM/arcgis/rest/services/
+  HGL_Pipelines_US_EIA/FeatureServer`), but every metadata and query request
+  returns HTTP 499 `Token Required` (`GWM_0003`): it is not publicly
+  accessible, and the only anonymously visible ArcGIS items pointing at it are
+  third-party proxy registrations owned by non-EIA accounts (`lstone4_UWyo`).
+  Ownership cannot be verified and no anonymous extraction is possible, so it
+  is excluded by the source policy.
+- The publicly queryable "Esri U.S. Federal Datasets" portal copy
+  `services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/
+  Hydrocarbon_Gas_Liquids_Pipelines_1/FeatureServer` (layer
+  `HGL_Pipelines_US_EIA`, Polyline, 5 fields, Web Mercator, layer
+  `lastEditDate` 2026-04-10) is owned by that portal's admin account
+  (`Federal_User_Community`), not by EIA/DOE. An item owned by anyone other
+  than the producing agency is research context only, never a pipeline input.
+
+The source adapter
+`src/dagster_hifld/sources/hydrocarbon_gas_liquid_pipelines.py` therefore
+keeps capturing the pinned zip and fails closed into quarantine on any change.
+All runtime approval flags remain false and the refresh schedule stays
+stopped; currentness and any future successor remain pending the maintainer
+decisions recorded on issue #775.

@@ -4,7 +4,7 @@ from dagster import AssetKey,AssetSelection,DefaultScheduleStatus,ScheduleDefini
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.construction_minerals import SLUG,stage_construction_minerals
 
-@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='usgs',compute_kind='local',description='Explicit USGS mineplant successor package as provided, local-only unapproved candidate. Only USGS-owned objects are inputs; retained preservation/published objects are comparison context. No authority/datum/schema/ID mapping or release acceptance.')
+@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='usgs',compute_kind='local',description='Explicit USGS mineplant historical 2003 survey package as provided, local-only unapproved candidate. Only USGS-owned objects are inputs; retained published objects are comparison context. No authority/datum/schema/ID mapping or release acceptance.')
 def construction_minerals_preservation_candidate(context,staging_storage:StagingStorageResource):
     result=stage_construction_minerals(staging_storage,capture_dir=os.environ.get('HIFLD_CONSTRUCTION_MINERALS_CAPTURE_DIR'),package_id=os.environ.get('HIFLD_CONSTRUCTION_MINERALS_PACKAGE_ID'));context.add_output_metadata(result);return result
 

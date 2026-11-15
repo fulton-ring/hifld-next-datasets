@@ -15,6 +15,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from dagster_hifld.sources.epa_frs_common import capture_get
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 @dataclass(frozen=True)
@@ -138,11 +139,6 @@ def validate_catalog_derivatives(
         "quality_check_passed": quality["quality_check_passed"],
         "catalog_mode": quality.get("catalog_mode"),
     }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
 
 
 def _table_contract(payload: Mapping[str, Any], profile: ArcGISTableProfile) -> tuple[dict[str, Any], ...]:

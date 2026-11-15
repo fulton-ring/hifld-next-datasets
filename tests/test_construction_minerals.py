@@ -1,4 +1,4 @@
-"""Complete USGS successor candidate fixtures; no source/contract acceptance is granted."""
+"""Complete historical USGS 2003 survey candidate fixtures; no source/contract acceptance is granted."""
 import json
 import os
 import shutil
@@ -26,6 +26,7 @@ class MineralsTests(unittest.TestCase):
         with tarfile.open(ARCHIVE,'r:gz') as archive:
             for m in archive:
                 if not m.isfile() or Path(m.name).name!=m.name:raise ValueError('unsafe test archive')
+                if m.name not in {name+suffix for name in s.PINS for suffix in ('.body','.receipt.json')}:continue
                 (cls.package/m.name).write_bytes(archive.extractfile(m).read())
     @classmethod
     def tearDownClass(cls):cls.package_tmp.cleanup()
@@ -33,25 +34,20 @@ class MineralsTests(unittest.TestCase):
     def stage(self,storage):return s.stage_construction_minerals(storage,capture_dir=str(self.package),package_id=s.PACKAGE)
     def state(self,root,result):return Path(root)/s.construction_record_key(result['version'])
 
-    def test_full765_usgs_native_values_types_ids_geometry_successor_proof_and_published_ids(self):
-        captures=self.captures();table,ids,audit,comparison=s.inspect_captures(captures)
+    def test_full765_usgs_native_values_types_ids_geometry_and_published_ids(self):
+        captures=self.captures();table,ids,audit=s.inspect_captures(captures)
         self.assertEqual(table.num_rows,765);self.assertEqual(ids.num_rows,766);self.assertEqual(audit['states'],46)
         self.assertEqual(table['id'].type,pa.decimal128(8,0));self.assertEqual(table['LATITUDE'].type,pa.decimal128(10,5));self.assertEqual(table['LONGITUDE'].type,pa.decimal128(10,5))
         self.assertEqual(table['source_shp_record_number'].to_pylist(),[fid+1 for fid in table['source_fid'].to_pylist()])
         self.assertEqual(len(set(table['id'].to_pylist())),765)
         self.assertIn('Milby Mine',table['SITE_NAME'].to_pylist());self.assertIn('Kershaw Quarry',table['SITE_NAME'].to_pylist())
         self.assertEqual(audit['commodities'],dict(zip(s.CONSTRUCTION_COMMODITIES,(58,115,262,154,62,24,74,16))))
-        self.assertIn('North_American_1927',audit['native_crs_claim']);self.assertIn('North American',audit['contradictory_original_USGS_metadata_datum']);self.assertIn('WGS 1984',audit['atlas_preserved_prj_claim'])
+        self.assertIn('North_American_1927',audit['native_crs_claim']);self.assertIn('North American',audit['contradictory_original_USGS_metadata_datum'])
         members=s.decode_mineplant_zip(captures['usgs_mineplant_zip'][0]);raw=members['mineplant.shp']
         for i,fid in enumerate(table['source_fid'].to_pylist()):
             point=s.shapely.from_wkb(table['geometry'][i].as_py())
             self.assertEqual((point.x,point.y),struct.unpack_from('<dd',raw,100+fid*28+12))
             self.assertEqual(point.y,float(table['LATITUDE'][i].as_py()));self.assertEqual(point.x,float(table['LONGITUDE'][i].as_py()))
-        self.assertEqual(comparison['atlas_records'],766);self.assertEqual(comparison['usgs_successor_construction_records'],765);self.assertEqual(comparison['unmatched_atlas_records'],[])
-        self.assertEqual([case['atlas_MINOP2X020_pair'] for case in comparison['atlas_duplicate_collapsed_cases']],[['539','540']])
-        self.assertEqual(comparison['atlas_duplicate_collapsed_cases'][0]['usgs_mineplant_id'],'2928')
-        self.assertEqual([case['atlas_MINOP2X020'] for case in comparison['company_width_truncation_cases']],['126'])
-        self.assertIn('Centex Construction Products Inc)',comparison['company_width_truncation_cases'][0]['atlas_COMPANY_NA'])
         self.assertEqual(ids['published_shapefile_fid'].to_pylist(),[int(x)-1 for x in ids['published_geopackage_storage_fid'].to_pylist()])
         self.assertNotEqual(table['source_fid'].to_pylist(),ids['published_shapefile_fid'].to_pylist())
 
@@ -64,13 +60,6 @@ class MineralsTests(unittest.TestCase):
                 acquire.assert_not_called()
             root=Path(tmp)/'linked';root.symlink_to(self.package,target_is_directory=True)
             with self.assertRaisesRegex(ValueError,'aliased'):self.stage(StagingStorageResource(local_dir=str(root)))
-
-    def test_successor_fidelity_drift_fails_closed(self):
-        captures=self.captures()
-        real=s.decode_dbf
-        def renamed(body):
-            rows=real(body);rows[0]['SITE_NAME']='Renamed Facility';return rows
-        with patch.object(s,'decode_dbf',side_effect=renamed),self.assertRaisesRegex(ValueError,'usgs_successor_does_not_contain_complete_assigned_dataset'):s.inspect_captures(captures)
 
     def test_usgs_package_roster_member_size_and_txt_crosscheck_failures(self):
         captures=self.captures();members=s.decode_mineplant_zip(captures['usgs_mineplant_zip'][0])

@@ -10,6 +10,7 @@ import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.sources import nfhl_political_jurisdictions as source
+from dagster_hifld.sources import nfhl_common
 
 
 def _canonical(value):
@@ -368,9 +369,9 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep") as sleep_mock:
-                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+            with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep") as sleep_mock:
+                body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                             base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -399,9 +400,9 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
-                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+            with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep"):
+                body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.TILE_ATTEMPTS,
                                                             base_delay=source.PAGE_CAPTURE_BASE_DELAY_SECONDS)
@@ -436,14 +437,14 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
-                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+            with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep"):
+                body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                             base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
                 with self.assertRaisesRegex(ValueError, "unrelated_source_capture_failure"):
-                    source._capture_with_retry(None, "https://producer.invalid/other",
+                    nfhl_common.capture_with_retry(None, "https://producer.invalid/other",
                                                root, "probe2", max_bytes=1024,
                                                attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -478,15 +479,15 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             calls = []
-            real_preserve = source._preserve_failed_attempt
+            real_preserve = nfhl_common.preserve_failed_attempt
 
             def tracking_preserve(capture_root, name, attempt):
                 calls.append((name, attempt))
                 return real_preserve(capture_root, name, attempt)
 
-            with patch.object(source, "_capture_with_retry", side_effect=fake_capture_with_retry), \
-                 patch.object(source, "_preserve_failed_attempt", side_effect=tracking_preserve), \
-                 patch.object(source.time, "sleep"):
+            with patch.object(source, "capture_with_retry", side_effect=fake_capture_with_retry), \
+                 patch.object(source, "preserve_failed_attempt", side_effect=tracking_preserve), \
+                 patch.object(nfhl_common.time, "sleep"):
                 parts = source._capture_page(None, root, 0, ids)
             self.assertEqual([name for name, _body, _receipt in parts],
                              ["page_000_o00000_c0032", "page_000_o00032_c0032"])
@@ -501,8 +502,8 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "_capture_with_retry", side_effect=fake_capture_with_retry), \
-                 patch.object(source.time, "sleep"), \
+            with patch.object(source, "capture_with_retry", side_effect=fake_capture_with_retry), \
+                 patch.object(nfhl_common.time, "sleep"), \
                  patch.multiple(source, PAGE_FULL_ATTEMPTS=1, TILE_ATTEMPTS=1):
                 with self.assertRaisesRegex(ValueError, "source_page_window_persistent_error:page_000_o00000_c0002"):
                     source._capture_page(None, root, 0, [10, 11])
@@ -568,7 +569,7 @@ class NfhlPoliticalJurisdictionsTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins(features, schema, geom)), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_political_jurisdictions(storage, version="vfixture",
                                                                         capture_directory=str(root / "captures"))
