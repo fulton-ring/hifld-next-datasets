@@ -311,7 +311,7 @@ class Wbd16DigitHuTests(unittest.TestCase):
         self.assertIn("returnZ=true", urls["page_0000"])
         self.assertIn("returnM=true", urls["page_0000"])
         self.assertIn("orderByFields=objectid+ASC", urls["page_0000"])
-        self.assertIn("resultRecordCount=2", source._page_url(0))
+        self.assertIn("resultRecordCount=100", source._page_url(0))
         self.assertEqual(urls["ids_before"], source._ids_url())
         self.assertEqual(urls["service_doc"], source.SERVICE_DOC_URL)
 
