@@ -156,8 +156,13 @@ DOC_MAX_BYTES = 4_000_000
 CAPTURE_MAX_BYTES = 10_000_000_000
 DISK_FLOOR_BYTES = 10_000_000_000
 # The live service computes shape_Length planarly in the layer's web-mercator
-# SR; the parity guard sits far above numeric noise and far below real drift.
-SHAPE_PARITY_TOLERANCE = 1e-6
+# SR, but 16 of the 395,291 served features (2026-11-15 complete dated walk)
+# deviate from a shapely recomputation of the served path by up to 8.65e-6
+# relative (sub-decimeter absolute; producer-side vertex-precision noise, not
+# simplification — the pinned geometry digest holds the exact served
+# coordinates regardless). The guard sits just above that observed maximum and
+# far below any real geometry change.
+SHAPE_PARITY_TOLERANCE = 1e-5
 # Native baselines pinned from the dated probes and the complete dated
 # population walk (2026-11-15); empty/None pins are checked only when non-empty.
 EXPECTED_SCHEMA_SHA256 = "9915218890bbae1273727a06e614e1de65cd01024f1faad24cbe4946bcf046cc"
