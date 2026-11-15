@@ -83,6 +83,15 @@ def _feature_paths(oid: int) -> list[list[list[float]]]:
     return [_line(oid)]
 
 
+def _feature_ids(oid: int) -> list[list[int]] | None:
+    # The producer serves a per-vertex integer ids member on some features
+    # (observed 2026-11-15); it is cross-checked and counted, never published.
+    if oid == 12:
+        return [[position + 1 for position, _ in enumerate(path)]
+                for path in _feature_paths(oid)]
+    return None
+
+
 def _attributes(oid: int) -> dict:
     attrs = {}
     for field in source.ATTRIBUTE_FIELDS:
@@ -137,7 +146,11 @@ def _documents() -> dict:
              "fields": json.loads(json.dumps(source.EXPECTED_LAYER_FIELDS))}
     features = {}
     for oid in _TEST_ROSTER:
-        features[oid] = {"attributes": _attributes(oid), "geometry": {"paths": _feature_paths(oid)}}
+        geometry = {"paths": _feature_paths(oid)}
+        ids = _feature_ids(oid)
+        if ids is not None:
+            geometry["ids"] = ids
+        features[oid] = {"attributes": _attributes(oid), "geometry": geometry}
     pages = {}
     for index in range(_TEST_PAGE_COUNT):
         page_ids = _TEST_ROSTER[index * _TEST_PAGE_SIZE:(index + 1) * _TEST_PAGE_SIZE]
@@ -309,6 +322,7 @@ class WbdWbdlineTests(unittest.TestCase):
         self.assertEqual(audit["source_crs"], "EPSG:3857")
         self.assertLess(audit["geometry_bounds"][0], -13_100_000)
         self.assertEqual(sorted(derived["geometry_types"]), ["LineString", "MultiLineString"])
+        self.assertEqual(audit["source_ids_member_feature_count"], 1)
         self.assertEqual(audit["source_path_count"],
                          sum(len(_feature_paths(oid)) for oid in _TEST_ROSTER))
 
@@ -422,6 +436,7 @@ class WbdWbdlineTests(unittest.TestCase):
                 _canonical([oid, _feature_paths(oid)]) + source.DIGEST_SEPARATOR)
         self.assertEqual(audit["source_record_sha256"], expected_record.hexdigest())
         self.assertEqual(audit["source_geometry_sha256"], expected_geometry.hexdigest())
+        self.assertEqual(audit["source_ids_member_feature_count"], 1)
         self.assertEqual(audit["page_parts"], dict(sorted(page_parts.items())))
         _seal_manifest(root, documents, page_parts=page_parts,
                        page_refusals=["page_0000_refusal", "page_0000a_refusal"])
@@ -562,6 +577,10 @@ class WbdWbdlineTests(unittest.TestCase):
                 1, [22_000_000.0, 3_984_685.0]), "source_geometry_outside_declared_coverage"),
             ("geometry extra key", lambda d: d["page_0000"]["features"][0]["geometry"].update(z=1),
              "source_polyline_geometry_structure_drift"),
+            ("geometry ids member drift", lambda d: d["page_0000"]["features"][0]["geometry"].update(
+                ids=[[1, 2, 3, 4, 5]]), "source_geometry_ids_member_drift"),
+            ("geometry ids wrong arity", lambda d: d["page_0000"]["features"][0]["geometry"].update(
+                ids=[[1, 2], [3]]), "source_geometry_ids_member_drift"),
             ("geometry z flag", lambda d: d["page_0000"]["features"][0]["geometry"].update(hasZ=True),
              "source_geometry_dimensional_drift"),
             ("paths key missing", lambda d: d["page_0000"]["features"][0]["geometry"].update(

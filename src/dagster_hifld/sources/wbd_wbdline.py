@@ -696,7 +696,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                     last_objectid = oid
                     page_ids.append(oid)
                     if not isinstance(geometry, dict) \
-                            or set(geometry) - {"paths", "hasZ", "hasM", "spatialReference"}:
+                            or set(geometry) - {"paths", "ids", "hasZ", "hasM", "spatialReference"}:
                         raise ValueError("source_polyline_geometry_structure_drift:" + part_name)
                     if geometry.get("hasZ") is True or geometry.get("hasM") is True:
                         raise ValueError("source_geometry_dimensional_drift:" + part_name)
@@ -708,6 +708,23 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                     served_paths = geometry.get("paths")
                     if not isinstance(served_paths, list):
                         raise ValueError("source_polyline_paths_missing:" + part_name)
+                    # The producer serves a per-vertex integer ``ids`` member on
+                    # some features (observed on 115 features of the bisected
+                    # tail window page_0391b, 2026-11-15 — the same Esri JSON
+                    # wire detail the sibling WBD polygon layers carry on a few
+                    # features). It is cross-checked against the served paths
+                    # and counted; the published geometry retains coordinates,
+                    # and the raw page evidence retains the member verbatim.
+                    served_ids = geometry.get("ids")
+                    if served_ids is not None:
+                        if (not isinstance(served_ids, list)
+                                or len(served_ids) != len(served_paths)
+                                or any(not isinstance(entry, list)
+                                        or len(entry) != len(path)
+                                        or any(type(value) is not int for value in entry)
+                                        for entry, path in zip(served_ids, served_paths))):
+                            raise ValueError("source_geometry_ids_member_drift:" + part_name)
+                        ids_member_features += 1
                     for path in served_paths:
                         if not isinstance(path, list):
                             raise ValueError("source_polyline_path_invalid:" + part_name)
