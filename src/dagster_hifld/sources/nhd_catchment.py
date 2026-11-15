@@ -45,12 +45,11 @@ import json
 import math
 import re
 import shutil
-import time
 from array import array
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping
+from typing import Mapping
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -65,12 +64,21 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources import nhd_common
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.nhd_common import (
+    RetainedCaptureViews as _RetainedCaptureViews,
+    capture_with_retry as _capture_with_retry,
+    preserve_failed_attempt as _preserve_failed_attempt,
+    producer_error_doc as _producer_error_doc,
+    save_state as _save_state,
+    witness_aside as _witness_aside,
+)
 
 DATASET_SLUG = "nhd-catchment"
 FILE_SLUG = DATASET_SLUG
@@ -464,60 +472,15 @@ def _validate_feature(feature: object, expected_names: tuple[str, ...],
 
 
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
-    """Parse and structurally validate one retained receipt without page bytes."""
-    try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise NhdCatchmentError("retained_capture_receipt_invalid:" + name) from exc
-    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
-            or receipt.get("url") != receipt.get("final_url")
-            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
-        raise NhdCatchmentError("retained_capture_receipt_invalid:" + name)
-    return receipt
+    return nhd_common.load_receipt(capture_root, name, NhdCatchmentError)
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise NhdCatchmentError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
+    return nhd_common.read_capture(capture_root, name, NhdCatchmentError)
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
-    path = capture_root / "capture_state.json"
-    if not path.exists():
-        return {"segments": [], "complete": False}
-    try:
-        state = json.loads(path.read_bytes())
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise NhdCatchmentError("capture_state_invalid") from exc
-    if not isinstance(state, dict) or not isinstance(state.get("segments"), list):
-        raise NhdCatchmentError("capture_state_invalid")
-    return state
-
-
-def _save_state(capture_root: Path, state: Mapping[str, object]) -> None:
-    tmp = capture_root / "capture_state.json.tmp"
-    tmp.write_bytes(_canonical(dict(state)) + b"\n")
-    tmp.replace(capture_root / "capture_state.json")
-
-
-def _witness_aside(capture_root: Path, name: str) -> None:
-    """Move a retained refused/torn response aside so the slot can be refetched.
-
-    A complete HTTP 200 error body carries a self-consistent receipt, so
-    without this witness step a resumed capture would replay the same refusal
-    forever; the witnessed evidence stays on disk next to the capture.
-    """
-    from time import time_ns
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = capture_root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
+    return nhd_common.load_state(capture_root, NhdCatchmentError)
 
 
 def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
@@ -528,51 +491,6 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
         except NhdCatchmentError:
             _witness_aside(capture_root, name)
     return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(document, dict) and "error" in document
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents
-    and incomplete transport captures (connection resets, truncation); failed
-    attempts are preserved on disk under ``<name>.attempt-NN`` evidence names
-    and never enter the capture roster. The final attempt's body is always
-    returned as captured, so a persistent producer failure surfaces to the
-    caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
 
 
 def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
@@ -656,7 +574,8 @@ def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
                 client, _segment_query(offset, count), capture_root, name,
                 attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
                 base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS)
+                else DOC_CAPTURE_BASE_DELAY_SECONDS,
+                max_bytes=MAX_BODY_BYTES)
         except ValueError as exc:
             # The producer cap can also manifest as truncation/connection reset
             # instead of a clean error document; a multi-record segment whose
@@ -1064,23 +983,6 @@ def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
     return {name: _load_receipt(capture_root, name) for name in names}
 
 
-class _RetainedCaptureViews(Mapping):
-    """Lazily materialize one capture view per access so quarantine stays bounded."""
-
-    def __init__(self, capture_root: Path, names: Iterable[str]):
-        self._capture_root = Path(capture_root)
-        self._names = tuple(names)
-
-    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
-        return _read_capture(self._capture_root, name)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._names)
-
-    def __len__(self) -> int:
-        return len(self._names)
-
-
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_segments: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
@@ -1375,7 +1277,8 @@ def capture_nhd_catchment(storage: StagingStorageResource, *, version: str,
             valid_names.append(name)
         if valid_names:
             quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          _RetainedCaptureViews(capture_root, valid_names),
+                                          _RetainedCaptureViews(capture_root, valid_names,
+                                                                NhdCatchmentError),
                                           getattr(exc, "code", type(exc).__name__)
                                           or type(exc).__name__)
         raise
