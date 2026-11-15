@@ -144,18 +144,17 @@ SHAPE_PARITY_TOLERANCE = 1e-6
 # Native baselines pinned from the dated probes and the complete dated
 # population walk (2026-11-15); empty/None pins are checked only when non-empty.
 EXPECTED_SCHEMA_SHA256 = "3f4598c2450dd5449388db3d12ba28069269572c919b0e36be47219e3a90a822"
-EXPECTED_RECORD_SHA256 = ""
+EXPECTED_RECORD_SHA256 = "2b51faa9430039b251b81cfa85a96137701c6ce8672da71478c25bc305939068"
 # Geometry digest over every served row — one [objectid, served rings] document
 # per feature in ascending OBJECTID order, including the rows that gate to null
 # geometry — computed from the complete dated population walk (2026-11-15).
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
+EXPECTED_GEOMETRY_SHA256 = "3509e15d01bf12c790736236215eaefcc53613feb2813f92b274ca3eea4e7581"
+EXPECTED_NULL_GEOMETRY_COUNT = 3
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {"source_polygon_ring_self_intersecting": 3}
 BASELINE_PENDING_NOTE = (
     "The record, geometry baselines and the geometry-gate counts "
-    "are not pinned yet: no complete capture existed at draft time (observed "
-    "2026-11-15). The first complete capture computes them for the maintainer "
-    "to pin.")
+    "are pinned from the complete dated population walk (2026-11-15); "
+    "this note only applies when a pin is empty.")
 
 EXPECTED_PAGE_FIELD_DECLARATIONS = [
     {"name":"objectid","type":"esriFieldTypeOID","alias":"ObjectID"},
