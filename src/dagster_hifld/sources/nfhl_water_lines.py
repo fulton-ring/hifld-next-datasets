@@ -95,19 +95,23 @@ MAX_CAPTURE_BYTES = 512 * 1024 * 1024
 # capture requires a working margin above that floor.
 MIN_FREE_BYTES = 40_000_000_000
 # The producer's MapServer also intermittently answers valid requests with
-# complete HTTP 200 Esri error documents or transient connection resets
-# (observed 2026-11-12 while probing this layer; identical requests succeed
-# moments later). Every request retries a bounded number of times for that
-# transient mode; a retry re-issues the exact same request, and completeness
-# is still enforced by the pinned before/after id rosters, counts, exact
-# segment tiling, and full-record digests, so retries can never mask drift.
-# Segments wider than one record that keep failing are bisected (the
-# producer's transfer cap); a single-record segment that keeps failing fails
-# the capture explicitly.
+# complete HTTP 200 Esri error documents, transient connection resets, and
+# complete non-200 edge error pages (HTTP 504 was observed live on 2026-11-14
+# for wide dense-segment queries, alternating with 200 Esri error documents
+# for the identical request; identical requests succeeded moments later). Two
+# consecutive transport failures on one segment request ended resumable
+# sessions twice on 2026-11-14, so segment requests carry a wider bounded
+# retry budget than document requests. Every request retries a bounded number
+# of times for that transient mode; a retry re-issues the exact same request,
+# and completeness is still enforced by the pinned before/after id rosters,
+# counts, exact segment tiling, and full-record digests, so retries can never
+# mask drift. Segments wider than one record that keep failing are bisected
+# (the producer's transfer cap); a single-record segment that keeps failing
+# fails the capture explicitly.
 DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
-SEGMENT_PROBE_ATTEMPTS = 2
-SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
+SEGMENT_PROBE_ATTEMPTS = 4
+SEGMENT_PROBE_BASE_DELAY_SECONDS = 10.0
 # Roster windows: the producer refuses a whole-layer returnIdsOnly request
 # for this population with its complete HTTP 200 Esri error document
 # (observed 2026-11-14), but it serves OBJECTID-range id queries: a
