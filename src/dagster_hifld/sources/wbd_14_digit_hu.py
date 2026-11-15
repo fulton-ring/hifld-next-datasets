@@ -23,20 +23,27 @@ geometry-heavy layer: dated probes returned served JSON of about 6.1 MB for a
 query operation" (2026-11-15). This module therefore pins ``PAGE_SIZE = 100``
 and streams the capture: every page is retained as raw evidence in a capture
 directory, then validated page-by-page into a native geoparquet candidate with
-streaming record/geometry/ID digests. A persistently refusing window is
-retained as evidence and re-fetched as two half-size parts derived from the
-pinned roster (one bisection level, never a repair loop); a refusing half fails
-the capture. Ring assembly keeps the producer's winding and hole ownership;
-rows that still cannot form a valid OGC polygon gate to null geometry and are
-counted by failure mode instead of being repaired, with the counts pinned for
-later drift refusal after the first complete walk. The geometry digest is
+streaming record/geometry/ID digests. Refusals stay content-dependent at the
+100-feature scale: during the complete dated walk three nominal windows
+(OBJECTID windows after 800, 1,710 and 5,122) refused outright, and each served when
+re-fetched as two 50-feature halves (largest served half 26.1 MB), so a
+persistently refusing window is retained as evidence and re-fetched as two
+half-size parts derived from the pinned roster (one bisection level, never a
+repair loop); a refusing half fails the capture. Ring assembly keeps the
+producer's winding and hole ownership; rows that still cannot form a valid OGC
+polygon gate to null geometry and are counted by failure mode instead of being
+repaired (the complete dated walk gated zero rows; the pinned gate counts
+enforce that observation against later drift). The geometry digest is
 updated from the raw served rings of every row before assembly and gating, so
 a coordinate change that still gates is refused by the pinned geometry baseline
 rather than hiding behind unchanged aggregate gate counts.
 
 The ID roster digest is pinned from the dated roster probes (2026-11-15). The
 per-value record and geometry baseline digests and the geometry-gate counts
-are pinned below from the complete dated population walk (2026-11-15).
+are pinned below from the complete dated population walk (2026-11-15: 8,149
+features, 12,574,181 served web-mercator vertices, 8,333 clockwise shells,
+220 counter-clockwise holes, 21 multipart features, 62 features with holes;
+the observed geometry bounds equal the declared layer extent exactly).
 Publication stays blocked pending succession, freshness, schema/ID contract,
 coverage, rights and release acceptance; all runtime approval flags are false
 and the draft refresh schedule is stopped.
@@ -140,14 +147,14 @@ DISK_FLOOR_BYTES = 3_000_000_000
 SHAPE_PARITY_TOLERANCE = 1e-6
 # Native baselines pinned from the dated probes and the complete dated
 # population walk (2026-11-15); empty/None pins are checked only when non-empty.
-EXPECTED_SCHEMA_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
+EXPECTED_SCHEMA_SHA256 = "f79d4887393b923ef7695c884910bdba60c17908bdea134dcfd38b956245307b"
+EXPECTED_RECORD_SHA256 = "1a7c54c9242f34663683e36510c0b930e1fce70dae9a38e3e9534c73820c5567"
 # Geometry digest over every served row — one [objectid, served rings] document
 # per feature in ascending OBJECTID order, including the rows that gate to null
 # geometry — computed from the complete dated population walk (2026-11-15).
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
+EXPECTED_GEOMETRY_SHA256 = "022d6003f5e15b4d354226f8530caeb0e0e29952b68bbbb84411f8f598787c0c"
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
 BASELINE_PENDING_NOTE = (
     "The record, geometry baselines and the geometry-gate counts "
     "are pinned from the complete dated population walk (2026-11-15); "
