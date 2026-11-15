@@ -7,9 +7,10 @@ publication, so no mirror or archive is involved. The layer is live data
 (service editing continues continuously), so the draft proves completeness for
 one coherent snapshot: count/ids/object rosters and the layer ``editingInfo``
 edit witness must match before and after every page. Everything is retained
-unrepaired: rings are reassembled into shells/holes by strict containment
-without adding, removing or reordering vertices, and invalid or degenerate
-producer polygons are preserved and release-blocked. Source, schema/ID
+unrepaired: rings are reassembled into shells/holes by strict whole-ring
+containment with hole-aware nesting depth, without adding, removing or
+reordering vertices, and invalid or degenerate producer polygons are preserved
+and release-blocked. Source, schema/ID
 contract, baseline, rights and release acceptance remain unapproved.
 """
 from __future__ import annotations
@@ -29,6 +30,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 from pyproj import CRS
+from shapely.errors import GEOSException
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
@@ -151,33 +153,74 @@ def _signed_area(ring: list[list[float]]) -> float:
     return total / 2.0
 
 
+def _wholly_contains(prior: object, candidate: object) -> bool:
+    """Whole-ring containment; GEOS failures on invalid topology count as none."""
+    try:
+        return bool(prior.contains(candidate))
+    except GEOSException:
+        return False
+
+
 def _assemble(rings: list[list[list[float]]]) -> tuple[object, dict[str, int]]:
     """Reassemble validated rings into shells/holes without altering vertices.
 
-    Rings are kept verbatim; containment of one ring inside a strictly larger
-    ring makes it a hole of the smallest containing part. Degenerate zero-area
-    rings can contain nothing and become their own parts. No simplification,
-    orientation rewrite or coordinate repair is applied; the census is returned
-    so invalid reassembly stays visible and release-blocked.
+    Rings are kept verbatim. Membership follows whole-ring containment with
+    hole-aware nesting depth: each ring is placed inside the smallest strictly
+    larger ring that fully contains it, and depth alternates shell/hole/island
+    from the outside in, so an odd-depth ring becomes a hole of its nearest
+    even-depth ancestor while an even-depth ring inside a hole becomes its own
+    shell (island). Rings not wholly contained anywhere -- partially
+    overlapping exteriors or containment that GEOS cannot decide on invalid
+    topology -- stay separate parts; no hole is invented and no vertex is
+    added, removed, reordered or repaired. Degenerate zero-area rings can
+    never act as parents (only strictly larger-area rings do) but follow the
+    same containment rule as any ring when contained elsewhere. Ring
+    orientation is recorded in the census against the Esri JSON convention
+    (exterior clockwise, hole counterclockwise) but never decides membership,
+    so a noncanonical producer ring cannot be converted into an invented hole.
+    The census is returned so invalid reassembly stays visible and
+    release-blocked.
     """
     polygons = []
     for ring in rings:
         area = abs(_signed_area(ring))
-        polygons.append({"ring": ring, "area": area, "shape": shapely.Polygon(ring)})
+        shape = shapely.Polygon(ring)
+        polygons.append({"ring": ring, "area": area, "shape": shape, "bounds": shape.bounds})
     order = sorted(range(len(polygons)), key=lambda index: polygons[index]["area"], reverse=True)
     parts: list[dict[str, object]] = []
+    part_of_shell: dict[int, int] = {}
+    depth: dict[int, int] = {}
+    parent: dict[int, int | None] = {}
     for index in order:
         candidate = polygons[index]
-        shell = None
-        for part in parts:
-            shape = part["shape"]
-            if shape.area > candidate["area"] and shape.contains(candidate["shape"].representative_point()):
-                if shell is None or shape.area < shell["shape"].area:
-                    shell = part
-        if shell is None:
-            parts.append({"shape": candidate["shape"], "shell": candidate, "holes": []})
+        parent_index = None
+        for prior_index in depth:
+            prior = polygons[prior_index]
+            if (prior["area"] > candidate["area"]
+                    and prior["bounds"][0] <= candidate["bounds"][0]
+                    and prior["bounds"][1] <= candidate["bounds"][1]
+                    and prior["bounds"][2] >= candidate["bounds"][2]
+                    and prior["bounds"][3] >= candidate["bounds"][3]
+                    and _wholly_contains(prior["shape"], candidate["shape"])
+                    and (parent_index is None
+                         or prior["area"] < polygons[parent_index]["area"])):
+                parent_index = prior_index
+        if parent_index is None:
+            depth[index] = 0
+            parent[index] = None
+            part_of_shell[index] = len(parts)
+            parts.append({"shell": candidate, "holes": []})
         else:
-            shell["holes"].append(candidate)
+            depth[index] = depth[parent_index] + 1
+            parent[index] = parent_index
+            if depth[index] % 2 == 0:
+                part_of_shell[index] = len(parts)
+                parts.append({"shell": candidate, "holes": []})
+            else:
+                shell = parent_index
+                while depth[shell] % 2 == 1:
+                    shell = parent[shell]
+                parts[part_of_shell[shell]]["holes"].append(candidate)
     geometry = shapely.MultiPolygon([
         shapely.Polygon(part["shell"]["ring"], [hole["ring"] for hole in part["holes"]])
         for part in parts
@@ -191,6 +234,10 @@ def _assemble(rings: list[list[list[float]]]) -> tuple[object, dict[str, int]]:
         "invalid": 0 if geometry.is_valid else 1,
         "empty": 1 if geometry.is_empty else 0,
         "vertices": sum(len(ring) for ring in rings),
+        "noncanonical_orientation": sum(
+            1 for index, ring in enumerate(rings)
+            if (depth[index] % 2 == 0 and _signed_area(ring) > 0)
+            or (depth[index] % 2 == 1 and _signed_area(ring) < 0)),
     }
     return geometry, census
 
@@ -626,7 +673,8 @@ def capture_wfigs_interagency_fire_perimeters(storage: StagingStorageResource, *
             "parameters": {
                 "attributes": ("All declared layer attributes are retained verbatim in producer order; "
                                "source Esri declarations are recorded in source_audit; no mapping is approved."),
-                "geometry": ("Esri JSON rings reassembled into shells/holes by strict containment; "
+                "geometry": ("Esri JSON rings reassembled into shells/holes by strict whole-ring "
+                             "containment with hole-aware nesting depth; "
                              "vertices, ring membership and order preserved without reprojection, "
                              "simplification or repair; invalid/degenerate polygons retained and release-blocked."),
                 "source_population": ("Count/ids/object rosters and the layer editingInfo edit witness "
