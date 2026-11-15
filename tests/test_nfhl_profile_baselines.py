@@ -599,6 +599,23 @@ class RetryAndResumeTests(unittest.TestCase):
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), ERROR_BODY)
             self.assertEqual(calls.count("page_000000_00004"), 1)
 
+    def test_resumed_bisection_uses_cached_children_without_retrying_parent(self):
+        bodies, _, _, ids, attr_names = self._fixture_bodies()
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            _write_evidence(root, "page_000000_00004", ERROR_BODY)
+            for name in ("page_000000_00002", "page_000002_00002", "page_000004_00001"):
+                _write_evidence(root, name, bodies[name])
+            with patch.multiple(source, SEGMENT_START_RECORDS=4, EXPECTED_COUNT=5), \
+                 patch.object(source, "capture_get", side_effect=AssertionError("unnecessary network request")), \
+                 patch.object(source.time, "sleep") as sleep:
+                stats = source._StreamStats()
+                settled = source._capture_segments(None, root, sorted(ids), attr_names, stats, {})
+            self.assertEqual(settled, [(0, 2), (2, 2), (4, 1)])
+            self.assertEqual(stats.feature_count, 5)
+            sleep.assert_not_called()
+            self.assertEqual((root / "page_000000_00004.body").read_bytes(), ERROR_BODY)
+
     def test_unservable_single_feature_fails_explicitly(self):
         _, _, _, ids, attr_names = self._fixture_bodies()
         error_body = ERROR_BODY

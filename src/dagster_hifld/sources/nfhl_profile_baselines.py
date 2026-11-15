@@ -657,6 +657,17 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
     while segments:
         offset, count = segments.popleft()
         name = _segment_name(offset, count)
+        # Resume the saved bisection tree before probing refused ancestors.
+        # Child evidence only chooses request boundaries; every leaf still
+        # verifies its receipt and current roster slice below.
+        middle = count // 2
+        if count > 1 and any(
+                (capture_root / f"{_segment_name(start, width)}.receipt.json").is_file()
+                for start, width in ((offset, middle), (offset + middle, count - middle))) \
+                and _reusable_receipt(capture_root, name) is None:
+            segments.appendleft((offset + middle, count - middle))
+            segments.appendleft((offset, middle))
+            continue
         try:
             receipt, reused = _ensure_captured(
                 client, _segment_query(offset, count), capture_root, name,
