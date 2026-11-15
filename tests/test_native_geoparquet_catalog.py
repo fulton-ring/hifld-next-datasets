@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import copy
 import json
+import math
 import shutil
 import tempfile
 import unittest
@@ -208,3 +209,42 @@ class NativeCatalogTests(unittest.TestCase):
             self.assertEqual(fields['single']['min'],values[0].as_py());self.assertEqual(fields['single']['max'],4.0)
             self.assertEqual(fields['single']['nativeBitWidth'],32)
             self.assertEqual(fields['large_id']['statisticsScope'],'bounded_arrow_sample')
+
+    def test_byte_aware_row_group_iteration_survives_coalesced_small_groups(self):
+        """Many small geometry-heavy row groups decode far over BATCH_BYTES when
+        pyarrow coalesces them into batch_size-row windows; row-group-wise
+        iteration must still summarize and return the row-group-wise reference
+        quality numbers, while one oversized row group still refuses."""
+        points=[(math.cos(2*math.pi*i/24_000)*(1+0.001*math.sin(i)),
+                 math.sin(2*math.pi*i/24_000)*(1+0.001*math.sin(i)))for i in range(24_000)]
+        geometry=shapely.to_wkb(shapely.Polygon(points+[points[0]]))
+        oversized=shapely.to_wkb(shapely.Polygon(points+[points[0]]+points+[points[0]]))
+        schema=pa.schema([pa.field('objectid',pa.int64()),pa.field('native_shape',pa.binary())],
+            metadata={b'geo':json.dumps({'version':'1.1.0','primary_column':'native_shape',
+                'columns':{'native_shape':{'encoding':'WKB','geometry_types':['Polygon']}}}).encode()})
+        reference=pa.Table.from_arrays(
+            [pa.array(range(9),type=pa.int64()),pa.array([geometry]*9,type=pa.binary())],schema=schema)
+        budget=len(geometry)*8
+        with tempfile.TemporaryDirectory()as tmp:
+            path=Path(tmp)/'grouped.parquet';pq.write_table(reference,path,row_group_size=1)
+            parquet=pq.ParquetFile(path)
+            self.assertEqual(parquet.metadata.num_row_groups,9)
+            with patch.object(native,'BATCH_BYTES',budget):
+                coalesced=next(parquet.iter_batches(batch_size=native.BATCH_ROWS,use_threads=False))
+                self.assertGreater(coalesced.nbytes,native.BATCH_BYTES)  # old iteration refused
+                quality,dictionary=native.summarize_native_path(path,'synthetic',{})
+            self.assertEqual(quality['feature_count'],9)
+            self.assertEqual(quality['geometry_type'],'Polygon')
+            self.assertTrue(quality['quality_check_passed'])
+            decoded=shapely.from_wkb(parquet.read_row_group(0).column('native_shape')[0].as_py())
+            self.assertEqual(quality['bounds'],list(decoded.bounds))
+            self.assertEqual(dictionary['featureCount'],9)
+        with tempfile.TemporaryDirectory()as tmp:
+            path=Path(tmp)/'oversized.parquet'
+            table=pa.Table.from_arrays(
+                [pa.array([1,2],type=pa.int64()),pa.array([geometry,oversized],type=pa.binary())],
+                schema=schema)
+            pq.write_table(table,path,row_group_size=1)
+            with patch.object(native,'BATCH_BYTES',int(len(geometry)*1.5)):
+                with self.assertRaisesRegex(ValueError,'native_geoparquet_decoded_batch_byte_limit'):
+                    native.summarize_native_path(path,'synthetic',{})

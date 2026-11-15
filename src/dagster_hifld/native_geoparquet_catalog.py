@@ -1,8 +1,9 @@
 """Opt-in native GeoParquet catalog fallback, never dataset/source acceptance.
 
 Only a single explicitly pinned prebuilt object is supported. Existing canonical
-raw sources retain precedence. Memory is limited by Arrow batches plus a bounded
-sample; Arrow may allocate one decoded batch before the byte ceiling is checked.
+raw sources retain precedence. Memory is limited by one decoded row group read
+at a time (a row group above the byte ceiling refuses before its batches are
+processed) plus a bounded sample.
 """
 from __future__ import annotations
 
@@ -261,6 +262,25 @@ def _dictionary(sample,schema,primary,name,metadata):
     return columns
 
 
+def _bounded_row_group_batches(parquet:pq.ParquetFile):
+    """Row-group-wise RecordBatches that never coalesce across row groups.
+
+    ``ParquetFile.iter_batches(batch_size=N)`` coalesces consecutive row
+    groups until N rows are reached, so many small geometry-heavy row groups
+    can decode into one batch far larger than any individual row group and a
+    byte ceiling checked per batch then refuses candidates whose served rows
+    legitimately carry tens of megabytes of WKB. Reading one row group at a
+    time keeps the decoded-batch bound meaningful: every yielded batch is a
+    slice of exactly one row group, the decoded bytes of any single batch stay
+    within one row group's footprint, and a single row group whose decoded
+    bytes exceed the budget still refuses. No quality metric changes.
+    """
+    for group in range(parquet.metadata.num_row_groups):
+        table=parquet.read_row_group(group,use_threads=False)
+        if table.nbytes>BATCH_BYTES:raise ValueError('native_geoparquet_decoded_batch_byte_limit')
+        yield from table.to_batches(max_chunksize=BATCH_ROWS)
+
+
 def _finite_geometry_coordinates(geometry):
     if not np.isfinite(shapely.get_coordinates(geometry)).all():return False,None
     parts=[geometry];z_bounds=None
@@ -280,7 +300,7 @@ def summarize_native_path(path:Path,name:str,metadata:dict):
     """Full batched population/geometry quality, bounded typed dictionary sample."""
     parquet=pq.ParquetFile(path);schema=parquet.schema_arrow;primary,geo,crs=geometry_metadata(schema)
     samples=[];sample_rows=0;sample_bytes=0;sample_closed=False;rows=0;nulls=0;empty=0;invalid=0;unparseable=0;types=set();bounds=None;z_bounds=None;nonfinite=False
-    for batch in parquet.iter_batches(batch_size=BATCH_ROWS,use_threads=False):
+    for batch in _bounded_row_group_batches(parquet):
         if batch.nbytes>BATCH_BYTES:raise ValueError('native_geoparquet_decoded_batch_byte_limit')
         rows+=batch.num_rows
         for field,array in zip(schema,batch.columns):

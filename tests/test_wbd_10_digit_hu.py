@@ -5,7 +5,9 @@ import hashlib
 import json
 import shutil
 import struct
+import sys
 import tempfile
+import tracemalloc
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -284,6 +286,8 @@ def _encode_pbf_window(ids: list[int], *, exceeded: bool | None = None,
                        transform: bytes | None = None,
                        field_messages: bytes | None = None,
                        geometry_type: int = 3,
+                       geometry_type_declaration: bool = True,
+                       spatial_reference_declaration: bool = True,
                        feature_message_hook=None,
                        result_hook=None,
                        value_message_hook=None) -> bytes:
@@ -309,8 +313,10 @@ def _encode_pbf_window(ids: list[int], *, exceeded: bool | None = None,
         feature_payloads.append(_message(15, payload))
     result = (_field(1, 2, _varint(8) + b"objectid")
               + _field(3, 2, _varint(8) + b"globalid")
-              + _field(7, 0, _varint(geometry_type))
-              + _message(8, _field(1, 0, _varint(102100)) + _field(2, 0, _varint(3857)))
+              + (_field(7, 0, _varint(geometry_type))
+                 if geometry_type_declaration else b"")
+              + (_message(8, _field(1, 0, _varint(102100)) + _field(2, 0, _varint(3857)))
+                 if spatial_reference_declaration else b"")
               + (_field(9, 0, _varint(1)) if exceeded else b"")
               + (transform or _pbf_transform_message())
               + (field_messages or _pbf_field_messages())
@@ -436,9 +442,10 @@ class Wbd10DigitHuTests(unittest.TestCase):
         expected_geometry = hashlib.sha256()
         for oid in _TEST_ROSTER:
             expected_record.update(_canonical(_attributes(oid)) + source.DIGEST_SEPARATOR)
-            if oid not in _GATE_FEATURES:
-                expected_geometry.update(
-                    _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
+            # The geometry baseline digests the structurally validated served
+            # rings of every row, including rows that gate to null geometry.
+            expected_geometry.update(
+                _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
         self.assertEqual(audit["source_record_sha256"], expected_record.hexdigest())
         self.assertEqual(audit["source_geometry_sha256"], expected_geometry.hexdigest())
 
@@ -466,6 +473,17 @@ class Wbd10DigitHuTests(unittest.TestCase):
             mutated = json.loads(json.dumps(documents))
             ring = mutated["page_0000"]["features"][0]["geometry"]["rings"][0]
             ring.insert(2, [ring[1][0] + (ring[2][0] - ring[1][0]) / 2, ring[1][1]])
+            with self.assertRaisesRegex(ValueError, "source_geometry_baseline_drift"):
+                source._validate_stream(self._capture_root(mutated), parquet_sink=None)
+            # A served-ring mutation inside a row that still gates to null
+            # geometry (gate mode and gate counts unchanged, record values
+            # unchanged) must also be detected: the geometry baseline digests
+            # every row's served rings before the gate decision.
+            mutated = json.loads(json.dumps(documents))
+            gated = next(feature for feature in mutated["page_0001"]["features"]
+                         if feature["attributes"]["objectid"] == 501)
+            gated["geometry"]["rings"][0][1] = [
+                gated["geometry"]["rings"][0][1][0] + 25.0, gated["geometry"]["rings"][0][1][1]]
             with self.assertRaisesRegex(ValueError, "source_geometry_baseline_drift"):
                 source._validate_stream(self._capture_root(mutated), parquet_sink=None)
             with self.assertRaisesRegex(ValueError, "source_null_geometry_count_drift"):
@@ -914,29 +932,54 @@ class Wbd10DigitHuTests(unittest.TestCase):
             self.assertTrue(source._is_pbf_feature_result(valid))
             self.assertTrue(source._is_pbf_refusal(b'{"error": {"code": 500}}'))
             cases = {
-                "source_pbf_transform_drift":
-                    (_encode_pbf_window(ids, transform=_pbf_transform_message(scale=0.001)), ids),
-                "source_pbf_page_identity_drift":
-                    (_encode_pbf_window(ids, geometry_type=5), ids),
-                "source_pbf_field_schema_drift":
-                    (_encode_pbf_window(ids, field_messages=_pbf_field_messages()
-                                       .replace(b"\x10\x06", b"\x10\x04", 1)), ids),
-                "source_pbf_page_structure_drift": (valid[:-3], ids),
-                "source_pbf_page_identity_drift":
-                    (_encode_pbf_window(
-                        ids, result_hook=lambda result: result + b"\x50\x01"), ids),
-                "source_date_value_type_drift":
-                    (_encode_pbf_window([501], attributes_by_oid={
-                        501: {**_attributes(501), "loaddate": 1700000000050.5}}), [501]),
-                "source_pbf_attribute_value_drift":
-                    (_encode_pbf_window([501], value_message_hook=lambda oid, field, value:
-                        _message(1, b"\x19" + struct.pack("<d", 1.5))
-                        if field["name"] == "huc10" else
-                        _message(1, _pbf_value_message(value, field["type"]))), [501]),
+                "transform drift":
+                    ("source_pbf_transform_drift",
+                     _encode_pbf_window(ids, transform=_pbf_transform_message(scale=0.001)), ids),
+                "wrong geometry type enum":
+                    ("source_pbf_page_identity_drift",
+                     _encode_pbf_window(ids, geometry_type=5), ids),
+                "field schema drift":
+                    ("source_pbf_field_schema_drift",
+                     _encode_pbf_window(ids, field_messages=_pbf_field_messages()
+                                        .replace(b"\x10\x06", b"\x10\x04", 1)), ids),
+                "truncated page":
+                    ("source_pbf_page_structure_drift", valid[:-3], ids),
+                "unknown result field":
+                    ("source_pbf_page_identity_drift",
+                     _encode_pbf_window(
+                         ids, result_hook=lambda result: result + b"\x50\x01"), ids),
+                "missing geometry type declaration":
+                    ("source_pbf_page_identity_drift",
+                     _encode_pbf_window(ids, geometry_type_declaration=False), ids),
+                "missing spatial reference declaration":
+                    ("source_pbf_page_identity_drift",
+                     _encode_pbf_window(ids, spatial_reference_declaration=False), ids),
+                "duplicated geometry type declaration":
+                    ("source_pbf_page_identity_drift",
+                     _encode_pbf_window(
+                         ids, result_hook=lambda result:
+                         result + _field(7, 0, _varint(3))), ids),
+                "duplicated spatial reference declaration":
+                    ("source_pbf_page_identity_drift",
+                     _encode_pbf_window(
+                         ids, result_hook=lambda result:
+                         result + _message(8, _field(1, 0, _varint(102100))
+                                           + _field(2, 0, _varint(3857)))), ids),
+                "date value type drift":
+                    ("source_date_value_type_drift",
+                     _encode_pbf_window([501], attributes_by_oid={
+                         501: {**_attributes(501), "loaddate": 1700000000050.5}}), [501]),
+                "attribute value drift":
+                    ("source_pbf_attribute_value_drift",
+                     _encode_pbf_window([501], value_message_hook=lambda oid, field, value:
+                         _message(1, b"\x19" + struct.pack("<d", 1.5))
+                         if field["name"] == "huc10" else
+                         _message(1, _pbf_value_message(value, field["type"]))), [501]),
             }
-            for expected_code, (body, case_ids) in cases.items():
-                with self.assertRaisesRegex(ValueError, expected_code):
-                    source._pbf_feature_result(body, "page_0001a_pbf", case_ids)
+            for label, (expected_code, body, case_ids) in cases.items():
+                with self.subTest(label=label):
+                    with self.assertRaisesRegex(ValueError, expected_code):
+                        source._pbf_feature_result(body, "page_0001a_pbf", case_ids)
             with self.assertRaisesRegex(ValueError, "source_pbf_page_population_incomplete"):
                 source._pbf_feature_result(valid, "page_0001a_pbf", [501])
 
@@ -1009,6 +1052,97 @@ class Wbd10DigitHuTests(unittest.TestCase):
         shutil.copytree(source_root, root)
         (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         return root
+
+    def test_replay_memory_is_bounded_by_single_artifacts_not_population(self):
+        """Replay retains paths/receipts/digests as descriptors and loads each
+        body only while validating it: doubling the retained page count must
+        not multiply the peak, whereas population-wide body retention would
+        scale it with the whole source."""
+        module = sys.modules[__name__]
+        pad = 1_000_000
+
+        def replay_peak(page_count: int) -> int:
+            roster = list(range(11, 11 + 2 * page_count))
+            with tempfile.TemporaryDirectory(prefix="wbd-10-digit-hu-mem-") as tmp, \
+                    patch.object(module, "_TEST_ROSTER", roster), \
+                    patch.object(module, "_TEST_COUNT", len(roster)), \
+                    patch.object(module, "_TEST_PAGE_COUNT", page_count):
+                documents = _documents()
+                for index in range(page_count):
+                    documents[f"page_{index:04d}"]["pad"] = "p" * pad
+                with relaxed_pins():
+                    root = _write_capture_root(Path(tmp) / "captures", documents)
+                manifest = {"complete": True, "captured_at": "2026-11-14T12:00:00.000000Z",
+                            "receipts": {name: json.loads(
+                                (root / f"{name}.receipt.json").read_bytes())
+                                for name in sorted(documents)},
+                            "artifact_roster": source.capture_roster_digests(
+                                root, exclude={"capture_manifest.json"}),
+                            "page_parts": {}, "page_refusals": []}
+                (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
+                tracemalloc.start()
+                try:
+                    with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)),
+                                      DISK_FLOOR_BYTES=1):
+                        source._read_replay(root)
+                finally:
+                    _current, peak = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+                return peak
+
+        small, large = replay_peak(4), replay_peak(8)
+        self.assertLess(large, small * 1.5)
+
+    def test_capture_window_memory_is_bounded_by_single_artifacts_not_population(self):
+        """Window capture writes bodies to disk and retains only receipts, so
+        doubling the number of bisection leaves leaves the peak flat, where
+        population-wide body retention would double it with the leaf count."""
+        body_size = 1_000_000
+
+        def walk_peak(leaf_floor: int) -> int:
+            roster = [11_000 + number for number in range(100)]
+            refusal = json.dumps({"error": {"code": 500,
+                                            "message": "Error performing query operation",
+                                            "details": []}}).encode()
+
+            def fake_capture(_client, url, root, name, max_bytes=0):
+                if len(source._window_slice(roster, 0, name[len("page_0000"):])) > leaf_floor:
+                    body = refusal
+                else:
+                    # Served leaves carry one megabyte of body bytes; the
+                    # walk must retain only the receipt.
+                    body = json.dumps(
+                        {"pad": "p" * (body_size - 40), "features": []}).encode()
+                wire = b"wire:" + body[:32]
+                receipt = {"method": "GET", "url": url, "final_url": url,
+                           "observed_at": "2026-11-14T12:00:00.000000Z", "status": 200,
+                           "complete_body": True, "bytes": len(body), "sha256": _digest(body),
+                           "wire_bytes": len(wire), "wire_sha256": _digest(wire),
+                           "content_encoding": None, "content_length": None,
+                           "error_code": None, "error_type": None}
+                (root / f"{name}.body").write_bytes(body)
+                (root / f"{name}.wire").write_bytes(wire)
+                (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+                return body, receipt
+
+            with tempfile.TemporaryDirectory(prefix="wbd-10-digit-hu-cmem-") as tmp:
+                root = Path(tmp) / "captures"
+                root.mkdir(parents=True)
+                tracemalloc.start()
+                try:
+                    with relaxed_pins():
+                        with patches(source, _capture=fake_capture, MIN_WINDOW_IDS=leaf_floor,
+                                     PAGE_SIZE=100):
+                            parts, refusals = source._capture_page_window(None, roster, 0, root)
+                finally:
+                    _current, peak = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+            served = [name for name in parts if not name.endswith("_refusal")]
+            self.assertEqual(len(served), 16 if leaf_floor == 10 else 32)
+            return peak
+
+        small, large = walk_peak(10), walk_peak(5)
+        self.assertLess(large, small + 2 * body_size)
 
     def test_unsafe_capture_version_is_refused(self):
         temporary = tempfile.TemporaryDirectory(prefix="wbd-10-digit-hu-version-")

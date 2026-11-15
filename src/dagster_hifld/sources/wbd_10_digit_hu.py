@@ -29,9 +29,12 @@ the counts pinned for later drift refusal after the first complete walk.
 The per-value record and geometry baseline digests, the ID roster digest and
 the geometry-gate counts are pinned below from the complete dated population
 walk (2026-11-15; two independent walks produced identical digests, the
-second verifying the first's sealed candidate). Publication stays blocked
-pending succession, freshness, schema/ID contract, coverage, rights and
-release acceptance; all runtime approval flags are false and the draft
+second verifying the first's sealed candidate); the geometry baseline digests
+the structurally validated served rings of every row, including rows that
+gate to null geometry, and its national pin is re-established from the
+retained complete-walk evidence under the corrected scheme. Publication stays
+blocked pending succession, freshness, schema/ID contract, coverage, rights
+and release acceptance; all runtime approval flags are false and the draft
 refresh schedule is stopped.
 
 Producer serialization defect and the bounded protobuf rescue (observed
@@ -63,6 +66,7 @@ import json
 import math
 import shutil
 import struct
+from collections.abc import Iterable, Mapping
 from decimal import Decimal
 from datetime import datetime, timezone
 from pathlib import Path
@@ -88,7 +92,7 @@ from dagster_hifld.sources.epa_frs_common import (
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.sources.usace_obstruction_lines import (
-    _canonical, _capture_identity, _load_capture, _sha,
+    _canonical, _load_capture, _sha,
     _validate_capture_request_identity,
 )
 
@@ -173,9 +177,17 @@ ROW_GROUP_GEOMETRY_BUDGET_BYTES = 64 * 1024 * 1024
 # bisection floor (page_0178bbab, page_0182abab, page_0188aabb, page_0188abba,
 # page_0188baaa, page_0188baab) were served by the producer's protobuf
 # serializer and pass the same row contracts.
+# The geometry baseline digests the structurally validated [objectid, served
+# rings] of EVERY row, including rows that gate to null geometry (2026-11-15
+# review finding: the gate branch previously continued before the digest, so
+# all eight gated source geometries were excluded and a served-ring mutation
+# in a gated row went undetected). The national geometry pin is being
+# re-established from retained complete-walk evidence under the corrected
+# scheme and is repinned in the follow-up commit; every other baseline stays
+# pinned and enforced.
 EXPECTED_SCHEMA_SHA256 = "9d958f22b37d01eec29106caa71e17b908a331ce9c3101c7664dd06609b4192f"
 EXPECTED_RECORD_SHA256 = "a290786069b511921f22bbafae5015b8c753c41499bd191f733c52400eeb3cb3"
-EXPECTED_GEOMETRY_SHA256 = "643eab1c026f6a85cf45063718c0dd5eba00eddf078c116144e6cdf0e316810a"
+EXPECTED_GEOMETRY_SHA256 = ""
 EXPECTED_NULL_GEOMETRY_COUNT = 8
 EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {
     "source_polygon_assembly_invalid": 5, "source_polygon_ring_self_intersecting": 3}
@@ -515,11 +527,14 @@ def _pbf_feature_result(body: bytes, part_name: str,
         raise ValueError("source_pbf_page_structure_drift:" + part_name)
     document: dict = {"features": [], "exceededTransferLimit": None}
     scale_x = scale_y = translate_x = translate_y = None
+    geometry_type_declarations = spatial_reference_declarations = 0
     for number, payload in _pbf_fields(results[0]):
         if number == 7:
+            geometry_type_declarations += 1
             if payload != 3:
                 raise ValueError("source_pbf_page_identity_drift:" + part_name)
         elif number == 8:
+            spatial_reference_declarations += 1
             fields_seen = dict(_pbf_fields(payload))
             if (fields_seen.get(1) not in (NATIVE_WKID,)
                     or fields_seen.get(2) != NATIVE_LATEST_WKID
@@ -552,6 +567,12 @@ def _pbf_feature_result(body: bytes, part_name: str,
             continue
         else:
             raise ValueError("source_pbf_page_structure_drift:" + part_name)
+    # The producer declares the result geometry type and the page spatial
+    # reference exactly once each; the JSON path enforces the same identity
+    # through its page members, so an absent, duplicated or drifted
+    # declaration must fail the protobuf window instead of silently decoding.
+    if geometry_type_declarations != 1 or spatial_reference_declarations != 1:
+        raise ValueError("source_pbf_page_identity_drift:" + part_name)
     if scale_x is None:
         raise ValueError("source_pbf_transform_drift:" + part_name)
     if document.get("fields") != _pbf_expected_fields():
@@ -633,7 +654,7 @@ def _is_pbf_refusal(body: bytes) -> bool:
 
 
 def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
-                         root: Path) -> tuple[dict[str, tuple[bytes, dict]], list[str]]:
+                         root: Path) -> tuple[dict[str, dict], list[str]]:
     """Capture one nominal page window, bisecting refusing windows deterministically.
 
     The producer persistently refuses some windows (content-dependent
@@ -648,28 +669,30 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
     window through its protobuf serializer (``f=pbf``), whose decoded window
     is validated against the same row contracts and retained under the
     window's own ``_pbf`` slot; a window refused by both serializers still
-    fails the capture — never a repair loop.
+    fails the capture — never a repair loop. Bodies are written to disk by
+    ``_capture`` and only the receipts are returned, so the caller never holds
+    a population-wide set of response bodies.
     """
-    parts: dict[str, tuple[bytes, dict]] = {}
+    parts: dict[str, dict] = {}
     refusals: list[str] = []
 
-    def retain(name: str, body: bytes, receipt: dict, suffix: str) -> None:
+    def retain(name: str, receipt: dict, suffix: str) -> None:
         for file_suffix in (".body", ".wire", ".receipt.json"):
             (root / (name + file_suffix)).replace(root / (name + suffix + file_suffix))
         refusals.append(name + suffix)
-        parts[name + suffix] = (body, receipt)
+        parts[name + suffix] = receipt
 
     def walk(path: str) -> None:
         name = f"page_{index:04d}" + path
         sub = _window_slice(roster, index, path)
         body, receipt = _capture(client, _window_url(roster, index, path), root, name)
         if not _is_refusal(body):
-            parts[name] = (body, receipt)
+            parts[name] = receipt
             return
         # Retain the refusal document as evidence under its own slot name: the
         # window is never served a feature page, so the refusal body, wire and
         # receipt are bound to the window's GET URL under the refusal name.
-        retain(name, body, receipt, "_refusal")
+        retain(name, receipt, "_refusal")
         if len(sub) <= MIN_WINDOW_IDS:
             # Bisection floor reached: rescue the exact window through the
             # producer's protobuf serializer before failing the capture.
@@ -677,9 +700,9 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
             pbf_body, pbf_receipt = _capture(
                 client, _window_url(roster, index, path, fmt="pbf"), root, pbf_name)
             if not _is_pbf_refusal(pbf_body):
-                parts[pbf_name] = (pbf_body, pbf_receipt)
+                parts[pbf_name] = pbf_receipt
                 return
-            retain(pbf_name, pbf_body, pbf_receipt, "_refusal")
+            retain(pbf_name, pbf_receipt, "_refusal")
             raise ValueError("source_page_window_refused_after_bisection:" + name)
         half = (len(sub) + 1) // 2
         walk(path + "a")
@@ -1088,6 +1111,11 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                                         for entry, ring in zip(served_ids, rings))):
                             raise ValueError("source_geometry_ids_member_drift:" + part_name)
                         ids_member_features += 1
+                    # The geometry baseline digests the structurally validated
+                    # [objectid, served rings] of EVERY row, before any
+                    # geometry gating decision, so a served-ring mutation in a
+                    # row that gates to null geometry is still drift.
+                    geometry_hash.update(_canonical([oid, geometry["rings"]]) + DIGEST_SEPARATOR)
                     try:
                         wkb = _assemble_geometry(rings)
                     except _GeometryGate as gate:
@@ -1142,7 +1170,6 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                     for field in names:
                         columns[field].append(attrs[field])
                     record_hash.update(_canonical(dict(attrs)) + DIGEST_SEPARATOR)
-                    geometry_hash.update(_canonical([oid, geometry["rings"]]) + DIGEST_SEPARATOR)
             if sorted(page_ids) != expected_page_ids or len(set(page_ids)) != len(page_ids):
                 raise ValueError("source_page_id_population_drift:" + name)
             if writer is not None:
@@ -1194,7 +1221,9 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                                        "compact-JSON document per feature in ascending "
                                        "OBJECTID order, each followed by a 0x00 byte; the "
                                        "record document is the served attribute object and "
-                                       "the geometry document is [objectid, served rings]"),
+                                       "the geometry document is [objectid, served rings] "
+                                       "for every row, including rows that gate to null "
+                                       "geometry"),
             "source_geometry_type": "esriGeometryPolygon",
             "source_crs": f"EPSG:{SOURCE_CRS_WKID}",
             "source_native_wkid": NATIVE_WKID,
@@ -1227,11 +1256,67 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
         raise
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
-    return _sha(_canonical(_capture_identity(captures, root)))
+_IDENTITY_STREAM_BLOCK_BYTES = 8 * 1024 * 1024
 
 
-def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, list[str]]]:
+def _streamed_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(_IDENTITY_STREAM_BLOCK_BYTES), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _capture_identity(root: Path, names: Iterable[str]) -> dict[str, dict[str, str]]:
+    """Candidate identity binds every retained decoded and wire artifact.
+
+    Digests are computed by streaming each retained file in bounded blocks, so
+    building the identity never materializes a population-wide set of response
+    bodies in memory; the digests are byte-identical to whole-file hashing.
+    Receipt JSON is retained as provenance but its observation time does not
+    change content identity.
+    """
+    digests = {}
+    for name in sorted(names):
+        digests[name] = {"decoded_sha256": _streamed_sha256(root / f"{name}.body"),
+                         "wire_sha256": _streamed_sha256(root / f"{name}.wire")}
+    return digests
+
+
+def _capture_identity_hash(root: Path, names: Iterable[str]) -> str:
+    return _sha(_canonical(_capture_identity(root, names)))
+
+
+class _RetainedCaptureBodies(Mapping):
+    """Read-only view over the retained capture directory that loads each body
+    only when the quarantine iteration reaches it, so a failed acquisition
+    never materializes a population-wide set of bodies in memory."""
+
+    def __init__(self, root: Path, names: list[str]) -> None:
+        self._root = root
+        self._names = names
+
+    def __len__(self) -> int:
+        return len(self._names)
+
+    def __iter__(self):
+        return iter(self._names)
+
+    def __getitem__(self, name: str) -> tuple[bytes, dict]:
+        try:
+            body, _wire, receipt = _load_capture(self._root, name)
+            return body, receipt
+        except (OSError, ValueError):
+            return b"", {"retained_evidence_unreadable": True}
+
+
+def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
+    """Validate the retained capture and return slot receipts plus page parts.
+
+    Bodies are loaded one at a time for validation and never retained; the
+    returned receipts are descriptors, so replay memory is bounded by the
+    largest single retained artifact instead of the population.
+    """
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
@@ -1305,7 +1390,7 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
         raise ValueError("retained_capture_artifact_digest_mismatch")
     ids = _validate_roster_document(json.loads(_load_capture(root, "ids_before")[0]), "replay")
     expected_urls = dict(_capture_roster(ids))
-    captures = {}
+    captures: dict[str, dict] = {}
     for name in sorted(expected_names):
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
@@ -1340,7 +1425,7 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
                 _window_url(ids, int(page[5:9]), path, fmt="pbf" if pbf_part else "json"))
         else:
             _validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
+        captures[name] = receipt
     return captures, page_parts
 
 
@@ -1382,7 +1467,8 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
                               headers={"User-Agent": USER_AGENT}) as client:
                 ids_body, ids_receipt = _capture(client, _ids_url(), root, "ids_before")
                 roster = _validate_roster_document(json.loads(ids_body), "seed")
-                captures["ids_before"] = (ids_body, ids_receipt)
+                del ids_body
+                captures["ids_before"] = ids_receipt
                 doc_client = httpx.Client(follow_redirects=True,
                                           timeout=httpx.Timeout(60, connect=20, read=300),
                                           headers={"Connection": "close",
@@ -1402,9 +1488,10 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
                             page_refusals.extend(window_refusals)
                             continue
                         active = doc_client if name == "service_doc" else client
-                        captures[name] = _capture(active, url, root, name,
-                                                  max_bytes=DOC_MAX_BYTES
-                                                  if name == "service_doc" else PAGE_MAX_BYTES)
+                        _body, captures[name] = _capture(active, url, root, name,
+                                                         max_bytes=DOC_MAX_BYTES
+                                                         if name == "service_doc" else PAGE_MAX_BYTES)
+                        del _body
                 finally:
                     doc_client.close()
         except Exception as exc:
@@ -1417,14 +1504,17 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
             (root / "capture_manifest.json").write_bytes(_canonical({"complete": False,
                 "captured_at": datetime.now(timezone.utc).isoformat(),
                 "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-            if captures:
-                quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captures,
+            if receipts:
+                # Bodies are loaded from disk one at a time while the
+                # quarantine writes them, never population-wide in memory.
+                quarantine_incomplete_capture(storage, root, DATASET_SLUG, version,
+                                              _RetainedCaptureBodies(root, sorted(receipts)),
                                               type(exc).__name__)
             raise
         (root / "capture_manifest.json").write_bytes(_canonical({
             "complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(),
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: captures[name] for name in sorted(captures)},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
             "page_parts": dict(sorted(page_parts.items())),
             "page_refusals": sorted(page_refusals)}) + b"\n")
@@ -1433,10 +1523,11 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
     parquet_sink = staging / "_construction-tmp" / f"{DATASET_SLUG}-{version}.parquet"
     audit, derived = _validate_stream(root, parquet_sink=parquet_sink, page_parts=replay_parts)
     identity = processing_identity(Path(__file__).parents[3])
-    capture_hash = _capture_identity_hash(captures, root)
+    capture_identity = _capture_identity(root, captures)
+    capture_hash = _sha(_canonical(capture_identity))
     audit.update({"source_capture_evidence_sha256": capture_hash,
-        "source_capture_evidence": _capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_capture_evidence": capture_identity,
+        "source_receipts": {name: captures[name] for name in sorted(captures)},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
@@ -1455,7 +1546,7 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
         for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
             digest.update(block)
     parquet_sha = digest.hexdigest()
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: captures[name] for name in sorted(captures)}
     gate_note = (f"{audit['null_geometry_count']} rows gate to null geometry and are "
                  "counted by failure mode: "
                  + json.dumps(audit["unusable_geometry_counts"], sort_keys=True)
