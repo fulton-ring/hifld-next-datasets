@@ -6,7 +6,6 @@ HIFLD equivalence, a dated source release, rights, or publication acceptance.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -37,6 +36,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "data-coverage-areas-usace-ienc"
@@ -69,15 +69,6 @@ EXPECTED_FIELD_DECLARATIONS = [
     ],
 ]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_spatial_reference(value: object, label: str) -> None:
@@ -189,13 +180,6 @@ def _esri_polygon(geometry: dict) -> bytes:
     for value in polys:
         output.extend(value)
     return bytes(output)
-
-
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
-            "esriFieldTypeSmallInteger": pa.int16(), "esriFieldTypeSingle": pa.float32(),
-            "esriFieldTypeDouble": pa.float64(), "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDate": pa.int64()}.get(field.get("type"), pa.string())
 
 
 def _parquet(fields: list[dict], features: list[dict], geometry_types: list[str]) -> bytes:

@@ -29,7 +29,7 @@ REAL_GCS_E2E_CASES = (
     RealGcsE2ECase("12nm-territorial-sea", "12nm-territorial-sea"),
     RealGcsE2ECase("amtrak-stations", "amtrak-stations"),
     RealGcsE2ECase("nfhl", "alluvial-fans"),
-    RealGcsE2ECase("2020-census-blocks-1", "tl_2024_01_tabblock20"),
+    RealGcsE2ECase("2020-census-blocks-1", "tl_2026_01_tabblock20"),
 )
 
 

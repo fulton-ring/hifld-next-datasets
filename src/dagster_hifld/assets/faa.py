@@ -150,3 +150,7 @@ def faa_aviation_draft_refresh_schedule(context):
         return SkipReason("Draft aviation refresh requires explicit scheduled time")
     return RunRequest(run_key="aviation-draft-" + context.scheduled_execution_time.date().isoformat(),
         tags={"hifld/draft": "true", "hifld/promotion_allowed": "false"})
+
+INGEST_ASSETS = [faa_airspace_boundaries, faa_aviation_facilities]
+JOBS = [faa_airspace_draft_refresh_job, faa_aviation_draft_refresh_job]
+SCHEDULES = [faa_airspace_draft_refresh_schedule, faa_aviation_draft_refresh_schedule]

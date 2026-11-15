@@ -16,7 +16,7 @@ from dagster_hifld.assets.antenna_structure_registration_asr import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import antenna_structure_registration_asr as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 def _sha(value):

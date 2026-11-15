@@ -13,6 +13,7 @@ import json
 import math
 import sqlite3
 import tempfile
+from contextlib import closing
 from pathlib import Path
 import time
 from collections import Counter
@@ -36,6 +37,10 @@ from dagster_hifld.release_approval import verifier_implementation_sha256
 
 _CAPTURE_NAMES = ("layer", "count_before", "features", "ids_before", "ids_after", "count_after", "geojson")
 _CODE_IDENTITY_SCHEME = "hifld-installed-package-sha256-v1"
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+_SQLITE_HEADER_CHANGE_COUNTER_OFFSET = 24
+_SQLITE_HEADER_SCHEMA_COOKIE_OFFSET = 40
+_SQLITE_HEADER_VERSION_VALID_FOR_OFFSET = 92
 
 
 def _write_draft_staging(storage: StagingStorageResource, key: str, contents: bytes) -> str:
@@ -78,8 +83,8 @@ def noaa_capture_urls(layer_url: str) -> dict[str, str]:
     prefix = "/arcgis/rest/services/MaritimeBoundaries/US_Maritime_Limits_Boundaries/MapServer/"
     if (parsed.scheme != "https" or parsed.netloc != "maritimeboundaries.noaa.gov"
             or parsed.query or parsed.fragment or not parsed.path.startswith(prefix)
-            or parsed.path[len(prefix):] not in {"1", "2", "3"}):
-        raise ValueError("NOAA expected layer must be an exact official HTTPS layer1/2/3 URL")
+            or parsed.path[len(prefix):] not in {"1", "2", "3", "4"}):
+        raise ValueError("NOAA expected layer must be an exact official HTTPS layer1/2/3/4 URL")
     query = layer_url.rstrip("/") + "/query?where=1%3D1&"
     return {
         "layer": layer_url + "?f=pjson",
@@ -321,6 +326,44 @@ def validate_noaa_capture(captures: dict[str, bytes], *, expected_fields: dict[s
     return table, quality
 
 
+def _normalize_sqlite_volatile_header(path: Path) -> None:
+    """Pin SQLite header fields that only record transaction history.
+
+    The staged bridge container is never modified again, so the file change
+    counter, schema cookie and version-valid-for number carry no reader-visible
+    meaning; normalizing them keeps identical logical content byte-identical
+    even when the writer stack commits a different number of times.
+    """
+    with open(path, "r+b") as handle:
+        if handle.read(len(_SQLITE_MAGIC)) != _SQLITE_MAGIC:
+            raise ValueError(f"NOAA bridge GeoPackage is not a SQLite container: {path}")
+        for offset in (_SQLITE_HEADER_CHANGE_COUNTER_OFFSET, _SQLITE_HEADER_SCHEMA_COOKIE_OFFSET,
+                       _SQLITE_HEADER_VERSION_VALID_FOR_OFFSET):
+            handle.seek(offset)
+            handle.write((1).to_bytes(4, "big"))
+
+
+def _write_typed_bridge_geopackage(path: Path, table: pa.Table, file_slug: str) -> None:
+    """Typed local bridge for the existing catalog/format graph.
+
+    Its internal SQLite feature key is a storage implementation detail, never a
+    substitute source ID. All declared source identifier properties remain
+    explicit and unchanged. Ambient GDAL creation timestamps add a
+    nondeterministic commit, so the bridge pins creation time like every
+    canonical GeoPackage writer, then normalizes the residual SQLite header
+    counters so two identical extractions stage identical bytes.
+    """
+    properties = {f.name: ("int32" if pa.types.is_int32(f.type) else "int64" if pa.types.is_integer(f.type) else "float" if pa.types.is_floating(f.type) else "str") for f in table.schema if f.name != "SHAPE"}
+    with with_geopackage_creation_time("1970-01-01T00:00:00.000Z"):
+        with fiona.open(path, "w", driver="GPKG", layer=file_slug, crs="EPSG:4326", schema={"geometry": "Unknown", "properties": properties}, GEOMETRY_NAME="SHAPE") as destination:
+            for row in table.to_pylist():
+                from_geometry = from_wkb(row.pop("SHAPE"))
+                destination.write({"geometry": mapping(from_geometry), "properties": row})
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.execute("UPDATE gpkg_contents SET last_change = '1970-01-01T00:00:00.000Z'")
+    _normalize_sqlite_volatile_header(path)
+
+
 def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, file_slug: str, captures: dict[str, bytes], receipts: list[dict], expected_fields: dict[str, str], expected_fingerprints: dict[str, str], expected_count: int | None = None, expected_layer_url: str | None = None, code_commit: str | None = None) -> dict:
     """Persist immutable raw evidence, quarantine drift, and stage a local-only draft.
 
@@ -367,23 +410,9 @@ def stage_noaa_candidate(*, staging: StagingStorageResource, dataset_slug: str, 
     pq.write_table(table, buffer, compression="zstd", use_dictionary=False, write_statistics=True, version="2.6")
     candidate = buffer.getvalue()
     key = _write_draft_staging(staging, f"{prefix}/candidate/geoparquet/{file_slug}.parquet", candidate)
-    # Typed local bridge for the existing catalog/format graph. Its internal SQLite
-    # feature key is a storage implementation detail, never a substitute source ID.
-    # All declared source identifier properties remain explicit and unchanged.
     with tempfile.TemporaryDirectory(prefix="hifld_noaa_candidate_") as directory:
         path = Path(directory) / "source.gpkg"
-        properties = {f.name: ("int32" if pa.types.is_int32(f.type) else "int64" if pa.types.is_integer(f.type) else "float" if pa.types.is_floating(f.type) else "str") for f in table.schema if f.name != "SHAPE"}
-        # Ambient GDAL creation timestamps add a nondeterministic commit, so the
-        # bridge pins creation time like every canonical GeoPackage writer.
-        with with_geopackage_creation_time("1970-01-01T00:00:00.000Z"):
-            with fiona.open(path, "w", driver="GPKG", layer=file_slug, crs="EPSG:4326", schema={"geometry": "Unknown", "properties": properties}, GEOMETRY_NAME="SHAPE") as destination:
-                for row in table.to_pylist():
-                    from_geometry = from_wkb(row.pop("SHAPE"))
-                    destination.write({"geometry": mapping(from_geometry), "properties": row})
-        with sqlite3.connect(path) as connection:
-            connection.execute("UPDATE gpkg_contents SET last_change = '1970-01-01T00:00:00.000Z'")
-            connection.commit()
-            connection.execute("VACUUM")
+        _write_typed_bridge_geopackage(path, table, file_slug)
         source_key = _write_draft_staging(staging, f"{prefix}/geopackage/{file_slug}.gpkg", path.read_bytes())
     receipt_by_name = {r["capture"]: r for r in receipts}
     maximum_lengths = {field.name: max((len(value.encode("utf-8")) for value in table[field.name].to_pylist() if value is not None), default=0) for field in table.schema if pa.types.is_string(field.type)}

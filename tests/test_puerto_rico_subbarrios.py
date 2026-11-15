@@ -218,7 +218,7 @@ def io_bytes_with_extra_member(body: bytes) -> bytes:
     with zipfile.ZipFile(buffer, "w") as target:
         for info in source.infolist():
             target.writestr(info.filename, source.read(info.filename))
-        target.writestr("tl_2023_72_subbarrio.extra", b"unexpected")
+        target.writestr("tl_2026_72_subbarrio.extra", b"unexpected")
     return buffer.getvalue()
 
 
