@@ -54,6 +54,32 @@ class Remote:
 
 
 class LiteralCatalogTests(unittest.TestCase):
+    def test_pinned_legacy_geojson_root_metadata_keeps_declared_crs_and_serialized_xy(self):
+        body=json.dumps({'type':'FeatureCollection','name':'usgs_nldi_gages',
+            'crs':{'type':'name','properties':{'name':'urn:ogc:def:crs:EPSG::4269'}},
+            'features':[feature({'site_no':'001'})]},separators=(',',':')).encode()
+        with tempfile.TemporaryDirectory() as tmp:
+            storage,metadata=fixture(Path(tmp),body=body)
+            spec=metadata['literal_geojson_catalog']
+            spec['root_metadata']={'name':'usgs_nldi_gages','crs':{'type':'name','properties':{'name':'urn:ogc:def:crs:EPSG::4269'}}}
+            storage.write_key(PREFIX+'/metadata/source_manifest.json',json.dumps(metadata).encode())
+            result=summary(storage,metadata)
+            self.assertEqual(result.quality_manifest['native_crs']['id']['code'],4269)
+            self.assertEqual(result.quality_manifest['coordinate_order'],'source_serialized_x_y_retained_without_axis_order_reinterpretation_or_swap')
+            self.assertEqual(result.data_dictionary['sourceRootMetadata'],spec['root_metadata'])
+            for invalid in (body.replace(b'EPSG::4269',b'EPSG::4326'),
+                            body.replace(b'"features"',b'"foreign":true,"features"')):
+                spec['bytes']=len(invalid);spec['sha256']=hashlib.sha256(invalid).hexdigest()
+                storage.write_key(PREFIX+'/metadata/source_manifest.json',json.dumps(metadata).encode())
+                storage.write_key(PREFIX+'/geojson/native.geojson',invalid)
+                with self.assertRaises(ValueError): summary(storage,metadata)
+
+    def test_pinned_named_crs_must_be_recognized(self):
+        spec={'schema_version':1,'path':'geojson/native.geojson','bytes':1,'sha256':'0'*64,
+              'root_metadata':{'crs':{'type':'name','properties':{'name':'urn:ogc:def:crs:EPSG::999999'}}}}
+        data={'type':'FeatureCollection',**spec['root_metadata'],'features':[]}
+        with self.assertRaises(ValueError): module._summarize(data,'Synthetic',spec)
+
     def test_mixed_literals_presence_nulls_large_IDs_and_geometry_named_property(self):
         values=[feature({'ID':'001','mixed':1,'geometry':'ordinary field','absent_later':None,'nested':[True,1,1.0,{'n':''}]},id=2**53+1),
                 feature({'ID':2**53+7,'mixed':'','geometry':False}),feature({'mixed':False},id='001'),
