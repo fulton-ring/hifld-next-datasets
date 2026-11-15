@@ -678,11 +678,7 @@ def _stream_validate(products: list[dict[str, str]], capture_root: Path,
     observed bounds and the null/NaN counters while the GeoParquet candidate
     is written incrementally. Feature-class schemas must be identical across
     every product (verified identical across 2003-2025 vintages) or the
-    capture fails closed. The candidate parquet uses zstd level 12: the
-    ~6.03M-feature geometry payload is the dominant term, and the higher
-    level keeps the candidate (and its staged copy during the pinned stage,
-    which coexists with the ~93 GB raw capture on one volume) within the
-    capture disk.
+    capture fails closed.
     """
     capture_root = Path(capture_root)
     record_digest = hashlib.sha256()
@@ -727,8 +723,7 @@ def _stream_validate(products: list[dict[str, str]], capture_root: Path,
                                                  "edges": "planar"}}}
                     writer = pq.ParquetWriter(parquet_path,
                                               arrow_schema.with_metadata({b"geo": _canonical(geo)}),
-                                              compression="zstd",
-                                              compression_level=12)
+                                              compression="zstd")
                 elif signature != running_signature:
                     raise ValueError("source_schema_contract_drift")
                 _meta, table = pyogrio.read_arrow(str(shp_path))
