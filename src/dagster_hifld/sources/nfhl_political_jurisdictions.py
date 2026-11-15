@@ -66,9 +66,13 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+)
+
+from dagster_hifld.sources.nfhl_common import (
+    capture_with_retry, preserve_failed_attempt, producer_error_doc,
 )
 
 DATASET_SLUG = "nfhl-political-jurisdictions"
@@ -209,14 +213,14 @@ def _capture_page(client: httpx.Client, capture_root: Path, page: int,
     """
     for attempt in range(1, PAGE_FULL_ATTEMPTS + 1):
         try:
-            body, receipt = _capture_with_retry(
+            body, receipt = capture_with_retry(
                 client, _page_url(slice_ids), capture_root, f"page_{page:03d}",
                 max_bytes=MAX_CAPTURE_BYTES, attempts=1, base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS)
-            if not _producer_error_doc(body):
+            if not producer_error_doc(body):
                 return [(f"page_{page:03d}", body, receipt)]
-            _preserve_failed_attempt(capture_root, f"page_{page:03d}", attempt)
+            preserve_failed_attempt(capture_root, f"page_{page:03d}", attempt)
         except ValueError as exc:
-            _preserve_failed_attempt(capture_root, f"page_{page:03d}", attempt)
+            preserve_failed_attempt(capture_root, f"page_{page:03d}", attempt)
             if attempt >= PAGE_FULL_ATTEMPTS:
                 # The producer's transient transport failures and complete-200
                 # error documents both fall through to bounded sub-tiling of
@@ -235,15 +239,15 @@ def _capture_page(client: httpx.Client, capture_root: Path, page: int,
         last_error = None
         for attempt in range(1, TILE_ATTEMPTS + 1):
             try:
-                body, receipt = _capture_with_retry(
+                body, receipt = capture_with_retry(
                     client, _page_url(sub), capture_root, name,
                     max_bytes=MAX_CAPTURE_BYTES, attempts=1, base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS)
-                if not _producer_error_doc(body):
+                if not producer_error_doc(body):
                     tile = (name, body, receipt)
                     break
                 last_error = "producer_error_document"
             except ValueError as exc:
-                _preserve_failed_attempt(capture_root, name, attempt)
+                preserve_failed_attempt(capture_root, name, attempt)
                 if not str(exc).startswith("incomplete_source_capture:"):
                     raise
                 last_error = str(exc)
@@ -266,50 +270,6 @@ def _validate_spatial_reference(value: object, label: str) -> None:
         wkid = value.get(key)
         if wkid is not None and wkid != SOURCE_CRS_WKID:
             raise ValueError(label + "_crs_drift")
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents and
-    incomplete transport captures; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
-    final attempt's body is always returned as captured, so a persistent
-    producer failure surfaces to the caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
@@ -667,7 +627,7 @@ def capture_nfhl_political_jurisdictions(storage: StagingStorageResource, *, ver
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-political-jurisdictions-draft"}) as client:
-            seed_body, seed_receipt = _capture_with_retry(
+            seed_body, seed_receipt = capture_with_retry(
                 client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                 capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
                 attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -678,7 +638,7 @@ def capture_nfhl_political_jurisdictions(storage: StagingStorageResource, *, ver
             captures["ids_seed"] = (seed_body, seed_receipt)
             ids = sorted(seed)
             for name, url in _BRACKET_URLS:
-                captures[name] = _capture_with_retry(
+                captures[name] = capture_with_retry(
                     client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                     attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
             for page in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE):
@@ -686,7 +646,7 @@ def capture_nfhl_political_jurisdictions(storage: StagingStorageResource, *, ver
                                                          ids[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]):
                     captures[name] = (body, receipt)
             for name, url in _AFTER_BRACKET_URLS:
-                captures[name] = _capture_with_retry(
+                captures[name] = capture_with_retry(
                     client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                     attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
         layer, source_fields, extracted = _validate_captures(captures)
