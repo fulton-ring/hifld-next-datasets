@@ -22,10 +22,10 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wbd_wbdline as source
 from dagster_hifld.sources.usace_obstruction_lines import _canonical
 
-_TEST_COUNT = 5
-_TEST_PAGE_SIZE = 2
+_TEST_COUNT = 9
+_TEST_PAGE_SIZE = 4
 _TEST_PAGE_COUNT = 3
-_TEST_ROSTER = [11, 12, 501, 100_003, 200_004]
+_TEST_ROSTER = [11, 12, 501, 100_003, 200_004, 300_005, 400_006, 500_007, 600_008]
 _SR = {"wkid": 102100, "latestWkid": 3857}
 _SERVICE_DOC = ("<html>USGS National Hydrography products: WBD data downloads and services "
                 "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer "
@@ -171,9 +171,8 @@ def _encode(document) -> bytes:
 def _receipt_url(name: str, roster: list[int], expected_urls: dict[str, str]) -> str:
     if name in expected_urls:
         return expected_urls[name]
-    if name.endswith("_refusal"):
-        return expected_urls[name[:-len("_refusal")].rstrip("ab")]
-    return source._part_url(roster, int(name[5:9]), name)
+    window = name[:-len("_refusal")] if name.endswith("_refusal") else name
+    return source._window_url(roster, int(window[5:9]), window[9:])
 
 
 def _write_capture_root(root: Path, documents: dict) -> Path:
@@ -278,8 +277,9 @@ class WbdWbdlineTests(unittest.TestCase):
             urls = dict(source._capture_roster(list(_TEST_ROSTER)))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")],
                          ["page_0000", "page_0001", "page_0002"])
-        self.assertIn("objectid%3E0", urls["page_0000"])
-        self.assertIn("objectid%3E12", urls["page_0001"])
+        self.assertIn("objectid%3E10", urls["page_0000"])
+        self.assertIn("objectid%3E200003", urls["page_0001"])
+        self.assertIn("objectid%3E600007", urls["page_0002"])
         self.assertIn("returnZ=true", urls["page_0000"])
         self.assertIn("returnM=true", urls["page_0000"])
         self.assertIn("orderByFields=objectid+ASC", urls["page_0000"])
@@ -364,7 +364,7 @@ class WbdWbdlineTests(unittest.TestCase):
         degenerate = next(oid for oid, mode in _GATE_FEATURES.items()
                           if mode == "source_polyline_path_degenerate")
         mutated = json.loads(json.dumps(documents))
-        row = next(feature for feature in mutated["page_0001"]["features"]
+        row = next(feature for feature in mutated["page_0000"]["features"]
                    if feature["attributes"]["objectid"] == degenerate)
         row["geometry"]["paths"][0][0][0] += 500.0
         with relaxed_pins():
@@ -383,21 +383,26 @@ class WbdWbdlineTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_geometry_baseline_drift"):
                 source._validate_stream(self._capture_root(mutated), parquet_sink=None)
 
-    def test_refused_window_bisection_streams_and_replays_to_the_same_population(self):
+    def test_refused_window_recursive_bisection_streams_and_replays_to_the_same_population(self):
         documents = _documents()
         roster = list(_TEST_ROSTER)
         refusal = b'{"error": {"code": 500, "message": "Error performing query operation", ' \
                   b'"details": []}}'
-        first, second = documents["page_0001"]["features"]
-        documents["page_0001_refusal"] = refusal
-        documents["page_0001a"] = {**documents["page_0001"], "features": [first],
-                                   "exceededTransferLimit": True}
-        documents["page_0001b"] = {**documents["page_0001"], "features": [second],
-                                   "exceededTransferLimit": None}
-        del documents["page_0001"]
+        # page_0000 (ids 11, 12, 501, 100_003) refuses nominally; its first half
+        # refuses again; the two single-feature leaves and the second half serve.
+        first, second, third, fourth = documents["page_0000"]["features"]
+        documents["page_0000_refusal"] = refusal
+        documents["page_0000a_refusal"] = refusal
+        documents["page_0000aa"] = {**documents["page_0000"], "features": [first],
+                                    "exceededTransferLimit": True}
+        documents["page_0000ab"] = {**documents["page_0000"], "features": [second],
+                                    "exceededTransferLimit": None}
+        documents["page_0000b"] = {**documents["page_0000"], "features": [third, fourth],
+                                   "exceededTransferLimit": False}
+        del documents["page_0000"]
         temporary = tempfile.TemporaryDirectory(prefix="wbd-wbdline-bisect-")
         self.addCleanup(temporary.cleanup)
-        page_parts = {"page_0001": ["page_0001a", "page_0001b"]}
+        page_parts = {"page_0000": ["page_0000aa", "page_0000ab", "page_0000b"]}
         with relaxed_pins():
             root = _write_capture_root(Path(temporary.name) / "captures", documents)
             audit, _derived = source._validate_stream(root, parquet_sink=None,
@@ -412,7 +417,8 @@ class WbdWbdlineTests(unittest.TestCase):
         self.assertEqual(audit["source_record_sha256"], expected_record.hexdigest())
         self.assertEqual(audit["source_geometry_sha256"], expected_geometry.hexdigest())
         self.assertEqual(audit["page_parts"], dict(sorted(page_parts.items())))
-        _seal_manifest(root, documents, page_parts=page_parts, page_refusals=["page_0001_refusal"])
+        _seal_manifest(root, documents, page_parts=page_parts,
+                       page_refusals=["page_0000_refusal", "page_0000a_refusal"])
         with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)), DISK_FLOOR_BYTES=1):
             captures, replay_parts = source._read_replay(root)
             self.assertEqual(replay_parts, page_parts)
@@ -422,13 +428,52 @@ class WbdWbdlineTests(unittest.TestCase):
             self.assertEqual(audit["source_feature_count"], len(roster))
         mutated = json.loads(json.dumps({name: value for name, value in documents.items()
                                          if not isinstance(value, bytes)}))
-        mutated["page_0001a"]["features"][0]["attributes"]["tnmid"] = "{RENAMED-GUID}"
+        mutated["page_0000aa"]["features"][0]["attributes"]["tnmid"] = "{RENAMED-GUID}"
         with relaxed_pins(EXPECTED_RECORD_SHA256=expected_record.hexdigest(),
                           EXPECTED_GEOMETRY_SHA256=expected_geometry.hexdigest(),
                           EXPECTED_ID_SHA256=_digest(_canonical(roster))):
             with self.assertRaisesRegex(ValueError, "source_record_baseline_drift"):
                 source._validate_stream(self._capture_root(mutated), parquet_sink=None,
                                         page_parts=page_parts)
+
+    def test_recursive_window_derivation_and_fail_closed_single_refusal(self):
+        roster = list(_TEST_ROSTER)
+        with relaxed_pins():
+            self.assertEqual(source._slice_for_suffix(roster, 0, ""), roster[:4])
+            self.assertEqual(source._slice_for_suffix(roster, 0, "a"), roster[:2])
+            self.assertEqual(source._slice_for_suffix(roster, 0, "aa"), [roster[0]])
+            self.assertEqual(source._slice_for_suffix(roster, 2, ""), [roster[8]])
+            url = source._window_url(roster, 0, "ab")
+        self.assertIn("objectid%3E11", url)
+        self.assertIn("resultRecordCount=1", url)
+
+        refusal = b'{"error": {"code": 500, "message": "Error performing query operation", ' \
+                  b'"details": []}}'
+
+        def refusing_capture_get(client, url, root, name, max_bytes=0):
+            (root / f"{name}.body").write_bytes(refusal)
+            (root / f"{name}.wire").write_bytes(b"wire:" + refusal[:16])
+            receipt = {"method": "GET", "url": url, "final_url": url,
+                       "observed_at": "2026-11-15T12:00:00.000000Z", "status": 200,
+                       "complete_body": True, "bytes": len(refusal),
+                       "sha256": _digest(refusal), "wire_bytes": 21,
+                       "wire_sha256": _digest(b"wire:" + refusal[:16]),
+                       "content_encoding": None, "content_length": None,
+                       "error_code": None, "error_type": None}
+            (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return refusal, receipt
+
+        temporary = tempfile.TemporaryDirectory(prefix="wbd-wbdline-floor-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name) / "captures"
+        root.mkdir(parents=True)
+        with relaxed_pins(), patches(source, capture_get=refusing_capture_get):
+            with self.assertRaisesRegex(ValueError, "source_page_window_refused_single_feature"
+                                                     ":page_0000aa:objectid=11"):
+                source._capture_page_window(None, roster, 0, root)
+        for name in ("page_0000_refusal", "page_0000a_refusal", "page_0000aa_refusal"):
+            self.assertTrue((root / f"{name}.body").is_file(), name)
+            self.assertTrue(source._is_refusal((root / f"{name}.body").read_bytes()), name)
 
     def test_wkb_preserves_path_structure_and_declared_types(self):
         single = source._assemble_geometry(_feature_paths(11))
@@ -460,7 +505,7 @@ class WbdWbdlineTests(unittest.TestCase):
             audit, _derived = source._validate_stream(root, parquet_sink=None)
             self.assertEqual(audit["source_id_sha256"], _digest(_canonical(roster)))
         mutated = json.loads(json.dumps(documents))
-        mutated["ids_after"]["objectIds"] = [11, 12, 999, 100_003, 200_004]
+        mutated["ids_after"]["objectIds"] = [11, 12, 999, 100_003, 200_004, 300_005, 400_006, 500_007, 600_008]
         with relaxed_pins():
             with self.assertRaisesRegex(ValueError, "source_id_roster_changed_during_capture"):
                 source._validate_stream(self._capture_root(mutated), parquet_sink=None)
@@ -535,7 +580,7 @@ class WbdWbdlineTests(unittest.TestCase):
              "source_count_population_drift:before"),
             ("ids before", lambda d: d["ids_before"].update(objectIds=_TEST_ROSTER[:-1]),
              "source_id_population_drift:before"),
-            ("ids changed mid capture", lambda d: d["ids_after"].update(objectIds=[11, 12, 999, 100_003, 200_004]),
+            ("ids changed mid capture", lambda d: d["ids_after"].update(objectIds=[11, 12, 999, 100_003, 200_004, 300_005, 400_006, 500_007, 600_008]),
              "source_id_roster_changed_during_capture"),
             ("service identity", lambda d: d["service_before"].update(copyrightText="changed"),
              "service_before_service_identity_drift"),
