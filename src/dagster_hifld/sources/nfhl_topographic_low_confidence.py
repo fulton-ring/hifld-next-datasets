@@ -93,19 +93,35 @@ SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # established by one dated complete capture (adaptive segments tiling the
 # sorted OBJECTID roster). See the audit for the pinned producer-side geometry
 # anomaly counts; all such records are retained with null candidate geometry.
-EXPECTED_COUNT = 1
-EXPECTED_ID_SHA256 = "placeholder-pending-2026-11-15-capture"
-EXPECTED_SCHEMA_SHA256 = "placeholder-pending-2026-11-15-capture"
-EXPECTED_RECORD_SHA256 = "placeholder-pending-2026-11-15-capture"
-EXPECTED_GEOMETRY_SHA256 = "placeholder-pending-2026-11-15-capture"
-EXPECTED_OBSERVED_BOUNDS = None
+EXPECTED_COUNT = 295
+EXPECTED_ID_SHA256 = "8bf9a7fe4213b6735f982c4c4182c1c0cf83c92574abeb8e8a0adf898e7a9b4f"
+EXPECTED_SCHEMA_SHA256 = "122a291e221712b432bf110643c8ad9865ffef4650f15ec5694efc1fa7690228"
+EXPECTED_RECORD_SHA256 = "5a7538b81f5071bf4f05b7b3f8c62bb52a9ee14c542fa685dcfd6958b3763bad"
+EXPECTED_GEOMETRY_SHA256 = "eba309fa525fe29a9d7187440e7cabd66c78fe9ed84679130a8ab6d24f51610d"
+EXPECTED_OBSERVED_BOUNDS = {"xmin": -105.03611268607614, "ymin": 33.84159719101973, "xmax": -75.75064635521267, "ymax": 41.565829669848654}
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_NAN_GEOMETRY_COUNT = 0
 EXPECTED_UNPLACABLE_GEOMETRY_COUNT = 0
 EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-EXPECTED_LAYER_EXTENT = {"xmin": -105.03611268607614, "ymin": 33.84159719101973,
-                         "xmax": -75.75064635521267, "ymax": 41.565829669848654}
-EXPECTED_SERVICE_LAYER_ROSTER = []
+EXPECTED_LAYER_EXTENT = {"xmin": -105.03611268607614, "ymin": 33.84159719101973, "xmax": -75.75064635521267, "ymax": 41.565829669848654}
+EXPECTED_SERVICE_LAYER_ROSTER = [
+    (0, 'NFHL Availability', 'Feature Layer'), (3, 'FIRM Panels', 'Feature Layer'),
+    (1, 'LOMRs', 'Feature Layer'), (34, 'LOMAs', 'Feature Layer'),
+    (22, 'Political Jurisdictions', 'Feature Layer'), (17, 'Profile Baselines', 'Feature Layer'),
+    (20, 'Water Lines', 'Feature Layer'), (14, 'Cross-Sections', 'Feature Layer'),
+    (16, 'Base Flood Elevations', 'Feature Layer'), (23, 'Levees', 'Feature Layer'),
+    (29, 'Seclusion Boundaries', 'Feature Layer'), (15, 'Coastal Transects', 'Feature Layer'),
+    (18, 'Transect Baselines', 'Feature Layer'), (24, 'General Structures', 'Feature Layer'),
+    (7, 'River Mile Markers', 'Feature Layer'), (32, 'Water Areas', 'Feature Layer'),
+    (5, 'PLSS', 'Feature Layer'), (19, 'Limit of Moderate Wave Action', 'Feature Layer'),
+    (27, 'Flood Hazard Boundaries', 'Feature Layer'), (28, 'Flood Hazard Zones', 'Feature Layer'),
+    (25, 'Primary Frontal Dunes', 'Feature Layer'), (4, 'Base Index', 'Feature Layer'),
+    (6, 'Topographic Low Confidence Areas', 'Feature Layer'), (8, 'Datum Conversion Points', 'Feature Layer'),
+    (9, 'Coastal Gages', 'Feature Layer'), (10, 'Gages', 'Feature Layer'),
+    (11, 'Nodes', 'Feature Layer'), (12, 'High Water Marks', 'Feature Layer'),
+    (13, 'Station Start Points', 'Feature Layer'), (26, 'Hydrologic Reaches', 'Feature Layer'),
+    (30, 'Alluvial Fans', 'Feature Layer'), (31, 'Subbasins', 'Feature Layer'),
+]
 
 
 def _sha(data: bytes) -> str:
