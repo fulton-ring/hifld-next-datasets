@@ -22,6 +22,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "railroads"
 FILE_SLUG = DATASET_SLUG
@@ -38,14 +39,6 @@ EXPECTED_BOUNDS = [-158.13542, 17.997745, -65.906116, 64.92612]
 EXPECTED_MTFCC_VALUES = ["R1011"]
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 60_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _processing_runtime() -> dict[str, str]:

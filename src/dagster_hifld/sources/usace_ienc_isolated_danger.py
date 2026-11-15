@@ -7,7 +7,6 @@ date, and no output/schema/ID/rights decision is implied.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -39,6 +38,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "isolated-danger-buoy-point-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -80,14 +80,6 @@ _EXPECTED_CAPTURE_NAMES = {
     "count_before", "ids_before", "ids_seed", "page_000", "bts_item_after",
     "service_after", "layer_after", "count_after", "ids_after",
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

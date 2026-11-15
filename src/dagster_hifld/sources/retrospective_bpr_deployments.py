@@ -12,7 +12,6 @@ drift quarantines; historical published IDs remain separately preserved.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -39,6 +38,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "retrospective-bpr-deployments"
 SERVICE_URL = ("https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/"
@@ -147,15 +147,6 @@ def _validate_capture_request_identity(name: str, receipt: dict, url: str) -> No
         raise ValueError("capture_request_identity_drift:" + name)
     if receipt.get("final_url") != url:
         raise ValueError("capture_redirect_not_allowed:" + name)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode()
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:

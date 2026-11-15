@@ -1,7 +1,6 @@
 """Lossless, approval-gated capture of USACE's FUDS district layer."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -23,6 +22,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "formerly-used-defense-sites-district-boundaries"
 FILE_SLUG = DATASET_SLUG
@@ -33,15 +33,6 @@ LAYER_NAME = "FUDS Program District Boundaries"
 EXPECTED_SCHEMA_SHA256 = "0b76c21c490ad121358884633e644a96775cdee16af97ce5fb29606c8e799b59"
 EXPECTED_COUNT = 13
 PAGE_SIZE = 50
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _field_contract(layer: dict) -> list[dict]:

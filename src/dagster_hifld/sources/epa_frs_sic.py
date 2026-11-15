@@ -17,7 +17,6 @@ path, which requires a real WKB geometry column. No geometry is invented.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -40,6 +39,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 SERVICE_URL = "https://geodata.epa.gov/arcgis/rest/services/OEI/FRS_INTERESTS/MapServer"
 TABLE_ID = 25
@@ -75,15 +75,6 @@ class EpaFrsSicCaptureError(ValueError):
 def _require_disk_space(base: Path) -> None:
     if shutil.disk_usage(base).free < 4_000_000_000:
         raise ValueError("disk_floor_before_acquisition")
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> tuple:

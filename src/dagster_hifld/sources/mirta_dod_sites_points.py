@@ -11,7 +11,6 @@ ID column OBJECTID is preserved verbatim as the leading integer column.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -43,6 +42,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "mirta-dod-sites-points"
 LANDING_URL = "https://www.acq.osd.mil/eie/imr/rpid/disdi/index.html"
@@ -171,15 +171,6 @@ WGS84 = pyproj.CRS.from_epsg(4326)
 _EXPECTED_URLS = {"release_notes": RELEASE_NOTES_URL, "mirta_zip": SOURCE_URL}
 MAX_CAPTURE_BYTES = 12_000_000
 MAX_TOTAL_CAPTURE_BYTES = 16_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _tls_context() -> ssl.SSLContext:

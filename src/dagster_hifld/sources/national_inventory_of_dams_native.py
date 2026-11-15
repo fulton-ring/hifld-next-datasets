@@ -44,6 +44,7 @@ from dagster_hifld.sources.epa_frs_common import (
 )
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = legacy.DATASET_SLUG
 SERVICE_URL = legacy.SERVICE_URL
@@ -85,15 +86,6 @@ _ARROW_TYPES = {
     "esriFieldTypeDate": pa.timestamp("ms"),
     "esriFieldTypeBlob": pa.binary(),
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _safe_official_url(url: str) -> str:
