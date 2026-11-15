@@ -39,7 +39,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources import national_inventory_of_dams as legacy
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -94,11 +94,6 @@ def _safe_official_url(url: str) -> str:
             or parsed.username or parsed.password or parsed.port not in (None, 443)):
         raise ValueError("usace_nid_untrusted_export_url")
     return url
-
-
-def _url_without_query(url: str) -> str:
-    parsed = urlsplit(url)
-    return parsed._replace(query="", fragment="").geturl()
 
 
 def _ids_url() -> str:
