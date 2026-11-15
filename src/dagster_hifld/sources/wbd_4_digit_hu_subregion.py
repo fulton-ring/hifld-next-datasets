@@ -139,13 +139,13 @@ SHAPE_PARITY_TOLERANCE = 1e-6
 # until the first complete population walk; empty/None pins are checked only
 # when non-empty.
 EXPECTED_SCHEMA_SHA256 = "7457266cc07d5067461ce5549079e7ff814c1c8c68a8483bdf5e009e19e4b062"
-EXPECTED_RECORD_SHA256 = ""
+EXPECTED_RECORD_SHA256 = "2dd385984894eedcca5bcaf710a74c08136a6681d5b01b12d6f49729998ae3f2"
 # Geometry digest over every served row — one [objectid, served rings] document
 # per feature in ascending OBJECTID order, including the rows that gate to null
-# geometry — computed from the complete dated population walk.
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = None
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
+# geometry — computed from the complete dated population walk (2026-11-15).
+EXPECTED_GEOMETRY_SHA256 = "8b98e7ff114d9ee859b95ecb15021f1f1978b0dce7d8a8405502e5260509a5e2"
+EXPECTED_NULL_GEOMETRY_COUNT = 2
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {"source_polygon_ring_self_intersecting": 2}
 BASELINE_PENDING_NOTE = (
     "The record and geometry baselines and the geometry-gate counts are not "
     "pinned yet: no complete capture existed at draft time (observed "
