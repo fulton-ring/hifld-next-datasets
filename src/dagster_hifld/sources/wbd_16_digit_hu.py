@@ -268,10 +268,6 @@ def _page_window_url(last_objectid: int, record_count: int) -> str:
                    "resultRecordCount": str(record_count), "f": "json"})
 
 
-def _page_url(last_objectid: int) -> str:
-    return _page_window_url(last_objectid, PAGE_SIZE)
-
-
 def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
     """Exact GET URL bound to every capture slot; page slots are derived from
     the sorted roster so a replay can re-derive each request without extra
@@ -282,7 +278,11 @@ def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
             ("count_before", _count_url()), ("ids_before", _ids_url())]
     last = 0
     for index in range(PAGE_COUNT):
-        urls.append((f"page_{index:04d}", _page_url(last)))
+        # The final window may be smaller than PAGE_SIZE (7,266 = 72x100 +
+        # 66); bind exactly the count the capture requests so a replay
+        # re-derives the identical URL.
+        count = min(PAGE_SIZE, len(roster) - index * PAGE_SIZE)
+        urls.append((f"page_{index:04d}", _page_window_url(last, count)))
         end = (index + 1) * PAGE_SIZE
         if end < len(roster):
             last = roster[end - 1]

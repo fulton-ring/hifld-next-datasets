@@ -311,7 +311,11 @@ class Wbd16DigitHuTests(unittest.TestCase):
         self.assertIn("returnZ=true", urls["page_0000"])
         self.assertIn("returnM=true", urls["page_0000"])
         self.assertIn("orderByFields=objectid+ASC", urls["page_0000"])
-        self.assertIn("resultRecordCount=100", source._page_url(0))
+        self.assertIn("resultRecordCount=100", source._page_window_url(0, 100))
+        # The final window is smaller than PAGE_SIZE when the roster is not
+        # evenly divisible (7,266 = 72x100 + 66); the bound URL must request
+        # exactly the remaining count so a replay re-derives the identical URL.
+        self.assertIn("resultRecordCount=1", urls["page_0002"])
         self.assertEqual(urls["ids_before"], source._ids_url())
         self.assertEqual(urls["service_doc"], source.SERVICE_DOC_URL)
 
