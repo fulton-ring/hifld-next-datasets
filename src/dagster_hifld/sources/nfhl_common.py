@@ -118,7 +118,7 @@ def preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None
 
 def capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
                        max_bytes: int, attempts: int, base_delay: float,
-                       capture_get: Callable = capture_get) -> tuple[bytes, dict[str, object]]:
+                       capture_get: Callable | None = None) -> tuple[bytes, dict[str, object]]:
     """Capture one producer request, retrying bounded times on transient failures.
 
     Retries cover the producer's transient complete-200 Esri error documents and
@@ -126,14 +126,17 @@ def capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name:
     ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
     final attempt's body is always returned as captured, so a persistent
     producer failure surfaces to the caller unchanged. ``capture_get`` is the
-    single-request primitive (the ``epa_frs_common`` receipt helper); callers
-    pass their own module-level reference so test patching keeps working. An
+    single-request primitive (the ``epa_frs_common`` receipt helper); when not
+    passed it is resolved from this module's namespace at call time, so tests
+    may patch ``nfhl_common.capture_get``, and callers may pass their own
+    module-level reference so adapter-level patching keeps working. An
     ``attempts`` budget of 1 never retries and behaves exactly like one
     ``capture_get`` call.
     """
+    get = capture_get if capture_get is not None else globals()["capture_get"]
     for attempt in range(1, attempts + 1):
         try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
+            body, receipt = get(client, url, capture_root, name, max_bytes=max_bytes)
         except ValueError as exc:
             if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
                 raise

@@ -30,7 +30,6 @@ import httpx
 import time
 
 from dagster_hifld.sources import nfhl_common as _nfhl
-from dagster_hifld.sources.epa_frs_common import capture_get
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "nfhl-gages"
@@ -145,7 +144,7 @@ def _parquet_bytes(fields: list, features: list) -> bytes:
 def _capture_with_retry(client, url: str, capture_root, name: str, *,
                         max_bytes: int, attempts: int, base_delay: float):
     return _nfhl.capture_with_retry(client, url, capture_root, name, max_bytes=max_bytes,
-                                    attempts=attempts, base_delay=base_delay, capture_get=capture_get)
+                                    attempts=attempts, base_delay=base_delay)
 
 
 def _validate_captures(captures: dict):
@@ -156,5 +155,5 @@ def capture_nfhl_gages(storage, *, version: str,
                        capture_directory: str | None = None) -> dict[str, object]:
     """Capture, verify, and stage a complete unapproved NFHL Gages candidate."""
     return _nfhl.capture_layer(_contract(), _pins(), storage, version=version,
-                               capture_directory=capture_directory, capture_get=capture_get,
+                               capture_directory=capture_directory, capture_get=_nfhl.capture_get,
                                fragments=_FRAGMENTS)

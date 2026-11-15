@@ -35,7 +35,6 @@ from __future__ import annotations
 import json
 import math
 import shutil
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -55,11 +54,15 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+
+from dagster_hifld.sources.nfhl_common import (
+    DOC_CAPTURE_ATTEMPTS, DOC_CAPTURE_BASE_DELAY_SECONDS, capture_with_retry,
+)
 
 DATASET_SLUG = "nfhl-seclusion-boundaries"
 FILE_SLUG = DATASET_SLUG
@@ -72,8 +75,6 @@ PUBLISHER = "Federal Emergency Management Agency (FEMA)"
 SOURCE_CRS_WKID = 4269
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MIN_FREE_BYTES = 1_500_000_000
-DOC_CAPTURE_ATTEMPTS = 4
-DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 # Pins below are the observed 2026-11-12 complete-layer producer contract: the
 # layer publishes zero features, so the population digests are the empty-set
 # digests and the observed feature bounds are None. See the module docstring.
@@ -162,50 +163,6 @@ def _empty_roster(doc: Mapping[str, object], label: str) -> None:
         raise ValueError("source_id_population_drift")
     if ids:
         raise ValueError("source_populated_ids_while_pinned_empty")
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents
-    and incomplete transport captures; failed attempts are preserved on disk
-    under ``<name>.attempt-NN`` evidence names and never enter the capture
-    roster. The final attempt's body is always returned as captured, so a
-    persistent producer failure surfaces to the caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
@@ -404,7 +361,7 @@ def capture_nfhl_seclusion_boundaries(storage: StagingStorageResource, *, versio
         with httpx.Client(follow_redirects=False, timeout=60,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-seclusion-boundaries-draft"}) as client:
             for name, url in _doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
+                body, receipt = capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 captures[name] = (body, receipt)
