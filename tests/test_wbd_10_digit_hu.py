@@ -666,9 +666,18 @@ class Wbd10DigitHuTests(unittest.TestCase):
             audit, derived = source._validate_stream(root, parquet_sink=sink)
         self.assertTrue(sink.exists())
         parquet = pq.ParquetFile(sink)
-        # Every row forms its own group when the budget is one byte; the
-        # population and digests are unchanged by the row-group structure.
-        self.assertEqual(parquet.metadata.num_row_groups, len(_TEST_ROSTER))
+        # With a one-byte budget every served (non-null) geometry forms its
+        # own row group; consecutive null-geometry rows carry no bytes and may
+        # share one. The population and digests are unchanged by the
+        # row-group structure.
+        non_null_groups = 0
+        for group in range(parquet.metadata.num_row_groups):
+            column = parquet.read_row_group(group, columns=["geometry"]).column("geometry")
+            non_null = len(column) - column.null_count
+            self.assertLessEqual(non_null, 1)
+            if non_null:
+                non_null_groups += 1
+        self.assertEqual(non_null_groups, len(_TEST_ROSTER) - len(_GATE_FEATURES))
         self.assertEqual(parquet.metadata.num_rows, len(_TEST_ROSTER))
         table = pq.read_table(sink)
         self.assertEqual(table.column("objectid").to_pylist(), _TEST_ROSTER)
