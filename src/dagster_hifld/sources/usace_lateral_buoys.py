@@ -25,10 +25,10 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.usace_ienc_common import (
-    _canonical, _capture_identity,
-    _load_capture, _sha, _validate_spatial_reference,
+    _canonical, _capture_identity, _load_capture, _sha, _validate_spatial_reference,
 )
 
 DATASET_SLUG = "lateral-buoys-usace-ienc"
@@ -158,8 +158,7 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str, *, staging: 
     def reserve(progress: CaptureProgress) -> None:
         _require_capture_capacity(
             staging, root, capture_max_bytes=capture_max_bytes,
-            inflight_bytes=max(CAPTURE_INFLIGHT_RESERVE_BYTES, progress.reserve_bytes),
-        )
+            inflight_bytes=max(CAPTURE_INFLIGHT_RESERVE_BYTES, progress.reserve_bytes), )
 
     def before_retain(kind: str, block: bytes) -> None:
         suffix = "wire" if kind == "wire" else "body"
@@ -168,18 +167,10 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str, *, staging: 
         if response_bytes + len(block) > limit:
             raise _CaptureBudgetExceeded("per_response_capture_budget_exceeded")
         _require_capture_capacity(
-            staging, root, capture_max_bytes=capture_max_bytes, incoming_bytes=len(block),
-        )
+            staging, root, capture_max_bytes=capture_max_bytes, incoming_bytes=len(block), )
 
     return capture_get(
-        client, url, root, name, max_bytes=limit, reserve=reserve, before_retain=before_retain,
-    )
-
-
-def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
-    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
-            or receipt.get("final_url") != expected_url):
-        raise ValueError("retained_capture_request_identity_mismatch:" + name)
+        client, url, root, name, max_bytes=limit, reserve=reserve, before_retain=before_retain, )
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
@@ -201,7 +192,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
+        validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures
 
@@ -411,11 +402,9 @@ def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str
             raise ValueError("unsafe_capture_directory")
         _validate_replay_budget(
             root, capture_max_bytes=capture_max_bytes,
-            response_max_bytes=response_max_bytes, layer_response_max_bytes=layer_response_max_bytes,
-        )
+            response_max_bytes=response_max_bytes, layer_response_max_bytes=layer_response_max_bytes, )
         _require_capture_capacity(
-            staging, root, capture_max_bytes=_capture_disk_bytes(root), inflight_bytes=0,
-        )
+            staging, root, capture_max_bytes=_capture_disk_bytes(root), inflight_bytes=0, )
         captures = _read_replay(root)
     else:
         if requested and any(requested.glob("*.body")):
@@ -578,8 +567,7 @@ def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str
         "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
         "capture_receipts": receipts, "objects": descriptors})
     validate_construction_code_identity(
-        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
-    )
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity, )
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": EXPECTED_COUNT, "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": EXPECTED_COUNT,

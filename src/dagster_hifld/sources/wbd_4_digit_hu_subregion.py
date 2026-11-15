@@ -69,10 +69,10 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.usace_ienc_common import (
     _canonical, _capture_identity, _load_capture, _sha,
-    _validate_capture_request_identity,
 )
 
 DATASET_SLUG = FILE_SLUG = "wbd-4-digit-hu-subregion"
@@ -567,7 +567,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
         raise ValueError("source_id_roster_changed_during_capture")
     expected_urls = dict(_capture_roster(roster))
     for name in METADATA_NAMES:
-        _validate_capture_request_identity(name, receipts[name], expected_urls[name])
+        validate_capture_request_identity(name, receipts[name], expected_urls[name])
 
     tmp_path = (parquet_sink.with_name(parquet_sink.name + ".construction-tmp")
                 if parquet_sink is not None else None)
@@ -607,7 +607,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                 body, _wire, receipt = _load_capture(root, part_name)
                 expected_url = (expected_urls[name] if len(part_names) == 1
                                 else _part_url(roster, index, part_name))
-                _validate_capture_request_identity(part_name, receipt, expected_url)
+                validate_capture_request_identity(part_name, receipt, expected_url)
                 expected_part_ids = (expected_page_ids if len(part_names) == 1 else
                                      (expected_page_ids[:half] if part_name.endswith("a")
                                       else expected_page_ids[half:]))
@@ -881,15 +881,15 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
         if name.endswith("_refusal"):
             bound = next(page for page in expected_urls if name.startswith(page)) \
                 if False else name[:-len("_refusal")].rstrip("ab")
-            _validate_capture_request_identity(name, receipt, expected_urls[bound])
+            validate_capture_request_identity(name, receipt, expected_urls[bound])
             if not _is_refusal(body):
                 raise ValueError("retained_capture_refusal_document_drift:" + name)
         elif page_parts and any(name in parts for parts in page_parts.values()
                                 if len(parts) > 1):
             page = next(page for page, parts in page_parts.items() if name in parts)
-            _validate_capture_request_identity(name, receipt, _part_url(ids, int(page[5:9]), name))
+            validate_capture_request_identity(name, receipt, _part_url(ids, int(page[5:9]), name))
         else:
-            _validate_capture_request_identity(name, receipt, expected_urls[name])
+            validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures, page_parts
 
@@ -1136,14 +1136,10 @@ def capture_wbd_4_digit_hu_subregion(storage: StagingStorageResource, *, version
     descriptors = {}
     for name, key, body in (
             (output_path, f"{prefix}/{output_path}", None),
-            ("metadata/source_manifest.json", f"{prefix}/metadata/source_manifest.json",
-             _canonical(manifest) + b"\n"),
-            ("metadata/source_audit.json", f"{prefix}/metadata/source_audit.json",
-             _canonical(audit) + b"\n"),
-            ("metadata/processing_identity.json", f"{prefix}/metadata/processing_identity.json",
-             _canonical(identity) + b"\n"),
-            ("metadata/candidate_ready.json", f"{prefix}/metadata/candidate_ready.json",
-             _canonical(ready) + b"\n")):
+            ("metadata/source_manifest.json", f"{prefix}/metadata/source_manifest.json", _canonical(manifest) + b"\n"),
+            ("metadata/source_audit.json", f"{prefix}/metadata/source_audit.json", _canonical(audit) + b"\n"),
+            ("metadata/processing_identity.json", f"{prefix}/metadata/processing_identity.json", _canonical(identity) + b"\n"),
+            ("metadata/candidate_ready.json", f"{prefix}/metadata/candidate_ready.json", _canonical(ready) + b"\n")):
         if body is None:
             storage.upload_local_file(parquet_path, key)
         else:

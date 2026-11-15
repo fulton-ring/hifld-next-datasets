@@ -75,10 +75,10 @@ class SpecialPurposeBuoysTests(unittest.TestCase):
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
         name, url = source._capture_roster(source.EXPECTED_IDS)[0]
         receipt = {"method": "GET", "url": url, "final_url": url}
-        source._validate_capture_request_identity(name, receipt, url)
+        source.validate_capture_request_identity(name, receipt, url)
         receipt["final_url"] = "https://example.invalid/wrong"
         with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
-            source._validate_capture_request_identity(name, receipt, url)
+            source.validate_capture_request_identity(name, receipt, url)
 
     def test_complete_population_native_geometry_and_declared_parquet_types(self):
         fields, features, audit = source._validate(_capture_docs())

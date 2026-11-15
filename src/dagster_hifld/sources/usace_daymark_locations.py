@@ -23,10 +23,10 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.usace_ienc_common import (
-    _canonical, _capture_identity,
-    _load_capture, _sha, _validate_spatial_reference,
+    _canonical, _capture_identity, _load_capture, _sha, _validate_spatial_reference,
 )
 
 DATASET_SLUG = "daymark-locations-usace-ienc-2"
@@ -95,12 +95,6 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[byt
     return capture_get(client, url, root, name, max_bytes=limit)
 
 
-def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
-    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
-            or receipt.get("final_url") != expected_url):
-        raise ValueError("retained_capture_request_identity_mismatch:" + name)
-
-
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
@@ -120,7 +114,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
+        validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures
 
@@ -422,8 +416,7 @@ def capture_usace_daymark_locations(storage: StagingStorageResource, *, version:
         "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
         "capture_receipts": receipts, "objects": descriptors})
     validate_construction_code_identity(
-        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
-    )
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity, )
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": EXPECTED_COUNT, "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": EXPECTED_COUNT,

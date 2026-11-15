@@ -98,13 +98,6 @@ def polyline_parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
-    """Bind retained response bytes to the exact GET endpoint that names them."""
-    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
-            or receipt.get("final_url") != expected_url):
-        raise ValueError("retained_capture_request_identity_mismatch:" + name)
-
-
 # Historical private import names: the dataset modules under sources/ still
 # import these (formerly from sources.usace_obstruction_lines), so their import
 # blocks and bodies stay unchanged. New modules should use the public names.

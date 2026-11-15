@@ -24,11 +24,11 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.levee_areas_usace_ienc import _esri_polygon_wkb
 from dagster_hifld.sources.usace_ienc_common import (
-    _canonical, _capture_identity, _load_capture, _sha,
-    _validate_capture_request_identity, _validate_spatial_reference,
+    _canonical, _capture_identity, _load_capture, _sha, _validate_spatial_reference,
 )
 
 DATASET_SLUG = "usace-military-districts"
@@ -89,18 +89,13 @@ EXPECTED_FIELD_DECLARATIONS = [
     *[_string_field(name, 255) for name in _STRING_FIELDS_255],
     {"name": "OBJECTID", "type": "esriFieldTypeOID", "alias": "OBJECTID",
      "sqlType": "sqlTypeOther", "nullable": False, "editable": False,
-     "domain": None, "defaultValue": None},
-    _string_field("MIL_DIST", 50),
-    _string_field("DIST", 8),
+     "domain": None, "defaultValue": None}, _string_field("MIL_DIST", 50), _string_field("DIST", 8),
     {"name": "SUBCOM_ID", "type": "esriFieldTypeDouble", "alias": "SUBCOM_ID",
      "sqlType": "sqlTypeOther", "nullable": True, "editable": True,
-     "domain": None, "defaultValue": None},
-    _string_field("MIL_DIV", 50),
-    _string_field("DIV", 9),
+     "domain": None, "defaultValue": None}, _string_field("MIL_DIV", 50), _string_field("DIV", 9),
     {"name": "MACOM_ID", "type": "esriFieldTypeDouble", "alias": "MACOM_ID",
      "sqlType": "sqlTypeOther", "nullable": True, "editable": True,
-     "domain": None, "defaultValue": None},
-    _blob_field("SE_ANNO_CAD_DATA"),
+     "domain": None, "defaultValue": None}, _blob_field("SE_ANNO_CAD_DATA"),
     {"name": "Shape__Area", "type": "esriFieldTypeDouble", "alias": "Shape__Area",
      "sqlType": "sqlTypeDouble", "nullable": True, "editable": False,
      "domain": None, "defaultValue": None},
@@ -169,7 +164,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
+        validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures
 
