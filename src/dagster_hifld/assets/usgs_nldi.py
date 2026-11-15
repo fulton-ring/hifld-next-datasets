@@ -17,7 +17,13 @@ registered ``ref_gage`` feature-source listing brackets the complete walk on
 both sides (captured before the first page and again after the final page), so
 a registration change during the walk is observed. Every retained capture file
 is re-verified against its fetch receipt and its accepted roster entry before
-it is replayed into the audit or sealed into a candidate. The 250-feature page
+it is replayed into the audit or sealed into a candidate. A retained
+``sources-after`` listing is reused only when its fetch stamp postdates every
+walked page; captures made by earlier code fetched both listings before the
+walk and an interrupted resume may hold an after-listing older than pages a
+later run fetched, so such a stale retained after-listing is quarantined,
+discarded from the resumable roster and re-observed fresh after the completed
+walk. The 250-feature page
 size is chosen because larger pages were observed exceeding
 the NLDI gateway's server-side budget under load (1000-feature pages answered
 with gateway-504 bodies or hung until read timeout, while smaller documented
@@ -373,11 +379,48 @@ class _CaptureState:
         self.data["pages"].append(entry)
         self.save()
 
+    def discard(self, name: str) -> None:
+        self.data["pages"] = [entry for entry in self.data["pages"] if entry.get("name") != name]
+        self.save()
+
     def entries(self) -> list[dict]:
         return sorted(self.data["pages"], key=lambda entry: entry["offset"])
 
     def page_entries(self) -> list[dict]:
         return [entry for entry in self.entries() if PAGE_NAME_PATTERN.fullmatch(str(entry.get("name")))]
+
+
+def _parse_fetched_at(value: object) -> datetime | None:
+    """Parse one receipt ``fetched_at`` stamp; anything unparsable is None.
+
+    Receipts record ``datetime.now(timezone.utc).isoformat()`` at fetch time, so
+    stamps are timezone-aware ISO-8601 instants. A missing, naive or malformed
+    stamp cannot prove chronology and is treated as None (fail closed).
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _retained_after_listing_postdates_walk(state: _CaptureState, entry: dict) -> bool:
+    """True only when a retained ``sources-after`` listing postdates every page.
+
+    The after-listing brackets the walk only if it was fetched after the final
+    page. Captures made by earlier code fetched both listings before walking,
+    and an interrupted resume may hold an after-listing older than the pages a
+    later run fetched, so a retained after-listing must prove strict chronology
+    against the fetched_at stamp of every accepted page; an unparsable stamp on
+    either side fails closed.
+    """
+    after = _parse_fetched_at(entry.get("fetched_at"))
+    page_stamps = [_parse_fetched_at(page.get("fetched_at")) for page in state.page_entries()]
+    if after is None or not page_stamps or any(stamp is None for stamp in page_stamps):
+        return False
+    return after > max(page_stamps)
 
 
 def _validate_walk(pages: list[dict], ids: list[str], duplicate_rows: list[dict]) -> None:
@@ -628,7 +671,12 @@ def _capture_sources_listing(staging: StagingStorageResource, session: httpx.Cli
     the ``sources-after`` listing after its final page, so a feature-source
     registration change during the walk is observed on both sides. A reused
     retained listing is re-verified against its receipt, its accepted roster
-    entry and the pinned registration before it counts as evidence.
+    entry and the pinned registration before it counts as evidence. A retained
+    ``sources-after`` listing is reused only when it was fetched after every
+    walked page: captures made by earlier code fetched both listings before
+    the walk, and an interrupted resume may hold an after-listing older than
+    the pages a later run fetched, so a stale retained after-listing is
+    quarantined, discarded and re-observed fresh after the completed walk.
     """
     entry = state.accepted(label)
     if entry is not None:
@@ -638,19 +686,24 @@ def _capture_sources_listing(staging: StagingStorageResource, session: httpx.Cli
             _quarantine_retained(staging, capture_root, capture_version, [entry],
                                  "nldi_retained_evidence_integrity_failed")
             raise
-        try:
-            document = json.loads(_read_evidence(capture_root, label, "decoded"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        if label == SOURCES_AFTER_NAME and not _retained_after_listing_postdates_walk(state, entry):
             _quarantine_retained(staging, capture_root, capture_version, [entry],
-                                 "nldi_source_listing_malformed_json")
-            raise ValueError(f"NLDI retained {label} listing was not valid JSON") from exc
-        try:
-            _sources_entry(document)
-        except ValueError:
-            _quarantine_retained(staging, capture_root, capture_version, [entry],
-                                 "nldi_feature_source_registration_drift")
-            raise
-        return
+                                 "nldi_retained_after_listing_predates_completed_walk")
+            state.discard(label)
+        else:
+            try:
+                document = json.loads(_read_evidence(capture_root, label, "decoded"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                _quarantine_retained(staging, capture_root, capture_version, [entry],
+                                     "nldi_source_listing_malformed_json")
+                raise ValueError(f"NLDI retained {label} listing was not valid JSON") from exc
+            try:
+                _sources_entry(document)
+            except ValueError:
+                _quarantine_retained(staging, capture_root, capture_version, [entry],
+                                     "nldi_feature_source_registration_drift")
+                raise
+            return
     wire, decoded, receipt = _fetch(session, SOURCES_URL + "?f=json",
                                     accept="application/json", limit=SOURCES_CAPTURE_BYTES)
     captures.append((label, wire, decoded, receipt))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -446,6 +447,127 @@ class USGSNLDIAssetTests(unittest.TestCase):
                 result = nldi.fetch_and_stage_nldi(_staging(root / "fresh-recovered"))
             self.assertEqual(result["feature_count"], FIXTURE_COUNT)
             self.assertFalse(result["reused"])
+
+    def test_retained_after_listing_predating_the_completed_walk_is_refreshed(self):
+        rows = _fixture_rows()
+        drifted = [entry for entry in _fixture_sources() if entry.get("source") != "ref_gage"]
+        listing_time, page_time = "2000-01-01T00:00:00+00:00", "2010-01-01T00:00:00+00:00"
+        listing_decoded = json.dumps(_fixture_sources(), separators=(",", ":"),
+                                     ensure_ascii=False).encode()
+
+        def page_decoded(start: int, count: int) -> bytes:
+            return json.dumps({"type": "FeatureCollection", "features": rows[start:start + count]},
+                              separators=(",", ":"), ensure_ascii=False).encode()
+
+        def write_legacy_evidence(capture_root: Path, name: str, decoded: bytes, fetched_at: str):
+            receipt = {"request": {"method": "GET", "url": "legacy", "headers": {}, "body": None},
+                       "status_code": 200, "complete": True, "error_code": None,
+                       "wire_bytes": len(decoded), "decoded_bytes": len(decoded),
+                       "wire_sha256": hashlib.sha256(decoded).hexdigest(),
+                       "decoded_sha256": hashlib.sha256(decoded).hexdigest(),
+                       "fetched_at": fetched_at}
+            (capture_root / f"{name}.wire").write_bytes(decoded)
+            (capture_root / f"{name}.decoded").write_bytes(decoded)
+            (capture_root / f"{name}.receipt.json").write_bytes(
+                json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode() + b"\n")
+
+        def write_legacy_state(capture_root: Path, counts: list[int], *, complete: bool):
+            pages = []
+            for name in (nldi.SOURCES_BEFORE_NAME, nldi.SOURCES_AFTER_NAME):
+                decoded = (capture_root / f"{name}.decoded").read_bytes()
+                pages.append({"name": name, "offset": 0, "count": 0,
+                              "sha256": hashlib.sha256(decoded).hexdigest(),
+                              "fetched_at": listing_time,
+                              "decoded_path": str(capture_root / f"{name}.decoded")})
+            offset = 0
+            for count in counts:
+                name = f"page_{offset:09d}"
+                decoded = (capture_root / f"{name}.decoded").read_bytes()
+                pages.append({"name": name, "offset": offset, "count": count,
+                              "sha256": hashlib.sha256(decoded).hexdigest(),
+                              "fetched_at": page_time,
+                              "decoded_path": str(capture_root / f"{name}.decoded")})
+                offset += count
+            (capture_root / "capture_state.json").write_bytes(
+                json.dumps({"pages": pages, "complete": complete}, sort_keys=True,
+                           separators=(",", ":")).encode() + b"\n")
+
+        def quarantine_reasons(root: Path) -> set:
+            quarantined = sorted((root / "staging" / "_quarantine" / nldi.DATASET_SLUG
+                                 / nldi.FILE_SLUG).glob("*"))
+            return {json.loads((entry / "metadata" / "failure.json").read_text())["reason_code"]
+                    for entry in quarantined}
+
+        # Legacy interrupted capture: earlier code retained both listings and
+        # page 0, then failed mid-walk. Resuming must discard the stale
+        # after-listing, fetch the missing pages, and observe the registration
+        # again after the completed walk — here the live listing has dropped
+        # ref_gage, so the refreshed bracket stops the resume.
+        requests: list[str] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            capture_root.mkdir()
+            write_legacy_evidence(capture_root, nldi.SOURCES_BEFORE_NAME, listing_decoded, listing_time)
+            write_legacy_evidence(capture_root, nldi.SOURCES_AFTER_NAME, listing_decoded, listing_time)
+            write_legacy_evidence(capture_root, "page_000000000", page_decoded(0, 3), page_time)
+            write_legacy_state(capture_root, [3], complete=False)
+            transport = make_transport(sources=drifted, requests=requests)
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                with self.assertRaisesRegex(ValueError,
+                                            "NLDI ref_gage feature source is missing or ambiguous"):
+                    nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+            self.assertEqual(requests, ["page:3", "page:6", "sources"])
+            self.assertEqual(quarantine_reasons(root),
+                             {"nldi_retained_after_listing_predates_completed_walk",
+                              "nldi_feature_source_registration_drift"})
+            state = json.loads((capture_root / "capture_state.json").read_text())
+            self.assertNotIn(nldi.SOURCES_AFTER_NAME, [entry["name"] for entry in state["pages"]])
+
+        # Legacy complete capture: every page retained, after-listing retained
+        # from before the walk. The refreshed bracket re-observes the
+        # registration after the completed walk and the candidate seals.
+        requests = []
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            capture_root.mkdir()
+            write_legacy_evidence(capture_root, nldi.SOURCES_BEFORE_NAME, listing_decoded, listing_time)
+            write_legacy_evidence(capture_root, nldi.SOURCES_AFTER_NAME, listing_decoded, listing_time)
+            for start, count in ((0, 3), (3, 3), (6, 1)):
+                write_legacy_evidence(capture_root, f"page_{start:09d}", page_decoded(start, count),
+                                      page_time)
+            write_legacy_state(capture_root, [3, 3, 1], complete=True)
+            transport = make_transport(requests=requests)
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                result = nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+            self.assertEqual(requests, ["sources"])
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertFalse(result["reused"])
+            self.assertEqual(quarantine_reasons(root),
+                             {"nldi_retained_after_listing_predates_completed_walk"})
+            resumed_state = nldi._CaptureState(capture_root)
+            after_entry = resumed_state.accepted(nldi.SOURCES_AFTER_NAME)
+            self.assertNotEqual(after_entry["fetched_at"], listing_time)
+            self.assertTrue(nldi._retained_after_listing_postdates_walk(resumed_state, after_entry))
+
+        # A chronologically valid retained after-listing is still reused
+        # without transport: resuming a complete current-code capture against a
+        # service whose live registration has drifted makes no request at all.
+        transport = make_transport()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                first = nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
+            requests = []
+            drifted_transport = make_transport(sources=drifted, requests=requests)
+            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+                second = nldi.fetch_and_stage_nldi(_staging(root),
+                                                   client=httpx.Client(transport=drifted_transport))
+            self.assertEqual(requests, [])
+            self.assertEqual(second["version"], first["version"])
+            self.assertTrue(second["reused"])
 
 
 if __name__ == "__main__":
