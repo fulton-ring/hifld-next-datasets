@@ -317,6 +317,7 @@ class LayerContract:
     segment_start_records: int = MAX_RECORD_COUNT
     doc_attempts: int = DOC_CAPTURE_ATTEMPTS
     doc_base_delay: float = DOC_CAPTURE_BASE_DELAY_SECONDS
+    arrow_type_overrides: Mapping[str, pa.DataType] | None = None  # per-layer physical-type pins
     page_attempts: int | None = None       # fixed mode pages; None -> doc budgets
     page_base_delay: float | None = None
     segment_attempts: int = SEGMENT_PROBE_ATTEMPTS
@@ -507,19 +508,28 @@ def capture_bisect_segments(client: httpx.Client, contract: LayerContract, captu
     return captures
 
 
+# The family-wide physical-type contract, verified against the producer's own
+# JSON: Esri date fields arrive as epoch-millisecond integers and are kept
+# verbatim as int64 (never reinterpreted or reformatted), and Esri integers
+# arrive as JSON integers kept verbatim as int64. ``esriFieldTypeSingle`` is
+# float32 only in the base_index layer's pinned map; other layers pass
+# ``arrow_type_overrides`` on their contract if their pinned candidate bytes
+# need a different physical type.
 ARROW_TYPES = {
     "esriFieldTypeOID": pa.int64(),
-    "esriFieldTypeInteger": pa.int32(),
+    "esriFieldTypeInteger": pa.int64(),
     "esriFieldTypeSmallInteger": pa.int16(),
     "esriFieldTypeSingle": pa.float32(),
     "esriFieldTypeDouble": pa.float64(),
     "esriFieldTypeString": pa.string(),
     "esriFieldTypeGlobalID": pa.string(),
+    "esriFieldTypeDate": pa.int64(),
 }
 
 
-def arrow_type(field: Mapping[str, object]) -> pa.DataType:
-    typ = ARROW_TYPES.get(str(field["type"]))
+def arrow_type(field: Mapping[str, object], overrides: Mapping[str, pa.DataType] | None = None) -> pa.DataType:
+    type_map = ARROW_TYPES if not overrides else {**ARROW_TYPES, **overrides}
+    typ = type_map.get(str(field["type"]))
     if typ is None:
         raise ValueError("source_field_type_unsupported:" + str(field["type"]))
     return typ
@@ -649,13 +659,14 @@ def geo_metadata(family: str, wkid: int = SOURCE_CRS_WKID) -> dict:
 
 
 def parquet_bytes(fields: list[dict[str, object]], features: list, family: str, *,
-                  wkid: int = SOURCE_CRS_WKID, gated_rings: bool = False) -> bytes:
+                  wkid: int = SOURCE_CRS_WKID, gated_rings: bool = False,
+                  arrow_type_overrides: Mapping[str, pa.DataType] | None = None) -> bytes:
     """Serialize the captured features as the candidate GeoParquet bytes."""
     columns = {}
     schema_fields = []
     for field in fields:
         name = field["name"]
-        typ = pa.binary() if name == "SHAPE" else arrow_type(field)
+        typ = pa.binary() if name == "SHAPE" else arrow_type(field, arrow_type_overrides)
         if name == "SHAPE":
             values = [geometry_wkb(family, row.get("geometry"), gated_rings=gated_rings) for row in features]
         else:
@@ -1444,7 +1455,8 @@ def capture_layer(contract: LayerContract, pins: PopulationPins, storage, *, ver
         source_objects = {rel: {"bytes": parquet_path.stat().st_size, "sha256": parquet_digest.hexdigest()}}
     else:
         parquet_body = parquet_bytes(source_fields, extracted["features"], contract.geometry_family,
-                                     wkid=contract.crs_wkid, gated_rings=contract.gated_rings)
+                                     wkid=contract.crs_wkid, gated_rings=contract.gated_rings,
+                                     arrow_type_overrides=contract.arrow_type_overrides)
         source_objects = {rel: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
     manifest = {
         "schema_version": 1, "approved": False, "title": fragments.title,
