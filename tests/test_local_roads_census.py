@@ -23,6 +23,7 @@ PATCH_IDS = [1, 2, 3, 4, 5, 6]
 PATCH = dict(EXPECTED_COUNT=6, EXPECTED_ID_MIN=1, EXPECTED_ID_MAX=6, PAGE_SIZE=2,
              ROSTER_WINDOW_SIZE=2,
              EXPECTED_ID_SHA256=hashlib.sha256(_canonical(PATCH_IDS)).hexdigest(),
+             EXPECTED_RECORD_SHA256="", EXPECTED_GEOMETRY_SHA256="",
              EXPECTED_MTFCC_VALUES={"S1400"},
              EXPECTED_MTFCC_RTTYPE_COUNTS={"S1400|null": 5, "S1400|M": 1})
 
@@ -392,6 +393,11 @@ class LocalRoadsLivePinsTests(unittest.TestCase):
             source._publisher_stated_vintage("Local roads")
         with self.assertRaisesRegex(ValueError, "source_layer_description_or_vintage_drift"):
             source._publisher_stated_vintage(None)
+
+    def test_record_and_geometry_baseline_gates_are_pinned_active(self):
+        self.assertRegex(source.EXPECTED_RECORD_SHA256, r"^[0-9a-f]{64}$")
+        self.assertRegex(source.EXPECTED_GEOMETRY_SHA256, r"^[0-9a-f]{64}$")
+        self.assertIn("pinned from the completed", source.BASELINE_PENDING_NOTE)
 
     def test_live_roster_pins_are_dense_and_self_consistent(self):
         self.assertEqual(source.EXPECTED_COUNT, 16_098_190)

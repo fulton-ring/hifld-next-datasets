@@ -131,17 +131,18 @@ EXPECTED_MTFCC_RTTYPE_COUNTS = {
     "S1820|C": 1, "S1820|M": 1223, "S1820|O": 3, "S1820|null": 3104,
     "S1830|M": 4, "S1830|null": 19,
 }
-# Baseline digests of the complete decoded record and geometry streams are
-# pinned here only after one complete capture is reviewed; the empty
-# placeholders keep the record/geometry gates inactive (the capture computes
-# and reports the digests instead) until that baseline exists.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
+# Baseline digests of the complete decoded record and geometry streams,
+# pinned 2026-11-15 from the completed resumable capture of the
+# 16098190-feature layer (805 pages plus 130 windowed roster captures,
+# 309402610 vertices, zero invalid and zero empty geometries) and exercised
+# by the replay pass that re-seals the candidate with these gates active.
+EXPECTED_RECORD_SHA256 = "9365f52cb3c3d73451a84daf2a4f09d29e4f5d5decca53838bc42c2b2ce5d024"
+EXPECTED_GEOMETRY_SHA256 = "ba1ae8f09791298e76ada1a83db4c1a75d43721e0230062f959937a26032e805"
 BASELINE_PENDING_NOTE = (
-    "Record and geometry stream digests are computed by the complete capture "
-    "of the 16098190-feature layer and pinned into this module only after "
-    "that baseline is reviewed; until then the record/geometry gates stay "
-    "inactive and the capture reports the computed digests.")
+    "The record and geometry stream digests are pinned from the completed "
+    "resumable capture of the 16098190-feature layer; every capture and "
+    "replay recomputes them and fails closed on any drift of the decoded "
+    "record or geometry content.")
 _TRANSIENT_RETRY_DELAYS = (5.0, 15.0, 45.0, 90.0)
 
 
