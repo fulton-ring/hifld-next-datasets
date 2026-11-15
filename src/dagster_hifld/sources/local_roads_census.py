@@ -583,6 +583,7 @@ def capture_local_roads_census(storage: StagingStorageResource, *, version: str,
     receipts = _read_replay(root) if replay else _capture_attempt(root)
     try:
         fields, parquet_path, audit = _validate_stream(root, receipts)
+        _write_complete_manifest(root, audit)
     except Exception as exc:
         if parquet_path is not None and parquet_path.exists():
             parquet_path.unlink()
