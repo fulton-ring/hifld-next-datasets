@@ -21,6 +21,7 @@ from dagster_hifld.sources.epa_frs_common import _canonical
 # roster for speed; windows, digest gating and page logic are identical.
 PATCH_IDS = [1, 2, 3, 4, 5, 6]
 PATCH = dict(EXPECTED_COUNT=6, EXPECTED_ID_MIN=1, EXPECTED_ID_MAX=6, PAGE_SIZE=2,
+             ROSTER_WINDOW_SIZE=2,
              EXPECTED_ID_SHA256=hashlib.sha256(_canonical(PATCH_IDS)).hexdigest(),
              EXPECTED_MTFCC_VALUES={"S1400"},
              EXPECTED_MTFCC_RTTYPE_COUNTS={"S1400|null": 5, "S1400|M": 1})
@@ -69,11 +70,13 @@ def _documents() -> dict:
         "folder": {"services": [{"name": "TIGERweb/Transportation", "type": "MapServer"}]},
         "service_before": service, "layer_before": layer,
         "count_before": {"count": source.EXPECTED_COUNT},
-        "ids_before": {"objectIds": PATCH_IDS},
         "service_after": json.loads(json.dumps(service)), "layer_after": json.loads(json.dumps(layer)),
         "count_after": {"count": source.EXPECTED_COUNT},
-        "ids_after": {"objectIds": PATCH_IDS},
     }
+    for phase in ("before", "after"):
+        for index in range(source.roster_window_count()):
+            lo, hi = source.roster_window(index)
+            docs[f"roster_{phase}_{index:03d}"] = {"objectIds": list(range(lo, hi + 1))}
     for page_index in range(source.page_count()):
         lo, hi = source.page_window(page_index)
         docs[f"page_{page_index:04d}"] = {
@@ -170,8 +173,8 @@ class LocalRoadsCensusTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=PATCH_IDS[:-1]),
-             "source_count_or_id_population_drift:ids_after"),
+            ("population", lambda d: d["roster_after_000"].update(objectIds=PATCH_IDS[:1]),
+             "source_count_or_id_population_drift:roster_after_000"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("scale range", lambda d: d["layer_before"].update(minScale=999),
@@ -300,7 +303,7 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
             self.assertFalse(progress["complete"])
             self.assertEqual(progress["error_code"], "ValueError")
             self.assertEqual(set(progress["receipts"]),
-                             set(source._BEFORE_NAMES) | {"page_0000", "page_0001"})
+                             set(source._before_names()) | {"page_0000", "page_0001"})
             self.assertEqual(storage.list_prefix(""), [])
             with patch.object(source, "capture_get", self._fake_capture_get(None)):
                 result = source.capture_local_roads_census(storage, version="regression",
@@ -400,7 +403,33 @@ class LocalRoadsLivePinsTests(unittest.TestCase):
         self.assertEqual(source.page_count(), 805)
         self.assertEqual(source.page_window(0), (1, 20000))
         self.assertEqual(source.page_window(804), (16080001, 16098190))
-        self.assertEqual(len(source._capture_names()), 9 + 805)
+        # The producer refuses a single full-layer returnIdsOnly roster request
+        # (Esri 500, verified 2026-11-15), so the roster evidence is captured as
+        # dense windowed id lists whose assembled bytes hash to the same pin.
+        self.assertEqual(source.roster_window_count(), 65)
+        self.assertEqual(source.roster_window(0), (1, 250000))
+        self.assertEqual(source.roster_window(64), (16000001, 16098190))
+        windows = [source.roster_window(index) for index in range(source.roster_window_count())]
+        self.assertEqual(windows[0][0], source.EXPECTED_ID_MIN)
+        self.assertEqual(windows[-1][1], source.EXPECTED_ID_MAX)
+        for first, second in zip(windows, windows[1:]):
+            self.assertEqual(first[1] + 1, second[0])
+        assembled = _canonical(list(range(source.EXPECTED_ID_MIN, source.EXPECTED_ID_MAX + 1)))
+        parts = []
+        for index, (lo, hi) in enumerate(windows):
+            if index:
+                parts.append(b",")
+            parts.append(_canonical(list(range(lo, hi + 1)))[1:-1])
+        self.assertEqual(b"[" + b"".join(parts) + b"]", assembled)
+        self.assertEqual(len(source._capture_names()), 4 + 65 + 805 + 3 + 65)
+
+    def test_no_bare_full_layer_roster_request_is_captured(self):
+        urls = source._capture_urls()
+        bare = [name for name, url in urls.items()
+                if "returnIdsOnly=true" in url and "objectid" not in url.lower()]
+        self.assertEqual(bare, [])
+        self.assertEqual(sum(1 for name in urls if "roster_before_" in name), 65)
+        self.assertEqual(sum(1 for name in urls if "roster_after_" in name), 65)
 
     def test_live_population_pair_contract_sums_to_the_pinned_count(self):
         self.assertEqual(len(source.EXPECTED_MTFCC_VALUES), 13)

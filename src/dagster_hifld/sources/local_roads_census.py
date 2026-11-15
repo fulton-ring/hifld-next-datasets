@@ -9,7 +9,11 @@ S1710/S1720/S1730/S1740/S1750/S1780/S1810/S1820/S1830). The layer serves
 20_000 features per response (a 100_000-feature request fails with the
 service's Esri 500 "Error performing query operation"), so pages are ordered
 OBJECTID range windows; the OBJECTID roster is dense 1..16098190, which the
-roster digest pin enforces. The capture is resumable: per-page receipts are
+roster digest pin enforces. A single full-layer returnIdsOnly roster request
+fails with the same producer Esri 500 (verified twice 2026-11-15, retained
+80-byte error evidence), so the roster evidence is captured as dense 250_000-id
+windowed returnIdsOnly responses whose assembled canonical digest is gated
+against the pin. The capture is resumable: per-page receipts are
 checkpointed atomically in the capture manifest, so a restarted attempt
 continues instead of repeating completed pages. The inventory row's Download
 pin (the Census TIGER/Line All Roads national geodatabase) holds the general
@@ -63,8 +67,8 @@ EXPECTED_ID_MAX = 16_098_190
 # pins the exact population and rejects sparsity drift.
 EXPECTED_ID_SHA256 = "24aa30d5f04afb174716e3d06cb7f4f4c1b5dd5b8d6ff0f29f90926fa7aaedba"
 PAGE_SIZE = 20_000
+ROSTER_WINDOW_SIZE = 250_000
 MAX_PAGE_BYTES = 64_000_000
-MAX_ROSTER_BYTES = 256_000_000
 MAX_CAPTURE_BYTES = 45_000_000_000
 EXPECTED_FIELD_DECLARATIONS = [
     {"alias": "BASENAME", "domain": None, "length": 100, "name": "BASENAME", "type": "esriFieldTypeString"},
@@ -138,8 +142,6 @@ BASELINE_PENDING_NOTE = (
     "of the 16098190-feature layer and pinned into this module only after "
     "that baseline is reviewed; until then the record/geometry gates stay "
     "inactive and the capture reports the computed digests.")
-_BEFORE_NAMES = ("folder", "service_before", "layer_before", "count_before", "ids_before")
-_AFTER_NAMES = ("layer_after", "count_after", "ids_after", "service_after")
 _TRANSIENT_RETRY_DELAYS = (5.0, 15.0, 45.0, 90.0)
 
 
@@ -155,8 +157,35 @@ def page_window(index: int) -> tuple[int, int]:
     return start, min(start + PAGE_SIZE - 1, EXPECTED_ID_MAX)
 
 
+def roster_window_count() -> int:
+    return (EXPECTED_COUNT + ROSTER_WINDOW_SIZE - 1) // ROSTER_WINDOW_SIZE
+
+
+def roster_window(index: int) -> tuple[int, int]:
+    """Inclusive OBJECTID window for one dense windowed returnIdsOnly roster capture."""
+    if not 0 <= index < roster_window_count():
+        raise ValueError("source_roster_window_index_out_of_range")
+    start = EXPECTED_ID_MIN + index * ROSTER_WINDOW_SIZE
+    return start, min(start + ROSTER_WINDOW_SIZE - 1, EXPECTED_ID_MAX)
+
+
+def _roster_names(phase: str) -> tuple[str, ...]:
+    return tuple(f"roster_{phase}_{index:03d}" for index in range(roster_window_count()))
+
+
+def _before_names() -> tuple[str, ...]:
+    return ("folder", "service_before", "layer_before", "count_before") + _roster_names("before")
+
+
+def _after_names() -> tuple[str, ...]:
+    return ("layer_after", "count_after") + _roster_names("after") + ("service_after",)
+
+
 def _capture_names() -> set[str]:
-    return set(_BEFORE_NAMES) | set(_AFTER_NAMES) | {f"page_{index:04d}" for index in range(page_count())}
+    return ({"folder", "service_before", "layer_before", "count_before",
+             "layer_after", "count_after", "service_after"}
+            | set(_roster_names("before")) | set(_roster_names("after"))
+            | {f"page_{index:04d}" for index in range(page_count())})
 
 
 def _query(params: dict[str, object]) -> str:
@@ -169,8 +198,11 @@ def _capture_urls() -> dict[str, str]:
         "service_before": SERVICE_URL + "?f=pjson",
         "layer_before": LAYER_URL + "?f=pjson",
         "count_before": _query({"where": "1=1", "returnCountOnly": "true", "f": "json"}),
-        "ids_before": _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
     }
+    for index in range(roster_window_count()):
+        lo, hi = roster_window(index)
+        urls[f"roster_before_{index:03d}"] = _query({"where": f"(objectid>={lo}) AND (objectid<={hi})",
+            "returnIdsOnly": "true", "f": "json"})
     for index in range(page_count()):
         lo, hi = page_window(index)
         urls[f"page_{index:04d}"] = _query({"where": f"(objectid>={lo}) AND (objectid<={hi})",
@@ -179,20 +211,39 @@ def _capture_urls() -> dict[str, str]:
     urls.update({
         "layer_after": LAYER_URL + "?f=pjson",
         "count_after": _query({"where": "1=1", "returnCountOnly": "true", "f": "json"}),
-        "ids_after": _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-        "service_after": SERVICE_URL + "?f=pjson",
     })
+    for index in range(roster_window_count()):
+        lo, hi = roster_window(index)
+        urls[f"roster_after_{index:03d}"] = _query({"where": f"(objectid>={lo}) AND (objectid<={hi})",
+            "returnIdsOnly": "true", "f": "json"})
+    urls["service_after"] = SERVICE_URL + "?f=pjson"
     return urls
 
 
-def _validate_roster_body(body: bytes, label: str) -> list[int]:
-    ids = json.loads(body).get("objectIds")
-    if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-            or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
-            or min(ids) != EXPECTED_ID_MIN or max(ids) != EXPECTED_ID_MAX
-            or _sha(_canonical(ids)) != EXPECTED_ID_SHA256):
-        raise ValueError(f"source_count_or_id_population_drift:{label}")
-    return ids
+def _validate_roster_windows(root: Path, phase: str) -> None:
+    """Gate the dense roster: exact windows plus the assembled roster digest pin.
+
+    A single full-layer returnIdsOnly request is refused by the producer (Esri
+    500), so the roster evidence is the concatenation of the dense windowed
+    id lists; contiguous exact windows make the assembled list the full dense
+    roster, and the digest pins its exact canonical bytes.
+    """
+    digest = hashlib.sha256()
+    digest.update(b"[")
+    for index in range(roster_window_count()):
+        name = f"roster_{phase}_{index:03d}"
+        body = (root / f"{name}.body").read_bytes()
+        ids = json.loads(body).get("objectIds")
+        lo, hi = roster_window(index)
+        if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
+                or ids != list(range(lo, hi + 1))):
+            raise ValueError(f"source_count_or_id_population_drift:{name}")
+        if index:
+            digest.update(b",")
+        digest.update(_canonical(ids)[1:-1])
+    digest.update(b"]")
+    if digest.hexdigest() != EXPECTED_ID_SHA256:
+        raise ValueError(f"source_count_or_id_population_drift:roster_{phase}")
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str, *, max_bytes: int) -> tuple[bytes, dict]:
@@ -337,8 +388,8 @@ def _validate_stream(root: Path, receipts: dict[str, dict]) -> tuple[list[dict],
     vintage = _publisher_stated_vintage(layer.get("description"))
     _validate_web_mercator_reference(layer.get("spatialReference"), "source_layer")
     _validate_web_mercator_reference(layer.get("extent", {}).get("spatialReference"), "source_layer_extent")
-    _validate_roster_body((root / "ids_before.body").read_bytes(), "ids_before")
-    _validate_roster_body((root / "ids_after.body").read_bytes(), "ids_after")
+    _validate_roster_windows(root, "before")
+    _validate_roster_windows(root, "after")
     if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
         raise ValueError("source_count_or_id_population_drift")
     if docs["service_after"] != service or docs["layer_after"] != layer:
@@ -738,7 +789,7 @@ def _capture_attempt(root: Path) -> dict[str, dict]:
     receipts: dict[str, dict] = {}
     if _manifest_path(root).exists():
         retained = _read_progress(root)
-        for name in sorted(_BEFORE_NAMES):
+        for name in sorted(_before_names()):
             if name in retained:
                 _load_capture(root, name)
                 receipts[name] = retained[name]
@@ -749,11 +800,10 @@ def _capture_attempt(root: Path) -> dict[str, dict]:
                 receipts[name] = retained[name]
     with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(240, connect=15),
                       headers={"User-Agent": "hifld-next-datasets/census-tigerweb-draft"}) as client:
-        for name in _BEFORE_NAMES:
+        for name in _before_names():
             if name in receipts:
                 continue
-            _body, receipts[name] = _capture(client, urls[name], root, name,
-                                             max_bytes=MAX_ROSTER_BYTES if name.startswith("ids_") else MAX_PAGE_BYTES)
+            _body, receipts[name] = _capture(client, urls[name], root, name, max_bytes=MAX_PAGE_BYTES)
             _write_progress(root, receipts)
         for index in range(page_count()):
             name = f"page_{index:04d}"
@@ -765,7 +815,6 @@ def _capture_attempt(root: Path) -> dict[str, dict]:
                 _write_progress(root, receipts, error_code=type(exc).__name__)
                 raise
             _write_progress(root, receipts)
-        for name in _AFTER_NAMES:
-            _body, receipts[name] = _capture(client, urls[name], root, name,
-                                             max_bytes=MAX_ROSTER_BYTES if name.startswith("ids_") else MAX_PAGE_BYTES)
+        for name in _after_names():
+            _body, receipts[name] = _capture(client, urls[name], root, name, max_bytes=MAX_PAGE_BYTES)
     return receipts
