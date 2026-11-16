@@ -11,6 +11,7 @@ from pyarrow import parquet as pq
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wfigs_interagency_fire_perimeters as source
+from dagster_hifld.sources.esri_geometry import to_wkb
 
 SERVICE_ITEM_ID = "5e72b1699bf74eefb3f3aff6f4ba5511"
 ORG_ID = "T4QMspbfLg3qTGWY"
@@ -282,7 +283,9 @@ class WfigsRingAssemblyTests(unittest.TestCase):
 
     def test_nested_island_becomes_separate_part(self):
         rings = [_cw(0, 0, 10, 10), _ccw(2, 2, 8, 8), _cw(4, 4, 6, 6)]
-        geometry, census = source._assemble(rings)
+        geometry = shapely.from_wkb(to_wkb({"rings": rings}, source.GEOMETRY_TYPE,
+                                           has_z=False, has_m=False))
+        census = source._census(rings, geometry)
         self.assertIsInstance(geometry, shapely.MultiPolygon)
         self.assertAlmostEqual(geometry.area, 68.0)
         self.assertTrue(geometry.is_valid)
@@ -296,7 +299,9 @@ class WfigsRingAssemblyTests(unittest.TestCase):
 
     def test_noncanonical_island_orientation_stays_shell(self):
         rings = [_cw(0, 0, 10, 10), _ccw(2, 2, 8, 8), _ccw(4, 4, 6, 6)]
-        geometry, census = source._assemble(rings)
+        geometry = shapely.from_wkb(to_wkb({"rings": rings}, source.GEOMETRY_TYPE,
+                                           has_z=False, has_m=False))
+        census = source._census(rings, geometry)
         self.assertAlmostEqual(geometry.area, 68.0)
         self.assertTrue(geometry.is_valid)
         self.assertEqual(census["parts"], 2)
@@ -305,7 +310,9 @@ class WfigsRingAssemblyTests(unittest.TestCase):
 
     def test_deep_nesting_alternates_shell_hole_island_hole(self):
         rings = [_cw(0, 0, 10, 10), _ccw(2, 2, 8, 8), _cw(3, 3, 7, 7), _ccw(4, 4, 6, 6)]
-        geometry, census = source._assemble(rings)
+        geometry = shapely.from_wkb(to_wkb({"rings": rings}, source.GEOMETRY_TYPE,
+                                           has_z=False, has_m=False))
+        census = source._census(rings, geometry)
         self.assertIsInstance(geometry, shapely.MultiPolygon)
         self.assertAlmostEqual(geometry.area, 76.0)
         self.assertTrue(geometry.is_valid)
@@ -316,7 +323,9 @@ class WfigsRingAssemblyTests(unittest.TestCase):
 
     def test_partially_overlapping_exteriors_stay_parts(self):
         rings = [_cw(0, 0, 10, 10), _cw(0, 0, 11, 4)]
-        geometry, census = source._assemble(rings)
+        geometry = shapely.from_wkb(to_wkb({"rings": rings}, source.GEOMETRY_TYPE,
+                                           has_z=False, has_m=False))
+        census = source._census(rings, geometry)
         self.assertIsInstance(geometry, shapely.MultiPolygon)
         self.assertAlmostEqual(geometry.area, 144.0)
         self.assertEqual(census["parts"], 2)
@@ -325,21 +334,27 @@ class WfigsRingAssemblyTests(unittest.TestCase):
 
     def test_identical_rings_stay_parts(self):
         rings = [_cw(0, 0, 10, 10), _cw(0, 0, 10, 10)]
-        geometry, census = source._assemble(rings)
+        geometry = shapely.from_wkb(to_wkb({"rings": rings}, source.GEOMETRY_TYPE,
+                                           has_z=False, has_m=False))
+        census = source._census(rings, geometry)
         self.assertEqual(census["parts"], 2)
         self.assertEqual(census["holes"], 0)
         self.assertEqual(census["invalid"], 1)
 
     def test_degenerate_rings_follow_containment_rule(self):
         contained = [_cw(0, 0, 10, 10), _ring([(5, 5), (6, 5), (5, 5)])]
-        geometry, census = source._assemble(contained)
+        geometry = shapely.from_wkb(to_wkb({"contained": contained}, source.GEOMETRY_TYPE,
+                                           has_z=False, has_m=False))
+        census = source._census(contained, geometry)
         self.assertEqual(census["parts"], 1)
         self.assertEqual(census["holes"], 1)
         self.assertEqual(census["degenerate_rings"], 1)
         self.assertEqual(census["invalid"], 1)
         self.assertAlmostEqual(geometry.area, 100.0)
         standalone = [_ring([(5, 5), (6, 5), (5, 5)])]
-        geometry, census = source._assemble(standalone)
+        geometry = shapely.from_wkb(to_wkb({"standalone": standalone}, source.GEOMETRY_TYPE,
+                                           has_z=False, has_m=False))
+        census = source._census(standalone, geometry)
         self.assertEqual(census["parts"], 1)
         self.assertEqual(census["holes"], 0)
         self.assertEqual(census["degenerate_rings"], 1)
