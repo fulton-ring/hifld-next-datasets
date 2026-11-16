@@ -1,9 +1,9 @@
 """Native preservation, dual-coordinate fidelity and baseline drift checks for the FWS CMT layer.
 
 All fixtures are synthetic: no real USFWS organization names, addresses or telephone
-values are embedded here. The pinned baseline counts mirror the verified
-2026-11-08 snapshot contract (1,816 rows; 4 null geometry/coordinate rows; 140
-geometry-vs-attribute disagreements).
+values are embedded here. Fixture counts model a development capture, not an
+approved release baseline (1,816 rows; 4 null coordinate rows; 140 coordinate
+disagreements).
 """
 import copy
 import io
@@ -18,13 +18,14 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.sources import fws_cmt_locations as source
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.fws_cmt_locations import (
-    fws_cmt_locations_complete, fws_cmt_locations_draft_refresh_schedule, fws_cmt_locations,
+    fws_cmt_locations_complete, fws_cmt_locations_drift, fws_cmt_locations_draft_refresh_schedule, fws_cmt_locations,
 )
 
+FIXTURE_COUNT = 1816
 R = source.SPHERE_RADIUS_M
-IDS = [1667 + index for index in range(source.EXPECTED_COUNT)]
-NULL_ROWS = {source.EXPECTED_COUNT - 4, source.EXPECTED_COUNT - 3,
-             source.EXPECTED_COUNT - 2, source.EXPECTED_COUNT - 1}
+IDS = [1667 + index for index in range(FIXTURE_COUNT)]
+NULL_ROWS = {FIXTURE_COUNT - 4, FIXTURE_COUNT - 3,
+             FIXTURE_COUNT - 2, FIXTURE_COUNT - 1}
 DISAGREE_ROWS = set(range(140))
 LEADING_ZERO_ROWS = set(range(76))
 
@@ -96,17 +97,17 @@ def _capture_docs_plain() -> dict:
                                   "Management - Branch of Geospatial Data Services."},
         "service_before": copy.deepcopy(service), "service_after": copy.deepcopy(service),
         "layer_before": copy.deepcopy(layer), "layer_after": copy.deepcopy(layer),
-        "count_before": {"count": source.EXPECTED_COUNT},
-        "count_after": {"count": source.EXPECTED_COUNT},
+        "count_before": {"count": FIXTURE_COUNT},
+        "count_after": {"count": FIXTURE_COUNT},
         "ids_before": {"objectIds": list(IDS)}, "ids_after": {"objectIds": list(IDS)},
     }
-    for index in range(source.PAGE_COUNT):
+    for index in range(2):
         start = index * source.PAGE_SIZE
         rows = features[start:start + source.PAGE_SIZE]
         page = {"features": rows, "spatialReference": {"wkid": 102100, "latestWkid": 3857},
                 "geometryType": "esriGeometryPoint", "objectIdFieldName": "ObjectId",
                 "globalIdFieldName": "", "uniqueIdField": {"name": "ObjectId", "isGlobalId": False}}
-        if index < source.PAGE_COUNT - 1:
+        if index < 2 - 1:
             page["exceededTransferLimit"] = True
         docs[f"page_{index:03d}"] = page
     return docs
@@ -131,10 +132,11 @@ class FwsCmtLocationsTests(unittest.TestCase):
     def test_registered_stopped_draft_and_unapproved_release_gate(self):
         self.assertIn(fws_cmt_locations, hifld_ingest_assets)
         self.assertEqual(fws_cmt_locations_draft_refresh_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        candidate = {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True,
-                     "null_coordinate_count": source.EXPECTED_NULL_COORDINATE_COUNT,
+        candidate = {"feature_count": FIXTURE_COUNT, "source_reported_count": FIXTURE_COUNT,
+                     "source_population_complete": True,
+                     "null_coordinate_count": 4,
                      "geometry_attribute_disagreement_count":
-                         source.EXPECTED_GEOMETRY_ATTRIBUTE_DISAGREEMENT_COUNT}
+                         140}
         check = fws_cmt_locations_complete(candidate)
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
@@ -153,18 +155,18 @@ class FwsCmtLocationsTests(unittest.TestCase):
 
     def test_complete_population_preserves_both_representations(self):
         features, audit = source._validate(_capture_docs())
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_feature_count"], source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_null_coordinate_count"], source.EXPECTED_NULL_COORDINATE_COUNT)
+        self.assertEqual(len(features), FIXTURE_COUNT)
+        self.assertEqual(audit["source_feature_count"], FIXTURE_COUNT)
+        self.assertEqual(audit["source_null_coordinate_count"], 4)
         self.assertEqual(audit["source_geometry_attribute_disagreement_count"],
-                         source.EXPECTED_GEOMETRY_ATTRIBUTE_DISAGREEMENT_COUNT)
+                         140)
         self.assertEqual(audit["source_org_code_leading_zero_count"], len(LEADING_ZERO_ROWS))
         self.assertEqual(audit["source_org_code_duplicate_count"], 0)
-        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT - 4)
+        self.assertEqual(audit["geometry_valid_count"], FIXTURE_COUNT - 4)
         self.assertEqual(audit["geometry_empty_count"], 4)
         parquet = source._parquet_bytes(features)
         table = pq.read_table(io.BytesIO(parquet))
-        self.assertEqual(table.num_rows, source.EXPECTED_COUNT)
+        self.assertEqual(table.num_rows, FIXTURE_COUNT)
         org_codes = table["orgCode"].to_pylist()
         self.assertTrue(all(value == f"0{index:04d}" for index, value in
                             enumerate(org_codes) if index in LEADING_ZERO_ROWS))
@@ -194,7 +196,34 @@ class FwsCmtLocationsTests(unittest.TestCase):
                         abs(source._inverse_y(point.y) - attributes_latitude))
             if delta > source.DISAGREEMENT_THRESHOLD_DEG:
                 recomputed += 1
-        self.assertEqual(recomputed, source.EXPECTED_GEOMETRY_ATTRIBUTE_DISAGREEMENT_COUNT)
+        self.assertEqual(recomputed, 140)
+
+    def test_complete_addition_and_removal_pass_but_baseline_remains_unavailable(self):
+        for new_ids in (IDS + [IDS[-1] + 1], IDS[:-1], IDS[:1000], IDS + list(range(4000, 4200))):
+            docs = _capture_docs_plain()
+            for name in list(docs):
+                if name.startswith("page_"):
+                    del docs[name]
+            for phase in ("before", "after"):
+                docs["count_" + phase] = {"count": len(new_ids)}
+                docs["ids_" + phase] = {"objectIds": list(new_ids)}
+            for index, start in enumerate(range(0, len(new_ids), source.PAGE_SIZE)):
+                docs[f"page_{index:03d}"] = {
+                    "features": [_feature(oid) for oid in new_ids[start:start + source.PAGE_SIZE]],
+                    "spatialReference": {"wkid": 102100, "latestWkid": 3857},
+                    "geometryType": "esriGeometryPoint", "objectIdFieldName": "ObjectId"}
+            features, audit = source._validate({key: (json.dumps(value).encode(), {}) for key, value in docs.items()})
+            self.assertEqual(len(features), len(new_ids))
+            candidate = {"feature_count": len(new_ids), "source_reported_count": len(new_ids),
+                         "source_population_complete": True}
+            self.assertTrue(fws_cmt_locations_complete(candidate).passed)
+            drift = fws_cmt_locations_drift(candidate)
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+            missing_page = dict(docs)
+            missing_page.pop("page_000")
+            with self.assertRaises(ValueError):
+                source._validate({key: (json.dumps(value).encode(), {}) for key, value in missing_page.items()})
 
     def test_rejects_identity_drift(self):
         def owner_changed(captures):
@@ -221,11 +250,16 @@ class FwsCmtLocationsTests(unittest.TestCase):
         def rename_field(captures):
             _edit(captures, "layer_before")["fields"][17]["alias"] = "Renamed"
         def count_drift(captures):
-            _edit(captures, "count_before")["count"] = source.EXPECTED_COUNT + 1
+            _edit(captures, "count_before")["count"] = FIXTURE_COUNT + 1
         def roster_drift(captures):
             _edit(captures, "ids_after")["objectIds"][0] = 999999
         def page_short(captures):
             _edit(captures, "page_001")["features"].pop()
+        def duplicate_page_id(captures):
+            rows = _edit(captures, "page_000")["features"]
+            rows[1]["attributes"]["ObjectId"] = rows[0]["attributes"]["ObjectId"]
+        def edited_during_capture(captures):
+            _edit(captures, "layer_after")["editingInfo"]["dataLastEditDate"] += 1
         def page_transfer_limit(captures):
             _edit(captures, "page_001")["exceededTransferLimit"] = True
         for mutator, error in ((drop_field, "source_field_schema_drift"),
@@ -233,11 +267,13 @@ class FwsCmtLocationsTests(unittest.TestCase):
                                (count_drift, "source_count_or_id_roster_drift"),
                                (roster_drift, "source_count_or_id_roster_drift"),
                                (page_short, "source_page_population_incomplete"),
+                               (duplicate_page_id, "source_feature_id_roster_drift"),
+                               (edited_during_capture, "source_service_or_layer_changed_during_capture"),
                                (page_transfer_limit, "source_page_error_or_transfer_limit")):
             with self.assertRaisesRegex(ValueError, error):
                 source._validate(_mutated_docs(mutator))
 
-    def test_rejects_baseline_count_drift(self):
+    def test_null_and_disagreement_counts_are_observations_not_baselines(self):
         def extra_null_row(captures):
             page = _edit(captures, "page_000")
             row = page["features"][10]
@@ -253,9 +289,10 @@ class FwsCmtLocationsTests(unittest.TestCase):
             page["features"][5]["attributes"]["orgCode"] = page["features"][4]["attributes"]["orgCode"]
         def null_org_code(captures):
             _edit(captures, "page_000")["features"][5]["attributes"]["orgCode"] = None
-        for mutator, error in ((extra_null_row, "source_null_coordinate_count_drift"),
-                               (repaired_disagreement, "source_geometry_attribute_disagreement_count_drift"),
-                               (duplicate_org_code, "source_org_code_duplicate_drift"),
+        for mutator in (extra_null_row, repaired_disagreement):
+            features, audit = source._validate(_mutated_docs(mutator))
+            self.assertEqual(len(features), FIXTURE_COUNT)
+        for mutator, error in ((duplicate_org_code, "source_org_code_duplicate_drift"),
                                (null_org_code, "source_org_code_null_or_empty_drift")):
             with self.assertRaisesRegex(ValueError, error):
                 source._validate(_mutated_docs(mutator))
