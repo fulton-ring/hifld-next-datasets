@@ -35,7 +35,7 @@ def synthetic_mineplant_members():
     rows=[]
     for fid in range(count):
         x=seed['x_origin']+fid*seed['step'];y=seed['y_origin']+fid*seed['step'];crushed=lo<=fid<=hi
-        row={'id':fid+offset if crushed else fid+1,'COMMODITY':seed['crushed_commodity'] if crushed else seed['other_commodity'],
+        row={'id':fid+offset,'COMMODITY':seed['crushed_commodity'] if crushed else seed['other_commodity'],
             'SITE_NAME':seed['sample']['SITE_NAME'],'COMPANY_NA':seed['sample']['COMPANY_NA'],'STATE_LOCA':STATE_NAMES[fid%len(STATE_NAMES)],
             'COUNTY':seed['sample']['COUNTY'],'LATITUDE':f'{y:.5f}','LONGITUDE':f'{x:.5f}','PLANT_MIN':seed['sample']['PLANT_MIN']}
         rows.append(row);rec=bytearray(width);rec[0:1]=b' ';off=1
