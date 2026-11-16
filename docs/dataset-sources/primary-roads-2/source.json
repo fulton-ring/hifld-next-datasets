@@ -131,8 +131,8 @@
     "compatibility_notes": "The archive schema, published field mapping, and any HIFLD identifiers remain unknown. Do not represent this proposed source-native shape as a maintainer-approved contract or infer a crosswalk match."
   },
   "implementation_and_release_gate": {
-    "pipeline": "Stopped draft ingest captures the official fixed 2025 Census ZIP exactly, verifies archive identity/member roster/schema/population/IDs/geometry/extent, and stages the unchanged ZIP for the existing catalog/publish flow.",
-    "refresh": "Annual September draft schedule, disabled by default. A new vintage requires explicit code/source pin review; same-version refreshes are immutable and verified.",
+    "pipeline": "Stopped draft ingest discovers the latest exact published annual Census Primary Roads ZIP, verifies complete native DBF/SHX/decoded population agreement, member roster, schema, IDs and geometry, and stages metadata and discovery evidence before the unchanged archive. Explicit supplied 2025 captures remain offline pinned reproduction only.",
+    "refresh": "Annual September draft schedule, disabled by default. Default runs discover and recheck the current annual publication; edition, complete archive bytes and packaged processing code determine immutable candidate versions. Source, lineage, contract, coverage, rights and release acceptance remain pending.",
     "release_accepted": false,
     "source_freshness_accepted": false,
     "crosswalk_lineage_accepted": false,
