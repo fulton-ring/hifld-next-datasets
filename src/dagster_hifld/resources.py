@@ -45,8 +45,11 @@ def capture_root(root: str | Path | None = None) -> Path:
 def default_capture_dir(*components: str, root: str | Path | None = None) -> Path:
     """Capture directory under the shared root: ``root/<dataset>/<file>/<run_id>``.
 
-    Components are literal path segments; callers pass the slugs and run
-    token their retained-capture layout needs.
+    Components are literal path segments; callers pass the slugs and run token
+    their retained-capture layout needs. Keep an existing adapter's components
+    unchanged: an interrupted capture resumes only from the path its capture
+    state was written to, so a rollout maps the previous root through
+    ``HIFLD_CAPTURE_ROOT`` instead of renaming its directories.
     """
     if not components or any(not component or component in {".", ".."} or "/" in component
                              or "\\" in component for component in components):

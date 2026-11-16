@@ -358,6 +358,30 @@ class USGSNLDIAssetTests(unittest.TestCase):
             self.assertTrue(state["complete"])
             self.assertEqual(len(state["pages"]), 5)
 
+    def test_mapped_previous_root_resumes_retained_pages_at_the_default(self):
+        refusing = make_transport(refuse_at_offset=3)
+        requests: list[str] = []
+        complete = make_transport(requests=requests)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            staging = _staging(root)
+            previous_root = root / "previous-root"
+            # The deployment maps HIFLD_CAPTURE_ROOT to the previous capture
+            # parent; the default must land on the historical layout within it.
+            with fixture_mode(), patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": str(previous_root)}):
+                with self.assertRaisesRegex(ValueError, "HTTP capture incomplete"):
+                    nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=refusing))
+            default_root = (previous_root / "nhd"
+                            / "usgs-hydro-nldi-streamgage-monitoring-locations"
+                            / "captures" / "default")
+            state = json.loads((default_root / "capture_state.json").read_text())
+            self.assertEqual([entry["name"] for entry in state["pages"]],
+                             ["sources-before", "page_000000000"])
+            with fixture_mode(), patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": str(previous_root)}):
+                result = nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=complete))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertEqual(requests, ["page:3", "page:6", "page:9", "sources"])
+
     def test_pinned_walk_drift_is_refused(self):
         transport = make_transport()
         with tempfile.TemporaryDirectory() as tmp:

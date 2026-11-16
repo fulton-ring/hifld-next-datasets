@@ -90,6 +90,9 @@ from dagster_hifld.sources.epa_frs_common import (
 
 DATASET_SLUG = "usace-civil-works-divisions"
 FILE_SLUG = DATASET_SLUG
+# Retained capture layout: the historical parent keeps its name so existing
+# evidence under it stays addressable across releases.
+DEFAULT_CAPTURE_ROOT = default_capture_dir("usace-civil-works-divisions-captures")
 SERVICE_URL = ("https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/"
                "services/usace_cw_divisions/FeatureServer")
 LAYER_ID = 0
@@ -739,7 +742,7 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
     if shutil.disk_usage(base).free < 1_000_000_000:
         raise ValueError("unsafe_or_low_space_staging_root")
     capture_parent = Path(capture_directory).absolute() if capture_directory \
-        else default_capture_dir(DATASET_SLUG)
+        else DEFAULT_CAPTURE_ROOT
     capture_root = capture_parent / f"{version}-{uuid4().hex}"
     if ".." in capture_root.parts or any(p.is_symlink() for p in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

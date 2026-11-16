@@ -88,6 +88,10 @@ def _fixture():
 
 
 class BoemOcsWellsTests(unittest.TestCase):
+    def test_default_capture_root_keeps_the_historical_layout(self):
+        self.assertEqual(str(boem.DEFAULT_CAPTURE_ROOT),
+                         str(Path(tempfile.gettempdir()) / "boem-ocs-well-captures"))
+
     def test_native_fields_points_and_audit_counts(self):
         _, fields, features, audit = boem._validate(_fixture())
         self.assertEqual([field["name"] for field in fields], boem.FIELD_NAMES)

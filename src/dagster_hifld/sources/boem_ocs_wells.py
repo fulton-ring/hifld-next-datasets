@@ -41,6 +41,9 @@ from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _s
 
 DATASET_SLUG = "outer-continental-shelf-ocs-oil-and-natural-gas-wells"
 FILE_SLUG = DATASET_SLUG
+# Retained capture layout: the historical parent keeps its name so existing
+# evidence under it stays addressable across releases.
+DEFAULT_CAPTURE_ROOT = default_capture_dir("boem-ocs-well-captures")
 SERVICE_URL = "https://gis.boem.gov/server/rest/services/BOEM_BSEE/MMC_Layers/FeatureServer"
 LAYER_ID = 1
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
@@ -334,7 +337,7 @@ def capture_boem_ocs_wells(storage: StagingStorageResource, *, version: str = "d
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("unsafe_or_low_space_staging_root")
     base.mkdir(parents=True, exist_ok=True)
-    capture_parent = Path(capture_directory).absolute() if capture_directory else default_capture_dir(DATASET_SLUG)
+    capture_parent = Path(capture_directory).absolute() if capture_directory else DEFAULT_CAPTURE_ROOT
     capture_root = capture_parent / f"{version}-{uuid4().hex}"
     if ".." in capture_root.parts or any(p.is_symlink() for p in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

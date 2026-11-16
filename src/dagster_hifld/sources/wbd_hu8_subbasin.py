@@ -1342,8 +1342,10 @@ def capture_wbd_hu8_subbasin(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise WbdHu8SubbasinError("disk_floor_before_acquisition")
+    # Retained capture layout: keep the historical wbd-hu8-subbasin parent so
+    # an interrupted acquisition resumes its capture_state.json after rollout.
     capture_root = Path(capture_directory).absolute() if capture_directory \
-        else default_capture_dir(DATASET_SLUG, FILE_SLUG, "captures").absolute()
+        else default_capture_dir("wbd-hu8-subbasin", "captures").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent
                                          in (capture_root, *capture_root.parents)):
         raise WbdHu8SubbasinError("unsafe_capture_directory")
