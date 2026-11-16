@@ -1,7 +1,6 @@
 """Unapproved native capture of the USACE FUDS Program Division polygons."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -23,6 +22,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "formerly-used-defense-sites-division-boundaries"
 FILE_SLUG = DATASET_SLUG
@@ -34,15 +34,6 @@ PUBLISHER = "U.S. Army Corps of Engineers (USACE), Military/FUDS_Data MapServer"
 PAGE_SIZE = 50
 SCHEMA_SHA256 = "f9e51a73d089f8d6ee32215fc1cb7c270eb87f80757da887c3ac8a2d0c948ee2"
 MAX_RESPONSE_BYTES = 128 * 1024 * 1024
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode()
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _schema(layer: dict) -> list[dict]:

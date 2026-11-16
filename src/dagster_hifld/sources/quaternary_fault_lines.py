@@ -8,7 +8,6 @@ coverage, rights, or release.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -29,6 +28,7 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.sources.epa_frs_common import capture_get, processing_identity, write_immutable
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "quaternary-fault-lines"
 PUBLISHER = "U.S. Geological Survey Earthquake Hazards Program"
@@ -98,14 +98,6 @@ _ARROW_TYPES = {
     "esriFieldTypeDate": pa.int64(),
     "esriFieldTypeDouble": pa.float64(),
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _query(params: dict[str, object]) -> str:

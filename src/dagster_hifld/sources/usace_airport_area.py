@@ -22,9 +22,10 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
-    _canonical, _sha, candidate_prefix, processing_identity,
+    candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.usace_pylon_areas import (
     _fetch_retry, _esri_polygon,
     _parquet_bytes, _load_replay, _write_outputs,

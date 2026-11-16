@@ -479,6 +479,7 @@ class LandMobileBroadcastTowersLifecycleTests(unittest.TestCase):
                 summary = summarize_staged_catalog(storage, source.DATASET_SLUG, source.FILE_SLUG,
                                                    candidate["version"], source.DATASET_SLUG,
                                                    source_metadata=manifest)
+                self.assertEqual(summary.data_dictionary["description"], manifest["description"])
                 self.assertEqual(summary.quality_manifest["feature_count"], 151)
                 self.assertEqual(summary.quality_manifest["null_geometry_count"], 0)
                 self.assertTrue(summary.quality_manifest["quality_check_passed"])

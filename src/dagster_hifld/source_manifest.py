@@ -19,6 +19,14 @@ from dagster_hifld.literal_geojson_policy import literal_geojson_spec
 from dagster_hifld.output_policy import SUPPORTED_OUTPUT_EXCLUSIONS, prebuilt_output_spec, validate_output_policy
 from dagster_hifld.resources import StagingStorageResource
 
+# Shared bound for catalog-stage reads of an authored source manifest.
+# Whole-population captures retain one provenance entry per producer page,
+# so page-per-receipt manifests legitimately exceed the historical 2 MiB
+# reader guards (observed 2026-11-14: 2,835 entries / 3.98 MB from the 3DHP
+# Waterbody Lake full capture). The bound stays bounded while covering
+# manifests of roughly ten thousand provenance entries.
+BOUNDED_SOURCE_MANIFEST_READ_BYTES = 16 * 1024 * 1024
+
 CATALOG_METADATA_FIELDS = (
     "title",
     "description",

@@ -6,7 +6,6 @@ DataLumos export. Candidate creation is local-only and never grants release.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from collections import Counter
@@ -32,6 +31,7 @@ from dagster_hifld.sources.epa_frs_common import (
     capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "epa-emergency-response-rmp-facilities"
 FILE_SLUG = DATASET_SLUG
@@ -48,15 +48,6 @@ SOURCE_SCHEMA_SHA256 = "f0f50c2204dfd72bcc5df3b2faae12f45b9b9c0f02c059078a1bfc2d
 PAGE_SIZE = 1000
 MAX_BODY_BYTES = 16 * 1024 * 1024
 _DEFAULT_SCHEMA_PIN = object()
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _field_profile(fields: object) -> list[dict[str, object]]:

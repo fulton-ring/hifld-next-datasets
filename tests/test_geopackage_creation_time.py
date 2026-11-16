@@ -39,6 +39,13 @@ CASES = (
         "2024-01-01T00:00:00.000Z",
     ),
     (
+        "metropolitan_divisions",
+        "write_native_gpkg",
+        "SHAPE",
+        "multi",
+        "2026-01-01T00:00:00.000Z",
+    ),
+    (
         "fema_regions",
         "write_geopackage",
         "geometry",

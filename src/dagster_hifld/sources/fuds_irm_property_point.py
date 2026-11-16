@@ -6,7 +6,6 @@ schema acceptance as explicit release gates.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -33,6 +32,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "interim-risk-management-irm-property-point"
 FILE_SLUG = DATASET_SLUG
@@ -44,14 +44,6 @@ PUBLISHER = "U.S. Army Corps of Engineers (USACE), Military/FUDS_Data MapServer"
 PAGE_SIZE = 200
 MAX_CAPTURE_BYTES = 4_000_000
 MAX_TOTAL_CAPTURE_BYTES = 8_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _field(field: Mapping[str, object]) -> dict[str, object]:

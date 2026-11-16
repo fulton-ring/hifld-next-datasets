@@ -1,7 +1,6 @@
 """Draft native capture for the BTS NTAD marine roll-on/roll-off layer."""
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -26,6 +25,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "ff5f787f987c4686b3a79d3dc5b3daa2"
 SERVICE_URL = "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Intermodal_Freight_Facilities_Marine_Roll_on_Roll_off/FeatureServer"
@@ -44,15 +44,6 @@ EXPECTED_SOURCE_ID_SHA256 = "865f85261b03d18843adc4a68e28bb003422ff44d6d6f6f8b8f
 EXPECTED_SOURCE_COUNT = 84
 EXPECTED_FIELD_NAMES = ["OBJECTID", "PORT", "TERMINAL", "OPERATED_BY", "TERM_ADDRESS", "CITY", "STATE", "ZIP_CODE", "RAIL_CO", "EQUIPMENT", "ACCESS_RD", "LAT", "LON", "NAV_UNIT_ID"]
 EXPECTED_FIELD_TYPES = ["esriFieldTypeOID", "esriFieldTypeString", "esriFieldTypeString", "esriFieldTypeString", "esriFieldTypeString", "esriFieldTypeString", "esriFieldTypeString", "esriFieldTypeString", "esriFieldTypeString", "esriFieldTypeString", "esriFieldTypeString", "esriFieldTypeDouble", "esriFieldTypeDouble", "esriFieldTypeString"]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
