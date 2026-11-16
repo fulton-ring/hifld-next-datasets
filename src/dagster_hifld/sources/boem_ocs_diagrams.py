@@ -11,7 +11,6 @@ geometry or release acceptance.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import tempfile
 from datetime import datetime, timezone
@@ -37,6 +36,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "outer-continental-shelf-ocs-diagrams-maps"
 FILE_SLUG = DATASET_SLUG
@@ -69,15 +69,6 @@ EXPECTED_FIELDS = [
     ("Shape__Area", "esriFieldTypeDouble", True),
     ("Shape__Length", "esriFieldTypeDouble", True),
 ]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _query(**params: object) -> str:

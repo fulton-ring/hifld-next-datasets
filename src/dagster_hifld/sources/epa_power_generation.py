@@ -1,13 +1,28 @@
 """Draft extractor for EPA's exact FRS EIA-860 power generation layer.
 
-The EPA hosted FeatureServer remains live, while its own description dates the
-compiled EIA-860 content to June 2014. This module captures native Esri JSON and
-stages only an unapproved candidate; it does not establish currentness or permit
-publication.
+The EPA_GEO hosted FeatureServer is EPA's maintained publication of this
+population: its layer copyright states the layer is "Updated as part of the
+Facility Registry Service (FRS) tables refresh process", the layer data was
+last edited 2026-11-09 in the same refresh batch that updates the maintained
+FRS_INTERESTS services, and EPA's FRS program statistics record the EIA-860
+system in FRS as last refreshed 2026-06-30. The publisher's service description
+dates the joined EIA-860 attribute compilation to June 2014, so the content
+vintage stays pinned at 2014-06 and freshness acceptance remains blocked. The
+successor search (2026-11-15) found no other EPA publication of this population:
+the EPA_GEO catalog lists no other power-generation service, the OEI
+``geodata.epa.gov`` FRS_PowerPlants MapServer is the legacy-host copy of the
+same June 2014 compilation, and the FRS downloads do not carry the compiled
+EIA-860 attributes. This module captures native Esri JSON and stages only an
+unapproved candidate; it does not establish currentness or permit publication.
+
+Two HIFLD Open inventory entries describe this exact product (the
+``epa-frs-eia-860-power-generation-facilities-by-source`` row and the duplicate
+``epa-facility-registry-service-frs-power-plants-2`` row, which share one
+description, agency and keywords), so every capture can stage a candidate under
+either dataset identity; the source pins are identical.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import platform
 import shutil
@@ -35,6 +50,7 @@ from dagster_hifld.sources.epa_frs_common import (
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 ITEM_ID = "2a1459ac9b03469e87c2e7785cc188a9"
@@ -44,24 +60,26 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "EPA Facility Registry Service - EIA-860 Power Generation Facilities By Source"
 DATASET_SLUG = "epa-frs-eia-860-power-generation-facilities-by-source"
 FILE_SLUG = DATASET_SLUG
+EPA_ITEM_DATASET_SLUG = "epa-facility-registry-service-frs-power-plants-2"
+DATASET_SLUGS = (DATASET_SLUG, EPA_ITEM_DATASET_SLUG)
+_DEFAULT_CAPTURE_ROOTS = {DATASET_SLUG: "69", EPA_ITEM_DATASET_SLUG: "392"}
 PUBLISHER = "U.S. Environmental Protection Agency (EPA_GEO hosted FeatureServer); data sources EPA FRS and EIA"
 SOURCE_VINTAGE = "2014-06"
-SOURCE_VINTAGE_NOTE = "Service description states the EIA-860 compilation is most-current as of June 2014. The ArcGIS item modified timestamp is not a source release date."
+SOURCE_VINTAGE_NOTE = ("Service description states the EIA-860 compilation is most-current as of June 2014; the joined EIA-860 attribute compilation is the product's content vintage and is not re-cut by EPA. "
+                       "The publication itself is maintained: the layer copyright states it is updated as part of the FRS tables refresh process and the layer data was last edited 2026-11-09 in the same refresh batch as the maintained FRS_INTERESTS services. "
+                       "The ArcGIS item modified timestamp is not a source release date.")
 EPA_FRS_DATA_SOURCES_URL = "https://www.epa.gov/frs/frs-data-sources"
-EXPECTED_COUNT = 2328
-EXPECTED_ID_SHA256 = "2e449cf11599a10b3657165b257f6694e3db0f099aba873b92994a720d5de3ca"
-EXPECTED_RECORD_SHA256 = "abb95ea9c72d7ecdc594b16398ad22229fef4f2a5117a148d8e11421cfb4d8d2"
-EXPECTED_GEOMETRY_SHA256 = "aedd2fc29320cb60fd97c4f49013e7e9720ccd050a545e2ab1360ac74718d32b"
+EXPECTED_COUNT = 2326
+# Dated baseline rebind (#669 pattern): EPA's FRS tables refresh process edits this
+# layer, so the 2026-11-08 roster/record pins (2,328 features) drifted 2,327 -> 2,326
+# before the maintained full roster was re-observed on 2026-11-15T02:46Z. Later
+# refresh drift still refuses closed for maintainer review instead of auto-refreshing.
+EXPECTED_SCHEMA_SHA256 = "5a8de30d69b9f91343f5cd85e21c0cda33bedb7b768551a126c9f77a28ffddff"
+EXPECTED_ID_SHA256 = "7fc99aba5554106bc919293dfd235bb9ed395611d7657a575bc364bc29501f69"
+EXPECTED_RECORD_SHA256 = "83dbd9547ac6714827cdf95490bd8ae58b51be1fecbbf943c84a3b867187aa97"
+EXPECTED_GEOMETRY_SHA256 = "090d60dfa6ca68758b88a411afea80b2cae3904803010b068d8055118a206985"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 8_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -136,7 +154,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> 
     after_fields = docs["layer_after"].get("fields")
     if not isinstance(after_fields, list) or [_plain_field(x) for x in after_fields] != fields:
         raise ValueError("source_field_schema_changed_during_capture")
-    if schema_sha != "5a8de30d69b9f91343f5cd85e21c0cda33bedb7b768551a126c9f77a28ffddff":
+    if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise ValueError("source_schema_drift")
     if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
         raise ValueError("source_count_drift")
@@ -226,8 +244,9 @@ def _write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> 
 
 
 def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
-                           version: str, fingerprint: str, identity: Mapping[str, object],
-                           audit: Mapping[str, object], expected_keys: set[str], current_parquet: bytes) -> dict[str, object]:
+                            version: str, fingerprint: str, identity: Mapping[str, object],
+                            audit: Mapping[str, object], expected_keys: set[str], current_parquet: bytes, *,
+                            dataset_slug: str = DATASET_SLUG) -> dict[str, object]:
     """Validate an earlier candidate before treating a same-version run as reuse."""
     bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
     payload = bundle.get("payload")
@@ -249,8 +268,7 @@ def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_
                 or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
                 or storage.object_snapshot(key) != snapshot):
             raise ValueError("cached_candidate_object_integrity_failed:" + name)
-    parquet_key = f"{prefix}/geoparquet/{DATASET_SLUG}.parquet"
-    if objects.get(f"geoparquet/{DATASET_SLUG}.parquet") != {"bytes": len(current_parquet), "sha256": _sha(current_parquet)}:
+    if objects.get(f"geoparquet/{dataset_slug}.parquet") != {"bytes": len(current_parquet), "sha256": _sha(current_parquet)}:
         raise ValueError("cached_native_candidate_changed")
     receipt_map = payload["capture_receipts"]
     if not isinstance(receipt_map, dict): raise ValueError("cached_capture_receipts_missing")
@@ -264,7 +282,7 @@ def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_
                 or receipt_body != _canonical(receipt)+b"\n"):
             raise ValueError("cached_original_capture_changed:" + name)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
+    return {"dataset_slug":dataset_slug,"file_slug":dataset_slug,"version":version,"feature_count":EXPECTED_COUNT,
             "source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json",
             "reused":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
             "freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
@@ -276,8 +294,20 @@ def _code_identity() -> dict[str, object]:
     return identity
 
 
-def capture_epa_power_generation(storage: StagingStorageResource, *, version: str, capture_directory: str | None = None) -> dict[str, object]:
-    """Capture and stage one complete unapproved source candidate."""
+def _default_client() -> httpx.Client:
+    return httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/epa-power-generation-draft"})
+
+
+def capture_epa_power_generation(storage: StagingStorageResource, *, version: str,
+                                 capture_directory: str | None = None,
+                                 dataset_slug: str = DATASET_SLUG) -> dict[str, object]:
+    """Capture and stage one complete unapproved source candidate.
+
+    ``dataset_slug`` selects the HIFLD inventory identity the candidate is staged
+    under; both known identities share the same source and pins.
+    """
+    if dataset_slug not in DATASET_SLUGS:
+        raise ValueError("unknown_dataset_slug:" + dataset_slug)
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ValueError("explicit_local_staging_resource_required")
     if not version or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_" for c in version):
@@ -287,7 +317,8 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
         raise ValueError("unsafe_local_staging_root")
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000: raise ValueError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/69/captures")
+    attempt_root = (Path(capture_directory) if capture_directory
+                    else Path(f"/tmp/hifld-native-reconstruction/{_DEFAULT_CAPTURE_ROOTS[dataset_slug]}/captures"))
     capture_root = attempt_root / f"{version}-{uuid4().hex}"
     capture_root = capture_root.absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
@@ -295,7 +326,7 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
     try:
-        with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/epa-power-generation-draft"}) as client:
+        with _default_client() as client:
             seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")
             seed = json.loads(seed_body).get("objectIds")
             if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT:
@@ -318,20 +349,20 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
             except (ValueError, OSError): receipts[path.name] = {"receipt_readback_failed":True}
         (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__,"receipts":receipts})+b"\n")
         if failed_captures:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
+            quarantine_incomplete_capture(storage, capture_root, dataset_slug, version,
                                           failed_captures, type(exc).__name__)
         raise
 
     identity = _code_identity()
     parquet_body = _parquet_bytes(fields, extracted["features"])
-    source_objects = {"geoparquet/epa-frs-eia-860-power-generation-facilities-by-source.parquet":{"bytes":len(parquet_body),"sha256":_sha(parquet_body)}}
+    source_objects = {f"geoparquet/{dataset_slug}.parquet":{"bytes":len(parquet_body),"sha256":_sha(parquet_body)}}
     manifest = {
-      "schema_version":1,"approved":False,"title":LAYER_NAME,"description":"Exact EPA_GEO hosted EPA FRS/EIA-860 power generation layer. EPA service describes EIA data vintage as June 2014; currentness and successor decision are pending.",
+      "schema_version":1,"approved":False,"title":LAYER_NAME,"description":"Exact EPA_GEO hosted EPA FRS/EIA-860 power generation layer, EPA's maintained publication of this population (layer updated by the FRS tables refresh process). The publisher dates the joined EIA-860 attribute compilation to June 2014; freshness and release acceptance remain blocked.",
       "publisher":PUBLISHER,"agency":"Environmental Protection Agency","source_url":LAYER_URL,"license":"https://www.usa.gov/publicdomain/label/1.0/",
       "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
       "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":EPA_FRS_DATA_SOURCES_URL if name == "epa_data_sources_page" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"https://www.usa.gov/publicdomain/label/1.0/","attribution":"ArcGIS item attribution: USEPA FRS, EIA. Item metadata states EPA-generated works are generally public domain; rights review remains pending.","release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in sorted(captures.items())],
       "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"feature_layer_id":LAYER_ID,"source_fields":"all 59 fields preserved in producer order and declared physical types","source_ids":"Preserve each OBJECTID, OBJECTID_1, REGISTRY_ID and EIA identifiers unchanged","geometry":"Esri point x/y retained as WKB at EPSG:3857; no reprojection or repair","candidate_status":"unapproved; production publication prohibited pending source freshness, schema/ID contract, rights and mapping acceptance"}}],
-      "lineage":"EPA_GEO ArcGIS item 2a1459ac9b03469e87c2e7785cc188a9 serves exact layer 4. EPA FRS identifies EIA-860 as its source; see https://www.epa.gov/frs/frs-data-sources. The service says the EIA-860 input was most-current as of June 2014. The ArcGIS item modification date is not a release date.",
+      "lineage":"EPA_GEO ArcGIS item 2a1459ac9b03469e87c2e7785cc188a9 serves exact layer 4. EPA FRS identifies EIA-860 as its source; see https://www.epa.gov/frs/frs-data-sources. The service says the EIA-860 attribute compilation was most-current as of June 2014; the maintained FRS tables refresh process keeps updating the layer (data last edited 2026-11-09). The ArcGIS item modification date is not a release date.",
       "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri query values, all attributes, IDs and source point geometry retained; source vintage and release approvals remain unresolved.","objects":[{"path":next(iter(source_objects)),**next(iter(source_objects.values()))}]}}},
       "unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No display transformation or generalized geometry approved."},
     }
@@ -341,11 +372,11 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
     version = content_derived_version(audit["source_record_sha256"],
                                       audit["source_geometry_sha256"],
                                       audit["source_schema_sha256"], identity)
-    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+    prefix = candidate_prefix(dataset_slug, dataset_slug, version)
     (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":EXPECTED_COUNT,"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
-    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+    state_key = f"_construction-state/{dataset_slug}/{version}.json"
     outputs = {
-        "geoparquet/epa-frs-eia-860-power-generation-facilities-by-source.parquet":parquet_body,
+        f"geoparquet/{dataset_slug}.parquet":parquet_body,
         "metadata/source_manifest.json":_canonical(manifest)+b"\n",
         "metadata/source_audit.json":_canonical(audit)+b"\n",
         "metadata/processing_identity.json":_canonical(identity)+b"\n",
@@ -358,7 +389,7 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
     outputs["metadata/candidate_ready.json"] = _canonical(ready)+b"\n"
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
-        return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs),parquet_body)
+        return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs),parquet_body,dataset_slug=dataset_slug)
     for relative, body in outputs.items(): _write_immutable(storage,f"{prefix}/{relative}",body)
     descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
     for name, descriptor in descriptors.items():
@@ -368,4 +399,4 @@ def capture_epa_power_generation(storage: StagingStorageResource, *, version: st
     payload = {"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
     seal_ready_candidate(storage,state_key,version,fingerprint,payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}
+    return {"dataset_slug":dataset_slug,"file_slug":dataset_slug,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":False,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}

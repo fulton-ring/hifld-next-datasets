@@ -63,6 +63,8 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import witness_aside as _witness_error_response
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "nhd-flowline"
@@ -172,15 +174,6 @@ class NhdFlowlineError(ValueError):
     def __init__(self, code: str):
         self.code = code
         super().__init__(code)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -377,20 +370,6 @@ def _retained_or_fetch(client: httpx.Client | None, capture_root: Path, name: st
     if client is None:
         raise NhdFlowlineError("retained_capture_file_missing:" + name)
     return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-
-
-def _witness_error_response(capture_root: Path, name: str) -> None:
-    """Move a retained producer error answer aside so the slot can be refetched.
-
-    A complete HTTP 200 error body carries a self-consistent receipt, so without
-    this witness step a resumed capture would replay the same error forever.
-    """
-    from time import time_ns
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = capture_root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
 
 
 def _reject_error_response(capture_root: Path, name: str, body: bytes) -> None:

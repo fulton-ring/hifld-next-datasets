@@ -1,7 +1,6 @@
 """Pinned official NCES EDGE 2023-24 private-school location snapshot."""
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -35,6 +34,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "private-schools"
 SOURCE_URL = "https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_PRIVATESCH_2324.zip"
@@ -93,14 +93,6 @@ CAPTURE_URLS = {
     "ids_after": LAYER_URL + "/query?where=1%3D1&returnIdsOnly=true&f=json",
 }
 CAPTURE_NAMES = set(CAPTURE_URLS)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _field_schema(dbf: Path) -> list[tuple[str, str, int, int]]:

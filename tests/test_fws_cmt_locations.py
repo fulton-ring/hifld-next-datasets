@@ -146,10 +146,10 @@ class FwsCmtLocationsTests(unittest.TestCase):
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
         for name, url in source._capture_roster():
             receipt = {"method": "GET", "url": url, "final_url": url}
-            source._validate_capture_request_identity(name, receipt, url)
+            source.validate_capture_request_identity(name, receipt, url)
             receipt["final_url"] = "https://example.invalid/wrong"
             with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
-                source._validate_capture_request_identity(name, receipt, url)
+                source.validate_capture_request_identity(name, receipt, url)
 
     def test_complete_population_preserves_both_representations(self):
         features, audit = source._validate(_capture_docs())

@@ -42,7 +42,10 @@ coordinates, EN entity, HS history, RE remarks, SC special condition, DE FAA det
   archive flags C 160,682 / A 37,327 / empty 1.
 - `CO.dat` (18 fields): 203,245 coordinate rows — 198,009 tower (`T`) rows (one per coordinate
   registration) and 5,236 array (`A`) rows for 5,236 multi-point array registrations. Every CO
-  row joins to RA on (`registration_number`, `unique_system_identifier`); exactly one RA
+  row joins to RA on (`registration_number`, `unique_system_identifier`); coordinate type is
+  part of the published row key, not a physical structure ID. Only 354 `A` rows carry
+  `array_tower_position`; 4,882 do not. `array_total_tower` is preserved as a field and
+  does not establish that the file supplies one coordinate per array member. Exactly one RA
   registration has no CO row; 124 CO rows carry empty or unparsable coordinate components.
   Latitude directions N 203,102 / S 23 / empty 120; longitude W 203,023 / E 102 / empty 120;
   DMS-decimal points span latitude -15.15 to 71.310361 and longitude -176.705472 to 174.138861
@@ -54,7 +57,7 @@ coordinates, EN entity, HS history, RE remarks, SC special condition, DE FAA det
 ## Proposed draft contract (unapproved)
 
 Publish one row per (`registration_number`, `unique_system_identifier`, CO coordinate row) —
-tower coordinates as single points and array positions as separate array-position points —
+`T` tower-coordinate and `A` array-coordinate records as separate points when mappable —
 preserving the declared RA, CO, and joined EN fields verbatim (including empty values, leading
 zeros and the legacy `char` padding), plus the DMS→decimal derived `latdec`/`londec` values and
 WKB Point geometry in the native NAD83 datum (EPSG:4269), with no transformation, repair, or
@@ -88,3 +91,58 @@ registration carries no EN owner row keep null joined EN fields, and the 124 coo
 parsable degrees and directions keep null geometry, matching the proposed contract above. This file records
 the source, evidence, and proposed contract for that work. No source, baseline, schema/ID/coverage/rights,
 release, merge, or production approval is granted or implied.
+
+## Entity and completeness audit (2026-11-15, issue #955)
+
+This is a code and existing-evidence audit, not a new FCC acquisition or a new
+weekly edition comparison. Counts above refer to the successfully acquired
+2026-11-08 edition documented on 2026-11-12, superseding the older environment's
+403/no-source conclusion. A subsequent access failure alone cannot invalidate
+that acquisition. FCC identifies the official files and field definitions on its
+[public-access downloads page](https://www.fcc.gov/wireless/data/public-access-files-database-downloads)
+and [daily/weekly page](https://www.fcc.gov/uls/transactions/daily-weekly).
+
+The following describes the actual draft adapters. All inputs are published by
+FCC WTB in the [official weekly directory](https://data.fcc.gov/download/pub/uls/complete/).
+The weekly cadence describes the producer's distribution, not acceptance of a
+new edition: the adapters' pinned population/identity checks remain in place.
+`source_population_complete` means completeness of the declared source file and
+selection below; it makes no claim about all physical structures, current
+operation, or equivalence to a historical HIFLD release.
+
+| Family / input | Candidate row and native identity | Selection and cardinality |
+| --- | --- | --- |
+| Cellular / `l_cell.zip` | LO license-location; (`UniqSysID`, `LocNum`) jointly unique in the pinned edition | HD status `A`, service `CL`; 24,362 LO rows from 5,473 total HD licenses (3,870 active). |
+| BRS/EBS / `l_mdsitfs.zip` | LO license-location; (`UniqSysID`, `LocNum`) jointly unique | HD status `A`, services `BR`, `ED`; 4,669 LO rows. Geographic authorizations do not require a complete transmitter census in LO. |
+| Microwave / `l_micro.zip` | LO license-location; (`UniqSysID`, `LocNum`) retained, including duplicate keys | HD status `A`, complete file service roster; 422,808 LO rows, including 20 extra rows across 16 duplicate keys. Null and anomalous coordinates remain as documented in its existing README. |
+| Paging / `l_paging.zip` | LO license-location; (`UniqSysID`, `LocNum`) jointly unique in the pinned edition | HD status `A`; 6,389 LO rows. File services `CA CB CD CG CO CR`; geographic-area codes `CP CZ GC` are outside this file, so this is not all paging infrastructure. |
+| Land Mobile Commercial / `l_LMcomm.zip` | LO license-location; (`UniqSysID`, `LocNum`) jointly unique | HD status `A`, complete file service roster; no structure-type filter. Missing coordinates remain null; documented local-datum coordinates are retained without falsely assigning NAD83 geometry. |
+| Land Mobile Private / `l_LMpriv.zip` | LO license-location; (`UniqSysID`, `LocNum`) retained, not unique | HD status `A`, both degree components present, excluding local-datum `MP`/`UM` filings from candidate points. 603,775 rows, 27 duplicate keys; 322,063 active rows without a coordinate pair remain in raw capture, 15 local-datum rows also preserved in audit. |
+| Land Mobile Broadcast Auxiliary / `l_LMbcast.zip` | LO fixed-location record; native `unique_system_identifier` + `location_number` retained without an invented row or structure ID | LO type `F`, services `LP RP LV`, **all** HD statuses; only mappable coordinates enter candidate points. Missing/invalid coordinates are counted and retained raw. This adapter does not assert uniqueness of the native location pair. |
+| ASR / `r_tower.zip` | CO registration-coordinate; (`ra_registration_number`, `ra_unique_system_identifier`, `co_coordinate_type`) jointly unique in the pinned edition | All RA status and archive codes; 198,010 RA registrations, 203,245 CO rows (198,009 `T`, 5,236 `A`), one RA without CO has no candidate row. 124 CO rows keep null geometry. No expansion by array total or position. |
+
+ULS joins HD and the unique EN licensee (`L`) on the native license system ID;
+one license may have multiple LO rows. ASR joins CO to RA on registration number
+and system ID and joins only the EN owner (`O`) into candidate columns; all other
+EN rows remain in raw staging. Fifteen candidate CO rows have no owner and keep
+null EN values. ASR registration counts, coordinate counts and array totals are
+different measures. Neither license identity, callsign, registration number nor
+a shared coordinate establishes one unique physical tower across these families.
+The legacy tower/transmitter dataset names remain stable release-path labels.
+
+A separate physical-structure product would need an explicit scope (including
+unregistered structures and non-tower supports), an accepted mapping from native
+license/site/registration IDs to structures, cross-service co-location evidence,
+array-member evidence, temporal/status rules, and measured matching uncertainty.
+`TowReg` can support a source-preserving ASR linkage where populated and verified;
+it is not a universal structure key. Coordinate equality, proximity and matching
+names alone do not justify merging records. This audit generates no structure
+IDs, deduplicates nothing, changes no row filters or schema, and repairs no source
+coordinates. Existing raw captures, native types and anomalies remain intact.
+
+Generated source descriptions (also used by catalog metadata) now state these
+entity/completeness limits; ASR descriptions distinguish `T` and `A`, and broadcast
+metadata describes its actual coordinate exclusion instead of claiming null-point
+retention. Remaining comparisons include current-week versus pinned editions and
+accepted historical-baseline/schema mappings. Rights, coverage and release
+acceptance remain pending; approval flags stay false and schedules stopped.

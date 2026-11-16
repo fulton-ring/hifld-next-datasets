@@ -5,7 +5,6 @@ rights, release freshness, and HIFLD continuity remain maintainer decisions.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -35,6 +34,7 @@ from dagster_hifld.sources.epa_frs_common import (
     write_immutable,
     processing_identity,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "recommended-tracks-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -70,15 +70,6 @@ EXPECTED_DECLARATIONS = [
 ATTRIBUTE_FIELDS = [(field["name"], field["type"]) for field in EXPECTED_DECLARATIONS
                     if field["type"] != "esriFieldTypeGeometry"]
 _STRING_TYPES = {"esriFieldTypeString"}
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _json(value: object) -> bytes:

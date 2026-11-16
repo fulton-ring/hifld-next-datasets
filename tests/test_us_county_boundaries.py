@@ -47,15 +47,15 @@ class UsCountyBoundariesTests(unittest.TestCase):
         self.assertNotEqual(first, candidate_version(identity))
 
     def test_rejects_incomplete_tiger_archive_member_roster(self):
-        body = self._archive(["tl_2023_us_county.shp"])
+        body = self._archive(["tl_2026_us_county.shp"])
         with self.assertRaisesRegex(ValueError, "tiger_archive_member_roster_drift"):
             _inspect_archive(body)
 
     def test_rejects_archive_path_traversal_before_extraction(self):
         names = [
-            "../tl_2023_us_county.cpg", "tl_2023_us_county.dbf", "tl_2023_us_county.prj",
-            "tl_2023_us_county.shp", "tl_2023_us_county.shp.ea.iso.xml",
-            "tl_2023_us_county.shp.iso.xml", "tl_2023_us_county.shx",
+            "../tl_2026_us_county.cpg", "tl_2026_us_county.dbf", "tl_2026_us_county.prj",
+            "tl_2026_us_county.shp", "tl_2026_us_county.shp.ea.iso.xml",
+            "tl_2026_us_county.shp.iso.xml", "tl_2026_us_county.shx",
         ]
         with self.assertRaisesRegex(ValueError, "tiger_archive_unsafe_member"):
             _inspect_archive(self._archive(names))

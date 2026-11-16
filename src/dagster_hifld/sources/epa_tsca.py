@@ -7,7 +7,6 @@ publication.
 """
 from __future__ import annotations
 
-import hashlib
 import html
 import json
 import platform
@@ -36,6 +35,7 @@ from dagster_hifld.sources.epa_frs_common import (
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 ITEM_ID = "3c8a335f4b5243a188fd75472459e567"
@@ -60,14 +60,6 @@ EXPECTED_RECORD_SHA256 = ""
 EXPECTED_GEOMETRY_SHA256 = ""
 PAGE_SIZE = 1000
 MAX_BODY_BYTES = 16_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

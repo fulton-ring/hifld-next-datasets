@@ -16,7 +16,7 @@ import pyarrow.parquet as pq
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import (
-    DECODE_BLOCK_BYTES, CaptureProgress, capture_roster_digests, validate_capture_roster,
+    DECODE_BLOCK_BYTES, CaptureProgress, capture_roster_digests, validate_retained_capture_replay,
 )
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
@@ -25,6 +25,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.usace_obstruction_lines import (
     _canonical, _capture_identity,
@@ -173,34 +174,14 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str, *, staging: 
         client, url, root, name, max_bytes=limit, reserve=reserve, before_retain=before_retain,
     )
 
-def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
-    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
-            or receipt.get("final_url") != expected_url):
-        raise ValueError("retained_capture_request_identity_mismatch:" + name)
-
-
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
-    manifest_path = root / "capture_manifest.json"
-    if manifest_path.is_symlink():
-        raise ValueError("retained_capture_manifest_symlink_rejected")
-    manifest = json.loads(manifest_path.read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
-        raise ValueError("retained_capture_manifest_invalid")
-    roster = manifest.get("artifact_roster")
-    if not isinstance(roster, dict) or set(manifest["receipts"]) != CAPTURE_NAMES:
-        raise ValueError("retained_capture_roster_or_names_invalid")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
-        raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_roster(EXPECTED_IDS))
-    captures = {}
-    for name in sorted(CAPTURE_NAMES):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
+    return validate_retained_capture_replay(
+        root,
+        capture_names=CAPTURE_NAMES,
+        expected_urls=dict(_capture_roster(EXPECTED_IDS)),
+        load_capture=_load_capture,
+        validate_request_identity=validate_capture_request_identity,
+    )
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:

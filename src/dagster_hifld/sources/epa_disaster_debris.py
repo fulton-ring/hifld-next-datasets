@@ -1,7 +1,6 @@
 """Native capture and unapproved candidate construction for EPA DDRT."""
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -25,6 +24,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 EPA_PAGE = "https://www.epa.gov/disaster-debris/disaster-debris-recovery-tool"
 DOC_URL = "https://www.epa.gov/system/files/documents/2026-09/usepa_ddrt_info.pdf"
@@ -40,14 +40,6 @@ SOURCE_RELEASE = "2026-08"
 SOURCE_RELEASE_NOTE = "EPA landing page states the DDRT national data layer and web map were updated in August 2026; ArcGIS item modified and layer edit timestamps are portal edit events, not source release dates."
 PAGE_SIZE = 10000
 MAX_BODY_BYTES = 64_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _field_profile(field: Mapping[str, object]) -> dict[str, object]:

@@ -39,11 +39,12 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources import national_inventory_of_dams as legacy
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = legacy.DATASET_SLUG
 SERVICE_URL = legacy.SERVICE_URL
@@ -87,26 +88,12 @@ _ARROW_TYPES = {
 }
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
-
-
 def _safe_official_url(url: str) -> str:
     parsed = urlsplit(url)
     if (parsed.scheme != "https" or parsed.hostname != "geospatial.sec.usace.army.mil"
             or parsed.username or parsed.password or parsed.port not in (None, 443)):
         raise ValueError("usace_nid_untrusted_export_url")
     return url
-
-
-def _url_without_query(url: str) -> str:
-    parsed = urlsplit(url)
-    return parsed._replace(query="", fragment="").geturl()
 
 
 def _ids_url() -> str:

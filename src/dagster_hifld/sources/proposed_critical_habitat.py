@@ -35,6 +35,7 @@ from dagster_hifld.sources.epa_frs_common import (
     STAGED_RELEASE_DERIVATIVE_NAMES, candidate_prefix, content_derived_version,
     processing_identity, validate_staged_release_derivatives, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "proposed-critical-habitat-features"
@@ -49,15 +50,6 @@ PAGE_SIZE = 1
 MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 MAX_ISSUE_BYTES = 3 * 1024 * 1024 * 1024
 ISSUE_EVIDENCE_ROOT = Path("/tmp/hifld-native-reconstruction/279")
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _receipt_timestamp(value: str) -> tuple[str, str | None]:

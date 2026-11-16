@@ -1,6 +1,10 @@
-"""Lossless current-source reconstruction for USACE NDC/LPMS Locks.
+"""Lossless producer-source reconstruction for USACE NDC/LPMS Locks.
 
 The NDC Locks FeatureServer description matches the HIFLD inventory profile.
+It describes USACE built, maintained, owned, or operated lock characteristics,
+not every U.S. lock or IENC chart lock geometry. The 2026-11-15 metadata probe
+reported dataLastEditDate 2024-10-29T14:20:10.991Z; edition and refresh cadence
+were not declared. That edit timestamp does not establish release currentness.
 The "USACE IENC" title suffix is not treated as proof that this layer is an
 IENC chart feature class. Historical DataLumos snapshot equivalence, release
 vintage, baseline compatibility, rights acceptance, and publication remain
@@ -50,7 +54,6 @@ EXPECTED_COUNT = 234
 EXPECTED_OIDS = list(range(1, EXPECTED_COUNT + 1))
 SOURCE_WKID = 4019
 LAYER_NAME = "Lock"
-ARCHIVE_FORMAT = "filegdb"
 MAX_RECEIPT_BYTES = 65_536
 MAX_ARCHIVE_BYTES = 1_000_000
 MAX_CAPTURE_BYTES = 4_000_000
@@ -397,20 +400,6 @@ def _validate_service_bundle(captures: dict[str, tuple[bytes, dict]], *,
     if head_length != str(len(archive)):
         raise LocksQuarantineError("replica_archive_length_header_mismatch")
     return before, {"status_url":status_url,"result_url":result_url,"job":job,"zip":zip_info,"gdb_root":gdb_root}, ids_before, archive, {**schema_before,"metadata":before}
-
-
-def _load_gdb_table(archive_path: Path, gdb_root: str, metadata: dict) -> pa.Table:
-    uri=f"/vsizip/{archive_path}/{gdb_root}"
-    try:
-        info=pyogrio.read_info(uri,layer=LAYER_NAME)
-        if info.get("geometry_type") != "Point" or info.get("crs") != "EPSG:4019" or info.get("features") != EXPECTED_COUNT:
-            raise LocksQuarantineError("native_gdb_layer_metadata_drift")
-        _meta,table=pyogrio.read_arrow(uri,layer=LAYER_NAME,return_fids=True)
-    except LocksQuarantineError:
-        raise
-    except Exception as exc:
-        raise LocksQuarantineError("native_gdb_layer_unreadable:"+type(exc).__name__) from exc
-    return table
 
 
 def _capture_manifest(root: Path) -> dict:
@@ -999,7 +988,7 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
         "source_capture_sha256":capture_sha,"source_archive_sha256":archive_receipt["sha256"],
         "source_archive_bytes":archive_receipt["bytes"],"source_capture_history_prefix":history_prefix,
         "source_feature_count":EXPECTED_COUNT,"source_id_sha256":native_audit["source_id_sha256"],
-        "source_id_min":min(ids),"source_id_max":max(ids),"source_coverage_scope":"Current USACE NDC/LPMS national lock-characteristics point layer; historical HIFLD snapshot identity and baseline equivalence not yet established.",
+        "source_id_min":min(ids),"source_id_max":max(ids),"source_coverage_scope":"Complete observed USACE NDC/LPMS Lock point layer. Producer scope is USACE built, maintained, owned, or operated locks, not every U.S. lock or an IENC chart class; historical HIFLD population, baseline equivalence, edition and currentness remain unestablished.",
         "drift_guard":"Before/after service metadata schema and exact 234-object ID roster; native FileGDB layer type, CRS, field names/types/string widths, IDs, non-null zero-length BLOB; ZIP entry safety/CRC/size.",
         "producer_release_date":None,"producer_release_date_reason":"ArcGIS service editingInfo dataLastEditDate is a data edit timestamp, not a producer release date.",
         "source_data_last_edit_epoch_ms":(before.get("editingInfo") or {}).get("dataLastEditDate"),
@@ -1008,7 +997,7 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
         "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,
         "rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     manifest={"schema_version":1,"approved":False,"title":"Locks (USACE NDC/LPMS; HIFLD inventory title: Locks (USACE IENC))",
-        "description":"Current USACE Navigation Data Center Lock Characteristics/LPMS point layer. The inventory description matches the official layer description verbatim. Historical archive equivalence and the IENC title suffix remain unresolved.",
+        "description":"USACE Navigation Data Center Lock Characteristics/LPMS point layer for USACE built, maintained, owned, or operated locks; no all-lock inventory or IENC chart-class equivalence is established. The inventory description matches the official layer description verbatim. Historical archive equivalence and the IENC title suffix remain unresolved.",
         "publisher":"U.S. Army Corps of Engineers, Navigation Data Center (USACE ArcGIS item owner usace_iwr_cac)",
         "agency":"U.S. Army Corps of Engineers","source_url":LAYER_URL,"license":LICENSE_TEXT,
         "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next",

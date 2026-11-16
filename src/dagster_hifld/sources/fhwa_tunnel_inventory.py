@@ -6,7 +6,6 @@ unapproved native candidate and keeps every release gate closed.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -31,6 +30,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "77879ddb06eb49d4a4a57298177bcd87"
 SERVICE_URL = "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_National_Tunnel_Inventory/FeatureServer"
@@ -47,15 +47,6 @@ EXPECTED_RECORD_SHA256 = "2f7a0b1fe698b1528ab0af87552951c033834b3cf861f6e35571b0
 EXPECTED_GEOMETRY_SHA256 = "645fc954ba27e4607932c0d574a7586e0ca71c458648ac5471649bbe8708b9a7"
 EXPECTED_SCHEMA_SHA256 = "faa10e3aa64029d3f69acf211d88c1d692b29edeecf6255c750681b458508d9d"
 MAX_BODY_BYTES = 100_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
