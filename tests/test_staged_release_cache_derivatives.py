@@ -3,8 +3,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from dagster_hifld.sources import capture_common
-from dagster_hifld.sources.capture_common import validate_staged_release_derivatives
+from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources.epa_frs_common import validate_staged_release_derivatives
 
 
 PREFIX = "candidate-dataset/candidate-file/vabc123"
@@ -77,19 +77,19 @@ class StagedReleaseCacheDerivativeTests(unittest.TestCase):
             "capture_receipts": {},
             "objects": {},
         }
-        with patch.object(capture_common, "load_first_construction", return_value=json.dumps({"payload": payload})), \
-             patch.object(capture_common, "validate_construction_code_identity"):
-            result = capture_common.verify_cached_candidate(
+        with patch.object(epa_frs_common, "load_first_construction", return_value=json.dumps({"payload": payload})), \
+             patch.object(epa_frs_common, "validate_construction_code_identity"):
+            result = epa_frs_common.verify_cached_candidate(
                 storage, Path("."), "state", PREFIX, "1.2.3", "fingerprint",
                 identity, "record", "schema", {}, {},
             )
         self.assertEqual(result, {"version": "1.2.3", "reused": True})
 
         storage_objects[f"{PREFIX}/unknown.json"] = b"unrostered"
-        with patch.object(capture_common, "load_first_construction", return_value=json.dumps({"payload": payload})), \
-             patch.object(capture_common, "validate_construction_code_identity"):
+        with patch.object(epa_frs_common, "load_first_construction", return_value=json.dumps({"payload": payload})), \
+             patch.object(epa_frs_common, "validate_construction_code_identity"):
             with self.assertRaisesRegex(ValueError, "cached_candidate_storage_roster_changed"):
-                capture_common.verify_cached_candidate(
+                epa_frs_common.verify_cached_candidate(
                     storage, Path("."), "state", PREFIX, "1.2.3", "fingerprint",
                     identity, "record", "schema", {}, {},
                 )

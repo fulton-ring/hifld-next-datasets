@@ -15,7 +15,7 @@ from dagster_hifld.sources import usace_waterway_lines as source
 from dagster_hifld.sources.arcgis_filegdb import stage_filegdb_archive, verify_extracted_filegdb_cache
 from dagster_hifld.construction_state import canonical_construction_bundle, seal_first_construction
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.capture_common import write_immutable
+from dagster_hifld.sources.epa_frs_common import write_immutable
 
 
 class UsaceWaterwayLinesContractTests(unittest.TestCase):

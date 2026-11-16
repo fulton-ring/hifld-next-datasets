@@ -24,7 +24,7 @@ from dagster_hifld.sources import wbd_2_digit_hu as two
 from dagster_hifld.sources import wbd_12_digit_hu as twelve
 from dagster_hifld.sources import wbd_hu8_subbasin as hu8
 from dagster_hifld.sources import wbd_hu_family as family
-from dagster_hifld.sources.arcgis_layer import _canonical
+from dagster_hifld.sources.usace_obstruction_lines import _canonical
 from tests.test_wbd_2_digit_hu import (
     _documents as _two_documents,
     _seal_manifest as _seal_two_manifest,

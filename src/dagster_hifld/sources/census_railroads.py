@@ -11,7 +11,7 @@ import httpx
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.sources import census_tiger_common
-from dagster_hifld.sources.capture_common import (
+from dagster_hifld.sources.epa_frs_common import (
     capture_get,
     write_immutable,
 )

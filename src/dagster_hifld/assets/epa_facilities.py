@@ -7,7 +7,7 @@ from dagster import (
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_facilities_common import EPA_FACILITIES_PROFILE, stage_epa_facilities
+from dagster_hifld.sources.epa_facilities import EPA_FACILITIES_PROFILE, stage_epa_facilities
 
 SLUG = EPA_FACILITIES_PROFILE.ordinary.slug
 

@@ -17,7 +17,7 @@ from dagster_hifld.assets.paging_transmission_towers import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import paging_transmission_towers as source
-from dagster_hifld.sources.capture_common import _canonical
+from dagster_hifld.sources.epa_frs_common import _canonical
 
 
 def _sha(value):

@@ -18,7 +18,7 @@ from dagster_hifld.assets.usace_civil_works_divisions import (
     usace_civil_works_divisions_draft_schedule,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import capture_common
+from dagster_hifld.sources import epa_frs_common
 from dagster_hifld.sources import usace_civil_works_divisions as ucwd
 
 
@@ -212,7 +212,7 @@ def _replay_patches():
             patch.object(ucwd, "processing_identity", return_value={
                 "code_commit": "a" * 40, "files": {"x.py": "b" * 64}}),
             patch.object(ucwd, "validate_construction_code_identity", return_value=None),
-            patch.object(capture_common, "validate_construction_code_identity",
+            patch.object(epa_frs_common, "validate_construction_code_identity",
                          return_value=None)]
 
 
@@ -482,7 +482,7 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
                                                    "files": {"x.py": "b" * 64}}), \
                         patch.object(ucwd, "validate_construction_code_identity",
                                      return_value=None), \
-                        patch.object(capture_common, "validate_construction_code_identity",
+                        patch.object(epa_frs_common, "validate_construction_code_identity",
                                      return_value=None):
                     result = ucwd.capture_usace_civil_works_divisions(
                         storage, offline_capture_directory=tmp)
@@ -541,7 +541,7 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
                                          return_value=stable_identity), \
                             patch.object(ucwd, "validate_construction_code_identity",
                                          return_value=None), \
-                            patch.object(capture_common, "validate_construction_code_identity",
+                            patch.object(epa_frs_common, "validate_construction_code_identity",
                                          return_value=None):
                         with ExitStack() as stack:
                             for extra_patch in extra:
@@ -574,7 +574,7 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
                         patch.object(ucwd, "processing_identity", return_value=stable_identity), \
                         patch.object(ucwd, "validate_construction_code_identity",
                                      return_value=None), \
-                        patch.object(capture_common, "validate_construction_code_identity",
+                        patch.object(epa_frs_common, "validate_construction_code_identity",
                                      return_value=None):
                     result = ucwd.capture_usace_civil_works_divisions(
                         storage, offline_capture_directory=tmp)
@@ -718,7 +718,7 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
                     patch.object(ucwd, "processing_identity", return_value={
                         "code_commit": "a" * 40, "files": {"x.py": "b" * 64}}), \
                     patch.object(ucwd, "validate_construction_code_identity", return_value=None), \
-                    patch.object(capture_common, "validate_construction_code_identity", return_value=None):
+                    patch.object(epa_frs_common, "validate_construction_code_identity", return_value=None):
                 result = ucwd.capture_usace_civil_works_divisions(
                     storage, offline_capture_directory=str(capture),
                     capture_directory=str(root / "replay"))

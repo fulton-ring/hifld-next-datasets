@@ -38,7 +38,7 @@ from shapely.geometry import mapping, shape
 
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.capture_common import processing_identity as shared_processing_identity
+from dagster_hifld.sources.epa_frs_common import processing_identity as shared_processing_identity
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file

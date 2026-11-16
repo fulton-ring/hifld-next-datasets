@@ -11,7 +11,7 @@ import pyarrow as pa
 
 from dagster_hifld.sources import epa_frs_tri as tri
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.sources.capture_common import candidate_prefix, verify_cached_candidate
+from dagster_hifld.sources.epa_frs_common import candidate_prefix, verify_cached_candidate
 
 
 class EpaFrsTriTests(unittest.TestCase):

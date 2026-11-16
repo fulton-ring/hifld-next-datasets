@@ -4,7 +4,7 @@ Completeness is proven against the producer at capture time: the before and
 after witnesses (count, OBJECTID count/min/max, service and layer documents)
 must agree, and the captured unique OBJECTIDs must equal the producer's count.
 The candidate layout, metadata keys, construction-state seal, cached-candidate
-verification and quarantine are the shared ``capture_common`` contract, so the
+verification and quarantine are the shared ``epa_frs_common`` contract, so the
 shared catalog and publish stages need no NFHL-specific code. The candidate
 version is derived from record, geometry and schema digests plus code
 identity, never from the clock.
@@ -27,7 +27,7 @@ from dagster_hifld.gdal import with_large_geojson_support
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.capture_common import (
+from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix,
     content_derived_version,
     processing_identity,

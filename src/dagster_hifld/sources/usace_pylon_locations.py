@@ -15,7 +15,6 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely import wkb
 from dagster_hifld.http_capture import capture_http_response
-from dagster_hifld.sources.arcgis_layer import validate_crs as _validate_crs, validate_dimensions as _validate_dimensions
 
 DATASET_SLUG = "pylon-locations-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -105,6 +104,28 @@ def _metadata(client: httpx.Client, staging, version_key: str, budget: list[int]
     if actual != expected:
         raise ValueError("source_schema_drift")
     return value
+
+
+def _validate_crs(ref: object) -> None:
+    if not isinstance(ref, dict):
+        raise ValueError("source_crs_drift")
+    codes = [ref[key] for key in ("wkid", "latestWkid") if key in ref]
+    if not codes or any(type(code) is not int or code != 4326 for code in codes):
+        raise ValueError("source_crs_drift")
+    for key in ("wkt", "wkt2"):
+        if key in ref:
+            try:
+                same_crs = pyproj.CRS.from_wkt(ref[key]).equals(pyproj.CRS.from_epsg(4326), ignore_axis_order=True)
+            except Exception as exc:
+                raise ValueError("source_crs_drift") from exc
+            if not same_crs:
+                raise ValueError("source_crs_drift")
+
+
+def _validate_dimensions(declaration: dict) -> None:
+    for name in ("hasZ", "hasM"):
+        if name in declaration and (type(declaration[name]) is not bool or declaration[name]):
+            raise ValueError("source_dimension_drift")
 
 
 def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int]) -> list[int]:

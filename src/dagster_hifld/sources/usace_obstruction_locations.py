@@ -22,13 +22,14 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.capture_common import (
+from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
-from dagster_hifld.sources.arcgis_layer import (
-    PAGE_MAX_BYTES, _canonical, _capture, _capture_identity, _load_capture, _sha, _validate_spatial_reference,
+from dagster_hifld.sources.usace_obstruction_lines import (
+    PAGE_MAX_BYTES, _canonical, _capture, _capture_identity,
+    _load_capture, _sha, _validate_spatial_reference,
 )
 
 DATASET_SLUG = "obstruction-locations-usace-ienc"
@@ -423,7 +424,8 @@ def capture_usace_obstruction_locations(storage: StagingStorageResource, *, vers
         "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
         "capture_receipts": receipts, "objects": descriptors})
     validate_construction_code_identity(
-        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity, )
+        Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
+    )
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": EXPECTED_COUNT, "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": EXPECTED_COUNT,

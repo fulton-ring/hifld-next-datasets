@@ -1,7 +1,7 @@
 """Issue #335 adapter for the native 2024 Census Unified layer."""
 from __future__ import annotations
 
-from dagster_hifld.sources import census_tiger_common as _shared
+from dagster_hifld.sources import census_school_districts as _shared
 
 DATASET_SLUG = "unified-school-districts"
 FILE_SLUG = DATASET_SLUG

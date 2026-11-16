@@ -1,9 +1,9 @@
-"""Request-identity binding for retained captures in capture_common."""
+"""Request-identity binding for retained captures in epa_frs_common."""
 from __future__ import annotations
 
 import unittest
 
-from dagster_hifld.sources.capture_common import validate_capture_request_identity
+from dagster_hifld.sources.epa_frs_common import validate_capture_request_identity
 
 
 class ValidateCaptureRequestIdentityTests(unittest.TestCase):

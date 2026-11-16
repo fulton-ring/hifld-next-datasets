@@ -30,7 +30,7 @@ import pyproj
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.capture_common import processing_identity
+from dagster_hifld.sources.epa_frs_common import processing_identity
 
 DATASET_SLUG = "address-ranges"
 FILE_SLUG = DATASET_SLUG

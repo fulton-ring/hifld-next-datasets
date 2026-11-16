@@ -13,7 +13,7 @@ from dagster_hifld.sources.epa_disaster_debris import (
     _native_parquet, _portal_publication_snapshot, _sha, _source_layer_stable,
     _validated_page_rows,
 )
-from dagster_hifld.sources.capture_common import (
+from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )

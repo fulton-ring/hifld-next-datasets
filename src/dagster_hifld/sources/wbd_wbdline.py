@@ -84,12 +84,12 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.capture_common import (
+from dagster_hifld.sources.epa_frs_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
-from dagster_hifld.sources.arcgis_layer import (
+from dagster_hifld.sources.usace_obstruction_lines import (
     _canonical, _capture_identity, _load_capture, _sha,
 )
 
@@ -1163,10 +1163,14 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
     descriptors = {}
     for name, key, body in (
             (output_path, f"{prefix}/{output_path}", None),
-            ("metadata/source_manifest.json", f"{prefix}/metadata/source_manifest.json", _canonical(manifest) + b"\n"),
-            ("metadata/source_audit.json", f"{prefix}/metadata/source_audit.json", _canonical(audit) + b"\n"),
-            ("metadata/processing_identity.json", f"{prefix}/metadata/processing_identity.json", _canonical(identity) + b"\n"),
-            ("metadata/candidate_ready.json", f"{prefix}/metadata/candidate_ready.json", _canonical(ready) + b"\n")):
+            ("metadata/source_manifest.json", f"{prefix}/metadata/source_manifest.json",
+             _canonical(manifest) + b"\n"),
+            ("metadata/source_audit.json", f"{prefix}/metadata/source_audit.json",
+             _canonical(audit) + b"\n"),
+            ("metadata/processing_identity.json", f"{prefix}/metadata/processing_identity.json",
+             _canonical(identity) + b"\n"),
+            ("metadata/candidate_ready.json", f"{prefix}/metadata/candidate_ready.json",
+             _canonical(ready) + b"\n")):
         if body is None:
             storage.upload_local_file(parquet_path, key)
         else:
