@@ -303,12 +303,12 @@ class MineplantCapturedCrushedStoneTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'permanent_observed_original_trust_loss'):self.stage(storage)
             incident=Path(tmp)/s.incident_directory(result['version']);self.assertTrue(incident.exists())
             shutil.move(str(incident),str(Path(tmp)/'retained-incident-coforge'));alias.write_bytes(original)
-            self.assertTrue(self.stage(storage)['reused'])
+            rebuilt=self.stage(storage);self.assertFalse(rebuilt['reused']);self.assertEqual(rebuilt['version'],result['version'])
             alias.unlink()
             with self.assertRaisesRegex(ValueError,'construction_missing_original_state'):self.stage(storage)
             with self.assertRaisesRegex(ValueError,'permanent_observed_original_trust_loss'):self.stage(storage)
             incident=Path(tmp)/s.incident_directory(result['version']);shutil.move(str(incident),str(Path(tmp)/'retained-incident-missing'));alias.write_bytes(original)
-            self.assertTrue(self.stage(storage)['reused'])
+            rebuilt=self.stage(storage);self.assertFalse(rebuilt['reused']);self.assertEqual(rebuilt['version'],result['version'])
 
     def test_first_marker_failure_leaves_CAS_and_repeated_retry_cannot_bootstrap(self):
         with tempfile.TemporaryDirectory() as tmp:
