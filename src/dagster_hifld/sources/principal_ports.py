@@ -6,7 +6,6 @@ import io
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -17,8 +16,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 from shapely import from_wkb
-from shapely.geometry import LinearRing
-from shapely.geometry import Polygon as ShapelyPolygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -26,6 +23,7 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix,
     capture_get,
@@ -187,13 +185,15 @@ def _validate_crs(value: object, label: str, *, required: bool = True) -> bool:
     return found
 
 
-def _polygon_wkb(geometry: dict) -> bytes:
-    """Encode ArcGIS rings as WKB MultiPolygon without moving or repairing XYs.
+def _feature_geometry_wkb(geometry: dict) -> bytes:
+    """Convert native ArcGIS rings to WKB through GDAL without moving or repairing XYs.
 
-    Esri encodes multipart polygons as a flat ring array. Ring winding identifies
-    exterior rings (clockwise) and holes (counter-clockwise). A hole is attached
-    to the smallest containing exterior; the raw feature capture remains the
-    definitive record of the producer's ring array and order.
+    Esri encodes multipart polygons as a flat ring array. Ring orientation and
+    hole assignment are GDAL's, and every served coordinate is verified
+    unchanged; the raw feature capture remains the definitive record of the
+    producer's ring array and order. Structural ring contracts (closure, XY
+    ordinates, dimension flags, feature spatial reference) are checked here,
+    so invalid served rings refuse the capture instead of being repaired.
     """
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
@@ -205,7 +205,6 @@ def _polygon_wkb(geometry: dict) -> bytes:
             raise ValueError("source_polygon_not_xy")
     if "spatialReference" in geometry:
         _validate_crs(geometry["spatialReference"], "feature_geometry")
-    source_rings = []
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
             raise ValueError("source_polygon_ring_invalid_or_open")
@@ -214,47 +213,7 @@ def _polygon_wkb(geometry: dict) -> bytes:
                       or not math.isfinite(float(value)) for value in point)
                for point in ring):
             raise ValueError("source_polygon_coordinate_not_finite_xy")
-        source_rings.append(ring)
-    shells = [(index, ring) for index, ring in enumerate(source_rings)
-              if not LinearRing(ring).is_ccw]
-    holes = [(index, ring) for index, ring in enumerate(source_rings)
-             if LinearRing(ring).is_ccw]
-    if not shells:
-        raise ValueError("source_polygon_exterior_ring_missing")
-    shell_polygons = [ShapelyPolygon(ring) for _index, ring in shells]
-    assigned: list[list[list[list[float]]]] = [[] for _ in shells]
-    for _index, hole in holes:
-        hole_polygon = ShapelyPolygon(hole)
-        containers = [
-            (polygon.area, index)
-            for index, polygon in enumerate(shell_polygons)
-            if polygon.covers(hole_polygon.representative_point())
-        ]
-        if not containers:
-            raise ValueError("source_polygon_hole_without_exterior")
-        _area, shell_index = min(containers)
-        assigned[shell_index].append(hole)
-
-    def polygon_body(shell: list[list[float]], interior_rings: list[list[list[float]]]) -> bytes:
-        body = bytearray(struct.pack("<BI", 1, 3))
-        body.extend(struct.pack("<I", 1 + len(interior_rings)))
-        for ring in [shell, *interior_rings]:
-            body.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                body.extend(struct.pack("<dd", float(point[0]), float(point[1])))
-        return bytes(body)
-
-    bodies = [polygon_body(shell, assigned[index])
-              for index, (_source_index, shell) in enumerate(shells)]
-    body = bytearray(struct.pack("<BI", 1, 6))
-    body.extend(struct.pack("<I", len(bodies)))
-    for polygon in bodies:
-        body.extend(polygon)
-    wkb = bytes(body)
-    parsed = from_wkb(wkb)
-    if parsed.geom_type != "MultiPolygon" or parsed.is_empty:
-        raise ValueError("source_polygon_wkb_encoding_invalid")
-    return wkb
+    return to_wkb(geometry, "esriGeometryPolygon", has_z=False, has_m=False)
 
 
 def _attribute_type(field: dict) -> pa.DataType:
@@ -284,11 +243,11 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
         arrays.append(pa.array(values, type=dtype, safe=True))
         schema_fields.append(pa.field(name, dtype, nullable=True,
                                       metadata={b"esri_field": _canonical(field)}))
-    wkb = [_polygon_wkb(feature["geometry"]) for feature in features]
+    wkb = [_feature_geometry_wkb(feature["geometry"]) for feature in features]
     arrays.append(pa.array(wkb, type=pa.binary()))
     schema_fields.append(pa.field("geometry", pa.binary(), nullable=False))
     geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {
-        "geometry": {"encoding": "WKB", "geometry_types": ["MultiPolygon"],
+        "geometry": {"encoding": "WKB", "geometry_types": ["MultiPolygon", "Polygon"],
                      "crs": SOURCE_CRS.to_json_dict()}}}
     schema = pa.schema(schema_fields, metadata={b"geo": _canonical(geo)})
     table = pa.Table.from_arrays(arrays, schema=schema)
@@ -381,7 +340,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         port_values.append(float(attrs["PORT"]))
         if not isinstance(geometry, dict) or not isinstance(geometry.get("rings"), list):
             raise ValueError("source_record_polygon_missing")
-        _polygon_wkb(geometry)
+        _feature_geometry_wkb(geometry)
     if len(set(port_values)) != EXPECTED_COUNT:
         raise ValueError("source_port_code_roster_missing_or_duplicate")
     features.sort(key=lambda feature: feature["attributes"]["OBJECTID"])
@@ -401,7 +360,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             vertices += len(ring)
             xs.extend(point[0] for point in ring)
             ys.extend(point[1] for point in ring)
-        converted = from_wkb(_polygon_wkb(feature["geometry"]))
+        converted = from_wkb(_feature_geometry_wkb(feature["geometry"]))
         if not converted.is_valid:
             invalid_geometry_count += 1
         ring_vertex_order_sha.append([feature["attributes"]["OBJECTID"], rings])

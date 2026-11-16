@@ -6,7 +6,6 @@ import io
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -17,7 +16,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 from shapely import from_wkb
-from shapely.geometry import LinearRing
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -35,6 +33,7 @@ from dagster_hifld.sources.epa_frs_common import (
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import to_wkb
 
 DATASET_SLUG = "dry-docks-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -189,8 +188,16 @@ def _validate_crs(value: object, label: str, *, required: bool = True) -> bool:
     return found
 
 
-def _polygon_wkb(geometry: dict) -> bytes:
-    """Encode native ArcGIS rings in order without reorientation or repair."""
+def _feature_geometry_wkb(geometry: dict) -> bytes:
+    """Convert native ArcGIS rings to WKB through GDAL without moving or repairing them.
+
+    Structural ring contracts (closure, XY ordinates, dimension flags, feature
+    spatial reference) are checked here; ring orientation and hole assignment
+    are GDAL's, and every served coordinate is verified unchanged. The pinned
+    record/geometry baselines carry any producer topology change, so no
+    winding gate is duplicated here. Assembled geometry must still satisfy
+    OGC validity: invalid rings refuse the capture rather than being repaired.
+    """
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
@@ -201,7 +208,6 @@ def _polygon_wkb(geometry: dict) -> bytes:
             raise ValueError("source_polygon_not_xy")
     if "spatialReference" in geometry:
         _validate_crs(geometry["spatialReference"], "feature_geometry")
-    source_rings = []
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
             raise ValueError("source_polygon_ring_invalid_or_open")
@@ -210,22 +216,8 @@ def _polygon_wkb(geometry: dict) -> bytes:
                       or not math.isfinite(float(value)) for value in point)
                for point in ring):
             raise ValueError("source_polygon_coordinate_not_finite_xy")
-        source_rings.append(ring)
-    # This layer's observed encoding is one clockwise exterior followed by
-    # counter-clockwise interior rings. Any topology/layout change is quarantined.
-    if LinearRing(source_rings[0]).is_ccw:
-        raise ValueError("source_exterior_ring_winding_drift")
-    if any(not LinearRing(ring).is_ccw for ring in source_rings[1:]):
-        raise ValueError("source_interior_ring_winding_drift")
-    body = bytearray(struct.pack("<BI", 1, 3))
-    body.extend(struct.pack("<I", len(source_rings)))
-    for ring in source_rings:
-        body.extend(struct.pack("<I", len(ring)))
-        for point in ring:
-            body.extend(struct.pack("<dd", float(point[0]), float(point[1])))
-    wkb = bytes(body)
-    polygon = from_wkb(wkb)
-    if polygon.geom_type != "Polygon" or polygon.is_empty or not polygon.is_valid:
+    wkb = to_wkb(geometry, "esriGeometryPolygon", has_z=False, has_m=False)
+    if not from_wkb(wkb).is_valid:
         raise ValueError("source_polygon_invalid_without_repair")
     return wkb
 
@@ -257,7 +249,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
         arrays.append(pa.array(values, type=dtype, safe=True))
         schema_fields.append(pa.field(name, dtype, nullable=True,
                                       metadata={b"esri_field": _canonical(field)}))
-    wkb = [_polygon_wkb(feature["geometry"]) for feature in features]
+    wkb = [_feature_geometry_wkb(feature["geometry"]) for feature in features]
     arrays.append(pa.array(wkb, type=pa.binary()))
     schema_fields.append(pa.field("geometry", pa.binary(), nullable=False))
     geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {
@@ -337,7 +329,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             raise ValueError("source_record_attribute_schema_drift")
         if not isinstance(geometry, dict) or not isinstance(geometry.get("rings"), list):
             raise ValueError("source_record_polygon_missing")
-        _polygon_wkb(geometry)
+        _feature_geometry_wkb(geometry)
     features.sort(key=lambda feature: feature["attributes"]["OBJECTID"])
     records_sha = _sha(_canonical([feature["attributes"] for feature in features]))
     geometry_sha = _sha(_canonical([[feature["attributes"]["OBJECTID"], feature["geometry"]]

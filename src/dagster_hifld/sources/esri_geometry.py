@@ -62,6 +62,26 @@ def _ring_coordinates(ring: list) -> tuple:
                for i, point in enumerate(sequence) if point == minimum)
 
 
+def zero_area_rings(rings: list) -> list[int]:
+    """Indexes of rings whose float64 shoelace area collapses to exactly zero.
+
+    Degeneracy diagnostic for callers that pin producer-served zero-area ring
+    contracts; ring orientation and hole assignment stay with GDAL. The sum
+    runs over consecutive edge terms (with the closing edge) exactly as the
+    producer-verified float64 computations did, so pins derived from them
+    still hold.
+    """
+    indexes = []
+    for index, ring in enumerate(rings):
+        area = 0.0
+        for position, vertex in enumerate(ring):
+            nxt = ring[(position + 1) % len(ring)]
+            area += vertex[0] * nxt[1] - nxt[0] * vertex[1]
+        if area == 0.0:
+            indexes.append(index)
+    return indexes
+
+
 def to_wkb(esri_geom: object, geometry_type: str, *,
            has_z: bool | None = None, has_m: bool | None = None) -> bytes | None:
     """Read native straight Esri polygon rings through GDAL's ESRIJSON driver.

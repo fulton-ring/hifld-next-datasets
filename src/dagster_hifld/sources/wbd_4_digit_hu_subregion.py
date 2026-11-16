@@ -46,7 +46,6 @@ import hashlib
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -56,8 +55,8 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely import from_wkb
-from shapely.geometry import MultiPolygon, Polygon
+from shapely import from_wkb, is_valid_reason
+from shapely.geometry import LinearRing, MultiPolygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -74,6 +73,7 @@ from dagster_hifld.sources.epa_frs_common import (
 from dagster_hifld.sources.usace_obstruction_lines import (
     _canonical, _capture_identity, _load_capture, _sha,
 )
+from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
 
 DATASET_SLUG = FILE_SLUG = "wbd-4-digit-hu-subregion"
 PUBLISHER = "U.S. Geological Survey, National Geospatial Technical Operations Center"
@@ -144,8 +144,12 @@ EXPECTED_RECORD_SHA256 = "2dd385984894eedcca5bcaf710a74c08136a6681d5b01b12d6f497
 # per feature in ascending OBJECTID order, including the rows that gate to null
 # geometry — computed from the complete dated population walk (2026-11-15).
 EXPECTED_GEOMETRY_SHA256 = "8b98e7ff114d9ee859b95ecb15021f1f1978b0dce7d8a8405502e5260509a5e2"
-EXPECTED_NULL_GEOMETRY_COUNT = 2
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {"source_polygon_ring_self_intersecting": 2}
+# Geometry quarantines retired by the shared GDAL Esri polygon converter
+# (issue #997): served rings always convert, OGC-invalid converted geometry
+# is retained verbatim and counted as ogc_invalid_geometry_counts, and the
+# only null candidate geometries are producer-null rows (none served).
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
 BASELINE_PENDING_NOTE = (
     "The record and geometry baselines and the geometry-gate counts are not "
     "pinned yet: no complete capture existed at draft time (observed "
@@ -315,91 +319,6 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
             raise ValueError("source_page_window_refused_after_bisection:" + sub_name)
         parts[sub_name] = (body, receipt)
     return parts, refusals
-
-
-class _GeometryGate(Exception):
-    """One row's served rings cannot form a valid OGC polygon; gate, never repair."""
-
-    def __init__(self, code: str) -> None:
-        super().__init__(code)
-        self.code = code
-
-
-GATE_MODES = frozenset({
-    "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
-    "source_polygon_ring_self_intersecting", "source_polygon_hole_unassigned",
-    "source_polygon_assembly_invalid",
-})
-
-
-def _signed_area(ring: list) -> float:
-    area = 0.0
-    for index in range(len(ring) - 1):
-        x1, y1 = ring[index]
-        x2, y2 = ring[index + 1]
-        area += x1 * y2 - x2 * y1
-    return area
-
-
-def _assemble_geometry(rings: list) -> bytes:
-    """Assemble structurally validated served XY rings verbatim into WKB, or
-    raise a gate code.
-
-    Producer ring orientation and vertex values are retained unchanged (no
-    reorientation, resampling or projection). ArcGIS encodes exterior rings
-    clockwise and interior rings counter-clockwise; zero-area sliver rings,
-    self-intersecting exteriors and unassignable holes gate the row instead of
-    being repaired. A hole claimed by several exteriors is assigned to the
-    smallest containing exterior exactly as the merged USACE reservoir
-    precedent does; if the resulting assembly still fails OGC validity the row
-    gates rather than publishing an invented polygon. Ring closure, ordinate
-    shape and finiteness are the caller's structural contract and raise
-    ``ValueError`` there instead of gating.
-    """
-    exteriors, holes = [], []
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise _GeometryGate("source_polygon_ring_degenerate")
-        area = _signed_area(coords)
-        if area == 0:
-            raise _GeometryGate("source_polygon_ring_degenerate")
-        (exteriors if area < 0 else holes).append(coords)
-    if not exteriors:
-        raise _GeometryGate("source_polygon_exterior_missing")
-    for coords in exteriors:
-        if not Polygon(coords).is_valid:
-            raise _GeometryGate("source_polygon_ring_self_intersecting")
-    shells = [(Polygon(coords), index) for index, coords in enumerate(exteriors)]
-    assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
-    for coords in holes:
-        point = Polygon(coords).representative_point()
-        candidates = [(shell.area, index) for shell, index in shells
-                      if shell.contains(point)]
-        if not candidates:
-            raise _GeometryGate("source_polygon_hole_unassigned")
-        assigned[min(candidates)[1]].append(coords)
-    polygons = [Polygon(exteriors[index], assigned[index]) for index in range(len(exteriors))]
-    assembled = polygons[0] if len(polygons) == 1 else MultiPolygon(polygons)
-    if not assembled.is_valid:
-        raise _GeometryGate("source_polygon_assembly_invalid")
-
-    def polygon_wkb(shell: list, hole_rings: list) -> bytes:
-        body = bytearray(struct.pack("<BI", 1, 3))
-        body.extend(struct.pack("<I", 1 + len(hole_rings)))
-        for ring in [shell, *hole_rings]:
-            body.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                body.extend(struct.pack("<dd", point[0], point[1]))
-        return bytes(body)
-
-    if len(polygons) == 1:
-        return polygon_wkb(exteriors[0], assigned[0])
-    out = bytearray()
-    out.extend(struct.pack("<BI", 1, 6))
-    out.extend(struct.pack("<I", len(polygons)))
-    for index in range(len(exteriors)):
-        out.extend(polygon_wkb(exteriors[index], assigned[index]))
-    return bytes(out)
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
@@ -578,7 +497,8 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
     record_hash, geometry_hash = hashlib.sha256(), hashlib.sha256()
     vertices = 0
     winding = {"cw_shells": 0, "ccw_holes": 0}
-    gate_counts: dict[str, int] = {}
+    ogc_invalid_geometry: dict[str, int] = {}
+    ogc_invalid_sample_objectids: list[int] = []
     null_geometry_count = 0
     geometry_valid = 0
     multipart = 0
@@ -679,7 +599,8 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                     rings = geometry.get("rings")
                     if not isinstance(rings, list) or not rings:
                         raise ValueError("source_polygon_rings_missing:" + part_name)
-                    for ring in rings:
+                    zero_area = frozenset(zero_area_rings(rings))
+                    for ring_index, ring in enumerate(rings):
                         if not isinstance(ring, list) or len(ring) < 4:
                             raise ValueError("source_polygon_ring_invalid:" + part_name)
                         if ring[0] != ring[-1]:
@@ -695,11 +616,15 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                                     <= point[1] <= coverage["ymax"] + EXPECTED_EXTENT_TOLERANCE):
                                 raise ValueError("source_geometry_outside_declared_coverage:" + part_name)
                         vertices += len(ring)
-                        area = _signed_area(ring)
-                        if area > 0:
-                            winding["ccw_holes"] += 1
-                        elif area < 0:
-                            winding["cw_shells"] += 1
+                        if ring_index not in zero_area:
+                            # Zero-area rings carry no orientation; the census
+                            # counts winding only for winding-bearing rings,
+                            # measured with shapely instead of a hand-written
+                            # signed area.
+                            if LinearRing([(point[0], point[1]) for point in ring]).is_ccw:
+                                winding["ccw_holes"] += 1
+                            else:
+                                winding["cw_shells"] += 1
                     served_ids = geometry.get("ids")
                     if served_ids is not None:
                         if (not isinstance(served_ids, list)
@@ -711,30 +636,34 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                             raise ValueError("source_geometry_ids_member_drift:" + part_name)
                         ids_member_features += 1
                     # The served rings are digested for every row, before
-                    # assembly and gating: a gated row's raw coordinates stay
-                    # covered by the pinned geometry baseline, so a coordinate
-                    # change that still raises the same gate mode is refused.
+                    # conversion, so every row's raw coordinates stay covered
+                    # by the pinned geometry baseline.
                     geometry_hash.update(_canonical([oid, rings]) + DIGEST_SEPARATOR)
-                    try:
-                        wkb = _assemble_geometry(rings)
-                    except _GeometryGate as gate:
-                        if gate.code not in GATE_MODES:
-                            raise
-                        gate_counts[gate.code] = gate_counts.get(gate.code, 0) + 1
-                        null_geometry_count += 1
-                        geometries.append(None)
-                        for field in names:
-                            columns[field].append(attrs[field])
-                        record_hash.update(_canonical(dict(attrs)) + DIGEST_SEPARATOR)
-                        continue
+                    # Ring orientation and hole assignment are GDAL's through
+                    # the shared native Esri polygon conversion; a conversion
+                    # failure refuses the capture, and OGC invalidity is a
+                    # producer defect retained verbatim with a counted reason,
+                    # never repaired or coerced to null geometry.
+                    wkb = to_wkb({"rings": rings}, "esriGeometryPolygon",
+                                 has_z=False, has_m=False)
                     decoded = from_wkb(wkb)
-                    for parity_field, observed in (("shape_Area", attrs.get("shape_Area")),
-                                                   ("shape_Length", attrs.get("shape_Length"))):
-                        if observed is None:
-                            continue
-                        computed = decoded.area if parity_field == "shape_Area" else decoded.length
-                        if abs(computed - observed) > SHAPE_PARITY_TOLERANCE * max(abs(observed), 1e-12):
-                            raise ValueError(f"source_{parity_field}_parity_drift:" + part_name)
+                    reason = is_valid_reason(decoded)
+                    if reason != "Valid Geometry":
+                        ogc_invalid_geometry[reason] = \
+                            ogc_invalid_geometry.get(reason, 0) + 1
+                        if len(ogc_invalid_sample_objectids) < 20:
+                            ogc_invalid_sample_objectids.append(oid)
+                    else:
+                        # Shape parity is a contract about an OGC-valid
+                        # assembly; rows retained as OGC-invalid are counted
+                        # above instead.
+                        for parity_field, observed in (("shape_Area", attrs.get("shape_Area")),
+                                                       ("shape_Length", attrs.get("shape_Length"))):
+                            if observed is None:
+                                continue
+                            computed = decoded.area if parity_field == "shape_Area" else decoded.length
+                            if abs(computed - observed) > SHAPE_PARITY_TOLERANCE * max(abs(observed), 1e-12):
+                                raise ValueError(f"source_{parity_field}_parity_drift:" + part_name)
                     geometry_valid += 1
                     if isinstance(decoded, MultiPolygon):
                         multipart += 1
@@ -787,9 +716,6 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
         if EXPECTED_NULL_GEOMETRY_COUNT is not None \
                 and null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
             raise ValueError("source_null_geometry_count_drift")
-        if (EXPECTED_UNUSABLE_GEOMETRY_COUNTS is not None
-                and gate_counts != EXPECTED_UNUSABLE_GEOMETRY_COUNTS):
-            raise ValueError("source_unusable_geometry_counts_drift")
         audit = {
             "source_feature_count": EXPECTED_COUNT,
             "source_id_sha256": ids_sha, "source_id_min": EXPECTED_ID_MIN,
@@ -810,7 +736,9 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
             "source_ring_winding_counts": dict(sorted(winding.items())),
             "geometry_valid_count": geometry_valid,
             "null_geometry_count": null_geometry_count,
-            "unusable_geometry_counts": dict(sorted(gate_counts.items())),
+            "unusable_geometry_counts": {},
+            "ogc_invalid_geometry_counts": dict(sorted(ogc_invalid_geometry.items())),
+            "ogc_invalid_geometry_sample_objectids": ogc_invalid_sample_objectids,
             "multipart_feature_count": multipart, "feature_with_hole_count": with_hole,
             "source_ids_member_feature_count": ids_member_features,
             "page_parts": dict(sorted((page_parts or {}).items())),
@@ -1010,11 +938,10 @@ def capture_wbd_4_digit_hu_subregion(storage: StagingStorageResource, *, version
             digest.update(block)
     parquet_sha = digest.hexdigest()
     receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
-    gate_note = (f"{audit['null_geometry_count']} rows gate to null geometry and are "
-                 "counted by failure mode: "
-                 + json.dumps(audit["unusable_geometry_counts"], sort_keys=True)
-                 if audit["unusable_geometry_counts"] else
-                 "no rows gate: every served polygon assembles to a valid OGC geometry")
+    gate_note = ("no row gates to null geometry: served rings convert through the shared "
+                 "GDAL Esri polygon converter, and OGC-invalid converted geometry is "
+                 "retained verbatim and counted by reason as "
+                 + json.dumps(audit["ogc_invalid_geometry_counts"], sort_keys=True))
     inputs = [{"input_id": name, "producer": PUBLISHER,
         "host": urlsplit(receipt["url"]).hostname,
         "role": "producer_publication",

@@ -404,13 +404,13 @@ class GeometryContractTests(unittest.TestCase):
     def test_native_polygon_wkb_preserves_ring_and_vertex_order(self):
         exterior = [[0, 0], [0, 4], [4, 4], [4, 0], [0, 0]]
         interior = [[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]
-        wkb = source._polygon_wkb({"rings": [exterior, interior]})
+        wkb = source._feature_geometry_wkb({"rings": [exterior, interior]})
         self.assertEqual(struct.unpack_from("<I", wkb, 5)[0], 2)
         polygon = from_wkb(wkb)
         self.assertEqual(get_coordinates(polygon.exterior).tolist(), exterior)
         self.assertEqual(get_coordinates(polygon.interiors[0]).tolist(), interior)
 
-    def test_polygon_rejects_non_xy_nonfinite_open_and_rewound_rings(self):
+    def test_polygon_rejects_non_xy_nonfinite_and_open_rings_and_retains_rewound_rings(self):
         ring = [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]
         cases = [
             ({"rings": [[*ring[:-1], [0, 0, 5], ring[-1]]]},
@@ -418,13 +418,18 @@ class GeometryContractTests(unittest.TestCase):
             ({"rings": [[*ring[:-1], [float("nan"), 0], ring[-1]]]},
              "source_polygon_coordinate_not_finite_xy"),
             ({"rings": [ring[:-1]]}, "source_polygon_ring_invalid_or_open"),
-            ({"rings": [list(reversed(ring))]}, "source_exterior_ring_winding_drift"),
             ({"rings": [ring], "hasM": True}, "source_polygon_not_xy"),
         ]
         for geometry, error in cases:
             with self.subTest(error=error):
                 with self.assertRaisesRegex(ValueError, error):
-                    source._polygon_wkb(geometry)
+                    source._feature_geometry_wkb(geometry)
+        # GDAL retains a rewound producer ring verbatim: winding is not an
+        # OGC validity criterion, and the pinned geometry baseline carries any
+        # producer topology change.
+        rewound = source._feature_geometry_wkb({"rings": [list(reversed(ring))]})
+        self.assertEqual(get_coordinates(from_wkb(rewound).exterior).tolist(),
+                         list(reversed(ring)))
 
 
 class ParquetCandidateTests(unittest.TestCase):
@@ -451,7 +456,7 @@ class ParquetCandidateTests(unittest.TestCase):
         self.assertEqual(str(table.schema.field("OBJECTID").type), "int64")
         self.assertEqual(str(table.schema.field("Scale_Minimum").type), "int32")
         self.assertEqual(str(table.schema.field("Feature_ID").type), "string")
-        self.assertEqual(table["geometry"][0].as_py(), source._polygon_wkb({"rings": [ring]}))
+        self.assertEqual(table["geometry"][0].as_py(), source._feature_geometry_wkb({"rings": [ring]}))
         geo = json.loads(table.schema.metadata[b"geo"].decode("utf-8"))
         self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4326)
         self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Polygon"])

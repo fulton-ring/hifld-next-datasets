@@ -22,6 +22,7 @@ from dagster_hifld.assets.wbd_10_digit_hu import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wbd_10_digit_hu as source
+from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.usace_obstruction_lines import _canonical
 
 _TEST_COUNT = 5
@@ -128,7 +129,8 @@ def _attributes(oid: int) -> dict:
         else:
             attrs[name] = f"{name}-{oid}"
     if oid not in _GATE_FEATURES:
-        decoded = from_wkb(source._assemble_geometry(_feature_rings(oid)))
+        decoded = from_wkb(to_wkb({"rings": _feature_rings(oid)},
+                                  "esriGeometryPolygon", has_z=False, has_m=False))
         attrs["shape_Area"] = decoded.area
         attrs["shape_Length"] = decoded.length
     else:
@@ -440,11 +442,11 @@ class Wbd10DigitHuTests(unittest.TestCase):
         self.assertEqual(audit["source_id_min"], min(_TEST_ROSTER))
         self.assertEqual(audit["source_id_max"], max(_TEST_ROSTER))
         self.assertEqual(audit["source_id_sha256"], _digest(_canonical(list(_TEST_ROSTER))))
-        self.assertEqual(audit["null_geometry_count"], len(_GATE_FEATURES))
-        self.assertEqual(audit["geometry_valid_count"], len(_TEST_ROSTER) - len(_GATE_FEATURES))
-        self.assertEqual(audit["unusable_geometry_counts"], dict(sorted(
-            (mode, sum(1 for value in _GATE_FEATURES.values() if value == mode))
-            for mode in set(_GATE_FEATURES.values()))))
+        self.assertEqual(audit["null_geometry_count"], 0)
+        self.assertEqual(audit["geometry_valid_count"], len(_TEST_ROSTER))
+        self.assertEqual(audit["unusable_geometry_counts"], {})
+        self.assertEqual(sorted(audit["ogc_invalid_geometry_sample_objectids"]),
+                         sorted(_GATE_FEATURES))
         self.assertEqual(audit["source_crs"], "EPSG:3857")
         self.assertLess(audit["geometry_bounds"][0], -13_100_000)
         self.assertEqual(sorted(derived["geometry_types"]), ["MultiPolygon", "Polygon"])
@@ -505,29 +507,25 @@ class Wbd10DigitHuTests(unittest.TestCase):
                 with relaxed_pins(EXPECTED_NULL_GEOMETRY_COUNT=1,
                                   EXPECTED_UNUSABLE_GEOMETRY_COUNTS=gate_counts):
                     source._validate_stream(root, parquet_sink=None)
-            with self.assertRaisesRegex(ValueError, "source_unusable_geometry_counts_drift"):
-                with relaxed_pins(EXPECTED_NULL_GEOMETRY_COUNT=3,
-                                  EXPECTED_UNUSABLE_GEOMETRY_COUNTS={
-                                      **gate_counts, "source_polygon_ring_degenerate": 2}):
-                    source._validate_stream(root, parquet_sink=None)
 
     def test_wkb_preserves_ring_structure_and_declared_types(self):
-        single = source._assemble_geometry(_feature_rings(11)[:1])
+        def converted(rings):
+            return to_wkb({"rings": rings}, "esriGeometryPolygon", has_z=False, has_m=False)
+
+        single = converted(_feature_rings(11)[:1])
         self.assertEqual(struct.unpack("<BI", single[:5]), (1, 3))
-        with_hole = source._assemble_geometry([_shell(2), _hole(_shell(2))])
+        with_hole = converted([_shell(2), _hole(_shell(2))])
         self.assertEqual(struct.unpack("<BI", with_hole[:5]), (1, 3))
         self.assertEqual(len(from_wkb(with_hole).interiors), 1)
-        multi = source._assemble_geometry([_shell(3), _shell(4)])
+        multi = converted([_shell(3), _shell(4)])
         self.assertEqual(struct.unpack("<BI", multi[:5]), (1, 6))
         self.assertEqual(len(from_wkb(multi).geoms), 2)
-        for rings, mode in (
-                ([_hole(_shell(1))], "source_polygon_exterior_missing"),
-                ([[_shell(1)[0]] * 4], "source_polygon_ring_degenerate"),
-                ([_bowtie(1)], "source_polygon_ring_self_intersecting"),
-                (_overlapping_shells(1), "source_polygon_assembly_invalid")):
-            with self.assertRaisesRegex(Exception, mode):
-                source._assemble_geometry(rings)
-        self.assertIn("source_polygon_hole_unassigned", source.GATE_MODES)
+        # GDAL assembles a lone CCW producer ring into a valid polygon and
+        # retains zero-area, self-intersecting and overlapping-ring defects
+        # verbatim; none is refused or repaired (issue #997 shared converter).
+        self.assertTrue(from_wkb(converted([_hole(_shell(1))])).is_valid)
+        for rings in ([[_shell(1)[0]] * 4], [_bowtie(1)], _overlapping_shells(1)):
+            self.assertFalse(from_wkb(converted(rings)).is_valid)
 
     def test_replay_rejects_roster_drift_and_honors_retained_receipts(self):
         documents = _documents()
@@ -680,13 +678,11 @@ class Wbd10DigitHuTests(unittest.TestCase):
                 name = field["name"]
                 self.assertEqual(table.column(name)[position].as_py(), expected[name])
             wkb = table.column("geometry")[position].as_py()
-            if oid in _GATE_FEATURES:
-                self.assertIsNone(wkb)
-            else:
-                decoded = from_wkb(wkb)
-                reference = from_wkb(source._assemble_geometry(_feature_rings(oid)))
-                self.assertEqual(decoded.area, reference.area)
-                self.assertEqual(decoded.length, reference.length)
+            decoded = from_wkb(wkb)
+            reference = from_wkb(to_wkb({"rings": _feature_rings(oid)},
+                                  "esriGeometryPolygon", has_z=False, has_m=False))
+            self.assertEqual(decoded.area, reference.area)
+            self.assertEqual(decoded.length, reference.length)
         self.assertEqual(derived["parquet_path"], sink)
 
     def test_row_groups_are_budgeted_by_served_geometry_bytes(self):
@@ -710,7 +706,7 @@ class Wbd10DigitHuTests(unittest.TestCase):
             self.assertLessEqual(non_null, 1)
             if non_null:
                 non_null_groups += 1
-        self.assertEqual(non_null_groups, len(_TEST_ROSTER) - len(_GATE_FEATURES))
+        self.assertEqual(non_null_groups, len(_TEST_ROSTER))
         self.assertEqual(parquet.metadata.num_rows, len(_TEST_ROSTER))
         table = pq.read_table(sink)
         self.assertEqual(table.column("objectid").to_pylist(), _TEST_ROSTER)
