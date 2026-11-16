@@ -86,8 +86,14 @@ def _check_identity(layer: NfhlLayer, service: dict, layer_doc: dict) -> str:
     if (layer_doc.get("id"), layer_doc.get("name"), layer_doc.get("type")) != (layer.layer_id, layer.name, kind) \
             or layer_doc.get("geometryType") != layer.esri_geometry_type:
         raise ValueError(f"nfhl_layer_identity_drift:{layer.layer_id}")
-    if layer_doc.get("hasZ") is True or layer_doc.get("hasM") is True:
-        raise ValueError("source_z_or_m_geometry_unsupported")
+    declared_zm = (layer_doc.get("hasZ") is True, layer_doc.get("hasM") is True)
+    if any(declared_zm):
+        if layer.source_zm is None:
+            raise ValueError("source_z_or_m_geometry_unsupported")
+        if declared_zm != layer.source_zm:
+            raise ValueError(f"nfhl_layer_zm_declaration_drift:{declared_zm}")
+    elif layer.source_zm is not None:
+        raise ValueError(f"nfhl_layer_zm_declaration_drift:{declared_zm}")
     if type(layer_doc.get("maxRecordCount")) is not int or layer_doc["maxRecordCount"] < 1:
         raise ValueError("source_record_limit_missing")
     fields = layer_doc.get("fields")
@@ -256,6 +262,11 @@ def _stage(storage: StagingStorageResource, key: str, *, body: bytes | None = No
     return {"bytes": size, "sha256": digest}
 
 
+def _alias_text(aliases: tuple[tuple[str, int], ...]) -> str:
+    names = [f"{inventory_id} with DataLumos project {project}" for inventory_id, project in aliases]
+    return "".join(f", and the HIFLD Open inventory alias {name}" for name in names)
+
+
 def _manifest(layer: NfhlLayer, identity: dict, receipts: dict[str, dict], rel: str,
               parquet: dict[str, object]) -> dict[str, object]:
     url, kind = layer_url(layer), ("table" if layer.is_table else "layer")
@@ -311,8 +322,9 @@ def _manifest(layer: NfhlLayer, identity: dict, receipts: dict[str, dict], rel: 
                    f"(NFHL)' documents this exact REST URL ({SERVICE_URL}) as the ArcGIS REST service for effective "
                    "NFHL data; its HTML is captured as 'service_doc' evidence. This candidate is exactly "
                    f"{kind} {layer.layer_id} '{layer.name}' of that producer service. The HIFLD Open inventory lists "
-                   f"this dataset as {layer.inventory_id} with DataLumos project {layer.datalumos_project}; that "
-                   "ICPSR archive copy is identification and comparison context only, never a pipeline input.",
+                   f"this dataset as {layer.inventory_id} with DataLumos project {layer.datalumos_project}"
+                   f"{_alias_text(layer.inventory_aliases)}; those "
+                   "ICPSR archive copies are identification and comparison context only, never a pipeline input.",
     }
     if layer.is_table:
         manifest["unsupported_output_formats"] = {
@@ -366,6 +378,8 @@ def _stage_candidate(storage: StagingStorageResource, layer: NfhlLayer, root: Pa
              "source_schema_sha256": schema_sha, "source_crs_epsg": None if layer.is_table else SOURCE_CRS_WKID,
              "geometry_kind": layer.geometry, "geometry": result["geometry"], "object_id_field": result["oid_field"],
              "declared_layer_extent": result["layer_doc"].get("extent"),
+             "source_declared_zm": {"hasZ": result["layer_doc"].get("hasZ") is True,
+                                    "hasM": result["layer_doc"].get("hasM") is True},
              "unique_source_id_count": result["feature_count"], "page_count": result["page_count"],
              "source_fields": result["source_fields"], "official_layer_name": layer.name,
              "layer_id": layer.layer_id, "service_url": SERVICE_URL, "source_release_date": None,

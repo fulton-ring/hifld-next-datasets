@@ -28,6 +28,12 @@ class NfhlLayer:
     datalumos_project: int
     subject: str = ""
     id_note: str = ""
+    # Additional HIFLD Open inventory entries (id, DataLumos project) that carry the
+    # same producer layer, recorded so the lineage names every dataset served.
+    inventory_aliases: tuple[tuple[str, int], ...] = ()
+    # The (hasZ, hasM) declaration in the producer's layer document this entry
+    # accepts. ``None`` requires the document to declare no Z or M geometry.
+    source_zm: tuple[bool, bool] | None = None
     # Initial OBJECTID-window target; ``None`` uses the layer's live maxRecordCount.
     page_records: int | None = None
     max_page_bytes: int = 64 * MIB
@@ -106,12 +112,20 @@ LAYERS: tuple[NfhlLayer, ...] = (
     NfhlLayer("nfhl-base-flood-elevations", 16, "Base Flood Elevations", "Base Flood Elevations (FEMA NFHL)",
               "line", _ids("BFE_LN_ID"), "nfhl/base-flood-elevations-1", 239788,
               min_free_bytes=12_000_000_000),
+    NfhlLayer("nfhl-profile-baselines", 17, "Profile Baselines", "Profile Baselines (FEMA NFHL)", "line",
+              _ids("DFIRM_ID", "VERSION_ID", "BASELN_ID", "WTR_NM", "START_ID", "SOURCE_CIT"),
+              "nfhl/profile-baselines", 239985, subject="profile baseline polylines for flood-profile studies",
+              source_zm=(True, True), max_page_bytes=256 * MIB, min_free_bytes=24_000_000_000),
     NfhlLayer("nfhl-transect-baselines", 18, "Transect Baselines", "Transect Baselines (FEMA NFHL)", "line",
               _ids("TBASELN_ID", "CST_MDL_ID"), "nfhl/transect-baselines", 239991,
               min_free_bytes=4_000_000_000),
     NfhlLayer("nfhl-limit-moderate-wave-action", 19, "Limit of Moderate Wave Action",
               "Limit of Moderate Wave Action (FEMA NFHL)", "line", _ids("LIMWA_ID"),
               "nfhl/limit-of-moderate-wave-action-1", 239977),
+    NfhlLayer("nfhl-water-lines", 20, "Water Lines", "Water Lines (FEMA NFHL)", "line",
+              _ids("DFIRM_ID", "VERSION_ID", "WTR_LN_ID", "WTR_NM", "SHOWN_FIRM", "SHOWN_INDX", "SOURCE_CIT"),
+              "nfhl/water-lines-1", 240865, subject="hydrographic base-map lines shown on FIRMs",
+              max_page_bytes=256 * MIB, min_free_bytes=48_000_000_000),
     NfhlLayer("nfhl-political-jurisdictions", 22, "Political Jurisdictions",
               "Political Jurisdictions (FEMA NFHL)", "polygon", _ids("POL_AR_ID"),
               "nfhl/political-jurisdictions-1", 239983, page_records=1000),
@@ -125,6 +139,13 @@ LAYERS: tuple[NfhlLayer, ...] = (
     NfhlLayer("nfhl-hydrologic-reaches", 26, "Hydrologic Reaches", "Hydrologic Reaches (FEMA NFHL)", "line",
               _ids("REACH_ID", "UP_NODE", "DN_NODE"), "nfhl/hydrologic-reaches-1", 239975,
               min_free_bytes=12_000_000_000),
+    NfhlLayer("nfhl-flood-hazard-boundaries", 27, "Flood Hazard Boundaries",
+              "Flood Hazard Boundaries (FEMA NFHL)", "line",
+              _ids("DFIRM_ID", "VERSION_ID", "FLD_LN_ID", "LN_TYP", "SOURCE_CIT"),
+              "nfhl/flood-hazard-boundaries", 239970,
+              subject="flood-hazard zone boundary lines (S_Fld_Haz_Ln)",
+              inventory_aliases=(("nfhl/national-flood-hazard-layer-line-nfhl-1", 240863),),
+              max_page_bytes=512 * MIB, min_free_bytes=160_000_000_000),
     NfhlLayer("nfhl-seclusion-boundaries", 29, "Seclusion Boundaries", "Seclusion Boundaries (FEMA NFHL)",
               "polygon", _ids("SUBINFO_ID", "CASE_NO"), "nfhl/seclusion-boundaries", 239987),
     NfhlLayer("nfhl-alluvial-fans", 30, "Alluvial Fans", "Alluvial Fans (FEMA NFHL)", "polygon",

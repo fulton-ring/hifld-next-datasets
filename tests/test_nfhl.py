@@ -46,14 +46,15 @@ GEOMETRIES = {
                 41: ({"rings": [OUTSIDE]}, Polygon(OUTSIDE)), 100: ({"rings": [FAR_SQUARE]}, Polygon(FAR_SQUARE))},
     "none": {oid: (None, None) for oid in (3, 4, 10, 11, 12, 40, 41, 100)},
 }
-LEGACY_SLUGS = {
+FAMILY_SLUGS = {
     "nfhl-alluvial-fans", "nfhl-availability", "nfhl-base-flood-elevations", "nfhl-base-index",
-    "nfhl-coastal-gages", "nfhl-coastal-transects", "nfhl-cross-sections", "nfhl-firm-panels", "nfhl-gages",
-    "nfhl-general-structures", "nfhl-high-water-marks", "nfhl-hydrologic-reaches", "nfhl-levees",
-    "nfhl-limit-moderate-wave-action", "nfhl-lomrs", "nfhl-nodes", "nfhl-plss", "nfhl-political-jurisdictions",
-    "nfhl-primary-frontal-dunes", "nfhl-river-mile-markers", "nfhl-seclusion-boundaries",
-    "nfhl-station-start-points", "nfhl-study-info", "nfhl-subbasins", "nfhl-topographic-low-confidence-areas",
-    "nfhl-transect-baselines", "nfhl-water-areas",
+    "nfhl-coastal-gages", "nfhl-coastal-transects", "nfhl-cross-sections", "nfhl-flood-hazard-boundaries",
+    "nfhl-firm-panels", "nfhl-gages", "nfhl-general-structures", "nfhl-high-water-marks",
+    "nfhl-hydrologic-reaches", "nfhl-levees", "nfhl-limit-moderate-wave-action", "nfhl-lomrs", "nfhl-nodes",
+    "nfhl-plss", "nfhl-political-jurisdictions", "nfhl-primary-frontal-dunes", "nfhl-profile-baselines",
+    "nfhl-river-mile-markers", "nfhl-seclusion-boundaries", "nfhl-station-start-points", "nfhl-study-info",
+    "nfhl-subbasins", "nfhl-topographic-low-confidence-areas", "nfhl-transect-baselines", "nfhl-water-areas",
+    "nfhl-water-lines",
 }
 
 
@@ -77,6 +78,8 @@ class FakeMapServer:
                          for oid in (geometries if oids is None else oids)}
         self.max_record_count = max_record_count
         self.refuse = lambda lo, hi: None
+        # Z/M flags served in the layer document; defaults to the table entry's contract.
+        self.zm_doc: tuple[bool, bool] | None = layer.source_zm
         self.hidden: set[int] = set()
         self.after_pages = None
         self.requests: list[str] = []
@@ -111,6 +114,8 @@ class FakeMapServer:
         if not self.layer.is_table:
             doc.update(geometryType=GEOMETRY_TYPES[self.layer.geometry], sourceSpatialReference=CRS,
                        geometryField={"name": "SHAPE", "type": "esriFieldTypeGeometry"})
+            if self.zm_doc is not None:
+                doc.update(hasZ=self.zm_doc[0], hasM=self.zm_doc[1])
         return doc
 
     def service_doc(self):
@@ -203,7 +208,8 @@ class NfhlCaptureCase(unittest.TestCase):
 
 class CandidateTests(NfhlCaptureCase):
     def test_point_line_polygon_and_table_layers_stage_complete_candidates(self):
-        for slug in ("nfhl-gages", "nfhl-levees", "nfhl-lomrs", "nfhl-study-info", "nfhl-seclusion-boundaries"):
+        for slug in ("nfhl-gages", "nfhl-levees", "nfhl-lomrs", "nfhl-study-info", "nfhl-seclusion-boundaries",
+                     "nfhl-profile-baselines"):
             with self.subTest(slug=slug):
                 layer = LAYERS_BY_SLUG[slug]
                 server = FakeMapServer(layer, oids=[] if slug == "nfhl-seclusion-boundaries" else None,
@@ -244,6 +250,61 @@ class CandidateTests(NfhlCaptureCase):
         self.assertEqual(report["sample_object_ids"]["out_of_domain_geometry"], [41])
         point = self.run_capture(FakeMapServer(LAYERS_BY_SLUG["nfhl-gages"]))
         self.assertEqual((point["unconvertible_geometry_count"], point["null_geometry_count"]), (1, 1))
+
+
+class ZmContractTests(NfhlCaptureCase):
+    """The producer's Z/M declaration is accepted only as the entry declares it,
+    and served Z/M vertices always fail closed because GDAL decodes them."""
+
+    def test_zm_declaring_document_without_entry_contract_fails(self):
+        server = FakeMapServer(LAYERS_BY_SLUG["nfhl-levees"])
+        server.zm_doc = (True, True)
+        with self.assertRaisesRegex(ValueError, "source_z_or_m_geometry_unsupported"):
+            self.run_capture(server)
+        failures = [k for k in self.quarantines(LAYERS_BY_SLUG["nfhl-levees"]) if k.endswith("failure.json")]
+        self.assertEqual(json.loads(self.storage.read_key(failures[0]))["reason_code"],
+                         "source_z_or_m_geometry_unsupported")
+
+    def test_zm_declaration_mismatch_fails(self):
+        for doc_zm in ((False, False), (True, False), (False, True)):
+            with self.subTest(doc_zm=doc_zm):
+                server = FakeMapServer(LAYERS_BY_SLUG["nfhl-profile-baselines"])
+                server.zm_doc = doc_zm
+                with self.assertRaisesRegex(ValueError, "nfhl_layer_zm_declaration_drift"):
+                    self.run_capture(server)
+
+    def test_declared_zm_layer_records_the_producer_declaration(self):
+        layer = LAYERS_BY_SLUG["nfhl-profile-baselines"]
+        result = self.run_capture(FakeMapServer(layer, max_record_count=3))
+        audit = json.loads(self.staged(result, "metadata/source_audit.json"))
+        self.assertEqual(audit["source_declared_zm"], {"hasZ": True, "hasM": True})
+        geo = json.loads(self.parquet(result, layer).schema.metadata[b"geo"])
+        self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["LineString"])
+
+    def test_served_zm_vertices_fail_closed_and_quarantine(self):
+        layer = LAYERS_BY_SLUG["nfhl-levees"]
+        server = FakeMapServer(layer, max_record_count=3)
+        zm_paths = [[[-86.0, 31.0, 1.5, 2.5], [-86.1, 31.1, 3.5, 4.5]]]
+        for oid, geometry in server.features.items():
+            if geometry.get("geometry") is not None:
+                geometry["geometry"]["paths"] = zm_paths
+        with self.assertRaisesRegex(ValueError, "source_z_or_m_geometry_unsupported"):
+            self.run_capture(server)
+        failures = [k for k in self.quarantines(layer) if k.endswith("failure.json")]
+        self.assertEqual(json.loads(self.storage.read_key(failures[0]))["reason_code"],
+                         "source_z_or_m_geometry_unsupported")
+        keys = self.quarantines(layer)
+        self.assertTrue(any("/raw/page_" in k for k in keys))
+
+
+class InventoryAliasTests(NfhlCaptureCase):
+    def test_consolidated_layer_names_every_served_inventory_entry(self):
+        layer = LAYERS_BY_SLUG["nfhl-flood-hazard-boundaries"]
+        result = self.run_capture(FakeMapServer(layer, max_record_count=3))
+        manifest = json.loads(self.staged(result, "metadata/source_manifest.json"))
+        self.assertIn("nfhl/flood-hazard-boundaries", manifest["lineage"])
+        self.assertIn("nfhl/national-flood-hazard-layer-line-nfhl-1", manifest["lineage"])
+        self.assertIn("240863", manifest["lineage"])
 
 class SealedCandidateTests(NfhlCaptureCase):
     verify_code_identity = True
@@ -408,13 +469,24 @@ class ResumeTests(NfhlCaptureCase):
 
 
 class RegistrationTests(unittest.TestCase):
+    def test_remaining_layer_entries_match_the_producer_roster(self):
+        profile = LAYERS_BY_SLUG["nfhl-profile-baselines"]
+        self.assertEqual((profile.layer_id, profile.name, profile.geometry), (17, "Profile Baselines", "line"))
+        self.assertEqual(profile.source_zm, (True, True))
+        self.assertEqual(LAYERS_BY_SLUG["nfhl-water-lines"].layer_id, 20)
+        boundaries = LAYERS_BY_SLUG["nfhl-flood-hazard-boundaries"]
+        self.assertEqual((boundaries.layer_id, boundaries.name, boundaries.geometry),
+                         (27, "Flood Hazard Boundaries", "line"))
+        self.assertEqual(boundaries.inventory_aliases,
+                         (("nfhl/national-flood-hazard-layer-line-nfhl-1", 240863),))
+
     def test_every_layer_keeps_its_asset_key_checks_job_and_stopped_schedule(self):
         from dagster import AssetKey, DefaultScheduleStatus
 
         from dagster_hifld.assets import nfhl as nfhl_assets
         from dagster_hifld.definitions import defs
 
-        self.assertEqual({layer.slug for layer in LAYERS}, LEGACY_SLUGS)
+        self.assertEqual({layer.slug for layer in LAYERS}, FAMILY_SLUGS)
         graph = defs.resolve_asset_graph()
         keys = set(graph.get_all_asset_keys())
         checks = {(c.asset_key, c.name) for c in graph.asset_check_keys}
