@@ -149,7 +149,11 @@ EXPECTED_SCHEMA_SHA256 = "51f11bd107670196d396c0908b3c68a4dce0f37466d3dd179c3df1
 # pinned here as empty (checked only when non-empty) and recorded by the first
 # complete capture for the maintainer to pin.
 EXPECTED_RECORD_SHA256 = "a3eac7bb769a63a678c96955d96d7fddde54fa4414e4af06a3fbd5bc13b42073"
-EXPECTED_GEOMETRY_SHA256 = "9a250fb41717baac97e7000469086bec2d0c13ae61686022818dcd661bfa8eae"
+# The geometry digest covered only assembled rows before the shared GDAL
+# converter (issue #997); every served row now assembles, so the coverage
+# grew and this transcribed pin moves to the designed pending state until the
+# next complete capture re-derives it via build_nhd_waterbody_large_scale_baseline.
+EXPECTED_GEOMETRY_SHA256 = None
 EXPECTED_IDS_SHA256 = "b4c1d549b8a5fb8674d8d8fb6af55077cb8b1db2f00604e1324644e88a135b74"
 # The null-geometry count and the producer-refusal id set are likewise unknown
 # until the first complete capture (a ``None`` pin is checked only once it has
