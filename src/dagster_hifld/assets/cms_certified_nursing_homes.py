@@ -13,7 +13,7 @@ from dagster_hifld.sources.cms_certified_nursing_homes import (
 
 
 class CMSDraftConfig(Config):
-    capture_directory: str
+    capture_directory: str = ""
 
 
 @asset(key=AssetKey(['ingest', DATASET_SLUG, FILE_SLUG]), group_name='cms', compute_kind='http')

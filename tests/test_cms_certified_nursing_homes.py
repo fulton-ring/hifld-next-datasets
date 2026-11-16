@@ -120,7 +120,7 @@ class CMSTests(unittest.TestCase):
                     if failure=='partial': return httpx.Response(200,stream=httpx.ByteStream(body),headers={'content-length':str(len(body)+5)})
                     return httpx.Response(200,stream=httpx.ByteStream(body.replace(b'015010',b'015009') if failure=='drift' else body))
                 meta=self.metadata()
-                if failure=='after' and len(calls)==3: meta['modified']='2026-11-01'
+                if failure=='after' and len(calls)==3: meta['description']='changed during capture'
                 return httpx.Response(200,stream=httpx.ByteStream(source.canonical(meta)))
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp, self.pins(body,fields):
                 root=Path(tmp); storage=StagingStorageResource(use_local=True,local_dir=str(root/'staging'),prefix='')
