@@ -1,4 +1,4 @@
-"""Pinned historical EIA Natural Gas Processing Plants GIS candidate for issue #172."""
+"""Retained historical EIA processing-plant transforms; refresh acquisition is parked."""
 from __future__ import annotations
 import io, json, math, shutil, struct, tempfile, zipfile
 import xml.etree.ElementTree as ET
@@ -204,6 +204,17 @@ def _capture(root,storage,version):
         raise
 
 def capture_natural_gas_processing_plants(storage:StagingStorageResource,*,version:str,capture_directory:str|None=None)->dict:
+    """Refuse refresh until a maintained producer location source is available.
+
+    The 2017 GIS package and retained transforms are historical evidence, not
+    a maintained feed. Keep this guard before storage validation or acquisition,
+    including cache replay; see the dataset source README for dated probes.
+    """
+    raise ValueError(
+        "maintained_eia_processing_plants_source_unavailable: EIA-757 Schedule A is suspended; "
+        "the public report ends in 2017 and the Energy Atlas service requires a token. "
+        "Historical ZIP acquisition and replay are disabled pending a maintained producer source."
+    )
     if not isinstance(storage,StagingStorageResource) or isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix: raise ValueError("explicit_local_staging_resource_required")
     if not isinstance(version,str) or not version or Path(version).name!=version or "/" in version or "\\" in version: raise ValueError("unsafe_capture_version")
     stage=Path(storage.local_dir).absolute()
