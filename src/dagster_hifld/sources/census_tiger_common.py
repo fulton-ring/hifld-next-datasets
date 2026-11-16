@@ -4,9 +4,9 @@ Behavior-preserving consolidation of the per-dataset copies in the Census TIGER
 acquisition family. Every dataset identity stays in its source adapter: the URL,
 archive member roster, pins, byte budgets and record validation are passed
 explicitly by each caller, so no caller can inherit another dataset's URL,
-filename or pin. The config-driven school-district geodatabase extractor moved
-here from the dataset-named ``sources/census_school_districts.py`` (issue #995);
-each school-district adapter passes its own ``SchoolDistrictLayerConfig``.
+filename or pin. The config-driven school-district geodatabase extractor also
+lives here; each school-district adapter passes its own
+``SchoolDistrictLayerConfig``.
 """
 from __future__ import annotations
 

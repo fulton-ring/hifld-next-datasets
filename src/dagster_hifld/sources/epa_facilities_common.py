@@ -1,4 +1,4 @@
-"""EPA Locations MapServer profiles and native staging for Facilities layers.
+"""Shared EPA Locations MapServer family core for the Facilities layers.
 
 Layer 1 is ordinary EPA Facilities and layer 0 is the distinct labels layer.
 Both profiles preserve producer field declarations, source IDs and NAD83 Shape.
