@@ -9,12 +9,19 @@ import copy
 import io
 import json
 import math
+import shutil
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
+import httpx
 import unittest
 
 import pyarrow.parquet as pq
 from shapely import from_wkb
 from dagster import DefaultScheduleStatus
 
+from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import fws_cmt_locations as source
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.fws_cmt_locations import (
@@ -65,7 +72,7 @@ def _feature(oid: int) -> dict:
     return {"attributes": attributes, "geometry": geometry}
 
 
-def _capture_docs_plain() -> dict:
+def _capture_docs_plain(ids=IDS) -> dict:
     fields = [{**declaration, "actualType": "nvarchar", "sqlType": "sqlTypeNVarchar",
                "nullable": True, "editable": True, "defaultValue": None}
               for declaration in source.EXPECTED_FIELD_DECLARATIONS]
@@ -82,7 +89,7 @@ def _capture_docs_plain() -> dict:
                            "maxScale": 0, "type": "Feature Layer",
                            "geometryType": "esriGeometryPoint"}],
                "tables": [], "spatialReference": {"wkid": 102100, "latestWkid": 3857}}
-    features = [_feature(oid) for oid in IDS]
+    features = [_feature(oid) for oid in ids]
     docs = {
         "org": {"id": source.ORG_ID, "name": "U.S. Fish & Wildlife Service",
                 "portalName": "ArcGIS Online", "urlKey": "fws"},
@@ -97,17 +104,18 @@ def _capture_docs_plain() -> dict:
                                   "Management - Branch of Geospatial Data Services."},
         "service_before": copy.deepcopy(service), "service_after": copy.deepcopy(service),
         "layer_before": copy.deepcopy(layer), "layer_after": copy.deepcopy(layer),
-        "count_before": {"count": FIXTURE_COUNT},
-        "count_after": {"count": FIXTURE_COUNT},
-        "ids_before": {"objectIds": list(IDS)}, "ids_after": {"objectIds": list(IDS)},
+        "count_before": {"count": len(ids)},
+        "count_after": {"count": len(ids)},
+        "ids_before": {"objectIds": list(ids)}, "ids_after": {"objectIds": list(ids)},
     }
-    for index in range(2):
+    page_count = (len(ids) + source.PAGE_SIZE - 1) // source.PAGE_SIZE
+    for index in range(page_count):
         start = index * source.PAGE_SIZE
         rows = features[start:start + source.PAGE_SIZE]
         page = {"features": rows, "spatialReference": {"wkid": 102100, "latestWkid": 3857},
                 "geometryType": "esriGeometryPoint", "objectIdFieldName": "ObjectId",
                 "globalIdFieldName": "", "uniqueIdField": {"name": "ObjectId", "isGlobalId": False}}
-        if index < 2 - 1:
+        if index < page_count - 1:
             page["exceededTransferLimit"] = True
         docs[f"page_{index:03d}"] = page
     return docs
@@ -144,6 +152,48 @@ class FwsCmtLocationsTests(unittest.TestCase):
         self.assertFalse(check.metadata["mapping_approved"].value)
         rejected = fws_cmt_locations_complete({**candidate, "feature_count": 1815})
         self.assertFalse(rejected.passed)
+
+    def test_fresh_complete_captures_add_remove_and_reuse_immutable_candidate(self):
+        # Exercise real acquisition, receipts and construction sealing using a
+        # copied installed-package layout; no provenance verifier is bypassed.
+        repository = Path(source.__file__).parents[3]
+        client_type = httpx.Client
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runtime = root / "runtime"
+            shutil.copytree(repository / "src/dagster_hifld", runtime / "src/dagster_hifld",
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            for name in ("pyproject.toml", "uv.lock"):
+                shutil.copy2(repository / name, runtime / name)
+            storage = StagingStorageResource(local_dir=str(root / "staging"), bucket=None, use_local=True)
+            candidates = []
+            originals = {}
+            for iteration, ids in enumerate((IDS[:2], IDS[:3], IDS[1:3], IDS[1:3])):
+                docs = _capture_docs_plain(ids)
+                responses = {url: docs[name] for name, url in source._capture_roster(len(ids))}
+                def respond(request):
+                    body = json.dumps(responses[str(request.url)]).encode()
+                    return httpx.Response(200, headers={"content-type": "application/json"},
+                                          stream=httpx.ByteStream(body))
+                transport = httpx.MockTransport(respond)
+                def client(**kwargs):
+                    return client_type(transport=transport, **kwargs)
+                with patch.object(source, "__file__", str(runtime / "src/dagster_hifld/sources/fws_cmt_locations.py")), \
+                        patch.object(source.httpx, "Client", client):
+                    candidate = source.capture_fws_cmt_locations(storage, version=f"fixture-{iteration}",
+                        capture_directory=str(root / f"capture-{iteration}"))
+                self.assertTrue(fws_cmt_locations_complete(candidate).passed)
+                self.assertFalse(fws_cmt_locations_drift(candidate).passed)
+                candidates.append(candidate)
+                prefix = "/".join(candidate["candidate_ready"].split("/")[:-2])
+                objects = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}
+                if iteration == 2:
+                    originals = objects
+                if iteration == 3:
+                    self.assertEqual(objects, originals)
+            self.assertEqual(len({row["version"] for row in candidates[:3]}), 3)
+            self.assertTrue(candidates[-1]["reused"])
+            self.assertEqual(candidates[-1]["version"], candidates[-2]["version"])
 
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
         for name, url in source._capture_roster():
