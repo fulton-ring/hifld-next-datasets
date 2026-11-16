@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import io
 import zipfile
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 import pyarrow as pa
@@ -95,7 +96,7 @@ class MineralsTests(unittest.TestCase):
         a=bytearray(original);a[lat:lat+10]=b'  1.234567'
         with self.assertRaisesRegex(ValueError,'scale'):s.decode_mineplant_dbf(a)
         a=bytearray(original);a[lat:lat+10]=b'      36.8'
-        rows=s.decode_mineplant_dbf(a);self.assertEqual(rows[0]['LATITUDE'].as_tuple().exponent,-1);self.assertEqual(rows[0]['LATITUDE'],s.Decimal('36.8'))
+        rows=s.decode_mineplant_dbf(a);self.assertEqual(rows[0]['LATITUDE'].as_tuple().exponent,-1);self.assertEqual(rows[0]['LATITUDE'],Decimal('36.8'))
 
     def test_native_geometry_errors_missing_records_wrong_index_and_nonfinite_fail(self):
         members=s.decode_mineplant_zip(self.captures()['usgs_mineplant_zip'][0]);body=members['mineplant.shp'];index=members['mineplant.shx']
