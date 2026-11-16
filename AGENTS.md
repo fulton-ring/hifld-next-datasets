@@ -120,18 +120,20 @@ not here.
   name, the generic capture, candidate, seal and quarantine primitives),
   `sources/esri_common.py`, `sources/esri_geometry.py`, `esri_pbf.py`,
   `sources/arcgis_filegdb.py`, `sources/census_tiger_common.py`,
-  `sources/nfhl_common.py`, `sources/arcgis_layer.py`, `construction_state.py`,
+  `sources/nfhl/`, `sources/arcgis_layer.py`, `construction_state.py`,
   `construction_provenance.py`, `provenance.py`, `validation.sha256_file` and
   `gdal.py`. If the logic you need exists only inside another dataset module,
   move it into a shared module in the same PR. Do not import it from that dataset
   module, and do not copy it.
-- Families share infrastructure: FEMA NFHL MapServer layers (`nfhl_common`),
-  Census TIGER (`census_tiger_common`), USACE IENC, WBD hydrologic units, NHD/3DHP
-  and GNIS. Build a family member as a thin adapter over the shared module, and
-  extend the shared module when a member needs more.
-- ArcGIS layer capture: capture the service and layer documents, count and ID
-  roster before paging, page by exact ID slices, then capture the "after"
-  witnesses once the last page is done. Preserve failed attempts as evidence, keep
+- Families share infrastructure: FEMA NFHL MapServer layers (`sources/nfhl/`; a
+  new layer is one `LAYERS` entry), Census TIGER (`census_tiger_common`), USACE
+  IENC, WBD hydrologic units, NHD/3DHP and GNIS. Build a family member as a thin
+  adapter over the shared module, and extend the shared module when a member
+  needs more.
+- ArcGIS layer capture: capture the service and layer documents and the count
+  plus an ID roster or OBJECTID count/min/max statistics before paging, page by
+  exact ID slices or bisected OBJECTID windows (`sources/nfhl/capture.py`), then
+  capture the "after" witnesses once the last page is done. Preserve failed attempts as evidence, keep
   memory bounded (stream pages to disk, not to a population-wide dict), and
   enforce byte budgets during acquisition.
 - Preserve the source as served: the native ID column (including an `fid` that
