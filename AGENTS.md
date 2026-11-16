@@ -116,15 +116,23 @@ not here.
   approval flag `False`. Merging code never authorizes publication. Release
   approval pins the full staged inventory and happens outside PRs.
 - Reuse the shared helpers instead of copying them from another adapter:
-  `http_capture.capture_http_response`, `sources/epa_frs_common.py` (despite its
-  name, the generic capture, candidate, seal and quarantine primitives),
+  `http_capture.capture_http_response`, `sources/capture_common.py` (generic
+  capture, candidate, seal and quarantine primitives), `sources/arcgis_layer.py`
+  (ArcGIS layer capture, replay, retry and geometry encoding),
   `sources/esri_common.py`, `sources/esri_geometry.py`, `esri_pbf.py`,
   `sources/arcgis_filegdb.py`, `sources/census_tiger_common.py`,
-  `sources/nfhl/`, `construction_state.py`,
+  `sources/nfhl/`, `sources/epa_facilities_common.py`,
+  `sources/epa_icis_wastewater_common.py`,
+  `sources/electric_retail_service_territories_common.py`,
+  `sources/national_inventory_of_dams_common.py`, `sources/wbd_hu_family.py`,
+  `construction_state.py`,
   `construction_provenance.py`, `provenance.py`, `validation.sha256_file` and
   `gdal.py`. If the logic you need exists only inside another dataset module,
   move it into a shared module in the same PR. Do not import it from that dataset
-  module, and do not copy it.
+  module, and do not copy it. `tests/test_sources_module_contract.py` enforces
+  this: a `sources/` dataset module may import only shared modules (or its own
+  `<stem>_spec` pinned manifest), and shared modules never import dataset
+  modules.
 - Families share infrastructure: FEMA NFHL MapServer layers (`sources/nfhl/`; a
   new layer is one `LAYERS` entry), Census TIGER (`census_tiger_common`), USACE
   IENC, WBD hydrologic units, NHD/3DHP and GNIS. Build a family member as a thin
