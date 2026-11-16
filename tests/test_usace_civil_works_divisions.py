@@ -176,6 +176,46 @@ _UNPINNED = {
 }
 
 
+_ERROR_DOCUMENT = {"error": {"code": 1000, "message": "Unable to complete operation",
+                             "details": []}}
+_WITNESS_STAMP = 1_700_000_000_123_456_789
+
+
+def _witnessed_capture_dir(root: Path, witnesses: dict[str, object]) -> Path:
+    """Write a completed capture directory plus refused retry witness trios."""
+    capture = root / "capture"
+    capture.mkdir(parents=True)
+    (capture / "capture-summary.json").write_text('{"complete":true}')
+    for name, (body, receipt) in _fixture().items():
+        (capture / f"{name}.body").write_bytes(body)
+        (capture / f"{name}.wire").write_bytes(body)
+        (capture / f"{name}.receipt.json").write_bytes(_body(receipt))
+    for name, document in witnesses.items():
+        body = _body(document)
+        receipt = {"method": "GET", "url": ucwd.LAYER_URL + "/query?f=json",
+                   "final_url": ucwd.LAYER_URL + "/query?f=json",
+                   "observed_at": "2026-01-01T00:00:00Z", "status": 200,
+                   "complete_body": True, "bytes": len(body),
+                   "sha256": hashlib.sha256(body).hexdigest(),
+                   "wire_bytes": len(body),
+                   "wire_sha256": hashlib.sha256(body).hexdigest(),
+                   "content_encoding": "identity", "content_length": len(body),
+                   "error_code": None, "error_type": None}
+        for suffix, payload in (("body", body), ("wire", body),
+                                ("receipt.json", _body(receipt))):
+            (capture / f"{name}.error-{_WITNESS_STAMP}.{suffix}").write_bytes(payload)
+    return capture
+
+
+def _replay_patches():
+    return [patch.object(ucwd, "_geoparquet", return_value=b"candidate"),
+            patch.object(ucwd, "processing_identity", return_value={
+                "code_commit": "a" * 40, "files": {"x.py": "b" * 64}}),
+            patch.object(ucwd, "validate_construction_code_identity", return_value=None),
+            patch.object(epa_frs_common, "validate_construction_code_identity",
+                         return_value=None)]
+
+
 @contextmanager
 def fixture_pins():
     """Pin every module baseline to the fixture capture's own audit values."""
@@ -688,6 +728,64 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
             (capture / "page_000.wire").write_bytes(b"tampered")
             with self.assertRaisesRegex(ValueError, "offline_capture_wire_receipt_mismatch"):
                 ucwd._load_offline(capture)
+
+    def test_load_offline_retains_only_the_accepted_roster(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            capture = _witnessed_capture_dir(
+                Path(tmp), {"page_000": _ERROR_DOCUMENT, "ids_after": _ERROR_DOCUMENT})
+            captures = ucwd._load_offline(capture)
+            self.assertEqual(sorted(captures), sorted(_fixture()))
+            self.assertTrue(list(capture.glob("page_000.error-*.receipt.json")))
+            self.assertTrue(list(capture.glob("ids_after.error-*.body")))
+
+    def _replay_witnessed_capture(self, tmp, witnesses):
+        root = Path(tmp)
+        capture = _witnessed_capture_dir(root, witnesses)
+        clean = _witnessed_capture_dir(root / "clean", {})
+        storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+        clean_storage = StagingStorageResource(use_local=True,
+                                               local_dir=str(root / "clean-staging"))
+        with ExitStack() as stack:
+            for replay_patch in _replay_patches():
+                stack.enter_context(replay_patch)
+            first = ucwd.capture_usace_civil_works_divisions(
+                storage, offline_capture_directory=str(capture),
+                capture_directory=str(root / "replay"))
+            second = ucwd.capture_usace_civil_works_divisions(
+                storage, offline_capture_directory=str(capture),
+                capture_directory=str(root / "replay"))
+            clean_result = ucwd.capture_usace_civil_works_divisions(
+                clean_storage, offline_capture_directory=str(clean),
+                capture_directory=str(root / "clean-replay"))
+        return first, second, clean_result, capture, storage
+
+    def test_offline_replay_excludes_refused_page_retry_witness(self):
+        with tempfile.TemporaryDirectory() as tmp, fixture_pins():
+            first, second, clean_result, capture, storage = self._replay_witnessed_capture(
+                tmp, {"page_000": _ERROR_DOCUMENT})
+            self.assertEqual(first["version"], clean_result["version"])
+            self.assertTrue(second["reused"])
+            self.assertEqual(second["version"], first["version"])
+            witness_receipts = list(capture.glob("page_000.error-*.receipt.json"))
+            self.assertEqual(len(witness_receipts), 1)
+            witness_name = witness_receipts[0].name.removesuffix(".receipt.json")
+            self.assertIsNone(storage.object_snapshot(
+                first["candidate_ready"].replace("metadata/candidate_ready.json",
+                                                 f"raw/{witness_name}.body")))
+
+    def test_offline_replay_excludes_refused_roster_retry_witness(self):
+        with tempfile.TemporaryDirectory() as tmp, fixture_pins():
+            first, second, clean_result, capture, storage = self._replay_witnessed_capture(
+                tmp, {"ids_after": _ERROR_DOCUMENT})
+            self.assertEqual(first["version"], clean_result["version"])
+            self.assertTrue(second["reused"])
+            self.assertEqual(second["version"], first["version"])
+            witness_receipts = list(capture.glob("ids_after.error-*.receipt.json"))
+            self.assertEqual(len(witness_receipts), 1)
+            witness_name = witness_receipts[0].name.removesuffix(".receipt.json")
+            self.assertIsNone(storage.object_snapshot(
+                first["candidate_ready"].replace("metadata/candidate_ready.json",
+                                                 f"raw/{witness_name}.body")))
 
     def test_entrypoint_quarantines_acquisition_validation_failures(self):
         fixture = _fixture()

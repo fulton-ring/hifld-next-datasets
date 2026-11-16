@@ -294,13 +294,22 @@ def _offline_wire(root: Path, name: str, body: bytes, receipt: Mapping[str, obje
 
 
 def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
+    """Load the accepted capture roster from a completed capture directory.
+
+    Refused retry attempts are preserved on disk as ``<name>.error-<stamp>``
+    evidence next to the accepted documents; they stay in the capture directory
+    but are not capture inputs and never enter the accepted roster reloaded
+    here.
+    """
     summary = json.loads((root / "capture-summary.json").read_bytes())
     if summary.get("complete") is not True:
         raise ValueError("offline_native_capture_incomplete")
     captures = {}
     for receipt_path in sorted(root.glob("*.receipt.json")):
-        receipt = json.loads(receipt_path.read_bytes())
         name = receipt_path.name.removesuffix(".receipt.json")
+        if ".error-" in name:
+            continue
+        receipt = json.loads(receipt_path.read_bytes())
         body = (root / f"{name}.body").read_bytes()
         if (receipt.get("complete_body") is not True or receipt.get("status") != 200
                 or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
