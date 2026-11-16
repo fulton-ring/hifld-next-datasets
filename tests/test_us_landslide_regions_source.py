@@ -19,6 +19,7 @@ from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import epa_frs_common
 from dagster_hifld.sources import us_landslide_regions as src
+from dagster_hifld.sources.esri_geometry import to_wkb
 
 FIXTURE_COUNT = 8
 FIXTURE_OBJECTIDS = (2, 3, 5, 8, 13, 21, 34, 55)
@@ -289,7 +290,7 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
 
     def test_polygon_wkb_keeps_rings_holes_and_z(self):
         rings = [_shell(-10_000_000.0, 4_000_000.0)]
-        wkb = src._geometry_wkb(rings)
+        wkb = src._geometry_wkb({"rings": rings, "hasZ": True})
         self.assertEqual(wkb[0:5], b"\x01" + struct.pack("<I", 1000 + 3))
         from shapely import from_wkb
         geometry = from_wkb(wkb)
@@ -298,12 +299,14 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
         self.assertEqual(len(geometry.exterior.coords), 5)
         self.assertEqual(len(geometry.interiors), 0)
         with_hole = src._geometry_wkb(
-            [_shell(-10_000_000.0, 4_000_000.0), _hole(-9_999_000.0, 4_002_000.0)])
+            {"rings": [_shell(-10_000_000.0, 4_000_000.0), _hole(-9_999_000.0, 4_002_000.0)],
+             "hasZ": True})
         holed = from_wkb(with_hole)
         self.assertEqual(holed.geom_type, "Polygon")
         self.assertEqual(len(holed.interiors), 1)
         multi = src._geometry_wkb(
-            [_shell(-10_000_000.0, 4_000_000.0), _shell(-9_000_000.0, 3_000_000.0)])
+            {"rings": [_shell(-10_000_000.0, 4_000_000.0), _shell(-9_000_000.0, 3_000_000.0)],
+             "hasZ": True})
         multipolygon = from_wkb(multi)
         self.assertEqual(multipolygon.geom_type, "MultiPolygon")
         self.assertEqual(len(multipolygon.geoms), 2)
@@ -337,16 +340,20 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                 with self.assertRaisesRegex(src.UsLandslideRegionsError,
                                             expected_error):
                     src._validate_feature_geometry(geometry)
-        for expected_error, rings in {
-            "source_polygon_shell_missing": [_hole(-9_999_000.0, 4_002_000.0)],
-            "source_hole_ownership_ambiguous":
-                [_shell(-10_000_000.0, 4_000_000.0), _shell(-9_000_000.0, 3_000_000.0),
-                 _hole(-9_500_000.0, 3_500_000.0)],
-        }.items():
-            with self.subTest(expected_error):
-                with self.assertRaisesRegex(src.UsLandslideRegionsError,
-                                            expected_error):
-                    src._geometry_wkb(rings)
+        # Ring orientation and hole assignment are GDAL's (issue #997 shared
+        # converter): a lone CCW ring and a hole lying inside no exterior of
+        # its feature are retained as valid geometry instead of refusing the
+        # capture, and every served ordinate is verified unchanged.
+        from shapely import from_wkb
+        lone = from_wkb(src._geometry_wkb({"rings": [_hole(-9_999_000.0, 4_002_000.0)],
+                                           "hasZ": True}))
+        self.assertTrue(lone.is_valid)
+        orphan = from_wkb(src._geometry_wkb(
+            {"rings": [_shell(-10_000_000.0, 4_000_000.0), _shell(-9_000_000.0, 3_000_000.0),
+                       _hole(-9_500_000.0, 3_500_000.0)], "hasZ": True}))
+        self.assertTrue(orphan.is_valid)
+        self.assertEqual(orphan.geom_type, "MultiPolygon")
+        self.assertEqual(len(orphan.geoms), 3)
 
     def test_page_matches_slice_and_gap_planning(self):
         roster = list(FIXTURE_OBJECTIDS)

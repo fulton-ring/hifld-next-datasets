@@ -43,7 +43,7 @@ shells, subsequent counter-clockwise holes, tiny non-zero z ordinates,
 ``returnM``). Rings are validated (closed, uniform ordinate count, finite,
 inside the declared layer extent), part structure is built strictly per the
 ArcGIS ring convention (clockwise shells, counter-clockwise holes, hole
-ownership must be unambiguous) and stored verbatim as Polygon Z / MultiPolygon
+is GDAL's containment assembly) and stored verbatim as Polygon Z / MultiPolygon
 Z WKB: no rounding, reordering, winding repair, reprojection or geometry
 repair is applied, and topology validity is counted, never silently enforced.
 
@@ -61,7 +61,6 @@ import hashlib
 import json
 import re
 import shutil
-import struct
 import time
 from array import array
 from collections import deque
@@ -76,13 +75,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import LinearRing, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -450,55 +449,15 @@ def _validate_feature_geometry(geometry: object) -> tuple[list[list[list[float]]
     return _validate_rings(geometry)
 
 
-def _polygon_wkb(shell: list[list[float]], hole_rings: list[list[list[float]]],
-                 dim_code: int) -> bytes:
-    out = bytearray(struct.pack("<BI", 1, dim_code + 3))
-    out.extend(struct.pack("<I", 1 + len(hole_rings)))
-    for ring in [shell, *hole_rings]:
-        out.extend(struct.pack("<I", len(ring)))
-        for point in ring:
-            out.extend(struct.pack("<ddd", *point))
-    return bytes(out)
+def _geometry_wkb(geometry: dict) -> bytes:
+    """Convert served Z rings through the shared GDAL Esri polygon conversion.
 
-
-def _geometry_wkb(rings: list[list[list[float]]]) -> bytes:
-    """Build Polygon Z / MultiPolygon Z WKB strictly per the ArcGIS convention.
-
-    ArcGIS encodes exterior rings clockwise and interior rings
-    counter-clockwise; holes are assigned to the unique containing shell and
-    any ambiguous assignment is refused rather than guessed. Ring ordinates
-    are carried through verbatim with no winding repair.
+    Ring orientation and hole assignment are GDAL's; every served ordinate is
+    verified unchanged and the result is Polygon Z / MultiPolygon Z. The
+    structural contracts (closure, three finite ordinates, Web Mercator
+    range) raise in the caller's validation.
     """
-    shells: list[list[list[float]]] = []
-    holes: list[list[list[float]]] = []
-    for ring in rings:
-        try:
-            ccw = LinearRing([(point[0], point[1]) for point in ring]).is_ccw
-        except Exception as exc:
-            raise UsLandslideRegionsError("source_polygon_ring_unrepresentable") from exc
-        (holes if ccw else shells).append(ring)
-    if not shells:
-        raise UsLandslideRegionsError("source_polygon_shell_missing")
-    dim_code = 1000
-    shell_polygons = [Polygon([(point[0], point[1]) for point in shell])
-                      for shell in shells]
-    assignments: list[list[list[list[float]]]] = [[] for _ in shells]
-    for hole in holes:
-        hole_polygon = Polygon([(point[0], point[1]) for point in hole])
-        owners = [index for index, shell_polygon in enumerate(shell_polygons)
-                  if shell_polygon.contains(hole_polygon.representative_point())]
-        if len(owners) != 1:
-            raise UsLandslideRegionsError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(hole)
-    polygons = [_polygon_wkb(shell, assignments[index], dim_code)
-                for index, shell in enumerate(shells)]
-    if len(polygons) == 1:
-        return polygons[0]
-    multi = bytearray(struct.pack("<BI", 1, dim_code + 6))
-    multi.extend(struct.pack("<I", len(polygons)))
-    for polygon in polygons:
-        multi.extend(polygon)
-    return bytes(multi)
+    return to_wkb(geometry, GEOMETRY_TYPE, has_z=True, has_m=False)
 
 
 def _validate_feature(feature: object, expected_objectid: int) \
@@ -1032,7 +991,7 @@ class _PageStream:
                 ring_count = len(rings)
                 self.rings_per_feature_distribution[ring_count] = \
                     self.rings_per_feature_distribution.get(ring_count, 0) + 1
-                wkb = _geometry_wkb(rings)
+                wkb = _geometry_wkb(geometry)
                 parsed = shapely.from_wkb(wkb)
                 if parsed.is_empty:
                     self.empty_geometry += 1
