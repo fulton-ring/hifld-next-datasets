@@ -153,6 +153,13 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
     return body, receipt
 
 
+def validate_capture_request_identity(name: str, receipt: Mapping, expected_url: str) -> None:
+    """Bind retained response bytes to the exact GET endpoint that names them."""
+    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
+            or receipt.get("final_url") != expected_url):
+        raise ValueError("retained_capture_request_identity_mismatch:" + name)
+
+
 def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
     snapshot = storage.object_snapshot(key)
     if snapshot is None:

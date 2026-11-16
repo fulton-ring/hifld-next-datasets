@@ -7,14 +7,9 @@ declarations or remove the source PBF's coordinate quantization.
 import hashlib
 import json
 import os
-import platform
 import shutil
-import stat
-import subprocess
 import tempfile
-import fcntl
 from collections import defaultdict
-from contextlib import contextmanager
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from datetime import datetime, timezone
@@ -33,9 +28,8 @@ from dagster_hifld.sources.epa_frs_common import (
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
-from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "national-forests"
 FILE_SLUG = "national-forests"
@@ -147,44 +141,6 @@ def _retained_capture(directory: Path, relative: str) -> tuple[bytes, bytes, dic
     return body, wire, receipt
 
 
-class _HttpSource:
-    def __init__(self, client: httpx.Client, capture_root: Path):
-        self.client, self.root = client, capture_root
-
-    def json(self, name: str, url: str, params: dict[str, object]) -> tuple[dict, bytes, bytes, dict[str, object]]:
-        body, receipt = _get(self.client, url, self.root / f"{name}.body", params)
-        parsed = json.loads(body)
-        if not isinstance(parsed, dict) or "error" in parsed:
-            raise ValueError("national_forests_source_json_invalid")
-        wire = (self.root / f"{name}.body.wire").read_bytes()
-        return parsed, body, wire, receipt
-
-    def pbf(self, name: str, ids: list[int]) -> tuple[bytes, bytes, dict[str, object]]:
-        params = {"objectIds": ",".join(map(str, ids)), "outFields": "*", "returnGeometry": "true", "f": "pbf"}
-        body, receipt = _get(self.client, f"{LAYER_URL}/query", self.root / f"{name}.body", params)
-        return body, (self.root / f"{name}.body.wire").read_bytes(), receipt
-
-
-class _RetainedSource:
-    def __init__(self, root: Path):
-        self.root = root
-
-    def json(self, name: str, url: str, params: dict[str, object]) -> tuple[dict, bytes, bytes, dict[str, object]]:
-        body, wire, receipt = _retained_capture(self.root / "fidelity", f"{name}.body")
-        parsed = json.loads(body)
-        if not isinstance(parsed, dict) or "error" in parsed:
-            raise ValueError("national_forests_retained_source_json_invalid")
-        if not receipt["url"].startswith(url):
-            raise ValueError("national_forests_retained_source_url_mismatch")
-        return parsed, body, wire, receipt
-
-    def pbf(self, name: str, ids: list[int]) -> tuple[bytes, bytes, dict[str, object]]:
-        body, wire, receipt = _retained_capture(self.root / "pbf-fidelity", f"{name}.body")
-        if not receipt["url"].startswith(f"{LAYER_URL}/query?"):
-            raise ValueError("national_forests_retained_pbf_url_mismatch")
-        return body, wire, receipt
-
-
 def _retained_transport(root: Path) -> httpx.MockTransport:
     """Serve the exact retained capture set, preserving its original receipts."""
     fidelity, pbf_root = root / "fidelity", root / "pbf-fidelity"
@@ -231,10 +187,6 @@ def _retained_transport(root: Path) -> httpx.MockTransport:
         return response
 
     return httpx.MockTransport(handler)
-
-
-def _source_key(storage: StagingStorageResource, version: str, *parts: str) -> str:
-    return storage.build_target_location(DATASET_SLUG, FILE_SLUG, version, "/".join(parts))
 
 
 @asset(

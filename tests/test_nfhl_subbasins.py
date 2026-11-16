@@ -13,6 +13,7 @@ from shapely import wkb
 from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.sources import nfhl_subbasins as source
+from dagster_hifld.sources import nfhl_common
 
 
 def _canonical(value):
@@ -213,7 +214,7 @@ class NfhlSubbasinsTests(unittest.TestCase):
             storage = StagingStorageResource(use_local=True, local_dir=str(temporary), prefix="")
             capture_dir = Path(temporary) / "captures"
             with patch.multiple(source, **pins), \
-                 patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
+                 patch.object(nfhl_common, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 with self.assertRaisesRegex(ValueError, pattern):
                     source.capture_nfhl_subbasins(storage, version="vfixture",
@@ -461,7 +462,7 @@ class NfhlSubbasinsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(prefix="nfhl-subbasins-audit-") as audit_temp:
             with patch.multiple(source, SEGMENT_START_RECORDS=2), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get):
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get):
                 stream = source._SegmentStream(FIXTURE_FIELDS, Path(audit_temp) / "resume.parquet")
                 segments = source._capture_segments(None, self.root, self.ids, stream)
         self.assertEqual(sorted(segments), list(PAGE_NAMES))
@@ -480,8 +481,8 @@ class NfhlSubbasinsTests(unittest.TestCase):
         calls = []
         with tempfile.TemporaryDirectory(prefix="nfhl-subbasins-audit-") as audit_temp:
             with patch.multiple(source, SEGMENT_START_RECORDS=2), \
-                 patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(nfhl_common, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
+                 patch.object(nfhl_common.time, "sleep"):
                 stream = source._SegmentStream(FIXTURE_FIELDS, Path(audit_temp) / "resume.parquet")
                 segments = source._capture_segments(None, self.root, self.ids, stream)
         self.assertEqual(sorted(segments), list(PAGE_NAMES))
@@ -531,7 +532,7 @@ class NfhlSubbasinsTests(unittest.TestCase):
             capture_dir = Path(capture_temporary) / "captures"
             capture_dir.mkdir()
             with patch.multiple(source, **pending), \
-                 patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
+                 patch.object(nfhl_common, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 with self.assertRaisesRegex(ValueError, "population_digest_pins_not_established"):
                     source.capture_nfhl_subbasins(storage, version="vfixture",
@@ -569,9 +570,9 @@ class NfhlSubbasinsTests(unittest.TestCase):
             (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
             return body, receipt
 
-        with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-             patch.object(source.time, "sleep") as sleep_mock:
-            body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+        with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+             patch.object(nfhl_common.time, "sleep") as sleep_mock:
+            body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                         self.root, "probe", max_bytes=1024,
                                                         attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                         base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -595,9 +596,9 @@ class NfhlSubbasinsTests(unittest.TestCase):
             (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
             return error_body, receipt
 
-        with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-             patch.object(source.time, "sleep"):
-            body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+        with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+             patch.object(nfhl_common.time, "sleep"):
+            body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                         self.root, "probe", max_bytes=1024,
                                                         attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                         base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -627,14 +628,14 @@ class NfhlSubbasinsTests(unittest.TestCase):
             (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
             return ok_body, receipt
 
-        with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-             patch.object(source.time, "sleep"):
-            body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+        with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+             patch.object(nfhl_common.time, "sleep"):
+            body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                         self.root, "probe", max_bytes=1024,
                                                         attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                         base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
             with self.assertRaisesRegex(ValueError, "unrelated_source_capture_failure"):
-                source._capture_with_retry(None, "https://producer.invalid/other",
+                nfhl_common.capture_with_retry(None, "https://producer.invalid/other",
                                            self.root, "probe2", max_bytes=1024,
                                            attempts=source.DOC_CAPTURE_ATTEMPTS,
                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -679,8 +680,8 @@ class NfhlSubbasinsTests(unittest.TestCase):
             capture_root.mkdir()
             with patch.multiple(source, SEGMENT_START_RECORDS=4,
                                 SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep"):
                 stream = source._SegmentStream(FIXTURE_FIELDS, Path(audit_temp) / "bisect.parquet")
                 segments = source._capture_segments(None, capture_root, self.ids, stream)
             self.assertEqual(sorted(segments), list(PAGE_NAMES))
@@ -705,8 +706,8 @@ class NfhlSubbasinsTests(unittest.TestCase):
             capture_root.mkdir()
             with patch.multiple(source, SEGMENT_START_RECORDS=4,
                                 SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep"):
                 stream = source._SegmentStream(FIXTURE_FIELDS, Path(audit_temp) / "unservable.parquet")
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
                     source._capture_segments(None, capture_root, self.ids, stream)
@@ -730,7 +731,7 @@ class NfhlSubbasinsTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **self.pins), \
-                 patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
+                 patch.object(nfhl_common, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_subbasins(storage, version="vfixture",
                                                           capture_directory=str(root / "captures"))

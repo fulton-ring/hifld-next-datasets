@@ -14,6 +14,7 @@ from shapely import wkb
 from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.sources import nfhl_water_areas as source
+from dagster_hifld.sources import nfhl_common
 
 
 def _canonical(value):
@@ -368,9 +369,9 @@ class NfhlWaterAreasTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep") as sleep_mock:
-                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+            with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep") as sleep_mock:
+                body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                             base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -399,9 +400,9 @@ class NfhlWaterAreasTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
-                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+            with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep"):
+                body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                             base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -436,14 +437,14 @@ class NfhlWaterAreasTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
-                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+            with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep"):
+                body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                             base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
                 with self.assertRaisesRegex(ValueError, "unrelated_source_capture_failure"):
-                    source._capture_with_retry(None, "https://producer.invalid/other",
+                    nfhl_common.capture_with_retry(None, "https://producer.invalid/other",
                                                root, "probe2", max_bytes=1024,
                                                attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -496,8 +497,8 @@ class NfhlWaterAreasTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, SEGMENT_START_RECORDS=4,
                                 SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep"):
                 segments = source._capture_segments(None, root, 6)
             self.assertEqual(sorted(segments), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
@@ -523,8 +524,8 @@ class NfhlWaterAreasTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, SEGMENT_START_RECORDS=4,
                                 SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
                     source._capture_segments(None, root, 6)
 
@@ -559,7 +560,7 @@ class NfhlWaterAreasTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_water_areas(storage, version="vfixture",
                                                             capture_directory=str(root / "captures"))

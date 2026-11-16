@@ -63,11 +63,11 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
-    seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_ready_candidate, validate_capture_request_identity,
+    verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.sources.usace_obstruction_lines import (
     _canonical, _capture_identity, _load_capture, _sha,
-    _validate_capture_request_identity,
 )
 
 METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before",
@@ -757,7 +757,7 @@ def validate_stream(spec: WbdHuSpec, root: Path, *, parquet_sink: Path | None,
         raise ValueError("source_id_roster_changed_during_capture")
     expected_urls = dict(capture_roster(spec, roster))
     for name in METADATA_NAMES:
-        _validate_capture_request_identity(name, receipts[name], expected_urls[name])
+        validate_capture_request_identity(name, receipts[name], expected_urls[name])
 
     tmp_path = (parquet_sink.with_name(parquet_sink.name + ".construction-tmp")
                 if parquet_sink is not None else None)
@@ -795,7 +795,7 @@ def validate_stream(spec: WbdHuSpec, root: Path, *, parquet_sink: Path | None,
                 expected_url = (expected_urls[name] if part_name == name
                                 else record_attrs_url(spec, part_ids[0]) if attrs_part
                                 else page_part_url(spec, roster, index, part_name))
-                _validate_capture_request_identity(part_name, receipt, expected_url)
+                validate_capture_request_identity(part_name, receipt, expected_url)
                 page = _validate_page_document(spec, body, part_name, part_ids, attrs_part)
                 exceeded = page.get("exceededTransferLimit")
                 if exceeded is not None and type(exceeded) is not bool:
@@ -1081,7 +1081,7 @@ def read_replay(spec: WbdHuSpec, root: Path) -> tuple[dict[str, tuple[bytes, dic
             bound = name[:-len("_refusal")]
             expected_url = (expected_urls[bound] if len(bound) == 9
                             else page_part_url(spec, ids, int(bound[5:9]), bound))
-            _validate_capture_request_identity(name, receipt, expected_url)
+            validate_capture_request_identity(name, receipt, expected_url)
             if not is_refusal(body):
                 raise ValueError("retained_capture_refusal_document_drift:" + name)
         elif is_attrs_part_name(spec, name):
@@ -1090,11 +1090,11 @@ def read_replay(spec: WbdHuSpec, root: Path) -> tuple[dict[str, tuple[bytes, dic
             for tag in bound[9:]:
                 half = (len(sub) + 1) // 2
                 sub = sub[:half] if tag == "a" else sub[half:]
-            _validate_capture_request_identity(name, receipt, record_attrs_url(spec, sub[0]))
+            validate_capture_request_identity(name, receipt, record_attrs_url(spec, sub[0]))
         elif name in expected_urls:
-            _validate_capture_request_identity(name, receipt, expected_urls[name])
+            validate_capture_request_identity(name, receipt, expected_urls[name])
         else:
-            _validate_capture_request_identity(name, receipt,
+            validate_capture_request_identity(name, receipt,
                                                page_part_url(spec, ids, int(name[5:9]), name))
         captures[name] = (body, receipt)
     return captures, {page: list(parts) for page, parts in page_parts.items()}, \
