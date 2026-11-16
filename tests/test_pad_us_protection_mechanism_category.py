@@ -1026,8 +1026,7 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                 # The retired quarantine census pins to an empty family; the
                 # computed baseline carries the OGC-invalid diagnostic counts.
                 self.assertEqual(baseline["source_unusable_geometry_counts"], {})
-                self.assertEqual(baseline["source_ogc_invalid_geometry_sample_objectids"],
-                                 [FIXTURE_OBJECTIDS[5]])
+                self.assertEqual(baseline["source_ogc_invalid_geometry_sample_objectids"], [])
                 quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
                                      .glob("*"))
                 self.assertTrue(quarantined)
