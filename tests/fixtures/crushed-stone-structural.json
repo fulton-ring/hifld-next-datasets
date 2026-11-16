@@ -1,17 +1,18 @@
 {
-  "scope": "SYNTHETIC structural unit fixture. No real source/baseline authority or acceptance. Generated records exercise fixed original DBF/SHP layout, exactdecimal preservation and ID/error handling only.",
-  "row_count": 2324,
+  "scope": "SYNTHETIC structural unit fixture. No real source/baseline authority or acceptance. Generated records exercise the fixed USGS mineplant package layout, exact decimal preservation, crushed-stone subset selection and ID/error handling only.",
+  "row_count": 6785,
+  "crushed_source_fid_range": [601, 2790],
+  "crushed_id_range": [613, 2802],
+  "crushed_commodity": "Crushed Stone",
+  "other_commodity": "Sand and Gravel",
   "sample": {
-    "COMP_NAME": " Synthetic company",
-    "OPER_NAME": "Synthetic quarry",
+    "SITE_NAME": "Synthetic quarry",
+    "COMPANY_NA": "Synthetic company",
+    "STATE_LOCA": "Alabama",
     "COUNTY": "SYNTHETIC",
-    "STATE": "AL",
-    "FIPS": "01117",
-    "STATE_FIPS": "01",
-    "OPER_TYPE": "OPEN QUARRY",
-    "COMMODITY": "CRUSHED STONE"
+    "PLANT_MIN": "M/P"
   },
-  "x_origin": 10.0,
-  "y_origin": 20.0,
+  "x_origin": -86.4494,
+  "y_origin": 34.0194,
   "step": 0.0001
 }

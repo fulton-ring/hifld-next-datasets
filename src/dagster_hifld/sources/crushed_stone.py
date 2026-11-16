@@ -1,30 +1,34 @@
-"""Explicit, unapproved Stanford historical preservation-package reconstruction.
+"""Explicit unapproved historical USGS 2003 survey reconstruction; never polls.
 
-No default fetching, archive polling, USGS authority claim, datum correction,
-uppercase conversion, identifier mapping, or production release is performed.
+The only candidate input package is the USGS-owned "Active Mines and Mineral
+Processing Plants in the United States in 2003" distribution (MRDATA
+mineplant), the producer's own historical 2003 National Minerals Information
+Team survey publication documenting the assigned crushed-stone scope of the
+retired National Atlas crushed-stone layer; it is a historical source, not a
+current or maintained census, and its subset is a different vintage, threshold,
+schema and ID family than the retired 2,324-record 2002 layer. The existing
+published HIFLD objects are pinned comparison context only; they are never
+candidate inputs. No third-party preservation masters are fetched or compared.
+No default fetching, archive polling, USGS release authority claim, datum
+correction, uppercase conversion, identifier mapping or production release is
+performed.
 """
 from __future__ import annotations
 import collections
 import base64
-import pyogrio
-import fcntl
 import hashlib
-import io
+import fcntl
 import json
-import math
 import os
-import re
 import stat
 import struct
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 from contextlib import contextmanager
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
-from fiona.io import MemoryFile, ZipMemoryFile
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyogrio
@@ -38,12 +42,15 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
-from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.epa_frs_common import processing_identity as packaged_processing_identity
+from dagster_hifld.sources.usgs_mineplant import (MINEPLANT_DBF_FIELDS, MINEPLANT_PRJ, MINEPLANT_RECORDS,
+    crosscheck_mineplant_txt, decode_mineplant_dbf, decode_mineplant_zip,
+    decode_points, verify_mineplant_geometry_values)
 SLUG='crushed-stone-operations'
-PACKAGE='stanford-cs268nn2622-preservation-as-provided-v1'
+PACKAGE='usgs-mrdata-mineplant-2003-crushed-stone-v1'
 READY='metadata/crushed_stone_candidate_ready.json'
-LICENSE='USGS National Atlas metadata states no use restrictions; Stanford preserved package metadata retained. No source selection, authority, mapping, datum, contract or release acceptance.'
+LICENSE='USGS metadata for the mineplant successor and the retired National Atlas layer states no use restrictions (National Minerals Information Center acknowledgment appreciated). No source selection, authority, datum, schema/ID mapping, contract or release acceptance.'
 class IncidentWriteError(Exception): pass
 
 class CrushedStoneQuarantineError(ValueError): pass
@@ -129,10 +136,28 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
     if set(actual)!=set(expected) or any(actual[k]!=v for k,v in expected.items() if k!='code_commit'):raise CrushedStoneQuarantineError('original_construction_manifest_or_receipts_changed')
     return original,actual
 
-PINS={'legacy_metadata': {'url': 'https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/crstonx020.xml', 'bytes': 19892, 'sha256': '0dbf1190282e425aa0b72179e5d163a716126e19daa50c6795378e784864ac24'}, 'stanford_publicxml': {'url': 'https://purl.stanford.edu/cs268nn2622.xml', 'bytes': 20891, 'sha256': '1faf3ba4b6baa4be16983d01e622e89795c602b259bef831d9c8d45c3499745e'}, 'crstonx020.dbf': {'url': 'https://stacks.stanford.edu/file/druid:cs268nn2622/crstonx020.dbf', 'bytes': 4838954, 'sha256': '8276ce1cdc493f36cc3b333c7894ecd6ba1c7c6885015aa7552805ce68aafe78'}, 'crstonx020.prj': {'url': 'https://stacks.stanford.edu/file/druid:cs268nn2622/crstonx020.prj', 'bytes': 167, 'sha256': '84cf5b9a3c1a444f83ac30ff76f8c5035990223027ba69b2f4d628388adcbd65'}, 'crstonx020.shp': {'url': 'https://stacks.stanford.edu/file/druid:cs268nn2622/crstonx020.shp', 'bytes': 65172, 'sha256': '7e364d47d9bea71788492826789b84e98b9e481043aee7b193632946a0916cf0'}, 'crstonx020.shp.xml': {'url': 'https://stacks.stanford.edu/file/druid:cs268nn2622/crstonx020.shp.xml', 'bytes': 167184, 'sha256': 'cecaa98f28a7de59f1ebe933c2da8091d27e7631b48ac11c0a84161632cc69a9'}, 'crstonx020.shx': {'url': 'https://stacks.stanford.edu/file/druid:cs268nn2622/crstonx020.shx', 'bytes': 18692, 'sha256': '4618d05729ddfe8eaa347b87eacf50290522c145c2e405d3c7b6fec9e7290ad8'}, 'baseline_geojson': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/geojson/crushed-stone-operations-geojson.geojson', 'bytes': 275487, 'sha256': '2ddcf6a267fdaf2d1063fee1dab2deece39ccf6a8cece79221c49e63910ab595'}, 'baseline_geopackage': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/geopackage/crushed-stone-operations-Crushed_Stone_Operations.gpkg', 'bytes': 249856, 'sha256': 'becb8e86f616c5579e555464f01ea2e64b8089ff749e9b762237b2935ef1bf82'}, 'baseline_geoparquet': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/geoparquet/crushed-stone-operations.parquet', 'bytes': 79396, 'sha256': '6e4fa965ef0164f0d46c855ad517cb2440aa512cdbf852dd0c7643ea3aa8dd4e'}, 'baseline_pmtiles': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/pmtiles/crushed-stone-operations.pmtiles', 'bytes': 85710, 'sha256': '6d30d4a1f199d729ea4471c6e954c66e8c526ff96d5bc9bfdff9f9ee1eb4df58'}, 'baseline_shapefile': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/shapefile/crushed-stone-operations.zip', 'bytes': 47739, 'sha256': 'b2cb4ae2bde74b58e7c06ee19e87dd4583a07af2d1ff971bccea6b3b2165163c'}, 'baseline_file_geodatabase': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/file_geodatabase/crushed-stone-operations-file_geodatabase.zip', 'bytes': 74138, 'sha256': '9820c939b832e7612390a0a7741722e84e04a3666e1ea782729a6dd97d1ab903'}, 'baseline_collection': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/collection.json', 'bytes': 9923, 'sha256': '306ee7d79fcbbd17ea102068015d410b54757486798e72039f26d9ae4cba068f'}, 'baseline_metadata': {'url': 'https://storage.googleapis.com/storage/v1/b/hifld-next-datasets-prod/o?prefix=hifld%2Fcrushed-stone-operations%2Fcrushed-stone-operations%2Fv1.0.0%2F&maxResults=100', 'bytes': 17197, 'sha256': 'b82cdebfc4951b9949134066980ac2e9157b6ac938f12995875df7f8bc075ae3'}}
+PINS={'usgs_mineplant_zip': {'url': 'https://mrdata.usgs.gov/mineplant/mineplant.zip', 'bytes': 513191, 'sha256': '6dabd3bbedcb1fbf0c5155fb349228951a9b2cbd065311484eb479c25997ee4e'}, 'usgs_mineplant_metadata': {'url': 'https://mrdata.usgs.gov/metadata/mineplant.xml', 'bytes': 26366, 'sha256': '419629edaf825f2d55ed1dd03fe3a9921d0d35a8240c208b44b53d30c8b9ead0'}, 'legacy_metadata': {'url': 'https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/crstonx020.xml', 'bytes': 19892, 'sha256': '0dbf1190282e425aa0b72179e5d163a716126e19daa50c6795378e784864ac24'}, 'baseline_collection': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/collection.json', 'bytes': 9923, 'sha256': '306ee7d79fcbbd17ea102068015d410b54757486798e72039f26d9ae4cba068f'}, 'baseline_file_geodatabase': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/file_geodatabase/crushed-stone-operations-file_geodatabase.zip', 'bytes': 74138, 'sha256': '9820c939b832e7612390a0a7741722e84e04a3666e1ea782729a6dd97d1ab903'}, 'baseline_geojson': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/geojson/crushed-stone-operations-geojson.geojson', 'bytes': 275487, 'sha256': '2ddcf6a267fdaf2d1063fee1dab2deece39ccf6a8cece79221c49e63910ab595'}, 'baseline_geopackage': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/geopackage/crushed-stone-operations-Crushed_Stone_Operations.gpkg', 'bytes': 249856, 'sha256': 'becb8e86f616c5579e555464f01ea2e64b8089ff749e9b762237b2935ef1bf82'}, 'baseline_geoparquet': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/geoparquet/crushed-stone-operations.parquet', 'bytes': 79396, 'sha256': '6e4fa965ef0164f0d46c855ad517cb2440aa512cdbf852dd0c7643ea3aa8dd4e'}, 'baseline_metadata': {'url': 'https://storage.googleapis.com/storage/v1/b/hifld-next-datasets-prod/o?prefix=hifld%2Fcrushed-stone-operations%2Fcrushed-stone-operations%2Fv1.0.0%2F&maxResults=100', 'bytes': 17197, 'sha256': 'b82cdebfc4951b9949134066980ac2e9157b6ac938f12995875df7f8bc075ae3'}, 'baseline_pmtiles': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/pmtiles/crushed-stone-operations.pmtiles', 'bytes': 85710, 'sha256': '6d30d4a1f199d729ea4471c6e954c66e8c526ff96d5bc9bfdff9f9ee1eb4df58'}, 'baseline_shapefile': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/crushed-stone-operations/crushed-stone-operations/v1.0.0/shapefile/crushed-stone-operations.zip', 'bytes': 47739, 'sha256': 'b2cb4ae2bde74b58e7c06ee19e87dd4583a07af2d1ff971bccea6b3b2165163c'}}
 
-DBF_FIELDS=[('CRSTONX020', 'N', 11, 0), ('COMP_NAME', 'C', 254, 0), ('OPER_NAME', 'C', 254, 0), ('COUNTY', 'C', 254, 0), ('STATE', 'C', 254, 0), ('FIPS', 'C', 254, 0), ('STATE_FIPS', 'C', 254, 0), ('LATITUDE', 'N', 19, 4), ('LONGITUDE', 'N', 19, 4), ('OPER_TYPE', 'C', 254, 0), ('COMMODITY', 'C', 254, 0)]
-SOURCE_NAMES=[f[0] for f in DBF_FIELDS]+['geometry']
+# Only USGS-owned objects may feed candidate values; every other pinned object
+# is comparison context and is labeled as such in the source manifest and audit.
+INPUT_NAMES=frozenset({'usgs_mineplant_zip','usgs_mineplant_metadata','legacy_metadata'})
+
+# Assigned scope of the USGS 2003 survey distribution, pinned from the fresh
+# capture: the producer COMMODITY class "Crushed Stone", documented by the
+# producer metadata's own aggregates completeness bound (operations producing
+# over 30,000 tons per year in 2002). The retired National Atlas layer
+# documented by the pinned legacy metadata has 2,324 points (active 2002,
+# production over 50,000 tons, published 200506, 11 attributes, NAD83 claim);
+# no subset of this survey is claimed to recreate it.
+CRUSHED_COMMODITY='Crushed Stone'
+CRUSHED_ROWS=2190
+CRUSHED_STATES=47
+CRUSHED_IDS=(613,2802)
+CRUSHED_SOURCE_FIDS=(601,2790)
+# Physical declarations of the retired National Atlas layer, retained because the
+# pinned published comparison objects use the original atlas schema and MINOP2X020 IDs.
+DBF_FIELDS=[('MINOP2X020','N',3,0),('COMMODITY','C',21,0),('SITE_NAME','C',46,0),('COMPANY_NA','C',51,0),('STATE_LOCA','C',14,0),('COUNTY','C',16,0),('LATITUDE','N',9,3),('LONGITUDE','N',11,3),('PLANT_MIN','C',10,0)]
+SOURCE_NAMES=['source_fid','source_shp_record_number']+[f[0] for f in MINEPLANT_DBF_FIELDS]+['geometry']
 
 
 def local_only(storage):
@@ -157,7 +182,7 @@ def bounded_input(path,limit):
 
 def acquire(storage,capture_dir,package_id):
     local_only(storage)
-    if package_id!=PACKAGE or not capture_dir:raise CrushedStoneQuarantineError('explicit_unapproved_preservation_package_selection_required_no_default_fetch')
+    if package_id!=PACKAGE or not capture_dir:raise CrushedStoneQuarantineError('explicit_unapproved_usgs_successor_package_selection_required_no_default_fetch')
     root=Path(capture_dir);captures={};attempted={}
     if '..' in root.parts or not root.is_dir() or any(p.is_symlink() for p in [root,*root.parents]):raise CrushedStoneQuarantineError('unsafe_input_package_root')
     try:
@@ -186,50 +211,47 @@ def acquire(storage,capture_dir,package_id):
         retained=retain_failure(storage,captures,str(exc),attempted);raise CrushedStoneQuarantineError(str(exc)+'; retained:'+retained) from exc
 
 
-def decode_dbf(body):
-    if len(body)<385:raise CrushedStoneQuarantineError('incomplete_dbf')
-    count,header,width=struct.unpack_from('<IHH',body,4);fields=[];offset=32
-    while offset+32<=header and body[offset]!=13:
-        desc=body[offset:offset+32];fields.append((desc[:11].split(b'\0')[0].decode('ascii'),chr(desc[11]),desc[16],desc[17]));offset+=32
-    if fields!=DBF_FIELDS or count!=2324 or width!=2082 or header!=385 or body[offset]!=13 or body[0]!=3 or body[29]!=87 or len(body) not in (header+count*width,header+count*width+1):raise CrushedStoneQuarantineError('missing_renamed_extra_ID_type_width_count_or_DBF_completeness_drift')
-    if len(body)==header+count*width+1 and body[-1]!=26:raise CrushedStoneQuarantineError('unexpected_dbf_tail')
-    rows=[]
-    for fid in range(count):
-        rec=body[header+fid*width:header+(fid+1)*width]
-        if rec[:1]!=b' ':raise CrushedStoneQuarantineError('deleted_or_unknown_dbf_record')
-        offset=1;row={}
-        for name,kind,size,scale in fields:
-            raw=rec[offset:offset+size];offset+=size
-            if kind=='C':
-                if any(c>127 or c<32 for c in raw):raise CrushedStoneQuarantineError('undeclared_nonASCII_source_encoding')
-                row[name]=raw.rstrip(b' ').decode('ascii')
-            else:
-                text=raw.decode('ascii').strip()
-                if not re.fullmatch(r'-?\d+(?:\.\d+)?',text):raise CrushedStoneQuarantineError('null_nonfinite_or_unparseable_DBF_number')
-                value=Decimal(text)
-                if value.as_tuple().exponent!=-scale:raise CrushedStoneQuarantineError('declared_DBF_scale_drift')
-                row[name]=value
-        rows.append(row)
-    if [int(r['CRSTONX020']) for r in rows]!=list(range(1,2325)):raise CrushedStoneQuarantineError('missing_duplicate_reordered_original_CRSTONX020')
-    return rows
+def validate_retired_layer_metadata(body):
+    """The pinned producer legacy metadata documents the retired atlas layer."""
+    try:official=ET.fromstring(body)
+    except ET.ParseError as exc:raise CrushedStoneQuarantineError('invalid_legacy_metadata_xml') from exc
+    titles=[str(e.text) for e in official.findall('.//title')]
+    origins=[str(e.text) for e in official.findall('.//origin')]
+    pubdates=[str(e.text) for e in official.findall('.//pubdate')]
+    caldates=[str(e.text) for e in official.findall('.//caldate')]
+    horizdn=[str(e.text) for e in official.findall('.//horizdn')]
+    counts=[str(e.text) for e in official.findall('.//ptvctcnt')]
+    if (not any('Crushed Stone Operations' in title for title in titles)
+            or not any('Minerals Information Team, U.S. Geological Survey' in origin for origin in origins)
+            or '200506' not in pubdates or '2002' not in caldates
+            or '2324' not in counts
+            or not any('North American Datum of 1983' in datum for datum in horizdn)):
+        raise CrushedStoneQuarantineError('producer_historical_dataset_family_or_release_identity_drift')
 
 
-def decode_points(body,index):
-    if len(body)<100 or len(index)!=100+8*2324:raise CrushedStoneQuarantineError('incomplete_SHP_SHX')
-    for data in (body,index):
-        if struct.unpack_from('>i',data)[0]!=9994 or struct.unpack_from('>i',data,24)[0]*2!=len(data) or struct.unpack_from('<ii',data,28)!=(1000,1):raise CrushedStoneQuarantineError('native_geometry_header_type_or_length_drift')
-    out=[];offset=100
-    for fid in range(2324):
-        if offset+28>len(body):raise CrushedStoneQuarantineError('incomplete_point_records')
-        record,words=struct.unpack_from('>ii',body,offset);typ,x,y=struct.unpack_from('<idd',body,offset+8)
-        if record!=fid+1 or words!=10 or typ!=1 or struct.unpack_from('>ii',index,100+8*fid)!=(offset//2,10) or not all(math.isfinite(v) for v in (x,y)):raise CrushedStoneQuarantineError('SHP_SHX_record_ID_offset_type_or_coordinate_drift')
-        out.append(shapely.Point(x,y).wkb);offset+=28
-    if offset!=len(body):raise CrushedStoneQuarantineError('extra_point_records')
-    geometry=shapely.from_wkb(out)
-    if not all(shapely.is_valid(geometry)) or any(shapely.is_empty(geometry)):raise CrushedStoneQuarantineError('invalid_empty_native_point')
-    bounds=shapely.total_bounds(geometry).tolist()
-    if list(struct.unpack_from('<4d',body,36))!=bounds or index[36:68]!=body[36:68]:raise CrushedStoneQuarantineError('native_bounds_or_index_drift')
-    return out
+def validate_mineplant_metadata(body):
+    """The pinned producer metadata documents the 2003 survey distribution."""
+    try:survey=ET.fromstring(body)
+    except ET.ParseError as exc:raise CrushedStoneQuarantineError('invalid_usgs_mineplant_metadata_xml') from exc
+    titles=[str(e.text) for e in survey.findall('.//title')]
+    origins=[str(e.text) for e in survey.findall('.//origin')]
+    pubdates=[str(e.text) for e in survey.findall('.//pubdate')]
+    caldates=[str(e.text) for e in survey.findall('.//caldate')]
+    complete=' '.join(str(e.text) for e in survey.findall('.//complete'))
+    if ('Active Mines and Mineral Processing Plants in the United States in 2003' not in titles
+            or not any('U.S. Geological Survey' in origin for origin in origins)
+            or '2005' not in pubdates or '2003' not in caldates
+            or 'over 30,000 tons per year in 2002' not in complete):
+        raise CrushedStoneQuarantineError('usgs_mineplant_survey_documentation_drift')
+
+
+def crushed_rows(rows):
+    subset=[row for row in rows if row['COMMODITY']==CRUSHED_COMMODITY]
+    if len(subset)!=CRUSHED_ROWS:raise CrushedStoneQuarantineError('crushed_subset_completeness_drift')
+    if [int(row['id']) for row in subset]!=list(range(CRUSHED_IDS[0],CRUSHED_IDS[1]+1)):raise CrushedStoneQuarantineError('crushed_subset_id_roster_drift')
+    if [row['source_fid'] for row in subset]!=list(range(CRUSHED_SOURCE_FIDS[0],CRUSHED_SOURCE_FIDS[1]+1)):raise CrushedStoneQuarantineError('crushed_subset_source_record_roster_drift')
+    if len({row['STATE_LOCA'] for row in subset})!=CRUSHED_STATES:raise CrushedStoneQuarantineError('crushed_subset_state_coverage_drift')
+    return subset
 
 
 def inspect_captures(captures):
@@ -237,39 +259,31 @@ def inspect_captures(captures):
     for name,(body,receipt) in captures.items():
         validate_capture(name,body,receipt,PINS[name]['url'])
         if digest(body)!=PINS[name]['sha256'] or len(body)!=PINS[name]['bytes']:raise CrushedStoneQuarantineError('pinned_package_drift:'+name)
-    public=ET.fromstring(captures['stanford_publicxml'][0]);masters=[]
-    for file in public.iter('file'):
-        if file.attrib.get('role')!='master':continue
-        name=file.attrib['id'];masters.append(name)
-        if name not in PINS:raise CrushedStoneQuarantineError('unexpected_preservation_master')
-        body=captures[name][0]
-        if len(body)!=int(file.attrib['size']) or any(hashlib.new(c.attrib['type'].lower().replace('-',''),body).hexdigest()!=c.text for c in file.findall('checksum')):raise CrushedStoneQuarantineError('preservation_manifest_size_or_checksum_mismatch')
-    if sorted(masters)!=sorted('crstonx020.'+ext for ext in ('dbf','prj','shp','shp.xml','shx')):raise CrushedStoneQuarantineError('missing_preservation_master')
-    official=ET.fromstring(captures['legacy_metadata'][0]);own=ET.fromstring(captures['crstonx020.shp.xml'][0])
-    if not any('Crushed Stone Operations' in str(e.text) for e in official.findall('.//title')) or '200506' not in [e.text for e in official.findall('.//pubdate')] or '2002' not in [e.text for e in official.findall('.//caldate')]:raise CrushedStoneQuarantineError('producer_historical_dataset_family_or_release_identity_drift')
-    if captures['crstonx020.prj'][0].decode('ascii')!=PRESERVED_PRJ or any('North American Datum of 1983' not in [e.text for e in meta.findall('.//horizdn')] for meta in (official,own)):raise CrushedStoneQuarantineError('native_package_datum_claim_or_metadata_drift')
-    rows=decode_dbf(captures['crstonx020.dbf'][0]);geometry=decode_points(captures['crstonx020.shp'][0],captures['crstonx020.shx'][0])
-    for row,wkb in zip(rows,geometry):row['geometry']=wkb
-    if any(row['COMMODITY']!='CRUSHED STONE' for row in rows):raise CrushedStoneQuarantineError('wrong_commodity_family_or_partial_source_substitution')
-    fields=[pa.field(name,pa.string() if kind=='C' else pa.decimal128(width,scale),nullable=False,metadata={b'original_DBF_physical_declaration':encode({'type':kind,'width':width,'decimals':scale,'ldid':87,'nullability':'not expressed in dBASEIII; all original current records nonblank, no inferred null substitution'})}) for name,kind,width,scale in DBF_FIELDS]
-    fields.append(pa.field('geometry',pa.binary(),nullable=False));table=pa.Table.from_pylist(rows,schema=pa.schema(fields))
+    validate_retired_layer_metadata(captures['legacy_metadata'][0])
+    validate_mineplant_metadata(captures['usgs_mineplant_metadata'][0])
+    members=decode_mineplant_zip(captures['usgs_mineplant_zip'][0])
+    if members['mineplant.prj'].decode('ascii')!=MINEPLANT_PRJ+'\n':raise CrushedStoneQuarantineError('usgs_native_prj_drift')
+    rows=decode_mineplant_dbf(members['mineplant.dbf'])
+    crosscheck_mineplant_txt(members['mineplant.txt'],rows)
+    geometry=decode_points(members['mineplant.shp'],members['mineplant.shx'],MINEPLANT_RECORDS)
+    verify_mineplant_geometry_values(rows,geometry)
+    subset=crushed_rows(rows)
+    fields=[pa.field('source_fid',pa.int64(),nullable=False,metadata={b'identity':b'Original zero-based USGS mineplant SHP/DBF physical record index of the crushed-stone subset row, not a published or replacement feature ID'}),pa.field('source_shp_record_number',pa.int32(),nullable=False,metadata={b'identity':b'Original USGS mineplant SHP record-header number'})]
+    for name,kind,width,scale in MINEPLANT_DBF_FIELDS:fields.append(pa.field(name,pa.string() if kind=='C' else pa.decimal128(width,scale),nullable=False,metadata={b'original_DBF_physical_declaration':encode({'type':kind,'width':width,'decimals':scale})}))
+    fields.append(pa.field('geometry',pa.binary(),nullable=False))
+    table=pa.Table.from_pylist([{**{f[0]:row[f[0]] for f in MINEPLANT_DBF_FIELDS},'source_fid':row['source_fid'],'source_shp_record_number':row['source_shp_record_number'],'geometry':geometry[row['source_fid']]} for row in subset],schema=pa.schema(fields))
     published=baseline_audit(captures)
-    audit={'approved':False,'package_id':PACKAGE,'classification':'Explicit Stanford historical preservation as provided, not authenticated original USGS archive/current source feed','count':2324,'states':sorted({row['STATE'] for row in rows}),'commodities':dict(collections.Counter(row['COMMODITY'] for row in rows)),
-        'original_DBF_fields':DBF_FIELDS,'native_crs_claim':PRESERVED_PRJ,'native_crs':'EPSG:4269','datum_claim':'Own preserved PRJ and historical USGS/package metadata agree on NAD83; package-original authentication remains unresolved, no transformation accepted.',
-        'physical_numeric_decode':'Exact DBF base10 decimal(width,scale); original record bytes/header/LDID87 retained. All current character bytes are ASCII within the declared Windows1252 code page; decode right-padding only, no case/leading-zero normalization.',
-        'source_ids':'Original CRSTONX020 decimal(11,0)1..2324 retained, never equated to published MINOP2X020/OBJECTID/id. Intrinsic zero-based physical order and SHP record header numbers retained in a separate lineage sidecar, not invented main IDs.',
-        'published_identifiers':'All published feature IDs, system/storage IDs and producer fields independently retained; complete766MINOP construction-family baseline is NOT a reviewed continuation of2324CRSTON crushed-stone source.',
-        'release':'Historical USGS metadata publication200506 and active2002>50000tons/non-government/non-portable; no exact release day or current coverage claimed; Stanford preservation is a distinct unapproved input package.'}
+    audit={'approved':False,'package_id':PACKAGE,'classification':'USGS-owned historical 2003 National Minerals Information Team survey publication documenting the assigned crushed-stone scope; unapproved draft reconstruction, not the retired National Atlas layer and not a current census','count':CRUSHED_ROWS,'states':sorted({row['STATE_LOCA'] for row in subset}),'commodities':dict(collections.Counter(row['COMMODITY'] for row in subset)),
+           'original_DBF_fields':MINEPLANT_DBF_FIELDS,'native_crs_claim':MINEPLANT_PRJ,'native_crs':'EPSG:4267','contradictory_retired_layer_metadata_datum':'North American Datum of 1983','datum_resolution':'UNAPPROVED; coordinates unchanged as provided; each product PRJ and metadata claim as provided only; no correction/transform',
+           'retired_layer_reference':{'title':'Crushed Stone Operations in the United States','originator':'Minerals Information Team, U.S. Geological Survey','publication_month':'200506','active_year':'2002','production_threshold':'greater than 50,000 tons','documented_points':2324,'documented_attributes':11,'original_download':'http://dds.cr.usgs.gov/pub/data/nationalatlas/crstonx020_nt00109.tar.gz','original_download_status':'dead (HTTP 404 after HTTPS redirect)'},
+           'survey_reference':{'title':'Active Mines and Mineral Processing Plants in the United States in 2003','publication_year':'2005','active_year':'2003','aggregates_completeness_bound':'operations producing over 30,000 tons per year in 2002','subset':CRUSHED_COMMODITY,'rows':CRUSHED_ROWS,'distribution':'https://mrdata.usgs.gov/mineplant/ (USGS-owned)'},
+           'physical_numeric_decode':'Exact DBF base10 decimal values preserved (stored exponents vary up to the declared 5-decimal scale); SHP point doubles equal the DBF values; no binary floating substitution','source_ids':'original USGS mineplant id plus original mineplant SHP/DBF record indices and record numbers, all distinct and unreplaced','published_identifiers':'complete published MINOP2X020/OBJECTID and GeoJSON FID/featureid separately retained as comparison context, no mapping approved','release':'USGS mineplant FGDC publication 2005 of the 2003 National Minerals Information Team survey; the retired layer publication 200506 documents the same Minerals Information Team AMIS program with update status None planned; no exact release day or current coverage claimed'}
     return table,published,audit
 
 
-
 def expected_parquet(table):
-    geo={'version':'1.1.0','primary_column':'geometry','columns':{'geometry':{'encoding':'WKB','geometry_types':['Point'],'crs':pyproj.CRS.from_wkt(PRESERVED_PRJ).to_json_dict(),'bbox':shapely.total_bounds(shapely.from_wkb(table['geometry'].to_pylist())).tolist()}}}
+    geo={'version':'1.1.0','primary_column':'geometry','columns':{'geometry':{'encoding':'WKB','geometry_types':['Point'],'crs':pyproj.CRS.from_wkt(MINEPLANT_PRJ).to_json_dict(),'bbox':shapely.total_bounds(shapely.from_wkb(table['geometry'].to_pylist())).tolist()}}}
     return table.replace_schema_metadata({b'geo':encode(geo),b'candidate_scope':PACKAGE.encode()})
-
-
-PRESERVED_PRJ='GEOGCS["GCS_North_American_1983",DATUM["D_North_American_1983",SPHEROID["GRS_1980",6378137.0,298.257222101]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
 
 def parquet_bytes(table):
     sink=pa.BufferOutputStream();pq.write_table(table,sink,compression='zstd');return sink.getvalue().to_pybytes()
@@ -286,32 +300,24 @@ def manifest_for(captures,identity,parquet_pin):
     inputs=[]
     for name in sorted(captures):
         body,receipt=captures[name];validate_capture(name,body,receipt,PINS[name]['url'])
-        role='producer_publication' if name=='legacy_metadata' else 'archive'
-        inputs.append({'input_id':name+':'+digest(body),'producer':'U.S. Geological Survey (historical dataset metadata only)' if name=='legacy_metadata' else 'Stanford Libraries preservation' if name.startswith('crstonx020.') or name=='stanford_publicxml' else 'HIFLD Next existing published candidate, acceptance unresolved','host':urlsplit(receipt['url']).hostname,'role':role,'canonical_url':receipt['url'],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],'retrieved_at':receipt['observed_at'],'http_status':200,'sha256':digest(body),'bytes':len(body),'license':LICENSE,'attribution':'Stanford cs268nn2622 preservation-as-provided; USGS National Atlas CRSTON crushed-stone historical family; existing766MINOP construction-family published candidates retained independently. No delegation, package-original authentication, identity correction or source selection accepted.','release_date_unknown_reason':'Official source publication month200506(active2002,production>50000tons,non-government/non-portable), no exact release day; Stanford package preservation and baseline fetch times are not source release dates.'})
-    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':identity['code_commit'],'code_identity_scheme':identity['code_identity_scheme'],'title':'Crushed Stone Operations — explicit historical2324-record preservation candidate; published766MINOP identity mismatch unapproved','publisher':'Stanford Libraries preservation (not established agency distribution)','agency':'US Geological Survey historical dataset family; input authority unresolved','source_url':'https://purl.stanford.edu/cs268nn2622','license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':inputs,'transformations':[{'operation':'explicit_preservation_package_native_lossless_reconstruction','parameters':{'package_id':PACKAGE,'input_selection':'explicit local package required, no default fetch or polling; acceptance pending','geometry':'original SHP coordinates and own PRJ as provided; own PRJ and historical metadata agree on NAD83; package originality/selection remains unapproved','container':'A new deterministic ZIP of unchanged preservation masters is raw-only archival evidence, not the missing USGS archive or a canonical/output Shapefile. Native GeoParquet is the sole candidate input/output capability.', 'attributes':'Declared LDID87/all current data ASCII, right-padding decode only; case, leading-zero FIPS, widths and exact decimal values preserved, original DBF sidecars retained','IDs':'all native IDs distinct; complete published IDs separately retained, no approved cross-package mapping'}}],'unsupported_output_formats':{'shapefile_zip':'No accepted source/published schema mapping; preserved original five master sidecars remain lossless raw evidence, not a newly approved output.','geopackage':'DBF decimal128 precision/scale and full Arrow physical schema cannot be silently coerced to GPKG REAL/INTEGER; no migration approved.','pmtiles':'Reprojection/quantization and datum choice are unapproved; native coordinates retained.'},'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all source decimal physical declarations, original IDs, strings, native WKB and metadata, no generic conversion or schema expansion. This is capability only, not input/contract/release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**parquet_pin}]}}}}
+        if name in INPUT_NAMES:
+            role='producer_publication';use='candidate_input'
+            producer='U.S. Geological Survey (National Minerals Information Center historical 2003 survey distribution)' if name!='legacy_metadata' else 'U.S. Geological Survey (National Atlas legacy metadata for the retired crushed-stone layer)'
+            attribution='USGS MRDATA mineplant historical 2003 survey package and USGS National Atlas legacy metadata; the pinned USGS metadata establishes the exact assigned crushed-stone dataset family and its 200506 publication. No contract or release acceptance.'
+        else:
+            role='archive';use='comparison_only_retained_prior_research'
+            producer='HIFLD Next existing published candidate, acceptance unresolved'
+            attribution='Existing published HIFLD v1 objects retained solely to preserve the published identifier roster and comparison context. Never a pipeline input.'
+        inputs.append({'input_id':name+':'+digest(body),'producer':producer,'host':urlsplit(receipt['url']).hostname,'role':role,'pipeline_use':use,'canonical_url':receipt['url'],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],'retrieved_at':receipt['observed_at'],'http_status':200,'sha256':digest(body),'bytes':len(body),'license':LICENSE,'attribution':attribution,'release_date_unknown_reason':'USGS mineplant FGDC publication year 2005 and National Atlas layer publication 200506 have no exact release day; retrieval and portal-edit times are not source release dates.'})
+    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':identity['code_commit'],'code_identity_scheme':identity['code_identity_scheme'],'title':'Crushed Stone Operations — historical USGS 2003 survey reconstruction (unapproved draft)','publisher':'U.S. Geological Survey Mineral Resources Program (MRDATA historical 2003 survey publication)','agency':'U.S. Geological Survey','source_url':'https://mrdata.usgs.gov/mineplant/','license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':inputs,'transformations':[{'operation':'explicit_historical_usgs_survey_native_lossless_reconstruction','parameters':{'package_id':PACKAGE,'input_selection':'explicit local USGS package required, no default fetch or polling; only USGS-owned objects are candidate inputs','assigned_scope':'crushed stone operations as documented by the pinned USGS National Atlas metadata: the USGS commodity class Crushed Stone as monitored by the National Minerals Information Center, excluding construction sand and gravel','subset_selection':"rows of the USGS mineplant file whose COMMODITY equals 'Crushed Stone'; pinned completeness 2190 rows in 47 states with mineplant ids 613 through 2802",'geometry':'original USGS mineplant SHP coordinates and own NAD27 PRJ as provided; SHP point doubles equal the DBF values; contradictory NAD83 claim of the retained USGS National Atlas legacy metadata retained and unresolved','IDs':'USGS mineplant id and original mineplant SHP/DBF record indices preserved; complete published identifiers separately retained, no approved cross-package mapping','source_relationship':'the retired National Atlas crushed-stone layer (2324 records, active 2002, production over 50000 tons, published 200506, 11 attributes, NAD83 claim) and this USGS 2003 survey distribution share the Minerals Information Team AMIS lineage; the survey subset is a different vintage, threshold, schema and ID family, not a recreation of the retired layer; identity/coverage/schema/ID compatibility is blocked for explicit decision'}}],'unsupported_output_formats':{'shapefile_zip':'No accepted source/published schema mapping; the original USGS mineplant package is retained losslessly as raw evidence, not a newly approved output.','geopackage':'DBF decimal128 precision/scale and full Arrow physical schema cannot be silently coerced to GPKG REAL/INTEGER; no migration approved.','pmtiles':'Reprojection/quantization and datum choice are unapproved; native coordinates retained.'},'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all source decimal physical declarations, original IDs, strings, native WKB and metadata, no generic conversion or schema expansion. This is capability only, not input/contract/release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**parquet_pin}]}}}}
     validate_release_provenance(manifest);validate_output_policy(manifest);return manifest
 
 
-def preservation_transport_zip(captures):
-    # New deterministic container, NEVER described as the missing original USGS
-    # archive. Each member is an unchanged Stanford preservation master.
-    stream=io.BytesIO()
-    with zipfile.ZipFile(stream,'w',compression=zipfile.ZIP_STORED) as archive:
-        for name in sorted(n for n in captures if n.startswith('crstonx020.')):
-            info=zipfile.ZipInfo(name,date_time=(1980,1,1,0,0,0));info.create_system=3;info.external_attr=0o100600<<16;archive.writestr(info,captures[name][0])
-    return stream.getvalue()
-
-
 def source_payloads(captures,identity,audit,manifest,table,published_ids):
-    proof={'status':'pass','approved':False,'rows':2324,'method':'All original DBF records/physical declarations and SHP/SHX native points decoded; all2324values/IDs/decimaltypes/nativeWKB/schema metadata and exact deterministic Parquet bytes verified; full original masters retained. No source authenticity/datum/compatibility acceptance.'}
-    values={'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),'metadata/crushed_stone_source_audit.json':encode(audit),'metadata/parquet_source_fidelity.json':encode(proof),'metadata/baseline_comparison.json':encode({'schema_version':1,'approved':False,'status':'blocked','reason_codes':['published766MINOP_construction_family_vs2324CRSTON_crushed_stone_identity_coverage_schema_ID_source_selection_break'],'complete_published_audit':published_ids,'source_rows':2324,'source_fields':DBF_FIELDS,'source_CRS':'EPSG:4269','no_cross_dataset_ID_join_or_approved_transformation':True}),'metadata/baseline_differences.jsonl':b'','metadata/baseline_field_changes.jsonl':b'','metadata/published-identifiers.json':encode(published_ids), 'metadata/source-record-lineage.json':encode({'approved':False,'source_record_header_numbers':list(range(1,2325)),'zero_based_physical_order':list(range(2324)),'relationship':'Intrinsic original SHP record order/header numbers only; not generated replacement IDs, not a baseline join.'})}
+    proof={'status':'pass','approved':False,'rows':CRUSHED_ROWS,'method':'All USGS mineplant DBF records and physical declarations decoded and cross-checked against the producer TXT; Crushed Stone subset selected; SHP/SHX native points decoded and tied to DBF values; all 2190 values/IDs/decimaltypes/nativeWKB/schema metadata and exact deterministic Parquet bytes verified; full original USGS package retained. No source authority/datum/compatibility acceptance.'}
+    values={'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),'metadata/crushed_stone_source_audit.json':encode(audit),'metadata/parquet_source_fidelity.json':encode(proof),'metadata/baseline_comparison.json':encode({'schema_version':1,'approved':False,'status':'blocked','reason_codes':['unapproved_historical_usgs_input_authority_datum_schema_ID_mapping_and_baseline_contract','retired_2324_CRSTON_2002_layer_2190_mineplant_2003_rows_and_766_MINOP_published_family_incompatible_without_explicit_decision']}),'metadata/baseline_differences.jsonl':b'','metadata/baseline_field_changes.jsonl':b'','metadata/published-identifiers.json':encode(published_ids)}
     for name,(body,receipt) in captures.items():
         values['raw/captures/'+name+'.body']=body;values['raw/captures/'+name+'.receipt.json']=encode(receipt)
-        # Original masters/transport remain raw-only evidence. Native opted-in
-        # GeoParquet is the sole canonical candidate; no Shapefile format
-        # mapping or legacy-discovery workaround is granted here.
-        if name.startswith('crstonx020.'):values['raw/archive/'+name]=body
-    values['raw/archive/preservation-package.zip']=preservation_transport_zip(captures)
     return values
 
 
@@ -368,7 +374,7 @@ def stage_crushed_stone(storage,*,capture_dir=None,package_id=None):
     local_only(storage);captures=acquire(storage,capture_dir,package_id)
     try:
         table,published_ids,audit=inspect_captures(captures);identity=processing_identity();fingerprint=digest(encode(identity));capture_hash=digest(encode({name:digest(body) for name,(body,_) in captures.items()}))
-        version=f'v0.0.0-draft-stanford-preservation-{capture_hash[:16]}-{fingerprint[:16]}';prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir).absolute()
+        version=f'v0.0.0-draft-usgs-mineplant-{capture_hash[:16]}-{fingerprint[:16]}';prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir).absolute()
         for name,(body,receipt) in captures.items():
             key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body';immutable(storage,key,body);immutable(storage,key+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt))
         with candidate_lock(base,prefix) as target:
@@ -386,7 +392,7 @@ def stage_crushed_stone(storage,*,capture_dir=None,package_id=None):
                 except (ValueError,OSError,KeyError,TypeError,RuntimeError) as exc:
                     dest=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);dest.parent.mkdir(parents=True,exist_ok=True);os.rename(target,dest)
                     immutable(storage,str(dest.relative_to(base))+'.reason.json',encode({'approved':False,'reason':str(exc),'original_prefix':prefix}));raise CrushedStoneQuarantineError('invalid_candidate_detached_intact:'+str(exc)) from exc
-                return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':2324,'reused':True,'package_id':PACKAGE,'accepted':False}
+                return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':CRUSHED_ROWS,'reused':True,'package_id':PACKAGE,'accepted':False}
             if original_state_present(storage,version):
                 try:load_original_state(storage,version,captures,identity,table)
                 except (ValueError,OSError,KeyError,TypeError,RuntimeError) as loss:
@@ -409,7 +415,7 @@ def stage_crushed_stone(storage,*,capture_dir=None,package_id=None):
                 captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
                 for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():(private/name).write_bytes(body)
                 ready=ready_metadata(version,captures,identity,{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY});(private/READY).write_bytes(encode(ready));verify_outputs(private,table,published_ids);os.rename(private,target)
-        return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':2324,'reused':False,'package_id':PACKAGE,'accepted':False}
+        return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':CRUSHED_ROWS,'reused':False,'package_id':PACKAGE,'accepted':False}
     except (ValueError,OSError,KeyError,TypeError,RuntimeError,shapely.errors.GEOSException) as exc:
         retained=retain_failure(storage,captures,str(exc));raise CrushedStoneQuarantineError(str(exc)+'; retained:'+retained) from exc
 
@@ -480,6 +486,6 @@ def baseline_audit(captures):
             'driver_original_system_fid_column':fid_column,'all9_original_attribute_values_equal_to_published_parquet':True,'attribute_values_compared':len(rows)*9,
             'native_geometry_WKB_exact_with_published_parquet':sum(row[geometry]==reference[row['MINOP2X020']]['geometry'] for row in rows) if crs=='EPSG:3857' else None,
             'geometry_comparison_scope':'Within complete published formats only; no source join, reprojection, distance or tolerance. GeoJSON4326 is kept separate from3857 geometry.'}
-    return {'approved':False,'classification':'All published candidates contain766MINOP construction-minerals records, whereas proposed historical source has2324CRSTON crushed-stone records; no compatible continuation or IDmapping accepted.',
+    return {'approved':False,'classification':'All published candidates contain 766 MINOP construction-minerals records, whereas the proposed historical USGS 2003 survey has 2190 Crushed Stone rows in 47 states; no compatible continuation, family join or ID mapping accepted.',
         'complete_formats':report,'original_shapefile_DBF_physical_declarations':physical_dbf,'published_commodities':dict(collections.Counter(row['COMMODITY'] for row in reference.values())),
         'pmtiles':'Complete bytes/provider MD5 pinned; content not decoded or claimed lossless.','baseline_decision':'Blocked; dataset-identity/coverage/schema/source-selection decision required, not an accepted breaking correction.'}
