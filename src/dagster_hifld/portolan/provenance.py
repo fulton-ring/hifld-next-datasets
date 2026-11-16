@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import replace
 from pathlib import Path
 
-from dagster_hifld.provenance import PROVENANCE_FIELDS, provenance_projection, validate_dictionary_semantics, validate_provenance, validate_provenance_url
+from dagster_hifld.provenance import PROVENANCE_FIELDS, REFRESH_METADATA_FIELDS, provenance_projection, validate_dictionary_semantics, validate_provenance, validate_provenance_url
 from dagster_hifld.resources import PublishedStorageResource
 from dagster_hifld.source_manifest import _merge_manifest_layers, validate_documentation_objects
 
@@ -128,14 +128,16 @@ def attach_published_provenance(record: CatalogRecord, published: PublishedStora
             raise ValueError("Missing downloadable source provenance")
         return record
     manifest = json.loads(published.read_key(manifest_key))
-    if "inputs" not in manifest and "processor" not in manifest:
-        return record
     authored = {key: manifest[key] for key in PROVENANCE_FIELDS if key in manifest}
     resolved_key = f"{version_prefix}/metadata/resolved_provenance.json"
     dictionary_key = f"{version_prefix}/metadata/data_dictionary.json"
-    if not published.object_exists(resolved_key) or not published.object_exists(dictionary_key):
+    resolved = json.loads(published.read_key(resolved_key)) if published.object_exists(resolved_key) else {}
+    if provenance_projection(resolved) is None:
+        if any(field in manifest for field in ("inputs", "processor", *REFRESH_METADATA_FIELDS)):
+            raise ValueError("Missing downloadable complete input provenance")
+        return record
+    if not published.object_exists(dictionary_key):
         raise ValueError("Missing downloadable complete input provenance")
-    resolved = json.loads(published.read_key(resolved_key))
     validate_provenance(resolved)
     # Version layers can refer to evidence inherited from dataset/file layers.
     validate_provenance(_merge_manifest_layers([
@@ -149,7 +151,7 @@ def attach_published_provenance(record: CatalogRecord, published: PublishedStora
     # Authored version inputs can be augmented by dataset/file manifest inputs;
     # conflicts cannot be hidden by the resolved projection.
     indexed = {item["input_id"]: item for item in resolved["inputs"]}
-    if any(indexed.get(item["input_id"]) != item for item in authored["inputs"]):
+    if any(indexed.get(item["input_id"]) != item for item in authored.get("inputs", [])):
         raise ValueError("Published resolved provenance conflicts with authored source inputs")
     for layer in resolved.get("manifest_layers", []):
         snapshot_name = layer.get("snapshot", "")
@@ -214,10 +216,11 @@ def verify_prepared_metadata_dependencies(root: Path, published: PublishedStorag
             manifest_key = prefix + "/metadata/source_manifest.json"
             if published.object_exists(manifest_key):
                 authored = json.loads(published.read_key(manifest_key))
-                if "inputs" in authored or "processor" in authored:
-                    if not published.object_exists(resolved_key):
+                resolved = json.loads(published.read_key(resolved_key)) if published.object_exists(resolved_key) else {}
+                modern = provenance_projection(resolved) is not None
+                if modern or any(field in authored for field in ("inputs", "processor", *REFRESH_METADATA_FIELDS)):
+                    if not modern:
                         raise ValueError("Published source is missing complete input provenance")
-                    resolved = json.loads(published.read_key(resolved_key))
                     validate_provenance(resolved)
                     validate_provenance(_merge_manifest_layers([
                         ("resolved", resolved_key, resolved), ("version", manifest_key, authored),

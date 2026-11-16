@@ -166,6 +166,25 @@ class RefreshMetadataTests(unittest.TestCase):
             self.assertNotIn((prefix + '/raw/unreferenced.bin', prefix + '/raw/unreferenced.bin'), pairs)
 
     def test_layer_merge_references_and_document_roundtrip(self):
+        self._assert_layer_roundtrip()
+
+    def test_version_layer_inherits_omitted_inputs(self):
+        self._assert_layer_roundtrip(('inputs',))
+
+    def test_version_layer_inherits_omitted_inputs_and_processor(self):
+        self._assert_layer_roundtrip(('inputs', 'processor'))
+
+    def test_legacy_resolved_metadata_retains_legacy_behavior(self):
+        with tempfile.TemporaryDirectory() as d:
+            published = PublishedStorageResource(use_local=True, local_dir=d)
+            prefix = 'synthetic/points/v20261116'
+            legacy = json.dumps({'title': 'Legacy reference'}).encode()
+            published.write_key(prefix + '/metadata/source_manifest.json', legacy)
+            published.write_key(prefix + '/metadata/resolved_provenance.json', legacy)
+            record = CatalogRecord('synthetic', 'synthetic', 'points', 'v20261116', 'Fixture', 'Synthetic', 'spatial', 1, ())
+            self.assertIs(attach_published_provenance(record, published, prefix, 'https://example.invalid/data'), record)
+
+    def _assert_layer_roundtrip(self, omitted=()):
         with tempfile.TemporaryDirectory() as d:
             storage = StagingStorageResource(use_local=True, local_dir=d)
             prefix = 'synthetic/points/v20261116'
@@ -173,6 +192,8 @@ class RefreshMetadataTests(unittest.TestCase):
             version = refresh_fixture()
             parent['field_definitions'] = {'code': version['field_definitions'].pop('code')}
             version['inputs'] = []  # references deliberately live in the parent
+            for field in omitted:
+                version.pop(field)
             body = b'<metadata><field>ID</field></metadata>'
             version['documentation'] = [{'path': 'raw/schema.xml', 'input_id': 'producer', 'purpose': 'schema',
                                         'media_type': 'application/xml', 'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()}]
@@ -192,6 +213,7 @@ class RefreshMetadataTests(unittest.TestCase):
                                      'application/vnd.apache.parquet', 7, hashlib.sha256(b'fixture').hexdigest(), object_key=data_key)
             record = CatalogRecord('synthetic', 'synthetic', 'points', 'v20261116', 'Fixture', 'Synthetic', 'spatial', 1, (data_asset,), columns=columns_from_dictionary(dictionary))
             record = attach_published_provenance(record, published, prefix, 'https://example.invalid/data')
+            self.assertEqual(record.source_provenance, provenance_projection(resolved))
             document = next(a for a in record.metadata_assets if a.title == 'raw/schema.xml')
             self.assertEqual(document.media_type, 'application/xml')
             self.assertEqual(document.sha256, hashlib.sha256(body).hexdigest())
@@ -199,6 +221,14 @@ class RefreshMetadataTests(unittest.TestCase):
             render_portolan_tree(tree, (record,), public_root='https://example.invalid/data')
             dependencies = prepared_asset_dependencies(tree, published, 'https://example.invalid/data')
             verify_prepared_metadata_dependencies(tree, published, {a.object_key: dependencies[a.object_key] for a in record.metadata_assets})
+            collection_path = tree / record.version_path / 'collection.json'
+            incomplete = json.loads(collection_path.read_text())
+            incomplete.pop('hifld:provenance')
+            incomplete['assets'] = {key: value for key, value in incomplete['assets'].items() if 'metadata' not in value.get('roles', [])}
+            collection_path.write_text(json.dumps(incomplete))
+            with self.assertRaisesRegex(ValueError, 'cannot lose its input provenance'):
+                verify_prepared_metadata_dependencies(tree, published, {})
+            render_portolan_tree(tree, (record,), public_root='https://example.invalid/data')
             stac = json.loads((tree / record.version_path / 'collection.json').read_text())
             self.assertEqual(stac['hifld:provenance']['field_definitions'], {**parent['field_definitions'], **version['field_definitions']})
             build_catalog_sqlite(tree / '_catalog/catalog.sqlite', (record,))
