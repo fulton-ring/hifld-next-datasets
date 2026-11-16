@@ -19,8 +19,9 @@ class LandMobileBroadcastTowersConfig(Config):
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="communications",
        compute_kind="http",
-       description="Draft fixed-location tower features from the FCC's maintained weekly ULS "
+       description="Draft filed fixed license-location points from the FCC's maintained weekly ULS "
                    "Land Mobile - Broadcast Auxiliary license-records file (l_LMbcast.zip). "
+                   "All license statuses; only mappable F locations, not a physical tower census. "
                    "Unapproved candidate; historical equivalence, schema/ID contract, rights "
                    "and release acceptance remain unresolved.")
 def land_mobile_broadcast_towers_ingest(context, config: LandMobileBroadcastTowersConfig,

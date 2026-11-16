@@ -467,7 +467,10 @@ def capture_cellular_towers(storage: StagingStorageResource, *, version: str,
     manifest = {"schema_version": 1, "approved": False, "title": "Cellular Towers (FCC ULS)",
         "description": ("Location records of active Cellular - 47 CFR Part 22 licenses from the FCC ULS weekly "
                         "public access complete licenses file, republished under the historical HIFLD Cellular "
-                        "Towers column contract. Unapproved candidate; source edition, baseline, schema/ID "
+                        "Towers column contract. Filed license-location rows may share a "
+                        "structure; this is not a physical tower census. "
+                        "Source completeness refers only to the declared file and filters. Unapproved candidate; "
+                        "source edition, baseline, schema/ID "
                         "contract, rights and release decisions remain pending."),
         "publisher": PUBLISHER, "agency": "Federal Communications Commission", "source_url": L_CELL_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
