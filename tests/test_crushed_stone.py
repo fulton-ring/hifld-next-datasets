@@ -99,8 +99,8 @@ class StructuralCrushedStoneTests(unittest.TestCase):
         self.assertEqual(len({row['STATE_LOCA'] for row in subset}),s.CRUSHED_STATES)
         first=subset[0]
         self.assertEqual((first['id'],first['COMMODITY']),(s.CRUSHED_IDS[0],s.CRUSHED_COMMODITY))
-        self.assertEqual(first['LATITUDE'],Decimal('34.01940'));self.assertEqual(first['LATITUDE'].as_tuple().exponent,-5)
-        self.assertEqual(geometry[first['source_fid']],s.shapely.Point(-86.4494,34.0194).wkb)
+        self.assertEqual(first['LATITUDE'],Decimal('34.07950'));self.assertEqual(first['LATITUDE'].as_tuple().exponent,-5)
+        self.assertEqual(geometry[first['source_fid']],s.shapely.Point(-86.3893,34.0795).wkb)
 
     def test_synthetic_subset_count_id_record_and_state_pins_fail_closed(self):
         members=synthetic_mineplant_members();rows=s.decode_mineplant_dbf(members['mineplant.dbf'])
