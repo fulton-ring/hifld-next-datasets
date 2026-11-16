@@ -140,18 +140,6 @@ from dagster_hifld.assets.fuds_public_properties import (
     usace_fuds_public_properties_complete,
     fuds_public_properties_draft_schedule,
 )
-from dagster_hifld.assets.nfhl_nodes import (
-    nfhl_nodes_draft_schedule,
-    fema_nfhl_nodes_complete,
-)
-from dagster_hifld.assets.nfhl_hydrologic_reaches import (
-    nfhl_hydrologic_reaches_draft_schedule,
-    fema_nfhl_hydrologic_reaches_complete,
-)
-from dagster_hifld.assets.nfhl_seclusion_boundaries import (
-    nfhl_seclusion_boundaries_draft_schedule,
-    fema_nfhl_seclusion_boundaries_complete,
-)
 from dagster_hifld.assets.fuds_district_boundaries import (
     fuds_district_boundaries_draft_schedule,
     usace_fuds_program_district_boundaries_complete,
@@ -1193,9 +1181,6 @@ defs = Definitions(
             fema_regions_full_quality,
             fuds_program_division_boundaries_complete,
             bts_intermodal_freight_air_to_truck_complete,
-            fema_nfhl_nodes_complete,
-            fema_nfhl_hydrologic_reaches_complete,
-            fema_nfhl_seclusion_boundaries_complete,
             usace_fuds_munitions_response_sites_complete,
             usace_fuds_public_properties_complete,
             bts_national_transit_map_agencies_candidate_complete,
@@ -1400,9 +1385,6 @@ defs = Definitions(
             epa_power_generation_draft_schedule,
             epa_icis_wastewater_draft_schedule,
             fuds_projects_points_draft_schedule,
-            nfhl_nodes_draft_schedule,
-            nfhl_hydrologic_reaches_draft_schedule,
-            nfhl_seclusion_boundaries_draft_schedule,
             epa_frs_naics_draft_schedule,
             bsee_ocs_platforms_draft_schedule,
             proposed_critical_habitat_draft_schedule,
