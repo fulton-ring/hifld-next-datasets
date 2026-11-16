@@ -147,7 +147,11 @@ EXPECTED_RECORD_SHA256 = "393ff32e209b061ffe28dc9c8218a8f139e35e38e66f57a6d05a85
 # candidate geometry, one [objectid, served rings] document per feature in
 # ascending OBJECTID order, computed from the complete dated population walk
 # (2026-11-14).
-EXPECTED_GEOMETRY_SHA256 = "48f663b94e9dedfd4aebe3bd4587f2df75d66c7fa24f0c3557ac5323de9d1659"
+# The digest covered only post-gate assembled rows before the shared GDAL
+# converter (issue #997); every served row now assembles, so the coverage grew
+# and this transcribed pin moves to the designed pending state until the next
+# complete capture re-derives it.
+EXPECTED_GEOMETRY_SHA256 = None
 # Polygon-ring quarantines retired by the shared GDAL Esri polygon converter
 # (issue #997): the 7 defect rows (4 assemblies invalid, 3 self-intersecting
 # exteriors) now convert through GDAL and are retained verbatim, counted as

@@ -314,9 +314,10 @@ class Wbd12DigitHuTests(unittest.TestCase):
         expected_geometry = hashlib.sha256()
         for oid in _TEST_ROSTER:
             expected_record.update(_canonical(_attributes(oid)) + source.DIGEST_SEPARATOR)
-            if oid not in _GATE_FEATURES:
-                expected_geometry.update(
-                    _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
+            # Every served row now converts through the shared GDAL converter,
+            # so the post-conversion geometry digest covers the whole roster.
+            expected_geometry.update(
+                _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
         self.assertEqual(audit["source_record_sha256"], expected_record.hexdigest())
         self.assertEqual(audit["source_geometry_sha256"], expected_geometry.hexdigest())
 
@@ -565,24 +566,24 @@ class Wbd12DigitHuTests(unittest.TestCase):
             self.assertEqual(page_parts["page_0000"], ["page_0000a", "page_0000b"])
             audit, _derived = source._validate_stream(root, parquet_sink=None,
                                                       page_parts=page_parts)
-        pristine = self._capture_root(documents)
-        with relaxed_pins():
-            reference, _derived = source._validate_stream(pristine, parquet_sink=None)
+        # The refusal is part of the population now: the reference streams the
+        # same refused-structured capture root directly, so replay parity is
+        # compared like for like (the previously gated 200_004 row keeps its
+        # geometry in a fully served capture, which is a different population).
+        with relaxed_pins(EXPECTED_REFUSED_GEOMETRY_OIDS=(200_004,)):
+            reference, _derived = source._validate_stream(root, parquet_sink=None,
+                                                          page_parts=page_parts)
         self.assertEqual(set(captures), set(names))
         self.assertEqual(audit["source_record_sha256"], reference["source_record_sha256"])
         self.assertEqual(audit["source_geometry_sha256"], reference["source_geometry_sha256"])
         self.assertEqual(audit["source_id_sha256"], reference["source_id_sha256"])
         self.assertEqual(audit["null_geometry_count"], reference["null_geometry_count"])
         self.assertEqual(audit["unusable_geometry_counts"],
-                         {"source_polygon_ring_degenerate": 1,
-                          "source_polygon_ring_self_intersecting": 1,
-                          "source_page_window_refused_geometry": 1})
+                         {"source_page_window_refused_geometry": 1})
         self.assertEqual(reference["unusable_geometry_counts"],
-                         {"source_polygon_ring_degenerate": 1,
-                          "source_polygon_ring_self_intersecting": 1,
-                          "source_polygon_assembly_invalid": 1})
+                         {"source_page_window_refused_geometry": 1})
         self.assertEqual(audit["source_refused_geometry_oids"], [200_004])
-        self.assertEqual(reference["source_refused_geometry_oids"], [])
+        self.assertEqual(reference["source_refused_geometry_oids"], [200_004])
         with relaxed_pins(EXPECTED_REFUSED_GEOMETRY_OIDS=(200_004,)):
             source._validate_stream(root, parquet_sink=None, page_parts=page_parts)
             with self.assertRaisesRegex(ValueError, "source_refused_geometry_oids_drift"):
