@@ -22,7 +22,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -211,7 +211,7 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
     requested = Path(capture_directory).absolute() if capture_directory else None
     replay = bool(requested and (requested / "capture_manifest.json").exists())
     root = requested if replay else (requested / (version + "-" + uuid4().hex) if requested
-           else Path("/tmp/hifld-native-reconstruction/252/captures") / (version + "-" + uuid4().hex))
+           else default_capture_dir("hifld-native-reconstruction", "252", "captures") / (version + "-" + uuid4().hex))
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)

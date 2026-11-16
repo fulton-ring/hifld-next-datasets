@@ -242,6 +242,10 @@ def fixture_pins():
 
 
 class UsaceCivilWorksDivisionsTests(unittest.TestCase):
+    def test_default_capture_root_keeps_the_historical_layout(self):
+        self.assertEqual(str(ucwd.DEFAULT_CAPTURE_ROOT),
+                         str(Path(tempfile.gettempdir()) / "usace-civil-works-divisions-captures"))
+
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(usace_civil_works_divisions, hifld_ingest_assets)
         self.assertEqual(usace_civil_works_divisions_draft_schedule.default_status,

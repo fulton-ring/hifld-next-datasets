@@ -11,7 +11,6 @@ import fcntl
 import hashlib
 import io
 import json
-import os
 import math
 import os
 import re
@@ -56,8 +55,6 @@ TITLE = '2022 HIFLD/ORNL campus historical preservation candidate'
 PRIMARY = 'pasda-hifld-zip'
 READY = 'metadata/campus_preservation_ready.json'
 LAYER = 'campus_historical_native'
-CAPTURES = Path(os.environ.get('HIFLD_CAMPUS_CAPTURE_DIR',
-    str(Path(__file__).parents[3] / 'docs/dataset-sources' / SLUG / 'evidence/captures')))
 
 
 class CampusQuarantineError(ValueError):

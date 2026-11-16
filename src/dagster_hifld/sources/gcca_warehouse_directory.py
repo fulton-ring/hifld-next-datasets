@@ -26,7 +26,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import canonical_construction_bundle, seal_first_construction
 from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "public-refrigerated-warehouses-current-gcca"
@@ -393,7 +393,7 @@ def capture_gcca_warehouses(storage: StagingStorageResource, *, version: str,
         raise ValueError("disk_floor_before_acquisition")
     requested = Path(capture_directory).absolute() if capture_directory else None
     replay = bool(requested and (requested / "capture_manifest.json").exists())
-    root = requested if requested else Path("/tmp/hifld-native-reconstruction/280") / (version + "-" + uuid4().hex)
+    root = requested if requested else default_capture_dir("hifld-native-reconstruction", "280") / (version + "-" + uuid4().hex)
     _safe_capture_root(root)
     if replay:
         rows, total, facet_meta, receipts = _load_replay(root)

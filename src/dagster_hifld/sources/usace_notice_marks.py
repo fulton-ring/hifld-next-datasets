@@ -23,7 +23,7 @@ from dagster_hifld.sources.usace_administrative_areas import (
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -225,7 +225,7 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 300_000_000:
         raise ValueError("disk_floor_before_acquisition")
-    root = Path(capture_directory).absolute() if capture_directory else Path("/tmp/hifld-native-reconstruction/250/captures") / (version + "-" + uuid4().hex)
+    root = Path(capture_directory).absolute() if capture_directory else default_capture_dir("hifld-native-reconstruction", "250", "captures") / (version + "-" + uuid4().hex)
     if ".." in root.parts or any(x.is_symlink() for x in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     replay = (root / "capture_manifest.json").is_file()

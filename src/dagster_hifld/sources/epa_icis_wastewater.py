@@ -23,7 +23,7 @@ from dagster_hifld.sources.epa_frs_common import (
 )
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.http_capture import validate_capture_roster
@@ -37,7 +37,7 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "Integrated Compliance Information System (ICIS) Wastewater Treatment Plants"
 DATASET_SLUG = "icis-wastewater-treatment-plants"
 FILE_SLUG = DATASET_SLUG
-DEFAULT_CAPTURE_ROOT = "/tmp/hifld-native-reconstruction/118/captures"
+DEFAULT_CAPTURE_ROOT = str(default_capture_dir("hifld-native-reconstruction", "118", "captures"))
 PUBLISHER = "U.S. Environmental Protection Agency (EPA_GEO hosted FeatureServer)"
 SCHEMA_SHA256 = "db38c1a62fdf82b3bd94acc81d88e776fe1b94f533b2fe8a8f28875222bb0b34"
 PAGE_SIZE = 250

@@ -143,6 +143,10 @@ def fixture_pins():
 
 
 class BoemOcsLeaseBlocksTests(unittest.TestCase):
+    def test_default_capture_root_keeps_the_historical_layout(self):
+        self.assertEqual(str(blocks.DEFAULT_CAPTURE_ROOT),
+                         str(Path(tempfile.gettempdir()) / "boem-ocs-lease-block-captures"))
+
     def test_native_fields_polygon_nulls_and_audit_counts(self):
         with fixture_pins():
             _, fields, features, audit = blocks._validate(_fixture())
