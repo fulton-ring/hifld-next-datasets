@@ -1,6 +1,8 @@
-"""Draft extractor for BTS's exact IPCD feature layer.
+"""Parked historical BTS IPCD source with retained private fixture decoders.
 
-The BTS describes IPCD as a frozen publication whose latest information is from 2022. This module captures the BTS-owned layer and stages only an unapproved candidate; it does not imply future refreshes or permit publication.
+The producer states IPCD is no longer updated and its latest information is from
+2022. Public acquisition and retained replay refuse before I/O. Private legacy
+fixture logic does not establish a current source or authorize publication.
 """
 from __future__ import annotations
 
@@ -254,7 +256,14 @@ def _load_retained_capture(capture_root: Path) -> tuple[dict[str, tuple[bytes, d
 
 
 def capture_bts_ipcd(storage: StagingStorageResource, *, version: str, capture_directory: str | None = None, reuse_retained_capture: bool = False) -> dict[str, object]:
-    """Capture and stage one complete unapproved source candidate."""
+    """Refuse discontinued-source acquisition and retained replay before I/O."""
+    raise ValueError(
+        "historical_source_not_maintained: BTS states IPCD is no longer updated and its latest information is from 2022."
+    )
+
+
+def _capture_fixture_candidate(storage: StagingStorageResource, *, version: str, capture_directory: str | None = None, reuse_retained_capture: bool = False) -> dict[str, object]:
+    """Legacy reconstruction retained for isolated offline fixtures, never registered."""
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ValueError("explicit_local_staging_resource_required")
     if not version or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_" for c in version):

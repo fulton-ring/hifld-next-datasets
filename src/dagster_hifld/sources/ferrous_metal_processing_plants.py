@@ -1,4 +1,8 @@
-"""Draft-only lossless reconstruction of the USGS National Atlas Ferrous Metal Processing Plants package.
+"""Parked historical USGS National Atlas Ferrous Metal Processing Plants source.
+
+Public acquisition and replay are refused before I/O. Private native decoders
+and reconstruction logic remain only for isolated offline fixture validation;
+the excluded archive is not an eligible current acquisition route.
 
 The original producer publication ``minop4x020_nt00021.tar.gz`` (December 2005
 USGS National Atlas release built from the Minerals Information Team's 2003
@@ -6,7 +10,7 @@ Automated Minerals Information System survey) is retired from its original
 ``dds.cr.usgs.gov`` host. The Internet Archive snapshot of those producer bytes
 is a historical archive, not a maintained agency feed. The live USGS legacy
 metadata XML document (``minop4x020.xml``) is retained as producer-published
-historical metadata. This module validates both inputs against exact byte
+historical metadata. Private fixture reconstruction validates both inputs against exact byte
 pins, decodes the native DBF/SHP/SHX masters losslessly, and stages an
 unapproved typed GeoParquet candidate. It does not approve the source,
 archive authority, datum, schema/ID contract, rights, or release, and it
@@ -427,7 +431,16 @@ def _preserve_original_receipts(captures: dict[str, tuple[bytes, dict]],
 def capture_ferrous_metal_processing_plants(storage: StagingStorageResource, *, version: str,
                                             capture_directory: str | None = None,
                                             repo_root: Path | None = None) -> dict[str, object]:
-    """Capture, validate, and stage the unapproved Ferrous Metal Processing Plants candidate."""
+    """Refuse excluded historical archive acquisition and replay before I/O."""
+    raise ValueError(
+        "historical_source_not_maintained: retired USGS National Atlas ferrous processing publication; Internet Archive acquisition and replay are excluded by source policy."
+    )
+
+
+def _capture_fixture_candidate(storage: StagingStorageResource, *, version: str,
+                               capture_directory: str | None = None,
+                               repo_root: Path | None = None) -> dict[str, object]:
+    """Legacy reconstruction retained for isolated offline fixtures, never registered."""
     if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
         raise ValueError("explicit_isolated_local_staging_required")

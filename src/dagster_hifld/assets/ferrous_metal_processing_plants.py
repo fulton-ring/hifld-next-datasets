@@ -1,4 +1,4 @@
-"""Draft-only USGS National Atlas Ferrous Metal Processing Plants asset with explicit gates."""
+"""Dormant parked USGS National Atlas definition; public capture refuses I/O."""
 from dagster import (AssetCheckResult, AssetKey, AssetSelection, Config,
                      DefaultScheduleStatus, ScheduleDefinition, asset, asset_check,
                      define_asset_job)
@@ -23,12 +23,10 @@ class FerrousMetalProcessingPlantsConfig(Config):
     group_name="usgs",
     compute_kind="http",
     description=(
-        "Lossless reconstruction of the December 2005 USGS National Atlas Ferrous Metal "
-        "Processing Plants package (minop4x020) from an Internet Archive snapshot of the "
-        "retired producer publication, with the live USGS legacy metadata XML retained as "
-        "historical metadata. Historical archive, not a maintained agency feed; HIFLD "
-        "archive equivalence, datum, schema/ID contract, rights, and release decisions "
-        "remain pending."
+        "Parked December 2005 USGS National Atlas Ferrous Metal Processing Plants "
+        "definition. Internet Archive acquisition and retained replay are excluded; "
+        "the public capture refuses before I/O. Private offline fixture validation "
+        "does not establish a maintained source or grant any release approval."
     ),
 )
 def ferrous_metal_processing_plants_usgs(context, config: FerrousMetalProcessingPlantsConfig,

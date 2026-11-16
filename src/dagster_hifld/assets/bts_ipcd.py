@@ -1,4 +1,4 @@
-"""Stopped/manual draft assets for the frozen official BTS IPCD snapshot."""
+"""Dormant parked BTS IPCD definition; capture and replay refuse before I/O."""
 from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
@@ -10,7 +10,7 @@ class BtsIpcdConfig(Config):
     reuse_capture_directory: str = ""
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="bts", compute_kind="http",
-      description="Official USDOT_BTS IPCD final snapshot. BTS states it is no longer updated and latest information is from 2022; adoption and continuity remain release gates.")
+      description="Parked official USDOT_BTS IPCD final snapshot. BTS states it is no longer updated and latest information is from 2022; public acquisition and retained replay refuse before I/O.")
 def bts_intermodal_passenger_connectivity_database_ipcd(context, config: BtsIpcdConfig, staging_storage: StagingStorageResource) -> dict:
     result = capture_bts_ipcd(
         staging_storage,

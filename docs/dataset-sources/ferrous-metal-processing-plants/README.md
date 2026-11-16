@@ -1,11 +1,13 @@
-# Ferrous Metal Processing Plants historical reconstruction candidate
+# Ferrous Metal Processing Plants parked historical source
+
+Public acquisition and retained replay now refuse unconditionally before resource access, HTTP, directories or staging. The Internet Archive route is excluded by source policy; it is not a maintained-source fallback. The dormant asset remains unregistered. Private native parser and mocked reconstruction fixtures remain for historical integrity checks, and existing staged/published versions are untouched.
 
 - Inventory ID: `ferrous-metal-processing-plants` (issue #87); legacy USGS National Atlas mineral operations layer `minop4x020`, explicitly "legacy and not expected to be updated". No maintained agency feed is known.
 - Producer: U.S. Geological Survey (Minerals Information Team's 2003 Automated Minerals Information System survey; Minerals Yearbook Volume 1). Producer FGDC metadata declares publication month `200512`; no exact day is published, so release dates remain unknown with that recorded reason.
 - Original producer publication `https://dds.cr.usgs.gov/pub/data/nationalatlas/minop4x020_nt00021.tar.gz` is retired. The pinned capture is the Internet Archive identity snapshot `https://web.archive.org/web/20161212153047id_/https://dds.cr.usgs.gov/pub/data/nationalatlas/minop4x020_nt00021.tar.gz` (byte-identical across repeated fetches and the `id_` identity form; archived `x-archive-orig-last-modified: 2005-12-14`). Role: `archive` — a historical archive of the producer publication, not a maintained feed or an authorized current distributor.
 - Producer-published historical metadata, still served by USGS and pinned: `https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/minop4x020.xml` (role `producer_publication`; the `Last-Modified: 2014-10-03` is a document edit time, not a data release). The bundled `minop4x020.txt` FGDC text metadata inside the package is retained as raw evidence.
-- DataLumos HIFLD item (`https://www.datalumos.org/datalumos/project/239023/version/V1/view`, inventory modification date 2024-04-09) returned Cloudflare CAPTCHA to anonymous API and page requests on 2026-10-21 from this environment. It is kept as a separately labeled fallback mirror candidate; it was not fetched, and no mirror substitution was made. Equivalence between the National Atlas package and the HIFLD 2017-12-18 copy is unresolved.
-- Local job: `ferrous_metal_processing_plants_draft_refresh`; its monthly schedule is STOPPED.
+- DataLumos HIFLD item (`https://www.datalumos.org/datalumos/project/239023/version/V1/view`, inventory modification date 2024-04-09) returned Cloudflare CAPTCHA to anonymous API and page requests on 2026-10-21 from this environment. It is a historical research reference, not a permitted fallback input; it was not fetched, and no mirror substitution was made. Equivalence between the National Atlas package and the HIFLD 2017-12-18 copy is unresolved.
+- Dormant job definition: `ferrous_metal_processing_plants_draft_refresh`; its schedule is STOPPED and neither is registered. Direct invocation still reaches the public refusal.
 
 ## Pins and payload (verified 2026-10-21)
 

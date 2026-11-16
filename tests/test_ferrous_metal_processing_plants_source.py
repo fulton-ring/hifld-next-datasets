@@ -327,9 +327,9 @@ class FerrousCaptureCustodyTests(unittest.TestCase):
                             StagingStorageResource(use_local=False, bucket="unused"),
                             StagingStorageResource(use_local=True, local_dir=tmp, prefix="nested")):
                 with self.assertRaisesRegex(ValueError, "explicit_isolated_local_staging_required"):
-                    source.capture_ferrous_metal_processing_plants(storage, version="v1")
+                    source._capture_fixture_candidate(storage, version="v1")
             with self.assertRaisesRegex(ValueError, "unsafe_capture_version"):
-                source.capture_ferrous_metal_processing_plants(
+                source._capture_fixture_candidate(
                     StagingStorageResource(use_local=True, local_dir=tmp), version="../escape")
 
 
@@ -361,7 +361,7 @@ class FerrousEndToEndTests(unittest.TestCase):
 
         def run(**kwargs):
             with patcher, patch.object(source.httpx, "Client", lambda **_kw: pinned_client(client)):
-                return source.capture_ferrous_metal_processing_plants(
+                return source._capture_fixture_candidate(
                     storage, repo_root=repo, **kwargs)
         return run, storage, members
 
