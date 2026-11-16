@@ -1,9 +1,9 @@
 """Opt-in native GeoParquet catalog fallback, never dataset/source acceptance.
 
 Only a single explicitly pinned prebuilt object is supported. Existing canonical
-raw sources retain precedence. Memory is limited by one decoded row group read
-at a time (a row group above the byte ceiling refuses before its batches are
-processed) plus a bounded sample.
+raw sources retain precedence. Memory is limited by one decoded batch at a time
+(batches never coalesce across row groups; a decoded batch above the byte
+ceiling refuses) plus a bounded sample.
 """
 from __future__ import annotations
 
@@ -276,14 +276,15 @@ def _bounded_row_group_batches(parquet:pq.ParquetFile):
     byte ceiling checked per batch then refuses candidates whose served rows
     legitimately carry tens of megabytes of WKB. Reading one row group at a
     time keeps the decoded-batch bound meaningful: every yielded batch is a
-    slice of exactly one row group, the decoded bytes of any single batch stay
-    within one row group's footprint, and a single row group whose decoded
-    bytes exceed the budget still refuses. No quality metric changes.
+    slice of exactly one row group, and the batches of one group never merge
+    with another group's rows. Whole-group ``read_row_group`` would allocate
+    the entire group up front (a multi-GB group allocates before any ceiling
+    check) and refuse groups whose bounded batches each fit, so every group
+    streams through ``iter_batches`` scoped to that single group; a decoded
+    batch above the budget still refuses. No quality metric changes.
     """
     for group in range(parquet.metadata.num_row_groups):
-        table=parquet.read_row_group(group,use_threads=False)
-        if table.nbytes>BATCH_BYTES:raise ValueError('native_geoparquet_decoded_batch_byte_limit')
-        yield from table.to_batches(max_chunksize=BATCH_ROWS)
+        yield from parquet.iter_batches(batch_size=BATCH_ROWS,row_groups=[group],use_threads=False)
 
 
 def _finite_geometry_coordinates(geometry):

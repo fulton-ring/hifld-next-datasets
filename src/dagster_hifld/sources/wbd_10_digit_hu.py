@@ -162,8 +162,8 @@ DISK_FLOOR_BYTES = 24_000_000_000
 # at 5.5e-15 relative across a 100-feature probe (2026-11-14), so the parity
 # guard sits far above that and far below real drift.
 SHAPE_PARITY_TOLERANCE = 1e-6
-# Row groups are budgeted by served geometry bytes so the decoded batch of
-# any row group stays far below the shared catalog summarizer's 128 MB
+# Row groups are budgeted by served geometry bytes so the decoded batches of
+# any row group stay far below the shared catalog summarizer's 128 MB
 # decoded-batch refusal while the largest single served row (tens of
 # megabytes of WKB) still forms its own group (observed 2026-11-15).
 ROW_GROUP_GEOMETRY_BUDGET_BYTES = 64 * 1024 * 1024
@@ -1429,6 +1429,33 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
     return captures, page_parts
 
 
+def _source_contract_descriptions() -> dict:
+    """Persisted source/schema/ID contract wording for this inventory entry.
+
+    The attribute count derives from the pinned served schema so the manifest
+    cannot drift from the layer's actual field list.
+    """
+    return {
+        "source_fields": f"all {len(ATTRIBUTE_FIELDS)} served attributes retained in source "
+                         "order with declared physical types; esriFieldTypeDate served as "
+                         "epoch-milliseconds and represented as Arrow int64 without "
+                         "conversion; no field added or dropped",
+        "lineage": ("DHS HIFLD Open crosswalk (August 2025) row 'Watershed Boundary Dataset "
+                    "(WBD)' (agency U.S. Geological Survey) marks the retired GeoPlatform "
+                    "item 409515c7627c444fb08b66cf89634028 as Deprecate and names the USGS "
+                    "hydro.nationalmap.gov wbd MapServer as the agency's current open REST "
+                    "service; its layer 5 '10-digit HU (Watershed)' is the exact producer "
+                    "publication for the HIFLD Open inventory entry wbd/10-digit-hu-"
+                    "watershed (publisher U.S. Geological Survey, National Geospatial "
+                    "Technical Operations Center). The service documents itself as compiled "
+                    "from USGS NHD and USDA NRCS WBD sources. The old GeoPlatform item is "
+                    "not fetched; DataLumos project 240691 copies are research context only "
+                    "and are never fetched."),
+        "prebuilt_reason": "Native attributes, OBJECTID/huc10/TNMID identifiers and served "
+                           "rings are retained in a typed EPSG:3857 candidate.",
+    }
+
+
 def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
                             capture_directory: str | None = None) -> dict[str, object]:
     """Capture or replay one complete, unapproved native WBD 10-digit candidate."""
@@ -1588,6 +1615,7 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
                      "not either page, supplies the data."}}
          if name == "service_doc" else {})}
         for name, receipt in sorted(receipts.items())]
+    descriptions = _source_contract_descriptions()
     manifest = {"schema_version": 1, "approved": False, "title": "10-digit HU (Watershed)",
         "description": ("Complete observed USGS Watershed Boundary Dataset 10-digit HU "
                         "(Watershed) layer 5 from the USGS hydro.nationalmap.gov wbd "
@@ -1601,10 +1629,7 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
         "transformations": [{"operation": "Esri web-mercator polygon capture to typed native "
                                         "geoparquet candidate",
             "parameters": {
-                "source_fields": "all 21 served attributes retained in source order with "
-                                 "declared physical types; esriFieldTypeDate served as "
-                                 "epoch-milliseconds and represented as Arrow int64 "
-                                 "without conversion; no field added or dropped",
+                "source_fields": descriptions["source_fields"],
                 "source_ids": "OBJECTID retained unchanged; served roster is 18,911 unique "
                               "ids from 1 to 19,567; HUC10 and TNMID retained verbatim "
                               "including leading zeros; no substitute or synthetic identifier",
@@ -1622,20 +1647,9 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
                                 "checksummed receipts for every page and service document",
                 "candidate_status": "unapproved; baseline/schema/ID/coverage/rights/release "
                                     "decisions pending"}}],
-        "lineage": ("DHS HIFLD Open crosswalk (August 2025) row 'Watershed Boundary Dataset "
-                    "(WBD)' (agency U.S. Geological Survey) marks the retired GeoPlatform "
-                    "item 409515c7627c444fb08b66cf89634028 as Deprecate and names the USGS "
-                    "hydro.nationalmap.gov wbd MapServer as the agency's current open REST "
-                    "service; its layer 5 '10-digit HU (Watershed)' is the exact producer "
-                    "publication for the HIFLD Open inventory entry wbd/10-digit-hu-"
-                    "subwatershed (publisher U.S. Geological Survey, National Geospatial "
-                    "Technical Operations Center). The service documents itself as compiled "
-                    "from USGS NHD and USDA NRCS WBD sources. The old GeoPlatform item is "
-                    "not fetched; DataLumos project 240691 copies are research context only "
-                    "and are never fetched."),
+        "lineage": descriptions["lineage"],
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
-            "reason": "Native attributes, OBJECTID/HUC12/TNMID identifiers and served rings "
-                      "are retained in a typed EPSG:3857 candidate.",
+            "reason": descriptions["prebuilt_reason"],
             "objects": [{"path": output_path, "bytes": parquet_bytes, "sha256": parquet_sha}]}}},
         "unsupported_output_formats": {"geopackage": "No format-specific mapping has been approved.",
             "pmtiles": "No display generalization or release policy has been approved."}}

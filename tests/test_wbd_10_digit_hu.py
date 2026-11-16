@@ -391,6 +391,21 @@ class Wbd10DigitHuTests(unittest.TestCase):
         self.assertEqual(source.PUBLISHER,
                          "U.S. Geological Survey, National Geospatial Technical Operations Center")
 
+    def test_source_manifest_descriptions_identify_this_inventory(self):
+        descriptions = source._source_contract_descriptions()
+        served_attributes = sum(1 for field in source.EXPECTED_LAYER_FIELDS
+                                if field["type"] != "esriFieldTypeGeometry")
+        self.assertEqual(len(source.ATTRIBUTE_FIELDS), served_attributes)
+        self.assertIn(f"all {served_attributes} served attributes",
+                      descriptions["source_fields"])
+        self.assertNotIn("21 served attributes", descriptions["source_fields"])
+        self.assertIn("inventory entry wbd/10-digit-hu-watershed", descriptions["lineage"])
+        self.assertNotIn("subwatershed", descriptions["lineage"])
+        self.assertIn("OBJECTID/huc10/TNMID", descriptions["prebuilt_reason"])
+        self.assertNotIn("HUC12", descriptions["prebuilt_reason"])
+        self.assertEqual([field["name"] for field in source.EXPECTED_PAGE_FIELD_DECLARATIONS
+                          if field["name"].startswith("huc")], ["huc10"])
+
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(wbd_10_digit_hu, hifld_ingest_assets)
         self.assertEqual(wbd_10_digit_hu_draft_schedule.default_status,
