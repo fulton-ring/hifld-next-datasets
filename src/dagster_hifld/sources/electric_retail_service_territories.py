@@ -345,7 +345,9 @@ def capture_electric_retail_service_territories(
     storage: StagingStorageResource, *, capture_directory: str | None = None,
     client: httpx.Client | None = None,
 ) -> dict[str, object]:
-    """Capture and stage an immutable 2025 snapshot; this function is not a live refresh."""
+    """Refuse the excluded NBAM mirror before storage or network side effects."""
+    raise ValueError("excluded_frozen_hifld_copy_original_producer_source_required")
+
     root_storage = _safe_local_storage(storage)
     if shutil.disk_usage(root_storage).free < DISK_FLOOR_BYTES:
         raise ValueError("staging_disk_floor_before_acquisition")
