@@ -13,6 +13,11 @@ The producer serializes the Esri date field DATEENDED as an epoch-millisecond
 integer and carries the LAT/LON doubles verbatim; both are retained verbatim
 in the candidate.
 
+Validation and candidate extraction stream: every page body is decoded once
+from the attempt directory and the full-population record/geometry digests and
+the GeoParquet candidate are built one feature at a time, so peak memory stays
+bounded by the page size plus the metadata, not by the population.
+
 Until a dated complete capture establishes the population pins below, the
 module runs in live mode: acquisition and validation complete, the computed
 population contract is written to ``population_pins.json`` in the attempt
@@ -21,7 +26,7 @@ directory, and the run fails closed with
 pins set, the module reproduces every pin and stages the unapproved candidate
 exactly like its NFHL siblings.
 
-The complete 543,467-feature layer was captured 2026-11-12 as 272 full-width
+The complete 543,656-feature layer was captured 2026-11-16 as 272 full-width
 2,000-record pages of the sorted OBJECTID roster with unchanged before/after
 count/id/metadata brackets, zero null-geometry rows and zero string-"NaN"
 ordinate rows; the observed bounds are within the declared layer extent.
@@ -79,17 +84,17 @@ DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 PAGE_CAPTURE_ATTEMPTS = 3
 PAGE_CAPTURE_BASE_DELAY_SECONDS = 5.0
-# Pins below are the observed 2026-11-12 complete-layer population contract,
+# Pins below are the observed 2026-11-16 complete-layer population contract,
 # established by a dated live-mode capture of all 272 full-width roster pages
 # (before/after count/id/metadata brackets unchanged during capture); the
 # module's own capture must reproduce every pin. The service layer roster is
 # the same cheap independently re-verifiable service contract. The live-mode
 # path (pins unset, contract written to ``population_pins.json``, nothing
 # staged) remains available for future re-establishment.
-EXPECTED_COUNT = 543467
-EXPECTED_ID_SHA256 = "abaa793e351dbbd779dc2e2f1304dd5727341cca3a89ba338b1a456edf6f1eb7"
-EXPECTED_RECORD_SHA256 = "8a94b7498325bcfaba2b6bcec66f3cfcca63a04757f6e9a04f2ab345c1e5aa5b"
-EXPECTED_GEOMETRY_SHA256 = "0aa476c8a0f3b3bb6ec27000a0b305b5d340287291a842dac6b64dc0a14ffc04"
+EXPECTED_COUNT = 543656
+EXPECTED_ID_SHA256 = "4082f46fb9f9c445f31422d654f828c729d3933dc3e54fc8e9abc0f18796102c"
+EXPECTED_RECORD_SHA256 = "1c13fa6af7b42a694f8ec23ad762f06014e3e327bcf007b2c88c888cb39ae211"
+EXPECTED_GEOMETRY_SHA256 = "53ee687bad81d2b0f0840bf4493288e7954024fb7a48996cad483f40e43c7dd2"
 EXPECTED_SCHEMA_SHA256 = "328e606a5d54ce05e781cd0e7b9045912fbd1a2252fc871b9092a131ce37964d"
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_NAN_GEOMETRY_COUNT = 0
@@ -230,28 +235,24 @@ def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name
     raise AssertionError("unreachable_retry_state")
 
 
-def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    """Stream-validate the capture; in live mode compute the population contract.
+def _read_capture_body(capture_root: Path, name: str) -> bytes:
+    return (capture_root / f"{name}.body").read_bytes()
 
-    With population pins unset (live mode) every completeness proof — count
-    and roster self-consistency across before/after brackets, exact page id
-    slices, field-schema stability — still runs; only the pin comparisons are
-    replaced by recording the computed contract for pin establishment. With
-    pins set, every computed value is compared to its pin, exactly like the
-    NFHL sibling modules.
+
+def _read_capture_doc(capture_root: Path, name: str) -> object:
+    return json.loads(_read_capture_body(capture_root, name))
+
+
+def _validate_service_brackets(docs: dict[str, object], count: int) -> \
+        tuple[dict[str, object], list, list[int], list[str], str]:
+    """Validate the service/layer/count/roster bracket documents of one attempt.
+
+    Returns the layer document, the field roster, the sorted OBJECTID population,
+    the exact attribute key order every record must carry, and the field-schema
+    digest. Roster documents are checked one at a time so no two id populations
+    are held simultaneously; each must carry the same unique integer population
+    as the sorted ``ids_before`` roster.
     """
-    docs = {name: json.loads(body) for name, (body, _) in captures.items() if name != "service_doc"}
-    count = docs["count_before"].get("count") if isinstance(docs.get("count_before"), dict) else None
-    if not isinstance(count, int) or count < 0:
-        raise ValueError("source_count_drift")
-    page_count = (count + PAGE_SIZE - 1) // PAGE_SIZE
-    expected_names = {"service_doc", "service_before", "layer_before", "count_before", "ids_before", "ids_seed",
-                      "layer_after", "service_after", "count_after", "ids_after",
-                      *(f"page_{i:03d}" for i in range(page_count))}
-    if set(captures) != expected_names:
-        raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    if SERVICE_URL.encode("utf-8") not in captures["service_doc"][0]:
-        raise ValueError("fema_service_documentation_link_drift")
     service, layer = docs["service_before"], docs["layer_before"]
     if not isinstance(service, dict) or service.get("mapName") != "NFHL":
         raise ValueError("official_fema_nfhl_service_identity_drift")
@@ -297,24 +298,99 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_count_drift")
     if EXPECTED_COUNT is not None and count != EXPECTED_COUNT:
         raise ValueError("source_count_drift")
-    rosters = [docs[name].get("objectIds") for name in ("ids_before", "ids_seed", "ids_after")]
-    if any(not isinstance(roster, list) or len(roster) != count
-           or any(type(value) is not int for value in roster) or len(set(roster)) != count
-           for roster in rosters):
+    base = docs["ids_before"].get("objectIds")
+    if (not isinstance(base, list) or len(base) != count
+            or any(type(value) is not int for value in base) or len(set(base)) != count):
         raise ValueError("source_id_population_drift")
-    if any(sorted(roster) != sorted(rosters[0]) for roster in rosters[1:]):
-        raise ValueError("source_id_population_drift")
-    ids = sorted(rosters[0])
+    ids = sorted(base)
+    for name in ("ids_seed", "ids_after"):
+        roster_ids = docs[name].get("objectIds")
+        if (not isinstance(roster_ids, list) or len(roster_ids) != count
+                or any(type(value) is not int for value in roster_ids) or len(set(roster_ids)) != count
+                or sorted(roster_ids) != ids):
+            raise ValueError("source_id_population_drift")
     if EXPECTED_ID_SHA256 is not None and _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
         raise ValueError("source_id_roster_drift")
     if any(docs[name].get("objectIdFieldName") != "OBJECTID" for name in ("ids_before", "ids_after", "ids_seed")):
         raise ValueError("source_id_field_changed")
     if docs["count_before"] != docs["count_after"]:
         raise ValueError("source_count_changed_during_capture")
+    attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
+    return layer, fields_value, ids, attr_names, schema_sha
 
-    features = []
+
+def _grow_bounds(bounds: dict[str, float] | None, x: float, y: float) -> dict[str, float]:
+    if bounds is None:
+        return {"xmin": x, "ymin": y, "xmax": x, "ymax": y}
+    if x < bounds["xmin"]:
+        bounds["xmin"] = x
+    if x > bounds["xmax"]:
+        bounds["xmax"] = x
+    if y < bounds["ymin"]:
+        bounds["ymin"] = y
+    if y > bounds["ymax"]:
+        bounds["ymax"] = y
+    return bounds
+
+
+class _CandidateParquetWriter:
+    """Write the candidate GeoParquet incrementally, one row group per page.
+
+    The schema, field order, physical Arrow types and GeoParquet metadata match
+    the producer's contract exactly; only the on-disk row-group layout differs
+    from a single-shot write, and no row of the population is retained after its
+    row group is emitted.
+    """
+
+    def __init__(self, path: Path, fields_value: list) -> None:
+        fields = [_plain_field(field) for field in fields_value]
+        self._types: dict[str, pa.DataType] = {}
+        schema_fields = []
+        for field in fields:
+            name = field["name"]
+            typ = pa.binary() if name == "SHAPE" else _arrow_type(field)
+            self._types[name] = typ
+            schema_fields.append(pa.field(name, typ, nullable=True))
+        geo = {"version": "1.1.0", "primary_column": "SHAPE", "columns": {"SHAPE": {
+            "encoding": "WKB", "geometry_types": ["Point"],
+            "crs": pyproj.CRS.from_epsg(SOURCE_CRS_WKID).to_json_dict(), "edges": "planar"}}}
+        self._schema = pa.schema(schema_fields).with_metadata({b"geo": _canonical(geo)})
+        self._writer = pq.ParquetWriter(str(path), self._schema, compression="zstd")
+
+    def add_page(self, rows: list) -> None:
+        columns = {}
+        for name, typ in self._types.items():
+            if name == "SHAPE":
+                values = [Point(row["geometry"]["x"], row["geometry"]["y"]).wkb
+                          if _usable_point(row.get("geometry")) else None for row in rows]
+            else:
+                values = [row["attributes"].get(name) for row in rows]
+            columns[name] = pa.array(values, type=typ)
+        self._writer.write_table(pa.Table.from_pydict(columns, schema=self._schema))
+
+    def close(self) -> None:
+        self._writer.close()
+
+
+def _stream_validate_pages(pages, *, count: int, ids: list[int], attr_names: list[str],
+                           writer: _CandidateParquetWriter | None) -> dict[str, object]:
+    """Stream-validate every page document and hash the full populations incrementally.
+
+    Every page's ids must equal its ascending roster slice, so features arrive in
+    ascending OBJECTID order — the exact order the full-population canonical JSON
+    digests are computed over — and both digests plus the GeoParquet candidate can
+    be built one feature at a time without retaining the population in memory.
+    """
+    record_digest, geometry_digest = hashlib.sha256(), hashlib.sha256()
+    record_digest.update(b"[")
+    geometry_digest.update(b"[")
+    separator = b""
+    null_geometry = 0
+    nan_geometry = 0
+    bounds: dict[str, float] | None = None
+    seen = 0
     for page_idx, offset in enumerate(range(0, count, PAGE_SIZE)):
-        page = docs[f"page_{page_idx:03d}"]
+        page = next(pages)
         if not isinstance(page, dict) or "error" in page:
             raise ValueError("source_page_error")
         _validate_spatial_reference(page.get("spatialReference"), f"source_page_{page_idx:03d}")
@@ -329,56 +405,95 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
             raise ValueError("source_page_id_slice_incomplete_or_reordered")
         if exceeded and not full_nonfinal:
             raise ValueError("source_page_unexpected_exceeded_transfer_limit")
-        features.extend(rows)
-    attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
-    null_geometry = 0
-    nan_geometry = 0
-    geometry_records = []
-    observed_bounds: list[float] = []
-    for feature in features:
-        attrs = feature.get("attributes")
-        if not isinstance(attrs, dict) or list(attrs) != attr_names:
-            raise ValueError("source_record_attribute_schema_drift")
-        geom = feature.get("geometry")
-        if geom is None:
-            null_geometry += 1
-            geometry_records.append([attrs["OBJECTID"], None, None])
-        elif isinstance(geom, dict) and set(geom) == {"x", "y"} \
-                and all(isinstance(geom[k], str) and geom[k] == "NaN" for k in ("x", "y")):
-            # FEMA publishes one coastal gage row with Esri string-"NaN" ordinates;
-            # the values are retained verbatim in the record/raw evidence and gated
-            # as unusable geometry here, never silently coerced to a location.
-            nan_geometry += 1
-            geometry_records.append([attrs["OBJECTID"], geom["x"], geom["y"]])
-        elif isinstance(geom, dict) and set(geom) == {"x", "y"} \
-                and all(type(geom[k]) in (int, float) for k in ("x", "y")):
-            x, y = geom["x"], geom["y"]
-            if not (-180 <= x <= 180 and -90 <= y <= 90):
-                raise ValueError("source_coordinate_range_drift")
-            geometry_records.append([attrs["OBJECTID"], x, y])
-            observed_bounds.extend((x, y))
-        else:
-            raise ValueError("source_point_geometry_invalid")
-    features.sort(key=lambda row: row["attributes"]["OBJECTID"])
-    record_sha = _sha(_canonical(features))
-    geometry_records.sort(key=lambda row: row[0])
-    geometry_sha = _sha(_canonical(geometry_records))
+        for feature in rows:
+            attrs = feature.get("attributes")
+            if not isinstance(attrs, dict) or list(attrs) != attr_names:
+                raise ValueError("source_record_attribute_schema_drift")
+            oid = attrs["OBJECTID"]
+            geom = feature.get("geometry")
+            if geom is None:
+                null_geometry += 1
+                geometry_record = [oid, None, None]
+            elif isinstance(geom, dict) and set(geom) == {"x", "y"} \
+                    and all(isinstance(geom[k], str) and geom[k] == "NaN" for k in ("x", "y")):
+                # FEMA publishes one coastal gage row with Esri string-"NaN" ordinates;
+                # the values are retained verbatim in the record/raw evidence and gated
+                # as unusable geometry here, never silently coerced to a location.
+                nan_geometry += 1
+                geometry_record = [oid, geom["x"], geom["y"]]
+            elif isinstance(geom, dict) and set(geom) == {"x", "y"} \
+                    and all(type(geom[k]) in (int, float) for k in ("x", "y")):
+                x, y = geom["x"], geom["y"]
+                if not (-180 <= x <= 180 and -90 <= y <= 90):
+                    raise ValueError("source_coordinate_range_drift")
+                geometry_record = [oid, x, y]
+                bounds = _grow_bounds(bounds, x, y)
+            else:
+                raise ValueError("source_point_geometry_invalid")
+            element = _canonical(feature)
+            record_digest.update(separator)
+            record_digest.update(element)
+            geometry_digest.update(separator)
+            geometry_digest.update(_canonical(geometry_record))
+            separator = b","
+            seen += 1
+        if writer is not None:
+            writer.add_page(rows)
+    record_digest.update(b"]")
+    geometry_digest.update(b"]")
+    record_sha = record_digest.hexdigest()
+    geometry_sha = geometry_digest.hexdigest()
     if EXPECTED_GEOMETRY_SHA256 is not None and geometry_sha != EXPECTED_GEOMETRY_SHA256:
         raise ValueError("source_geometry_or_coverage_drift")
     if EXPECTED_RECORD_SHA256 is not None and record_sha != EXPECTED_RECORD_SHA256:
         raise ValueError("source_record_value_drift")
-    bounds = None
-    if observed_bounds:
-        bounds = {"xmin": min(observed_bounds[0::2]), "ymin": min(observed_bounds[1::2]),
-                  "xmax": max(observed_bounds[0::2]), "ymax": max(observed_bounds[1::2])}
     if EXPECTED_OBSERVED_BOUNDS is not None and bounds != EXPECTED_OBSERVED_BOUNDS:
         raise ValueError("source_observed_coverage_drift")
-    audit = {"source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids)),
-             "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
+    return {"source_feature_count": seen, "source_record_sha256": record_sha,
+            "source_geometry_sha256": geometry_sha, "null_geometry_count": null_geometry,
+            "nan_string_geometry_count": nan_geometry, "observed_bounds": bounds}
+
+
+def _validate_and_extract(capture_root: Path, receipts: Mapping[str, Mapping[str, object]], *,
+                          parquet_path: Path | None) -> tuple[dict, list, dict[str, object]]:
+    """Stream-validate the captured attempt against the population contract.
+
+    Every capture body is decoded once from the attempt directory; no capture
+    body, decoded page or full-population structure is retained in memory. With
+    ``parquet_path`` set, the candidate GeoParquet is written row group by row
+    group while the pages stream through validation; in live mode (pins unset)
+    it stays None and the candidate is not built.
+    """
+    docs = {name: _read_capture_doc(capture_root, name) for name in
+            ("service_before", "layer_before", "count_before", "count_after", "layer_after", "service_after",
+             "ids_before", "ids_seed", "ids_after")}
+    count = docs["count_before"].get("count") if isinstance(docs["count_before"], dict) else None
+    if not isinstance(count, int) or count < 0:
+        raise ValueError("source_count_drift")
+    page_count = (count + PAGE_SIZE - 1) // PAGE_SIZE
+    expected_names = {"service_doc", "service_before", "layer_before", "count_before", "ids_before", "ids_seed",
+                      "layer_after", "service_after", "count_after", "ids_after",
+                      *(f"page_{i:03d}" for i in range(page_count))}
+    if set(receipts) != expected_names:
+        raise ValueError("source_capture_roster_incomplete_or_unexpected")
+    if SERVICE_URL.encode("utf-8") not in _read_capture_body(capture_root, "service_doc"):
+        raise ValueError("fema_service_documentation_link_drift")
+    layer, fields_value, ids, attr_names, schema_sha = _validate_service_brackets(docs, count)
+    writer = _CandidateParquetWriter(parquet_path, fields_value) if parquet_path is not None else None
+    try:
+        tail = _stream_validate_pages(
+            (_read_capture_doc(capture_root, f"page_{page_idx:03d}") for page_idx in range(page_count)),
+            count=count, ids=ids, attr_names=attr_names, writer=writer)
+    finally:
+        if writer is not None:
+            writer.close()
+    audit = {"source_feature_count": tail["source_feature_count"], "source_id_sha256": _sha(_canonical(ids)),
+             "source_record_sha256": tail["source_record_sha256"],
+             "source_geometry_sha256": tail["source_geometry_sha256"],
              "source_schema_sha256": schema_sha, "source_crs_epsg": SOURCE_CRS_WKID,
-             "geometry_type": "Point", "null_geometry_count": null_geometry,
-             "nan_string_geometry_count": nan_geometry,
-             "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
+             "geometry_type": "Point", "null_geometry_count": tail["null_geometry_count"],
+             "nan_string_geometry_count": tail["nan_string_geometry_count"],
+             "observed_bounds": tail["observed_bounds"], "declared_layer_extent": EXPECTED_LAYER_EXTENT,
              "unique_source_id_count": len(ids),
              "source_release_date": None,
              "source_release_date_unknown_reason":
@@ -386,14 +501,16 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
                  "fetch time and the DataLumos archive modification date (2024-10-31) are not release dates."}
     contract = {}
     if EXPECTED_COUNT is None:
-        contract = {"expected_count": len(features), "expected_id_sha256": _sha(_canonical(ids)),
-                    "expected_record_sha256": record_sha, "expected_geometry_sha256": geometry_sha,
-                    "expected_schema_sha256": schema_sha, "expected_observed_bounds": bounds,
-                    "expected_null_geometry_count": null_geometry,
-                    "expected_nan_geometry_count": nan_geometry,
-                    "expected_layer_extent": {key: extent.get(key) for key in
+        contract = {"expected_count": tail["source_feature_count"], "expected_id_sha256": _sha(_canonical(ids)),
+                    "expected_record_sha256": tail["source_record_sha256"],
+                    "expected_geometry_sha256": tail["source_geometry_sha256"],
+                    "expected_schema_sha256": schema_sha,
+                    "expected_observed_bounds": tail["observed_bounds"],
+                    "expected_null_geometry_count": tail["null_geometry_count"],
+                    "expected_nan_geometry_count": tail["nan_string_geometry_count"],
+                    "expected_layer_extent": {key: layer.get("extent", {}).get(key) for key in
                                               ("xmin", "ymin", "xmax", "ymax")}}
-    return layer, fields_value, {"features": features, "audit": audit, "ids": ids, "contract": contract}
+    return layer, fields_value, {"audit": audit, "ids": ids, "contract": contract}
 
 
 def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
@@ -412,27 +529,26 @@ def _usable_point(geom: object) -> bool:
     return isinstance(geom, dict) and type(geom.get("x")) in (int, float) and type(geom.get("y")) in (int, float)
 
 
-def _parquet_bytes(fields: list[dict[str, object]], features: list[dict[str, object]]) -> bytes:
-    columns = {}
-    schema_fields = []
-    for field in fields:
-        name = field["name"]
-        typ = pa.binary() if name == "SHAPE" else _arrow_type(field)
-        if name == "SHAPE":
-            values = [Point(row["geometry"]["x"], row["geometry"]["y"]).wkb if _usable_point(row.get("geometry"))
-                      else None for row in features]
-            schema_fields.append(pa.field(name, typ, nullable=True))
-        else:
-            values = [row["attributes"].get(name) for row in features]
-            schema_fields.append(pa.field(name, typ, nullable=True))
-        columns[name] = pa.array(values, type=typ)
-    geo = {"version": "1.1.0", "primary_column": "SHAPE", "columns": {"SHAPE": {
-        "encoding": "WKB", "geometry_types": ["Point"],
-        "crs": pyproj.CRS.from_epsg(SOURCE_CRS_WKID).to_json_dict(), "edges": "planar"}}}
-    table = pa.Table.from_pydict(columns, schema=pa.schema(schema_fields).with_metadata({b"geo": _canonical(geo)}))
-    sink = pa.BufferOutputStream()
-    pq.write_table(table, sink, compression="zstd")
-    return sink.getvalue().to_pybytes()
+class _RetainedCaptureEvidence(Mapping[str, tuple[bytes, dict[str, object]]]):
+    """Disk-backed capture-evidence view for bounded-memory quarantine.
+
+    Quarantine iterates the mapping once, so each body is read from the attempt
+    directory only when its turn comes and is dropped before the next name is
+    written; no full attempt is ever held in memory.
+    """
+
+    def __init__(self, capture_root: Path, receipts: dict[str, dict[str, object]]) -> None:
+        self._capture_root = capture_root
+        self._receipts = receipts
+
+    def __len__(self) -> int:
+        return len(self._receipts)
+
+    def __iter__(self):
+        return iter(self._receipts)
+
+    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
+        return (self._capture_root / f"{name}.body").read_bytes(), self._receipts[name]
 
 
 def _code_identity() -> dict[str, object]:
@@ -465,7 +581,7 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    receipts: dict[str, dict[str, object]] = {}
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-lomas-draft"}) as client:
@@ -477,36 +593,39 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
             if (not isinstance(seed, list) or any(type(value) is not int for value in seed)
                     or len(set(seed)) != len(seed)):
                 raise ValueError("source_seed_id_population_drift")
-            captures["ids_seed"] = (seed_body, seed_receipt)
+            receipts["ids_seed"] = seed_receipt
             for name, url in _feature_urls(sorted(seed)):
-                body, receipt = _capture_with_retry(
+                _, receipt = _capture_with_retry(
                     client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                     attempts=PAGE_CAPTURE_ATTEMPTS if name.startswith("page_") else DOC_CAPTURE_ATTEMPTS,
                     base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS if name.startswith("page_")
                     else DOC_CAPTURE_BASE_DELAY_SECONDS)
-                captures[name] = (body, receipt)
-        layer, source_fields, extracted = _validate_captures(captures)
+                # Capture bodies stay on disk in the attempt directory; only the
+                # small hash-pinned receipts are kept in memory and streamed back
+                # during validation, so the population is never held.
+                receipts[name] = receipt
+        parquet_path = None if EXPECTED_COUNT is None else capture_root / "candidate.parquet"
+        layer, source_fields, extracted = _validate_and_extract(capture_root, receipts, parquet_path=parquet_path)
     except Exception as exc:
-        receipts = {}
+        receipts_all: dict[str, dict[str, object]] = {}
+        quarantinable: dict[str, dict[str, object]] = {}
         for path in sorted(capture_root.glob("*.receipt.json")):
+            name = path.name.removesuffix(".receipt.json")
             try:
-                receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
+                receipt = json.loads(path.read_bytes())
             except (ValueError, OSError):
-                receipts[path.name.removesuffix(".receipt.json")] = {"receipt_readback_failed": True}
+                receipts_all[name] = {"receipt_readback_failed": True}
+                continue
+            receipts_all[name] = receipt
+            if (capture_root / f"{name}.body").exists():
+                quarantinable[name] = receipt
         (capture_root / "capture_manifest.json").write_bytes(
             _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
-                        "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        retained = dict(captures)
-        for receipt_path in capture_root.glob("*.receipt.json"):
-            name = receipt_path.name.removesuffix(".receipt.json")
-            if name in retained:
-                continue
-            try:
-                retained[name] = ((capture_root / f"{name}.body").read_bytes(), json.loads(receipt_path.read_bytes()))
-            except (OSError, ValueError):
-                continue
-        if retained:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, retained, type(exc).__name__)
+                        "error_code": type(exc).__name__, "receipts": receipts_all}) + b"\n")
+        if quarantinable:
+            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
+                                          _RetainedCaptureEvidence(capture_root, quarantinable),
+                                          type(exc).__name__)
         raise
     if EXPECTED_COUNT is None:
         (capture_root / "population_pins.json").write_bytes(_canonical(
@@ -519,7 +638,7 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
              "source_feature_count": extracted["audit"]["source_feature_count"]}) + b"\n")
         raise _PinsPendingError("source_population_pins_not_established")
     identity = _code_identity()
-    parquet_body = _parquet_bytes(source_fields, extracted["features"])
+    parquet_body = parquet_path.read_bytes()
     rel = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {rel: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
     manifest = {
@@ -544,7 +663,7 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
                     "license": "Not stated by the captured endpoints; rights review pending.",
                     "attribution": "FEMA National Flood Hazard Layer; formal attribution terms require maintainer "
                                    "review."}
-                   for name, (_, receipt) in sorted(captures.items())],
+                   for name, receipt in sorted(receipts.items())],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "source_fields": "all producer fields retained in producer order and "
@@ -593,20 +712,8 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
                     "source_feature_count": EXPECTED_COUNT,
                     "source_record_sha256": audit["source_record_sha256"],
                     "source_geometry_sha256": audit["source_geometry_sha256"],
-                    "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}) + b"\n")
+                    "receipts": dict(sorted(receipts.items()))}) + b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    outputs = {rel: parquet_body, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
-               "metadata/source_audit.json": _canonical(audit) + b"\n",
-               "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, receipt) in captures.items():
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (capture_root / f"{name}.wire").read_bytes()
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
-    outputs["metadata/candidate_ready.json"] = _canonical(
-        {"approved": False, "version": version, "objects": source_objects,
-         "source_record_sha256": audit["source_record_sha256"], "freshness_accepted": False,
-         "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
-         "mapping_approved": False, "release_accepted": False}) + b"\n"
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
         bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
@@ -624,19 +731,35 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
                 "source_release_accepted": False, "source_freshness_accepted": False,
                 "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
                 "mapping_approved": False, "release_accepted": False}
-    for relative, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-    descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
-    for name, descriptor in descriptors.items():
+    descriptors: dict[str, dict[str, object]] = {}
+
+    def _stage(name: str, body: bytes) -> None:
         key = f"{prefix}/{name}"
+        write_immutable(storage, key, body)
+        descriptor = {"bytes": len(body), "sha256": _sha(body)}
         snap = storage.object_snapshot(key)
         if snap is None or snap.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"] \
                 or storage.object_snapshot(key) != snap:
             raise ValueError("candidate_output_physical_readback_failed:" + name)
+        descriptors[name] = descriptor
+
+    _stage(rel, parquet_body)
+    _stage("metadata/source_manifest.json", _canonical(manifest) + b"\n")
+    _stage("metadata/source_audit.json", _canonical(audit) + b"\n")
+    _stage("metadata/processing_identity.json", _canonical(identity) + b"\n")
+    for name in sorted(receipts):
+        _stage(f"raw/{name}.body", _read_capture_body(capture_root, name))
+        _stage(f"raw/{name}.wire", (capture_root / f"{name}.wire").read_bytes())
+        _stage(f"raw/{name}.receipt.json", _canonical(receipts[name]) + b"\n")
+    _stage("metadata/candidate_ready.json", _canonical(
+        {"approved": False, "version": version, "objects": source_objects,
+         "source_record_sha256": audit["source_record_sha256"], "freshness_accepted": False,
+         "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
+         "mapping_approved": False, "release_accepted": False}) + b"\n")
     payload = {"processing_identity": identity,
                "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": {name: receipt for name, (_, receipt) in captures.items()},
+               "capture_receipts": receipts,
                "objects": descriptors}
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
