@@ -503,7 +503,9 @@ def capture_brs_ebs_transmitters(storage: StagingStorageResource, *, version: st
         "title": "Broadband Radio Service (BRS) and Educational Broadband Service (EBS) Transmitters (FCC ULS)",
         "description": ("Location records of active BRS (BR) and EBS (ED) licenses from the FCC ULS weekly public "
                         "access complete MDS/ITFS licenses file, republished under the ULS-derived tower column "
-                        "contract. Unapproved candidate; source edition, baseline, schema/ID contract, rights and "
+                        "contract. Filed license-location rows may share a "
+                        "structure; this is not a physical tower census. "
+                        "Source completeness refers only to the declared file and filters. Unapproved candidate; source edition, baseline, schema/ID contract, rights and "
                         "release decisions remain pending."),
         "publisher": PUBLISHER, "agency": "Federal Communications Commission", "source_url": L_MDSITFS_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,

@@ -569,7 +569,10 @@ def capture_paging_transmission_towers(storage: StagingStorageResource, *, versi
     manifest = {"schema_version": 1, "approved": False, "title": "Paging Transmission Towers (FCC ULS)",
         "description": ("Location records of active licenses from the FCC ULS weekly public access complete "
                         "Paging licenses file, republished under the historical HIFLD Paging Transmission "
-                        "Towers column contract. Unapproved candidate; source edition, baseline, schema/ID "
+                        "Towers column contract. Filed license-location rows may share a "
+                        "structure; this is not a physical tower census. "
+                        "Source completeness refers only to the declared file and filters. Unapproved candidate; "
+                        "source edition, baseline, schema/ID "
                         "contract, rights and release decisions remain pending."),
         "publisher": PUBLISHER, "agency": "Federal Communications Commission", "source_url": L_PAGING_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
