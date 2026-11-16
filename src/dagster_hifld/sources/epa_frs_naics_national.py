@@ -33,7 +33,7 @@ from dagster_hifld.http_capture import capture_http_response, validate_capture_r
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     _validate_cached_catalog_sidecars,
     candidate_prefix,
     content_derived_version,

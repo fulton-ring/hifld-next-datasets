@@ -1,8 +1,10 @@
-"""Shared FRS capture and candidate-construction primitives.
+"""Shared source capture, candidate-construction, seal and quarantine primitives.
 
 Endpoint/schema interpretation stays in each issue adapter. These functions
 share only byte custody, immutable writes, incomplete-capture retention, and
-the first-construction CAS contract.
+the first-construction CAS contract. They moved here from the dataset-named
+``sources/capture_common.py`` (issue #995); no dataset module imports another
+dataset module (``tests/test_sources_module_contract.py``).
 """
 from __future__ import annotations
 
@@ -166,6 +168,17 @@ def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> N
         storage.write_key_if_unchanged(key, body, None)
     elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
         raise ValueError("immutable_staged_object_changed:" + key)
+
+
+def safe_local_storage(storage: StagingStorageResource) -> Path:
+    if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
+            or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
+        raise ValueError("explicit_local_staging_resource_required")
+    root = Path(storage.local_dir).absolute()
+    if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError("unsafe_local_staging_root")
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 CODE_IDENTITY_GIT = "git-commit-blobs-v1"

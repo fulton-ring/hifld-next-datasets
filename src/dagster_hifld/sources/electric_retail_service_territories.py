@@ -19,8 +19,12 @@ from shapely.wkb import dumps as to_wkb
 
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
-from dagster_hifld.sources.esri_common import sha as _sha
+from dagster_hifld.sources.capture_common import processing_identity, write_immutable
+from dagster_hifld.sources.esri_common import (
+    canonical_line as _canonical, field_signature as _field_signature,
+    native_arrow_type as _arrow_type, sha as _sha,
+)
+from dagster_hifld.sources.capture_common import safe_local_storage as _safe_local_storage
 
 DATASET_SLUG = "electric-retail-service-territories"
 FILE_SLUG = DATASET_SLUG
@@ -45,20 +49,8 @@ DISK_FLOOR_BYTES = 300_000_000
 _STRING_TYPES = {"esriFieldTypeString", "esriFieldTypeGUID", "esriFieldTypeGlobalID"}
 
 
-def _canonical(value: object) -> bytes:
-    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                       allow_nan=False) + "\n").encode("utf-8")
 
 
-def _safe_local_storage(storage: StagingStorageResource) -> Path:
-    if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
-            or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
-        raise ValueError("explicit_local_staging_resource_required")
-    root = Path(storage.local_dir).absolute()
-    if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
-        raise ValueError("unsafe_local_staging_root")
-    root.mkdir(parents=True, exist_ok=True)
-    return root
 
 
 def _capture_request(client: httpx.Client | None, root: Path, name: str, method: str,
@@ -187,18 +179,6 @@ def _validate_source_item(item: dict, owner: dict) -> None:
         raise ValueError("source_provider_attribution_drift")
 
 
-def _field_signature(fields: object) -> list[tuple[str, str, int | None]]:
-    if not isinstance(fields, list) or not fields or any(not isinstance(field, dict) for field in fields):
-        raise ValueError("source_schema_missing")
-    result = []
-    for field in fields:
-        name, kind, length = field.get("name"), field.get("type"), field.get("length")
-        if not isinstance(name, str) or not isinstance(kind, str) or (length is not None and type(length) is not int):
-            raise ValueError("source_schema_invalid")
-        result.append((name, kind, length))
-    if len({field[0] for field in result}) != len(result):
-        raise ValueError("source_schema_invalid")
-    return result
 
 
 def _validate_layer(layer: dict, expected_signature: list[tuple[str, str, int | None]] | None = None) -> list[tuple[str, str, int | None]]:
@@ -292,14 +272,6 @@ def _validate_feature(feature: object, expected_id: int, fields: list[tuple[str,
     return attrs, polygon
 
 
-def _arrow_type(kind: str):
-    if kind in _STRING_TYPES:
-        return pa.string()
-    if kind in {"esriFieldTypeOID", "esriFieldTypeInteger", "esriFieldTypeSmallInteger", "esriFieldTypeDate"}:
-        return pa.int64()
-    if kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"}:
-        return pa.float64()
-    raise ValueError("unsupported_esri_field_type:" + kind)
 
 
 def _make_geoparquet(features: list[tuple[dict, object]], fields: list[tuple[str, str, int | None]]) -> bytes:

@@ -122,7 +122,7 @@ class FinalCriticalHabitatTests(unittest.TestCase):
                      patch.object(source,"PAGE_SIZE",1),
                      patch.object(source,"processing_identity",side_effect=identity),
                      patch.object(source,"validate_construction_code_identity"),
-                     patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity")]
+                     patch("dagster_hifld.sources.capture_common.validate_construction_code_identity")]
             with patches[0],patches[1],patches[2],patches[3],patches[4]:
                 first=source.capture_final_critical_habitat(staging,version="fixture",capture_directory=str(Path(temp)/"captures"))
                 partition=build_publish_partition_key(source.DATASET_SLUG,source.FILE_SLUG,first["version"])

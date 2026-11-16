@@ -22,14 +22,13 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
-    _canonical, _capture, _capture_identity,
-    _load_capture, _sha,    _validate_spatial_reference,
+from dagster_hifld.sources.arcgis_layer import (
+    _canonical, _capture, _capture_identity, _load_capture, _sha, _validate_spatial_reference,
 )
 
 DATASET_SLUG = "storage-tank-or-silo-locations-usace-ienc-1"
@@ -316,7 +315,7 @@ def capture_storage_tank_silo_locations_usace_ienc(storage: StagingStorageResour
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
-                ids_body, ids_receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
+                ids_body, ids_receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before", capture_max_bytes=MAX_CAPTURE_BYTES)
                 ids = json.loads(ids_body).get("objectIds")
                 if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
                         or ids != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT):
@@ -326,7 +325,7 @@ def capture_storage_tank_silo_locations_usace_ienc(storage: StagingStorageResour
                 for name, url in roster:
                     if name == "ids_before":
                         continue
-                    captures[name] = _capture(client, url, root, name)
+                    captures[name] = _capture(client, url, root, name, capture_max_bytes=MAX_CAPTURE_BYTES)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}

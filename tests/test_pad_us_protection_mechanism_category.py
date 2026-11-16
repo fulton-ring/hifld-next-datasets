@@ -20,7 +20,7 @@ from dagster_hifld.assets.pad_us_protection_mechanism_category import (
     pad_us_protection_mechanism_category_complete_contract)
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import pad_us_protection_mechanism_category as src
 
 FIXTURE_COUNT = 5
@@ -276,7 +276,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
                          return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                        "files": [], "working_tree_status": "unknown"}),
             patch.object(src, "validate_construction_code_identity"),
-            patch.object(epa_frs_common, "validate_construction_code_identity"),
+            patch.object(capture_common, "validate_construction_code_identity"),
         ])
     if page_size is not None:
         contexts.append(patch.object(src, "PAGE_SIZE", page_size))

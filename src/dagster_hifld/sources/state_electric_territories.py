@@ -27,10 +27,14 @@ import pyproj
 import shapely
 
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.sources.electric_retail_service_territories import (
-    _arrow_type, _canonical, _field_signature, _safe_local_storage,
+from dagster_hifld.sources.esri_common import (
+    canonical_line as _canonical, field_signature as _field_signature,
+    native_arrow_type as _arrow_type,
 )
-from dagster_hifld.sources.epa_frs_common import capture_get, processing_identity, write_immutable
+from dagster_hifld.sources.capture_common import (
+    capture_get, processing_identity, safe_local_storage as _safe_local_storage,
+    write_immutable,
+)
 
 IOWA = 'iowa-electric-service-boundaries'
 WISCONSIN = 'wisconsin-psc-electric-service-territories'

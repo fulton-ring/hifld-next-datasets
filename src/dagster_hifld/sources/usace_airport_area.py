@@ -21,16 +21,29 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.usace_pylon_areas import (
-    _fetch_retry, _esri_polygon,
-    _parquet_bytes, _load_replay, _write_outputs,
-    PAGE_SIZE, MAX_CAPTURE_BYTES,
+from dagster_hifld.sources.arcgis_layer import (
+    esri_polygon as _esri_polygon, fetch_capture_retry,
+    layer_parquet_bytes as _parquet_bytes,
+    load_replay as _load_replay, write_outputs as _write_outputs,
 )
+
+# Byte budgets previously inherited from usace_pylon_areas are declared here.
+PAGE_SIZE = 250
+MAX_BODY_BYTES = 48_000_000
+MAX_CAPTURE_BYTES = 450_000_000
+
+
+def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
+                 *, schedule: tuple[float, ...] = (0.0, 2.0, 8.0)):
+    """Retry transient transport/incomplete reads with backoff, retaining every attempt."""
+    return fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                               attempts=len(schedule), schedule=schedule)
 
 DATASET_SLUG = "airport-area-usace-ienc"
 FILE_SLUG = DATASET_SLUG
