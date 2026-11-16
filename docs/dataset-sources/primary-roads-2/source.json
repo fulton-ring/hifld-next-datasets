@@ -48,17 +48,44 @@
       "unique_source_id_count": 17500,
       "source_id_roster_sha256": "b44e03d24e431bcd5ee419e426c74b77c73a81b78cc76f11e9255d4dcf03f3d8",
       "source_schema_sha256": "e4224cca2c9cab38cf6550bb9d936b1e2e43642c78f03125f8e61e5ffa41e419",
-      "source_attribute_fields": ["LINEARID", "FULLNAME", "RTTYP", "MTFCC"],
-      "source_attribute_physical_types": ["String", "String", "String", "String"],
-      "source_attribute_widths": [22, 100, 1, 5],
-      "observed_attribute_null_counts": {"LINEARID": 0, "FULLNAME": 0, "RTTYP": 0, "MTFCC": 0},
-      "mtfcc_values": ["S1100"],
+      "source_attribute_fields": [
+        "LINEARID",
+        "FULLNAME",
+        "RTTYP",
+        "MTFCC"
+      ],
+      "source_attribute_physical_types": [
+        "String",
+        "String",
+        "String",
+        "String"
+      ],
+      "source_attribute_widths": [
+        22,
+        100,
+        1,
+        5
+      ],
+      "observed_attribute_null_counts": {
+        "LINEARID": 0,
+        "FULLNAME": 0,
+        "RTTYP": 0,
+        "MTFCC": 0
+      },
+      "mtfcc_values": [
+        "S1100"
+      ],
       "geometry_type": "LineString",
       "crs": "EPSG:4269",
       "null_geometry_count": 0,
       "empty_geometry_count": 0,
       "invalid_geometry_count": 0,
-      "bounds": [-158.104182, 17.974171, -65.648659, 61.571228]
+      "bounds": [
+        -158.104182,
+        17.974171,
+        -65.648659,
+        61.571228
+      ]
     },
     "evidence_file": "/workspace/work/275/runtime/capture-2026-10-20/receipt.json"
   },
@@ -68,12 +95,39 @@
     "id_field": "LINEARID",
     "id_type": "string",
     "attributes": [
-      {"name": "LINEARID", "type": "string", "width": 22, "source_declares_nullable": null, "observed_null_count": 0},
-      {"name": "FULLNAME", "type": "string", "width": 100, "source_declares_nullable": null, "observed_null_count": 0},
-      {"name": "RTTYP", "type": "string", "width": 1, "source_declares_nullable": null, "observed_null_count": 0},
-      {"name": "MTFCC", "type": "string", "width": 5, "source_declares_nullable": null, "observed_null_count": 0}
+      {
+        "name": "LINEARID",
+        "type": "string",
+        "width": 22,
+        "source_declares_nullable": null,
+        "observed_null_count": 0
+      },
+      {
+        "name": "FULLNAME",
+        "type": "string",
+        "width": 100,
+        "source_declares_nullable": null,
+        "observed_null_count": 0
+      },
+      {
+        "name": "RTTYP",
+        "type": "string",
+        "width": 1,
+        "source_declares_nullable": null,
+        "observed_null_count": 0
+      },
+      {
+        "name": "MTFCC",
+        "type": "string",
+        "width": 5,
+        "source_declares_nullable": null,
+        "observed_null_count": 0
+      }
     ],
-    "geometry": {"type": "LineString", "crs": "EPSG:4269"},
+    "geometry": {
+      "type": "LineString",
+      "crs": "EPSG:4269"
+    },
     "compatibility_notes": "The archive schema, published field mapping, and any HIFLD identifiers remain unknown. Do not represent this proposed source-native shape as a maintainer-approved contract or infer a crosswalk match."
   },
   "implementation_and_release_gate": {
@@ -89,5 +143,25 @@
     "rights_accepted": false,
     "mapping_approved": false,
     "next_evidence_needed": "Retrieve the original DHS crosswalk and HIFLD archive, retain their hashes, match the exact row, compare complete field roster/types/nullability/IDs/geometry/coverage to the Census candidate, and obtain maintainer approval of the raw and published schema/ID contract."
+  },
+  "current_refresh": {
+    "checked_at": "2026-11-16",
+    "source_url": "https://www2.census.gov/geo/tiger/TIGER2026/PRIMARYROADS/tl_2026_us_primaryroads.zip",
+    "annual_listing_url": "https://www2.census.gov/geo/tiger/",
+    "edition": "2026",
+    "archive_bytes": 38486503,
+    "archive_sha256": "ed7c8e47344d45ecf73694e92d5d105fe6955983733e3a57317c318f80a159ef",
+    "feature_count": 17678,
+    "source_crs": "EPSG:4269",
+    "native_fields": [
+      "LINEARID",
+      "FULLNAME",
+      "RTTYP",
+      "MTFCC"
+    ],
+    "null_or_duplicate_ids": 0,
+    "invalid_geometry_count": 0,
+    "release_accepted": false,
+    "historical_evidence_note": "Existing 2025 source and extraction sections describe the earlier pinned replay contract only."
   }
 }
