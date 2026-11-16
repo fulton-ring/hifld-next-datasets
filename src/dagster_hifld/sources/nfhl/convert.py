@@ -181,9 +181,10 @@ class GeometryReport:
         present = ~missing
         # GDAL derives the coordinate dimension from the served vertices, so a
         # decoded XYZ or XYZM geometry means the page carried Z/M ordinates.
-        dimensions = set(shapely.get_coordinate_dimension(geoms[present])) - {"XY"}
+        dimensions = [d for d in set(shapely.get_coordinate_dimension(geoms[present]))
+                      if d not in (2, None)]
         if dimensions:
-            raise ValueError(f"source_z_or_m_geometry_unsupported:{sorted(dimensions)[0]}")
+            raise ValueError(f"source_z_or_m_geometry_unsupported:{dimensions[0]}")
         empty = present & shapely.is_empty(geoms)
         self._note("empty_geometry", ids[empty])
         usable = present & ~empty
