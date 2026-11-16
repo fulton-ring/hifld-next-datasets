@@ -12,6 +12,7 @@ import pyarrow.parquet as pq
 from shapely import wkb
 from shapely.geometry import LineString, MultiLineString
 
+from dagster_hifld.sources import nfhl_common
 from dagster_hifld.sources import nfhl_flood_hazard_boundaries as source
 
 
@@ -384,7 +385,7 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
             return self._fake_capture_get(bodies, calls)(_client, url, capture_root, name, max_bytes=max_bytes)
 
         with patch.multiple(source, SEGMENT_START_RECORDS=2), \
-             patch.object(source, "capture_get", side_effect=fake_capture_get):
+             patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get):
             segments = source._capture_segments(None, self.root, 4)
         self.assertEqual(sorted(segments), list(PAGE_NAMES))
         self.assertEqual((self.root / "page_000000_00002.body").read_bytes(),
@@ -400,8 +401,8 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
         (self.root / "page_000000_00002.receipt.json").write_bytes(_canonical(receipt) + b"\n")
         calls = []
         with patch.multiple(source, SEGMENT_START_RECORDS=2), \
-             patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
-             patch.object(source.time, "sleep"):
+             patch.object(nfhl_common, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
+             patch.object(nfhl_common.time, "sleep"):
             segments = source._capture_segments(None, self.root, 4)
         self.assertEqual(sorted(segments), list(PAGE_NAMES))
         self.assertEqual((self.root / "page_000000_00002.body").read_bytes(), self.page_files[0]["body"])
@@ -446,7 +447,7 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
             capture_dir = Path(capture_temporary) / "captures"
             capture_dir.mkdir()
             with patch.multiple(source, **pending), \
-                 patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
+                 patch.object(nfhl_common, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 with self.assertRaisesRegex(ValueError, "population_digest_pins_not_established"):
                     source.capture_nfhl_flood_hazard_boundaries(storage, version="vfixture",
@@ -494,7 +495,7 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
                          "EXPECTED_NULL_GEOMETRY_COUNT", "EXPECTED_NAN_GEOMETRY_COUNT"):
                 pending[name] = None
             with patch.multiple(source, **pending), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 with self.assertRaisesRegex(ValueError, "population_digest_pins_not_established"):
                     source.capture_nfhl_flood_hazard_boundaries(storage, version="vfixture",
@@ -523,9 +524,9 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
             (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
             return body, receipt
 
-        with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-             patch.object(source.time, "sleep") as sleep_mock:
-            body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+        with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+             patch.object(nfhl_common.time, "sleep") as sleep_mock:
+            body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                         self.root, "probe", max_bytes=1024,
                                                         attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                         base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -549,9 +550,9 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
             (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
             return error_body, receipt
 
-        with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-             patch.object(source.time, "sleep"):
-            body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+        with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+             patch.object(nfhl_common.time, "sleep"):
+            body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                         self.root, "probe", max_bytes=1024,
                                                         attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                         base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -581,14 +582,14 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
             (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
             return ok_body, receipt
 
-        with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-             patch.object(source.time, "sleep"):
-            body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+        with patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+             patch.object(nfhl_common.time, "sleep"):
+            body, _receipt = nfhl_common.capture_with_retry(None, "https://producer.invalid/page",
                                                         self.root, "probe", max_bytes=1024,
                                                         attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                         base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
             with self.assertRaisesRegex(ValueError, "unrelated_source_capture_failure"):
-                source._capture_with_retry(None, "https://producer.invalid/other",
+                nfhl_common.capture_with_retry(None, "https://producer.invalid/other",
                                            self.root, "probe2", max_bytes=1024,
                                            attempts=source.DOC_CAPTURE_ATTEMPTS,
                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -631,8 +632,8 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
             capture_root.mkdir()
             with patch.multiple(source, SEGMENT_START_RECORDS=4,
                                 SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep"):
                 segments = source._capture_segments(None, capture_root, 4)
             self.assertEqual(sorted(segments), list(PAGE_NAMES))
             self.assertEqual((capture_root / "page_000000_00004.body").read_bytes(), error_body)
@@ -655,8 +656,8 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
             capture_root.mkdir()
             with patch.multiple(source, SEGMENT_START_RECORDS=4,
                                 SEGMENT_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
                     source._capture_segments(None, capture_root, 4)
 
@@ -679,7 +680,7 @@ class NfhlFloodHazardBoundariesTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **self.pins), \
-                 patch.object(source, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
+                 patch.object(nfhl_common, "capture_get", side_effect=self._fake_capture_get(bodies, calls)), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_flood_hazard_boundaries(storage, version="vfixture",
                                                                         capture_directory=str(root / "captures"))
