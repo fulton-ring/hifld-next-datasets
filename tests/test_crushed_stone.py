@@ -94,7 +94,7 @@ class StructuralCrushedStoneTests(unittest.TestCase):
         s.verify_mineplant_geometry_values(rows,geometry)
         subset=s.crushed_rows(rows)
         self.assertEqual(len(subset),s.CRUSHED_ROWS)
-        self.assertEqual([int(row['id']) for row in subset],list(range(*s.CRUSHED_IDS,(s.CRUSHED_IDS[1]+1))))
+        self.assertEqual([int(row['id']) for row in subset],list(range(s.CRUSHED_IDS[0],s.CRUSHED_IDS[1]+1)))
         self.assertEqual([row['source_fid'] for row in subset],list(range(s.CRUSHED_SOURCE_FIDS[0],s.CRUSHED_SOURCE_FIDS[1]+1)))
         self.assertEqual(len({row['STATE_LOCA'] for row in subset}),s.CRUSHED_STATES)
         first=subset[0]
