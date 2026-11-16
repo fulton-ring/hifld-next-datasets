@@ -78,6 +78,8 @@ def capture(url, directory, name, *, replay=False):
 
 def iowa_table(features, fields):
     columns = {name: [] for name, _kind, _length in fields}
+    if any(isinstance(feature.get('geometry'), dict) and 'curveRings' in feature['geometry'] for feature in features):
+        raise ValueError('native_curves_require_separate_encoding_no_linearization')
     geometries = [None] * len(features)
     if any(feature.get('geometry') is not None for feature in features):
         document = {'geometryType': 'esriGeometryPolygon', 'hasZ': True, 'hasM': False,
@@ -147,7 +149,7 @@ def acquire_iowa(directory, replay):
     for offset in range(0, count, 100):
         wanted = ids[offset:offset + 100]
         page = get(f'page_{offset:05}', query(objectIds=','.join(map(str, wanted)), outFields='*',
-            returnGeometry='true', returnZ='true', returnM='false', orderByFields='OBJECTID ASC'))
+            returnGeometry='true', returnZ='true', returnM='false', returnTrueCurves='true', orderByFields='OBJECTID ASC'))
         if (page.get('exceededTransferLimit') is True or page.get('geometryType') != 'esriGeometryPolygon'
                 or page.get('spatialReference', {}).get('wkid') != 102004
                 or _field_signature(page.get('fields')) != fields

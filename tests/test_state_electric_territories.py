@@ -23,6 +23,18 @@ class StateElectricTerritoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'attributes'):
             source.iowa_table([{'attributes': {**attrs, 'EIA_ID': 123}, 'geometry': None}], fields)
 
+    def test_iowa_native_xyz_vertices_survive(self):
+        ring = [[0, 0, 7], [0, 5, 8], [5, 0, 9], [0, 0, 7]]
+        table = source.iowa_table([{'attributes': {'OBJECTID': 1}, 'geometry': {'rings': [ring]}}],
+            [('OBJECTID', 'esriFieldTypeOID', None)])
+        geometry = shapely.from_wkb(table['geometry'][0].as_py())
+        self.assertEqual(list(geometry.exterior.coords), [tuple(p) for p in ring])
+
+    def test_native_curves_refused_before_linearization(self):
+        with self.assertRaisesRegex(ValueError, 'native_curves'):
+            source.iowa_table([{'attributes': {'OBJECTID': 1}, 'geometry': {'curveRings': []}}],
+                [('OBJECTID', 'esriFieldTypeOID', None)])
+
     def test_source_contract_drift_refused(self):
         with self.assertRaisesRegex(ValueError, 'contract'):
             source.validate_contract('municipal', {'crs': 'EPSG:4326'}, None)
