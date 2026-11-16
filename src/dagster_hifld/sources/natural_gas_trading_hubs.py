@@ -28,7 +28,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate,
@@ -459,7 +459,7 @@ def capture_natural_gas_trading_hubs(storage: StagingStorageResource, *, version
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
     capture_root = Path(capture_directory).absolute() if capture_directory else Path(
-        Path("/tmp/hifld-native-reconstruction/174/captures") / version
+        default_capture_dir("hifld-native-reconstruction", "174", "captures") / version
     ).absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

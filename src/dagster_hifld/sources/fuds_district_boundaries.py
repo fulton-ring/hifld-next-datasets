@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon, Polygon
 
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
@@ -114,7 +114,7 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
     if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
         raise ValueError("explicit_local_staging_resource_required")
-    root = Path(capture_directory or "/tmp/hifld-native-reconstruction/94/captures") / version
+    root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "94", "captures"))) / version
     root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict]] = {}
 

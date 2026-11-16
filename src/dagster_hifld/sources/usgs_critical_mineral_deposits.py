@@ -27,7 +27,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.epa_frs_common import (candidate_prefix, capture_get, content_derived_version,
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable)
@@ -201,7 +201,7 @@ def capture_deposits(storage: StagingStorageResource, *, capture_directory: str 
     base=Path(storage.local_dir).absolute()
     if '..' in base.parts or any(p.is_symlink() for p in (base,*base.parents)):
         raise ValueError('unsafe_staging_root')
-    attempt=(Path(capture_directory) if capture_directory else Path('/tmp/hifld-native-reconstruction/352-current-usgs'))/uuid4().hex
+    attempt=(Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "352-current-usgs"))/uuid4().hex
     attempt=attempt.absolute()
     if '..' in attempt.parts or any(p.is_symlink() for p in (attempt,*attempt.parents)):
         raise ValueError('unsafe_capture_directory')

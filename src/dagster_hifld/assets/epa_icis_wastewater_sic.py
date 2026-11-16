@@ -158,7 +158,7 @@ def capture_epa_icis_wastewater_sic(staging_storage: StagingStorageResource, *,
         return _reuse(staging_storage, version=offline_replay_version, identity=identity,
                       fingerprint=identity_fingerprint, offline=True)
 
-    capture_root = Path("/tmp/hifld-native-reconstruction/120/captures") / f"refresh-{uuid4().hex}"
+    capture_root = default_capture_dir("hifld-native-reconstruction", "120", "captures") / f"refresh-{uuid4().hex}"
     captures: dict[str, tuple[bytes, dict[str, Any]]] = {}
     owned_client = client is None
     active = client or httpx.Client(follow_redirects=False, timeout=60.0)

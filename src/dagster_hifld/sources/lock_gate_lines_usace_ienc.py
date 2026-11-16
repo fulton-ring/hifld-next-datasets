@@ -38,7 +38,7 @@ from dagster_hifld.construction_state import (
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
 from dagster_hifld.sources.epa_frs_common import (
@@ -790,7 +790,7 @@ def capture_lock_gate_lines_usace_ienc(storage: StagingStorageResource, *, versi
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = requested / (version + "-" + uuid4().hex)
     else:
-        root = Path("/tmp/hifld-native-reconstruction/149/captures") / (version + "-" + uuid4().hex)
+        root = default_capture_dir("hifld-native-reconstruction", "149", "captures") / (version + "-" + uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)

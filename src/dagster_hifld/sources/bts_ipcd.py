@@ -264,7 +264,7 @@ def capture_bts_ipcd(storage: StagingStorageResource, *, version: str, capture_d
         raise ValueError("unsafe_local_staging_root")
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000: raise ValueError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/129/captures")
+    attempt_root = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "129", "captures")
     capture_root = attempt_root.absolute() if reuse_retained_capture else (attempt_root / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

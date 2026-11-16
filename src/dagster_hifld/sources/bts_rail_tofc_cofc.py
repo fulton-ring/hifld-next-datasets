@@ -327,7 +327,7 @@ def capture_bts_rail_tofc_cofc(storage: StagingStorageResource, *,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
-    capture_base = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/127/captures")
+    capture_base = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "127", "captures")
     capture_token = uuid4().hex
     capture_root = (capture_base / f"capture-{capture_token}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):

@@ -226,7 +226,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
         captures=_read_replay(root,ids)
     else:
         if requested and any(requested.glob("*.body")): raise ValueError("unsealed_capture_attempt_exists")
-        root=(requested/version/uuid4().hex) if requested else Path("/tmp/hifld-native-reconstruction/building-locations")/(version+"-"+uuid4().hex)
+        root=(requested/version/uuid4().hex) if requested else default_capture_dir("hifld-native-reconstruction", "building-locations")/(version+"-"+uuid4().hex)
         if any(p.is_symlink() for p in (root,*root.parents)): raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True,exist_ok=False);captures={}
         try:

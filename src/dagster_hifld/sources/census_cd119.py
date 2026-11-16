@@ -232,7 +232,7 @@ def _mode() -> str:
 
 def _acquire_live() -> Path:
     """Capture each pinned official ZIP to a unique immutable acquisition dir."""
-    parent = Path(os.environ.get("HIFLD_CD119_ACQUISITIONS_DIR", "/tmp/hifld-native-reconstruction/387/acquisitions")).absolute()
+    parent = Path(os.environ.get("HIFLD_CD119_ACQUISITIONS_DIR", str(default_capture_dir("hifld-native-reconstruction", "387", "acquisitions")))).absolute()
     if ".." in parent.parts or any(p.is_symlink() for p in (parent, *parent.parents)):
         raise CD119QuarantineError("acquisition_root_missing_or_aliased")
     parent.mkdir(parents=True, exist_ok=True)

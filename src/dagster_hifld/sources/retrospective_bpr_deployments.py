@@ -33,7 +33,7 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -509,7 +509,7 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
         if requested and any(requested.glob("*.body")):
             raise ValueError("unsealed_capture_attempt_exists")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/retrospective-bpr-deployments/captures")
+                default_capture_dir("hifld-native-reconstruction", "retrospective-bpr-deployments", "captures")
                 / (version + "-" + uuid4().hex))
         if any(p.is_symlink() for p in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")

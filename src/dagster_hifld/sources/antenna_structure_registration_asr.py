@@ -513,7 +513,7 @@ def capture_antenna_structure_registration_asr(storage: StagingStorageResource, 
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/18/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "18", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)

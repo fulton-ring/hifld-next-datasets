@@ -8,6 +8,7 @@ as the external landing page and the EPA_GEO-hosted ``FRS_Wastewater``
 FeatureServer as the open REST service, so the capture reuses the shared EPA
 ICIS wastewater facility core and publishes under this entry's own slug.
 """
+from dagster_hifld.resources import default_capture_dir
 from dagster_hifld.sources.epa_icis_wastewater import (
     ITEM_ID, LAYER_ID, LAYER_NAME, LAYER_URL, MAX_CAPTURE_BYTES,
     MAX_RESPONSE_BYTES, PORTAL_ITEM_URL, PUBLISHER, SCHEMA_SHA256, SERVICE_URL,
@@ -16,7 +17,7 @@ from dagster_hifld.sources.epa_icis_wastewater import (
 
 DATASET_SLUG = "epa-frs-icis-wastewater-treatment-plants"
 FILE_SLUG = DATASET_SLUG
-DEFAULT_CAPTURE_ROOT = "/tmp/hifld-native-reconstruction/393/captures"
+DEFAULT_CAPTURE_ROOT = str(default_capture_dir("hifld-native-reconstruction", "393", "captures"))
 CAPTURE_BUDGET_BYTES = MAX_CAPTURE_BYTES
 RESPONSE_BUDGET_BYTES = MAX_RESPONSE_BYTES
 
