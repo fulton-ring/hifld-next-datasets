@@ -294,7 +294,9 @@ class PadUsManagerNameTests(unittest.TestCase):
         self.assertEqual(src.EXPECTED_ZIP_SHA256,
                          "62ed113335e359509ad68a731146c74aa873c5a92da4f3fda572e54bc9b823ab")
         self.assertEqual(src.EXPECTED_RECORD_SHA256, "a78bdae737ffe899263d0df21480a77790bd41a2ea8b9e2ead1f4deabe6b290a")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "3bd3a3fab452f9a4a4d0b0b9d37d3c9b11c42a3d644536a46f68a71ccbaf6687")
+            # The geometry digest coverage grew with the shared converter
+        # (issue #997); the transcribed pin waits for the next complete capture.
+        self.assertIsNone(src.EXPECTED_GEOMETRY_SHA256)
         self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 6)
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
@@ -350,7 +352,8 @@ class PadUsManagerNameTests(unittest.TestCase):
                     src._validate_polygon_geometry(geometry["rings"])
         with self.assertRaisesRegex(src.PadUsManagerNameError, "unexpected_source_geometry_members"):
             src._validate_feature({"attributes": _fixture_attrs(1),
-                                   "geometry": {"rings": [], "curves": []}}, (), 1)
+                                   "geometry": {"rings": [], "curves": []}},
+                                  tuple(name for name, *_rest in src.NATIVE_FIELDS), 1)
         # GDAL retains a self-intersecting exterior, an unassigned hole and an
         # all-CCW ring set verbatim; only the degenerate double-back ring
         # becomes OGC-invalid (issue #997 shared converter).
@@ -392,7 +395,7 @@ class PadUsManagerNameTests(unittest.TestCase):
             nulls = table.column("geometry").to_pylist()
             self.assertIsNone(nulls[3])
             self.assertIsNone(nulls[4])
-            self.assertIsNone(nulls[5])
+            self.assertIsNotNone(nulls[5])
             self.assertIsNotNone(nulls[0])
             geo_metadata = json.loads(table.schema.metadata[b"geo"])
             self.assertEqual(geo_metadata["columns"]["geometry"]["geometry_types"],
@@ -598,7 +601,8 @@ class PadUsManagerNameTests(unittest.TestCase):
                     with self.assertRaisesRegex(src.PadUsManagerNameError,
                                                 "source_null_geometry_count_drift"):
                         src.fetch_pad_us_manager_name_pages(capture_root)
-                with patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}):
+                with patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
+                                  {"source_polygon_ring_degenerate": 2}):
                     with self.assertRaisesRegex(src.PadUsManagerNameError,
                                                 "source_unusable_geometry_counts_drift"):
                         src.fetch_pad_us_manager_name_pages(capture_root)
