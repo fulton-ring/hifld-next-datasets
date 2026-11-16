@@ -42,9 +42,9 @@ over the pages in roster order - byte-identical to digesting the complete
 sorted feature list - before the GeoParquet candidate is assembled in a
 second streamed pass. Producer transfer-cap refusals (persistent HTTP 200
 Esri error documents, as observed on sibling NFHL layers) bisect until served;
-the producer also intermittently resets connections mid-service, so every
-request retries a bounded number of times with refused attempts preserved as
-evidence. A completed page is the unit of resume: with the same capture
+the producer also intermittently resets connections mid-service. Wide failed
+segments split promptly; document and single-feature requests retain bounded
+retries, with refused attempts preserved as evidence. A completed page is the unit of resume: with the same capture
 directory, bodies verified against their hash-pinned receipts are reused
 instead of re-downloaded, while the before/after count/id/metadata brackets,
 exact segment tiling, per-page roster slices, and full-record digests still
@@ -53,8 +53,9 @@ Document captures (count/ID rosters, layer metadata) are always fetched fresh
 because the NFHL is continuously updated - observed on 2026-11-12/13, when
 FEMA edited this layer during a capture window (2,254 features added, 2,025
 removed) - and a reused page that no longer matches its roster slice is
-archived and re-captured fresh exactly once, so a resumed capture always
-describes the current population.
+archived and re-captured fresh exactly once. These checks establish the
+observed ID roster, not attribute freshness for every reused page or an atomic
+source snapshot; original receipt timestamps remain part of the audit.
 """
 from __future__ import annotations
 
@@ -142,26 +143,29 @@ SEGMENT_PROBE_BASE_DELAY_SECONDS = 10.0
 # producer errors. The complete-200 query refusal observed on dense pages is
 # split promptly instead; all failed bytes/receipts remain evidence.
 SEGMENT_BISECT_COOLDOWN_SECONDS = 20.0
-# Population pins require one dated complete capture (before/after count/id/metadata
-# brackets unchanged; every page validated against the sorted OBJECTID roster;
-# the module's own capture must reproduce every pin).
-EXPECTED_COUNT = 0
-EXPECTED_ID_SHA256 = ""
-EXPECTED_SCHEMA_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = -1
-EXPECTED_NULL_GEOMETRY_ID_SHA256 = ""
-EXPECTED_EMPTY_GEOMETRY_COUNT = -1
-EXPECTED_EMPTY_GEOMETRY_ID_SHA256 = ""
-EXPECTED_NAN_GEOMETRY_COUNT = -1
-EXPECTED_NULL_Z_VERTEX_COUNT = -1
-EXPECTED_NAN_Z_VERTEX_COUNT = -1
-EXPECTED_NULL_M_VERTEX_COUNT = -1
-EXPECTED_NAN_M_VERTEX_COUNT = -1
-EXPECTED_OBSERVED_BOUNDS = None
-EXPECTED_LAYER_EXTENT = None
-EXPECTED_GEOMETRY_TYPES = None
+# Observed complete published-REST population: 339,709 features / 1,342 segments.
+# Successful page receipt window: 2026-11-14T11:03:48.847307Z through
+# 2026-11-16T00:30:13.706903Z. Final count/ID/metadata brackets passed at
+# 2026-11-16T00:30:19Z; every page matched its sorted OBJECTID roster slice.
+# These are capture-value pins, not an atomic/as-of or attribute-freshness
+# guarantee. The registered ingest must reproduce every pin without patching.
+EXPECTED_COUNT = 339709
+EXPECTED_ID_SHA256 = 'f34d8b66f29cd429bea6ca522ae7313e13b78cae2a33472d8784a234f1653c75'
+EXPECTED_SCHEMA_SHA256 = 'd569797441ac90099e5117a72cff319029a432c155c88492664908707e70d995'
+EXPECTED_RECORD_SHA256 = '57625d9ba12d909628d46cf8b1ea26eb01c59df2ae727831a593855ea5ce2ffa'
+EXPECTED_GEOMETRY_SHA256 = 'cac8e4478e015f42baa1c2c249fb532aa6afecb42654fb3bf57ac69da7860e35'
+EXPECTED_NULL_GEOMETRY_COUNT = 68
+EXPECTED_NULL_GEOMETRY_ID_SHA256 = '435a6585f8bfbe7c99a6c34af4d0017700f648b10a79a44f4aa528a53c3a845b'
+EXPECTED_EMPTY_GEOMETRY_COUNT = 1
+EXPECTED_EMPTY_GEOMETRY_ID_SHA256 = '6e8adb9c5f79eb8ea1ca111dcb3231f5bb0c1004651d9f2d2b8b28fddc2092cd'
+EXPECTED_NAN_GEOMETRY_COUNT = 0
+EXPECTED_NULL_Z_VERTEX_COUNT = 0
+EXPECTED_NAN_Z_VERTEX_COUNT = 0
+EXPECTED_NULL_M_VERTEX_COUNT = 74763707
+EXPECTED_NAN_M_VERTEX_COUNT = 0
+EXPECTED_OBSERVED_BOUNDS = {'xmax': -64.82526046639344, 'xmin': -159.71434248258717, 'ymax': 64.8925007875672, 'ymin': 17.685498241353855}
+EXPECTED_LAYER_EXTENT = {'xmax': -64.82526046639344, 'xmin': -159.71434248258717, 'ymax': 64.8925007875672, 'ymin': 17.685498241353855}
+EXPECTED_GEOMETRY_TYPES = ['LineString ZM']
 EXPECTED_SERVICE_LAYER_ROSTER = [
     (0, "NFHL Availability", "Feature Layer"), (3, "FIRM Panels", "Feature Layer"),
     (1, "LOMRs", "Feature Layer"), (34, "LOMAs", "Feature Layer"),
