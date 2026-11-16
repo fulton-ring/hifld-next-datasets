@@ -262,6 +262,18 @@ def _batch(client, root, requests):
     return _read_capture(root,name,BATCH,'POST',sha(request_body)),name
 
 
+
+def matched_table(records: list[dict], native_columns: list[dict]) -> pa.Table:
+    """Keep the full native field roster; JSON distinguishes absent from explicit null."""
+    fields=list(dict.fromkeys([column['fieldName'] for column in native_columns]
+                             +[key for record in records for key in record]))
+    # Socrata omits absent keys. Infer each full column without casting lexical values.
+    table=pa.Table.from_arrays([pa.array([row.get(field) for row in records]) for field in fields],names=fields)
+    return table.replace_schema_metadata({b'geo':canonical({'version':'1.1.0','primary_column':'geometry','columns':{'geometry':{
+        'encoding':'WKB','geometry_types':['Point'],'crs':CRS.from_epsg(4269).to_json_dict(),'edges':'planar'}}}),
+        b'hifld:scope':NOTE.encode(),b'hifld:native_schema':canonical(native_columns),
+        b'hifld:native_field_policy':b'Native metadata field roster plus all returned keys; absent cells are null placeholders. source_json preserves original key presence and JSON value types.'})
+
 def geocode_roster(storage: StagingStorageResource, artifact: dict, capture_directory: str, max_addresses: int) -> dict:
     """Build a matched-only spatial companion plus complete input/outcome ledgers."""
     if type(max_addresses) is not int or not 1<=max_addresses<=10000:raise ValueError('explicit_bounded_geocoding_limit_required')
@@ -313,10 +325,7 @@ def geocode_roster(storage: StagingStorageResource, artifact: dict, capture_dire
             if any(k in row for k in ('geometry','source_json','technical_request_id','census_response_json')):raise ValueError('derived_column_collision')
             matched.append({**row,'source_json':canonical(row).decode(),'technical_request_id':outcome['technical_request_id'],
                 'census_response_json':canonical(outcome['result']).decode(),'geometry':Point(*outcome['result']['coordinates']).wkb})
-    table=pa.Table.from_pylist(matched)
-    table=table.replace_schema_metadata({b'geo':canonical({'version':'1.1.0','primary_column':'geometry','columns':{'geometry':{
-        'encoding':'WKB','geometry_types':['Point'],'crs':CRS.from_epsg(4269).to_json_dict(),'edges':'planar'}}}),
-        b'hifld:scope':NOTE.encode(),b'hifld:native_schema':canonical(artifact['metadata']['columns'])})
+    table=matched_table(matched,artifact['metadata']['columns'])
     sink=pa.BufferOutputStream();pq.write_table(table,sink,compression='zstd');parquet=sink.getvalue().to_pybytes()
     repo=Path(__file__).parents[3];identity=processing_identity(repo)
     validate_construction_code_identity(repo,identity['code_commit'],identity['files'],identity=identity)
@@ -347,7 +356,8 @@ def geocode_roster(storage: StagingStorageResource, artifact: dict, capture_dire
         'processor':'HIFLD Next','code_commit':identity['code_commit'],'inputs':inputs,
         'transformations':[{'operation':'filtered_public_center_roster_to_separate_Census_matched_point_companion',
             'parameters':{'max_addresses':max_addresses,'benchmark':'Public_AR_Current (4), mutable',
-                          'crs':4269,'native_fields':'All returned JSON values preserved; exact raw bytes and Socrata schema retained.',
+                          'crs':4269,'crs_documentation_url':CRS_DOC,
+                          'native_fields':'Full metadata field roster retained as columns; absent cells become null placeholders. source_json preserves original key presence and JSON types; no numeric lexical casts.',
                           'identity':'No agency ID deduplication; technical request IDs are capture-row correlations only.',
                           'geometry':NOTE,'accounting':counts}}],
         'documentation_url':API_DOC,'lineage':NOTE,'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{

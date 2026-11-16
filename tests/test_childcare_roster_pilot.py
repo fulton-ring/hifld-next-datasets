@@ -46,6 +46,17 @@ class PilotTests(unittest.TestCase):
         self.assertEqual(s.classify_location('ny',ny)[0],'withheld')
         self.assertEqual(row['physciallatitude'],'0.0000')
 
+    def test_match_columns_include_later_only_native_lexical_fields(self):
+        from shapely.geometry import Point
+        records=[{'wacompassid':'0001','geometry':Point(-122,47).wkb},
+                 {'wacompassid':'0001','optional_lexical_number':'000007','geometry':Point(-122,47).wkb}]
+        table=s.matched_table(records,[{'fieldName':'wacompassid','dataTypeName':'text'},
+            {'fieldName':'optional_lexical_number','dataTypeName':'number'},
+            {'fieldName':'all_absent','dataTypeName':'text'}])
+        self.assertEqual(table['optional_lexical_number'].to_pylist(),[None,'000007'])
+        self.assertEqual(table['all_absent'].to_pylist(),[None,None])
+        self.assertEqual(table['wacompassid'].to_pylist(),['0001','0001'])
+
     def test_batch_contract_accounts_all_ids_and_retains_match_payload(self):
         request=[['technical-1','1 Main St','Albany','NY','01234'],['technical-2','2 Main St','Albany','NY','01234'],['technical-3','3 Main St','Albany','NY','01234']]
         out=io.StringIO();csv.writer(out).writerows([

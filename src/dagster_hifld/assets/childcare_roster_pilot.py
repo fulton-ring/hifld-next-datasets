@@ -39,7 +39,7 @@ def washington_childcare_census_results(context,config: ChildcarePilotConfig,
 
 def pilot_complete(candidate: dict) -> bool:
     counts=candidate.get('outcomes',{})
-    return (isinstance(counts,dict) and counts
+    return (isinstance(counts,dict) and bool(counts)
             and all(type(v) is int and v>=0 for v in counts.values())
             and candidate.get('feature_count',0)>0
             and counts.get('Match')==candidate.get('feature_count')
