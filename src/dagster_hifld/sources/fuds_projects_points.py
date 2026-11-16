@@ -7,7 +7,6 @@ accepted by this draft.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -34,6 +33,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "formerly-used-defense-sites-projects-points"
 FILE_SLUG = DATASET_SLUG
@@ -56,14 +56,6 @@ EXPECTED_RECORD_SHA256 = "f3b1eee2380b8d17f1df8862483ba1170a9d543aec8249e66ab341
 EXPECTED_GEOMETRY_SHA256 = "23d10ad3d4a16d3a6f7264ec504711f8dd0ccb28288e0e5d51b4dfad4422fcd1"
 EXPECTED_SCHEMA_SHA256 = "1129e8cadaaf0387b1892fdad34fcf58fd87994c6090af4d7425e95d0b0d0061"
 MAX_CAPTURE_BYTES = 32 * 1024 * 1024
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

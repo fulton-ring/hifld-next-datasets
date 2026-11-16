@@ -57,10 +57,10 @@ class CautionAreaTests(unittest.TestCase):
     def test_exact_get_request_guard(self):
         name, url = source._capture_roster(source.EXPECTED_IDS)[0]
         receipt = {"method": "GET", "url": url, "final_url": url}
-        source._validate_capture_request_identity(name, receipt, url)
+        source.validate_capture_request_identity(name, receipt, url)
         receipt["final_url"] = "https://example.invalid/altered"
         with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
-            source._validate_capture_request_identity(name, receipt, url)
+            source.validate_capture_request_identity(name, receipt, url)
 
     def test_retained_capture_file_budget_checked_before_read(self):
         with tempfile.TemporaryDirectory() as temporary:

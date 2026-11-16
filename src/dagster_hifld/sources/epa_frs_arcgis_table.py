@@ -15,6 +15,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from dagster_hifld.sources.epa_frs_common import capture_get
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 @dataclass(frozen=True)
@@ -140,11 +141,6 @@ def validate_catalog_derivatives(
     }
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
 def _table_contract(payload: Mapping[str, Any], profile: ArcGISTableProfile) -> tuple[dict[str, Any], ...]:
     fields = payload.get("fields")
     if payload.get("name") != profile.table_name or payload.get("geometryType") is not None:
@@ -237,7 +233,7 @@ def capture_table(
         raise ArcGISTableCaptureError("source_service_table_or_vintage_changed")
     table_before = request("table_before", profile.table_url, {"f": "json"})
     fields = _metadata_contract(table_before, profile)
-    count_query = {"where": "1=1", "returnCountOnly": "true", "f": "json"}
+    count_query = {"where": "OBJECTID>0", "returnCountOnly": "true", "f": "json"}
     ids_query = {"where": "1=1", "returnIdsOnly": "true", "f": "json"}
     count_before = request("count_before", profile.table_url + "/query", count_query).get("count")
     ids_before = request("ids_before", profile.table_url + "/query", ids_query).get("objectIds")

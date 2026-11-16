@@ -1066,8 +1066,20 @@ def _catalog_record_from_storage(request: PortolanPublishRequest, published: Sta
     with published.get_local_version_dir(request.dataset_slug, request.file_slug, request.version,
                                          include_directories=("geoparquet",)) as directory:
         facts = inspect_geoparquet(Path(directory))
+    # Producer-served OGC-invalid geometries are retained verbatim by datasets
+    # that pin them (the quality manifest attests producer_geometry_defects_
+    # verified only when the staged population matched the dataset's own
+    # pinned source audit exactly); any drift keeps the zero-defect gate.
+    # The attested validated counts are preserved verbatim into the catalog
+    # record, so STAC and the SQLite quality table never re-report zero defects
+    # for a population that retains producer-served invalid geometry.
+    defects_verified = quality.get("producer_geometry_defects_verified") is True
+    invalid_geometry_count = quality.get("invalid_geometry_count", 0)
+    null_geometry_count = quality.get("null_geometry_count", 0)
+    if not isinstance(invalid_geometry_count, int) or not isinstance(null_geometry_count, int):
+        raise TypeError("Quality manifest contains invalid quality fields.")
     if (quality.get("quality_check_passed") is not True or quality.get("feature_count") != facts.feature_count
-            or quality.get("invalid_geometry_count") != 0):
+            or (invalid_geometry_count != 0 and not defects_verified)):
         raise ValueError("Promoted quality evidence does not describe a valid complete candidate")
     columns = columns_from_dictionary(dictionary)
     validate_converted_columns(columns, facts)
@@ -1081,7 +1093,8 @@ def _catalog_record_from_storage(request: PortolanPublishRequest, published: Sta
         feature_id_column=facts.feature_id_column, native_bbox=facts.native_bbox, crs84_bbox=facts.crs84_bbox,
         provider=dictionary.get("publisher") or request.provider, agency=dictionary.get("agency"), office=dictionary.get("office"),
         source_url=dictionary.get("source_url"), license_id=request.resolved_license[0], license_href=request.resolved_license[1],
-        quality_passed=True, invalid_geometry_count=0, null_geometry_count=quality.get("null_geometry_count", 0))
+        quality_passed=True, invalid_geometry_count=invalid_geometry_count,
+        null_geometry_count=null_geometry_count)
     return attach_published_provenance(record, published, version, request.public_root)
 
 

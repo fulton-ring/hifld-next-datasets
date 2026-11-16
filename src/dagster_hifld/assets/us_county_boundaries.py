@@ -1,4 +1,4 @@
-"""Stopped draft asset for the official 2023 Census TIGER US county boundaries."""
+"""Stopped draft asset for the official 2026 Census TIGER US county boundaries."""
 from pathlib import Path
 
 from dagster import (
@@ -24,7 +24,7 @@ class UsCountyBoundariesConfig(Config):
     group_name="census_bureau",
     compute_kind="http",
     description=(
-        "Official Census TIGER/Line 2023 US county boundaries archive. "
+        "Official Census TIGER/Line 2026 US county boundaries archive. "
         "Candidate only: the raw/published schema and ID contract await maintainer approval, "
         "and source release/freshness, coverage, rights, and release remain pending."
     ),

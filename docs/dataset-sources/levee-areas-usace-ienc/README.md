@@ -1,0 +1,7 @@
+# Levee Areas (USACE IENC)
+
+The draft source is the `LEVEE_AREA` polygon layer (ID 91) in the USACE IENC Feature Classes MapServer. Its complete directly observed layer contained 322 features in EPSG:4326 within the inland chart extent recorded in the retained source audit. The service describes the features as dykes, artificial embankments to contain or hold back water (IHO S-32 1361). This is a regional chart-service layer, not a nationwide levee inventory.
+
+The source captures all native attributes and `OBJECTID` values, ordered XY rings with ArcGIS shell/hole winding in bounded 250-ID pages, count and ID snapshots before and after paging, and response bodies, wire bodies, and request receipts. Candidate generation retains the source CRS and ring coordinates without reprojection or geometry repair; the XY-only layer contract fails closed on flagged or unflagged Z/M ordinates. GeoParquet is the only candidate format; no display or lossy output policy is accepted.
+
+USDOT BTS's current public IENC PDF item links the USACE Feature Classes service and master geodatabase; the earlier BTS map-service item returns anonymous-access denial, so catalog succession remains unverified. The DataLumos archive (project 239488) and the DHS crosswalk DOI both return HTTP 403 anonymously, so the archive crosswalk row and historical continuity remain unverified. Rights, source acceptance, baseline comparison, schema/ID/coverage contracts, and release approval remain false. The registered refresh schedule is stopped.

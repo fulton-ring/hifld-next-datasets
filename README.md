@@ -233,22 +233,8 @@ Re-run the script whenever the inventory changes to refresh the source URLs or t
 
 ## Workflow dispatch
 
-The separate trusted `board-label-sync.yml` controller synchronizes project
-cards and admits factory workers. `AGENT_DISPATCH_ENABLED=true` enables admission;
-`AGENT_BACKLOG_ENABLED=true` additionally requests Ready for at most one eligible
-dataset Backlog card per sweep. A later sync applies that move before admission.
-Needs decision cards remain parked. Existing PR associations, exact-head attempt
-deduplication, two completed review limits and human acceptance gates still apply.
-
-Concurrency stays at one implementation and one independent review. Repository
-variable `AGENT_DAILY_ATTEMPT_LIMIT` defaults to four attempts per UTC day and
-accepts integers 1–12; set the same value in private `hifld-next-iac`, whose trusted
-worker preflight independently enforces it. Failed attempts count. The approximate
-$50/day target is separate from this attempt allowance; provider spend is not
-measured by this ledger. GitHub scheduled delivery may be delayed; the optional
-native factory heartbeat dispatches this same trusted workflow without running
-models in Actions. No automatic merge, issue closure, production publication or
-schedule activation follows from queue admission.
+Board scanning, card moves and worker admission are handled by the factory
+(`fulton-ring/fulton-ring-factory`), not by workflows in this repository.
 
 - The workflow (`src/hifld_next_datasets/workflow.py`) constructs one `Parallel` step that spins up an agent per selected dataset row, so every agent executes concurrently instead of sequential iterations. That lets the pipeline surface file-specific URLs for multiple datasets quickly while keeping the CLI glue minimal.
 - Each agent run gets access to DuckDuckGo and the Jina Reader toolkit (search/query + read URL), so you can gather search snippets and page excerpts before choosing the highest-confidence candidates.

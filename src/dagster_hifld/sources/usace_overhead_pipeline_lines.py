@@ -28,10 +28,12 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "overhead-pipeline-lines-usace-ienc"
 FILE_SLUG = DATASET_SLUG
-BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
+BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson"
 SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/OVERHEAD_PIPELINE_LINE/MapServer"
@@ -52,15 +54,6 @@ CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_befor
                  *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
 
 SOURCE_CRS = CRS.from_epsg(4326)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
@@ -360,7 +353,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                             max(b[2] for b in bounds), max(b[3] for b in bounds)],
         "source_extent": layer["extent"],
         "source_coverage_scope": "Complete current OVERHEAD_PIPELINE_LINE layer from USACE IENC chart coverage; inland-chart extent only, not nationwide land coverage.",
-        "drift_guard": "BTS item delegation link, exact service directory/service/layer roster, full field declarations/types, explicit EPSG:4326 layer and response-page SRs, explicit geometry SRs, count and before/after ID roster, per-page IDs/attributes/transfer limits and XY path dimensions checked.",
+        "drift_guard": "Current BTS PDF item 7ec34864c8804468a9cf52d437fe4b6c distribution/delegation link, exact service directory/service/layer roster, full field declarations/types, explicit EPSG:4326 layer and response-page SRs, explicit geometry SRs, count and before/after ID roster, per-page IDs/attributes/transfer limits and XY path dimensions checked; succession from denied prior item 3607d485a9854d6fa458bf507058ceae is not asserted.",
     }
     return layer["fields"], features, audit
 
@@ -460,9 +453,11 @@ def capture_usace_overhead_pipeline_lines(storage: StagingStorageResource, *, ve
         "license": "Unresolved; rights review pending.", "attribution": "USACE IENC / BTS; attribution and rights review pending.",
         **({"distributor": "USACE IENC Feature Classes service", "delegation_evidence": {
             "bts_item_url": BTS_ITEM_URL, "bts_item_id": BTS_ITEM_ID, "bts_item_owner": "USDOT_BTS",
+            "prior_bts_item_id": PRIOR_BTS_ITEM_ID,
+            "prior_bts_item_status": "no longer anonymously accessible (403 GWM_0003); succession unverified",
             "official_service_directory": SERVICE_DIRECTORY_URL,
             "linked_feature_classes_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
-            "basis": "Captured BTS IENC record identifies the program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase; linked service metadata identifies copyright USACE IENC."}}
+            "basis": "Captured current BTS IENC PDF record identifies the program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase; linked service metadata identifies copyright USACE IENC."}}
            if name == "bts_item" else {})}
         for name, receipt in sorted(receipts.items())]
     manifest = {"schema_version": 1, "approved": False, "title": "Overhead Pipeline Lines (USACE IENC)",
@@ -477,14 +472,14 @@ def capture_usace_overhead_pipeline_lines(storage: StagingStorageResource, *, ve
             "geometry": "2D path order and coordinates preserved; no reprojection, repair, or simplification",
             "raw_evidence": "complete decoded response and wire bodies retained with checksummed receipts",
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
-        "lineage": f"BTS IENC item {BTS_ITEM_ID} links the official USACE IENC Feature Classes service and master geodatabase. This candidate contains complete service layer {LAYER_ID} OVERHEAD_PIPELINE_LINE only.",
+        "lineage": "Current USDOT BTS PDF item 7ec34864c8804468a9cf52d437fe4b6c describes bi-monthly USACE/AGC IENC updates and links the official IENCCloud feature-class service and master file geodatabase. The former BTS map-service item 3607d485a9854d6fa458bf507058ceae is no longer anonymously accessible; continuity between the items is unverified. This candidate is the exact published OVERHEAD_PIPELINE_LINE layer, not the entire IENC archive.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Native attributes, IDs and 2D paths are retained in a typed candidate.",
             "objects": [{"path": output_path, "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
         "unsupported_output_formats": {"geopackage": "No format-specific mapping has been approved.",
             "pmtiles": "No display generalization or release policy has been approved."}}
     validate_release_provenance(manifest); validate_output_policy(manifest); provenance_projection(manifest)
     audit.update({"source_fields": fields, "official_layer_name": "OVERHEAD_PIPELINE_LINE", "official_layer_id": LAYER_ID,
-                  "official_source_item": "USDOT_BTS " + BTS_ITEM_ID, "source_population_complete": True})
+                  "official_source_item": "USDOT_BTS current PDF 7ec34864c8804468a9cf52d437fe4b6c; prior map-service item 3607d485a9854d6fa458bf507058ceae inaccessible; succession unverified", "source_population_complete": True})
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):

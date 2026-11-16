@@ -3,15 +3,17 @@
 The caller owns safe sinks, disk reservation, response acceptance, retries and
 receipts. Sinks must retain the whole supplied block or raise; their persisted
 bytes still need caller readback checks. No URL, source or release is approved
-here. Limits can overshoot by one delivered wire block (HTTPX controls its size)
-or one bounded decoded block so evidence is never silently clipped.
+here. Callers can reject an oversized delivered wire block before persistence
+with ``max_wire_block_bytes``; uncapped callers retain the prior one-block
+overshoot behavior so evidence is never silently clipped.
 """
 from __future__ import annotations
 
 import hashlib
+import json
 import stat
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -67,6 +69,47 @@ def capture_roster_digests(root: Path, *, exclude: set[str] = frozenset()) -> di
     return result
 
 
+def validate_retained_capture_replay(
+    root: Path,
+    *,
+    capture_names: set[str],
+    expected_urls: Mapping[str, str],
+    load_capture: Callable[[Path, str], tuple[bytes, bytes, dict]],
+    validate_request_identity: Callable[[str, Mapping[str, object], str], None],
+) -> dict[str, tuple[bytes, dict]]:
+    """Replay a retained capture directory against its sealed manifest.
+
+    Reads ``capture_manifest.json`` (refusing a symlinked manifest), requires a
+    complete manifest whose receipt names match ``capture_names`` exactly,
+    validates the artifact roster and per-artifact digests with
+    ``validate_capture_roster`` and ``capture_roster_digests``, then loads every
+    capture with the caller's established loader and binds each stored receipt
+    to the manifest receipt plus the caller's expected request URL. Artifact
+    names and URLs are passed explicitly, so the validator never inherits one
+    dataset's pins from another. Returns ``{name: (body, receipt)}``.
+    """
+    manifest_path = root / "capture_manifest.json"
+    if manifest_path.is_symlink():
+        raise ValueError("retained_capture_manifest_symlink_rejected")
+    manifest = json.loads(manifest_path.read_bytes())
+    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
+        raise ValueError("retained_capture_manifest_invalid")
+    roster = manifest.get("artifact_roster")
+    if not isinstance(roster, dict) or set(manifest["receipts"]) != capture_names:
+        raise ValueError("retained_capture_roster_or_names_invalid")
+    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
+    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
+        raise ValueError("retained_capture_artifact_digest_mismatch")
+    captures = {}
+    for name in sorted(capture_names):
+        body, _wire, receipt = load_capture(root, name)
+        if receipt != manifest["receipts"].get(name):
+            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
+        validate_request_identity(name, receipt, expected_urls[name])
+        captures[name] = (body, receipt)
+    return captures
+
+
 @dataclass(frozen=True)
 class CaptureProgress:
     """Reservation request made BEFORE the next read or decoder allocation."""
@@ -118,6 +161,7 @@ def capture_http_response(
     *,
     max_wire_bytes: int,
     max_decoded_bytes: int,
+    max_wire_block_bytes: int | None = None,
     reserve: Callable[[CaptureProgress], None],
     retain_wire: Callable[[bytes], None],
     retain_decoded: Callable[[bytes], None],
@@ -129,7 +173,8 @@ def capture_http_response(
     CRC/trailer and decoder EOF are checked even when HTTPX considers transport
     complete. Content-Length is checked against wire bytes, never decoded size.
     ``reserve`` must raise on insufficient capacity; it runs before EVERY next
-    (including the possible EOF read) and before each bounded decompression.
+    (including the possible EOF read), again with actual wire-block size before
+    persistence, and before each bounded decompression.
     Ordinary transport, reserve, decoder and sink exceptions become incomplete
     results; process interruption exceptions propagate with prior sink evidence
     intact. No exception messages/URLs/credentials are copied into results.
@@ -137,6 +182,8 @@ def capture_http_response(
     for name, value in (("max_wire_bytes", max_wire_bytes), ("max_decoded_bytes", max_decoded_bytes)):
         if type(value) is not int or value < 0:
             raise ValueError(f"{name}_must_be_nonnegative_integer")
+    if max_wire_block_bytes is not None and (type(max_wire_block_bytes) is not int or max_wire_block_bytes < 0):
+        raise ValueError("max_wire_block_bytes_must_be_nonnegative_integer")
     if not isinstance(response, httpx.Response):
         raise TypeError("response_must_be_httpx_response")
     if not all(callable(callback) for callback in (reserve, retain_wire, retain_decoded)):
@@ -198,12 +245,22 @@ def capture_http_response(
                 received += len(block)
                 received_hash.update(block)
                 pending_wire = block
+                if (max_wire_block_bytes is not None
+                        and (len(block) > max_wire_block_bytes or received > max_wire_bytes)):
+                    # The transport has already yielded this block, so account
+                    # for what was observed, but refuse it before any sink can
+                    # persist bytes beyond the caller's declared bounds.
+                    failure = ("wire_block_limit_exceeded" if len(block) > max_wire_block_bytes
+                               else "wire_limit_exceeded")
+                    break
+                if max_wire_block_bytes is not None:
+                    reservation("wire_block", len(block))
                 phase = "wire_sink"
                 retain_wire(block)
                 retained += len(block)
                 retained_hash.update(block)
                 pending_wire = b""
-                if received > max_wire_bytes:
+                if max_wire_block_bytes is None and received > max_wire_bytes:
                     failure = "wire_limit_exceeded"
                     break
                 if decoder is None:

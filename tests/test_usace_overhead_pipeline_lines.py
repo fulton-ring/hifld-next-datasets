@@ -10,7 +10,7 @@ from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_usace_ienc,
 )
 from dagster_hifld.sources import usace_overhead_pipeline_lines as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class UsaceOverheadPipelineLinesTests(unittest.TestCase):
@@ -92,6 +92,12 @@ class UsaceOverheadPipelineLinesTests(unittest.TestCase):
             storage = source.StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
             with self.assertRaisesRegex(ValueError, "unsafe_capture_version"):
                 source.capture_usace_overhead_pipeline_lines(storage, version="../outside")
+
+    def test_prior_denied_bts_item_is_rejected_by_identity_guard(self):
+        docs = json.loads(json.dumps(self._documents()))
+        docs["bts_item"]["id"] = source.PRIOR_BTS_ITEM_ID
+        with self.assertRaisesRegex(ValueError, "bts_ienc_item_identity_drift"):
+            source._validate(self._captures(docs))
 
     def test_replay_rejects_tampered_method_origin_or_query_after_manifest_repin(self):
         mutations = {
