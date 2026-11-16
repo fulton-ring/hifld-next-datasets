@@ -24,7 +24,7 @@ import pyproj
 import shapely
 
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import quarantine_incomplete_capture
+from dagster_hifld.sources.capture_common import quarantine_incomplete_capture
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 CODE_IDENTITY_SCHEME = "sha256-packaged-dagster_hifld-py-v1"

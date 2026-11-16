@@ -1,8 +1,10 @@
-"""Shared FRS capture and candidate-construction primitives.
+"""Shared source capture, candidate-construction, seal and quarantine primitives.
 
 Endpoint/schema interpretation stays in each issue adapter. These functions
 share only byte custody, immutable writes, incomplete-capture retention, and
-the first-construction CAS contract.
+the first-construction CAS contract. They moved here from the dataset-named
+``sources/epa_frs_common.py`` (issue #995); no dataset module imports another
+dataset module (``tests/test_sources_module_contract.py``).
 """
 from __future__ import annotations
 

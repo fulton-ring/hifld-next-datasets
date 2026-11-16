@@ -28,7 +28,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -465,7 +465,7 @@ def capture_usace_administrative_areas(storage: StagingStorageResource, *, versi
             "rights_accepted":False,"mapping_approved":False,"release_accepted":False,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
-    from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
+    from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity

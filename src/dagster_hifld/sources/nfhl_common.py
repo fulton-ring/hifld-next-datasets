@@ -16,7 +16,7 @@ from pathlib import Path
 
 import httpx
 
-from dagster_hifld.sources.epa_frs_common import capture_get
+from dagster_hifld.sources.capture_common import capture_get
 
 # The producer's MapServer intermittently answers valid requests with complete
 # HTTP 200 Esri error documents or transport failures (observed 2026-11-12

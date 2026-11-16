@@ -24,7 +24,7 @@ import pyogrio
 import pyproj
 import shapely
 
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     content_derived_version,
