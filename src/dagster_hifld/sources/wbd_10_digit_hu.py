@@ -31,11 +31,10 @@ the geometry-gate counts are pinned below from the complete dated population
 walk (2026-11-15; two independent walks produced identical digests, the
 second verifying the first's sealed candidate); the geometry baseline digests
 the structurally validated served rings of every row, including rows that
-gate to null geometry, and its national pin is re-established from the
-retained complete-walk evidence under the corrected scheme. Publication stays
-blocked pending succession, freshness, schema/ID contract, coverage, rights
-and release acceptance; all runtime approval flags are false and the draft
-refresh schedule is stopped.
+gate to null geometry, repinned 2026-11-16 from the corrected-scheme complete
+walk. Publication stays blocked pending succession, freshness, schema/ID
+contract, coverage, rights and release acceptance; all runtime approval flags
+are false and the draft refresh schedule is stopped.
 
 Producer serialization defect and the bounded protobuf rescue (observed
 2026-11-14/15): the JSON serializer refuses exactly one feature (OBJECTID
@@ -181,13 +180,14 @@ ROW_GROUP_GEOMETRY_BUDGET_BYTES = 64 * 1024 * 1024
 # rings] of EVERY row, including rows that gate to null geometry (2026-11-15
 # review finding: the gate branch previously continued before the digest, so
 # all eight gated source geometries were excluded and a served-ring mutation
-# in a gated row went undetected). The national geometry pin is being
-# re-established from retained complete-walk evidence under the corrected
-# scheme and is repinned in the follow-up commit; every other baseline stays
-# pinned and enforced.
+# in a gated row went undetected). Repinned 2026-11-16 from the complete
+# corrected-scheme walk (2026-11-15T23:24Z-2026-11-16T00:02Z, retained capture
+# evidence; the walk also reproduced the ID, schema, record, null-geometry and
+# gate-count baselines and the served vertex/multipart/with-hole counts
+# unchanged). All pins stay enforced.
 EXPECTED_SCHEMA_SHA256 = "9d958f22b37d01eec29106caa71e17b908a331ce9c3101c7664dd06609b4192f"
 EXPECTED_RECORD_SHA256 = "a290786069b511921f22bbafae5015b8c753c41499bd191f733c52400eeb3cb3"
-EXPECTED_GEOMETRY_SHA256 = ""
+EXPECTED_GEOMETRY_SHA256 = "44bf3e312fe5cf5a5c5fd7dd7f9a0c5e5655d158fe3ba41c9cea18a9900eb69a"
 EXPECTED_NULL_GEOMETRY_COUNT = 8
 EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {
     "source_polygon_assembly_invalid": 5, "source_polygon_ring_self_intersecting": 3}
