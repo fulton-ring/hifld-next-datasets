@@ -148,12 +148,13 @@ EXPECTED_RECORD_SHA256 = "393ff32e209b061ffe28dc9c8218a8f139e35e38e66f57a6d05a85
 # ascending OBJECTID order, computed from the complete dated population walk
 # (2026-11-14).
 EXPECTED_GEOMETRY_SHA256 = "48f663b94e9dedfd4aebe3bd4587f2df75d66c7fa24f0c3557ac5323de9d1659"
-EXPECTED_NULL_GEOMETRY_COUNT = 12
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {
-    "source_page_window_refused_geometry": 5,
-    "source_polygon_assembly_invalid": 4,
-    "source_polygon_ring_self_intersecting": 3,
-}
+# Polygon-ring quarantines retired by the shared GDAL Esri polygon converter
+# (issue #997): the 7 defect rows (4 assemblies invalid, 3 self-intersecting
+# exteriors) now convert through GDAL and are retained verbatim, counted as
+# ogc_invalid_geometry_counts; the 5 producer-refused attributes-only windows
+# keep their explicit null geometry and pinned count.
+EXPECTED_NULL_GEOMETRY_COUNT = 5
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {"source_page_window_refused_geometry": 5}
 # Refused single-feature windows (attributes-only rows published with null
 # geometry), pinned from the complete dated population walk; checked only when
 # non-empty.
@@ -169,10 +170,7 @@ PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
 METADATA_NAMES = family.METADATA_NAMES
 CAPTURE_NAMES = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
 
-GATE_MODES = family.BASE_GATE_MODES | {family.REFUSED_GEOMETRY_GATE_MODE}
-_GeometryGate = family.GeometryGate
-_signed_area = family.signed_area
-_assemble_geometry = family.assemble_geometry
+GATE_MODES = frozenset({family.REFUSED_GEOMETRY_GATE_MODE})
 _EPSG3857_PROJJSON = family.EPSG3857_PROJJSON
 
 _COVERAGE_SCOPE = ("Complete observed USGS wbd MapServer layer 6 "
