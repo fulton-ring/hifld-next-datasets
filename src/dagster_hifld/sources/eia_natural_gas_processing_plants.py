@@ -1,6 +1,6 @@
 """Pinned historical EIA Natural Gas Processing Plants GIS candidate for issue #172."""
 from __future__ import annotations
-import hashlib, io, json, math, shutil, struct, tempfile, zipfile
+import io, json, math, shutil, struct, tempfile, zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +19,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "natural-gas-processing-plants-1"
 SOURCE_URL = "https://www.eia.gov/maps/map_data/NaturalGas_ProcessingPlants_US_EIA.zip"
@@ -45,8 +46,7 @@ GEOMETRY_SHA="2e5fd92f4b901808d9e38e4d2f1e36fe0adf6c35bb123c8c3ef5f9c4f1405531"
 BOUNDS=[-120.43285999999995,26.421190000000024,-78.65909999999997,48.87366000000003]
 WGS84=CRS.from_epsg(4326)
 
-def _canonical(x): return json.dumps(x,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode()
-def _sha(b): return hashlib.sha256(b).hexdigest()
+
 def _native(v):
     if hasattr(v,"item"): v=v.item()
     if v is None or (isinstance(v,float) and math.isnan(v)): return None

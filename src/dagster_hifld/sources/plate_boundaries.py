@@ -1,7 +1,6 @@
 """Immutable native-CRS capture and typed GeoParquet candidate for official USGS plates."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -28,6 +27,7 @@ from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = FILE_SLUG = "plate-boundaries"
@@ -56,10 +56,6 @@ EXPECTED_CAPTURE_NAMES = {"service_before","layer_before","count_before","ids_be
 EXPECTED_CRS = CRS.from_epsg(3857)
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode("utf-8")
-
-def _sha(body: bytes) -> str: return hashlib.sha256(body).hexdigest()
 def _query(params: dict[str,object]) -> str: return LAYER_URL+"/query?"+urlencode(params)
 
 

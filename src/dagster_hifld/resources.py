@@ -980,22 +980,6 @@ class StagingStorageResource(ConfigurableResource):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-class GreatExpectationsResource(ConfigurableResource):
-    """Optional GX helper for ad hoc validation experiments; not wired into the live graph."""
-
-    def get_validator(self, df, expectation_suite_name: str = "asset_check_suite"):
-        """Return a GX Validator for the given DataFrame (e.g. GeoDataFrame or first chunk)."""
-        import great_expectations as gx
-
-        ctx = gx.get_context(mode="ephemeral")
-        ds = ctx.data_sources.add_pandas("pandas_ds")
-        batch = ds.read_dataframe(df, asset_name="df_asset")
-        return ctx.get_validator(
-            batch_list=[batch],
-            create_expectation_suite_with_name=expectation_suite_name,
-        )
-
-
 class PublishedStorageResource(StagingStorageResource):
     """Published storage: destination bucket/path for promoted dataset files."""
 

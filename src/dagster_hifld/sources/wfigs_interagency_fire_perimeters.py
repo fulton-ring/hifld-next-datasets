@@ -15,7 +15,6 @@ contract, baseline, rights and release acceptance remain unapproved.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -43,6 +42,7 @@ from dagster_hifld.sources.epa_frs_common import (
     processing_identity,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "wfigs-interagency-fire-perimeters"
 PUBLISHER = "National Interagency Fire Center (NIFC) WFIGS ArcGIS Online organization"
@@ -99,15 +99,6 @@ LAYER_PIN_PROJECTION = (
     "supportedQueryFormats", "advancedQueryCapabilities",
 )
 PINNED_SPATIAL_REFERENCE = {"wkid": 4326, "latestWkid": 4326}
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _query(params: dict[str, object]) -> str:

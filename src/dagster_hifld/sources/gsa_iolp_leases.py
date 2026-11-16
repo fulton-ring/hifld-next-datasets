@@ -45,6 +45,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "gsa-iolp-leases"
 LANDING_URL = ("https://www.gsa.gov/tools-overview/buildings-and-real-estate-tools/"
@@ -103,15 +104,6 @@ VALUE_DOMAIN_FIELDS = ("Federal Leased Code", "Real Property Asset type",
 
 class GsaIolpLeasesError(ValueError):
     """Untrusted, incomplete or contract-drifting source input; never release."""
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _redact_url(url: object) -> str | None:

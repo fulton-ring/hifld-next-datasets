@@ -36,10 +36,11 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.usace_obstruction_lines import (
     PAGE_MAX_BYTES, _canonical, _capture_identity, _esri_polyline_wkb,
-    _load_capture, _sha, _validate_capture_request_identity,
+    _load_capture, _sha,
 )
 
 DATASET_SLUG = "secondary-roads-interstates-and-us-highways-2"
@@ -221,7 +222,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     ids = _validate_roster(json.loads(captures["ids_before"][0]).get("objectIds"))
     expected_urls = dict(_capture_roster(ids))
     for name in sorted(captures):
-        _validate_capture_request_identity(name, captures[name][1], expected_urls[name])
+        validate_capture_request_identity(name, captures[name][1], expected_urls[name])
     return captures
 
 

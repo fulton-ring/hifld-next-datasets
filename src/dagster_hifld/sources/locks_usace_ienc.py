@@ -50,7 +50,6 @@ EXPECTED_COUNT = 234
 EXPECTED_OIDS = list(range(1, EXPECTED_COUNT + 1))
 SOURCE_WKID = 4019
 LAYER_NAME = "Lock"
-ARCHIVE_FORMAT = "filegdb"
 MAX_RECEIPT_BYTES = 65_536
 MAX_ARCHIVE_BYTES = 1_000_000
 MAX_CAPTURE_BYTES = 4_000_000
@@ -397,20 +396,6 @@ def _validate_service_bundle(captures: dict[str, tuple[bytes, dict]], *,
     if head_length != str(len(archive)):
         raise LocksQuarantineError("replica_archive_length_header_mismatch")
     return before, {"status_url":status_url,"result_url":result_url,"job":job,"zip":zip_info,"gdb_root":gdb_root}, ids_before, archive, {**schema_before,"metadata":before}
-
-
-def _load_gdb_table(archive_path: Path, gdb_root: str, metadata: dict) -> pa.Table:
-    uri=f"/vsizip/{archive_path}/{gdb_root}"
-    try:
-        info=pyogrio.read_info(uri,layer=LAYER_NAME)
-        if info.get("geometry_type") != "Point" or info.get("crs") != "EPSG:4019" or info.get("features") != EXPECTED_COUNT:
-            raise LocksQuarantineError("native_gdb_layer_metadata_drift")
-        _meta,table=pyogrio.read_arrow(uri,layer=LAYER_NAME,return_fids=True)
-    except LocksQuarantineError:
-        raise
-    except Exception as exc:
-        raise LocksQuarantineError("native_gdb_layer_unreadable:"+type(exc).__name__) from exc
-    return table
 
 
 def _capture_manifest(root: Path) -> dict:

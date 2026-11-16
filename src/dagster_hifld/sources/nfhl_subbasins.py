@@ -62,7 +62,6 @@ import hashlib
 import json
 import re
 import shutil
-import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -83,9 +82,15 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+)
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+
+from dagster_hifld.sources.nfhl_common import (
+    DOC_CAPTURE_ATTEMPTS, DOC_CAPTURE_BASE_DELAY_SECONDS, capture_with_retry,
+    producer_error_doc,
 )
 
 DATASET_SLUG = "nfhl-subbasins"
@@ -104,18 +109,6 @@ SOURCE_CRS_WKID = 4269
 SEGMENT_START_RECORDS = 2000
 MAX_CAPTURE_BYTES = 512 * 1024 * 1024
 MIN_FREE_BYTES = 64_000_000_000
-# The producer's MapServer also intermittently answers valid requests with
-# complete HTTP 200 Esri error documents or truncated transports (observed
-# 2026-11-13 while probing this layer; identical requests succeed moments
-# later). Every request retries a bounded number of times for that transient
-# mode; a retry re-issues the exact same request, and completeness is still
-# enforced by the pinned before/after id rosters, counts, exact segment
-# tiling, and full-record digests, so retries can never mask drift. Segments
-# wider than one record that keep failing are bisected (the producer's
-# transfer cap); a single-record segment that keeps failing fails the capture
-# explicitly.
-DOC_CAPTURE_ATTEMPTS = 4
-DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 SEGMENT_PROBE_ATTEMPTS = 2
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # Structural pins below are the observed 2026-11-14 producer contract,
@@ -187,14 +180,6 @@ class PopulationDigestPinsPending(ValueError):
         self.audit = audit
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
     return {key: field[key] for key in ("name", "type", "alias", "length", "nullable", "domain") if key in field}
 
@@ -253,50 +238,6 @@ def _validate_spatial_reference(value: object, label: str) -> None:
             raise ValueError(label + "_crs_drift")
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents and
-    incomplete transport captures; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
-    final attempt's body is always returned as captured, so a persistent
-    producer failure surfaces to the caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
-
-
 def _reuse_existing_segment(capture_root: Path, name: str, url: str) -> dict[str, object] | None:
     """Return the receipt of a previously captured, digest-verified segment, else None.
 
@@ -318,7 +259,7 @@ def _reuse_existing_segment(capture_root: Path, name: str, url: str) -> dict[str
     usable = (isinstance(receipt, dict) and receipt.get("url") == url
               and receipt.get("status") == 200 and receipt.get("complete_body") is True
               and receipt.get("sha256") == _sha(body))
-    if not usable or _producer_error_doc(body):
+    if not usable or producer_error_doc(body):
         for suffix in (".body", ".wire", ".receipt.json"):
             path = capture_root / f"{name}{suffix}"
             if path.exists():
@@ -362,12 +303,12 @@ def _capture_segments(client: httpx.Client, capture_root: Path, ids: list[int], 
             captures[name] = (None, reused)
             stream.process(json.loads((capture_root / f"{name}.body").read_bytes()), ids, offset, count)
             continue
-        body, receipt = _capture_with_retry(
+        body, receipt = capture_with_retry(
             client, url, capture_root, name,
             max_bytes=MAX_CAPTURE_BYTES,
             attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
             base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
-        if _producer_error_doc(body):
+        if producer_error_doc(body):
             if count == 1:
                 raise ValueError("source_single_feature_unservable")
             middle = count // 2
@@ -794,21 +735,21 @@ def capture_nfhl_subbasins(storage: StagingStorageResource, *, version: str,
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-subbasins-draft"}) as client:
-            ids_seed_body, ids_seed_receipt = _capture_with_retry(
+            ids_seed_body, ids_seed_receipt = capture_with_retry(
                 client, _ids_url(), capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
                 attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            if _producer_error_doc(ids_seed_body):
+            if producer_error_doc(ids_seed_body):
                 raise ValueError("source_ids_roster_refused")
             captures["ids_seed"] = (ids_seed_body, ids_seed_receipt)
             for name, url in _doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
+                body, receipt = capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 captures[name] = (body, receipt)
-            ids_before_body, ids_before_receipt = _capture_with_retry(
+            ids_before_body, ids_before_receipt = capture_with_retry(
                 client, _ids_url(), capture_root, "ids_before", max_bytes=MAX_CAPTURE_BYTES,
                 attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            if _producer_error_doc(ids_before_body):
+            if producer_error_doc(ids_before_body):
                 raise ValueError("source_ids_roster_refused")
             captures["ids_before"] = (ids_before_body, ids_before_receipt)
             ids = _validate_rosters({"ids_seed": captures["ids_seed"], "ids_before": captures["ids_before"],
@@ -819,14 +760,14 @@ def capture_nfhl_subbasins(storage: StagingStorageResource, *, version: str,
             stream = _SegmentStream(source_fields, parquet_path)
             captures.update(_capture_segments(client, capture_root, ids, stream))
             for name, url in _after_doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
+                body, receipt = capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 captures[name] = (body, receipt)
-            ids_after_body, ids_after_receipt = _capture_with_retry(
+            ids_after_body, ids_after_receipt = capture_with_retry(
                 client, _ids_url(), capture_root, "ids_after", max_bytes=MAX_CAPTURE_BYTES,
                 attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            if _producer_error_doc(ids_after_body):
+            if producer_error_doc(ids_after_body):
                 raise ValueError("source_ids_roster_refused")
             captures["ids_after"] = (ids_after_body, ids_after_receipt)
         extracted_audit = stream.finish()

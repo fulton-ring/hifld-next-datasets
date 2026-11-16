@@ -12,7 +12,7 @@ from dagster_hifld.assets.warning_signal_stations_usace_ienc import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import warning_signal_stations_usace_ienc as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class WarningSignalStationsUsaceIencTests(unittest.TestCase):

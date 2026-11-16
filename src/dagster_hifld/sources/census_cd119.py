@@ -39,6 +39,7 @@ from dagster_hifld.construction_state import (
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources.esri_common import sha as _sha
 
 SLUG = "119th-congressional-districts"
 CAPTURE_RECEIPTS_SHA256 = "ced533ee909842e07ae40c915d5fdb8d3357361a56bbeec7c90772445addc6eb"
@@ -129,10 +130,6 @@ EXPECTED_MEMBERS = (".cpg", ".dbf", ".prj", ".shp", ".shp.ea.iso.xml", ".shp.iso
 
 class CD119QuarantineError(ValueError):
     """Capture, edition, schema, identifier, or full-population drift."""
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:

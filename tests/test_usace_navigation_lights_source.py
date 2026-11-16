@@ -13,7 +13,7 @@ from dagster_hifld.assets.usace_navigation_lights import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import usace_navigation_lights as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class _FlakyTransport(httpx.BaseTransport):

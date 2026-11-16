@@ -27,6 +27,7 @@ from dagster_hifld.http_capture import capture_http_response, capture_roster_dig
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.epa_frs_common import (
@@ -67,15 +68,6 @@ EXPECTED_LAYER_EXTENT = {
     "xmax": -79.56903209999996,
     "ymax": 45.14219500000007,
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _configured_capture_budget(value: object) -> int:
@@ -211,13 +203,6 @@ def _esri_polygon(geometry: dict):
     multi=bytearray(struct.pack("<BI",1,dim_code+6));multi.extend(struct.pack("<I",len(polygons)))
     for polygon in polygons: multi.extend(polygon)
     return bytes(multi)
-
-
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID":pa.int64(), "esriFieldTypeInteger":pa.int32(),
-            "esriFieldTypeSmallInteger":pa.int16(), "esriFieldTypeSingle":pa.float32(),
-            "esriFieldTypeDouble":pa.float64(), "esriFieldTypeString":pa.string(),
-            "esriFieldTypeDate":pa.int64()}.get(field.get("type"), pa.string())
 
 
 def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:

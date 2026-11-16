@@ -15,7 +15,7 @@ from dagster_hifld.assets.us_district_court_jurisdictions import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import us_district_court_jurisdictions as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 # Real rosters as observed on 2026-11-14: 94 federal judicial districts plus the
 # unassigned null-geometry 'XXX' placeholder (OBJECTID 95, Circuit 'XX'). The

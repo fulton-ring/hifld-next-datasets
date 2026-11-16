@@ -1213,25 +1213,6 @@ def _write_and_publish_shapefile_zip(
     return outputs
 
 
-def _copy_catalog_metadata(
-    staging_storage: StagingStorageResource,
-    published_storage: PublishedStorageResource,
-    dataset_slug: str,
-    file_slug: str,
-    version: str,
-) -> list[PublishedFormatOutput]:
-    return [
-        PublishedFormatOutput(file_slug, "metadata", key)
-        for key in _copy_metadata_files(
-            staging_storage,
-            published_storage,
-            dataset_slug,
-            file_slug,
-            version,
-        )
-    ]
-
-
 def _published_outputs_from_keys(
     dataset_slug: str,
     file_slug: str,

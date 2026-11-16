@@ -42,6 +42,7 @@ from dagster_hifld.sources.epa_frs_common import (
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "cdff193a3e3743a5bc770e2743f215b3"
 ITEM_TITLE = "Facility Registry Service (FRS) Interests"
@@ -115,15 +116,6 @@ class EPAFRSInterestsError(ValueError):
     def __init__(self, code: str):
         self.code = code
         super().__init__(code)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

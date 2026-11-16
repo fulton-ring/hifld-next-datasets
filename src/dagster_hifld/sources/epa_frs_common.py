@@ -39,16 +39,8 @@ from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def content_derived_version(source_record_sha256: str, source_geometry_sha256: str,
@@ -159,6 +151,13 @@ def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
             or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]):
         raise ValueError(f"incomplete_source_capture:{name}")
     return body, receipt
+
+
+def validate_capture_request_identity(name: str, receipt: Mapping, expected_url: str) -> None:
+    """Bind retained response bytes to the exact GET endpoint that names them."""
+    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
+            or receipt.get("final_url") != expected_url):
+        raise ValueError("retained_capture_request_identity_mismatch:" + name)
 
 
 def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:

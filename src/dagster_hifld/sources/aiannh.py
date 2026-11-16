@@ -1,13 +1,14 @@
-"""Faithful TIGER2023 AIANNH draft candidates; publication requires independent approval.
+"""Faithful TIGER2026 AIANNH draft candidates; publication requires independent approval.
 
-The inventory names TIGER2023. Later vintages and changed bytes at that URL are
-quarantined, never silently substituted. These pins describe reviewed producer
-bytes, not an accepted HIFLD published schema, baseline or migration decision.
+Pinned to the maintained TIGER2026 producer release as the explicit vintage
+migration decided for issue #777; the superseded TIGER2023 pins were replaced.
+Other vintages and changed bytes at that URL are quarantined, never silently
+substituted. These pins describe reviewed producer bytes, not an accepted HIFLD
+published schema, baseline or release decision.
 """
 from __future__ import annotations
 
 import collections
-import hashlib
 import io
 import json
 import struct
@@ -26,17 +27,18 @@ from shapely.geometry import mapping, shape
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
+from dagster_hifld.sources.esri_common import sha as _sha
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
 SLUG = 'aiannh-areas-1'
-VINTAGE = 2023
-URL = 'https://www2.census.gov/geo/tiger/TIGER2023/AIANNH/tl_2023_us_aiannh.zip'
-ARCHIVE_NAME = 'tl_2023_us_aiannh.zip'
-PIN = '4155f58dfefcc40cfe61d741f760f882ebe6c6008537c0c7bc58075871af2f40'
-ARCHIVE_BYTES = 9_086_993
+VINTAGE = 2026
+URL = 'https://www2.census.gov/geo/tiger/TIGER2026/AIANNH/tl_2026_us_aiannh.zip'
+ARCHIVE_NAME = 'tl_2026_us_aiannh.zip'
+PIN = '9bc1b69e2007450436e30b802c4e2db8e1e4d37266b9380816d1e32fec1e460c'
+ARCHIVE_BYTES = 9_175_653
 MAX_ARCHIVE_BYTES = 20_000_000
 MAX_EXPANDED_BYTES = 30_000_000
-STEM = 'tl_2023_us_aiannh'
+STEM = 'tl_2026_us_aiannh'
 MEMBERS = {STEM + ext for ext in ('.cpg', '.dbf', '.prj', '.shp', '.shp.ea.iso.xml', '.shp.iso.xml', '.shx')}
 SCHEMA = {
     'AIANNHCE': 'str:4', 'AIANNHNS': 'str:8', 'GEOID': 'str:5', 'GEOIDFQ': 'str:14',
@@ -45,8 +47,8 @@ SCHEMA = {
     'ALAND': 'int:14', 'AWATER': 'int:14', 'INTPTLAT': 'str:11', 'INTPTLON': 'str:12',
 }
 ID_FIELDS = ('AIANNHCE', 'AIANNHNS', 'GEOID', 'GEOIDFQ')
-ATTRIBUTES_PIN = '9546e9917aba8f0da4bf63286458a7046982791ddab07343d9f8ee1c179ccfb2'
-GEOMETRY_PIN = 'ce390bcfe6472cdb015137df8d74be3d825b4ae07365d5cbfcd14c03c8dc131f'
+ATTRIBUTES_PIN = '30d8abd2f2bcda4093bba40c174e1982ad690c0cfbda1f7788a321c1516ac0a0'
+GEOMETRY_PIN = '85427ed6bdb08f3706237e887074c3d3d8bd09ec31662447254dc68ffbe5d775'
 PROPOSAL = {
     'approved': False, 'status': 'draft_source_fidelity_only',
     'id_fields': ['GEOID'], 'coverage_fields': ['COMPTYP', 'CLASSFP', 'LSAD', 'MTFCC', 'AIANNHR'],
@@ -74,10 +76,6 @@ def _json(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n').encode()
 
 
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
-
-
 def _immutable_stage(storage: StagingStorageResource, key: str, body: bytes) -> None:
     """No publication helper or overwrite; identical reruns are harmless."""
     before = storage.object_snapshot(key)
@@ -95,7 +93,7 @@ def _population_audit(rows: list[dict], schema: dict, crs: str) -> dict:
     if not CRS.from_user_input(crs).equals(CRS.from_epsg(4269)):
         reasons.append('native_crs_drift')
     props = [r['properties'] for r in rows]
-    if len(rows) != 862:
+    if len(rows) != 867:
         reasons.append('incomplete_population')
     for r in props:
         if set(r) != set(SCHEMA):
@@ -181,7 +179,7 @@ def _quarantine(storage: StagingStorageResource, body: bytes, report: dict, arti
 
 def stage_aiannh_candidate(storage: StagingStorageResource, *, vintage: int = VINTAGE,
                            archive_path: Path | None = None, code_commit: str | None = None) -> dict:
-    """Acquire reviewed2023 only, retaining every raw byte and original identifier.
+    """Acquire the reviewed pinned TIGER2026 release only, retaining every raw byte and original identifier.
 
     archive_path explicitly replays a preserved capture; it never claims a live
     request. Default fetch is anonymous, bounded, timeout-limited, full HTTP200.
@@ -224,7 +222,7 @@ def stage_aiannh_candidate(storage: StagingStorageResource, *, vintage: int = VI
             raise AiannhQuarantineError(','.join(audit['reasons']))
         builder_sha = sha256_file(Path(__file__))
         implementation_sha = verifier_implementation_sha256()
-        version = f'v0.0.0-draft-tiger2023-{PIN[:16]}-{implementation_sha[:16]}'
+        version = f'v0.0.0-draft-tiger2026-{PIN[:16]}-{implementation_sha[:16]}'
         prefix = f'{SLUG}/{SLUG}/{version}'
         expected_names = {f'raw/{ARCHIVE_NAME}', f'geopackage/{SLUG}.gpkg',
                           'metadata/geopackage_source_fidelity.json', 'metadata/candidate.records.jsonl',
@@ -262,24 +260,24 @@ def stage_aiannh_candidate(storage: StagingStorageResource, *, vintage: int = VI
                         'processor_description': 'HIFLD Next draft AIANNH source adapter',
                         'code_commit': code_commit or _current_commit(), 'builder_sha256': builder_sha,
                         'implementation_sha256': implementation_sha,
-                        'title': 'Census TIGER2023 AIANNH components — unapproved draft',
+                        'title': 'Census TIGER2026 AIANNH components — unapproved draft',
                         'approved': False, 'native_crs': 'EPSG:4269',
                         'unsupported_output_formats': {
                             'shapefile_zip': 'Do not regenerate a physical DBF/geometry derivative: original producer ZIP and every sidecar are retained losslessly under raw/. Source mixed Polygon/MultiPolygon representation must not be coerced by a regenerated driver.',
                             'pmtiles': 'Visualization simplification/precision and source-ID fidelity are not approved; raw native polygons are authoritative for this draft.'},
-                        'refresh_policy': 'Fixed inventory-linked2023; retry monthly for availability and byte drift. New annual vintages require explicit migration decision.',
+                        'refresh_policy': 'Fixed inventory-linked TIGER2026 (issue #777 vintage migration); retry monthly for availability and byte drift. New annual vintages require explicit migration decision.',
                         'transformations': [{'operation': 'decode_native_shapefile_to_sorted_typed_feature_jsonl',
                                              'sort_key': 'GEOID', 'geometry': 'No repair, projection, simplification or combined-M dissolve',
                                              'raw_preservation': 'Original ZIP plus every member unchanged'},
                                             {'operation': 'lossless_native_mixed_geometry_geopackage',
                                              'internal_fid': 'GeoPackage storage index only; no generated source ID or published mapping',
                                              'metadata': 'Fixed gpkg_contents.last_change to source release date for deterministic bytes'}],
-                        'inputs': [{'input_id': f'tiger2023-aiannh-sha256:{PIN}', 'producer': 'U.S. Census Bureau, Geography Division',
+                        'inputs': [{'input_id': f'tiger2026-aiannh-sha256:{PIN}', 'producer': 'U.S. Census Bureau, Geography Division',
                                     'host': 'www2.census.gov', 'role': 'producer_publication', 'canonical_url': URL,
-                                    'retrieval_url': URL, 'release_date': '2023-11-22', 'retrieved_at': received_at,
+                                    'retrieval_url': URL, 'release_date': '2026-10-14', 'retrieved_at': received_at,
                                     'retrieval': retrieval, 'sha256': PIN, 'bytes': len(body),
                                     'license': 'U.S. Census Bureau public data', 'attribution': 'U.S. Census Bureau, Geography Division',
-                                    'lineage': 'TIGER2023/Boundary and Annexation Survey; exact inventory URL; DHS crosswalk remains unverified'}]}
+                                    'lineage': 'TIGER2026/Boundary and Annexation Survey; exact inventory URL; DHS crosswalk remains unverified'}]}
         validate_release_provenance(manifest)
         with tempfile.TemporaryDirectory(prefix='aiannh-gpkg-') as tmp:
             directory = Path(tmp)
@@ -292,7 +290,7 @@ def stage_aiannh_candidate(storage: StagingStorageResource, *, vintage: int = VI
             # GeoPackage can store Polygon and MultiPolygon without coercing
             # every original Polygon into a MultiPolygon as the generic writer does.
             with sqlite3.connect(geopackage) as db:
-                db.execute("UPDATE gpkg_contents SET last_change='2023-11-22T00:00:00.000Z'")
+                db.execute("UPDATE gpkg_contents SET last_change='2026-10-14T00:00:00.000Z'")
             derivative_records = directory / 'geopackage.jsonl'
             with fiona.open(geopackage) as src:
                 if not CRS(src.crs).equals(CRS.from_epsg(4269)):

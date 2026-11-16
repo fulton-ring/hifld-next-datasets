@@ -30,6 +30,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "national-transit-map-agencies"
 FILE_SLUG = DATASET_SLUG
@@ -48,14 +49,6 @@ EXPECTED_RECORD_SHA256 = "e7c048ce039bffa402b2e819b9f4a213fa72c4e6bcef94a5ed4e2e
 EXPECTED_GEOMETRY_SHA256 = "cf3d7364dbfa56b5a5557495baac94d57e6ac1df308c3f20413194c29b1b49bb"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 16_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict[str, object]]:
