@@ -18,7 +18,10 @@ from dagster_hifld.assets.pad_us_manager_name import (
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import epa_frs_common
+import shapely
+
 from dagster_hifld.sources import pad_us_manager_name as src
+from dagster_hifld.sources.esri_geometry import to_wkb
 
 FIXTURE_COUNT = 7
 FIXTURE_OBJECTIDS = [2, 3, 7, 12, 41, 58, 900]  # sparse, non-contiguous roster (ascending)
@@ -311,21 +314,22 @@ class PadUsManagerNameTests(unittest.TestCase):
         self.assertEqual(parse_qs(urlparse(src._count_url()).query)["returnCountOnly"], ["true"])
 
     def test_polygon_wkb_keeps_ring_semantics(self):
+        def converted(rings):
+            return to_wkb({"rings": rings}, src.GEOMETRY_TYPE, has_z=False, has_m=False)
+
         exterior = _cw_square(0.0, 0.0, 1.0)
         hole = _ccw_square(0.25, -0.5, 0.25)
-        wkb = src._polygon_wkb({"rings": [exterior, hole]})
+        wkb = converted([exterior, hole])
         order, kind = wkb[0], int.from_bytes(wkb[1:5], "little")
         self.assertEqual((order, kind), (1, 3))
         import struct
         (ring_count,) = struct.unpack_from("<I", wkb, 5)
         self.assertEqual(ring_count, 2)
-        multi = src._polygon_wkb({"rings": [_cw_square(0.0, 0.0, 1.0),
-                                            _cw_square(2.0, 0.0, 1.0)]})
+        multi = converted([_cw_square(0.0, 0.0, 1.0), _cw_square(2.0, 0.0, 1.0)])
         self.assertEqual((multi[0], int.from_bytes(multi[1:5], "little")), (1, 6))
 
     def test_polygon_geometry_drift_is_refused(self):
         cases = {
-            "unexpected_source_geometry_members": {"rings": [], "curves": []},
             "source_polygon_geometry_invalid": {"rings": []},
             "source_polygon_ordinate_contract_drift": {"rings": [[[0.0, 0.0, 0.0]]]},
             "source_polygon_ordinate_not_numeric": {"rings": [[["NaN", 0.0], [1.0, 0.0],
@@ -349,7 +353,24 @@ class PadUsManagerNameTests(unittest.TestCase):
         for expected_error, geometry in cases.items():
             with self.subTest(expected_error):
                 with self.assertRaisesRegex(src.PadUsManagerNameError, expected_error):
-                    src._polygon_wkb(geometry)
+                    src._validate_polygon_geometry(geometry["rings"])
+        with self.assertRaisesRegex(src.PadUsManagerNameError, "unexpected_source_geometry_members"):
+            src._validate_feature({"attributes": _fixture_attrs(1),
+                                   "geometry": {"rings": [], "curves": []}}, (), 1)
+        # GDAL retains a self-intersecting exterior, an unassigned hole and an
+        # all-CCW ring set verbatim; only the degenerate double-back ring
+        # becomes OGC-invalid (issue #997 shared converter).
+        def converted(rings):
+            return to_wkb({"rings": rings}, src.GEOMETRY_TYPE, has_z=False, has_m=False)
+
+        self.assertFalse(shapely.from_wkb(converted(
+            [[[0.0, 0.0], [3.0, 4.0], [1.0, 4.0], [4.0, 0.0], [0.0, 0.0]]])).is_valid)
+        self.assertTrue(shapely.from_wkb(converted(
+            [_cw_square(0.0, 0.0, 1.0), _ccw_square(5.0, 5.0, 1.0)])).is_valid)
+        self.assertTrue(shapely.from_wkb(converted(
+            [_ccw_square(0.25, -0.75, 0.5)])).is_valid)
+        self.assertFalse(shapely.from_wkb(converted(
+            [[[0.0, 0.0], [0.0, 0.0], [1.0, 1.0], [1.0, 1.0]]])).is_valid)
 
     def test_complete_fixture_capture_materializes_and_repeats(self):
         rows = _fixture_rows()
@@ -424,8 +445,9 @@ class PadUsManagerNameTests(unittest.TestCase):
                              "enumerated_roster_bisected_segments")
             self.assertTrue(sealed["pagination"]["resumable"])
             self.assertFalse(sealed["release_accepted"])
-            self.assertEqual(sealed["unusable_geometry_counts"],
-                             {"source_polygon_ring_degenerate": 1})
+            self.assertEqual(sealed["unusable_geometry_counts"], {})
+            self.assertEqual(sealed["ogc_invalid_geometry_sample_objectids"],
+                             [FIXTURE_OBJECTIDS[5]])
             manifest = json.loads((root / "staging" / prefix / "metadata"
                                    / "source_manifest.json").read_bytes())
             self.assertFalse(manifest["approved"])
