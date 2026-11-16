@@ -115,7 +115,7 @@ class EpaFrsCandidateLifecycleTests(unittest.TestCase):
             instance_dir.mkdir()
             (instance_dir / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
             fake = {
-                "version": version, "feature_count": 2328,
+                "version": version, "feature_count": 2326,
                 "source_null_geometry_count": 0,
                 "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
             }

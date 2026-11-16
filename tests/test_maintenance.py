@@ -835,7 +835,7 @@ class RestoreStagingTests(unittest.TestCase):
             published_root = Path(published_dir)
             source = (
                 published_root
-                / "2020-census-blocks-1/tl_2024_01_tabblock20/v1.0.0/geojson/source.geojson"
+                / "2020-census-blocks-1/tl_2026_01_tabblock20/v1.0.0/geojson/source.geojson"
             )
             source.parent.mkdir(parents=True)
             gpd.GeoDataFrame(
@@ -854,13 +854,13 @@ class RestoreStagingTests(unittest.TestCase):
             manifest = json.loads(
                 (
                     Path(staging_dir)
-                    / "2020-census-blocks-1/tl_2024_01_tabblock20/v1.0.0/metadata/source_manifest.json"
+                    / "2020-census-blocks-1/tl_2026_01_tabblock20/v1.0.0/metadata/source_manifest.json"
                 ).read_text()
             )
             self.assertEqual(manifest["metadata_sources"], ["inventory"])
             self.assertEqual(
                 manifest["title"],
-                "2020 Census Blocks - tl_2024_01_tabblock20",
+                "2020 Census Blocks - tl_2026_01_tabblock20",
             )
 
     def test_candidate_catalog_scratch_files_are_not_promoted(self):

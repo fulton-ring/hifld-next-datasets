@@ -62,7 +62,7 @@ class AiannhSourceTests(unittest.TestCase):
                     stage_aiannh_candidate(storage)
                 client.assert_not_called()
 
-    def test_monthly_schedule_resolves_stopped_and_selects_only_fixed2023(self):
+    def test_monthly_schedule_resolves_stopped_and_selects_only_fixed2026(self):
         schedule = aiannh_source_integrity_refresh_schedule
         self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
         self.assertEqual(schedule.execution_timezone, 'America/New_York')
@@ -73,7 +73,7 @@ class AiannhSourceTests(unittest.TestCase):
             tick = schedule.evaluate_tick(context)
         self.assertEqual(len(tick.run_requests), 1)
         config = tick.run_requests[0].run_config
-        self.assertEqual(config['ops']['ingest__aiannh_areas_1__aiannh_areas_1']['config'], {'vintage': 2023})
+        self.assertEqual(config['ops']['ingest__aiannh_areas_1__aiannh_areas_1']['config'], {'vintage': 2026})
 
     def test_changed_bytes_quarantine_preserves_exact_response_and_existing_stage(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -88,15 +88,15 @@ class AiannhSourceTests(unittest.TestCase):
             self.assertEqual(len(quarantine), 1); self.assertEqual(quarantine[0].read_bytes(), body)
             self.assertFalse((root / 'stage' / SLUG).exists())
 
-    def test_successor_explicitly_quarantined_without_silent_2023_request(self):
+    def test_successor_explicitly_quarantined_without_silent_2026_request(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory); source = root / 'later.zip'; source.write_bytes(b'2025-original')
+            root = Path(directory); source = root / 'later.zip'; source.write_bytes(b'2027-original')
             storage = StagingStorageResource(local_dir=str(root / 'stage'), use_local=True)
             with patch('dagster_hifld.sources.aiannh.httpx.Client') as client:
                 with self.assertRaisesRegex(AiannhQuarantineError, 'successor_vintage'):
-                    stage_aiannh_candidate(storage, vintage=2025, archive_path=source)
+                    stage_aiannh_candidate(storage, vintage=2027, archive_path=source)
                 client.assert_not_called()
-            self.assertEqual(next((root / 'stage/_quarantine').rglob('response.body')).read_bytes(), b'2025-original')
+            self.assertEqual(next((root / 'stage/_quarantine').rglob('response.body')).read_bytes(), b'2027-original')
 
     def test_truncated_http206_and_html200_never_stage_canonical_input(self):
         for status in (206, 200, 403):
@@ -112,7 +112,7 @@ class AiannhSourceTests(unittest.TestCase):
 
     def test_archive_duplicate_missing_members_and_crc_fail_before_geodata(self):
         with tempfile.TemporaryDirectory() as directory:
-            for names in (['../evil.shp'], ['tl_2023_us_aiannh.shp']):
+            for names in (['../evil.shp'], ['tl_2026_us_aiannh.shp']):
                 body = io.BytesIO()
                 with zipfile.ZipFile(body, 'w') as archive:
                     for name in names: archive.writestr(name, b'bad')
@@ -147,8 +147,8 @@ class AiannhSourceTests(unittest.TestCase):
             self.assertEqual(_current_commit(),
                              'installed-package-without-git; exact-builder-and-implementation-sha256-recorded')
 
-    @unittest.skipUnless(os.environ.get('AIANNH_TEST_ARCHIVE'), 'set AIANNH_TEST_ARCHIVE to preserved exact2023 ZIP')
-    def test_complete_pinned862_record_source_and_rerun(self):
+    @unittest.skipUnless(os.environ.get('AIANNH_TEST_ARCHIVE'), 'set AIANNH_TEST_ARCHIVE to preserved exact TIGER2026 ZIP')
+    def test_complete_pinned867_record_source_and_rerun(self):
         archive = Path(os.environ['AIANNH_TEST_ARCHIVE'])
         with tempfile.TemporaryDirectory() as directory:
             storage = StagingStorageResource(local_dir=directory, use_local=True)
@@ -157,7 +157,7 @@ class AiannhSourceTests(unittest.TestCase):
             second = stage_aiannh_candidate(storage, archive_path=archive, code_commit='explicit-local-test')
             self.assertEqual(first, second)
             self.assertEqual(before, storage.list_object_snapshots(f'{SLUG}/{SLUG}/{first["version"]}'))
-            self.assertEqual(first['feature_count'], 862)
+            self.assertEqual(first['feature_count'], 867)
             self.assertEqual(first['source_sha256'], PIN)
             prefix = f'{SLUG}/{SLUG}/{first["version"]}'
             manifest = json.loads(storage.read_key(f'{prefix}/metadata/source_manifest.json'))
@@ -166,12 +166,12 @@ class AiannhSourceTests(unittest.TestCase):
             validate_release_provenance(manifest)
             self.assertEqual(storage.read_key(f'{prefix}/raw/{ARCHIVE_NAME}'), archive.read_bytes())
             rows = [json.loads(line) for line in storage.read_key(f'{prefix}/metadata/candidate.records.jsonl').splitlines()]
-            self.assertEqual(len(rows), 862)
+            self.assertEqual(len(rows), 867)
             self.assertTrue(any(r['properties']['GEOID'].startswith('0') for r in rows))
             self.assertTrue(all(set(r['properties']) == set(SCHEMA) for r in rows))
             self.assertFalse(PROPOSAL['approved'])
 
-    @unittest.skipUnless(os.environ.get('AIANNH_TEST_ARCHIVE'), 'set AIANNH_TEST_ARCHIVE to preserved exact2023 ZIP')
+    @unittest.skipUnless(os.environ.get('AIANNH_TEST_ARCHIVE'), 'set AIANNH_TEST_ARCHIVE to preserved exact TIGER2026 ZIP')
     def test_complete_provenance_failure_precedes_canonical_staging(self):
         archive = Path(os.environ['AIANNH_TEST_ARCHIVE'])
         with tempfile.TemporaryDirectory() as directory:

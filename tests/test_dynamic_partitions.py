@@ -101,7 +101,7 @@ class DynamicPartitionTests(unittest.TestCase):
 
     def test_2020_census_blocks_tabblock20_ingest_registry_still_exists(self):
         self.assertEqual(len(CENSUS_2020_TABBLOCK20_FILE_SLUGS), 56)
-        self.assertIn("tl_2024_01_tabblock20", CENSUS_2020_TABBLOCK20_FILE_SLUGS)
+        self.assertIn("tl_2026_01_tabblock20", CENSUS_2020_TABBLOCK20_FILE_SLUGS)
         self.assertEqual(CENSUS_2020_BLOCKS_DATASET_SLUG, "2020-census-blocks-1")
 
     def test_generic_catalog_and_publish_assets_registered_once(self):

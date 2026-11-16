@@ -42,6 +42,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "ncua-insured-credit-unions"
@@ -91,15 +92,6 @@ BRANCH_FIELDS = (
     "MailingAddressStateName", "MailingAddressPostalCode", "PhoneNumber",
     "HoursOfOperation", "MemberServices", "ATM", "DriveThru", "Shrd_Serv_Cntr_Net",
 )
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"),
-                      ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 class _CaptureByteBudget:

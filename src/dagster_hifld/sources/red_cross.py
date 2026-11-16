@@ -30,6 +30,7 @@ from shapely.geometry import shape
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources.esri_common import sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "american-red-cross-divisions"
 SERVICE = "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer"
@@ -67,10 +68,6 @@ CAPTURE_FILES = {f"{name}.{suffix}" for name in CAPTURE_NAMES for suffix in ("bo
 _CANONICAL = lambda value: json.dumps(value, ensure_ascii=False, sort_keys=True,
                                        separators=(",", ":"), allow_nan=False).encode("utf-8")
 _STRING_TYPES = {"esriFieldTypeString", "esriFieldTypeGUID", "esriFieldTypeGlobalID"}
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _strict_json(body: bytes):

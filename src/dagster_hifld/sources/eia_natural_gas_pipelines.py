@@ -39,6 +39,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "natural-gas-interstate-and-intrastate-pipelines"
 FILE_SLUG = DATASET_SLUG
@@ -56,15 +57,6 @@ EXPECTED_MEMBERS = {
 MAX_ARCHIVE_BYTES = 32_000_000
 MAX_UNCOMPRESSED_BYTES = 64_000_000
 CAPTURE_FILES = {"eia_source_zip.body", "eia_source_zip.wire", "eia_source_zip.receipt.json"}
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _load_retained_capture(directory: Path) -> tuple[bytes, bytes, dict[str, object]]:

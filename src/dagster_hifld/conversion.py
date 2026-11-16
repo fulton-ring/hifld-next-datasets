@@ -67,14 +67,6 @@ FORMAT_PRIORITY = [
     (format_name, SOURCE_FORMAT_EXTENSIONS[format_name][0])
     for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE
 ]
-CHUNKED_READABLE_FORMATS = {"geopackage", "shapefile", "file_geodatabase"}
-FORMAT_SUFFIXES = [
-    "-file_geodatabase",
-    "-file-geodatabase",
-    "-geopackage",
-    "-shapefile",
-    "-geojson",
-]
 
 DEFAULT_ROW_GROUP_SIZE = 100_000
 DEFAULT_DATA_PAGE_SIZE_BYTES = 1024 * 1024
@@ -136,23 +128,6 @@ class GeoParquetWriteResult:
     source_metadata: dict[str, Any]
 
 
-DEFAULT_ADMIN_PARTITION_CANDIDATES = (
-    "statefp",
-    "state_fips",
-    "state",
-    "stusps",
-    "countyfp",
-    "county_fips",
-    "county",
-    "fips",
-    "huc",
-    "huc2",
-    "huc4",
-    "huc6",
-    "huc8",
-)
-
-
 GEOPARQUET_POLICY_REGISTRY: dict[tuple[str, str], GeoParquetWritePolicy] = {
     ("nfhl", "national-flood-hazard-layer-area-nfhl-1-east"): GeoParquetWritePolicy(
         derived_prefix_column="DFIRM_ID",
@@ -200,6 +175,10 @@ GEOPARQUET_POLICY_REGISTRY: dict[tuple[str, str], GeoParquetWritePolicy] = {
     ("nhd", "flowline-small-scale-2"): GeoParquetWritePolicy(force_s2=True),
     ("nhd", "flowline"): GeoParquetWritePolicy(force_admin_columns=("workunitid",)),
     ("nhd", "area-large-scale-2"): GeoParquetWritePolicy(force_s2=True),
+    ("wbd", "8-digit-hu-subbasin"): GeoParquetWritePolicy(
+        derived_huc_column="huc8",
+        derived_huc_partition_columns=("huc2",),
+    ),
     ("wbd", "10-digit-hu-watershed"): GeoParquetWritePolicy(
         derived_huc_column="huc10",
         derived_huc_partition_columns=("huc2",),
@@ -397,21 +376,6 @@ def _detect_format_from_path(path: str) -> str:
     return "unknown"
 
 
-def _strip_format_suffix(name: str) -> str:
-    base = name
-    for suffix in FORMAT_SUFFIXES:
-        if base.endswith(suffix):
-            return base[: -len(suffix)]
-    return base
-
-
-def _normalize_duplicate_leading_folder(path: str) -> str:
-    parts = [p for p in path.split("/") if p]
-    while len(parts) >= 3 and parts[0] == parts[1]:
-        parts = parts[1:]
-    return "/".join(parts)
-
-
 def get_memory_usage_mb() -> float:
     if not PSUTIL_AVAILABLE:
         return 0.0
@@ -446,74 +410,6 @@ def list_layers_in_file(
         except Exception:
             return [("default", None)]
     return [("default", None)]
-
-
-def _extract_geospatial_from_zip(
-    zip_file: Path, extract_dir: Path
-) -> Optional[tuple[str, Path]]:
-    with zipfile.ZipFile(zip_file, "r") as zf:
-        zf.extractall(extract_dir)
-
-    geodatabases = sorted(
-        path
-        for path in extract_dir.rglob("*")
-        if path.is_dir() and path.suffix.lower() == ".gdb"
-    )
-    for format_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
-        if format_name == "file_geodatabase":
-            if geodatabases:
-                return (format_name, geodatabases[0])
-            continue
-        for extension in SOURCE_FORMAT_EXTENSIONS[format_name]:
-            found = next(
-                (
-                    path
-                    for path in sorted(extract_dir.rglob("*"))
-                    if path.is_file() and path.suffix.lower() == extension
-                ),
-                None,
-            )
-            if found:
-                return (format_name, found)
-    return None
-
-
-async def unzip_from_storage(
-    storage: _StorageAdapter, remote_path: str, extract_dir: Path
-) -> Optional[tuple[str, Path]]:
-    remote_name = Path(remote_path).name
-    local_file = extract_dir / (remote_name or "source_file")
-    await storage.download_file(remote_path, local_file)
-
-    suffix = local_file.suffix.lower()
-    if suffix in {".geojson", ".gpkg", ".shp"}:
-        return (
-            {".geojson": "geojson", ".gpkg": "geopackage", ".shp": "shapefile"}[suffix],
-            local_file,
-        )
-
-    if suffix == ".zip":
-        try:
-            return _extract_geospatial_from_zip(local_file, extract_dir)
-        except zipfile.BadZipFile:
-            return None
-
-    try:
-        return _extract_geospatial_from_zip(local_file, extract_dir)
-    except zipfile.BadZipFile:
-        return None
-
-
-def _build_dest_folder(source_rel_path: str) -> str:
-    normalized = _normalize_duplicate_leading_folder(source_rel_path)
-    parts = [p for p in normalized.split("/") if p]
-    if not parts:
-        return ""
-    zip_stem = Path(parts[-1]).stem
-    parent = "/".join(parts[:-1])
-    if parent:
-        return f"{parent}/{zip_stem}/"
-    return f"{zip_stem}/"
 
 
 def _build_layer_filename(base_filename: str, layer_name: str) -> str:
@@ -3404,127 +3300,6 @@ async def process_layer_chunked(
         return {"error": str(e)}
 
 
-async def check_format_folder_exists(
-    dest_storage: _StorageAdapter,
-    dest_folder: str,
-    format_name: str,
-) -> bool:
-    format_folder = f"{dest_folder}{format_name}/"
-    try:
-        files = await dest_storage.list_files(format_folder)
-        return len(files) > 0
-    except Exception:
-        return False
-
-
-async def resolve_existing_output_formats(
-    dest_storage: _StorageAdapter,
-    dest_folder: str,
-    skip_format_existing: bool,
-) -> dict[str, bool]:
-    if not skip_format_existing:
-        return {"parquet": False, "pmtiles": False, "geopackage": False}
-    parquet_exists = await check_format_folder_exists(
-        dest_storage, dest_folder, "parquet"
-    )
-    pmtiles_exists = await check_format_folder_exists(
-        dest_storage, dest_folder, "pmtiles"
-    )
-    geopackage_exists = await check_format_folder_exists(
-        dest_storage, dest_folder, "geopackage"
-    )
-    return {
-        "parquet": parquet_exists,
-        "pmtiles": pmtiles_exists,
-        "geopackage": geopackage_exists,
-    }
-
-
-async def _upload_extracted_format_files(
-    data_file: Path,
-    format_type: str,
-    format_name: str,
-    format_dest_folder: str,
-    work_dir: Path,
-    dest_storage: _StorageAdapter,
-) -> None:
-    format_files_dir = work_dir / f"format_{format_name}"
-    format_files_dir.mkdir(exist_ok=True)
-
-    if data_file.is_dir():
-        shutil.copytree(
-            data_file, format_files_dir / data_file.name, dirs_exist_ok=True
-        )
-    else:
-        shutil.copy2(data_file, format_files_dir / data_file.name)
-        if format_type == "shapefile":
-            for sibling in shapefile_dataset_files(data_file):
-                if sibling != data_file:
-                    shutil.copy2(sibling, format_files_dir / sibling.name)
-
-    for file_path in format_files_dir.rglob("*"):
-        if file_path.is_file():
-            rel_path = file_path.relative_to(format_files_dir)
-            remote_path = f"{format_dest_folder}{rel_path}"
-            await dest_storage.upload_file(file_path, remote_path)
-
-
-async def _process_single_format_variant(
-    format_name: str,
-    format_path: str,
-    source_storage: _StorageAdapter,
-    dest_storage: _StorageAdapter,
-    extract_dir: Path,
-    work_dir: Path,
-    dest_folder: str,
-    skip_format_existing: bool,
-) -> Optional[dict[str, Any]]:
-    format_dest_folder = f"{dest_folder}{format_name}/"
-    skip_upload = False
-    if skip_format_existing and await check_format_folder_exists(
-        dest_storage, dest_folder, format_name
-    ):
-        skip_upload = True
-
-    unzip_result = await unzip_from_storage(
-        source_storage, format_path, extract_dir / format_name
-    )
-    if unzip_result is None:
-        return None
-    format_type, data_file = unzip_result
-
-    if format_name == "unknown":
-        format_name = format_type
-        format_dest_folder = f"{dest_folder}{format_name}/"
-        if skip_format_existing and await check_format_folder_exists(
-            dest_storage, dest_folder, format_name
-        ):
-            skip_upload = True
-
-    try:
-        layers = list_layers_in_file(data_file, format_type)
-    except Exception:
-        return None
-
-    if not skip_upload:
-        await _upload_extracted_format_files(
-            data_file=data_file,
-            format_type=format_type,
-            format_name=format_name,
-            format_dest_folder=format_dest_folder,
-            work_dir=work_dir,
-            dest_storage=dest_storage,
-        )
-
-    return {
-        "format_name": format_name,
-        "format_type": format_type,
-        "layers": layers,
-        "data_file": data_file,
-        "is_geopackage_source": format_name == "geopackage",
-    }
-
-
 async def write_geopackage_chunked(
     file_path: Path,
     format_type: str,
@@ -3651,16 +3426,6 @@ async def write_geopackage_chunked(
             )
 
 
-def _select_best_format_for_geopackage(
-    processed_formats: dict[str, dict[str, Any]],
-) -> tuple[Optional[dict[str, Any]], Optional[Path]]:
-    for fmt_name in CANONICAL_SOURCE_FORMAT_PRECEDENCE:
-        if fmt_name in processed_formats:
-            fmt_info = processed_formats[fmt_name]
-            return fmt_info, fmt_info["data_file"]
-    return None, None
-
-
 def select_processing_input(
     processed_formats: dict[str, dict[str, Any]],
     *,
@@ -3676,133 +3441,6 @@ def select_processing_input(
             fmt_info = processed_formats[format_name]
             return fmt_info, fmt_info["data_file"], fmt_info["format_type"]
     return None, None, None
-
-
-def _select_preferred_processing_format(
-    processed_formats: dict[str, dict[str, Any]],
-) -> tuple[Optional[dict[str, Any]], Optional[Path], Optional[str]]:
-    return select_processing_input(processed_formats)
-
-
-async def _process_dataset(
-    source_rel_path: str,
-    source_storage: _StorageAdapter,
-    dest_storage: _StorageAdapter,
-    skip_format_existing: bool = False,
-) -> dict[str, Any]:
-    logical_source_path = source_storage.logical_key(source_rel_path)
-    path_parts = [p for p in logical_source_path.split("/") if p]
-    zip_stem = (
-        Path(path_parts[-1]).stem if path_parts else Path(logical_source_path).stem
-    )
-    base_filename = _strip_format_suffix(zip_stem)
-    dest_folder = _build_dest_folder(logical_source_path)
-    format_variants = {_detect_format_from_path(source_rel_path): source_rel_path}
-
-    processed_formats: dict[str, dict[str, Any]] = {}
-    geopackage_created = False
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        work_dir = Path(temp_dir)
-        extract_dir = work_dir / "extracted"
-        extract_dir.mkdir(parents=True, exist_ok=True)
-
-        for format_name, format_path in format_variants.items():
-            processed = await _process_single_format_variant(
-                format_name=format_name,
-                format_path=format_path,
-                source_storage=source_storage,
-                dest_storage=dest_storage,
-                extract_dir=extract_dir,
-                work_dir=work_dir,
-                dest_folder=dest_folder,
-                skip_format_existing=skip_format_existing,
-            )
-            if not processed:
-                continue
-            processed_formats[processed["format_name"]] = {
-                "format_type": processed["format_type"],
-                "layers": processed["layers"],
-                "data_file": processed["data_file"],
-            }
-            if processed["is_geopackage_source"]:
-                geopackage_created = True
-
-        existing_outputs = await resolve_existing_output_formats(
-            dest_storage=dest_storage,
-            dest_folder=dest_folder,
-            skip_format_existing=skip_format_existing,
-        )
-
-        if not geopackage_created and not existing_outputs["geopackage"]:
-            best_format, best_format_path = _select_best_format_for_geopackage(
-                processed_formats
-            )
-            if best_format and best_format_path and best_format_path.exists():
-                format_type = best_format["format_type"]
-                layers = best_format["layers"]
-                geopackage_dir = work_dir / "geopackage"
-                geopackage_dir.mkdir(exist_ok=True)
-                for layer_name, _geom_type in layers:
-                    layer_filename = _build_layer_filename(base_filename, layer_name)
-                    output_gpkg = geopackage_dir / f"{layer_filename}.gpkg"
-                    await write_geopackage_chunked(
-                        file_path=best_format_path,
-                        format_type=format_type,
-                        layer_name=layer_name if layer_name != "default" else None,
-                        output_gpkg=output_gpkg,
-                    )
-                    if output_gpkg.exists():
-                        remote_path = f"{dest_folder}geopackage/{layer_filename}.gpkg"
-                        await dest_storage.upload_file(output_gpkg, remote_path)
-                        geopackage_created = True
-
-        preferred_format, preferred_data_file, preferred_format_type = (
-            _select_preferred_processing_format(processed_formats)
-        )
-        if not preferred_format:
-            return {
-                "success": False,
-                "error": "No processable format found",
-                "layers": [],
-            }
-
-        layers = preferred_format["layers"]
-        skip_parquet_upload = existing_outputs["parquet"]
-        skip_pmtiles_upload = existing_outputs["pmtiles"]
-        results: list[dict[str, Any]] = []
-        for layer_name, _geom_type in layers:
-            layer_filename = _build_layer_filename(base_filename, layer_name)
-            parquet_result: dict[str, Any] = {"geoparquet_paths": []}
-            if not skip_parquet_upload:
-                parquet_result = await process_layer_partitioned_geoparquet(
-                    file_path=preferred_data_file,
-                    format_type=preferred_format_type,
-                    layer_name=layer_name if layer_name != "default" else None,
-                    layer_filename=layer_filename,
-                    dest_folder=dest_folder,
-                    dest_storage=dest_storage,
-                    work_dir=work_dir,
-                    policy=GeoParquetWritePolicy(
-                        candidate_admin_columns=DEFAULT_ADMIN_PARTITION_CANDIDATES
-                    ),
-                    multi_layer=len(layers) > 1,
-                )
-            pmtiles_result = await process_layer_chunked(
-                file_path=preferred_data_file,
-                format_type=preferred_format_type,
-                layer_name=layer_name if layer_name != "default" else None,
-                layer_filename=layer_filename,
-                dest_folder=dest_folder,
-                dest_storage=dest_storage,
-                work_dir=work_dir,
-                row_group_size=DEFAULT_ROW_GROUP_SIZE,
-                data_page_size_bytes=DEFAULT_DATA_PAGE_SIZE_BYTES,
-                skip_parquet=True,
-                skip_pmtiles=skip_pmtiles_upload,
-            )
-            results.append({"layer": layer_name, **parquet_result, **pmtiles_result})
-        return {"success": True, "dest_folder": dest_folder, "layers": results}
 
 
 async def _process_staged_dataset_version_async(

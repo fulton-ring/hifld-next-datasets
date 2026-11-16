@@ -124,9 +124,9 @@ class UsStateBoundariesTests(unittest.TestCase):
 
     def _inspect_with_frame(self, frame, pins=None):
         members = [
-            "tl_2023_us_state.cpg", "tl_2023_us_state.dbf", "tl_2023_us_state.prj",
-            "tl_2023_us_state.shp", "tl_2023_us_state.shp.ea.iso.xml",
-            "tl_2023_us_state.shp.iso.xml", "tl_2023_us_state.shx",
+            "tl_2026_us_state.cpg", "tl_2026_us_state.dbf", "tl_2026_us_state.prj",
+            "tl_2026_us_state.shp", "tl_2026_us_state.shp.ea.iso.xml",
+            "tl_2026_us_state.shp.iso.xml", "tl_2026_us_state.shx",
         ]
         if pins is None:
             pins = self._synthetic_pins(self._synthetic_frame())
@@ -154,13 +154,13 @@ class UsStateBoundariesTests(unittest.TestCase):
 
     def test_rejects_incomplete_tiger_archive_member_roster(self):
         with self.assertRaisesRegex(ValueError, "tiger_archive_member_roster_drift"):
-            _inspect_archive(self._archive(["tl_2023_us_state.shp"]))
+            _inspect_archive(self._archive(["tl_2026_us_state.shp"]))
 
     def test_rejects_archive_path_traversal_before_extraction(self):
         names = [
-            "../tl_2023_us_state.cpg", "tl_2023_us_state.dbf", "tl_2023_us_state.prj",
-            "tl_2023_us_state.shp", "tl_2023_us_state.shp.ea.iso.xml",
-            "tl_2023_us_state.shp.iso.xml", "tl_2023_us_state.shx",
+            "../tl_2026_us_state.cpg", "tl_2026_us_state.dbf", "tl_2026_us_state.prj",
+            "tl_2026_us_state.shp", "tl_2026_us_state.shp.ea.iso.xml",
+            "tl_2026_us_state.shp.iso.xml", "tl_2026_us_state.shx",
         ]
         with self.assertRaisesRegex(ValueError, "tiger_archive_unsafe_member"):
             _inspect_archive(self._archive(names))
