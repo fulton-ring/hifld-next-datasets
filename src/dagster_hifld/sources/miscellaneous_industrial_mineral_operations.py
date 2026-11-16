@@ -92,12 +92,23 @@ MISCELLANEOUS_COMMODITIES = ('Barite', 'Bromine', 'Diatomite', 'Fullers earth', 
                              'Iron oxide pigments', 'Kaolin', 'Lime', 'Lithium', 'Salt',
                              'Soda ash', 'Sodium sulfate', 'Titanium dioxide pigment',
                              'Titanium minerals', 'Trona')
-# Commodity classes of the sibling metal-operations layers of the same National Atlas
-# series, read from their surviving legacy FGDC documents (verified 2026-11-16).
-ATLAS_EXCLUDED_COMMODITIES = ('Beryllium', 'Chromium', 'Cobalt', 'Columbium', 'Copper',
-                              'Germanium', 'Gold', 'Iron', 'Lead', 'Manganese', 'Molybdenum',
-                              'Nickel', 'Rhenium', 'Silicon', 'Silver', 'Tantalum', 'Tungsten',
-                              'Zinc')
+# Commodity classes of the other seven layers of the same National Atlas
+# mineral-operations series (minop1x020 agricultural, minop2x020 construction,
+# minop3x020/minop4x020 ferrous, minop6x020 nonferrous mines, minop7x020 nonferrous
+# processing, minop8x020 refractory/abrasive), read from their surviving legacy FGDC
+# documents (all verified 2026-11-16). Diatomite and Trona are shared with the
+# refractory/abrasive layer, so they stay in MISCELLANEOUS_COMMODITIES and are not
+# exclusion indicators.
+ATLAS_EXCLUDED_COMMODITIES = ('Aluminum', 'Antimony', 'Abrasive minerals', 'Ball clay',
+                              'Bentonite', 'Boron', 'Cadmium', 'Cement', 'Chromium', 'Cobalt',
+                              'Columbium', 'Common clay and Shale', 'Copper', 'Dimension stone',
+                              'Feldspar', 'Garnet', 'Gemstones', 'Germanium', 'Gold', 'Gypsum',
+                              'Iron', 'Kyanite', 'Lead', 'Magnesium compounds', 'Magnesium metal',
+                              'Manganese', 'Mica', 'Molybdenum', 'Nickel', 'Olivine', 'Peat',
+                              'Perlite', 'Phosphate', 'Potash', 'Pumice', 'Pyrophyllite',
+                              'Refractory minerals', 'Rhenium', 'Selenium', 'Silica', 'Silicon',
+                              'Silver', 'Strontium', 'Sulfur', 'Talc', 'Tantalum', 'Titanium metal',
+                              'Tungsten', 'Vermiculite', 'Wollastonite', 'Zeolites', 'Zircon', 'Zinc')
 MISCELLANEOUS_ROWS = 304
 
 
