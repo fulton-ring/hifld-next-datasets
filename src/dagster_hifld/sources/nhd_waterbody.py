@@ -67,13 +67,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import MultiPolygon, Point, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -167,7 +167,7 @@ EXPECTED_NULL_GEOMETRY_COUNT: int | None = 9
 EXPECTED_REFUSED_IDS: tuple[int, ...] | None = (
     1293173, 2520496, 4245000, 4694427, 7059540, 7059541, 7098625, 7135496, 7157221)
 # Producer-served zero-area rings are retained verbatim (see
-# ``_polygon_wkb``): 13 rings over 13 features in the complete 2026-11-13
+# zero-area-ring pins): 13 rings over 13 features in the complete 2026-11-13
 # capture. The count and the feature-id set are pinned from
 # ``build_nhd_waterbody_baseline``; any change fails closed.
 EXPECTED_DEGENERATE_RING_COUNT: int | None = 13
@@ -299,29 +299,20 @@ def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
 _GEOMETRY_COLUMN = "geometry"
 
 
-def _polygon_wkb(geometry: object, *, degenerate_rings: list | None = None) -> bytes | None:
-    """WKB for one feature's Esri rings under the producer's verified ring semantics.
+def _validate_polygon_geometry(geometry: object) -> list:
+    """Structural contract for one served polygon geometry (no assembly).
 
     Esri JSON (verified on the pinned captures of this producer's Waterbody
-    layer): every ring is explicitly closed, clockwise rings are exteriors,
-    counter-clockwise rings are holes, and every ordinate triple carries the
-    layer's Z value (``returnZ=true`` response). Vertices are passed to
-    shapely verbatim; exteriors with no claimable hole keep their ring order
-    and holes join their smallest containing exterior.
-
-    The real population also serves closed zero-area rings (13 rings over 13
-    features observed in the complete 2026-11-13 capture: four-vertex spikes
-    whose shoelace area collapses to exactly ``0.0`` in float64 under the
-    per-term computation below). They are the producer's own coordinates, so
-    they are retained verbatim rather than refused: a zero-area ring joins its
-    smallest covering exterior as an additional (coverage-neutral) hole ring,
-    and a zero-area ring covered by no exterior of its feature — or a feature
-    whose only rings are degenerate — is retained as its own zero-area shell
-    polygon. ``degenerate_rings`` optionally collects the retained zero-area
-    rings so callers can pin the degenerate-ring contract.
+    layer): rings are explicitly closed Z triples in the source lon/lat
+    domain. Ordinate shape, type, finiteness and coordinate range are checked
+    here so structurally invalid source geometry refuses the capture with the
+    pinned codes. The real population also serves closed zero-area rings (13
+    rings over 13 features observed in the complete 2026-11-13 capture:
+    four-vertex spikes whose float64 shoelace area collapses to exactly 0.0);
+    they are the producer's own coordinates and stay retained through the
+    shared GDAL conversion. Ring orientation and hole assignment are GDAL's.
+    Returns the verbatim rings.
     """
-    if geometry is None:
-        return None
     if not isinstance(geometry, dict) or "rings" not in geometry \
             or not isinstance(geometry["rings"], list) or not geometry["rings"]:
         raise NhdWaterbodyError("source_polygon_geometry_invalid")
@@ -329,15 +320,11 @@ def _polygon_wkb(geometry: object, *, degenerate_rings: list | None = None) -> b
         raise NhdWaterbodyError("unexpected_source_geometry_members")
     if geometry.get("hasZ") is not True:
         raise NhdWaterbodyError("source_geometry_z_flag_missing")
-    exteriors: list[list] = []
-    holes: list[list] = []
-    degenerate: list[list] = []
-    standalone: list[list] = []
-    for ring in geometry["rings"]:
+    rings = geometry["rings"]
+    for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4:
             raise NhdWaterbodyError("source_polygon_ring_invalid")
-        area = 0.0
-        for index, vertex in enumerate(ring):
+        for vertex in ring:
             if not isinstance(vertex, list) or len(vertex) != 3:
                 raise NhdWaterbodyError("source_polygon_ordinate_contract_drift")
             x, y, z = vertex
@@ -347,60 +334,9 @@ def _polygon_wkb(geometry: object, *, degenerate_rings: list | None = None) -> b
                 raise NhdWaterbodyError("source_polygon_ordinate_not_finite")
             if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
                 raise NhdWaterbodyError("source_coordinate_range_drift")
-            nxt = ring[(index + 1) % len(ring)]
-            area += x * nxt[1] - nxt[0] * y
-        area /= 2
         if ring[0] != ring[-1]:
             raise NhdWaterbodyError("source_polygon_ring_not_closed")
-        if area == 0:
-            degenerate.append(ring)
-            if degenerate_rings is not None:
-                degenerate_rings.append(ring)
-        else:
-            (exteriors if area < 0 else holes).append(ring)
-    if not exteriors:
-        if degenerate and not holes:
-            # The producer served no enclosing exterior, so each retained
-            # zero-area ring stands as its own shell (coordinates verbatim,
-            # no coverage claimed).
-            polygons = [Polygon(ring) for ring in degenerate]
-            return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
-        raise NhdWaterbodyError("source_polygon_exterior_missing")
-    shells = [(Polygon(ring), _signed_area(ring), index) for index, ring in enumerate(exteriors)]
-    # Prepared shell geometries: hole containment is queried against every
-    # exterior, and the producer's main-stem features carry thousands of holes
-    # over six-figure-vertex exteriors where unprepared contains() per hole is
-    # pathologically slow. Preparation builds an index only and the containment
-    # results are identical.
-    for shell, _area, _index in shells:
-        shapely.prepare(shell)
-    assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
-    for hole in holes:
-        probe = Polygon(hole).representative_point()
-        candidates = [(abs(area), index) for shell, area, index in shells if shell.contains(probe)]
-        if not candidates:
-            raise NhdWaterbodyError("source_polygon_hole_unassigned")
-        assigned[min(candidates)[1]].append(hole)
-    for ring in degenerate:
-        probe = Point(ring[0])
-        candidates = [(abs(area), index) for shell, area, index in shells if shell.covers(probe)]
-        if candidates:
-            assigned[min(candidates)[1]].append(ring)
-        else:
-            standalone.append(ring)
-    polygons = []
-    for _, _, index in sorted(shells, key=lambda item: item[2]):
-        polygons.append(Polygon(exteriors[index], assigned[index]))
-    polygons.extend(Polygon(ring) for ring in standalone)
-    return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
-
-
-def _signed_area(ring: list) -> float:
-    area = 0.0
-    for index, vertex in enumerate(ring):
-        nxt = ring[(index + 1) % len(ring)]
-        area += vertex[0] * nxt[1] - nxt[0] * vertex[1]
-    return area / 2
+    return rings
 
 
 def _validate_value(name: str, esri_type: str, nullable: bool, value: object) -> None:
@@ -1209,12 +1145,19 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                 for ring in rings:
                     for vertex in ring:
                         track_bounds(vertex)
-                feature_degenerate: list = []
-                geometries.append(_polygon_wkb(geometry, degenerate_rings=feature_degenerate))
+                _validate_polygon_geometry(geometry)
+                # Ring orientation and hole assignment are GDAL's through the
+                # shared native Esri polygon conversion; a conversion failure
+                # refuses the capture. Zero-area producer rings stay retained
+                # (their indexes are pinned), and OGC-invalid converted
+                # geometry is counted by reason, never repaired.
+                wkb = to_wkb(geometry, GEOMETRY_TYPE, has_z=True, has_m=False)
+                feature_degenerate = zero_area_rings(rings)
                 if feature_degenerate:
                     degenerate_ring_count += len(feature_degenerate)
                     degenerate_feature_ids.add(objectid)
                 geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
+                geometries.append(wkb)
             featuretype = attrs["featuretype"]
             featuretype_distribution[featuretype] = \
                 featuretype_distribution.get(featuretype, 0) + 1
