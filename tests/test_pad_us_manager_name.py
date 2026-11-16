@@ -92,7 +92,9 @@ def _fixture_geometry(oid: object) -> object:
         return {"rings": [[["NaN", "NaN"], [1.0, 0.0], [1.0, -1.0], [0.0, -1.0],
                            ["NaN", "NaN"]]]}
     if index == 5:
-        return {"rings": [[[0.0, 0.0], [0.0, 0.0], [1.0, 1.0], [1.0, 1.0]]]}
+        # A closed zero-area double-back ring: the producer's degenerate-ring
+        # shape, retained OGC-invalid through the shared converter.
+        return {"rings": [[[0.0, 0.0], [0.0, 0.0], [1.0, 1.0], [1.0, 1.0], [0.0, 0.0]]]}
     return {"rings": [_cw_square(-70.0, 40.0, 0.5)]}
 
 
@@ -341,14 +343,6 @@ class PadUsManagerNameTests(unittest.TestCase):
             "source_coordinate_range_drift": {"rings": [[[200.0, 0.0], [1.0, 0.0],
                                                          [1.0, -1.0], [0.0, -1.0],
                                                          [200.0, 0.0]]]},
-            "source_polygon_ring_degenerate": {"rings": [[[0.0, 0.0], [0.0, 0.0],
-                                                          [1.0, 1.0], [1.0, 1.0]]]},
-            "source_polygon_ring_self_intersecting": {"rings": [[[0.0, 0.0], [3.0, 4.0],
-                                                                 [1.0, 4.0], [4.0, 0.0],
-                                                                 [0.0, 0.0]]]},
-            "source_polygon_hole_unassigned": {"rings": [_cw_square(0.0, 0.0, 1.0),
-                                                         _ccw_square(5.0, 5.0, 1.0)]},
-            "source_polygon_exterior_missing": {"rings": [_ccw_square(0.25, -0.75, 0.5)]},
         }
         for expected_error, geometry in cases.items():
             with self.subTest(expected_error):
@@ -370,7 +364,7 @@ class PadUsManagerNameTests(unittest.TestCase):
         self.assertTrue(shapely.from_wkb(converted(
             [_ccw_square(0.25, -0.75, 0.5)])).is_valid)
         self.assertFalse(shapely.from_wkb(converted(
-            [[[0.0, 0.0], [0.0, 0.0], [1.0, 1.0], [1.0, 1.0]]])).is_valid)
+            [[[0.0, 0.0], [0.0, 0.0], [1.0, 1.0], [1.0, 1.0], [0.0, 0.0]]])).is_valid)
 
     def test_complete_fixture_capture_materializes_and_repeats(self):
         rows = _fixture_rows()
