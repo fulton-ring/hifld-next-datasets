@@ -226,7 +226,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
         transport = make_transport(sources=sources)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(root / "capture")):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: root / "capture"):
                 with self.assertRaisesRegex(ValueError, "NLDI ref_gage feature source is missing or ambiguous"):
                     nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
             quarantined = sorted((root / "staging" / "_quarantine" / nldi.DATASET_SLUG
@@ -282,7 +282,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as tmp:
                     root = Path(tmp)
                     transport = make_transport(**kwargs)
-                    with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(root / "capture")):
+                    with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: root / "capture"):
                         with self.assertRaisesRegex(ValueError, expected_error):
                             nldi.fetch_and_stage_nldi(_staging(root),
                                                       client=httpx.Client(transport=transport))
@@ -295,7 +295,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
             root = Path(tmp)
             capture_root = root / "capture"
             staging = _staging(root)
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 first = nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=transport))
                 audit = first["source_audit"]
                 self.assertEqual(first["feature_count"], FIXTURE_COUNT + 1)
@@ -324,7 +324,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
             root = Path(tmp)
             staging = _staging(root)
             capture_a = root / "capture-a"
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_a)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_a):
                 with self.assertRaisesRegex(ValueError, "HTTP capture incomplete"):
                     nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=refusing))
             state = json.loads((capture_a / "capture_state.json").read_text())
@@ -336,7 +336,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
             capture_b = root / "capture-b"
             shutil.move(str(capture_a), str(capture_b))
             self.assertFalse(capture_a.exists())
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_b)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_b):
                 result = nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=complete))
             self.assertEqual(result["feature_count"], FIXTURE_COUNT)
             self.assertFalse(result["reused"])
@@ -348,7 +348,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 first = nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
                 second = nldi.fetch_and_stage_nldi(_staging(root))
             self.assertEqual(first["version"], second["version"])
@@ -362,7 +362,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
         transport = make_transport()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(root / "capture")):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: root / "capture"):
                 first = nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
                 audit = first["source_audit"]
                 with patch.object(nldi, "EXPECTED_COUNT", audit["feature_count"] + 1):
@@ -382,7 +382,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
             root = Path(tmp)
             capture_root = root / "capture"
             staging = _staging(root)
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 result = nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=transport))
             self.assertEqual(result["feature_count"], 6)
             state = json.loads((capture_root / "capture_state.json").read_text())
@@ -403,7 +403,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 with self.assertRaisesRegex(ValueError, "NLDI ref_gage feature source is missing or ambiguous"):
                     nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
             self.assertEqual(requests, ["sources", "page:0", "page:3", "page:6", "sources"])
@@ -420,12 +420,12 @@ class USGSNLDIAssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
             wire_path = capture_root / "page_000000000.wire"
             original_wire = wire_path.read_bytes()
             wire_path.write_bytes(b"corrupted wire evidence")
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 with self.assertRaisesRegex(ValueError,
                                             "retained NLDI wire evidence for page_000000000"):
                     nldi.fetch_and_stage_nldi(_staging(root / "fresh-wire"))
@@ -438,12 +438,12 @@ class USGSNLDIAssetTests(unittest.TestCase):
             decoded_path = capture_root / "page_000000000.decoded"
             original_decoded = decoded_path.read_bytes()
             decoded_path.write_bytes(b"corrupted decoded evidence")
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 with self.assertRaisesRegex(ValueError,
                                             "retained NLDI decoded evidence for page_000000000"):
                     nldi.fetch_and_stage_nldi(_staging(root / "fresh-decoded"))
             decoded_path.write_bytes(original_decoded)
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 result = nldi.fetch_and_stage_nldi(_staging(root / "fresh-recovered"))
             self.assertEqual(result["feature_count"], FIXTURE_COUNT)
             self.assertFalse(result["reused"])
@@ -513,7 +513,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
             write_legacy_evidence(capture_root, "page_000000000", page_decoded(0, 3), page_time)
             write_legacy_state(capture_root, [3], complete=False)
             transport = make_transport(sources=drifted, requests=requests)
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 with self.assertRaisesRegex(ValueError,
                                             "NLDI ref_gage feature source is missing or ambiguous"):
                     nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
@@ -539,7 +539,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
                                       page_time)
             write_legacy_state(capture_root, [3, 3, 1], complete=True)
             transport = make_transport(requests=requests)
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 result = nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
             self.assertEqual(requests, ["sources"])
             self.assertEqual(result["feature_count"], FIXTURE_COUNT)
@@ -558,11 +558,11 @@ class USGSNLDIAssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 first = nldi.fetch_and_stage_nldi(_staging(root), client=httpx.Client(transport=transport))
             requests = []
             drifted_transport = make_transport(sources=drifted, requests=requests)
-            with fixture_mode(), patch.object(nldi, "DEFAULT_CAPTURE_ROOT", str(capture_root)):
+            with fixture_mode(), patch.object(nldi, "default_capture_dir", lambda *a, **k: capture_root):
                 second = nldi.fetch_and_stage_nldi(_staging(root),
                                                    client=httpx.Client(transport=drifted_transport))
             self.assertEqual(requests, [])
