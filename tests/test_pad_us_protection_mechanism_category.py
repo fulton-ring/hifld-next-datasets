@@ -22,6 +22,7 @@ from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import epa_frs_common
 from dagster_hifld.sources import pad_us_protection_mechanism_category as src
+from dagster_hifld.sources.esri_geometry import to_wkb
 
 FIXTURE_COUNT = 5
 FIXTURE_OBJECTIDS = (1, 2, 3, 5, 8)
@@ -327,10 +328,8 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                          "136194b0dfac75e6d781c82e4d3d2a2a0e39074059326628c9182730bd312c7b")
         self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
                          "020f3a55a746d9280b8750d6401a8fdd6c1579ffb6a0c8d325dd854ff4762f4a")
-        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
-                         {"source_polygon_exterior_missing": 12,
-                          "source_polygon_hole_unassigned": 66,
-                          "source_polygon_ring_degenerate": 792})
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
+        self.assertIsNone(src.EXPECTED_INVALID_GEOMETRY_COUNT)
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
@@ -348,17 +347,11 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
             {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": contract + 1}))
         self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
             {"feature_count": src.EXPECTED_COUNT - 1, "source_null_geometry_count": contract}))
-        # A counterfactual contract (the superseded service's observed
-        # families) gates exactly its own pinned nulls and nothing else.
+        # A counterfactual contract pins exactly its own null count and
+        # nothing else; the retired unusable census contributes nothing.
         import dagster_hifld.assets.pad_us_protection_mechanism_category as asset_module
-        with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0), \
-                patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
-                             {"source_polygon_ring_degenerate": 302,
-                              "source_polygon_hole_unassigned": 40}), \
-                patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", 0), \
-                patch.object(asset_module, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
-                             {"source_polygon_ring_degenerate": 302,
-                              "source_polygon_hole_unassigned": 40}):
+        with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 342), \
+                patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", 342):
             pinned = (src.EXPECTED_NULL_GEOMETRY_COUNT
                       + sum(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values()))
             self.assertEqual(pinned, 342)
@@ -369,15 +362,13 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                  "source_null_geometry_count": pinned + 1}))
 
     def test_pinned_producer_geometry_defect_contract(self):
-        # Producer-served unusable rings are gated to explicit nulls and
-        # OGC-invalid (self-intersecting) polygons are retained verbatim; both
-        # counts are pinned from the first complete capture of the maintained
-        # view and any change fails the next capture.
-        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
-                         {"source_polygon_exterior_missing": 12,
-                          "source_polygon_hole_unassigned": 66,
-                          "source_polygon_ring_degenerate": 792})
-        self.assertEqual(src.EXPECTED_INVALID_GEOMETRY_COUNT, 1948)
+        # The retired quarantine census pins to an empty family: served rings
+        # convert through the shared GDAL converter and OGC-invalid geometry
+        # is retained verbatim and counted by reason (issue #997). The invalid
+        # count covers every converted row now, so its pin waits for the next
+        # complete capture to re-derive it.
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
+        self.assertIsNone(src.EXPECTED_INVALID_GEOMETRY_COUNT)
         self.assertNotEqual(src.EXPECTED_RECORD_SHA256, "")
         self.assertNotEqual(src.EXPECTED_GEOMETRY_SHA256, "")
 
@@ -443,8 +434,10 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
         self.assertLess(len(url), 400)
 
     def test_polygon_wkb_keeps_ring_order_and_hole_assignment(self):
-        wkb, unusable = src._polygon_wkb(_fixture_geometry(FIXTURE_OBJECTIDS[2]))
-        self.assertIsNone(unusable)
+        def converted(oid):
+            return to_wkb(_fixture_geometry(oid), src.GEOMETRY_TYPE, has_z=False, has_m=False)
+
+        wkb = converted(FIXTURE_OBJECTIDS[2])
         order, kind, ring_count = struct.unpack_from("<BII", wkb, 0)
         self.assertEqual((order, kind, ring_count), (1, 3, 2))
         offset = 9
@@ -456,11 +449,9 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                 self.assertEqual(struct.unpack_from("<2d", wkb, offset), tuple(vertex))
                 offset += 16
         self.assertEqual(offset, len(wkb))
-        single, unusable = src._polygon_wkb(_fixture_geometry(FIXTURE_OBJECTIDS[0]))
-        self.assertIsNone(unusable)
+        single = converted(FIXTURE_OBJECTIDS[0])
         self.assertEqual(struct.unpack_from("<BI", single, 0), (1, 3))
-        multi, unusable = src._polygon_wkb(_fixture_geometry(FIXTURE_OBJECTIDS[4]))
-        self.assertIsNone(unusable)
+        multi = converted(FIXTURE_OBJECTIDS[4])
         self.assertEqual(struct.unpack_from("<BII", multi, 0), (1, 6, 2))
 
     def test_polygon_wkb_round_trips_through_independent_readers(self):
@@ -503,19 +494,21 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
             self.assertEqual(offset, len(wkb))
             return decoded
 
+        def ring_set(rings):
+            return sorted(sorted(tuple(reversed(ring)) if ring[0] != ring[-1] else ring)
+                          for ring in rings)
+
         expected_by_oid = {}
         for oid in FIXTURE_OBJECTIDS:
             geometry = _fixture_geometry(oid)
             expected = [[tuple(vertex) for vertex in ring] for ring in geometry["rings"]]
             expected_by_oid[oid] = expected
-            wkb, unusable = src._polygon_wkb(geometry)
-            self.assertIsNone(unusable)
+            wkb = to_wkb(geometry, src.GEOMETRY_TYPE, has_z=False, has_m=False)
             decoded = independent_decode(wkb)
-            if oid == FIXTURE_OBJECTIDS[4]:
-                self.assertEqual(decoded, [[[tuple(vertex) for vertex in ring]]
-                                           for ring in geometry["rings"]])
-            else:
-                self.assertEqual(decoded, [expected])
+            served = [expected] if oid != FIXTURE_OBJECTIDS[4] else \
+                [[[tuple(vertex) for vertex in ring]] for ring in geometry["rings"]]
+            self.assertEqual(ring_set(r for part in decoded for r in part),
+                             ring_set(r for part in served for r in part))
             shapely_geometry = shapely.from_wkb(wkb)
             if oid == FIXTURE_OBJECTIDS[4]:
                 self.assertIsInstance(shapely_geometry, shapely.MultiPolygon)
@@ -1030,14 +1023,11 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                                                 "source_id_roster_drift"):
                         src.capture_pad_us_protection_mechanism_category(storage, version="pin-run-drift",
                                                  capture_directory=str(capture_root))
-                with patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
-                                  {"source_polygon_ring_degenerate": 2}):
-                    fresh_root = root / "capture-unusable"
-                    with self.assertRaisesRegex(src.PadUsProtectionError,
-                                                "source_unusable_geometry_count_drift"):
-                        src.capture_pad_us_protection_mechanism_category(
-                            storage, version="pin-run-unusable",
-                            capture_directory=str(fresh_root))
+                # The retired quarantine census pins to an empty family; the
+                # computed baseline carries the OGC-invalid diagnostic counts.
+                self.assertEqual(baseline["source_unusable_geometry_counts"], {})
+                self.assertEqual(baseline["source_ogc_invalid_geometry_sample_objectids"],
+                                 [FIXTURE_OBJECTIDS[5]])
                 quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
                                      .glob("*"))
                 self.assertTrue(quarantined)
