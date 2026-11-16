@@ -36,7 +36,7 @@ def synthetic_mineplant_members():
     for fid in range(count):
         x=float(f"{seed['x_origin']+fid*seed['step']:.5f}");y=float(f"{seed['y_origin']+fid*seed['step']:.5f}");crushed=lo<=fid<=hi
         row={'id':fid+offset,'COMMODITY':seed['crushed_commodity'] if crushed else seed['other_commodity'],
-            'SITE_NAME':seed['sample']['SITE_NAME'],'COMPANY_NA':seed['sample']['COMPANY_NA'],'STATE_LOCA':STATE_NAMES[fid%len(STATE_NAMES)],
+            'SITE_NAME':seed['sample']['SITE_NAME'],'COMPANY_NA':seed['sample']['COMPANY_NA'],'STATE_LOCA':STATE_NAMES[fid%s.CRUSHED_STATES],
             'COUNTY':seed['sample']['COUNTY'],'LATITUDE':f'{y:.5f}','LONGITUDE':f'{x:.5f}','PLANT_MIN':seed['sample']['PLANT_MIN']}
         rows.append(row);rec=bytearray(width);rec[0:1]=b' ';off=1
         for name,kind,size,scale in m.MINEPLANT_DBF_FIELDS:
@@ -96,7 +96,7 @@ class StructuralCrushedStoneTests(unittest.TestCase):
         self.assertEqual(len(subset),s.CRUSHED_ROWS)
         self.assertEqual([int(row['id']) for row in subset],list(range(*s.CRUSHED_IDS,(s.CRUSHED_IDS[1]+1))))
         self.assertEqual([row['source_fid'] for row in subset],list(range(s.CRUSHED_SOURCE_FIDS[0],s.CRUSHED_SOURCE_FIDS[1]+1)))
-        self.assertEqual(len({row['STATE_LOCA'] for row in subset}),len(STATE_NAMES))
+        self.assertEqual(len({row['STATE_LOCA'] for row in subset}),s.CRUSHED_STATES)
         first=subset[0]
         self.assertEqual((first['id'],first['COMMODITY']),(s.CRUSHED_IDS[0],s.CRUSHED_COMMODITY))
         self.assertEqual(first['LATITUDE'],Decimal('34.01940'));self.assertEqual(first['LATITUDE'].as_tuple().exponent,-5)
@@ -107,7 +107,7 @@ class StructuralCrushedStoneTests(unittest.TestCase):
         with patch.object(s,'CRUSHED_ROWS',s.CRUSHED_ROWS-1),self.assertRaisesRegex(ValueError,'crushed_subset_completeness_drift'):s.crushed_rows(rows)
         with patch.object(s,'CRUSHED_IDS',(s.CRUSHED_IDS[0],s.CRUSHED_IDS[1]-1)),self.assertRaisesRegex(ValueError,'crushed_subset_id_roster_drift'):s.crushed_rows(rows)
         with patch.object(s,'CRUSHED_SOURCE_FIDS',(s.CRUSHED_SOURCE_FIDS[0],s.CRUSHED_SOURCE_FIDS[1]-1)),self.assertRaisesRegex(ValueError,'crushed_subset_source_record_roster_drift'):s.crushed_rows(rows)
-        with patch.object(s,'CRUSHED_STATES',len(STATE_NAMES)+1),self.assertRaisesRegex(ValueError,'crushed_subset_state_coverage_drift'):s.crushed_rows(rows)
+        with patch.object(s,'CRUSHED_STATES',s.CRUSHED_STATES+1),self.assertRaisesRegex(ValueError,'crushed_subset_state_coverage_drift'):s.crushed_rows(rows)
         commodity=m.MINEPLANT_DBF_FIELDS[1];lo=s.CRUSHED_SOURCE_FIDS[0]
         raw=bytearray(members['mineplant.dbf']);base=321+lo*244+1+8;raw[base:base+15]=b'Sand and Gravel'
         changed=s.decode_mineplant_dbf(bytes(raw))
