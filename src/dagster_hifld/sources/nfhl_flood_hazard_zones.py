@@ -73,6 +73,7 @@ import re
 import shutil
 import time
 import zipfile
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -542,7 +543,13 @@ def _capture_product_zip(client: httpx.Client, product: Mapping[str, str],
                 with zipfile.ZipFile(partial) as archive:
                     if archive.testzip() is not None:
                         crc_failed = True
-            except (OSError, zipfile.BadZipFile):
+            except (OSError, zipfile.BadZipFile, zlib.error):
+                # A corrupt deflate stream can surface either as a bad member
+                # name from testzip, as BadZipFile, or as a zlib.error raised
+                # mid-decompression (observed 2026-11-16 with a fixture whose
+                # corruption lands inside the first member's stream); any of
+                # them is a CRC failure and keeps the fail-closed attempt
+                # evidence path.
                 crc_failed = True
         if complete and not crc_failed:
             receipt = {"method": "GET", "url": location, "final_url": final_url,
