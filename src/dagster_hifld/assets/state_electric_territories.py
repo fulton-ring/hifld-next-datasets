@@ -23,7 +23,7 @@ def iowa_electric_service_boundaries(context, config: StateTerritoriesConfig, st
 
 
 @asset(key=AssetKey(['ingest', WISCONSIN, 'cooperative']), group_name='energy', compute_kind='http',
-    description='PSC Wisconsin original ZIP: separate cooperative, investor-owned and municipal layers; EPSG3071 including municipal Z; approximate boundaries, no legal accuracy guarantee.')
+    description='PSC Wisconsin original ZIP: separate cooperative, investor-owned and municipal layers; EPSG3071 including municipal Z/M; approximate boundaries, no legal accuracy guarantee.')
 def wisconsin_psc_electric_cooperative(context, config: StateTerritoriesConfig, staging_storage: StagingStorageResource):
     results = stage_state_territories(staging_storage, 'wisconsin', config.capture_directory or None)
     context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [r['staging_prefix'] for r in results])
@@ -50,7 +50,7 @@ def wisconsin_psc_electric_investor_owned(wisconsin_psc_electric_cooperative):
 
 
 @asset(key=AssetKey(['ingest', WISCONSIN, 'municipal']), ins={'wisconsin_psc_electric_cooperative': AssetIn(key=AssetKey(['ingest', WISCONSIN, 'cooperative']))}, group_name='energy', compute_kind='local',
-    description='PSC Wisconsin native municipal layer, including original Z coordinates, from the same ZIP capture.')
+    description='PSC Wisconsin native municipal layer, including original Z/M ordinates, from the same ZIP capture.')
 def wisconsin_psc_electric_municipal(wisconsin_psc_electric_cooperative):
     return next(r for r in wisconsin_psc_electric_cooperative if r['file_slug'] == 'municipal')
 

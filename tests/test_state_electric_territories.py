@@ -1,4 +1,5 @@
 import json
+import struct
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -80,6 +81,31 @@ class StateElectricTerritoryTests(unittest.TestCase):
             self.assertEqual(manifest['inputs'][0]['retrieved_at'], receipt['observed_at'])
             self.assertEqual(manifest['inputs'][0]['sha256'], source.digest(raw))
             self.assertFalse(manifest['release_accepted'])
+
+    def test_original_polygon_zm_parity_and_physical_geoparquet2(self):
+        points = [(0., 0.), (0., 2.), (2., 0.), (0., 0.)]
+        zs = [1., 2., 3., 1.]
+        measures = [-1.7976931348623157e308, 0., 0., -1.7976931348623157e308]
+        record = (struct.pack('<i4d2ii', 15, 0., 0., 2., 2., 1, 4, 0)
+            + b''.join(struct.pack('<2d', *point) for point in points)
+            + struct.pack('<2d4d', min(zs), max(zs), *zs)
+            + struct.pack('<2d4d', min(measures), max(measures), *measures))
+        raw = bytes(100) + struct.pack('>2i', 1, len(record) // 2) + record
+        geometry = shapely.from_wkt('POLYGON ZM ((0 0 1 NaN,0 2 2 0,2 0 3 0,0 0 1 NaN))')
+        wkb = shapely.to_wkb(geometry, flavor='iso')
+        original_m = shapely.from_wkt('POLYGON ZM ((0 0 1 -1.7976931348623157e308,0 2 2 0,2 0 3 0,0 0 1 -1.7976931348623157e308))')
+        self.assertEqual(source.normalize_shp_no_data_m(shapely.to_wkb(original_m, flavor='iso')), wkb)
+        audit = source.shapefile_geometry_audit(raw, [wkb])
+        self.assertEqual(audit['m_no_data_values'], 2)
+        self.assertEqual(audit['m_actual_zero_values'], 2)
+        with self.assertRaisesRegex(ValueError, 'ordinate_loss'):
+            source.shapefile_geometry_audit(raw, [shapely.to_wkb(geometry, output_dimension=3)])
+        table = pa.table({'wkb_geometry': pa.array([wkb], type=pa.binary())})
+        body, _ = source.geoparquet(table, 'EPSG:3071')
+        parquet = pq.ParquetFile(pa.BufferReader(body))
+        self.assertEqual(json.loads(parquet.schema_arrow.metadata[b'geo'])['version'], '2.0.0')
+        self.assertEqual(json.loads(parquet.schema.column(0).logical_type.to_json())['Type'], 'Geometry')
+        self.assertEqual(pq.read_table(pa.BufferReader(body))['wkb_geometry'].to_pylist(), [wkb])
 
     def test_native_z_wkb_and_scalar_roundtrip(self):
         geometry = shapely.to_wkb(Polygon([(0, 0, 7), (0, 5, 8), (5, 0, 9), (0, 0, 7)]))

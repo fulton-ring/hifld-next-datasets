@@ -1,17 +1,19 @@
 """Two original state publications, never a national ORNL replacement.
 
 PSC Wisconsin explicitly describes some boundaries as approximate. Its three
-native layers stay separate, including municipal Z coordinates. No EIA join,
+native layers stay separate, including municipal Z/M ordinates. No EIA join,
 coordinate repair or projection is performed. Local draft construction only.
 """
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 import io
 import json
 import math
 import shutil
 import stat
+import struct
 import tempfile
 import zipfile
 from pathlib import Path
@@ -165,6 +167,122 @@ def acquire_iowa(directory, replay):
     return {'electrical-service-boundaries': (table, 'ESRI:102004', layer['editingInfo'].get('dataLastEditDate'))}, captures
 
 
+def _ring_signature(points):
+    def value(number):
+        return ('null',) if math.isnan(number) else ('value', number)
+    points = [tuple(value(number) for number in point) for point in points]
+    if points and points[0] == points[-1]:
+        points = points[:-1]
+    if not points:
+        raise ValueError('empty_native_ring')
+    smallest = min(points)
+    variants = [tuple(points[i:] + points[:i]) for i, point in enumerate(points) if point == smallest]
+    reverse = list(reversed(points))
+    variants += [tuple(reverse[i:] + reverse[:i]) for i, point in enumerate(reverse) if point == smallest]
+    return min(variants)
+
+
+def normalize_shp_no_data_m(wkb):
+    """Map only SHP no-value measures to WKB NaN; retain actual zeros and XYZ."""
+    if wkb is None or not shapely.from_wkb(wkb).has_m:
+        return wkb
+    output = bytearray(wkb)
+    def visit(offset):
+        order = '<' if output[offset] == 1 else '>'
+        kind, count = struct.unpack_from(order + '2I', output, offset + 1)
+        offset += 9
+        if kind == 3006:
+            for _ in range(count): offset = visit(offset)
+        elif kind == 3003:
+            for _ in range(count):
+                size = struct.unpack_from(order + 'I', output, offset)[0]
+                offset += 4
+                for _ in range(size):
+                    if struct.unpack_from(order + 'd', output, offset + 24)[0] < -1e38:
+                        struct.pack_into(order + 'd', output, offset + 24, math.nan)
+                    offset += 32
+        else:
+            raise ValueError('unsupported_measured_polygon_wkb')
+        return offset
+    if visit(0) != len(output): raise ValueError('measured_wkb_trailing_bytes')
+    return bytes(output)
+
+
+def shapefile_geometry_audit(body, wkbs):
+    """Compare every original SHP XY/Z/M ring with GDAL WKB, never infer M from its label.
+
+    SHP M values below -1e38 are semantic no-data; GDAL uses WKB NaN.
+    Source record/array presence and every no-data/actual-zero value are counted,
+    and original SHP bytes remain retained in the full producer ZIP.
+    """
+    position, count = 100, 0
+    audit = {'source_shp_sha256': digest(body), 'm_array_present_records': 0,
+        'm_array_absent_records': 0, 'm_no_data_values': 0, 'm_actual_zero_values': 0,
+        'm_actual_values': 0, 'source_vertices': 0, 'full_raw_xyzm_parity': True}
+    while position < len(body):
+        if position + 8 > len(body):
+            raise ValueError('truncated_shp_record_header')
+        _number, words = struct.unpack_from('>2i', body, position)
+        record = body[position + 8:position + 8 + words * 2]
+        if len(record) != words * 2 or len(record) < 4 or count >= len(wkbs):
+            raise ValueError('truncated_or_extra_shp_record')
+        kind = struct.unpack_from('<i', record)[0]
+        geometry = None if wkbs[count] is None else shapely.from_wkb(wkbs[count])
+        if kind == 0:
+            if geometry is not None: raise ValueError('source_null_geometry_changed')
+        elif kind in (5, 15):
+            parts, size = struct.unpack_from('<2i', record, 36)
+            starts = list(struct.unpack_from('<' + str(parts) + 'i', record, 44)) + [size]
+            xy_offset = 44 + 4 * parts
+            xy = [struct.unpack_from('<2d', record, xy_offset + 16 * i) for i in range(size)]
+            coordinates = xy
+            if kind == 15:
+                z_offset = xy_offset + 16 * size
+                zs = struct.unpack_from('<' + str(size) + 'd', record, z_offset + 16)
+                m_offset = z_offset + 16 + 8 * size
+                if len(record) == m_offset + 16 + 8 * size:
+                    measures = struct.unpack_from('<' + str(size) + 'd', record, m_offset + 16)
+                    audit['m_array_present_records'] += 1
+                    audit['m_no_data_values'] += sum(m < -1e38 for m in measures)
+                    audit['m_actual_zero_values'] += sum(m == 0 for m in measures)
+                    audit['m_actual_values'] += sum(m >= -1e38 for m in measures)
+                    coordinates = [(*point, z, math.nan if m < -1e38 else m)
+                        for point, z, m in zip(xy, zs, measures, strict=True)]
+                elif len(record) == m_offset:
+                    audit['m_array_absent_records'] += 1
+                    coordinates = [(*point, z) for point, z in zip(xy, zs, strict=True)]
+                else:
+                    raise ValueError('malformed_optional_m_array')
+            if geometry is None: raise ValueError('native_geometry_lost')
+            raw = Counter(_ring_signature(coordinates[a:b]) for a, b in zip(starts[:-1], starts[1:], strict=True))
+            polygons = list(geometry.geoms) if geometry.geom_type == 'MultiPolygon' else [geometry]
+            actual = Counter(_ring_signature(list(ring.coords)) for polygon in polygons
+                for ring in [polygon.exterior, *polygon.interiors])
+            if raw != actual: raise ValueError('source_shp_xyzm_ordinate_loss:' + str(count))
+            audit['source_vertices'] += size
+        else:
+            raise ValueError('unsupported_native_shape_type:' + str(kind))
+        count += 1
+        position += 8 + words * 2
+    if position != len(body) or count != len(wkbs): raise ValueError('shp_record_population_changed')
+    audit['source_record_count'] = count
+    return audit
+
+
+class _GeometryWkbType(pa.ExtensionType):
+    """geoarrow.wkb emits the required GeoParquet2 native GEOMETRY annotation."""
+    def __init__(self, crs):
+        self.crs = crs
+        super().__init__(pa.binary(), 'geoarrow.wkb')
+
+    def __arrow_ext_serialize__(self):
+        return _canonical({'crs': self.crs, 'edges': 'planar'})
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, metadata):
+        return cls(json.loads(metadata)['crs'])
+
+
 def acquire_wisconsin(directory, replay):
     body, receipt = capture(ZIP_URL, directory, 'wisconsin_zip', replay=replay)
     path = directory / 'wisconsin_zip.body'
@@ -178,7 +296,15 @@ def acquire_wisconsin(directory, replay):
     for slug, layer in WI_LAYERS.items():
         native = f'/vsizip/{{{path}}}/EL_PSCW_ServTerr/{layer}.shp'
         info = pyogrio.read_info(native)
-        _meta, table = pyogrio.read_arrow(native)
+        _meta, table = pyogrio.read_arrow(native, ADJUST_GEOM_TYPE='ALL_SHAPES')
+        geometry_column = table.schema.get_field_index('wkb_geometry')
+        normalized = [normalize_shp_no_data_m(wkb) for wkb in table['wkb_geometry'].to_pylist()]
+        table = table.set_column(geometry_column, table.schema.field(geometry_column), pa.array(normalized, type=pa.binary()))
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            raw_shape = archive.read(f'EL_PSCW_ServTerr/{layer}.shp')
+        audit = shapefile_geometry_audit(raw_shape, table['wkb_geometry'].to_pylist())
+        table = table.replace_schema_metadata({**(table.schema.metadata or {}),
+            b'hifld_native_geometry_audit': _canonical(audit)})
         validate_contract(slug, info, table)
         if table.num_rows != info['features'] or not 0 < table.num_rows <= 5000:
             raise ValueError('wisconsin_population_incomplete')
@@ -189,13 +315,19 @@ def acquire_wisconsin(directory, replay):
 def geoparquet(table, crs):
     geometry = 'geometry' if 'geometry' in table.column_names else 'wkb_geometry'
     shapes = shapely.from_wkb(table[geometry].to_numpy())
-    types = sorted({g.geom_type + (' Z' if g.has_z else '') for g in shapes if g is not None})
+    measured = any(g is not None and g.has_m for g in shapes)
+    types = sorted({g.geom_type + (' ZM' if g.has_z and g.has_m else ' M' if g.has_m else ' Z' if g.has_z else '') for g in shapes if g is not None})
     metadata = dict(table.schema.metadata or {})
-    metadata[b'geo'] = _canonical({'version': '1.1.0', 'primary_column': geometry,
+    metadata[b'geo'] = _canonical({'version': '2.0.0' if measured else '1.1.0', 'primary_column': geometry,
         'columns': {geometry: {'encoding': 'WKB', 'geometry_types': types,
             'crs': pyproj.CRS(crs).to_json_dict()}}})
     sink = pa.BufferOutputStream()
-    pq.write_table(table.replace_schema_metadata(metadata), sink, compression='zstd')
+    output = table.replace_schema_metadata(metadata)
+    if measured:
+        typ = _GeometryWkbType(pyproj.CRS(crs).to_json_dict())
+        array = pa.ExtensionArray.from_storage(typ, table[geometry].combine_chunks())
+        output = output.set_column(output.schema.get_field_index(geometry), pa.field(geometry, typ), array)
+    pq.write_table(output, sink, compression='zstd')
     body = sink.getvalue().to_pybytes()
     if not pq.read_table(pa.BufferReader(body)).equals(table, check_metadata=False):
         raise ValueError('native_scalar_or_geometry_roundtrip_loss')
@@ -222,11 +354,13 @@ def stage_state_territories(storage, state, capture_directory=None):
         prefix = f'{dataset}/{slug}/{version}'
         output = f'geoparquet/{slug}.parquet'
         publisher = 'Iowa Utilities Commission' if state == 'iowa' else 'Public Service Commission of Wisconsin'
+        native_audit = json.loads((table.schema.metadata or {}).get(b'hifld_native_geometry_audit', b'{}'))
         manifest = {'schema_version': 1, 'approved': False, **GATES,
             'title': dataset + ' / ' + slug, 'publisher': publisher,
             'source_url': LAYER if state == 'iowa' else ZIP_URL,
             'source_modified': str(modified), 'producer_release_date': None,
-            'geometry_conversion': 'GDAL ESRIJSON native WKB; no repair, projection or dimensional flattening' if state == 'iowa' else 'GDAL native shapefile WKB; original Z retained',
+            'native_geometry_audit': native_audit,
+            'geometry_conversion': 'GDAL ESRIJSON native WKB; no repair, projection or dimensional flattening' if state == 'iowa' else 'GDAL ALL_SHAPES native shapefile WKB; XYZM audited against original SHP; M no-data sentinel maps to NaN, actual zero retained',
             'source_date_meaning': 'ArcGIS dataLastEditDate milliseconds' if state == 'iowa' else 'DBF update date; individual DATA_DATE values retained; not a release date',
             'license': 'Unaccepted; original source metadata retained, no open-rights inference.',
             'source_coverage_scope': 'Source-defined state electric service areas; approximate boundaries possible; no national ORNL parity or EIA-ID equivalence.',
@@ -247,7 +381,7 @@ def stage_state_territories(storage, state, capture_directory=None):
             'transformations': [{'operation': 'native_state_electric_territory_to_geoparquet', 'parameters': {
                 'input_format': 'ESRIJSON' if state == 'iowa' else 'original PSC shapefile ZIP',
                 'attributes': 'All original field names, order and typed scalar values; no EIA joins or generated IDs.',
-                'geometry': 'GDAL native WKB; original CRS and XYZ retained, including missing/invalid geometry; no projection or repair.',
+                'geometry': 'GDAL native WKB, ALL_SHAPES for shapefiles; original CRS/XYZM retained, SHP M no-data maps to WKB NaN with counted source semantics; no projection or repair.',
                 'scope': 'One original state layer only, not national ORNL parity.'}}],
             'lineage': 'Original state publisher publication; source-defined populations remain separate, without national reconstruction.',
             'capture_evidence': {name: {'url': receipt['url'], 'raw_path': f'raw/{name}.body',
@@ -268,7 +402,7 @@ def stage_state_territories(storage, state, capture_directory=None):
         write_immutable(storage, f'{prefix}/metadata/source_manifest.json', _canonical(manifest))
         result = {'dataset_slug': dataset, 'file_slug': slug, 'version': version,
             'staging_prefix': prefix, 'feature_count': table.num_rows, 'native_crs': crs,
-            'source_population_complete': True, 'output_sha256': digest(body), **quality, **GATES}
+            'source_population_complete': True, 'native_geometry_audit': native_audit, 'output_sha256': digest(body), **quality, **GATES}
         write_immutable(storage, f'{prefix}/metadata/native_capture.json', _canonical(result))
         results.append(result)
     return results

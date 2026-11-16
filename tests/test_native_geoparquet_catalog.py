@@ -27,6 +27,20 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 PREFIX='synthetic-native/synthetic-native/v0.0.0-test'
 
 
+class GeometryWkbType(pa.ExtensionType):
+    """Synthetic native Parquet GEOMETRY writer, independent of dataset code."""
+    def __init__(self, crs):
+        self.crs = crs
+        super().__init__(pa.binary(), 'geoarrow.wkb')
+
+    def __arrow_ext_serialize__(self):
+        return json.dumps({'crs': self.crs, 'edges': 'planar'}).encode()
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, metadata):
+        return cls(json.loads(metadata)['crs'])
+
+
 def write_fixture(root,*,count=6,crs='explicit',tail=None,metadata_transform=None):
     geometry=[shapely.to_wkb(shapely.Point(i,0))for i in range(count)]
     if tail=='invalid':geometry[-1]=shapely.to_wkb(shapely.Polygon([(0,0),(9,9),(0,9),(9,0),(0,0)]))
@@ -98,10 +112,12 @@ class NativeCatalogTests(unittest.TestCase):
 
         def build(root, declared, geometries=None):
             geometry = geometries if geometries is not None else [point_2d, point_m, point_2d]
-            fields = [pa.field('id', pa.int64()), pa.field('native_shape', pa.binary())]
-            arrays = [pa.array(list(range(len(geometry))), type=pa.int64()), pa.array(geometry, type=pa.binary())]
+            geometry_type = GeometryWkbType(CRS(3857).to_json_dict())
+            fields = [pa.field('id', pa.int64()), pa.field('native_shape', geometry_type)]
+            arrays = [pa.array(list(range(len(geometry))), type=pa.int64()),
+                      pa.ExtensionArray.from_storage(geometry_type, pa.array(geometry, type=pa.binary()))]
             column = {'encoding': 'WKB', 'geometry_types': declared, 'crs': CRS(3857).to_json_dict()}
-            geo = {'version': '1.1.0', 'primary_column': 'native_shape', 'columns': {'native_shape': column}}
+            geo = {'version': '2.0.0', 'primary_column': 'native_shape', 'columns': {'native_shape': column}}
             table = pa.Table.from_arrays(arrays, schema=pa.schema(fields, metadata={b'geo': json.dumps(geo).encode()}))
             path = root / PREFIX / 'geoparquet/native.parquet'
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -169,6 +185,33 @@ class NativeCatalogTests(unittest.TestCase):
                 metadata = build(root, bad)
                 with self.assertRaisesRegex(ValueError, 'invalid_declared_geometry_types'):
                     catalog(root, metadata)
+
+    def test_legacy_geoparquet_cannot_declare_measured_geometry(self):
+        for version in ('1.0.0', '1.1.0'):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as tmp:
+                def measured(geo):
+                    geo['version'] = version
+                    geo['columns']['native_shape']['geometry_types'] = ['Point M']
+                table, _, _ = write_fixture(Path(tmp), metadata_transform=measured)
+                with self.assertRaisesRegex(ValueError, 'measured_geometry_requires_v2'):
+                    native.geometry_metadata(table.schema)
+
+    def test_v2_binary_without_native_geometry_annotation_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, path, metadata = write_fixture(Path(tmp), metadata_transform=lambda geo: geo.update(version='2.0.0'))
+            with self.assertRaisesRegex(ValueError, 'native_geometry_annotation_required'):
+                native.summarize_native_path(path, 'synthetic', metadata)
+
+    def test_v2_native_and_geo_metadata_crs_must_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, path, metadata = write_fixture(Path(tmp), metadata_transform=lambda geo: geo.update(version='2.0.0'))
+            table = pq.read_table(path)
+            geometry_type = GeometryWkbType(CRS(4326).to_json_dict())
+            array = pa.ExtensionArray.from_storage(geometry_type, table.column('native_shape').combine_chunks())
+            table = table.set_column(table.schema.get_field_index('native_shape'), pa.field('native_shape', geometry_type), array)
+            pq.write_table(table, path)
+            with self.assertRaisesRegex(ValueError, 'native_geometry_crs_mismatch'):
+                native.summarize_native_path(path, 'synthetic', metadata)
 
     def test_full_population_after_5000_quality_bounds_and_nulls(self):
         for tail in ['invalid','null','extent']:
