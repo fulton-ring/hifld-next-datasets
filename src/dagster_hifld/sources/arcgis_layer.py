@@ -1,13 +1,17 @@
-"""Shared NHD/3DHP retained-capture checkpoint, receipt and refusal primitives.
+"""Shared ArcGIS FeatureServer/MapServer retained-capture primitives.
 
-One canonical copy of the checkpoint load/save, retained-capture read, refusal
-witness, failed-attempt evidence and bounded-retry mechanics previously
-duplicated across the segmented NHD adapters (``nhd_catchment.py``,
-``nhd_hydrolocation_htdcco.py``,
-``nhd_hydrolocation_sink_spring_waterbody_outlet.py``). Each body is identical
-to the copies it replaces; only each adapter's own error type and fetch budgets
-are injected explicitly. Fetch planning, roster/offset algorithms, checkpoint
-state layouts, schema, ID and geometry contracts stay local to each adapter.
+The shared module the root-cause issue #993 defines for ArcGIS layer capture;
+this is its first migration step (issue #927): one canonical copy of the
+checkpoint load/save, retained-capture read, refusal witness, failed-attempt
+evidence and bounded-retry mechanics previously duplicated across the segmented
+NHD/3DHP adapters (``nhd_catchment.py``, ``nhd_hydrolocation_htdcco.py``,
+``nhd_hydrolocation_sink_spring_waterbody_outlet.py``) and the Flowline
+refusal witness. Each body is identical to the copies it replaces; only each
+adapter's own error type and fetch budgets are injected explicitly. Fetch
+planning, roster/offset algorithms, checkpoint state layouts, schema, ID and
+geometry contracts stay local to each adapter. The full
+``capture_layer(url, *, capture_dir, byte_budget, page_size)`` paging API
+remains #993's remaining scope.
 """
 from __future__ import annotations
 

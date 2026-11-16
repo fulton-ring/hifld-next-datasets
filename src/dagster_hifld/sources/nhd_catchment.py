@@ -64,14 +64,14 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources import nhd_common
+from dagster_hifld.sources import arcgis_layer
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.nhd_common import (
+from dagster_hifld.sources.arcgis_layer import (
     RetainedCaptureViews as _RetainedCaptureViews,
     capture_with_retry as _capture_with_retry,
     preserve_failed_attempt as _preserve_failed_attempt,
@@ -472,15 +472,15 @@ def _validate_feature(feature: object, expected_names: tuple[str, ...],
 
 
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
-    return nhd_common.load_receipt(capture_root, name, NhdCatchmentError)
+    return arcgis_layer.load_receipt(capture_root, name, NhdCatchmentError)
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    return nhd_common.read_capture(capture_root, name, NhdCatchmentError)
+    return arcgis_layer.read_capture(capture_root, name, NhdCatchmentError)
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
-    return nhd_common.load_state(capture_root, NhdCatchmentError)
+    return arcgis_layer.load_state(capture_root, NhdCatchmentError)
 
 
 def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,

@@ -64,7 +64,7 @@ from dagster_hifld.sources.epa_frs_common import (
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.nhd_common import witness_aside as _witness_error_response
+from dagster_hifld.sources.arcgis_layer import witness_aside as _witness_error_response
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "nhd-flowline"
