@@ -55,9 +55,9 @@ def synthetic_mineplant_members():
     lines=['\t'.join(['ID','COMMODITY','SITE_NAME','COMPANY_NA','STATE_LOCA','COUNTY','LATITUDE','LONGITUDE','PLANT_MIN'])]
     for row in rows:
         lines.append('\t'.join([str(row['id']),row['COMMODITY'],row['SITE_NAME'],row['COMPANY_NA'],row['STATE_LOCA'],row['COUNTY'],row['LATITUDE'],row['LONGITUDE'],row['PLANT_MIN']]))
-    target=m.MINEPLANT_MEMBERS['mineplant.txt'];base=sum(len(line)+1 for line in lines);extra,rem=divmod(target-base,len(lines))
+    target=m.MINEPLANT_MEMBERS['mineplant.txt'];base=sum(len(line)+1 for line in lines);extra,rem=divmod(target-base,len(lines)-1)
     if extra<0:raise ValueError('synthetic txt exceeds pinned member size')
-    txt=('\n'.join(line+' '*(extra+(rem if index==len(lines)-1 else 0)) for index,line in enumerate(lines))+'\n').encode('ascii')
+    txt=('\n'.join(line if index==0 else line+' '*(extra+(rem if index==len(lines)-1 else 0)) for index,line in enumerate(lines))+'\n').encode('ascii')
     assert len(txt)==target
     prj=(m.MINEPLANT_PRJ+'\n').encode('ascii')
     assert len(prj)==m.MINEPLANT_MEMBERS['mineplant.prj']
