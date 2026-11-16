@@ -1,12 +1,15 @@
 """Complete FEMA office points; unapproved draft refresh schedule stays stopped."""
-import os
-from dagster import AssetKey, AssetSelection, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
+from dagster import AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.fema_regional_offices import SLUG, stage_fema_regional_offices
 
+
+class FemaRegionalOfficesConfig(Config):
+    capture_directory: str = ""
+
 @asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='fema',compute_kind='http',description='Complete official FEMA office-point layer0 with original IDs/types/native4326; no acceptance.')
-def fema_regional_offices(context,staging_storage:StagingStorageResource):
-    result=stage_fema_regional_offices(staging_storage,capture_dir=os.environ.get('HIFLD_FEMA_OFFICES_CAPTURE_DIR'))
+def fema_regional_offices(context,config:FemaRegionalOfficesConfig,staging_storage:StagingStorageResource):
+    result=stage_fema_regional_offices(staging_storage,capture_dir=config.capture_directory or None)
     context.add_output_metadata(result)
     return result
 

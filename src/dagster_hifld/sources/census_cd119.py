@@ -38,7 +38,7 @@ from dagster_hifld.construction_state import (
 )
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.provenance import provenance_projection
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import sha as _sha
 
 SLUG = "119th-congressional-districts"
@@ -176,8 +176,7 @@ def _canonical(value) -> bytes:
 
 
 def _capture_root() -> Path:
-    configured = os.environ.get("HIFLD_CD119_CAPTURE_DIR", "/tmp/hifld-native-reconstruction/387/capture")
-    root = Path(configured).absolute()
+    root = default_capture_dir("hifld-native-reconstruction", "387", "capture")
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)) or not root.is_dir():
         raise CD119QuarantineError("capture_root_missing_or_aliased")
     return root

@@ -686,7 +686,7 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < DISK_FLOOR_BYTES:
         raise ValueError("disk_floor_before_acquisition")
-    capture_base_value = capture_directory or os.environ.get("HIFLD_NTM_ROUTES_CAPTURE_DIR")
+    capture_base_value = capture_directory
     if not capture_base_value:
         raise ValueError("explicit_capture_directory_required")
     capture_base = Path(capture_base_value)

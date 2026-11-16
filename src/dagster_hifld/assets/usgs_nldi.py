@@ -72,7 +72,7 @@ from dagster_hifld.construction_state import canonical_construction_bundle, load
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, SEMVER_VERSION_RE, build_publish_partition_key
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import StagingStorageResource, default_capture_dir
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "nhd"
@@ -92,8 +92,6 @@ PROPERTY_NAMES = ("identifier", "navigation", "name", "source", "sourceName", "c
 GAGE_URI_PREFIX = "https://geoconnex.us/ref/gages/"
 MAINSTEM_URI_PREFIX = "https://geoconnex.us/ref/mainstems/"
 ASSET_PATH = "geojson/usgs_nldi_gages.geojson"
-DEFAULT_CAPTURE_ROOT = ("/data/workspace/scratch/nhd/"
-                        "usgs-hydro-nldi-streamgage-monitoring-locations/captures/default")
 # Walk-derived content pins from the dated complete capture; unpinned values
 # ("" / None) are checked only once pinned. See BASELINE_NOTE. The pinned walk
 # captured the live ref_gage collection from 2026-11-13 through 2026-11-14
@@ -729,7 +727,8 @@ def _capture_sources_listing(staging: StagingStorageResource, session: httpx.Cli
 def fetch_and_stage_nldi(staging: StagingStorageResource, *, client: httpx.Client | None = None,
                          capture_directory: str | None = None) -> dict:
     """Walk the USGS NLDI ref_gage pagination, verify it completely, and stage one candidate."""
-    capture_root = Path(capture_directory or DEFAULT_CAPTURE_ROOT).absolute()
+    capture_root = (Path(capture_directory) if capture_directory
+                    else default_capture_dir(DATASET_SLUG, FILE_SLUG, "captures", "default")).absolute()
     if ".." in capture_root.parts or any(part.is_symlink() for part in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)

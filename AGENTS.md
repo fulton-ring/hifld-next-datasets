@@ -143,8 +143,9 @@ not here.
   assembler, and report invalid source geometry rather than repairing it silently.
 - Every failure path that quarantines or writes evidence needs a test that
   exercises it. Untested `except` branches have shipped with `NameError`.
-- Scratch and capture directories come from asset config (`capture_directory`).
-  Do not add new hard-coded `/data/workspace` defaults or per-dataset env vars.
+- Scratch and capture directories come from asset config (`capture_directory`);
+  the shared fallback root is `HIFLD_CAPTURE_ROOT` (`resources.default_capture_dir`).
+  Do not add hard-coded capture-root defaults or per-dataset env vars.
 - Keep module docstrings to source identity and behavior. Dated investigation
   narrative belongs in the PR and the issue.
 

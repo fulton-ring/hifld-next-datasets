@@ -26,6 +26,33 @@ logger = logging.getLogger(__name__)
 
 _GCS_DOWNLOAD_TIMEOUT_SECONDS = 60
 
+CAPTURE_ROOT_ENV = "HIFLD_CAPTURE_ROOT"
+
+
+def capture_root(root: str | Path | None = None) -> Path:
+    """The single capture/scratch root every adapter shares.
+
+    The root comes from ``HIFLD_CAPTURE_ROOT`` and defaults to the system
+    temporary directory, so no adapter depends on a workspace path that may
+    not exist. The path is made absolute without resolving symlinks: adapters
+    reject aliased capture roots themselves.
+    """
+    configured = os.environ.get(CAPTURE_ROOT_ENV) if root is None else (str(root) if root else "")
+    base = Path(configured) if configured else Path(tempfile.gettempdir())
+    return base if base.is_absolute() else base.absolute()
+
+
+def default_capture_dir(*components: str, root: str | Path | None = None) -> Path:
+    """Capture directory under the shared root: ``root/<dataset>/<file>/<run_id>``.
+
+    Components are literal path segments; callers pass the slugs and run
+    token their retained-capture layout needs.
+    """
+    if not components or any(not component or component in {".", ".."} or "/" in component
+                             or "\\" in component for component in components):
+        raise ValueError("invalid_capture_directory_components")
+    return capture_root(root).joinpath(*components)
+
 
 class _GCSWritable(Protocol):
     generation: str | int | None

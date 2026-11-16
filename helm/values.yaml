@@ -13,6 +13,10 @@
 #   - Secret:         dagster-db (key: postgresql-password)
 #   - ConfigMap:      dagster-env (env vars consumed by user code)
 #
+# The dagster-env ConfigMap must set HIFLD_CAPTURE_ROOT once: it is the single
+# capture/scratch root every adapter shares (default: the system temporary
+# directory). Do not add per-dataset capture env vars.
+#
 # Values that vary per install (postgres host/user/db, image tag) are
 # intentionally left as placeholders here and overridden via `--set`
 # from infra outputs at install time. See README for the exact command.

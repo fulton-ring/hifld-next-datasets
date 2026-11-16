@@ -3,7 +3,7 @@
 Source: https://geodata.epa.gov/arcgis/rest/services/OEI/EPA_Locations/MapServer/3
 Exact large-scale layer3, minScale5000000/maxScale0; no small-scale/ordinary-region/EEZ substitution.
 Run registered `epa_large_scale_source_integrity` with isolated local staging; monthly schedule is STOPPED.
-`HIFLD_EPA_LARGE_SCALE_CAPTURE_DIR` selects complete original `.body`/`.receipt.json` inputs.
+The asset's `capture_directory` run config selects complete original `.body`/`.receipt.json` inputs.
 All four attributes, original OBJECTIDs/EPAREGION, full physical declarations and Shape rings survive.
 Producer source CRS4269 is explicitly requested; display3857 remains separate, with no local projection.
 A derived header-first EsriJSON buffer enables GDAL detection; all original binary64 ordered rings are checked.

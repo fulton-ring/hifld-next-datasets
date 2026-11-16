@@ -85,9 +85,9 @@ class CensusCD119SourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="cd119-stage-test-") as temp:
             storage = StagingStorageResource(local_dir=temp, prefix="pinned-prefix", use_local=True)
             old_mode = os.environ.get("HIFLD_CD119_MODE")
-            old_root = os.environ.get("HIFLD_CD119_CAPTURE_DIR")
+            old_root = os.environ.get("HIFLD_CAPTURE_ROOT")
             os.environ["HIFLD_CD119_MODE"] = "replay"
-            os.environ["HIFLD_CD119_CAPTURE_DIR"] = "/tmp/hifld-native-reconstruction/387/capture"
+            os.environ["HIFLD_CAPTURE_ROOT"] = "/tmp"
             try:
                 first = source.stage_cd119_candidate(storage, CD119_DATASET_SLUG, CD119_FILE_SLUG)
                 second = source.stage_cd119_candidate(storage, CD119_DATASET_SLUG, CD119_FILE_SLUG)
@@ -97,9 +97,9 @@ class CensusCD119SourceTests(unittest.TestCase):
                 else:
                     os.environ["HIFLD_CD119_MODE"] = old_mode
                 if old_root is None:
-                    os.environ.pop("HIFLD_CD119_CAPTURE_DIR", None)
+                    os.environ.pop("HIFLD_CAPTURE_ROOT", None)
                 else:
-                    os.environ["HIFLD_CD119_CAPTURE_DIR"] = old_root
+                    os.environ["HIFLD_CAPTURE_ROOT"] = old_root
             self.assertEqual(first["version"], second["version"])
             self.assertEqual(first["candidate_identity"], second["candidate_identity"])
             self.assertEqual(first["source_feature_count"], 444)
