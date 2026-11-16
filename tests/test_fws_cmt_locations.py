@@ -184,6 +184,16 @@ class FwsCmtLocationsTests(unittest.TestCase):
                         capture_directory=str(root / f"capture-{iteration}"))
                 self.assertTrue(fws_cmt_locations_complete(candidate).passed)
                 self.assertFalse(fws_cmt_locations_drift(candidate).passed)
+                if iteration == 0:
+                    manifest_path = Path(candidate["capture_directory"]) / "capture_manifest.json"
+                    original_manifest = manifest_path.read_bytes()
+                    manifest = json.loads(original_manifest)
+                    for false_count in (len(ids) + 1, 10**12):
+                        manifest["source_feature_count"] = false_count
+                        manifest_path.write_text(json.dumps(manifest))
+                        with self.assertRaisesRegex(ValueError, "retained_capture_count_invalid"):
+                            source._read_replay(manifest_path.parent)
+                    manifest_path.write_bytes(original_manifest)
                 candidates.append(candidate)
                 prefix = "/".join(candidate["candidate_ready"].split("/")[:-2])
                 objects = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}

@@ -178,12 +178,19 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         raise ValueError("retained_capture_manifest_symlink_rejected")
     manifest = json.loads(manifest_path.read_bytes())
     count = manifest.get("source_feature_count")
-    if type(count) is not int or count <= 0:
+    receipts = manifest.get("receipts")
+    # Bound dynamic page planning by the retained receipt roster before building
+    # URLs; the manifest's summary count is checked against captured bytes below.
+    if (type(count) is not int or count <= 0 or not isinstance(receipts, dict)
+            or len(receipts) != len(_capture_roster()) + (count + PAGE_SIZE - 1) // PAGE_SIZE):
         raise ValueError("retained_capture_count_invalid")
     expected_urls = dict(_capture_roster(count))
-    return validate_retained_capture_replay(root, capture_names=set(expected_urls),
+    captures = validate_retained_capture_replay(root, capture_names=set(expected_urls),
         expected_urls=expected_urls, load_capture=_load_capture,
         validate_request_identity=validate_capture_request_identity)
+    if json.loads(captures["count_before"][0]).get("count") != count:
+        raise ValueError("retained_capture_count_invalid")
+    return captures
 
 
 def _inverse_x(x: float) -> float:
