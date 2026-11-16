@@ -1,0 +1,1950 @@
+{
+  "code_commit": "5eea5a18f39e3209cfc194643a742f1b2ea45645",
+  "nodes": [
+    {
+      "asset_key": "ingest/119th-congressional-districts/119th-congressional-districts",
+      "file": "src/dagster_hifld/assets/census_cd119.py",
+      "line": 46
+    },
+    {
+      "asset_key": "ingest/12nm-territorial-sea/12nm-territorial-sea",
+      "file": "src/dagster_hifld/assets/noaa.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/200nm-eez-and-maritime-boundaries/200nm-eez-and-maritime-boundaries",
+      "file": "src/dagster_hifld/assets/noaa.py",
+      "line": 96
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_01_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_02_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_04_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_05_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_06_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_08_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_09_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_10_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_11_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_12_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_13_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_15_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_16_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_17_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_18_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_19_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_20_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_21_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_22_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_23_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_24_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_25_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_26_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_27_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_28_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_29_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_30_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_31_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_32_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_33_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_34_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_35_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_36_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_37_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_38_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_39_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_40_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_41_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_42_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_44_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_45_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_46_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_47_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_48_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_49_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_50_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_51_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_53_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_54_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_55_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_56_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_60_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_66_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_69_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_72_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/2020-census-blocks-1/tl_2026_78_tabblock20",
+      "file": "src/dagster_hifld/assets/census_blocks_2020.py",
+      "line": 120
+    },
+    {
+      "asset_key": "ingest/24nm-contiguous-zone/24nm-contiguous-zone",
+      "file": "src/dagster_hifld/assets/noaa_contiguous.py",
+      "line": 77
+    },
+    {
+      "asset_key": "ingest/address-ranges/address-ranges",
+      "file": "src/dagster_hifld/assets/address_ranges.py",
+      "line": 27
+    },
+    {
+      "asset_key": "ingest/administrative-areas-usace-ienc/administrative-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace.py",
+      "line": 43
+    },
+    {
+      "asset_key": "ingest/aiannh-areas-1/aiannh-areas-1",
+      "file": "src/dagster_hifld/assets/census_bureau.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/airport-area-usace-ienc/airport-area-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_airport_area.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/airspace-boundaries-1/airspace-boundaries-1",
+      "file": "src/dagster_hifld/assets/faa.py",
+      "line": 46
+    },
+    {
+      "asset_key": "ingest/alternative-fueling-stations/alternative-fueling-stations",
+      "file": "src/dagster_hifld/assets/fuel_stations.py",
+      "line": 783
+    },
+    {
+      "asset_key": "ingest/american-red-cross-chapter-1/american-red-cross-chapter-1",
+      "file": "src/dagster_hifld/assets/red_cross_chapters.py",
+      "line": 12
+    },
+    {
+      "asset_key": "ingest/american-red-cross-divisions/american-red-cross-divisions",
+      "file": "src/dagster_hifld/assets/red_cross.py",
+      "line": 18
+    },
+    {
+      "asset_key": "ingest/american-red-cross-headquarters/american-red-cross-headquarters",
+      "file": "src/dagster_hifld/assets/red_cross_headquarters.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/american-red-cross-regions/american-red-cross-regions",
+      "file": "src/dagster_hifld/assets/arc_regions.py",
+      "line": 12
+    },
+    {
+      "asset_key": "ingest/amtrak-stations/amtrak-stations",
+      "file": "src/dagster_hifld/amtrak_extract.py",
+      "line": 716
+    },
+    {
+      "asset_key": "ingest/antarctica/antarctica",
+      "file": "src/dagster_hifld/assets/gnis_antarctica.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/antenna-structure-registration-asr/antenna-structure-registration-asr",
+      "file": "src/dagster_hifld/assets/antenna_structure_registration_asr.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/aviation-facilities/aviation-facilities",
+      "file": "src/dagster_hifld/assets/faa.py",
+      "line": 64
+    },
+    {
+      "asset_key": "ingest/berths-areas-usace-ienc/berths-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_berths_areas.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/biodiesel-plants-1/biodiesel-plants-1",
+      "file": "src/dagster_hifld/assets/eia_biodiesel_plants.py",
+      "line": 13
+    },
+    {
+      "asset_key": "ingest/bridge-areas-usace-ienc/bridge-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/bridge_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/broadband-radio-service-transmitters/broadband-radio-service-transmitters",
+      "file": "src/dagster_hifld/assets/brs_ebs_transmitters.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/building-locations-usace-ienc/building-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/building_locations_usace_ienc.py",
+      "line": 14
+    },
+    {
+      "asset_key": "ingest/built-up-areas-point-usace-ienc/built-up-areas-point-usace-ienc",
+      "file": "src/dagster_hifld/assets/built_up_areas_point_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/cable-areas-usace-ienc/cable-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/cable_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/canada-and-us-border/canada-and-us-border",
+      "file": "src/dagster_hifld/assets/ibc.py",
+      "line": 10
+    },
+    {
+      "asset_key": "ingest/caution-area-locations-usace-ienc/caution-area-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_caution_areas.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/cbrs-buffer-zone-1/cbrs-buffer-zone-1",
+      "file": "src/dagster_hifld/assets/fws.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/cbrs-map-panels-1/cbrs-map-panels-1",
+      "file": "src/dagster_hifld/assets/fws_map_panels.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/cbrs-prohibitions-1/cbrs-prohibitions-1",
+      "file": "src/dagster_hifld/assets/fws_prohibitions.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/cbrs-units-2/cbrs-units-2",
+      "file": "src/dagster_hifld/assets/fws_units.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/cellular-towers/cellular-towers",
+      "file": "src/dagster_hifld/assets/cellular_towers.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/census-block-groups-3/census-block-groups-3",
+      "file": "src/dagster_hifld/assets/census_block_groups.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/census-designated-places/census-designated-places",
+      "file": "src/dagster_hifld/assets/census_designated_places.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/census-tracts-2/census-tracts-2",
+      "file": "src/dagster_hifld/assets/census_tracts.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/childcare-government-roster-geocoding-pilot/new-york-census-matched-results",
+      "file": "src/dagster_hifld/assets/childcare_roster_pilot.py",
+      "line": 28
+    },
+    {
+      "asset_key": "ingest/childcare-government-roster-geocoding-pilot/washington-census-matched-results",
+      "file": "src/dagster_hifld/assets/childcare_roster_pilot.py",
+      "line": 34
+    },
+    {
+      "asset_key": "ingest/cms-certified-nursing-homes/provider-information",
+      "file": "src/dagster_hifld/assets/cms_certified_nursing_homes.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/coastlines-usace-ienc/coastlines-usace-ienc",
+      "file": "src/dagster_hifld/assets/coastlines_usace_ienc.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/colleges-and-universities/colleges-and-universities",
+      "file": "src/dagster_hifld/assets/colleges_universities.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/combined-statistical-areas-3/combined-statistical-areas-3",
+      "file": "src/dagster_hifld/assets/combined_statistical_areas.py",
+      "line": 8
+    },
+    {
+      "asset_key": "ingest/consolidated-cities/consolidated-cities",
+      "file": "src/dagster_hifld/assets/census_consolidated_cities.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/conveyor-areas-usace-ienc/conveyor-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_conveyor_areas.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/county-subdivisions-1/county-subdivisions-1",
+      "file": "src/dagster_hifld/assets/census_county_subdivisions.py",
+      "line": 10
+    },
+    {
+      "asset_key": "ingest/courthouses-3/courthouses-3",
+      "file": "src/dagster_hifld/assets/courthouses_usgs.py",
+      "line": 18
+    },
+    {
+      "asset_key": "ingest/crane-locations-usace-ienc/crane-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_crane_locations.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/crossings/crossings",
+      "file": "src/dagster_hifld/assets/gnis_crossings.py",
+      "line": 32
+    },
+    {
+      "asset_key": "ingest/current-dart-deployments/current-dart-deployments",
+      "file": "src/dagster_hifld/assets/noaa_current_dart.py",
+      "line": 10
+    },
+    {
+      "asset_key": "ingest/dam-lines-usace-ienc/dam-lines-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_dam_lines.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/data-coverage-areas-usace-ienc/data-coverage-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_data_coverage_areas.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/data-quality-assessment-areas-usace-ienc/data-quality-assessment-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_data_quality_areas.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/daymark-locations-usace-ienc-2/daymark-locations-usace-ienc-2",
+      "file": "src/dagster_hifld/assets/usace_daymark_locations.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/depth-areas-usace-ienc-2/depth-areas-usace-ienc-2",
+      "file": "src/dagster_hifld/assets/usace_depth_areas.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/distance-marks-usace-ienc-2/distance-marks-usace-ienc-2",
+      "file": "src/dagster_hifld/assets/usace_distance_marks.py",
+      "line": 22
+    },
+    {
+      "asset_key": "ingest/docks-usace-bts/docks-usace-bts",
+      "file": "src/dagster_hifld/assets/docks.py",
+      "line": 17
+    },
+    {
+      "asset_key": "ingest/dry-docks-usace-ienc/dry-docks-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_dry_docks.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/dumping-ground-areas-usace-ienc/dumping-ground-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_dumping_ground_areas.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/dynamic-buoys-usace-ienc-/dynamic-buoys-usace-ienc-",
+      "file": "src/dagster_hifld/assets/usace_dynamic_buoys.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/elementary-school-districts/elementary-school-districts",
+      "file": "src/dagster_hifld/assets/census_elementary_districts.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/epa-disaster-debris-recovery-data/epa-disaster-debris-recovery-data",
+      "file": "src/dagster_hifld/assets/epa_disaster_debris.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/epa-emergency-response-rmp-facilities/epa-emergency-response-rmp-facilities",
+      "file": "src/dagster_hifld/assets/epa_rmp_facilities.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/epa-facility-registry-service-frs-interests/epa-facility-registry-service-frs-interests",
+      "file": "src/dagster_hifld/assets/epa_facility_registry_service_frs_interests.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/epa-facility-registry-service-frs-power-plants-2/epa-facility-registry-service-frs-power-plants-2",
+      "file": "src/dagster_hifld/assets/epa_facility_registry_service_frs_power_plants.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/epa-frs-eia-860-power-generation-facilities-by-source/epa-frs-eia-860-power-generation-facilities-by-source",
+      "file": "src/dagster_hifld/assets/epa_power_generation.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/epa-frs-eia-860-power-generation-facilities-naics-codes/epa-frs-eia-860-power-generation-facilities-naics-codes",
+      "file": "src/dagster_hifld/assets/epa_frs_naics_powerplants.py",
+      "line": 385
+    },
+    {
+      "asset_key": "ingest/epa-frs-eia-860-power-generation-facilities-sic-codes/epa-frs-eia-860-power-generation-facilities-sic-codes",
+      "file": "src/dagster_hifld/assets/epa_frs_sic_powerplants.py",
+      "line": 331
+    },
+    {
+      "asset_key": "ingest/epa-frs-icis-wastewater-treatment-plants/epa-frs-icis-wastewater-treatment-plants",
+      "file": "src/dagster_hifld/assets/epa_frs_icis_wastewater.py",
+      "line": 22
+    },
+    {
+      "asset_key": "ingest/epa-frs-interest-contact/epa-frs-interest-contact",
+      "file": "src/dagster_hifld/assets/epa_frs_interest_contact.py",
+      "line": 643
+    },
+    {
+      "asset_key": "ingest/epa-frs-sic-codes/epa-frs-sic-codes",
+      "file": "src/dagster_hifld/assets/epa_frs_sic.py",
+      "line": 17
+    },
+    {
+      "asset_key": "ingest/epa-frs-toxic-release-inventory/epa-frs-toxic-release-inventory",
+      "file": "src/dagster_hifld/assets/epa_frs_tri.py",
+      "line": 17
+    },
+    {
+      "asset_key": "ingest/epa-frs-toxic-substances-control-act-tsca/epa-frs-toxic-substances-control-act-tsca",
+      "file": "src/dagster_hifld/assets/epa_tsca.py",
+      "line": 18
+    },
+    {
+      "asset_key": "ingest/epa-rcra-treatment-storage-and-disposal-facilities/epa-rcra-treatment-storage-and-disposal-facilities",
+      "file": "src/dagster_hifld/assets/epa_rcra_tsd.py",
+      "line": 17
+    },
+    {
+      "asset_key": "ingest/epa-region-boundaries-exclusive-economic-zone-eez/epa-region-boundaries-exclusive-economic-zone-eez",
+      "file": "src/dagster_hifld/assets/epa_eez.py",
+      "line": 10
+    },
+    {
+      "asset_key": "ingest/epa-region-boundaries-with-exclusive-economic-zone/epa-region-boundaries-with-exclusive-economic-zone",
+      "file": "src/dagster_hifld/assets/epa_regions_with_eez.py",
+      "line": 24
+    },
+    {
+      "asset_key": "ingest/epa-regions/epa-regions",
+      "file": "src/dagster_hifld/assets/epa_regions.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/epa-regions-large-scale-15000000/epa-regions-large-scale-15000000",
+      "file": "src/dagster_hifld/assets/epa_large_scale.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/epa-regions-small-scale-15000001/epa-regions-small-scale-15000001",
+      "file": "src/dagster_hifld/assets/epa_small_scale.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/epa-superfund-enterprise-management-system-sems-sites-1/epa-superfund-enterprise-management-system-sems-sites-1",
+      "file": "src/dagster_hifld/assets/epa_sems.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/ethanol-plants/ethanol-plants",
+      "file": "src/dagster_hifld/assets/eia_ethanol_plants.py",
+      "line": 13
+    },
+    {
+      "asset_key": "ingest/fdic-insured-banks/fdic-insured-banks",
+      "file": "src/dagster_hifld/assets/fdic_locations.py",
+      "line": 14
+    },
+    {
+      "asset_key": "ingest/federal-emergency-management-agency-fema-regional-offices/federal-emergency-management-agency-fema-regional-offices",
+      "file": "src/dagster_hifld/assets/fema_regional_offices.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/federal-emergency-management-agency-fema-regions/federal-emergency-management-agency-fema-regions",
+      "file": "src/dagster_hifld/assets/fema_regions.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/ferry-routes-1/ferry-routes-1",
+      "file": "src/dagster_hifld/assets/bts_ferry_routes.py",
+      "line": 10
+    },
+    {
+      "asset_key": "ingest/ferry-terminals/ferry-terminals",
+      "file": "src/dagster_hifld/assets/bts_ferry_terminals.py",
+      "line": 10
+    },
+    {
+      "asset_key": "ingest/final-critical-habitat-features/final-critical-habitat-features",
+      "file": "src/dagster_hifld/assets/final_critical_habitat.py",
+      "line": 14
+    },
+    {
+      "asset_key": "ingest/fire-and-emergency-medical-service-ems-stations/fire-and-emergency-medical-service-ems-stations",
+      "file": "src/dagster_hifld/assets/ems_stations.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/floating-docks-usace-ienc/floating-docks-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_floating_docks.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/floodwalls-usace-ienc/floodwalls-usace-ienc",
+      "file": "src/dagster_hifld/assets/floodwalls_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/formerly-used-defense-sites-district-boundaries/formerly-used-defense-sites-district-boundaries",
+      "file": "src/dagster_hifld/assets/fuds_district_boundaries.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/formerly-used-defense-sites-division-boundaries/formerly-used-defense-sites-division-boundaries",
+      "file": "src/dagster_hifld/assets/fuds_division_boundaries.py",
+      "line": 16
+    },
+    {
+      "asset_key": "ingest/formerly-used-defense-sites-projects-points/formerly-used-defense-sites-projects-points",
+      "file": "src/dagster_hifld/assets/fuds_projects_points.py",
+      "line": 13
+    },
+    {
+      "asset_key": "ingest/formerly-used-defense-sites-property-boundaries/formerly-used-defense-sites-property-boundaries",
+      "file": "src/dagster_hifld/assets/fuds_property_boundaries.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/formerly-used-defense-sites-public-mrs/formerly-used-defense-sites-public-mrs",
+      "file": "src/dagster_hifld/assets/fuds_mrs.py",
+      "line": 17
+    },
+    {
+      "asset_key": "ingest/formerly-used-defense-sites-public-properties/formerly-used-defense-sites-public-properties",
+      "file": "src/dagster_hifld/assets/fuds_public_properties.py",
+      "line": 13
+    },
+    {
+      "asset_key": "ingest/frs-interests/frs-interests",
+      "file": "src/dagster_hifld/assets/epa_frs_interests.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/frs-naics/frs-naics",
+      "file": "src/dagster_hifld/assets/epa_frs_naics_national.py",
+      "line": 34
+    },
+    {
+      "asset_key": "ingest/generalized-units-1/generalized-units-1",
+      "file": "src/dagster_hifld/assets/generalized_units.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/gsa-iolp-buildings/gsa-iolp-buildings",
+      "file": "src/dagster_hifld/assets/gsa_iolp_buildings.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/gsa-iolp-leases/gsa-iolp-leases",
+      "file": "src/dagster_hifld/assets/gsa_iolp_leases.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/harbor-administrative-areas-usace-ienc/harbor-administrative-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_harbor_administrative_areas.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/harbor-facility-areas-usace-ienc/harbor-facility-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/hf_areas_usace_ienc.py",
+      "line": 29
+    },
+    {
+      "asset_key": "ingest/harbor-facility-locations-usace-ienc/harbor-facility-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/harbor_facility_locations_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/historic-perimeters-combined-2000-2018-geomac/historic-perimeters-combined-2000-2018-geomac",
+      "file": "src/dagster_hifld/assets/historic_geomac_perimeters.py",
+      "line": 18
+    },
+    {
+      "asset_key": "ingest/historical-cultural-political-points-1/historical-cultural-political-points-1",
+      "file": "src/dagster_hifld/assets/gnis_historical_cultural_political_points.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/historical-holocene-volcano-locations/historical-holocene-volcano-locations",
+      "file": "src/dagster_hifld/assets/smithsonian_holocene.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/historical-hydrographic-points-1/historical-hydrographic-points-1",
+      "file": "src/dagster_hifld/assets/gnis_historical_hydrographic_points.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/historical-physical-points-1/historical-physical-points-1",
+      "file": "src/dagster_hifld/assets/gnis_historical_physical_points.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/historical-significant-earthquake-locations/historical-significant-earthquake-locations",
+      "file": "src/dagster_hifld/assets/significant_earthquakes.py",
+      "line": 10
+    },
+    {
+      "asset_key": "ingest/historical-tsunami-event-locations-/historical-tsunami-event-locations-",
+      "file": "src/dagster_hifld/assets/historical_tsunami_events.py",
+      "line": 6
+    },
+    {
+      "asset_key": "ingest/historical-tsunami-observations/historical-tsunami-observations",
+      "file": "src/dagster_hifld/assets/noaa_tsunami_observations.py",
+      "line": 9
+    },
+    {
+      "asset_key": "ingest/hulke-areas-usace-ienc/hulke-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_hulke_areas.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/hydrocarbon-gas-liquid-pipelines-1/hydrocarbon-gas-liquid-pipelines-1",
+      "file": "src/dagster_hifld/assets/hydrocarbon_gas_liquid_pipelines.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/icis-wastewater-treatment-plants/icis-wastewater-treatment-plants",
+      "file": "src/dagster_hifld/assets/epa_icis_wastewater.py",
+      "line": 21
+    },
+    {
+      "asset_key": "ingest/icis-wastewater-treatment-plants-naics-codes/icis-wastewater-treatment-plants-naics-codes",
+      "file": "src/dagster_hifld/assets/epa_icis_wastewater_naics.py",
+      "line": 323
+    },
+    {
+      "asset_key": "ingest/icis-wastewater-treatment-plants-sic-codes/icis-wastewater-treatment-plants-sic-codes",
+      "file": "src/dagster_hifld/assets/epa_icis_wastewater_sic.py",
+      "line": 323
+    },
+    {
+      "asset_key": "ingest/incorporated-places/incorporated-places",
+      "file": "src/dagster_hifld/assets/incorporated_places.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/incorporated-places-civil-1/incorporated-places-civil-1",
+      "file": "src/dagster_hifld/assets/incorporated_places_civil_gnis.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/interim-risk-management-irm-project-boundary/interim-risk-management-irm-project-boundary",
+      "file": "src/dagster_hifld/assets/fuds_irm_project_boundary.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/interim-risk-management-irm-property-boundary/interim-risk-management-irm-property-boundary",
+      "file": "src/dagster_hifld/assets/fuds_irm_property_boundary.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/interim-risk-management-irm-property-point/interim-risk-management-irm-property-point",
+      "file": "src/dagster_hifld/assets/fuds_irm_property_point.py",
+      "line": 14
+    },
+    {
+      "asset_key": "ingest/intermodal-freight-facilities-air-to-truck/intermodal-freight-facilities-air-to-truck",
+      "file": "src/dagster_hifld/assets/bts_air_truck.py",
+      "line": 26
+    },
+    {
+      "asset_key": "ingest/intermodal-freight-facilities-marine-roll-on-roll-off/intermodal-freight-facilities-marine-roll-on-roll-off",
+      "file": "src/dagster_hifld/assets/bts_marine_roro.py",
+      "line": 26
+    },
+    {
+      "asset_key": "ingest/intermodal-freight-facilities-pipeline-terminals/intermodal-freight-facilities-pipeline-terminals",
+      "file": "src/dagster_hifld/assets/bts_pipeline_terminals.py",
+      "line": 26
+    },
+    {
+      "asset_key": "ingest/intermodal-freight-facilities-rail-tofc-cofc/intermodal-freight-facilities-rail-tofc-cofc",
+      "file": "src/dagster_hifld/assets/bts_rail_tofc_cofc.py",
+      "line": 26
+    },
+    {
+      "asset_key": "ingest/inventorynational-tunnel-inventory/inventorynational-tunnel-inventory",
+      "file": "src/dagster_hifld/assets/fhwa_tunnel_inventory.py",
+      "line": 16
+    },
+    {
+      "asset_key": "ingest/iowa-electric-service-boundaries/electrical-service-boundaries",
+      "file": "src/dagster_hifld/assets/state_electric_territories.py",
+      "line": 16
+    },
+    {
+      "asset_key": "ingest/isolated-danger-buoy-point-usace-ienc/isolated-danger-buoy-point-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_ienc_isolated_danger.py",
+      "line": 29
+    },
+    {
+      "asset_key": "ingest/lakes-usace-ienc/lakes-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_lakes.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/land-mobile-broadcast-towers-1/land-mobile-broadcast-towers-1",
+      "file": "src/dagster_hifld/assets/land_mobile_broadcast_towers.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/land-mobile-commercial-transmission-towers/land-mobile-commercial-transmission-towers",
+      "file": "src/dagster_hifld/assets/land_mobile_commercial_transmission_towers.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/land-mobile-private-transmission-towers/land-mobile-private-transmission-towers",
+      "file": "src/dagster_hifld/assets/land_mobile_private_transmission_towers.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/land-region-areas-usace-ienc/land-region-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/land_region_areas_usace_ienc.py",
+      "line": 29
+    },
+    {
+      "asset_key": "ingest/land-region-locations-usace-ienc/land-region-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/land_region_locations_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/land-surface-areas-usace-ienc/land-surface-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/land_surface_areas_usace_ienc.py",
+      "line": 33
+    },
+    {
+      "asset_key": "ingest/landforms-1/landforms-1",
+      "file": "src/dagster_hifld/assets/landforms_gnis.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/landmark-areas-usace-ienc-2/landmark-areas-usace-ienc-2",
+      "file": "src/dagster_hifld/assets/usace_landmark_areas.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/landmark-locations-usace-ienc-2/landmark-locations-usace-ienc-2",
+      "file": "src/dagster_hifld/assets/usace_landmark_locations.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/lateral-beacons-usace-ienc/lateral-beacons-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_lateral_beacons.py",
+      "line": 22
+    },
+    {
+      "asset_key": "ingest/lateral-buoys-usace-ienc/lateral-buoys-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_lateral_buoys.py",
+      "line": 22
+    },
+    {
+      "asset_key": "ingest/levee-areas-usace-ienc/levee-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/levee_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/levee-lines-usace-ienc/levee-lines-usace-ienc",
+      "file": "src/dagster_hifld/assets/levee_lines_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/lock-basins-usace-ienc/lock-basins-usace-ienc",
+      "file": "src/dagster_hifld/assets/lock_basins_usace_ienc.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/lock-gate-areas-usace-ienc/lock-gate-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_lock_gate_areas.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/lock-gate-lines-usace-ienc/lock-gate-lines-usace-ienc",
+      "file": "src/dagster_hifld/assets/lock_gate_lines_usace_ienc.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/lock-traffic-signal-stations-usace-ienc/lock-traffic-signal-stations-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_lock_traffic_signal_stations.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/locks-usace-ienc/locks-usace-ienc",
+      "file": "src/dagster_hifld/assets/locks_usace_ienc.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/metropolitan-divisions-2/metropolitan-divisions-2",
+      "file": "src/dagster_hifld/assets/metropolitan_divisions.py",
+      "line": 8
+    },
+    {
+      "asset_key": "ingest/metropolitan-statistical-areas/metropolitan-statistical-areas",
+      "file": "src/dagster_hifld/assets/metropolitan_statistical_areas.py",
+      "line": 8
+    },
+    {
+      "asset_key": "ingest/mexico-and-us-border-1/mexico-and-us-border-1",
+      "file": "src/dagster_hifld/assets/mexico_us_border.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/micropolitan-statistical-areas-3/micropolitan-statistical-areas-3",
+      "file": "src/dagster_hifld/assets/micropolitan_statistical_areas.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/microwave-service-towers/microwave-service-towers",
+      "file": "src/dagster_hifld/assets/microwave_service_towers.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/mirta-dod-sites-boundaries/mirta-dod-sites-boundaries",
+      "file": "src/dagster_hifld/assets/mirta_dod_sites.py",
+      "line": 18
+    },
+    {
+      "asset_key": "ingest/mirta-dod-sites-points/mirta-dod-sites-points",
+      "file": "src/dagster_hifld/assets/mirta_dod_sites_points.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/miscellaneous-industrial-mineral-operations/miscellaneous-industrial-mineral-operations",
+      "file": "src/dagster_hifld/assets/miscellaneous_industrial_mineral_operations.py",
+      "line": 12
+    },
+    {
+      "asset_key": "ingest/mooring-facility-areas-usace-ienc-2/mooring-facility-areas-usace-ienc-2",
+      "file": "src/dagster_hifld/assets/mooring_facility_areas_usace_ienc.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/mooring-facility-lines-usace-ienc-2/mooring-facility-lines-usace-ienc-2",
+      "file": "src/dagster_hifld/assets/usace_mooring_facility_lines.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/mooring-facility-locations-usace-ienc/mooring-facility-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/mooring_facility_locations_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/national-bridge-inventory-nbi/national-bridge-inventory-nbi",
+      "file": "src/dagster_hifld/assets/national_bridge_inventory.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/national-forests/national-forests",
+      "file": "src/dagster_hifld/assets/national_forests.py",
+      "line": 192
+    },
+    {
+      "asset_key": "ingest/national-inventory-of-dams-nid-1/national-inventory-of-dams-nid-1",
+      "file": "src/dagster_hifld/assets/national_inventory_of_dams.py",
+      "line": 22
+    },
+    {
+      "asset_key": "ingest/national-shelter-system-facilities/national-shelter-system-facilities",
+      "file": "src/dagster_hifld/assets/fema_nss_shelter_locations.py",
+      "line": 22
+    },
+    {
+      "asset_key": "ingest/national-transit-map-agencies/national-transit-map-agencies",
+      "file": "src/dagster_hifld/assets/national_transit_map_agencies.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/national-transit-map-routes/national-transit-map-routes",
+      "file": "src/dagster_hifld/assets/national_transit_map_routes.py",
+      "line": 28
+    },
+    {
+      "asset_key": "ingest/national-transit-map-stops/national-transit-map-stops",
+      "file": "src/dagster_hifld/assets/national_transit_map_stops.py",
+      "line": 21
+    },
+    {
+      "asset_key": "ingest/natural-gas-interstate-and-intrastate-pipelines/natural-gas-interstate-and-intrastate-pipelines",
+      "file": "src/dagster_hifld/assets/eia_natural_gas_pipelines.py",
+      "line": 28
+    },
+    {
+      "asset_key": "ingest/natural-gas-processing-plants-1/natural-gas-processing-plants-1",
+      "file": "src/dagster_hifld/assets/eia_natural_gas_processing_plants.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/natural-gas-trading-hubs/natural-gas-trading-hubs",
+      "file": "src/dagster_hifld/assets/natural_gas_trading_hubs.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/nautical-navigation-aids-navaid-locations/nautical-navigation-aids-navaid-locations",
+      "file": "src/dagster_hifld/assets/noaa_nautical_navaids.py",
+      "line": 18
+    },
+    {
+      "asset_key": "ingest/nautical-publication-information-areas-usace-ienc/nautical-publication-information-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace.py",
+      "line": 171
+    },
+    {
+      "asset_key": "ingest/navigable-waterway-network-lines/navigable-waterway-network-lines",
+      "file": "src/dagster_hifld/assets/usace_waterway_lines.py",
+      "line": 9
+    },
+    {
+      "asset_key": "ingest/navigable-waterway-network-node-locations-1/navigable-waterway-network-node-locations-1",
+      "file": "src/dagster_hifld/assets/usace_waterway_nodes.py",
+      "line": 25
+    },
+    {
+      "asset_key": "ingest/navigation-lights-usace-ienc-2/navigation-lights-usace-ienc-2",
+      "file": "src/dagster_hifld/assets/usace_navigation_lights.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/navigation-system-of-marks-areas-usace-ienc/navigation-system-of-marks-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace.py",
+      "line": 104
+    },
+    {
+      "asset_key": "ingest/ncua-insured-credit-unions/ncua-insured-credit-unions",
+      "file": "src/dagster_hifld/assets/ncua_insured_credit_unions.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/nfhl-alluvial-fans/nfhl-alluvial-fans",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-availability/nfhl-availability",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-base-flood-elevations/nfhl-base-flood-elevations",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-base-index/nfhl-base-index",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-coastal-gages/nfhl-coastal-gages",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-coastal-transects/nfhl-coastal-transects",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-cross-sections/nfhl-cross-sections",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-firm-panels/nfhl-firm-panels",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-gages/nfhl-gages",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-general-structures/nfhl-general-structures",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-high-water-marks/nfhl-high-water-marks",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-hydrologic-reaches/nfhl-hydrologic-reaches",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-levees/nfhl-levees",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-limit-moderate-wave-action/nfhl-limit-moderate-wave-action",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-lomrs/nfhl-lomrs",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-nodes/nfhl-nodes",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-plss/nfhl-plss",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-political-jurisdictions/nfhl-political-jurisdictions",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-primary-frontal-dunes/nfhl-primary-frontal-dunes",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-river-mile-markers/nfhl-river-mile-markers",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-seclusion-boundaries/nfhl-seclusion-boundaries",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-station-start-points/nfhl-station-start-points",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-study-info/nfhl-study-info",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-subbasins/nfhl-subbasins",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-topographic-low-confidence-areas/nfhl-topographic-low-confidence-areas",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-transect-baselines/nfhl-transect-baselines",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nfhl-water-areas/nfhl-water-areas",
+      "file": "src/dagster_hifld/assets/nfhl.py",
+      "line": 45
+    },
+    {
+      "asset_key": "ingest/nhd/usgs-hydro-nldi-streamgage-monitoring-locations",
+      "file": "src/dagster_hifld/assets/usgs_nldi.py",
+      "line": 989
+    },
+    {
+      "asset_key": "ingest/nhd-area-large-scale-2/nhd-area-large-scale-2",
+      "file": "src/dagster_hifld/assets/nhd_area_large_scale.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/nhd-catchment/nhd-catchment",
+      "file": "src/dagster_hifld/assets/nhd_catchment.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/nhd-flowline/nhd-flowline",
+      "file": "src/dagster_hifld/assets/nhd_flowline.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/nhd-hydrolocation-htdcco/nhd-hydrolocation-htdcco",
+      "file": "src/dagster_hifld/assets/nhd_hydrolocation_htdcco.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/nhd-hydrolocation-reach-code-external-connection/nhd-hydrolocation-reach-code-external-connection",
+      "file": "src/dagster_hifld/assets/nhd_hydrolocation_reach_code_external_connection.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/nhd-hydrolocation-sink-spring-waterbody-outlet/nhd-hydrolocation-sink-spring-waterbody-outlet",
+      "file": "src/dagster_hifld/assets/nhd_hydrolocation_sink_spring_waterbody_outlet.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/nhd-waterbody/nhd-waterbody",
+      "file": "src/dagster_hifld/assets/nhd_waterbody.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/nhd-waterbody-large-scale-2/nhd-waterbody-large-scale-2",
+      "file": "src/dagster_hifld/assets/nhd_waterbody_large_scale.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/north-america-political-divisions-polygons/north-america-political-divisions-polygons",
+      "file": "src/dagster_hifld/assets/north_america_political_divisions_polygons.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/north-american-rail-network-lines/north-american-rail-network-lines",
+      "file": "src/dagster_hifld/assets/narn_rail_lines.py",
+      "line": 33
+    },
+    {
+      "asset_key": "ingest/north-american-rail-network-nodes/north-american-rail-network-nodes",
+      "file": "src/dagster_hifld/assets/narn_rail_nodes.py",
+      "line": 33
+    },
+    {
+      "asset_key": "ingest/notice-marks-usace-ienc/notice-marks-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_notice_marks.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/obstruction-areas-usace-ienc-2/obstruction-areas-usace-ienc-2",
+      "file": "src/dagster_hifld/assets/usace.py",
+      "line": 231
+    },
+    {
+      "asset_key": "ingest/obstruction-lines-usace-ienc/obstruction-lines-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_obstruction_lines.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/obstruction-locations-usace-ienc/obstruction-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_obstruction_locations.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/other-hydrographic-features-1/other-hydrographic-features-1",
+      "file": "src/dagster_hifld/assets/gnis_other_hydrographic_features.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/outer-continental-shelf-ocs-diagrams-maps/outer-continental-shelf-ocs-diagrams-maps",
+      "file": "src/dagster_hifld/assets/boem_ocs_diagrams.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/outer-continental-shelf-ocs-drilling-platforms/outer-continental-shelf-ocs-drilling-platforms",
+      "file": "src/dagster_hifld/assets/bsee_ocs_platforms.py",
+      "line": 13
+    },
+    {
+      "asset_key": "ingest/outer-continental-shelf-ocs-lease-blocks-1/outer-continental-shelf-ocs-lease-blocks-1",
+      "file": "src/dagster_hifld/assets/boem_ocs_lease_blocks.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/outer-continental-shelf-ocs-oil-and-natural-gas-wells/outer-continental-shelf-ocs-oil-and-natural-gas-wells",
+      "file": "src/dagster_hifld/assets/boem_ocs_wells.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/overhead-cables-usace-ienc/overhead-cables-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_overhead_cables.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/overhead-pipeline-lines-usace-ienc/overhead-pipeline-lines-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_overhead_pipeline_lines.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/pad-us-manager-name/pad-us-manager-name",
+      "file": "src/dagster_hifld/assets/pad_us_manager_name.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/pad-us-protection-mechanism-category/pad-us-protection-mechanism-category",
+      "file": "src/dagster_hifld/assets/pad_us_protection_mechanism_category.py",
+      "line": 32
+    },
+    {
+      "asset_key": "ingest/paging-transmission-towers/paging-transmission-towers",
+      "file": "src/dagster_hifld/assets/paging_transmission_towers.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/pile-locations-usace-ienc/pile-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_pile_locations.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/pipeline-areas-usace-ienc/pipeline-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_pipeline_areas.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/plate-boundaries/plate-boundaries",
+      "file": "src/dagster_hifld/assets/plate_boundaries.py",
+      "line": 16
+    },
+    {
+      "asset_key": "ingest/pontoon-areas-usace-ienc/pontoon-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_pontoon_areas.py",
+      "line": 30
+    },
+    {
+      "asset_key": "ingest/populated-places-1/populated-places-1",
+      "file": "src/dagster_hifld/assets/populated_places_gnis.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/power-plants-1/power-plants-1",
+      "file": "src/dagster_hifld/assets/ornl_power_plants.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/primary-roads-2/primary-roads-2",
+      "file": "src/dagster_hifld/assets/census_primary_roads.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/principal-ports/principal-ports",
+      "file": "src/dagster_hifld/assets/principal_ports.py",
+      "line": 29
+    },
+    {
+      "asset_key": "ingest/private-schools/private-schools",
+      "file": "src/dagster_hifld/assets/nces_private_schools.py",
+      "line": 14
+    },
+    {
+      "asset_key": "ingest/proposed-critical-habitat-features/proposed-critical-habitat-features",
+      "file": "src/dagster_hifld/assets/proposed_critical_habitat.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/public-refrigerated-warehouses-current-gcca/public-refrigerated-warehouses-current-gcca",
+      "file": "src/dagster_hifld/assets/gcca_warehouse_directory.py",
+      "line": 18
+    },
+    {
+      "asset_key": "ingest/public-schools/public-schools",
+      "file": "src/dagster_hifld/assets/nces_public_schools.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/puerto-rico-subbarrios/puerto-rico-subbarrios",
+      "file": "src/dagster_hifld/assets/puerto_rico_subbarrios.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/pylon-areas-usace-ienc/pylon-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_pylon_areas.py",
+      "line": 29
+    },
+    {
+      "asset_key": "ingest/pylon-locations-usace-ienc/pylon-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_pylon_locations.py",
+      "line": 22
+    },
+    {
+      "asset_key": "ingest/quaternary-fault-lines/quaternary-fault-lines",
+      "file": "src/dagster_hifld/assets/quaternary_fault_lines.py",
+      "line": 21
+    },
+    {
+      "asset_key": "ingest/railroad-bridges/railroad-bridges",
+      "file": "src/dagster_hifld/assets/railroad_bridges.py",
+      "line": 31
+    },
+    {
+      "asset_key": "ingest/railroad-grade-crossings/railroad-grade-crossings",
+      "file": "src/dagster_hifld/assets/railroad_grade_crossings.py",
+      "line": 33
+    },
+    {
+      "asset_key": "ingest/railroads/railroads",
+      "file": "src/dagster_hifld/assets/census_railroads.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/railways-usace-ienc/railways-usace-ienc",
+      "file": "src/dagster_hifld/assets/railways_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/recommended-tracks-usace-ienc/recommended-tracks-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_recommended_tracks.py",
+      "line": 40
+    },
+    {
+      "asset_key": "ingest/restricted-navigation-areas-usace-ienc/restricted-navigation-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/restricted_navigation_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/retrospective-bpr-deployments/retrospective-bpr-deployments",
+      "file": "src/dagster_hifld/assets/retrospective_bpr_deployments.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/river-areas-usace-ienc/river-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/river_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/river-gauges-usace-ienc/river-gauges-usace-ienc",
+      "file": "src/dagster_hifld/assets/river_gauges_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/river-lines-usace-ienc/river-lines-usace-ienc",
+      "file": "src/dagster_hifld/assets/river_lines_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/river-mile-markers-usace-ienc/river-mile-markers-usace-ienc",
+      "file": "src/dagster_hifld/assets/usace_river_mile_markers.py",
+      "line": 23
+    },
+    {
+      "asset_key": "ingest/roads-usace-ienc/roads-usace-ienc",
+      "file": "src/dagster_hifld/assets/roads_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/runways-1/runways-1",
+      "file": "src/dagster_hifld/assets/runways.py",
+      "line": 35
+    },
+    {
+      "asset_key": "ingest/school-district-administrative-areas/school-district-administrative-areas",
+      "file": "src/dagster_hifld/assets/school_district_administrative_areas.py",
+      "line": 28
+    },
+    {
+      "asset_key": "ingest/sea-area-locations-usace-ienc-1/sea-area-locations-usace-ienc-1",
+      "file": "src/dagster_hifld/assets/sea_area_locations_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/sea-areas-usace-ienc/sea-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/sea_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/secondary-roads-interstates-and-us-highways-2/secondary-roads-interstates-and-us-highways-2",
+      "file": "src/dagster_hifld/assets/secondary_roads_census.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/secondary-school-districts/secondary-school-districts",
+      "file": "src/dagster_hifld/assets/secondary_school_districts.py",
+      "line": 26
+    },
+    {
+      "asset_key": "ingest/shipping-fairways/shipping-fairways",
+      "file": "src/dagster_hifld/assets/shipping_fairways.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/shoreline-construction-areas-usace-ienc/shoreline-construction-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/shoreline_construction_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/shoreline-construction-lines-usace-ienc/shoreline-construction-lines-usace-ienc",
+      "file": "src/dagster_hifld/assets/shoreline_construction_lines_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/shoreline-construction-locations-usace-ienc/shoreline-construction-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/shoreline_construction_locations_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/sloped-ground-areas-usace-ienc/sloped-ground-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/sloped_ground_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/sloped-ground-lines-usace-ienc/sloped-ground-lines-usace-ienc",
+      "file": "src/dagster_hifld/assets/sloped_ground_lines_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/small-craft-facility-areas-usace-ienc/small-craft-facility-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/small_craft_facility_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/small-craft-facility-locations-usace-ienc/small-craft-facility-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/small_craft_facility_locations_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/special-purpose-buoys-usace-ienc-1/special-purpose-buoys-usace-ienc-1",
+      "file": "src/dagster_hifld/assets/special_purpose_buoys_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/state-capitols/state-capitols",
+      "file": "src/dagster_hifld/assets/state_capitols.py",
+      "line": 21
+    },
+    {
+      "asset_key": "ingest/state-emergency-operations-centers-eoc/state-emergency-operations-centers-eoc",
+      "file": "src/dagster_hifld/assets/state_emergency_operations_centers.py",
+      "line": 12
+    },
+    {
+      "asset_key": "ingest/state-legislative-districts-lower/state-legislative-districts-lower",
+      "file": "src/dagster_hifld/assets/state_legislative_districts_lower.py",
+      "line": 16
+    },
+    {
+      "asset_key": "ingest/state-legislative-districts-upper/state-legislative-districts-upper",
+      "file": "src/dagster_hifld/assets/state_legislative_districts_upper.py",
+      "line": 16
+    },
+    {
+      "asset_key": "ingest/storage-tank-or-silo-areas-usace-ienc-1/storage-tank-or-silo-areas-usace-ienc-1",
+      "file": "src/dagster_hifld/assets/storage_tank_silo_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/storage-tank-or-silo-locations-usace-ienc-1/storage-tank-or-silo-locations-usace-ienc-1",
+      "file": "src/dagster_hifld/assets/storage_tank_silo_locations_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/streams-mouth/streams-mouth",
+      "file": "src/dagster_hifld/assets/gnis_streams_mouth.py",
+      "line": 34
+    },
+    {
+      "asset_key": "ingest/submarine-cable-lines-usace-ienc/submarine-cable-lines-usace-ienc",
+      "file": "src/dagster_hifld/assets/submarine_cable_lines_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/submarine-pipeline-lines-usace-ienc/submarine-pipeline-lines-usace-ienc",
+      "file": "src/dagster_hifld/assets/submarine_pipeline_lines_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/submarine-pipeline-locations-usace-ienc/submarine-pipeline-locations-usace-ienc",
+      "file": "src/dagster_hifld/assets/submarine_pipeline_locations_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/submerged-land-act-sla-boundary/submerged-land-act-sla-boundary",
+      "file": "src/dagster_hifld/assets/submerged_land_act_boundary.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/terminal-areas-usace-ienc/terminal-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/terminal_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/terminal-points-usace-ienc/terminal-points-usace-ienc",
+      "file": "src/dagster_hifld/assets/terminal_points_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/trails-2/trails-2",
+      "file": "src/dagster_hifld/assets/trails_usgs.py",
+      "line": 18
+    },
+    {
+      "asset_key": "ingest/travel-monitoring-analysis-system-tmas-stations/travel-monitoring-analysis-system-tmas-stations",
+      "file": "src/dagster_hifld/assets/tmas_stations.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/tsunami-capable-tide-stations/tsunami-capable-tide-stations",
+      "file": "src/dagster_hifld/assets/noaa_tsunami_tide_stations.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/underwater-rock-areas-usace-ienc-1/underwater-rock-areas-usace-ienc-1",
+      "file": "src/dagster_hifld/assets/underwater_rock_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/unified-school-districts/unified-school-districts",
+      "file": "src/dagster_hifld/assets/unified_school_districts.py",
+      "line": 26
+    },
+    {
+      "asset_key": "ingest/urban-areas-1/urban-areas-1",
+      "file": "src/dagster_hifld/assets/urban_areas.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/us-army-corps-of-engineers-usace-offices/us-army-corps-of-engineers-usace-offices",
+      "file": "src/dagster_hifld/assets/usace_offices.py",
+      "line": 12
+    },
+    {
+      "asset_key": "ingest/us-canada-land-boundary/us-canada-land-boundary",
+      "file": "src/dagster_hifld/assets/us_canada_land_boundary.py",
+      "line": 83
+    },
+    {
+      "asset_key": "ingest/us-coal-fields-1/us-coal-fields-1",
+      "file": "src/dagster_hifld/assets/us_coal_fields.py",
+      "line": 9
+    },
+    {
+      "asset_key": "ingest/us-county-boundaries-1/us-county-boundaries-1",
+      "file": "src/dagster_hifld/assets/us_county_boundaries.py",
+      "line": 22
+    },
+    {
+      "asset_key": "ingest/us-courts-of-appeals-circuits/us-courts-of-appeals-circuits",
+      "file": "src/dagster_hifld/assets/us_courts_appeals_circuits.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/us-district-court-jurisdictions/us-district-court-jurisdictions",
+      "file": "src/dagster_hifld/assets/us_district_court_jurisdictions.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/us-international-boundaries-1/us-international-boundaries-1",
+      "file": "src/dagster_hifld/assets/us_international_boundaries.py",
+      "line": 11
+    },
+    {
+      "asset_key": "ingest/us-landslide-regions/us-landslide-regions",
+      "file": "src/dagster_hifld/assets/us_landslide_regions.py",
+      "line": 32
+    },
+    {
+      "asset_key": "ingest/us-state-boundaries-1/us-state-boundaries-1",
+      "file": "src/dagster_hifld/assets/us_state_boundaries.py",
+      "line": 22
+    },
+    {
+      "asset_key": "ingest/us-virgin-islands-estates/us-virgin-islands-estates",
+      "file": "src/dagster_hifld/assets/us_virgin_islands_estates.py",
+      "line": 7
+    },
+    {
+      "asset_key": "ingest/usace-civil-works-districts/usace-civil-works-districts",
+      "file": "src/dagster_hifld/assets/usace_cw_districts.py",
+      "line": 24
+    },
+    {
+      "asset_key": "ingest/usace-civil-works-divisions/usace-civil-works-divisions",
+      "file": "src/dagster_hifld/assets/usace_civil_works_divisions.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/usace-military-districts/usace-military-districts",
+      "file": "src/dagster_hifld/assets/usace_military_districts.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/usace-military-divisions/usace-military-divisions",
+      "file": "src/dagster_hifld/assets/usace_military_divisions.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/usace-owned-reservoirs/usace-owned-reservoirs",
+      "file": "src/dagster_hifld/assets/usace_owned_reservoirs.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/uscg-sectors/uscg-sectors",
+      "file": "src/dagster_hifld/assets/uscg_sectors.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/usfws-corporate-master-table/usfws-corporate-master-table",
+      "file": "src/dagster_hifld/assets/fws_cmt_locations.py",
+      "line": 21
+    },
+    {
+      "asset_key": "ingest/usgs-critical-mineral-deposits/uranium-vanadium-deposits",
+      "file": "src/dagster_hifld/assets/usgs_critical_mineral_deposits.py",
+      "line": 13
+    },
+    {
+      "asset_key": "ingest/voting-districts/voting-districts",
+      "file": "src/dagster_hifld/assets/census_voting_districts.py",
+      "line": 20
+    },
+    {
+      "asset_key": "ingest/warning-signal-stations-usace-ienc/warning-signal-stations-usace-ienc",
+      "file": "src/dagster_hifld/assets/warning_signal_stations_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/wbd/8-digit-hu-subbasin",
+      "file": "src/dagster_hifld/assets/wbd_hu8_subbasin.py",
+      "line": 21
+    },
+    {
+      "asset_key": "ingest/wbd-10-digit-hu-watershed/wbd-10-digit-hu-watershed",
+      "file": "src/dagster_hifld/assets/wbd_10_digit_hu.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/wbd-12-digit-hu-subwatershed/wbd-12-digit-hu-subwatershed",
+      "file": "src/dagster_hifld/assets/wbd_12_digit_hu.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/wbd-14-digit-hu/wbd-14-digit-hu",
+      "file": "src/dagster_hifld/assets/wbd_14_digit_hu.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/wbd-16-digit-hu/wbd-16-digit-hu",
+      "file": "src/dagster_hifld/assets/wbd_16_digit_hu.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/wbd-2-digit-hu-region/wbd-2-digit-hu-region",
+      "file": "src/dagster_hifld/assets/wbd_2_digit_hu.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/wbd-4-digit-hu-subregion/wbd-4-digit-hu-subregion",
+      "file": "src/dagster_hifld/assets/wbd_4_digit_hu_subregion.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/wbd-6-digit-hu-basin/wbd-6-digit-hu-basin",
+      "file": "src/dagster_hifld/assets/wbd_6_digit_hu.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/wbd-wbdline/wbd-wbdline",
+      "file": "src/dagster_hifld/assets/wbd_wbdline.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/wfigs-interagency-fire-perimeters/wfigs-interagency-fire-perimeters",
+      "file": "src/dagster_hifld/assets/wfigs_interagency_fire_perimeters.py",
+      "line": 16
+    },
+    {
+      "asset_key": "ingest/wisconsin-psc-electric-service-territories/cooperative",
+      "file": "src/dagster_hifld/assets/state_electric_territories.py",
+      "line": 25
+    },
+    {
+      "asset_key": "ingest/wisconsin-psc-electric-service-territories/investor-owned",
+      "file": "src/dagster_hifld/assets/state_electric_territories.py",
+      "line": 46
+    },
+    {
+      "asset_key": "ingest/wisconsin-psc-electric-service-territories/municipal",
+      "file": "src/dagster_hifld/assets/state_electric_territories.py",
+      "line": 52
+    },
+    {
+      "asset_key": "ingest/wreck-areas-usace-ienc/wreck-areas-usace-ienc",
+      "file": "src/dagster_hifld/assets/wreck_areas_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "ingest/wrecks-usace-ienc/wrecks-usace-ienc",
+      "file": "src/dagster_hifld/assets/wrecks_usace_ienc.py",
+      "line": 19
+    },
+    {
+      "asset_key": "publish/catalog",
+      "file": "src/dagster_hifld/assets/catalog.py",
+      "line": 67
+    },
+    {
+      "asset_key": "publish/formats/geopackage",
+      "file": "src/dagster_hifld/assets/publish.py",
+      "line": 1448
+    },
+    {
+      "asset_key": "publish/formats/geoparquet",
+      "file": "src/dagster_hifld/assets/publish.py",
+      "line": 1469
+    },
+    {
+      "asset_key": "publish/formats/pmtiles",
+      "file": "src/dagster_hifld/assets/publish.py",
+      "line": 1494
+    },
+    {
+      "asset_key": "publish/formats/shapefile_zip",
+      "file": "src/dagster_hifld/assets/publish.py",
+      "line": 1515
+    },
+    {
+      "asset_key": "publish/portolan_catalog",
+      "file": "src/dagster_hifld/assets/portolan.py",
+      "line": 38
+    },
+    {
+      "asset_key": "publish/promote",
+      "file": "src/dagster_hifld/assets/publish.py",
+      "line": 1408
+    },
+    {
+      "asset_key": "publish/release_metadata",
+      "file": "src/dagster_hifld/assets/portolan.py",
+      "line": 15
+    },
+    {
+      "asset_key": "publish/verify",
+      "file": "src/dagster_hifld/assets/publish.py",
+      "line": 1377
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "code_commit": "5eea5a18f39e3209cfc194643a742f1b2ea45645",
+  "registered_coverage": 380,
+  "shared_downstream_coverage": 9,
+  "dormant_coverage": 14,
+  "crosswalk_rows": 305,
+  "artifacts": {
+    "README.md": {
+      "bytes": 23344,
+      "sha256": "1108238be2efd7383c4bcd73972c8d179350faf50a14d52d71c9776068d727e2"
+    },
+    "crosswalk.json": {
+      "bytes": 345386,
+      "sha256": "fabc3b0c3abc62d808009acf2044e96993d249f8427b27c0173e8a9d9a82375d"
+    },
+    "hifld-open-crosswalk.xlsx": {
+      "bytes": 61689,
+      "sha256": "7f3394fed2712fdcc176b7ce658293fdded656b9b719f0d90154c07dc38772bc"
+    },
+    "inventory.json": {
+      "bytes": 1253743,
+      "sha256": "5e8959344949d88f0cf5ad96bb6da496a249f9de13085e748687687e6b8095ff"
+    },
+    "pipelines.md": {
+      "bytes": 233345,
+      "sha256": "413132dc01cf8753642b34d09153159e89ad1007f57885bd29d12c1bde06a366"
+    },
+    "primary-observations.json": {
+      "bytes": 235981,
+      "sha256": "c18ff5428e7091b30332a79e28e550d56a3a5417eb0cb80e95b9ab67db02ce18"
+    },
+    "registered-asset-graph.json": {
+      "bytes": 69887,
+      "sha256": "ad7bbb0fa9f510ba12ded2044425053025bf8894567004fd291ee12a3b8bf0fb"
+    }
+  }
+}
