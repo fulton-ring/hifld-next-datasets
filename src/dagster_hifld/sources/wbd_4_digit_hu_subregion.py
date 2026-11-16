@@ -71,7 +71,7 @@ from dagster_hifld.sources.epa_frs_common import (
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_ienc_common import (
+from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture_identity, _load_capture, _sha,
 )
 

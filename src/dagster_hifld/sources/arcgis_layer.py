@@ -1,13 +1,16 @@
-"""Shared capture/replay helpers for the USACE IENC and sibling dataset modules.
+"""Shared ArcGIS layer capture and replay primitives.
 
-These helpers previously lived in ``sources.usace_obstruction_lines``, whose
-dataset modules imported them as a library. They now live here under public
-names with their bodies unchanged: ``capture_page`` is the former ``_capture``
-with its page/capture budgets as keyword parameters (the defaults reproduce the
-old behavior), and the private aliases at the bottom keep the historical import
-names working so each dataset module only changes its import line. Canonical
-JSON, sha256 and the ArcGIS CRS drift guard delegate to the single shared
+This module owns the retained-capture primitives that the ArcGIS
+FeatureServer/MapServer dataset adapters share: budget-guarded paged capture
+(``capture_page``), retained capture replay (``load_capture``), candidate
+identity digests (``capture_identity``), Esri polyline WKB encoding
+(``esri_polyline_wkb``) and GeoParquet serialization (``polyline_parquet_bytes``).
+Canonical JSON, sha256 and the ArcGIS CRS drift guard delegate to the single
 implementations in ``sources.esri_common`` and ``sources.esri_geometry``.
+
+The private aliases at the bottom keep the historical import names working so
+each dataset module only changes its import line; new modules should use the
+public names.
 """
 from __future__ import annotations
 

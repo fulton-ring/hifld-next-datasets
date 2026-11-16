@@ -10,7 +10,7 @@ from dagster_hifld.http_capture import (
 )
 from dagster_hifld.sources.epa_frs_common import validate_capture_request_identity
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.usace_obstruction_lines import _load_capture
+from dagster_hifld.sources.arcgis_layer import _load_capture
 
 NAMES = {"alpha", "beta"}
 URLS = {"alpha": "https://producer.example.invalid/service/alpha",

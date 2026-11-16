@@ -4,11 +4,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from dagster_hifld.sources import usace_ienc_common as common
+from dagster_hifld.sources import arcgis_layer as common
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 
-class UsaceIencCommonTests(unittest.TestCase):
+class ArcgisLayerTests(unittest.TestCase):
     def _retained(self, root: Path, body: bytes = b"{}"):
         (root / "page.body").write_bytes(body)
         (root / "page.wire").write_bytes(body)

@@ -120,7 +120,7 @@ not here.
   name, the generic capture, candidate, seal and quarantine primitives),
   `sources/esri_common.py`, `sources/esri_geometry.py`, `esri_pbf.py`,
   `sources/arcgis_filegdb.py`, `sources/census_tiger_common.py`,
-  `sources/nfhl_common.py`, `construction_state.py`,
+  `sources/nfhl_common.py`, `sources/arcgis_layer.py`, `construction_state.py`,
   `construction_provenance.py`, `provenance.py`, `validation.sha256_file` and
   `gdal.py`. If the logic you need exists only inside another dataset module,
   move it into a shared module in the same PR. Do not import it from that dataset
