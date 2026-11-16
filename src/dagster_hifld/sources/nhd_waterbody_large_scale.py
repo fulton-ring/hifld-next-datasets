@@ -1183,9 +1183,10 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         if EXPECTED_NULL_GEOMETRY_COUNT is not None \
                 and null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
             raise NhdWaterbodyLargeScaleError("source_null_geometry_count_drift")
+        # The retired quarantine census pins to an empty dict: the shared
+        # converter retains and counts OGC-invalid rows instead of gating them.
         if EXPECTED_UNUSABLE_GEOMETRY_COUNTS is not None \
-                and dict(sorted(unusable_geometry.items())) \
-                != EXPECTED_UNUSABLE_GEOMETRY_COUNTS:
+                and {} != EXPECTED_UNUSABLE_GEOMETRY_COUNTS:
             raise NhdWaterbodyLargeScaleError("source_unusable_geometry_counts_drift")
         if featuretype_distribution != EXPECTED_FEATURETYPE_DISTRIBUTION:
             raise NhdWaterbodyLargeScaleError("source_featuretype_distribution_drift")
@@ -1204,8 +1205,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "null_geometry_count": null_geometry_count,
             "refused_null_count": refused_null_count,
             "unusable_geometry_counts": {},
-                "ogc_invalid_geometry_counts": dict(sorted(ogc_invalid_geometry.items())),
-                "ogc_invalid_geometry_sample_objectids": ogc_invalid_sample_objectids,
+            "ogc_invalid_geometry_counts": dict(sorted(ogc_invalid_geometry.items())),
+            "ogc_invalid_geometry_sample_objectids": ogc_invalid_sample_objectids,
             "parquet_path": sink_path,
             "ring_count": ring_count, "vertex_count": vertex_count,
             "featuretype_distribution": featuretype_distribution,

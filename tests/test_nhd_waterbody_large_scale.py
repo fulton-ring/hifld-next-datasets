@@ -58,15 +58,22 @@ def _ring(oid: int, offset: float) -> list:
             [x0, y0, 5.754000000000815]]
 
 
+def _hole_ring(exterior: list) -> list:
+    """One clockwise closed hole fully inside the given exterior square."""
+    (x0, y0, _), (_ax, y1, _), (x1, _by, _) = exterior[0], exterior[1], exterior[2]
+    inset = 0.0002
+    hole = [[x0 + inset, y0 + inset, 5.0], [x0 + inset, y1 - inset, 5.0],
+            [x1 - inset, y1 - inset, 5.0], [x1 - inset, y0 + inset, 5.0],
+            [x0 + inset, y0 + inset, 5.0]]
+    return list(reversed(hole))
+
+
 def _fixture_geometry(oid: object) -> dict:
     index = FIXTURE_OBJECTIDS.index(oid)
     if oid == FIXTURE_OBJECTIDS[1]:
-        # One exterior with a clockwise-ordered hole: the hole ring above is
-        # counter-clockwise in the builder, so flip it to exercise hole
-        # assignment under the producer's verified semantics.
+        # One exterior with a counter-clockwise hole fully inside it.
         exterior = _ring(oid, 0.0)
-        hole = _ring(oid, 0.0001)[::-1]
-        rings = [exterior, hole]
+        rings = [exterior, _hole_ring(exterior)]
     elif oid == FIXTURE_OBJECTIDS[2]:
         rings = [_ring(oid, 0.0), _ring(oid, 0.01)]
     else:
@@ -345,7 +352,7 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
                          [list(vertex) for vertex in ring])
         multi = converted(FIXTURE_OBJECTIDS[2])
         order, kind = struct.unpack_from("<BI", multi, 0)
-        self.assertEqual((order, kind), (1, 2006))
+        self.assertEqual((order, kind), (1, 1006))
         multi_geometry = shapely.from_wkb(multi)
         self.assertIsInstance(multi_geometry, shapely.MultiPolygon)
         self.assertEqual(shapely.get_num_geometries(multi_geometry), 2)
@@ -356,8 +363,7 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
         self.assertEqual((with_hole_geometry.exterior.length,
                           with_hole_geometry.interiors[0].length),
                          (shapely.Polygon(_ring(FIXTURE_OBJECTIDS[1], 0.0)).length,
-                          shapely.Polygon(list(reversed(_ring(FIXTURE_OBJECTIDS[1], 0.0001))))
-                          .length))
+                          shapely.Polygon(_hole_ring(_ring(FIXTURE_OBJECTIDS[1], 0.0))).length))
 
     def test_polygon_geometry_drift_is_refused(self):
         base = _fixture_geometry(FIXTURE_OBJECTIDS[0])
