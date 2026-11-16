@@ -238,10 +238,12 @@ def small_dbf(*,leading=True):
             value=(format(row[name],'.6f')if kind=='N'else row[name]).encode();assert len(value)<=width;body+=value.rjust(width,b' ')if kind=='N'else value.ljust(width,b' ')
     return bytes(body)+b'\x1a',rows
 
-def current_archive(schoolyear='2026-2027', revision='original'):
+def current_archive(schoolyear='2026-2027', revision='original', malformed_dbf=False):
     """Two explicit structural points; never a national-source substitute."""
     dbf, rows = small_dbf(leading=False)
     dbf = dbf.replace(b'2025-2026', schoolyear.encode())
+    if malformed_dbf:
+        damaged=bytearray(dbf[:33]);damaged[8:10]=(673).to_bytes(2,'little');dbf=bytes(damaged)
     for row in rows: row['SCHOOLYEAR'] = schoolyear
     code = schoolyear[2:4] + schoolyear[7:9]
     stem = 'EDGE_GEOCODE_POSTSECSCH_' + code
@@ -309,6 +311,7 @@ class CollegeCurrentTests(unittest.TestCase):
 
     def test_current_capture_reuses_verified_candidate_and_preserves_revision(self):
         page = f'<a href="/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2627.zip">data</a><a href="{c.DOCUMENTATION}">docs</a>'.encode()
+        original_page = page
         archive = [current_archive()]
         original_archive = archive[0]
         def respond(request):
@@ -327,6 +330,7 @@ class CollegeCurrentTests(unittest.TestCase):
             first = c.stage_colleges(storage, client=client)
             prefix = f'{c.SLUG}/{c.SLUG}/{first["version"]}'
             before = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}
+            page += b'<!-- changed presentation token --><script src="/TSPD/random-F5-token.js">var nonce="random";</script>'
             second = c.stage_colleges(storage, client=client)
             self.assertEqual(second['version'], first['version'])
             self.assertTrue(second['reused'])
@@ -335,6 +339,9 @@ class CollegeCurrentTests(unittest.TestCase):
             self.assertNotEqual(first['version'], third['version'])
             self.assertEqual(before, {key: storage.read_key(key) for key in storage.list_prefix(prefix)})
             self.assertFalse(third['release_accepted'])
+            page += b'<p>Producer population note: this edition includes a newly defined reporting institution group.</p>'
+            note_revision = c.stage_colleges(storage, client=client)
+            self.assertNotEqual(third['version'], note_revision['version'])
             manifest = json.loads(storage.read_key(f'{prefix}/metadata/source_manifest.json'))
             self.assertEqual(manifest['coverage']['schoolyear'], '2026-2027')
             self.assertEqual(manifest['field_definitions']['SCHOOLYEAR']['basis'], 'publisher')
@@ -343,6 +350,7 @@ class CollegeCurrentTests(unittest.TestCase):
             key = prefix + '/geoparquet/' + c.SLUG + '.parquet'
             storage.write_key(key, b'corrupt')
             archive[0] = original_archive
+            page = original_page
             with self.assertRaises(c.CollegeQuarantineError): c.stage_colleges(storage, client=client)
 
     def test_mutated_source_during_observation_is_quarantined_without_fallback(self):
@@ -357,6 +365,19 @@ class CollegeCurrentTests(unittest.TestCase):
             with self.assertRaisesRegex(c.CollegeQuarantineError, 'changed_during_capture'):
                 c.stage_colleges(storage, client=client)
             self.assertTrue(storage.list_prefix('_quarantine/' + c.SLUG))
+            self.assertFalse(storage.list_prefix(c.SLUG))
+
+    def test_malformed_dbf_header_quarantines_complete_current_capture(self):
+        page=f'<a href="/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2627.zip">data</a><a href="{c.DOCUMENTATION}">docs</a>'.encode()
+        archive=current_archive(malformed_dbf=True)
+        def respond(request):
+            body=page if str(request.url)==c.LANDING else b'%PDF-1.4 documentation' if str(request.url)==c.DOCUMENTATION else archive
+            return httpx.Response(200,stream=httpx.ByteStream(body),request=request)
+        with tempfile.TemporaryDirectory() as tmp,httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            storage=c.StagingStorageResource(local_dir=tmp)
+            with self.assertRaisesRegex(c.CollegeQuarantineError,'dbf'):
+                c.stage_colleges(storage,client=client)
+            self.assertTrue(storage.list_prefix('_quarantine/'+c.SLUG))
             self.assertFalse(storage.list_prefix(c.SLUG))
 
 class CollegeStructuralTests(unittest.TestCase):

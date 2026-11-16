@@ -27,8 +27,14 @@ representation. The existing field/type/CRS/Point contract remains mandatory;
 observed 2025–26 row counts, IDs and geometry hashes no longer constrain a new
 current observation.
 
-Candidate identity binds all captured evidence bodies and the processing code,
-excluding retrieval times. Unchanged evidence reuses a fully verified sealed
+Candidate identity binds the complete ZIP/PDF bodies, selected publication and
+substantive main-page text/links, plus processing code, excluding retrieval
+times and injected script/style/chrome bytes. NCES injects randomized F5 scripts;
+those do not create a new data version. Producer population/methodology notes
+remain part of the identity, and a substantive change during an observation is
+refused. Complete raw page bodies remain retained as evidence; an unchanged
+candidate preserves its first immutable page evidence and reports the new
+check time through the asset result. Unchanged evidence reuses a fully verified sealed
 candidate; a same-year corrected archive creates a distinct version. Original
 construction witnesses and earlier version paths are preserved. The explicit
 `HIFLD_COLLEGES_CAPTURE_DIR` option retains the historical pinned 2025–26 replay

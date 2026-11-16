@@ -95,11 +95,35 @@ class IncidentWriteError(Exception):pass
 
 class _PublicationLinks(HTMLParser):
     def __init__(self):
-        super().__init__(); self.hrefs=[]
+        super().__init__();self.hrefs=[];self.stack=[];self.tokens=[];self.main_seen=False
 
     def handle_starttag(self, tag, attrs):
-        if tag == 'a':
-            self.hrefs.extend(value for key,value in attrs if key == 'href' and value is not None)
+        attributes=dict(attrs)
+        muted=(self.stack[-1][1] if self.stack else False) or tag in {'head','script','style','noscript','header','footer','nav','aside'}
+        main=(self.stack[-1][2] if self.stack else False) or tag=='main' or 'MainContent' in attributes.get('class','').split()
+        self.main_seen=self.main_seen or main
+        if tag=='a' and not muted:
+            for key,value in attrs:
+                if key=='href' and value is not None:
+                    self.hrefs.append(value);self.tokens.append((main,'href',urljoin(LANDING,value)))
+        if tag not in {'area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'}:
+            self.stack.append((tag,muted,main))
+
+    def handle_endtag(self,tag):
+        for index in range(len(self.stack)-1,-1,-1):
+            if self.stack[index][0]==tag:
+                del self.stack[index:];break
+
+    def handle_data(self,data):
+        if self.stack and self.stack[-1][1]:return
+        text=' '.join(data.split())
+        if text:self.tokens.append((self.stack[-1][2] if self.stack else False,'text',text))
+
+    def substantive_evidence(self):
+        # Preserve producer notes, definitions, tables and links. NCES injects
+        # randomized F5 JavaScript; executable/chrome bytes are retained raw,
+        # but do not define a new data release. Fragments support offline tests.
+        return [(kind,value) for main,kind,value in self.tokens if main or not self.main_seen]
 
 
 def discover_release(body):
@@ -120,7 +144,8 @@ def discover_release(body):
     source,stem=selected[0]
     return {'schoolyear':f'{2000+newest}-{2001+newest}','source_url':source,'stem':stem,
             'documentation_url':documentation[0],
-            'selection_rule':'Largest adjacent school-year POSTSECSCH ZIP named by a real official SchoolLocations anchor; no guessed URLs or older fallback.'}
+            'landing_evidence_sha256':digest(encode(links.substantive_evidence())),
+            'selection_rule':'Largest adjacent school-year POSTSECSCH ZIP named by a real official SchoolLocations anchor; preserve substantive main-page text and links, excluding scripts/styles/chrome; no guessed URLs or older fallback.'}
 
 
 def release_urls(release):
@@ -244,7 +269,8 @@ def manifest_for(captures,identity,*,release=None,table=None):
             'update_cadence':'unknown','unknown_reasons':{'update_cadence':'Annual IPEDS survey and annual edition links do not alone establish a geocode publication schedule.'},
             'latest_checked_at':captures['nces_landing'][1]['observed_at'],
             'latest_evidence_input_id':indexed['nces_landing']['input_id'],'selection_rule':release['selection_rule'],
-            'source_state_fingerprint':digest(captures['nces_geocode'][0])}
+            'source_state_fingerprint':digest(encode({'archive':digest(captures['nces_geocode'][0]),
+                'documentation':digest(captures['nces_documentation'][0]),'publication':release['landing_evidence_sha256']}))}
         manifest['coverage']={'schoolyear':release['schoolyear'],'feature_count':table.num_rows,
             'population':'Complete selected NCES EDGE IPEDS reporting-institution file; not every physical campus or present-day operating institution.',
             'jurisdiction_counts':dict(collections.Counter(table['STATE'].to_pylist())),
@@ -328,7 +354,7 @@ def acquire(storage,capture_dir=None):
 def dbf_definition(body):
     if len(body)<33: raise CollegeQuarantineError('short_dbf_header')
     rows=int.from_bytes(body[4:8],'little');header=int.from_bytes(body[8:10],'little');record=int.from_bytes(body[10:12],'little')
-    if header<33 or (header-33)%32 or body[header-1]!=13 or len(body) not in (header+rows*record,header+rows*record+1):
+    if header<33 or header>len(body) or (header-33)%32 or body[header-1]!=13 or len(body) not in (header+rows*record,header+rows*record+1):
         raise CollegeQuarantineError('incomplete_or_changed_dbf_records')
     fields=[]
     for index in range(32,header-1,32):
@@ -417,6 +443,7 @@ def inspect_archives(paths,captures,*,release=None):
     if release:
         audit['source_counts']={'dbf':dbf['row_count'],'shx':shx_count,'decoded':table.num_rows,'text':len(converted)}
         audit['schoolyear']=release['schoolyear']
+        audit['publication_selection']=release
         audit['source_relationship']='NCES reporting-institution points; historical ORNL enriched product equivalence is unverified.'
     return table,audit
 
@@ -574,7 +601,8 @@ def record_observed_loss(storage,version,fingerprint,reason):
 
 
 def candidate_fingerprint(identity,captures,release=None):
-    return digest(encode({'processing':identity,'release':release,'evidence':{name:digest(body) for name,(body,_) in captures.items()}})) if release else digest(encode(identity))
+    return digest(encode({'processing':identity,'release':release,'evidence':{name:digest(body) for name,(body,_) in captures.items()
+                        if name not in {'nces_landing','nces_landing_after'}}})) if release else digest(encode(identity))
 
 
 def candidate_version(fingerprint,release=None):
@@ -643,6 +671,7 @@ def stage_colleges(storage,*,capture_dir=None,client=None):
     local_only(storage)
     if capture_dir is None:captures,release=acquire_latest(storage,client)
     else:captures,release=acquire(storage,capture_dir),None
+    checked_at=captures['nces_landing'][1]['observed_at']
     try:
         identity=processing_identity();fingerprint=candidate_fingerprint(identity,captures,release);version=candidate_version(fingerprint,release)
         prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir).absolute();root=base/prefix
@@ -667,7 +696,7 @@ def stage_colleges(storage,*,capture_dir=None,client=None):
                 except(ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error)as exc:
                     target=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);target.parent.mkdir(parents=True,exist_ok=True);os.rename(root,target)
                     raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc))from exc
-                return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True,'release_accepted':False}
+                return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True,'release_accepted':False,'latest_checked_at':checked_at}
             if state_present(storage,version):
                 try:captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest,release=release)
                 except(ValueError,TypeError,KeyError,OSError,RuntimeError)as loss:
@@ -686,6 +715,6 @@ def stage_colleges(storage,*,capture_dir=None,client=None):
                 captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest,create=True,release=release)
                 for name,value in source_payloads(captures,identity,table,audit,manifest,release=release).items():write_private(temp,name,value)
                 ready['objects']={str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()and str(p.relative_to(temp))!=READY};write_private(temp,READY,encode(ready));reconcile_private(temp,table,audit,captures,identity,manifest,version,release=release);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
-            return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False,'release_accepted':False}
+            return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False,'release_accepted':False,'latest_checked_at':checked_at}
     except(ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException,ET.ParseError)as exc:
         where=quarantine(storage,captures,str(exc));raise CollegeQuarantineError(f'{exc}; retained:{where}')from exc
