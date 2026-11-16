@@ -343,7 +343,7 @@ class WfigsRingAssemblyTests(unittest.TestCase):
 
     def test_degenerate_rings_follow_containment_rule(self):
         contained = [_cw(0, 0, 10, 10), _ring([(5, 5), (6, 5), (5, 5)])]
-        geometry = shapely.from_wkb(to_wkb({"contained": contained}, source.GEOMETRY_TYPE,
+        geometry = shapely.from_wkb(to_wkb({"rings": contained}, source.GEOMETRY_TYPE,
                                            has_z=False, has_m=False))
         census = source._census(contained, geometry)
         self.assertEqual(census["parts"], 1)
@@ -352,7 +352,7 @@ class WfigsRingAssemblyTests(unittest.TestCase):
         self.assertEqual(census["invalid"], 1)
         self.assertAlmostEqual(geometry.area, 100.0)
         standalone = [_ring([(5, 5), (6, 5), (5, 5)])]
-        geometry = shapely.from_wkb(to_wkb({"standalone": standalone}, source.GEOMETRY_TYPE,
+        geometry = shapely.from_wkb(to_wkb({"rings": standalone}, source.GEOMETRY_TYPE,
                                            has_z=False, has_m=False))
         census = source._census(standalone, geometry)
         self.assertEqual(census["parts"], 1)
