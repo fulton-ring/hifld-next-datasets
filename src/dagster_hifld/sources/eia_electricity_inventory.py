@@ -2,6 +2,8 @@
 
 Coordinates remain attributes until their datum is established. Proposed,
 retired and canceled projects are retained in the raw workbook only.
+Construction witnesses currently support local staging only; remote staging is
+rejected before capture or writes rather than attempting a remote protocol.
 """
 from __future__ import annotations
 
@@ -76,34 +78,40 @@ def latest_release(html: str, *, as_of: date | None = None) -> tuple[str,str]:
 
 
 class _EvidenceText(HTMLParser):
-    """Keep producer prose and links, excluding executable and styling content."""
-    def __init__(self):
-        super().__init__(); self.hidden = 0; self.in_main = 0; self.all = []; self.main = []
+    """Keep EIA content containers and links, excluding site navigation."""
+    def __init__(self, classes):
+        super().__init__(); self.classes = classes; self.hidden = 0
+        self.containers = []; self.all = []; self.content = []
     def handle_starttag(self, tag, attrs):
-        if tag in {'script', 'style'}: self.hidden += 1
-        if tag == 'main': self.in_main += 1
+        if tag in {'script', 'style', 'nav', 'footer'}: self.hidden += 1
+        if tag in {'div', 'main'}:
+            classes = dict(attrs).get('class') or ''
+            selected = tag == 'main' or bool(self.classes.intersection(classes.split()))
+            self.containers.append(selected or bool(self.containers and self.containers[-1]))
         if tag == 'a' and not self.hidden:
             for key, value in attrs:
                 if key == 'href' and value: self.handle_data(value)
     def handle_endtag(self, tag):
-        if tag in {'script', 'style'}: self.hidden = max(0, self.hidden - 1)
-        if tag == 'main': self.in_main = max(0, self.in_main - 1)
+        if tag in {'script', 'style', 'nav', 'footer'}: self.hidden = max(0, self.hidden - 1)
+        if tag in {'div', 'main'} and self.containers: self.containers.pop()
     def handle_data(self, data):
         if not self.hidden:
             self.all.append(data)
-            if self.in_main: self.main.append(data)
+            if self.containers and self.containers[-1]: self.content.append(data)
 
 
 def supporting_evidence_hashes(captures: dict, period: str, url: str) -> dict:
     """Identify selection and supporting content independently of GET timestamps."""
-    hashes = {'inventory_page': sha(canonical({'period': period, 'url': url}))}
+    hashes = {}
     for name, (body, _) in captures.items():
-        if name in {'inventory_page', 'workbook'}: continue
-        if name == 'reuse_policy':
-            parser = _EvidenceText(); parser.feed(body.decode('utf-8'))
-            text = ' '.join(' '.join(parser.main or parser.all).split())
+        if name == 'workbook': continue
+        if name in {'inventory_page', 'reuse_policy'}:
+            classes = {'article', 'notice'} if name == 'inventory_page' else {'main_col'}
+            parser = _EvidenceText(classes); parser.feed(body.decode('utf-8'))
+            text = ' '.join(' '.join(parser.content or parser.all).split())
             text = re.sub(r'\b(?:page\s*)?views\s*:?\s*[\d,]+\b', '', text, flags=re.I)
-            hashes[name] = sha(text.strip().encode())
+            text = ' '.join(text.split())
+            hashes[name] = sha(canonical({'period': period, 'url': url, 'content': text})) if name == 'inventory_page' else sha(text.encode())
         else:
             hashes[name] = sha(body)
     return hashes
@@ -227,8 +235,9 @@ def _retained(root,name,url):
 
 
 def capture_inventory(storage: StagingStorageResource, *, capture_directory: str|None=None, replay: bool=False, client: httpx.Client|None=None) -> dict:
-    """Capture current producer evidence and construct two immutable native drafts."""
+    """Construct two native drafts with local-only immutable construction state."""
     if not isinstance(storage,StagingStorageResource) or isinstance(storage,PublishedStorageResource): raise ValueError('explicit_staging_resource_required')
+    if not (storage.use_local or not storage.bucket): raise ValueError('eia860m_requires_local_staging_construction_protocol')
     if replay and not capture_directory: raise ValueError('replay_requires_capture_directory')
     root=Path(capture_directory) if capture_directory else Path(tempfile.mkdtemp(prefix='eia860m-'))
     if not replay and root.exists() and any(root.iterdir()): raise ValueError('capture_directory_requires_fresh_attempt_or_explicit_replay')

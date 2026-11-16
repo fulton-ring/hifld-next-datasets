@@ -13,6 +13,31 @@ import httpx
 from dagster_hifld.sources import eia_electricity_inventory as source
 
 class EIAInventoryTests(unittest.TestCase):
+    def test_real_eia_content_containers_ignore_chrome_but_detect_semantic_revisions(self):
+        inventory = b'<nav><a href="/old">Old navigation</a></nav><div class="article"><p>Preliminary estimates include Puerto Rico.</p><div>Page views: 1</div></div><a href="xls/september_generator2026.xlsx">September</a>'
+        policy = b'<nav><a href="/old">Old navigation</a></nav><div class="main_col"><div><h1>Copyrights and Reuse</h1><p>Reuse is permitted.</p></div></div><footer>Page views: 1</footer>'
+        def hashes(page=inventory, rights=policy):
+            return source.supporting_evidence_hashes({'inventory_page': (page, {}), 'reuse_policy': (rights, {})}, '2026-09', source.PAGE_URL+'xls/september_generator2026.xlsx')
+        original = hashes()
+        with self.subTest('inventory prose revision'):
+            self.assertNotEqual(original['inventory_page'], hashes(page=inventory.replace(b'include Puerto Rico', b'exclude Puerto Rico'))['inventory_page'])
+        with self.subTest('inventory chrome and counter no-op'):
+            self.assertEqual(original['inventory_page'], hashes(page=inventory.replace(b'/old', b'/new').replace(b'Old navigation', b'New navigation').replace(b'views: 1', b'views: 200'))['inventory_page'])
+        with self.subTest('actual main_col policy chrome no-op'):
+            self.assertEqual(original['reuse_policy'], hashes(rights=policy.replace(b'/old', b'/new').replace(b'Old navigation', b'New navigation').replace(b'views: 1', b'views: 200'))['reuse_policy'])
+        with self.subTest('policy prose revision'):
+            self.assertNotEqual(original['reuse_policy'], hashes(rights=policy.replace(b'Reuse is permitted', b'Reuse requires permission'))['reuse_policy'])
+
+    def test_remote_staging_is_rejected_before_capture_or_storage(self):
+        from dagster_hifld.resources import StagingStorageResource
+        storage = StagingStorageResource(use_local=False, bucket='not-accessed-eia-test')
+        with tempfile.TemporaryDirectory() as temp, patch.object(source, 'capture_get', side_effect=AssertionError('HTTP attempted')) as capture, patch.object(source, 'write_immutable', side_effect=AssertionError('storage attempted')) as write:
+            with self.assertRaisesRegex(ValueError, 'local_staging'):
+                source.capture_inventory(storage, capture_directory=temp+'/uncreated')
+            capture.assert_not_called()
+            write.assert_not_called()
+            self.assertFalse((Path(temp)/'uncreated').exists())
+
     def test_active_links_only(self):
         html = '<!-- <a href="xls/december_generator2026.xlsx">December</a> --><a href="xls/september_generator2026.xlsx">September</a><a href="archive/xls/august_generator2026.xlsx">August</a>'
         self.assertEqual(source.latest_release(html), ('2026-09', source.PAGE_URL + 'xls/september_generator2026.xlsx'))

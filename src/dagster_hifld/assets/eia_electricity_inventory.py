@@ -1,4 +1,8 @@
-"""Explicit stopped EIA-860M source-native draft assets."""
+"""Stopped EIA-860M drafts; construction witnesses currently require local staging.
+
+Remote staging is rejected before HTTP or writes. This does not implement a GCS
+construction protocol or grant approval for release or publication.
+"""
 from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
