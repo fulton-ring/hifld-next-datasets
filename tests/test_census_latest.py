@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import io
 import json
+import hashlib
 import struct
 import zipfile
 from pathlib import Path
@@ -50,17 +51,112 @@ class CensusLatestTests(unittest.TestCase):
 
 class CurrentRoadsTests(unittest.TestCase):
     @staticmethod
-    def tiny_archive(directory, count=1):
-        stem = 'tl_2027_us_primaryroads'
+    def tiny_archive(directory, count=1, edition='2027'):
+        stem = f'tl_{edition}_us_primaryroads'
         frame = gpd.GeoDataFrame({'LINEARID':[f'{i:022d}' for i in range(count)], 'FULLNAME':['Road']*count, 'RTTYP':['I']*count, 'MTFCC':['S1100']*count}, geometry=[LineString([(i,0),(i+1,1)]) for i in range(count)], crs='EPSG:4269')
         frame.to_file(directory / (stem+'.shp'), engine='pyogrio')
-        for suffix in ('.shp.iso.xml', '.shp.ea.iso.xml'):
-            (directory / (stem+suffix)).write_text('<metadata/>')
+        (directory / (stem+'.shp.iso.xml')).write_text('<metadata>Primary roads fixture methodology.</metadata>')
+        (directory / (stem+'.shp.ea.iso.xml')).write_text('''<gfc:FC_FeatureCatalogue xmlns:gfc="http://www.isotc211.org/2005/gfc" xmlns:gco="http://www.isotc211.org/2005/gco">
+<gfc:FC_FeatureAttribute><gfc:memberName><gco:LocalName>LINEARID</gco:LocalName></gfc:memberName><gfc:definition><gco:CharacterString>Linear feature identifier</gco:CharacterString></gfc:definition></gfc:FC_FeatureAttribute>
+<gfc:FC_FeatureAttribute><gfc:memberName><gco:LocalName>RTTYP</gco:LocalName></gfc:memberName><gfc:definition><gco:CharacterString>Route type code</gco:CharacterString></gfc:definition><gfc:listedValue><gfc:FC_ListedValue><gfc:label><gco:CharacterString>I</gco:CharacterString></gfc:label><gfc:definition><gco:CharacterString>Interstate</gco:CharacterString></gfc:definition></gfc:FC_ListedValue></gfc:listedValue></gfc:FC_FeatureAttribute>
+<gfc:FC_FeatureAttribute><gfc:memberName><gco:LocalName>MTFCC</gco:LocalName></gfc:memberName><gfc:definition><gco:CharacterString>MAF/TIGER feature class code</gco:CharacterString></gfc:definition><gfc:listedValue><gfc:FC_ListedValue><gfc:label><gco:CharacterString>S1100</gco:CharacterString></gfc:label><gfc:definition><gco:CharacterString>Primary Road</gco:CharacterString></gfc:definition></gfc:FC_ListedValue></gfc:listedValue></gfc:FC_FeatureAttribute>
+</gfc:FC_FeatureCatalogue>''')
         sink = io.BytesIO()
         with zipfile.ZipFile(sink, 'w') as archive:
             for path in sorted(directory.glob(stem+'.*')):
                 archive.writestr(path.name, path.read_bytes())
         return sink.getvalue(), frame
+
+    @staticmethod
+    def capture_fixture(storage, body):
+        from dagster_hifld.sources import census_primary_roads as roads
+        def respond(request):
+            value = b'<a href="TIGER2027/">2027</a>' if str(request.url) == ROOT else b'<a href="tl_2027_us_primaryroads.zip">zip</a>' if str(request.url).endswith('/') else body
+            return httpx.Response(200, stream=httpx.ByteStream(value), request=request)
+        with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            return roads.capture_latest_census_primary_roads(storage, client=client)
+
+    def test_current_native_xml_documents_semantics_and_coverage_are_retained(self):
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources import census_primary_roads as roads
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); body, _ = self.tiny_archive(root)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root/'stage'))
+            result = self.capture_fixture(storage, body)
+            prefix = f"{roads.DATASET_SLUG}/{roads.FILE_SLUG}/{result['version']}"
+            manifest = json.loads(storage.read_key(prefix+'/metadata/source_manifest.json'))
+            ready = json.loads(storage.read_key(prefix+'/metadata/candidate_ready.json'))
+            self.assertEqual(len(manifest['documentation']), 2)
+            with zipfile.ZipFile(io.BytesIO(body)) as archive:
+                for doc in manifest['documentation']:
+                    expected = archive.read(Path(doc['path']).name)
+                    self.assertEqual(storage.read_key(prefix+'/'+doc['path']), expected)
+                    self.assertEqual(doc['bytes'], len(expected))
+                    self.assertEqual(doc['sha256'], hashlib.sha256(expected).hexdigest())
+                    self.assertEqual(doc['media_type'], 'application/xml')
+                    self.assertEqual(doc['input_id'], manifest['inputs'][0]['input_id'])
+                    self.assertIn(doc['purpose'], {'schema', 'methodology'})
+                    self.assertEqual(ready['objects'][doc['path']], doc['sha256'])
+            fields = manifest['field_definitions']
+            self.assertEqual(set(fields), set(roads.EXPECTED_FIELDS))
+            self.assertEqual(fields['LINEARID']['description'], 'Linear feature identifier')
+            self.assertEqual(fields['LINEARID']['basis'], 'publisher')
+            self.assertEqual(fields['FULLNAME']['basis'], 'unknown')
+            self.assertTrue(fields['FULLNAME']['unknown_reasons']['definition'])
+            self.assertEqual(fields['RTTYP']['codes'], {'I': 'Interstate'})
+            self.assertEqual(fields['MTFCC']['codes'], {'S1100': 'Primary Road'})
+            self.assertEqual(manifest['coverage']['observed_mtfcc_values'], ['S1100'])
+            self.assertEqual(manifest['coverage']['served_feature_count'], 1)
+            self.assertTrue(manifest['coverage']['intended_population'])
+            self.assertEqual(manifest['source_relationship']['relationship'], 'unverified')
+            self.assertTrue(manifest['source_relationship']['unknown_reason'])
+
+    def test_current_xml_write_failure_cannot_expose_source_or_ready_marker(self):
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources import census_primary_roads as roads
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); body, _ = self.tiny_archive(root)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root/'stage'))
+            original = roads.write_immutable
+            def fail_xml(storage, key, value):
+                if key.endswith('.ea.iso.xml'): raise OSError('injected native XML write failure')
+                return original(storage, key, value)
+            with patch.object(roads, 'write_immutable', side_effect=fail_xml):
+                with self.assertRaisesRegex(ValueError, 'quarantined_at'):
+                    self.capture_fixture(storage, body)
+            self.assertFalse(any('/shapefile/' in key or key.endswith('/candidate_ready.json') for key in storage.list_prefix(roads.DATASET_SLUG)))
+
+    def test_changed_staged_native_xml_is_rejected_on_reuse(self):
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources import census_primary_roads as roads
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); body, _ = self.tiny_archive(root)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root/'stage'))
+            result = self.capture_fixture(storage, body)
+            prefix = f"{roads.DATASET_SLUG}/{roads.FILE_SLUG}/{result['version']}"
+            xml_key = prefix+'/metadata/source/tl_2027_us_primaryroads.shp.ea.iso.xml'
+            storage.write_key(xml_key, b'changed native XML')
+            with self.assertRaisesRegex(ValueError, 'quarantined_at'):
+                self.capture_fixture(storage, body)
+
+    def test_historical_reproduction_manifest_and_cache_do_not_gain_current_metadata(self):
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources import census_primary_roads as roads
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); body, _ = self.tiny_archive(root, edition='2025')
+            storage = StagingStorageResource(use_local=True, local_dir=str(root/'stage'))
+            receipt = {'url': roads.SOURCE_URL, 'final_url': roads.SOURCE_URL, 'observed_at': '2026-11-16T00:00:00+00:00', 'sha256': hashlib.sha256(body).hexdigest(), 'bytes': len(body)}
+            with patch.object(roads, 'EXPECTED_SHA256', receipt['sha256']), patch.object(roads, 'EXPECTED_BYTES', len(body)), patch.object(roads, 'EXPECTED_FEATURE_COUNT', 1), patch.object(roads, 'EXPECTED_BOUNDS', [0,0,1,1]):
+                first = roads.capture_census_primary_roads(storage, version='vfixture', captured=(body, receipt))
+                encoded = storage.read_key(first['written_keys'][1])
+                second = roads.capture_census_primary_roads(storage, version='vfixture', captured=(body, receipt))
+            manifest = json.loads(encoded)
+            self.assertFalse(first['latest_release_discovered'])
+            self.assertTrue(second['source_cache_reused'])
+            self.assertEqual(encoded, storage.read_key(first['written_keys'][1]))
+            for key in ('documentation', 'coverage', 'field_definitions', 'source_relationship'):
+                self.assertNotIn(key, manifest)
+            self.assertFalse(any(key.endswith('.xml') for key in storage.list_prefix(roads.DATASET_SLUG)))
 
     def test_current_archive_does_not_enforce_old_count_or_bounds(self):
         import geopandas as gpd

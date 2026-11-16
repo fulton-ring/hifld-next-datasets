@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
+from xml.etree import ElementTree as ET
 
 import geopandas as gpd
 import httpx
@@ -157,6 +158,50 @@ def _inspect_archive(body: bytes, *, edition: str | None = None) -> dict[str, ob
     }
 
 
+def _current_native_metadata(body: bytes, stem: str, input_id: str) -> tuple[dict, dict, str | None]:
+    """Retain exact native XML and project only definitions the producer supplied."""
+    namespaces = {'gfc': 'http://www.isotc211.org/2005/gfc',
+                  'gco': 'http://www.isotc211.org/2005/gco',
+                  'gmd': 'http://www.isotc211.org/2005/gmd'}
+    documents = {}
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
+        for suffix in ('.shp.ea.iso.xml', '.shp.iso.xml'):
+            name = stem + suffix
+            if archive.getinfo(name).file_size > 1_000_000:
+                raise ValueError('tiger_native_xml_metadata_budget_exceeded')
+            documents[f'metadata/source/{name}'] = archive.read(name)
+    catalogue = ET.fromstring(documents[f'metadata/source/{stem}.shp.ea.iso.xml'])
+    definitions = {name: {'basis': 'unknown', 'source_fields': [name], 'input_ids': [input_id],
+                         'unknown_reasons': {'definition': 'Native publisher XML omits this field definition.',
+                                             'null_meaning': 'Native publisher XML does not establish null or sentinel meanings.'}}
+                   for name in EXPECTED_FIELDS}
+    seen = set()
+    for attribute in catalogue.findall('.//gfc:FC_FeatureAttribute', namespaces):
+        name = attribute.findtext('gfc:memberName/gco:LocalName', namespaces=namespaces)
+        if name not in definitions:
+            continue
+        if name in seen:
+            raise ValueError('tiger_duplicate_native_field_definition')
+        seen.add(name)
+        description = attribute.findtext('gfc:definition/gco:CharacterString', namespaces=namespaces)
+        if description and description.strip():
+            definitions[name].update({'basis': 'publisher', 'description': description.strip()})
+            definitions[name]['unknown_reasons'].pop('definition')
+        codes = {}
+        for value in attribute.findall('gfc:listedValue/gfc:FC_ListedValue', namespaces):
+            label = value.findtext('gfc:label/gco:CharacterString', namespaces=namespaces)
+            meaning = value.findtext('gfc:definition/gco:CharacterString', namespaces=namespaces)
+            if label and label.strip() and meaning and meaning.strip():
+                if label in codes:
+                    raise ValueError('tiger_duplicate_native_domain_code')
+                codes[label] = meaning.strip()
+        if codes:
+            definitions[name]['codes'] = codes
+    metadata = ET.fromstring(documents[f'metadata/source/{stem}.shp.iso.xml'])
+    abstract = metadata.findtext('.//gmd:abstract/gco:CharacterString', namespaces=namespaces)
+    return documents, definitions, abstract.strip() if abstract and abstract.strip() else None
+
+
 def capture_census_primary_roads(
     staging_storage: StagingStorageResource, *, version: str, capture_directory: str | Path | None = None,
     release: dict | None = None, captured: tuple | None = None,
@@ -211,7 +256,27 @@ def capture_census_primary_roads(
         "transformations": ["Preserve the complete source ZIP and all sidecars; catalog the primary roads Shapefile without ID synthesis or attribute mapping."],
         "lineage": "Official Census Bureau Geography Division TIGER/Line product. The DHS crosswalk row and equivalence to the archived HIFLD publication remain unverified.",
     }
+    documents = {}
     if release:
+        documents, definitions, abstract = _current_native_metadata(body, Path(source_file).stem, source_url)
+        manifest['documentation'] = [
+            {'path': path, 'input_id': source_url,
+             'purpose': 'schema' if path.endswith('.ea.iso.xml') else 'methodology',
+             'media_type': 'application/xml', 'bytes': len(value), 'sha256': _sha(value)}
+            for path, value in documents.items()]
+        manifest['field_definitions'] = definitions
+        manifest['coverage'] = {
+            'intended_population': 'Census TIGER/Line national Primary Roads classified MTFCC S1100; excludes other road classes.',
+            'served_population': 'All native records in the captured national Primary Roads archive; no source rows intentionally filtered.',
+            'served_feature_count': audit['feature_count'],
+            'observed_mtfcc_values': audit['mtfcc_values'],
+            'coverage_accepted': False,
+        }
+        if abstract:
+            manifest['coverage']['publisher_abstract'] = abstract
+        manifest['source_relationship'] = {
+            'relationship': 'unverified', 'evidence_input_ids': [source_url],
+            'unknown_reason': 'Exact DHS crosswalk row and archived HIFLD feature/schema/coverage equivalence have not been established.'}
         manifest["inputs"][0]["refresh"] = {
             "maintenance_status": "maintained", "source_release_id": vintage,
             "data_period": vintage, "update_cadence": "unknown",
@@ -260,6 +325,13 @@ def capture_census_primary_roads(
     write_immutable(staging_storage, audit_key, audit_bytes)
     if staging_storage.read_key(manifest_key) != encoded_manifest or staging_storage.read_key(audit_key) != audit_bytes:
         raise ValueError('current_tiger_metadata_readback_mismatch')
+    documentation_keys = []
+    for path, value in documents.items():
+        key = f'{prefix}/{path}'
+        write_immutable(staging_storage, key, value)
+        if staging_storage.read_key(key) != value:
+            raise ValueError('current_tiger_native_documentation_readback_mismatch')
+        documentation_keys.append(key)
     discovery_keys = []
     if release:
         if not discovery_evidence:
@@ -283,7 +355,7 @@ def capture_census_primary_roads(
     if after is None or after.size != archive_bytes or staging_storage.sha256_key(archive_key) != archive_sha:
         raise ValueError("staged_tiger_archive_integrity_failure")
     ready_key = f'{prefix}/metadata/candidate_ready.json'
-    written_keys = [archive_key, manifest_key, audit_key, *discovery_keys]
+    written_keys = [archive_key, manifest_key, audit_key, *documentation_keys, *discovery_keys]
     ready = {'version': version, 'source_archive_sha256': archive_sha, 'release_accepted': False,
              'source_population_complete': True,
              'objects': {key.removeprefix(prefix+'/'): _sha(staging_storage.read_key(key)) for key in written_keys}}
