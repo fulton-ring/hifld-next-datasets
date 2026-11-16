@@ -128,6 +128,17 @@ class CensusRailroadsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "tiger_archive_member_roster_drift"):
             _inspect_archive(sink.getvalue())
 
+    def test_archive_path_traversal_is_rejected_before_extract(self):
+        stem = "tl_2026_us_rails"
+        names = [f"../{stem}.cpg", f"{stem}.dbf", f"{stem}.prj", f"{stem}.shp",
+                 f"{stem}.shp.ea.iso.xml", f"{stem}.shp.iso.xml", f"{stem}.shx"]
+        sink = io.BytesIO()
+        with zipfile.ZipFile(sink, "w") as archive:
+            for name in names:
+                archive.writestr(name, b"fixture")
+        with self.assertRaisesRegex(ValueError, "tiger_archive_unsafe_member"):
+            _inspect_archive(sink.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
