@@ -4,16 +4,12 @@ from __future__ import annotations
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
-import pyarrow as pa
-import pyarrow.parquet as pq
-from pyproj import CRS
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -22,15 +18,17 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
-# Re-export for sibling IENC/WBD modules that import `_canonical`/`_sha` from here;
-# the single implementation lives in sources.esri_common.
-from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.validation import sha256_file
+# Shared capture/replay helpers moved out of this module so dataset modules
+# import them from sources.arcgis_layer instead of here.
+from dagster_hifld.sources.arcgis_layer import (
+    _canonical, _capture, _capture_identity, _load_capture, _parquet_bytes, _sha,
+    _validate_spatial_reference,
+)
 
 DATASET_SLUG = "obstruction-lines-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -44,8 +42,6 @@ PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC F
 EXPECTED_COUNT = 16
 EXPECTED_IDS = list(range(1, 17))
 EXPECTED_ID_SHA256 = "c8aa3562cf53e860d2bff96611bbd511190e1ba0d75e502cbab10a106f04248e"
-PAGE_MAX_BYTES = 8_000_000
-CAPTURE_MAX_BYTES = 192_000_000
 EXPECTED_EXTENT = {"xmin":-90.82149459999994,"ymin":36.17480040000004,
                    "xmax":-81.36898679999996,"ymax":38.736578000000065}
 EXPECTED_CAPTURE_NAMES = {"bts_item","service_directory","service_before","layer_before","count_before",
@@ -68,40 +64,6 @@ EXPECTED_FIELD_DECLARATIONS = [
     {"name":"Feature_ID","type":"esriFieldTypeString","alias":"Feature_ID","length":256,"domain":None},
 ]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
-SOURCE_CRS = CRS.from_epsg(4326)
-
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Validate every advertised ArcGIS CRS representation without guessing.
-
-    ArcGIS may return either/both WKID properties and optional WKT strings.
-    All present representations must identify EPSG:4326; missing feature-level
-    spatial references inherit only after their page CRS has been validated.
-    """
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
 
 
 def _query(params: dict[str, object]) -> str:
@@ -122,27 +84,6 @@ def _capture_urls(ids: list[int]) -> list[tuple[str, str]]:
         ("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
         ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
     ]
-
-
-def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    retained=sum(path.stat().st_size for suffix in ("*.body","*.wire") for path in root.glob(suffix) if path.is_file())
-    if retained + 2 * PAGE_MAX_BYTES > CAPTURE_MAX_BYTES:
-        raise ValueError("source_capture_budget_exceeded_before_request")
-    body, receipt = capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
-    return body, receipt
-
-
-def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
-    body_path, wire_path, receipt_path = (root / f"{name}.body", root / f"{name}.wire",
-                                          root / f"{name}.receipt.json")
-    if any(path.is_symlink() for path in (body_path, wire_path, receipt_path)):
-        raise ValueError("retained_capture_symlink_rejected")
-    body, wire, receipt = body_path.read_bytes(), wire_path.read_bytes(), json.loads(receipt_path.read_bytes())
-    if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise ValueError("retained_capture_receipt_invalid:" + name)
-    return body, wire, receipt
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
@@ -272,55 +213,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "drift_guard": "Exact BTS item/service link, advertised service/layer identity, declared field roster/types, every present layer/page/feature wkid, latestWkid and WKT/WKT2 CRS representation, count, before/after IDs, complete returned attributes and XY paths are checked.",
     }
     return fields, features, audit
-
-
-def _esri_polyline_wkb(geometry: dict) -> bytes:
-    paths = geometry["paths"]
-    out = bytearray(struct.pack("<BI", 1, 5))  # little-endian MultiLineString
-    out.extend(struct.pack("<I", len(paths)))
-    for path in paths:
-        out.extend(struct.pack("<BI", 1, 2))  # nested LineString
-        out.extend(struct.pack("<I", len(path)))
-        for point in path:
-            out.extend(struct.pack("<dd", float(point[0]), float(point[1])))
-    return bytes(out)
-
-
-def _arrow_type(field: dict) -> pa.DataType:
-    return {"esriFieldTypeOID":pa.int64(), "esriFieldTypeInteger":pa.int32(),
-            "esriFieldTypeString":pa.string()}[field["type"]]
-
-
-def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
-    properties = [field for field in fields if field["name"] != "SHAPE"]
-    arrays = [pa.array([row["attributes"][field["name"]] for row in features], type=_arrow_type(field))
-              for field in properties]
-    arrays.append(pa.array([_esri_polyline_wkb(row["geometry"]) for row in features], type=pa.binary()))
-    table = pa.Table.from_arrays(arrays, names=[field["name"] for field in properties] + ["geometry"])
-    crs = {"$schema":"https://proj.org/schemas/v0.7/projjson.schema.json", "type":"GeographicCRS", "name":"WGS 84",
-           "datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984",
-                    "ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563},
-                    "id":{"authority":"EPSG","code":6326}},
-           "coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},
-                                                                        {"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},
-           "id":{"authority":"EPSG","code":4326}}
-    metadata={b"geo":_canonical({"version":"1.1.0","primary_column":"geometry",
-                                  "columns":{"geometry":{"encoding":"WKB","geometry_types":["MultiLineString"],"crs":crs}}})}
-    import io
-    sink=io.BytesIO()
-    pq.write_table(table.replace_schema_metadata(metadata),sink,compression="zstd",use_dictionary=False)
-    return sink.getvalue()
-
-
-def _capture_identity(captures: dict[str, tuple[bytes, dict]], root: Path) -> dict:
-    # Candidate identity binds every decoded and wire artifact. Receipt JSON is
-    # retained as provenance but its observation time does not change content identity.
-    digests={}
-    for name in sorted(captures):
-        _body, _receipt = captures[name]
-        _body2, wire, _receipt2 = _load_capture(root, name)
-        digests[name]={"decoded_sha256":_sha(_body),"wire_sha256":_sha(wire)}
-    return digests
 
 
 def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version: str,

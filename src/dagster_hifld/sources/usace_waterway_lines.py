@@ -14,7 +14,7 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_filegdb import canonical_json, capture_filegdb_replica, extract_filegdb, sha256, stage_filegdb_archive, verify_extracted_filegdb_cache, verify_staged_filegdb
-from dagster_hifld.sources.epa_frs_common import write_immutable
+from dagster_hifld.sources.capture_common import write_immutable
 from dagster_hifld.validation import sha256_file
 DATASET_SLUG="navigable-waterway-network-lines"; FILE_SLUG=DATASET_SLUG
 BTS_ITEM_ID="06037f2b23ff401aa1d379c2632a58f6"; USACE_SERVICE_ITEM_ID="ace7645d305647448a84492a3b909d48"

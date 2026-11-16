@@ -18,7 +18,7 @@ from dagster_hifld.assets.wbd_hu8_subbasin import (
 )
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import wbd_hu8_subbasin as source
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
@@ -692,7 +692,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         identity_patches = (
             patch.object(source, "processing_identity", lambda _root: dict(FAKE_IDENTITY)),
             patch.object(source, "validate_construction_code_identity"),
-            patch.object(epa_frs_common, "validate_construction_code_identity"),
+            patch.object(capture_common, "validate_construction_code_identity"),
         )
         storage = self._storage(tmp)
         # The first acquisition runs to completion at the mapped default and
@@ -744,7 +744,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
                                  {"rings": [spike]})))}),
                 patch.object(source, "processing_identity", lambda _root: dict(FAKE_IDENTITY)),
                 patch.object(source, "validate_construction_code_identity"),
-                patch.object(epa_frs_common, "validate_construction_code_identity"),
+                patch.object(capture_common, "validate_construction_code_identity"),
                 patch.object(source, "_default_client", _OfflineClient)):
             tmp = self._tmpdir().name
             storage = self._storage(tmp)
@@ -792,7 +792,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         with self._patched(), \
                 patch.object(source, "processing_identity", lambda _root: dict(FAKE_IDENTITY)), \
                 patch.object(source, "validate_construction_code_identity"), \
-                patch.object(epa_frs_common, "validate_construction_code_identity"), \
+                patch.object(capture_common, "validate_construction_code_identity"), \
                 patch.object(source, "_default_client", _OfflineClient):
             tmp = self._tmpdir().name
             storage = self._storage(tmp)
@@ -847,7 +847,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         with self._patched(), \
                 patch.object(source, "processing_identity", lambda _root: dict(FAKE_IDENTITY)), \
                 patch.object(source, "validate_construction_code_identity"), \
-                patch.object(epa_frs_common, "validate_construction_code_identity"), \
+                patch.object(capture_common, "validate_construction_code_identity"), \
                 patch.object(source, "_default_client", _OfflineClient):
             tmp = self._tmpdir().name
             storage = self._storage(tmp)

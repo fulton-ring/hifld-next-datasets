@@ -8,7 +8,7 @@ from dagster import (
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 from dagster_hifld.sources.us_state_boundaries import (
     DATASET_SLUG, EXPECTED_BYTES, EXPECTED_FEATURE_COUNT, EXPECTED_GEOID_SHA256,
     EXPECTED_SHA256, FILE_SLUG, candidate_version, capture_us_state_boundaries,

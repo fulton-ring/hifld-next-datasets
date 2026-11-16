@@ -9,7 +9,7 @@ FeatureServer as the open REST service, so the capture reuses the shared EPA
 ICIS wastewater facility core and publishes under this entry's own slug.
 """
 from dagster_hifld.resources import default_capture_dir
-from dagster_hifld.sources.epa_icis_wastewater import (
+from dagster_hifld.sources.epa_icis_wastewater_common import (
     ITEM_ID, LAYER_ID, LAYER_NAME, LAYER_URL, MAX_CAPTURE_BYTES,
     MAX_RESPONSE_BYTES, PORTAL_ITEM_URL, PUBLISHER, SCHEMA_SHA256, SERVICE_URL,
     capture_epa_icis_wastewater,

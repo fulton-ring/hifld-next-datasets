@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dagster_hifld.sources.epa_facilities import (
+from dagster_hifld.sources.epa_facilities_common import (
     EPA_FACILITIES_PROFILE,
     stage_epa_facilities,
 )
