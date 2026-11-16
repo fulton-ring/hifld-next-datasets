@@ -1,6 +1,7 @@
 """Offline contract tests for the FEMA NFHL family against a fake MapServer."""
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import tempfile
@@ -212,6 +213,10 @@ class CandidateTests(NfhlCaptureCase):
                      "nfhl-profile-baselines"):
             with self.subTest(slug=slug):
                 layer = LAYERS_BY_SLUG[slug]
+                if slug == "nfhl-profile-baselines":
+                    # The real entry's disk floor guards the deployed staging volume; the
+                    # fake capture proves the Z/M contract, not the floor.
+                    layer = dataclasses.replace(layer, min_free_bytes=1_000_000)
                 server = FakeMapServer(layer, oids=[] if slug == "nfhl-seclusion-boundaries" else None,
                                        max_record_count=3)
                 result = self.run_capture(server)
@@ -268,13 +273,14 @@ class ZmContractTests(NfhlCaptureCase):
     def test_zm_declaration_mismatch_fails(self):
         for doc_zm in ((False, False), (True, False), (False, True)):
             with self.subTest(doc_zm=doc_zm):
-                server = FakeMapServer(LAYERS_BY_SLUG["nfhl-profile-baselines"])
+                layer = dataclasses.replace(LAYERS_BY_SLUG["nfhl-profile-baselines"], min_free_bytes=1_000_000)
+                server = FakeMapServer(layer)
                 server.zm_doc = doc_zm
                 with self.assertRaisesRegex(ValueError, "nfhl_layer_zm_declaration_drift"):
                     self.run_capture(server)
 
     def test_declared_zm_layer_records_the_producer_declaration(self):
-        layer = LAYERS_BY_SLUG["nfhl-profile-baselines"]
+        layer = dataclasses.replace(LAYERS_BY_SLUG["nfhl-profile-baselines"], min_free_bytes=1_000_000)
         result = self.run_capture(FakeMapServer(layer, max_record_count=3))
         audit = json.loads(self.staged(result, "metadata/source_audit.json"))
         self.assertEqual(audit["source_declared_zm"], {"hasZ": True, "hasM": True})
@@ -299,7 +305,7 @@ class ZmContractTests(NfhlCaptureCase):
 
 class InventoryAliasTests(NfhlCaptureCase):
     def test_consolidated_layer_names_every_served_inventory_entry(self):
-        layer = LAYERS_BY_SLUG["nfhl-flood-hazard-boundaries"]
+        layer = dataclasses.replace(LAYERS_BY_SLUG["nfhl-flood-hazard-boundaries"], min_free_bytes=1_000_000)
         result = self.run_capture(FakeMapServer(layer, max_record_count=3))
         manifest = json.loads(self.staged(result, "metadata/source_manifest.json"))
         self.assertIn("nfhl/flood-hazard-boundaries", manifest["lineage"])
