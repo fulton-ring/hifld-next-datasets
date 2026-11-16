@@ -7,6 +7,8 @@ ceiling refuses) plus a bounded sample.
 """
 from __future__ import annotations
 
+from dagster_hifld.provenance import enrich_dictionary_columns
+
 import base64
 import hashlib
 import json
@@ -282,7 +284,7 @@ def _dictionary(sample,schema,primary,name,metadata):
         columns.append(entry)
     # Existing metadata/provenance projection stays centralized. It receives an
     # empty frame so it cannot infer/overwrite any native Arrow field types.
-    return columns
+    return enrich_dictionary_columns(columns, metadata)
 
 
 def _bounded_row_group_batches(parquet:pq.ParquetFile):

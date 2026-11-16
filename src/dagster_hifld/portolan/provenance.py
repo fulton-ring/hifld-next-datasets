@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
 
-from dagster_hifld.provenance import provenance_projection, validate_provenance, validate_provenance_url
+from dagster_hifld.provenance import PROVENANCE_FIELDS, provenance_projection, validate_dictionary_semantics, validate_provenance, validate_provenance_url
 from dagster_hifld.resources import PublishedStorageResource
+from dagster_hifld.source_manifest import _merge_manifest_layers, validate_documentation_objects
 
 from .catalog import AssetRecord, CatalogRecord
 
@@ -126,16 +128,22 @@ def attach_published_provenance(record: CatalogRecord, published: PublishedStora
             raise ValueError("Missing downloadable source provenance")
         return record
     manifest = json.loads(published.read_key(manifest_key))
-    authored = provenance_projection(manifest)
-    if authored is None:
+    if "inputs" not in manifest and "processor" not in manifest:
         return record
+    authored = {key: manifest[key] for key in PROVENANCE_FIELDS if key in manifest}
     resolved_key = f"{version_prefix}/metadata/resolved_provenance.json"
     dictionary_key = f"{version_prefix}/metadata/data_dictionary.json"
     if not published.object_exists(resolved_key) or not published.object_exists(dictionary_key):
         raise ValueError("Missing downloadable complete input provenance")
     resolved = json.loads(published.read_key(resolved_key))
     validate_provenance(resolved)
+    # Version layers can refer to evidence inherited from dataset/file layers.
+    validate_provenance(_merge_manifest_layers([
+        ("resolved", resolved_key, resolved), ("version", manifest_key, authored),
+    ]).metadata)
+    validate_documentation_objects(published, version_prefix, resolved)
     dictionary = json.loads(published.read_key(dictionary_key))
+    validate_dictionary_semantics(dictionary)
     if provenance_projection(dictionary) != resolved:
         raise ValueError("Published dictionary lost or changed input provenance")
     # Authored version inputs can be augmented by dataset/file manifest inputs;
@@ -150,19 +158,29 @@ def attach_published_provenance(record: CatalogRecord, published: PublishedStora
             raise ValueError("Published authored manifest layer snapshot is missing or changed")
     assets = []
     names = set()
-    for key in published.list_prefix(f"{version_prefix}/metadata"):
+    documentation = {doc["path"]: doc for doc in resolved.get("documentation", [])}
+    keys = set(published.list_prefix(f"{version_prefix}/metadata"))
+    keys.update(published._ensure_prefixed(f"{version_prefix}/{path}") for path in documentation)
+    for key in sorted(keys):
         relative = key.removeprefix(published.prefix.rstrip("/") + "/") if published.prefix else key
         logical = Path(relative).relative_to(version_prefix).as_posix()
         snapshot = published.object_snapshot(key)
         if snapshot is None:
-            raise ValueError("Published metadata disappeared")
+            raise ValueError("Published documentation or metadata disappeared")
         digest = published.sha256_key(key)
         if published.object_snapshot(key) != snapshot:
             raise ValueError("Published metadata changed during provenance scan")
+        descriptor = documentation.get(logical)
+        if descriptor is not None and (snapshot.size != descriptor["bytes"] or digest != descriptor["sha256"]):
+            raise ValueError("Published documentation differs from captured checksum or length")
         names.add(logical.removeprefix("metadata/"))
         assets.append(AssetRecord(key="metadata-" + logical.replace("/", "--"), format_key="metadata",
                                   title=logical, href=f"{public_root.rstrip('/')}/{published._ensure_prefixed(relative)}",
-                                  media_type="application/json" if logical.endswith(".json") else "application/x-ndjson" if logical.endswith(".jsonl") else "text/markdown" if logical.endswith(".md") else "application/octet-stream",
+                                  media_type=(descriptor["media_type"] if descriptor is not None else
+                                              "application/json" if logical.endswith(".json") else
+                                              "application/x-ndjson" if logical.endswith(".jsonl") else
+                                              "text/markdown" if logical.endswith(".md") else
+                                              mimetypes.guess_type(logical)[0] or "application/octet-stream"),
                                   size_bytes=snapshot.size, sha256=digest, roles=("metadata",),
                                   storage_revision=snapshot.generation, object_key=published._ensure_prefixed(relative)))
     if not _REQUIRED.issubset(names):
@@ -195,11 +213,17 @@ def verify_prepared_metadata_dependencies(root: Path, published: PublishedStorag
             resolved_key = prefix + "/metadata/resolved_provenance.json"
             manifest_key = prefix + "/metadata/source_manifest.json"
             if published.object_exists(manifest_key):
-                authored = provenance_projection(json.loads(published.read_key(manifest_key)))
-                if authored is not None:
+                authored = json.loads(published.read_key(manifest_key))
+                if "inputs" in authored or "processor" in authored:
                     if not published.object_exists(resolved_key):
                         raise ValueError("Published source is missing complete input provenance")
-                    expected_native_metadata.append(json.loads(published.read_key(resolved_key)))
+                    resolved = json.loads(published.read_key(resolved_key))
+                    validate_provenance(resolved)
+                    validate_provenance(_merge_manifest_layers([
+                        ("resolved", resolved_key, resolved), ("version", manifest_key, authored),
+                    ]).metadata)
+                    validate_documentation_objects(published, prefix, resolved)
+                    expected_native_metadata.append(resolved)
         if provenance is None:
             if expected_native_metadata or any("metadata" in asset.get("roles", []) for asset in document.get("assets", {}).values()):
                 raise ValueError("Modern published source cannot lose its input provenance")
@@ -218,6 +242,8 @@ def verify_prepared_metadata_dependencies(root: Path, published: PublishedStorag
             derived[key] = dependency
             if asset.get("title") in {"metadata/resolved_provenance.json", "metadata/data_dictionary.json"}:
                 canonical[asset["title"]] = json.loads(published.read_key(key))
+                if asset["title"] == "metadata/data_dictionary.json":
+                    validate_dictionary_semantics(canonical[asset["title"]])
         if (canonical.get("metadata/resolved_provenance.json") != provenance
                 or provenance_projection(canonical.get("metadata/data_dictionary.json", {})) != provenance):
             raise ValueError("Published metadata does not match prepared complete input provenance")

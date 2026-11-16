@@ -29,7 +29,7 @@ from dagster_hifld.resources import (
     StorageObjectSnapshot,
 )
 from dagster_hifld.source_formats import CANONICAL_SOURCE_FORMAT_DIRS
-from dagster_hifld.source_manifest import inventory_source_publisher, load_resolved_source_manifest
+from dagster_hifld.source_manifest import inventory_source_publisher, load_resolved_source_manifest, validate_documentation_objects
 from dagster_hifld.provenance import provenance_projection
 
 from .catalog import (
@@ -596,6 +596,11 @@ def _promote_source_metadata(
     request: PortolanPublishRequest,
 ) -> None:
     """Publish the pinned source documents referenced by the rendered STAC."""
+    logical_prefix = f"{request.dataset_slug}/{request.file_slug}/{request.version}"
+    metadata = load_resolved_source_manifest(staging, request.dataset_slug, request.file_slug, request.version).metadata
+    documentation_pairs = [(key, key) for key in validate_documentation_objects(staging, logical_prefix, metadata)]
+    if documentation_pairs:
+        promote_immutable_objects(staging, published, documentation_pairs)
     for filename in (
         "data_dictionary.json",
         "quality_manifest.json",
