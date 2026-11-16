@@ -12,6 +12,7 @@ import re
 import tempfile
 import zipfile
 from collections import Counter, defaultdict
+from datetime import date, datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
@@ -55,20 +56,57 @@ class _Links(HTMLParser):
             self.urls.extend(v for k,v in attrs if k == 'href' and v)
 
 
-def latest_release(html: str) -> tuple[str,str]:
+def latest_release(html: str, *, as_of: date | None = None) -> tuple[str,str]:
     """Select active official workbook anchors; HTML comments are never links."""
     parser = _Links(); parser.feed(html)
+    cutoff = (as_of or datetime.now(timezone.utc).date()).strftime('%Y-%m')
     found = []
     for href in parser.urls:
         url = urljoin(PAGE_URL, href)
         match = re.fullmatch(re.escape(PAGE_URL) + r'(?:archive/)?xls/([a-z]+)_generator(20\d\d)\.xlsx', url)
         if match and match[1] in MONTHS:
-            found.append((f'{match[2]}-{MONTHS.index(match[1])+1:02d}', url))
+            period = f'{match[2]}-{MONTHS.index(match[1])+1:02d}'
+            if period < cutoff:
+                found.append((period, url))
     if not found: raise ValueError('no_active_eia860m_release')
     period = max(p for p,_ in found)
     urls = {u for p,u in found if p == period}
     if len(urls) != 1: raise ValueError('ambiguous_latest_eia860m_release')
     return period, urls.pop()
+
+
+class _EvidenceText(HTMLParser):
+    """Keep producer prose and links, excluding executable and styling content."""
+    def __init__(self):
+        super().__init__(); self.hidden = 0; self.in_main = 0; self.all = []; self.main = []
+    def handle_starttag(self, tag, attrs):
+        if tag in {'script', 'style'}: self.hidden += 1
+        if tag == 'main': self.in_main += 1
+        if tag == 'a' and not self.hidden:
+            for key, value in attrs:
+                if key == 'href' and value: self.handle_data(value)
+    def handle_endtag(self, tag):
+        if tag in {'script', 'style'}: self.hidden = max(0, self.hidden - 1)
+        if tag == 'main': self.in_main = max(0, self.in_main - 1)
+    def handle_data(self, data):
+        if not self.hidden:
+            self.all.append(data)
+            if self.in_main: self.main.append(data)
+
+
+def supporting_evidence_hashes(captures: dict, period: str, url: str) -> dict:
+    """Identify selection and supporting content independently of GET timestamps."""
+    hashes = {'inventory_page': sha(canonical({'period': period, 'url': url}))}
+    for name, (body, _) in captures.items():
+        if name in {'inventory_page', 'workbook'}: continue
+        if name == 'reuse_policy':
+            parser = _EvidenceText(); parser.feed(body.decode('utf-8'))
+            text = ' '.join(' '.join(parser.main or parser.all).split())
+            text = re.sub(r'\b(?:page\s*)?views\s*:?\s*[\d,]+\b', '', text, flags=re.I)
+            hashes[name] = sha(text.strip().encode())
+        else:
+            hashes[name] = sha(body)
+    return hashes
 
 
 def _sheet_rows(archive, path, strings):
@@ -80,6 +118,8 @@ def _sheet_rows(archive, path, strings):
                 column = re.fullmatch(r'([A-Z]+)\d+', cell.attrib['r'])[1]
                 value = cell.find('s:v', NS)
                 text = value.text if value is not None else None
+                if cell.find('s:f', NS) is not None and text is None:
+                    raise ValueError('xlsx_uncached_formula_cell')
                 kind = cell.attrib.get('t')
                 if kind == 's': text = strings[int(text)] if text is not None else None
                 elif kind == 'inlineStr': text = ''.join(cell.find('s:is',NS).itertext())
@@ -196,7 +236,8 @@ def capture_inventory(storage: StagingStorageResource, *, capture_directory: str
     try:
         for name,url in DOCUMENT_URLS.items():
             captures[name]=_retained(root,name,url) if replay else capture_get(active,url,root,name,max_bytes=8_000_000)
-        period,url=latest_release(captures['inventory_page'][0].decode('utf-8'))
+        observed = datetime.fromisoformat(captures['inventory_page'][1]['observed_at'].replace('Z', '+00:00'))
+        period,url=latest_release(captures['inventory_page'][0].decode('utf-8'), as_of=observed.date())
         captures['workbook']=_retained(root,'workbook',url) if replay else capture_get(active,url,root,'workbook',max_bytes=32_000_000)
         sheets,layout=read_existing_workbook(captures['workbook'][0],period)
         generators,plants,audit=normalize_existing(sheets)
@@ -209,9 +250,17 @@ def capture_inventory(storage: StagingStorageResource, *, capture_directory: str
         raise
     finally:
         if owned: active.close()
+    # Retain every observation, including later no-op GETs, outside immutable candidates.
+    receipts = {name: receipt for name, (_, receipt) in captures.items()}
+    observation = sha(canonical(receipts))
+    for name, (body, receipt) in captures.items():
+        prefix = f'_capture-observations/{DATASET_SLUG}/{observation}/{name}'
+        for suffix, value in (('body', body), ('wire', (root/f'{name}.wire').read_bytes()), ('receipt.json', canonical(receipt)+b'\n')):
+            write_immutable(storage, f'{prefix}.{suffix}', value)
+    evidence_hashes = supporting_evidence_hashes(captures, period, url)
     identity=processing_identity(Path(__file__).parents[3]);fingerprint=sha(canonical(identity));results=[]
     for file_slug,rows in ((GENERATOR_FILE,generators),(PLANT_FILE,plants)):
-        record_sha=sha(canonical(rows));schema_sha=sha(canonical({'layout':layout,'output_fields':list(rows[0])}))
+        record_sha=sha(canonical(rows));schema_sha=sha(canonical({'layout':layout,'output_fields':list(rows[0]),'supporting_evidence_sha256':evidence_hashes}))
         # Workbook hash makes silently corrected same-period releases distinct.
         version=content_derived_version(record_sha,captures['workbook'][1]['sha256'],schema_sha,identity)
         prefix=candidate_prefix(DATASET_SLUG,file_slug,version);state=f'_construction-state/{DATASET_SLUG}/{file_slug}/{version}.json'
@@ -225,6 +274,17 @@ def capture_inventory(storage: StagingStorageResource, *, capture_directory: str
         for name,(_,receipt) in captures.items():
             purpose='data' if name=='workbook' else 'license' if name=='reuse_policy' else 'methodology'
             inputs.append({'input_id':name,'producer':'U.S. Energy Information Administration','host':urlsplit(receipt['url']).hostname,'role':'producer_publication','purpose':purpose,'canonical_url':receipt['url'],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],'retrieved_at':receipt['observed_at'],'http_status':receipt['status'],'bytes':receipt['bytes'],'sha256':receipt['sha256'],'wire_bytes':receipt['wire_bytes'],'wire_sha256':receipt['wire_sha256'],'release_date':None,'release_date_unknown_reason':'The inventory period is cross-checked against workbook titles; this capture does not establish a document-specific producer release date.','license':'Producer EIA copyright and reuse policy captured; applicability and exceptions require rights acceptance.','attribution':'U.S. Energy Information Administration'})
+            inputs[-1]['refresh'] = {
+                'maintenance_status': 'maintained' if name in {'workbook', 'inventory_page'} else 'unverified',
+                'maintenance_evidence_input_id': 'inventory_page' if name in {'workbook', 'inventory_page'} else name,
+                'latest_evidence_input_id': 'inventory_page' if name == 'workbook' else name,
+                'latest_checked_at': receipt['observed_at'],
+                'selection_rule': 'Latest active official workbook anchor for a completed month at page observation time; matching workbook titles required.' if name in {'workbook', 'inventory_page'} else 'Pinned official supporting-document URL; complete GET retained.',
+                'source_state_fingerprint': receipt['sha256'] if name == 'workbook' else evidence_hashes[name],
+                'unknown_reasons': {'producer_release_date': 'Document-specific producer release date not established.', **({'maintenance': 'Supporting document revision cadence and current edition not independently established.'} if name not in {'workbook', 'inventory_page'} else {})},
+            }
+            if name in {'workbook', 'inventory_page'}:
+                inputs[-1]['refresh'].update({'source_release_id': period, 'data_period': period, 'update_cadence': 'monthly'})
             documentation.append({'path':f'raw/{name}.body','input_id':name,'purpose':'schema' if name=='workbook' else purpose,'media_type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if name=='workbook' else 'application/pdf' if name.endswith('instructions') else 'text/html','bytes':receipt['bytes'],'sha256':receipt['sha256']})
         fields={}
         for field in rows[0]:
@@ -237,7 +297,18 @@ def capture_inventory(storage: StagingStorageResource, *, capture_directory: str
         if file_slug==GENERATOR_FILE:
             fields['Generator ID']['identifier_meaning']='Native lexical generator identifier within Plant ID; leading zeros preserved.'
             fields['eia_generator_key']['identifier_meaning']='JSON array of native lexical Plant ID and Generator ID; unambiguous composite identity.'
+            fields['Unit Code']['identifier_meaning']='Native lexical Unit Code attribute, distinct from Generator ID; not used as generator identity or as a deduplication key. Unit grouping semantics are not established by this draft.'
+            fields['eia_source_sheet']['source_fields'] = ['workbook sheet name']
+            fields['eia_source_sheet']['description'] = 'Exact retained Operating or Operating_PR sheet name, identifying the producer source population.'
+            fields['Status']['description'] = 'Native operating-sheet status text including OP, SB, OA, or OS prefix; retained verbatim. Detailed code/domain and sentinel definitions require source-contract review.'
         manifest.update({'processor':'HIFLD Next','code_commit':identity['code_commit'],'inputs':inputs,'documentation':documentation,'field_definitions':fields,'coverage':{key:audit[key] for key in ('population_scope','state_counts','puerto_rico_generators','status_counts','generator_count','plant_count','coordinate_datum','coordinate_gate')},'source_relationship':{'relationship':'unverified','evidence_input_ids':['workbook','inventory_page']},'transformations':[{'operation':'Retain all existing-generator source columns as lexical cached cell values; exclude nonexisting generator sheets from transformed outputs','parameters':{'sheets':list(OPERATING_SHEETS),'period':period,'native_columns':layout['operating_sheets']['Operating']['columns']}},{'operation':'Group plant references by native Plant ID without capacity aggregation or coordinate averaging','parameters':{'coordinate_policy':'only unanimous numeric coordinate pairs retained; conflicts and missing coordinates remain null','coordinate_datum':None,'geometry_created':False}}]})
+        manifest['source_relationship']['unknown_reason'] = 'Equivalence to legacy HIFLD plant and generator populations has not been established; this is a source-native operating inventory draft.'
+        manifest['supporting_evidence_sha256'] = evidence_hashes
+        manifest['capture_observation'] = observation
+        manifest['format_transformations'] = {'parquet': [
+            {'name': 'Preserve native cached XLSX values as nullable lexical strings, with composite JSON-string generator identity; formulas without cached values rejected.', 'input_ids': ['workbook']},
+            {'name': 'Plant reference groups lexical Plant ID; lists retain names, states, statuses and generator keys, generator_count is integer. Coordinates remain strings or null; no geometry or CRS assigned.', 'input_ids': ['workbook']},
+        ]}
         validate_provenance(manifest)
         outputs={f'unknown/{file_slug}.parquet':_parquet(rows),'metadata/source_manifest.json':canonical(manifest)+b'\n','metadata/source_audit.json':canonical({**audit,**layout,'source_period':period,'workbook_url':url,'source_record_sha256':record_sha,'source_schema_sha256':schema_sha,**APPROVALS})+b'\n','metadata/processing_identity.json':canonical(identity)+b'\n','metadata/candidate_ready.json':canonical({'approved':False,'version':version,**APPROVALS})+b'\n'}
         for name,(body,receipt) in captures.items():

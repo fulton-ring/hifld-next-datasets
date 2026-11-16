@@ -1,11 +1,27 @@
 """Maintained EIA source selection and source-native identity regressions."""
 import unittest
+import io
+import json
+import tempfile
+import zipfile
+from datetime import date
+from pathlib import Path
+from unittest.mock import patch
+
+import httpx
+
 from dagster_hifld.sources import eia_electricity_inventory as source
 
 class EIAInventoryTests(unittest.TestCase):
     def test_active_links_only(self):
         html = '<!-- <a href="xls/december_generator2026.xlsx">December</a> --><a href="xls/september_generator2026.xlsx">September</a><a href="archive/xls/august_generator2026.xlsx">August</a>'
         self.assertEqual(source.latest_release(html), ('2026-09', source.PAGE_URL + 'xls/september_generator2026.xlsx'))
+
+    def test_future_active_period_is_not_a_released_inventory(self):
+        html = '<a href="xls/december_generator2026.xlsx">Preview</a><a href="xls/september_generator2026.xlsx">Released</a>'
+        self.assertEqual(source.latest_release(html, as_of=date(2026, 11, 16))[0], '2026-09')
+        with self.assertRaisesRegex(ValueError, 'no_active'):
+            source.latest_release('<a href="xls/january_generator2099.xlsx">Future</a>', as_of=date(2026, 11, 16))
 
     def test_rows_keep_lexical_ids_status_and_pr(self):
         row = {'Plant ID':'1','Generator ID':'001','Status':'(OP) Operating','Plant State':'PR','Latitude':'18','Longitude':'-66','Unit Code':'01'}
@@ -61,6 +77,59 @@ class WorkbookTests(unittest.TestCase):
         self.assertEqual(layout['operating_sheets']['Operating']['rows'],1)
         with self.assertRaisesRegex(ValueError,'period_mismatch'):
             source.read_existing_workbook(self.workbook(),'2026-10')
+
+    def test_uncached_formula_is_not_an_absent_native_cell(self):
+        output = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(self.workbook())) as original, zipfile.ZipFile(output, 'w') as changed:
+            for item in original.infolist():
+                body = original.read(item.filename)
+                if item.filename == 'xl/worksheets/sheet1.xml':
+                    body = body.replace(b'<c r="I4" t="inlineStr"><is><t>1</t></is></c>', b'<c r="I4"><f>1+1</f></c>')
+                changed.writestr(item, body)
+        with self.assertRaisesRegex(ValueError, 'uncached_formula'):
+            source.read_existing_workbook(output.getvalue(), '2026-09')
+
+    def test_supporting_evidence_revision_and_observation_retention(self):
+        from dagster_hifld.resources import StagingStorageResource
+        policy = [b'<main>Reuse is permitted.</main><span>Page views: 1</span>']
+        workbook = self.workbook()
+        def respond(request):
+            body = workbook if request.url.path.endswith('.xlsx') else policy[0] if request.url.path.endswith('copyrights_reuse.php') else b'<a href="xls/september_generator2026.xlsx">September</a>'
+            return httpx.Response(200, stream=httpx.ByteStream(body))
+        with tempfile.TemporaryDirectory() as temp:
+            storage = StagingStorageResource(local_dir=temp+'/stage')
+            with httpx.Client(transport=httpx.MockTransport(respond)) as client, patch('dagster_hifld.sources.epa_frs_common.validate_construction_code_identity'):
+                first = source.capture_inventory(storage, capture_directory=temp+'/one', client=client)
+                same_content = source.capture_inventory(storage, capture_directory=temp+'/same', client=client)
+                self.assertEqual(first['candidates'][0]['version'], same_content['candidates'][0]['version'])
+                self.assertTrue(all(item['reused'] for item in same_content['candidates']))
+                policy[0] = policy[0].replace(b'views: 1', b'views: 999')
+                unchanged = source.capture_inventory(storage, capture_directory=temp+'/two', client=client)
+                self.assertEqual(first['candidates'][0]['version'], unchanged['candidates'][0]['version'])
+                policy[0] = b'<main>Reuse requires permission.</main><span>Page views: 999</span>'
+                revised = source.capture_inventory(storage, capture_directory=temp+'/three', client=client)
+                self.assertNotEqual(first['candidates'][0]['version'], revised['candidates'][0]['version'])
+            observations = storage.list_prefix('_capture-observations/' + source.DATASET_SLUG)
+            self.assertEqual(len([key for key in observations if key.endswith('/workbook.receipt.json')]), 4)
+
+    def test_manifest_refresh_contract_and_unknown_relationship(self):
+        from dagster_hifld.resources import StagingStorageResource
+        def respond(request):
+            return httpx.Response(200, stream=httpx.ByteStream(self.workbook() if request.url.path.endswith('.xlsx') else b'<a href="xls/september_generator2026.xlsx">September</a>'))
+        with tempfile.TemporaryDirectory() as temp:
+            storage = StagingStorageResource(local_dir=temp+'/stage')
+            with httpx.Client(transport=httpx.MockTransport(respond)) as client, patch('dagster_hifld.sources.epa_frs_common.validate_construction_code_identity'):
+                result = source.capture_inventory(storage, capture_directory=temp+'/capture', client=client)
+            item = result['candidates'][0]
+            manifest = json.loads(storage.read_key(f"{item['dataset_slug']}/{item['file_slug']}/{item['version']}/metadata/source_manifest.json"))
+            self.assertTrue(manifest['source_relationship']['unknown_reason'])
+            for entry in manifest['inputs']:
+                refresh = entry['refresh']
+                self.assertIn(refresh['maintenance_status'], {'maintained', 'unverified', 'retired'})
+                self.assertIn(refresh['latest_evidence_input_id'], {i['input_id'] for i in manifest['inputs']})
+                self.assertTrue(refresh['latest_checked_at'])
+            self.assertIn('identifier_meaning', manifest['field_definitions']['Unit Code'])
+            self.assertIn('parquet', manifest['format_transformations'])
 
     def test_registered_stopped_assets(self):
         from dagster_hifld.assets import eia_electricity_inventory as assets
