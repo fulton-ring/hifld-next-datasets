@@ -103,7 +103,9 @@ with DagsterInstance.get() as instance:
         ready=json.loads((root/source.READY).read_bytes());restore=None
         if label=='unknown_metadata':(root/'metadata/unexpected.json').write_bytes(b'{"approved":true}');expected='unknown_missing_or_linked_candidate_object'
         elif label=='self_repinned_native_parquet':
-            changed=pq.read_table(native).replace_schema_metadata({b'geo':b'{}'});native.write_bytes(source.parquet_bytes(changed));ready['objects'][str(native.relative_to(root))]=source.sha256_file(native);(root/source.READY).write_bytes(source.encode(ready));expected='full_native_source_values'
+            # The closed canonical ready wrapper rejects a re-pinned object
+            # inventory before any byte comparison; the whole candidate detaches.
+            changed=pq.read_table(native).replace_schema_metadata({b'geo':b'{}'});native.write_bytes(source.parquet_bytes(changed));ready['objects'][str(native.relative_to(root))]=source.sha256_file(native);(root/source.READY).write_bytes(source.encode(ready));expected='ready_identity_or_closed_source_inventory_drift'
         elif label=='coforged_original_receipt':
             value=json.loads(original);receipt_value=value['payload']['captures']['usgs_mineplant_zip']['receipt'];receipt_value['observed_at']='2026-11-10T00:00:00+00:00';next(item for item in value['payload']['manifest']['inputs'] if item['input_id'].startswith('usgs_mineplant_zip:'))['retrieved_at']=receipt_value['observed_at'];alias.write_bytes(source.canonical_construction_bundle(version,value['processing_fingerprint'],value['payload']));expected='construction_marker_mismatch'
         elif label=='missing_original_CAS':evidence.unlink();expected='construction_original_evidence_mismatch'
