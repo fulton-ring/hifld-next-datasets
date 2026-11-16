@@ -30,9 +30,7 @@ class EiaNaturalGasPipelinesConfig(Config):
     group_name="eia",
     compute_kind="http",
     description=(
-        "Captures EIA's January 2020 native shapefile ZIP and stages a full, "
-        "unapproved GeoParquet candidate. The static 2020 archive does not "
-        "establish currentness; its refresh schedule is stopped."
+        'Parked historical-source adapter: normal acquisition and cache replay refuse before network or storage effects. Existing published versions remain addressable; a maintained source-native successor is required.'
     ),
 )
 def eia_natural_gas_interstate_intrastate_pipelines(

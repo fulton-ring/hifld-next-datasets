@@ -42,3 +42,9 @@ keeps capturing the pinned zip and fails closed into quarantine on any change.
 All runtime approval flags remain false and the refresh schedule stays
 stopped; currentness and any future successor remain pending the maintainer
 decisions recorded on issue #775.
+
+## Maintained-refresh disposition (2026-11-16)
+
+The public refresh entrypoint now refuses fresh acquisition and retained-capture replay before network or staging side effects. Its pinned historical payload is not a maintained current-source pipeline. Existing published versions remain unchanged and addressable; offline parser fixtures remain useful evidence. A stopped schedule alone was insufficient to prevent a manual historical capture.
+
+Use separately scoped current [EIA-860](https://www.eia.gov/electricity/data/eia860/) / [EIA-860M](https://www.eia.gov/electricity/data/eia860m/) reference products. Their population, generator/plant grain, coordinate interpretation and native identifiers must be preserved explicitly rather than inferred from this August2021 GIS product.
