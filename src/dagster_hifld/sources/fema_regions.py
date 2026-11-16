@@ -40,7 +40,7 @@ from dagster_hifld.construction_state import canonical_construction_bundle,load_
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance,verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource,StagingStorageResource
-from dagster_hifld.sources.capture_common import _validate_cached_catalog_sidecars
+from dagster_hifld.sources.epa_frs_common import _validate_cached_catalog_sidecars
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.fema_regions_spec import SLUG,PINS,FIELDS,QUERY_FIELDS,SOURCE_ATTRIBUTES,SOURCE_GEOMETRY

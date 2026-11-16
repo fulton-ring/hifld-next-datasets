@@ -20,7 +20,7 @@ from dagster_hifld.assets.epa_icis_wastewater import (
 )
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_icis_wastewater_common as source
+from dagster_hifld.sources import epa_icis_wastewater as source
 
 
 def canonical(value):

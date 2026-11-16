@@ -10,7 +10,7 @@ from dagster_hifld.assets.epa_facilities_labels import (
     epa_facilities_labels,
     epa_facilities_labels_draft_schedule,
 )
-from dagster_hifld.sources.epa_facilities_common import (
+from dagster_hifld.sources.epa_facilities import (
     EPA_FACILITIES_PROFILE,
     _profile_urls,
     decode_captures,

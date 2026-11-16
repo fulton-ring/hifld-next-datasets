@@ -36,7 +36,7 @@ import shapely
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
-from dagster_hifld.sources.capture_common import _validate_cached_catalog_sidecars
+from dagster_hifld.sources.epa_frs_common import _validate_cached_catalog_sidecars
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource

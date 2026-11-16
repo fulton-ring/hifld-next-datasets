@@ -16,7 +16,7 @@ import shapely
 
 from dagster_hifld.sources import secondary_school_districts as source
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.capture_common import CODE_IDENTITY_PACKAGED, processing_identity
+from dagster_hifld.sources.epa_frs_common import CODE_IDENTITY_PACKAGED, processing_identity
 
 
 class SecondarySchoolDistrictsSourceTests(unittest.TestCase):

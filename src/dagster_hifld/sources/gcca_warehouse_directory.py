@@ -403,7 +403,7 @@ def capture_gcca_warehouses(storage: StagingStorageResource, *, version: str,
         rows, total, facet_meta, receipts = _capture_live(root)
     candidate, audit = _validate_and_project(rows, total, facet_meta)
     identity_root = Path(__file__).parents[3]
-    from dagster_hifld.sources.capture_common import processing_identity, write_immutable
+    from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
     identity = processing_identity(identity_root)
     parquet = _geo_parquet(candidate)
     audit["source_capture_evidence_sha256"] = _sha(_canonical({k: v for k, v in receipts.items()}))

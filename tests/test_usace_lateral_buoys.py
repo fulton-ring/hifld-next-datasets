@@ -352,7 +352,7 @@ class LateralBuoysTests(unittest.TestCase):
             self._capture_directory(root)
             storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "staging"))
             with patch.object(source, "validate_construction_code_identity") as code_identity_check, \
-                    patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"), \
+                    patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"), \
                     patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=1_000_000_000)):
                 first = source.capture_usace_lateral_buoys(storage, version="draft", capture_directory=str(root))
             code_identity_check.assert_called_once()
@@ -372,7 +372,7 @@ class LateralBuoysTests(unittest.TestCase):
             capture_manifest["artifact_roster"] = capture_roster_digests(root, exclude={"capture_manifest.json"})
             (root / "capture_manifest.json").write_bytes(_canonical(capture_manifest) + b"\n")
             with patch.object(source, "validate_construction_code_identity"), \
-                    patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"), \
+                    patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"), \
                     patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=1_000_000_000)):
                 second = source.capture_usace_lateral_buoys(storage, version="draft", capture_directory=str(root))
             self.assertTrue(second["reused"])

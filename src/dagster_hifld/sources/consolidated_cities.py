@@ -32,7 +32,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.capture_common import (
+from dagster_hifld.sources.epa_frs_common import (
     STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as packaged_processing_identity,
     validate_staged_release_derivatives,

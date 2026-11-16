@@ -16,7 +16,7 @@ from dagster_hifld.assets.epa_frs_interest_contact import (
     epa_frs_interest_contact, _reuse_existing_contact_candidate,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.capture_common import (
+from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, content_derived_version, processing_identity, write_immutable,
 )
 from dagster_hifld.sources.epa_frs_contact_stream import (

@@ -8,7 +8,7 @@ as the external landing page and the EPA_GEO-hosted ``FRS_Wastewater``
 FeatureServer as the open REST service, so the capture reuses the shared EPA
 ICIS wastewater facility core and publishes under this entry's own slug.
 """
-from dagster_hifld.sources.epa_icis_wastewater_common import (
+from dagster_hifld.sources.epa_icis_wastewater import (
     ITEM_ID, LAYER_ID, LAYER_NAME, LAYER_URL, MAX_CAPTURE_BYTES,
     MAX_RESPONSE_BYTES, PORTAL_ITEM_URL, PUBLISHER, SCHEMA_SHA256, SERVICE_URL,
     capture_epa_icis_wastewater,

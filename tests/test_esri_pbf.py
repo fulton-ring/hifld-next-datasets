@@ -13,7 +13,7 @@ from dagster_hifld.esri_pbf import (
 )
 from dagster_hifld.assets.national_forests import _get
 from dagster_hifld.assets.national_forests import national_forests_draft_schedule
-from dagster_hifld.sources.capture_common import content_derived_version
+from dagster_hifld.sources.epa_frs_common import content_derived_version
 
 
 class EsriPbfDecoderTests(unittest.TestCase):

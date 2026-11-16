@@ -20,7 +20,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.sources import census_tiger_common
-from dagster_hifld.sources.capture_common import (
+from dagster_hifld.sources.epa_frs_common import (
     capture_get,
     processing_identity,
     write_immutable,

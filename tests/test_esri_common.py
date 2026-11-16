@@ -12,7 +12,7 @@ import unittest
 
 import pyarrow as pa
 
-from dagster_hifld.sources import capture_common, esri_common
+from dagster_hifld.sources import epa_frs_common, esri_common
 
 
 class CanonicalJsonTest(unittest.TestCase):
@@ -35,9 +35,9 @@ class CanonicalJsonTest(unittest.TestCase):
     def test_non_ascii_is_not_escaped(self):
         self.assertNotIn(b"\\u", esri_common.canonical({"name": "ü"}))
 
-    def test_matches_the_replaced_capture_common_copy(self):
+    def test_matches_the_replaced_epa_frs_common_copy(self):
         value = {"z": 1, "a": {"nested": [True, None, "é"]}, "d": 4.5}
-        self.assertEqual(esri_common.canonical(value), capture_common._canonical(value))
+        self.assertEqual(esri_common.canonical(value), epa_frs_common._canonical(value))
         self.assertEqual(
             esri_common.canonical(value),
             json.dumps(value, sort_keys=True, separators=(",", ":"),

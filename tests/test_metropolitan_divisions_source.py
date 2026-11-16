@@ -16,7 +16,7 @@ from dagster_hifld.assets.metropolitan_divisions import metdiv_source_integrity_
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.capture_common import seal_ready_candidate, verify_cached_candidate
+from dagster_hifld.sources.epa_frs_common import seal_ready_candidate, verify_cached_candidate
 from dagster_hifld.sources import metropolitan_divisions as source
 
 
@@ -399,12 +399,12 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
                 source_metadata=resolved_manifest.metadata)
             storage.write_key(f"{prefix}/metadata/quality_manifest.json", json.dumps(summary.quality_manifest).encode())
             storage.write_key(f"{prefix}/metadata/data_dictionary.json", json.dumps(summary.data_dictionary).encode())
-            with patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
+            with patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
                 result = verify_cached_candidate(storage, Path(__file__).parents[1], state_key, prefix, version,
                     fingerprint, identity, "b" * 64, "c" * 64, objects, {})
             self.assertTrue(result["reused"])
             storage.write_key(f"{prefix}/unexpected/source.json", b"{}\n")
-            with patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"), self.assertRaisesRegex(ValueError, "cached_candidate_storage_roster_changed"):
+            with patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"), self.assertRaisesRegex(ValueError, "cached_candidate_storage_roster_changed"):
                 verify_cached_candidate(storage, Path(__file__).parents[1], state_key, prefix, version,
                     fingerprint, identity, "b" * 64, "c" * 64, objects, {})
 

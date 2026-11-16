@@ -15,7 +15,7 @@ import shapely
 from dagster_hifld.definitions import defs
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import capture_common
+from dagster_hifld.sources import epa_frs_common
 from dagster_hifld.sources import epa_power_generation as src
 from dagster_hifld.sources.epa_power_generation import _parquet_bytes
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -149,7 +149,7 @@ def fixture_mode(schema_sha: str, ids_sha: str, transport: httpx.MockTransport):
                      return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                    "files": [], "working_tree_status": "unknown"}),
         patch.object(src, "validate_construction_code_identity"),
-        patch.object(capture_common, "validate_construction_code_identity"),
+        patch.object(epa_frs_common, "validate_construction_code_identity"),
     ]
     for context in contexts:
         context.start()

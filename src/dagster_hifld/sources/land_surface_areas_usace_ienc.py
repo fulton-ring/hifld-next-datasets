@@ -27,7 +27,7 @@ from shapely.geometry import LinearRing, Polygon
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
-from dagster_hifld.sources.capture_common import (
+from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix,
     capture_get,
     content_derived_version,

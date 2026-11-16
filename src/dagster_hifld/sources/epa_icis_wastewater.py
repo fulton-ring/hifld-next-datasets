@@ -1,4 +1,4 @@
-"""Shared EPA ICIS wastewater family core (EPA_GEO FRS_Wastewater FeatureServer)."""
+"""Native, unapproved capture of EPA's ICIS wastewater treatment plant layer."""
 from __future__ import annotations
 
 import json
@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
-from dagster_hifld.sources.capture_common import (
+from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
