@@ -24,6 +24,27 @@ from dagster_hifld.sources import colleges_universities as c
 
 CAPTURE=os.environ.get('COLLEGES_TEST_CAPTURE_DIR')
 
+class CollegeLatestDiscoveryTests(unittest.TestCase):
+    def test_latest_published_postsecondary_anchor_not_guessed_or_commented(self):
+        html = '''<!-- <a href="/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2728.zip">future</a> -->
+        <a href="/programs/edge/data/EDGE_GEOCODE_PUBLICSCH_2728.zip">other scope</a>
+        <a href="/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2526.zip">old</a>
+        <a href="/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2627.zip">latest</a>
+        <a href="/programs/edge/docs/EDGE_GEOCODE_POSTSEC_TECHDOC.pdf">docs</a>'''
+        release = c.discover_release(html.encode())
+        self.assertEqual(release['schoolyear'], '2026-2027')
+        self.assertEqual(release['source_url'], 'https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2627.zip')
+        self.assertEqual(release['stem'], 'EDGE_GEOCODE_POSTSECSCH_2627')
+        self.assertEqual(release['documentation_url'], c.DOCUMENTATION)
+
+    def test_missing_ambiguous_external_or_nonannual_links_refused(self):
+        for link in ('https://mirror.invalid/EDGE_GEOCODE_POSTSECSCH_2627.zip',
+                     '/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2628.zip', ''):
+            with self.subTest(link=link), self.assertRaises(c.CollegeQuarantineError):
+                c.discover_release(f'<a href="{link}">data</a><a href="{c.DOCUMENTATION}">docs</a>'.encode())
+        duplicate = f'<a href="{c.URL}">a</a><a href="{c.URL}">b</a><a href="{c.DOCUMENTATION}">docs</a>'
+        with self.assertRaises(c.CollegeQuarantineError): c.discover_release(duplicate.encode())
+
 class CollegeTransportTests(unittest.TestCase):
     def fetch(self,headers):
         original=httpx.Client
@@ -197,11 +218,16 @@ class CollegeOriginalCaptureTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'construction_invalid_commit'):c.original_provenance_bundle(storage,c.digest(c.encode(identity)),self.captures,identity,manifest,create=True)
             self.assertFalse((Path(tmp)/'_construction-state').exists())
 
-def small_dbf():
+def small_dbf(*,leading=True):
     # Two explicit synthetic structural rows; never a national source substitute.
     rows=[]
     for index in range(2):
         row={name:''for name,kind,width,decimals in c.DBF_FIELDS};row.update(UNITID='000001'+str(index),NAME='  Synthetic College '+str(index),STREET='  10 Example Rd',CITY='Example',STATE='AS'if index==0 else'MP',ZIP='00123-000'+str(index),STFIP='60'if index==0 else'69',CNTY='60010'if index==0 else'69110',LOCALE='11',LAT=38.123456+index,LON=-77.123456-index,SCHOOLYEAR='2025-2026');rows.append(row)
+    if not leading:
+        for row in rows:
+            row['NAME']=row['NAME'].lstrip();row['STREET']=row['STREET'].lstrip()
+            for name,value in row.items():
+                if value=='':row[name]='0'
     header=32+len(c.DBF_FIELDS)*32+1;record=1+sum(f[2]for f in c.DBF_FIELDS);body=bytearray(header);body[0]=3;body[4:8]=len(rows).to_bytes(4,'little');body[8:10]=header.to_bytes(2,'little');body[10:12]=record.to_bytes(2,'little')
     for index,(name,kind,width,decimals)in enumerate(c.DBF_FIELDS):
         start=32+32*index;body[start:start+len(name)]=name.encode();body[start+11]=ord(kind);body[start+16]=width;body[start+17]=decimals
@@ -211,6 +237,127 @@ def small_dbf():
         for name,kind,width,decimals in c.DBF_FIELDS:
             value=(format(row[name],'.6f')if kind=='N'else row[name]).encode();assert len(value)<=width;body+=value.rjust(width,b' ')if kind=='N'else value.ljust(width,b' ')
     return bytes(body)+b'\x1a',rows
+
+def current_archive(schoolyear='2026-2027', revision='original'):
+    """Two explicit structural points; never a national-source substitute."""
+    dbf, rows = small_dbf(leading=False)
+    dbf = dbf.replace(b'2025-2026', schoolyear.encode())
+    for row in rows: row['SCHOOLYEAR'] = schoolyear
+    code = schoolyear[2:4] + schoolyear[7:9]
+    stem = 'EDGE_GEOCODE_POSTSECSCH_' + code
+    def header(size):
+        result = bytearray(100)
+        struct.pack_into('>i', result, 0, 9994)
+        struct.pack_into('>i', result, 24, size // 2)
+        struct.pack_into('<ii', result, 28, 1000, 1)
+        struct.pack_into('<4d', result, 36, -79, 38, -77, 40)
+        return result
+    shp = header(100 + len(rows) * 28)
+    shx = header(100 + len(rows) * 8)
+    for index, row in enumerate(rows):
+        shx += struct.pack('>ii', len(shp) // 2, 10)
+        shp += struct.pack('>ii', index + 1, 10) + struct.pack('<idd', 1, row['LON'] + .00000025, row['LAT'] + .00000025)
+    members = {'.dbf': dbf, '.shp': bytes(shp), '.shx': bytes(shx), '.cpg': b'UTF-8',
+               '.prj': c.pyproj.CRS(4326).to_wkt(version='WKT1_ESRI').encode(),
+               '.sbn': b'', '.sbx': b'', '.shp.xml': f'<metadata><note>{revision}</note></metadata>'.encode()}
+    sink = io.BytesIO()
+    with zipfile.ZipFile(sink, 'w') as archive:
+        for suffix, body in members.items(): archive.writestr(stem + suffix, body)
+    outer = io.BytesIO()
+    text = '\n'.join('|'.join(format(row[name], '.6f') if kind == 'N' else row[name]
+                              for name, kind, _, _ in c.DBF_FIELDS) for row in rows)
+    with zipfile.ZipFile(outer, 'w') as archive:
+        archive.writestr('Shapefile.zip', sink.getvalue())
+        archive.writestr(stem + '.TXT', text)
+        archive.writestr(stem + '.xlsx', b'explicit synthetic auxiliary workbook')
+        archive.writestr(stem + '.sas7bdat', b'explicit synthetic auxiliary SAS file')
+    return outer.getvalue()
+
+
+class CollegeCurrentTests(unittest.TestCase):
+    def test_current_source_uses_independent_counts_not_historical_population_pins(self):
+        release = c.discover_release(f'<a href="/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2627.zip">data</a><a href="{c.DOCUMENTATION}">docs</a>'.encode())
+        table, audit = c.inspect_archives({}, {'nces_geocode': (current_archive(), {})}, release=release)
+        self.assertEqual(table.num_rows, 2)
+        self.assertEqual(table['UNITID'].to_pylist(), ['0000010', '0000011'])
+        self.assertEqual(audit['source_counts'], {'dbf': 2, 'shx': 2, 'decoded': 2, 'text': 2})
+        self.assertEqual(table['SCHOOLYEAR'].to_pylist(), ['2026-2027'] * 2)
+        self.assertEqual(table['UNITID'].type, pa.string())
+
+    def test_current_schema_ids_year_and_physical_sidecar_loss_refused(self):
+        release=c.discover_release(f'<a href="/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2627.zip">data</a><a href="{c.DOCUMENTATION}">docs</a>'.encode())
+        body=current_archive();table,_=c.inspect_archives({}, {'nces_geocode':(body,{})},release=release)
+        bad_tables=[table.slice(1),table.drop(['UNITID']),
+                    table.set_column(1,'UNITID',pa.array(['0000010','0000010'])),
+                    table.set_column(1,'UNITID',pa.array([10,11])),
+                    table.set_column(table.schema.get_field_index('SCHOOLYEAR'),'SCHOOLYEAR',pa.array(['2025-2026']*2))]
+        for changed in bad_tables:
+            with self.assertRaises(c.CollegeQuarantineError):c.validate_table(changed,release=release,expected_count=2)
+        with zipfile.ZipFile(io.BytesIO(body)) as outer:
+            outer_members={name:outer.read(name) for name in outer.namelist()}
+        with zipfile.ZipFile(io.BytesIO(outer_members['Shapefile.zip'])) as inner:
+            members={name:inner.read(name) for name in inner.namelist()}
+        shx_name=release['stem']+'.shx';shx=bytearray(members[shx_name][:-8]);shx[24:28]=(len(shx)//2).to_bytes(4,'big');members[shx_name]=bytes(shx)
+        nested=io.BytesIO()
+        with zipfile.ZipFile(nested,'w') as inner:
+            for name,value in members.items():inner.writestr(name,value)
+        outer_members['Shapefile.zip']=nested.getvalue();changed=io.BytesIO()
+        with zipfile.ZipFile(changed,'w') as outer:
+            for name,value in outer_members.items():outer.writestr(name,value)
+        with self.assertRaisesRegex(c.CollegeQuarantineError,'count_disagreement'):
+            c.inspect_archives({}, {'nces_geocode':(changed.getvalue(),{})},release=release)
+
+    def test_current_capture_reuses_verified_candidate_and_preserves_revision(self):
+        page = f'<a href="/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2627.zip">data</a><a href="{c.DOCUMENTATION}">docs</a>'.encode()
+        archive = [current_archive()]
+        original_archive = archive[0]
+        def respond(request):
+            body = page if str(request.url) == c.LANDING else b'%PDF-1.4 synthetic documentation' if str(request.url) == c.DOCUMENTATION else archive[0]
+            return httpx.Response(200, stream=httpx.ByteStream(body), request=request)
+        with tempfile.TemporaryDirectory() as tmp, httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            # Exercise real installed-package identity before the working changes
+            # have a Git commit; never bypass the construction identity validator.
+            package = Path(tmp) / 'package'
+            repo = Path(c.__file__).parents[3]
+            shutil.copytree(repo / 'src/dagster_hifld', package / 'src/dagster_hifld', ignore=shutil.ignore_patterns('__pycache__'))
+            for name in ('pyproject.toml', 'uv.lock'): shutil.copyfile(repo / name, package / name)
+            location = patch.object(c, '__file__', str(package / 'src/dagster_hifld/sources/colleges_universities.py'))
+            location.start(); self.addCleanup(location.stop)
+            storage = c.StagingStorageResource(local_dir=str(Path(tmp) / 'staging'))
+            first = c.stage_colleges(storage, client=client)
+            prefix = f'{c.SLUG}/{c.SLUG}/{first["version"]}'
+            before = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}
+            second = c.stage_colleges(storage, client=client)
+            self.assertEqual(second['version'], first['version'])
+            self.assertTrue(second['reused'])
+            archive[0] = current_archive(revision='corrected same edition')
+            third = c.stage_colleges(storage, client=client)
+            self.assertNotEqual(first['version'], third['version'])
+            self.assertEqual(before, {key: storage.read_key(key) for key in storage.list_prefix(prefix)})
+            self.assertFalse(third['release_accepted'])
+            manifest = json.loads(storage.read_key(f'{prefix}/metadata/source_manifest.json'))
+            self.assertEqual(manifest['coverage']['schoolyear'], '2026-2027')
+            self.assertEqual(manifest['field_definitions']['SCHOOLYEAR']['basis'], 'publisher')
+            self.assertTrue(manifest['documentation'])
+            # A repinned candidate cannot replace the original construction witness.
+            key = prefix + '/geoparquet/' + c.SLUG + '.parquet'
+            storage.write_key(key, b'corrupt')
+            archive[0] = original_archive
+            with self.assertRaises(c.CollegeQuarantineError): c.stage_colleges(storage, client=client)
+
+    def test_mutated_source_during_observation_is_quarantined_without_fallback(self):
+        page = f'<a href="{c.URL}">data</a><a href="{c.DOCUMENTATION}">docs</a>'.encode()
+        calls = []
+        def respond(request):
+            url = str(request.url); calls.append(url)
+            body = page if url == c.LANDING else b'%PDF-1.4 documentation' if url == c.DOCUMENTATION else current_archive('2025-2026', 'first' if calls.count(url) == 1 else 'mutated')
+            return httpx.Response(200, stream=httpx.ByteStream(body), request=request)
+        with tempfile.TemporaryDirectory() as tmp, httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            storage = c.StagingStorageResource(local_dir=tmp)
+            with self.assertRaisesRegex(c.CollegeQuarantineError, 'changed_during_capture'):
+                c.stage_colleges(storage, client=client)
+            self.assertTrue(storage.list_prefix('_quarantine/' + c.SLUG))
+            self.assertFalse(storage.list_prefix(c.SLUG))
 
 class CollegeStructuralTests(unittest.TestCase):
     def test_rights_remain_unresolved_and_technical_documentation_stays_separate(self):

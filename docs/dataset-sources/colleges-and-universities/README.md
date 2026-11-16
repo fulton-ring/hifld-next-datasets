@@ -1,5 +1,42 @@
 # Colleges and Universities
 
+## Maintained edition research — 2026-11-16
+
+The official School Locations HTML still publishes **2025–2026** as the newest
+postsecondary download. Its real anchor targets
+`/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2526.zip`; a later year must be
+discovered from a published anchor, never guessed from the date or obtained from
+another school family. HTML comments are not published download links.
+The producer ZIP retrieved in this check is 2,651,816 bytes with SHA256
+`4325bd9d8ab69155a95381f4a09eb62ad75e7960c288af6c192f224ca49b5114`.
+The linked technical PDF has SHA256
+`77aafe42e538bfcb27227be0102c2ed3fcb5b2e47e5c78c33cf723b52ebecf42`.
+The landing page describes IPEDS as an annual survey; the school-year label
+identifies the reporting edition, not an exact publication date, coordinate
+observation date, operational-status guarantee or full physical-campus roster.
+The existing native field declarations remain the schema contract. Future
+publisher schema or packaging changes need explicit source-adapter review.
+
+The normal asset now selects that latest real postsecondary anchor and captures
+the page, selected ZIP and technical PDF twice. Changed selection, ZIP or PDF
+during the bounded observation is quarantined; there is no older-edition
+fallback. The complete original nested archive and extracted metadata XML are
+retained. Current completeness compares physical DBF and SHX counts, point
+record/index structure, every decoded row and the producer's complete TXT
+representation. The existing field/type/CRS/Point contract remains mandatory;
+observed 2025–26 row counts, IDs and geometry hashes no longer constrain a new
+current observation.
+
+Candidate identity binds all captured evidence bodies and the processing code,
+excluding retrieval times. Unchanged evidence reuses a fully verified sealed
+candidate; a same-year corrected archive creates a distinct version. Original
+construction witnesses and earlier version paths are preserved. The explicit
+`HIFLD_COLLEGES_CAPTURE_DIR` option retains the historical pinned 2025–26 replay
+contract. It is not a replacement for current release discovery. All approval
+flags remain false and the monthly schedule remains STOPPED. Shared metadata
+projection from the P1 change is required to carry the new source semantic and
+documentation fields into downstream catalogs.
+
 Complete NCES EDGE 2025–2026 reporting-institution location source: https://nces.ed.gov/programs/edge/Geographic/SchoolLocations . The adapter preserves all 6,438 UNITIDs, original file FIDs, 21 DBF attributes and native EPSG:4326 Points. It is an **unapproved changed successor** to the enriched DOE/ORNL product.
 
 ## Source fidelity review — 2026-11-15
