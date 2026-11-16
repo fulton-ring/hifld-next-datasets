@@ -30,8 +30,9 @@ class PilotTests(unittest.TestCase):
         self.assertEqual(len(assets.INGEST_ASSETS),2)
         self.assertEqual(len(assets.ASSET_CHECKS),2)
         self.assertEqual(assets.SCHEDULES,[])
-        self.assertTrue(assets.pilot_complete({'feature_count':1,'roster_count':3,'outcome_count':3}))
+        self.assertTrue(assets.pilot_complete({'feature_count':1,'roster_count':3,'outcome_count':3,'outcomes':{'Match':1,'deferred':2}}))
         self.assertFalse(assets.pilot_complete({'feature_count':1,'roster_count':3,'outcome_count':2}))
+        self.assertFalse(assets.pilot_complete({'feature_count':1,'roster_count':3,'outcome_count':3,'outcomes':{'Match':2,'deferred':1}}))
 
     def test_eligibility_keeps_original_coordinates_and_withheld_rows(self):
         row=self.rows()[0]

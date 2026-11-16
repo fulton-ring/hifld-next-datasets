@@ -38,8 +38,13 @@ def washington_childcare_census_results(context,config: ChildcarePilotConfig,
 
 
 def pilot_complete(candidate: dict) -> bool:
-    return (candidate.get('feature_count',0)>0 and candidate.get('roster_count',0)>0
-            and candidate.get('roster_count')==candidate.get('outcome_count'))
+    counts=candidate.get('outcomes',{})
+    return (isinstance(counts,dict) and counts
+            and all(type(v) is int and v>=0 for v in counts.values())
+            and candidate.get('feature_count',0)>0
+            and counts.get('Match')==candidate.get('feature_count')
+            and candidate.get('roster_count',0)>0
+            and sum(counts.values())==candidate.get('roster_count')==candidate.get('outcome_count'))
 
 
 @asset_check(asset=new_york_childcare_census_results,blocking=True)
