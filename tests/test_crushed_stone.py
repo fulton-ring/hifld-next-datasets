@@ -16,6 +16,7 @@ import pyarrow.parquet as pq
 from dagster_hifld import construction_state
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.sources import crushed_stone as s
+from dagster_hifld.sources import usgs_mineplant as m
 
 _CAPTURE_ARCHIVE_ENV='HIFLD_CRUSHED_STONE_TEST_CAPTURE_ARCHIVE'
 ARCHIVE=Path(os.environ[_CAPTURE_ARCHIVE_ENV]) if os.environ.get(_CAPTURE_ARCHIVE_ENV) else None
@@ -28,7 +29,7 @@ def synthetic_mineplant_members():
     seed=json.loads((Path(__file__).parent/'fixtures/crushed-stone-structural.json').read_bytes())
     count=seed['row_count'];header,width=321,244;lo,hi=seed['crushed_source_fid_range'];offset=seed['crushed_id_range'][0]-lo
     dbf=bytearray(header+count*width);dbf[0]=3;struct.pack_into('<IHH',dbf,4,count,header,width)
-    for ordinal,(name,kind,size,scale) in enumerate(s.MINEPLANT_DBF_FIELDS):
+    for ordinal,(name,kind,size,scale) in enumerate(m.MINEPLANT_DBF_FIELDS):
         off=32+ordinal*32;dbf[off:off+len(name)]=name.encode('ascii');dbf[off+11]=ord(kind);dbf[off+16]=size;dbf[off+17]=scale
     dbf[header-1]=13
     rows=[]
@@ -38,7 +39,7 @@ def synthetic_mineplant_members():
             'SITE_NAME':seed['sample']['SITE_NAME'],'COMPANY_NA':seed['sample']['COMPANY_NA'],'STATE_LOCA':STATE_NAMES[fid%len(STATE_NAMES)],
             'COUNTY':seed['sample']['COUNTY'],'LATITUDE':f'{y:.5f}','LONGITUDE':f'{x:.5f}','PLANT_MIN':seed['sample']['PLANT_MIN']}
         rows.append(row);rec=bytearray(width);rec[0:1]=b' ';off=1
-        for name,kind,size,scale in s.MINEPLANT_DBF_FIELDS:
+        for name,kind,size,scale in m.MINEPLANT_DBF_FIELDS:
             raw=(row[name] if kind=='C' else str(row[name])).encode('ascii')
             raw=raw.ljust(size,b' ') if kind=='C' else raw.rjust(size,b' ')
             assert len(raw)==size,(name,row[name])
@@ -54,12 +55,12 @@ def synthetic_mineplant_members():
     lines=['\t'.join(['ID','COMMODITY','SITE_NAME','COMPANY_NA','STATE_LOCA','COUNTY','LATITUDE','LONGITUDE','PLANT_MIN'])]
     for row in rows:
         lines.append('\t'.join([str(row['id']),row['COMMODITY'],row['SITE_NAME'],row['COMPANY_NA'],row['STATE_LOCA'],row['COUNTY'],row['LATITUDE'],row['LONGITUDE'],row['PLANT_MIN']]))
-    target=s.MINEPLANT_MEMBERS['mineplant.txt'];base=sum(len(line)+1 for line in lines);extra,rem=divmod(target-base,len(lines))
+    target=m.MINEPLANT_MEMBERS['mineplant.txt'];base=sum(len(line)+1 for line in lines);extra,rem=divmod(target-base,len(lines))
     if extra<0:raise ValueError('synthetic txt exceeds pinned member size')
     txt=('\n'.join(line+' '*(extra+(rem if index==len(lines)-1 else 0)) for index,line in enumerate(lines))+'\n').encode('ascii')
     assert len(txt)==target
-    prj=(s.MINEPLANT_PRJ+'\n').encode('ascii')
-    assert len(prj)==s.MINEPLANT_MEMBERS['mineplant.prj']
+    prj=(m.MINEPLANT_PRJ+'\n').encode('ascii')
+    assert len(prj)==m.MINEPLANT_MEMBERS['mineplant.prj']
     return {'mineplant.dbf':bytes(dbf),'mineplant.shp':bytes(shp),'mineplant.shx':bytes(shx),'mineplant.txt':txt,'mineplant.prj':prj}
 
 
@@ -85,11 +86,11 @@ class StructuralCrushedStoneTests(unittest.TestCase):
 
     def test_synthetic_package_decodes_exact_decimals_subset_and_geometry(self):
         members=synthetic_mineplant_members()
-        self.assertEqual({name:len(body) for name,body in members.items()},s.MINEPLANT_MEMBERS)
+        self.assertEqual({name:len(body) for name,body in members.items()},m.MINEPLANT_MEMBERS)
         decoded=s.decode_mineplant_zip(synthetic_zip(members));self.assertEqual(decoded,members)
-        rows=s.decode_mineplant_dbf(members['mineplant.dbf']);self.assertEqual(len(rows),s.MINEPLANT_RECORDS)
+        rows=s.decode_mineplant_dbf(members['mineplant.dbf']);self.assertEqual(len(rows),m.MINEPLANT_RECORDS)
         s.crosscheck_mineplant_txt(members['mineplant.txt'],rows)
-        geometry=s.decode_points(members['mineplant.shp'],members['mineplant.shx'],s.MINEPLANT_RECORDS)
+        geometry=s.decode_points(members['mineplant.shp'],members['mineplant.shx'],m.MINEPLANT_RECORDS)
         s.verify_mineplant_geometry_values(rows,geometry)
         subset=s.crushed_rows(rows)
         self.assertEqual(len(subset),s.CRUSHED_ROWS)
@@ -107,7 +108,7 @@ class StructuralCrushedStoneTests(unittest.TestCase):
         with patch.object(s,'CRUSHED_IDS',(s.CRUSHED_IDS[0],s.CRUSHED_IDS[1]-1)),self.assertRaisesRegex(ValueError,'crushed_subset_id_roster_drift'):s.crushed_rows(rows)
         with patch.object(s,'CRUSHED_SOURCE_FIDS',(s.CRUSHED_SOURCE_FIDS[0],s.CRUSHED_SOURCE_FIDS[1]-1)),self.assertRaisesRegex(ValueError,'crushed_subset_source_record_roster_drift'):s.crushed_rows(rows)
         with patch.object(s,'CRUSHED_STATES',len(STATE_NAMES)+1),self.assertRaisesRegex(ValueError,'crushed_subset_state_coverage_drift'):s.crushed_rows(rows)
-        commodity=s.MINEPLANT_DBF_FIELDS[1];lo=s.CRUSHED_SOURCE_FIDS[0]
+        commodity=m.MINEPLANT_DBF_FIELDS[1];lo=s.CRUSHED_SOURCE_FIDS[0]
         raw=bytearray(members['mineplant.dbf']);base=321+lo*244+1+8;raw[base:base+15]=b'Sand and Gravel'
         changed=s.decode_mineplant_dbf(bytes(raw))
         with self.assertRaisesRegex(ValueError,'crushed_subset_completeness_drift'):s.crushed_rows(changed)
@@ -142,7 +143,7 @@ class StructuralCrushedStoneTests(unittest.TestCase):
             elif label=='index':struct.pack_into('>i',idx,100,0)
             elif label=='extra':body+=b'0'
             else:struct.pack_into('<d',body,36,-999)
-            with self.subTest(label=label),self.assertRaises(ValueError):s.decode_points(bytes(body),bytes(idx),s.MINEPLANT_RECORDS)
+            with self.subTest(label=label),self.assertRaises(ValueError):s.decode_points(bytes(body),bytes(idx),m.MINEPLANT_RECORDS)
 
     def test_synthetic_zip_member_roster_size_and_txt_crosscheck_failures(self):
         members=synthetic_mineplant_members()
