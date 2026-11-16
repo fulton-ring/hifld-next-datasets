@@ -145,7 +145,8 @@ EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_EMPTY_GEOMETRY_COUNT = 0
 EXPECTED_TOTAL_POINT_COUNT = 23_420
 # GNIS gazetteer per-feature value histograms observed via grouped counts on
-# 2026-11-13 (sum 29,557); every feature must carry one of these values.
+# 2026-11-13 (each sums to the 13,535-feature layer population); every feature
+# must carry one of these values.
 EXPECTED_FEATURECLASS_DISTRIBUTION = {"Census": 13_535}
 EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION = {2: 13_535}
 # Points per multipoint pinned from the complete capture.
@@ -1196,6 +1197,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
+             "source_ids_sha256": extracted["ids_sha"],
              "source_schema_sha256": extracted["schema_sha"]},
             parquet_body)
     audit = {
@@ -1262,7 +1264,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "schema_version": 1, "approved": False,
         "title": "Unincorporated Places (Census) (USGS GNIS gazetteer)",
         "description": "USGS The National Map Gazetteer (GNIS) geonames MapServer layer "
-                       "1 'Unincorporated Places (Census)' (the exact HIFLD Open "
+                       "2 'Unincorporated Places (Census)' (the exact HIFLD Open "
                        "inventory title nmg/unincorporated-places-census-1), "
                        "captured completely from the producer's own REST publication. "
                        "Complete source attributes and native EPSG:3857 Z-aware "
@@ -1323,17 +1325,17 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                    "Survey) carries the description of The National Map Gazetteer / "
                    "GNIS verbatim. The DHS HIFLD Open crosswalk (DOI 10.3886/"
                    "E241367V1, byte-identical public copy sha256 "
-                   + CROSSWALK_COPY_SHA256 + ", consolidated row '"
-                   + CROSSWALK_ROW + "', Status Deprecate, Open ID " + CROSSWALK_OPEN_ID
-                   + ") directs the GNIS-family layers to the carto.nationalmap.gov "
-                   "geonames MapServer captured here; its layer 1 carries exactly the "
-                   "inventory title and the service copyrightText states 'Data "
-                   "Refreshed October, 2026'. This is the producer's own current, "
-                   "maintained publication (a continuation of the layer HIFLD Open "
-                   "pointed at), not a successor substitute. The DataLumos project "
-                   "240198 archive copy (archive inventory modification 2025-03-20) "
-                   "and the Esri 'U.S. Federal Datasets' repackaging are identification "
-                   "and comparison context only and are never fetched.",
+                    + CROSSWALK_COPY_SHA256 + ", consolidated row '"
+                    + CROSSWALK_ROW + "', Status Deprecate, Open ID " + CROSSWALK_OPEN_ID
+                    + ") directs the GNIS-family layers to the carto.nationalmap.gov "
+                    "geonames MapServer captured here; its layer 2 carries exactly the "
+                    "inventory title and the service copyrightText states 'Data "
+                    "Refreshed October, 2026'. This is the producer's own current, "
+                    "maintained publication (a continuation of the layer HIFLD Open "
+                    "pointed at), not a successor substitute. The DataLumos project "
+                    "240203 archive copy (archive inventory modification 2025-03-20) "
+                    "and the Esri 'U.S. Federal Datasets' repackaging are identification "
+                    "and comparison context only and are never fetched.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "Complete native source fields, IDs, values, physical nulls and "
                       "Z-aware multipoint geometry retained in the native page CRS; "

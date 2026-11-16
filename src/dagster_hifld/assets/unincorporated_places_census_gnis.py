@@ -33,8 +33,8 @@ class UnincorporatedPlacesCensusConfig(Config):
     group_name="usgs",
     compute_kind="http",
     description=(
-        "USGS The National Map Gazetteer (GNIS) geonames MapServer layer 1 "
-        "'Unincorporated Places (Census)' (29,557 source features, complete resumable "
+        "USGS The National Map Gazetteer (GNIS) geonames MapServer layer 2 "
+        "'Unincorporated Places (Census)' (13,535 source features, complete resumable "
         "capture 2026-11-13) as the maintained producer publication named by "
         "the DHS HIFLD Open crosswalk for the inventory entry "
         "nmg/unincorporated-places-census-1. Unapproved faithful candidate; baselines "

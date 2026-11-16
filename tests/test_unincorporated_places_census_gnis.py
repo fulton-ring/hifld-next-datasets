@@ -324,6 +324,8 @@ class UnincorporatedPlacesCensusGnisTests(unittest.TestCase):
                     storage, version="fixture-run-2", capture_directory=str(capture_root))
             self.assertEqual(first["version"], second["version"])
             self.assertTrue(second["reused"])
+            self.assertTrue(second["source_id_sha256"])
+            self.assertEqual(second["source_id_sha256"], first["source_id_sha256"])
             self.assertTrue((capture_root / "computed_baseline.json").exists())
             parquet_path = capture_root / f"{src.FILE_SLUG}.parquet"
             table = pq.read_table(parquet_path)
@@ -405,6 +407,11 @@ class UnincorporatedPlacesCensusGnisTests(unittest.TestCase):
                                    / "source_manifest.json").read_bytes())
             self.assertFalse(manifest["approved"])
             self.assertEqual(manifest["agency"], "U.S. Geological Survey")
+            self.assertIn("MapServer layer 2", manifest["description"])
+            self.assertNotIn("layer 1", manifest["description"])
+            self.assertIn("its layer 2 carries", manifest["lineage"])
+            self.assertIn("DataLumos project 240203", manifest["lineage"])
+            self.assertNotIn("240198", manifest["lineage"])
             hosts = {entry["host"] for entry in manifest["inputs"]}
             self.assertEqual(hosts, {"carto.nationalmap.gov"})
             parquet_bytes = (root / "staging" / prefix / "geoparquet"
@@ -643,6 +650,8 @@ class UnincorporatedPlacesCensusGnisTests(unittest.TestCase):
                 second = src.capture_unincorporated_places_census_gnis(
                     storage, version="packaged-run-2", capture_directory=str(capture_root))
                 self.assertTrue(second["reused"])
+                self.assertTrue(second["source_id_sha256"])
+                self.assertEqual(second["source_id_sha256"], first["source_id_sha256"])
             self.assertEqual(first["version"], second["version"])
 
 
