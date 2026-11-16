@@ -23,7 +23,7 @@ from shapely import to_wkb
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix,
     capture_get,
@@ -321,7 +321,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
         raise ValueError("disk_floor_before_acquisition")
     root = Path(capture_directory).absolute() if capture_directory else None
     if root is None:
-        root = Path("/tmp/hifld-native-reconstruction/290/captures") / uuid4().hex
+        root = default_capture_dir("hifld-native-reconstruction", "290", "captures") / uuid4().hex
     if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     if root.exists() and any(root.iterdir()):

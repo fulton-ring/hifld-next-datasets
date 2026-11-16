@@ -31,7 +31,7 @@ from dagster_hifld.construction_state import canonical_construction_bundle, load
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.http_capture import capture_http_response
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, content_derived_version, processing_identity,
     write_immutable,
@@ -50,7 +50,7 @@ PUBLISHER = "U.S. Fish and Wildlife Service (ArcGIS item owner aditya_sastry@fws
 PAGE_SIZE = 50
 MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 MAX_ISSUE_BYTES = 3 * 1024 * 1024 * 1024
-ISSUE_EVIDENCE_ROOT = Path("/tmp/hifld-native-reconstruction/90")
+ISSUE_EVIDENCE_ROOT = default_capture_dir("hifld-native-reconstruction", "90")
 
 
 def _tree_bytes(root: Path) -> int:
@@ -331,7 +331,7 @@ def capture_final_critical_habitat(storage: StagingStorageResource, *, version: 
         raise ValueError("explicit_local_staging_resource_required")
     root = Path(storage.local_dir).absolute(); root.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(root).free < 300_000_000: raise ValueError("disk_floor_before_acquisition")
-    capture_root = Path(capture_directory or "/tmp/hifld-native-reconstruction/90/captures") / f"{version}-{uuid4().hex}"
+    capture_root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "90", "captures"))) / f"{version}-{uuid4().hex}"
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes | Path, dict[str, Any]]] = {}
     budget_roots = (ISSUE_EVIDENCE_ROOT, root)

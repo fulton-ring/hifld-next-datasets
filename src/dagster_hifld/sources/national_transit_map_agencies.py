@@ -24,7 +24,7 @@ from shapely.geometry import Point
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, verify_cached_candidate,
@@ -198,7 +198,7 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     if ".." in base.parts or any(p.is_symlink() for p in (base,*base.parents)): raise ValueError("unsafe_local_staging_root")
     base.mkdir(parents=True,exist_ok=True)
     if shutil.disk_usage(base).free<256_000_000: raise ValueError("disk_floor_before_acquisition")
-    root=(Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/167/captures"))/f"{version}-{uuid4().hex}"
+    root=(Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "167", "captures"))/f"{version}-{uuid4().hex}"
     root=root.absolute();root.mkdir(parents=True,exist_ok=False)
     captures={}
     try:

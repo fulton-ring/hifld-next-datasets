@@ -4,7 +4,7 @@ Producer publication: https://www.fhwa.dot.gov/bridge/nbi/ascii.cfm (2025 state 
 The layout and per-item positions come from the producer record format page: https://www.fhwa.dot.gov/bridge/nbi/format.cfm.
 Official SNBI Data Crosswalk: https://www.fhwa.dot.gov/bridge/snbi/datacrosswalk.xlsx (B.L.05/B.L.06 conversion rules).
 Run registered `nbi_source_integrity` with isolated local staging; its quarterly schedule is STOPPED.
-`HIFLD_NBI_CAPTURE_DIR` selects complete original `.body`/`.receipt.json` inputs instead of live HTTP.
+The asset's `capture_directory` run config selects complete original `.body`/`.receipt.json` inputs instead of live HTTP.
 The adapter captures all 53 state files (50 states, DC, PR, VI) plus landing/format/crosswalk/disclaimer pages.
 All 124 fixed-width Coding Guide items survive as exact source-width strings; no trimming or unit conversion.
 Columns decode 1:1 as ISO-8859-1; the 7 non-ASCII NY/PR location bytes are preserved and count-pinned.

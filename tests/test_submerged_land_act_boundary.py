@@ -145,6 +145,10 @@ def fixture_pins():
 
 
 class SubmergedLandActBoundaryTests(unittest.TestCase):
+    def test_default_capture_root_keeps_the_historical_layout(self):
+        self.assertEqual(str(sla.DEFAULT_CAPTURE_ROOT),
+                         str(Path(tempfile.gettempdir()) / "sla-boundary-captures"))
+
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(submerged_land_act_boundary, hifld_ingest_assets)
         self.assertEqual(submerged_land_act_boundary_draft_schedule.default_status,
