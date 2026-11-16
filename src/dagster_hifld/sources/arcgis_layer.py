@@ -22,7 +22,7 @@ from typing import Iterable, Iterator, Mapping
 
 import httpx
 
-from dagster_hifld.sources.epa_frs_common import capture_get
+from dagster_hifld.sources.capture_common import capture_get
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 

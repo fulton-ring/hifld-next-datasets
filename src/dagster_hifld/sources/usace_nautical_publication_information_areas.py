@@ -25,7 +25,7 @@ from dagster_hifld.sources.usace_administrative_areas import (
     _canonical, _sha, _fetch_retry, _parquet_bytes, _load_replay,
 )
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -281,7 +281,7 @@ def capture_usace_nautical_publication_information_areas(storage: StagingStorage
             "rights_accepted":False,"mapping_approved":False,"release_accepted":False,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
-    from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
+    from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity

@@ -19,7 +19,7 @@ from shapely.wkb import dumps as to_wkb
 
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
+from dagster_hifld.sources.capture_common import processing_identity, write_immutable
 from dagster_hifld.sources.esri_common import sha as _sha
 
 DATASET_SLUG = "electric-retail-service-territories"
