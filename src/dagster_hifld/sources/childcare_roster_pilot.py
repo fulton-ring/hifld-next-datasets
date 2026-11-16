@@ -267,7 +267,7 @@ def geocode_roster(storage: StagingStorageResource, artifact: dict, capture_dire
     if type(max_addresses) is not int or not 1<=max_addresses<=10000:raise ValueError('explicit_bounded_geocoding_limit_required')
     state=artifact['state'];spec=SOURCES[state];rows=artifact['rows']
     if sha(canonical(rows))!=artifact['source_record_sha256']:raise ValueError('input_roster_changed')
-    root=_local(storage,str(Path(capture_directory)/state/('census-'+artifact['source_record_sha256'])))
+    root=_local(storage,str(Path(capture_directory)/state/('census-'+artifact['source_record_sha256']+'-'+str(max_addresses))))
     sealkey=f'_childcare-checkpoints/{state}/census-{sha(str(root).encode())}.json'
     if storage.object_snapshot(sealkey) is not None:validate_capture_roster(root,json.loads(storage.read_key(sealkey)))
     outcomes=[];requests=[];captures=dict(artifact['captures']);capture_roots={n:Path(artifact.get('capture_root','')) for n in captures}
@@ -294,6 +294,10 @@ def geocode_roster(storage: StagingStorageResource, artifact: dict, capture_dire
                 item['result']=results[item['technical_request_id']];item['status']=item['result']['status']
         counts=dict(Counter(item['status'] for item in outcomes))
         if sum(counts.values())!=len(rows) or any(x['status'] in ('eligible','requested') for x in outcomes):raise ValueError('outcome_accounting_incomplete')
+        for filename,document in [('complete-roster.json',rows),('complete-outcomes.json',outcomes)]:
+            path=root/filename;body=canonical(document)+b'\n'
+            if path.exists() and path.read_bytes()!=body:raise ValueError('frozen_ledger_changed')
+            path.write_bytes(body)
         _checkpoint(storage,root,state,'census')
     except Exception as exc:
         _quarantine(storage,root,state,exc);raise

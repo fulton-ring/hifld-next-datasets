@@ -94,6 +94,65 @@ class PilotTests(unittest.TestCase):
                     with self.assertRaises(ValueError):s.acquire_roster(storage,'wa',str(root/'captures'))
                 self.assertTrue(list((root/'staging'/'_quarantine').rglob('failure.json')))
 
+    def test_native_acquisition_success_replay_and_witness_drift(self):
+        rows=self.rows()
+        fields=sorted(set().union(*(set(r) for r in rows))-{'_socrata_row_id'})
+        columns=[{'fieldName':k,'dataTypeName':'text'} for k in fields]
+        meta={'id':'was8-3ni8','attribution':'DCYF','owner':{'displayName':'DCYF Open Data'},
+              'rowsUpdatedAt':1793994541,'columns':columns,
+              'metadata':{'custom_fields':{'Temporal':{'Posting Frequency':'Monthly'}}}}
+        counts=[{'facilitytypegeneric':'CHILD CARE CENTER','n':'1'},
+                {'facilitytypegeneric':'SCHOOL-AGE PROGRAM','n':'1'},
+                {'facilitytypegeneric':'FAMILY HOME','n':'7'}]
+        ids=[{k:r[k] for k in ('_socrata_row_id','wacompassid')} for r in rows]
+        for mode in ['good','count','id','schema']:
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);storage=StagingStorageResource(use_local=True,local_dir=str(root/'staging'),prefix='');calls=[]
+                def handler(request):
+                    calls.append(str(request.url));n=len(calls)
+                    body=meta if n in (1,7) else counts if n in (2,6) else rows if n==4 else ids
+                    body=json.loads(json.dumps(body))
+                    if mode=='count' and n==6:body[0]['n']='2'
+                    if mode=='id' and n==5:body[0]['wacompassid']='changed'
+                    if mode=='schema' and n==7:body['columns'][0]['dataTypeName']='number'
+                    return httpx.Response(200,stream=httpx.ByteStream(s.canonical(body)))
+                spec={**s.SOURCES['wa'],'schema':s.sha(s.canonical([(k,'text') for k in fields]))}
+                real=httpx.Client
+                with patch.dict(s.SOURCES,{'wa':spec}),patch.object(s.httpx,'Client',side_effect=lambda **kw:real(transport=httpx.MockTransport(handler),**kw)):
+                    if mode!='good':
+                        with self.assertRaises(ValueError):s.acquire_roster(storage,'wa',str(root/'captures'))
+                        self.assertTrue(list((root/'staging'/'_quarantine').rglob('failure.json')))
+                    else:
+                        first=s.acquire_roster(storage,'wa',str(root/'captures'))
+                        second=s.acquire_roster(storage,'wa',str(root/'captures'))
+                        self.assertEqual(first['rows'],second['rows']);self.assertEqual(len(calls),7)
+                        self.assertEqual(first['audit']['excluded_category_count'],7)
+                        (Path(first['capture_root'])/'roster.body').write_bytes(b'tampered')
+                        with self.assertRaises(ValueError):s.acquire_roster(storage,'wa',str(root/'captures'))
+
+    def test_all_unmatched_checkpoint_keeps_deferred_and_quarantines_bad_ids(self):
+        for status in ['No_Match','Tie','bad-id']:
+            with self.subTest(status=status),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);storage=StagingStorageResource(use_local=True,local_dir=str(root/'staging'),prefix='')
+                rows=[self.rows()[0],{**self.rows()[0],'_socrata_row_id':'another-row'}]
+                artifact={'state':'wa','rows':rows,'source_record_sha256':s.sha(s.canonical(rows)),
+                          'audit':{'source_feature_count':2},'captures':{},'metadata':{'columns':[]}}
+                def handler(request):
+                    if request.method=='POST':
+                        body=('foreign,INPUT,No_Match\n' if status=='bad-id' else 'technical-00000000,INPUT,'+status+'\n').encode()
+                    else:body=s.canonical({'benchmarks':[{'id':'4','benchmarkName':'Public_AR_Current'}]})
+                    return httpx.Response(200,stream=httpx.ByteStream(body))
+                real=httpx.Client
+                with patch.object(s.httpx,'Client',side_effect=lambda **kw:real(transport=httpx.MockTransport(handler),**kw)):
+                    with self.assertRaises(ValueError):s.geocode_roster(storage,artifact,str(root/'geocoder'),1)
+                if status=='bad-id':
+                    self.assertTrue(list((root/'staging'/'_quarantine').rglob('failure.json')))
+                else:
+                    paths=list((root/'geocoder').rglob('complete-outcomes.json'))
+                    self.assertEqual(len(paths),1)
+                    self.assertEqual([r['status'] for r in json.loads(paths[0].read_bytes())],[status,'deferred'])
+                    self.assertEqual(json.loads(paths[0].with_name('complete-roster.json').read_bytes()),rows)
+
     def test_geocoding_stage_ledger_cache_catalog_and_refusal(self):
         from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
         with tempfile.TemporaryDirectory() as tmp:
