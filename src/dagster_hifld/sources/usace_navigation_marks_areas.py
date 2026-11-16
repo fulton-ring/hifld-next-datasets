@@ -28,6 +28,12 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import (
+    esri_polygon as _esri_polygon, fetch_capture_retry,
+    layer_parquet_bytes as _parquet_bytes,
+    load_replay as _load_replay, write_outputs as _write_outputs,
+)
+
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
@@ -89,155 +95,10 @@ def _validate_spatial_reference(value: object, label: str, *, required: bool = T
     return found
 
 
-def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    root.mkdir(parents=True, exist_ok=True)
-    body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
-    for path in (body_path, wire_path):
-        path.unlink(missing_ok=True)
-    hashes = {"body": hashlib.sha256(), "wire": hashlib.sha256()}
-    sizes = {"body": 0, "wire": 0}
-    budget_start=budget[0]
-    observed = datetime.now(timezone.utc).isoformat()
-    def retain(path, kind):
-        def write(chunk):
-            with path.open("ab") as stream:
-                stream.write(chunk)
-            hashes[kind].update(chunk); sizes[kind] += len(chunk)
-            budget[0]=budget_start+sizes["wire"]+sizes["body"]
-        return write
-    def reserve(progress):
-        if budget_start+progress.wire_bytes_retained+progress.decoded_bytes_retained+progress.reserve_bytes>MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-    response = None
-    result = None
-    final_url = url
-    transport_error = None
-    try:
-        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-            final_url = str(response.url)
-            result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
-                max_decoded_bytes=MAX_BODY_BYTES, reserve=reserve,
-                retain_wire=retain(wire_path, "wire"), retain_decoded=retain(body_path, "body"))
-    except Exception as exc:
-        transport_error = type(exc).__name__
-    receipt = {"method":"GET", "url":url, "final_url":final_url, "observed_at":observed,
-        "status":result.status_code if result is not None else (response.status_code if response is not None else None),
-        "complete_body":bool(result is not None and result.complete and transport_error is None),
-        "wire_bytes":sizes["wire"], "wire_sha256":hashes["wire"].hexdigest(),
-        "bytes":sizes["body"], "sha256":hashes["body"].hexdigest(),
-        "content_encoding":result.content_encoding if result is not None else None,
-        "content_length":result.content_length if result is not None else None,
-        "error_code":result.error_code if result is not None else ("transport_error" if transport_error else "capture_result_missing"),
-        "error_type":result.error_type if result is not None else transport_error}
-    (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-    if transport_error:
-        raise httpx.TransportError("capture_transport_error:" + transport_error)
-    if result is None:
-        raise ValueError("capture_result_missing")
-    body, wire = body_path.read_bytes(), wire_path.read_bytes()
-    if (not result.complete or result.status_code != 200 or final_url != url
-        or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]
-        or len(wire) != receipt["wire_bytes"] or _sha(wire) != receipt["wire_sha256"]):
-        raise ValueError("incomplete_source_capture:" + name)
-    return body, receipt
-
-
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
     """Retry one transient transport/incomplete read, retaining every attempt."""
-    last = None
-    for attempt in range(2):
-        attempt_name=f"{name}.attempt{attempt+1}"
-        try:
-            body,receipt=_fetch(client,url,root,attempt_name,budget)
-            for suffix in ("body","wire","receipt.json"):
-                (root/f"{attempt_name}.{suffix}").replace(root/f"{name}.{suffix}")
-            return body,receipt
-        except (httpx.TransportError,ValueError) as exc:
-            last=exc
-            if isinstance(exc,ValueError) and not str(exc).startswith("incomplete_source_capture:"):
-                raise
-    raise last
-
-
-def _esri_polygon(geometry: dict):
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
-    if type(has_z) is not bool or type(has_m) is not bool:
-        raise ValueError("source_ordinate_flags_invalid")
-    shells, holes = [], []
-    dimension = None
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise ValueError("source_polygon_ring_invalid")
-        if coords[0] != coords[-1]:
-            raise ValueError("source_polygon_ring_not_closed")
-        if any(not isinstance(point,list) for point in coords):
-            raise ValueError("source_polygon_coordinate_invalid")
-        dims={len(point) for point in coords}
-        if len(dims)!=1:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        point_dims=next(iter(dims))
-        if dimension is None: dimension=point_dims
-        if dimension!=point_dims: raise ValueError("source_polygon_ordinate_count_drift")
-        expected_dims=2+int(has_z)+int(has_m)
-        if point_dims!=expected_dims:
-            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        xy=[point[:2] for point in coords]
-        ring = LinearRing(xy)
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon([point[:2] for point in ring])
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(ring)
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    dim_code={2:0,3:(1000 if has_z else 2000),4:3000}[dimension]
-    def polygon_wkb(shell, hole_rings):
-        out=bytearray(struct.pack("<BI",1,dim_code+3))
-        out.extend(struct.pack("<I",1+len(hole_rings)))
-        for ring in [shell,*hole_rings]:
-            out.extend(struct.pack("<I",len(ring)))
-            for point in ring: out.extend(struct.pack("<"+"d"*dimension,*point))
-        return bytes(out)
-    polygons=[polygon_wkb(shell,assignments[i]) for i,shell in enumerate(shells)]
-    if len(polygons)==1: return polygons[0]
-    multi=bytearray(struct.pack("<BI",1,dim_code+6));multi.extend(struct.pack("<I",len(polygons)))
-    for polygon in polygons: multi.extend(polygon)
-    return bytes(multi)
-
-
-def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
-    properties = [f for f in fields if f["name"] != "SHAPE"]
-    arrays = []
-    for field in properties:
-        name, dtype = field["name"], _arrow_type(field)
-        values = []
-        for feature in features:
-            values.append(feature["attributes"][name])
-        arrays.append(pa.array(values, type=dtype))
-    geometries = [_esri_polygon(x["geometry"]) for x in features]
-    arrays.append(pa.array(geometries, type=pa.binary()))
-    names = [x["name"] for x in properties] + ["geometry"]
-    table = pa.Table.from_arrays(arrays, names=names)
-    crs = {"$schema":"https://proj.org/schemas/v0.7/projjson.schema.json", "type":"GeographicCRS",
-           "name":"WGS 84", "datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984",
-           "ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563},
-           "id":{"authority":"EPSG","code":6326}},
-           "coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},
-           "id":{"authority":"EPSG","code":wkid}}
-    metadata = {b"geo":_canonical({"version":"1.1.0","primary_column":"geometry",
-        "columns":{"geometry":{"encoding":"WKB","geometry_types":["MultiPolygon","Polygon"],"crs":crs}}})}
-    sink = __import__("io").BytesIO()
-    pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd", use_dictionary=False)
-    return sink.getvalue()
+    return fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES)
 
 
 def _query(params: dict[str, object]) -> str:
@@ -260,17 +121,6 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
                  ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
                  ("service_after", SERVICE_URL + "?f=pjson")])
     return urls
-
-
-def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
-    paths=[root/f"{name}.body",root/f"{name}.wire",root/f"{name}.receipt.json"]
-    if any(path.is_symlink() for path in paths): raise ValueError("retained_capture_symlink_rejected")
-    body=paths[0].read_bytes(); wire=paths[1].read_bytes(); receipt=json.loads(paths[2].read_bytes())
-    if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise ValueError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
 
 
 def _load_prefilled(root: Path, name: str, expected_url: str) -> tuple[bytes, dict]:
@@ -387,18 +237,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "official_source_item":{"id":item["id"],"owner":item["owner"],"type":item["type"],
             "title":item["title"],"created":item.get("created"),"modified":item.get("modified")},
         "bts_item_succession_accepted":False}
-
-
-def _write_outputs(storage, prefix: str, outputs: dict[str,bytes]) -> dict[str,dict[str,object]]:
-    descriptors={}
-    for name,body in outputs.items():
-        write_immutable(storage,f"{prefix}/{name}",body)
-        snapshot=storage.object_snapshot(f"{prefix}/{name}")
-        descriptor={"bytes":len(body),"sha256":_sha(body)}
-        if snapshot is None or snapshot.size!=descriptor["bytes"] or storage.sha256_key(f"{prefix}/{name}")!=descriptor["sha256"] or storage.object_snapshot(f"{prefix}/{name}")!=snapshot:
-            raise ValueError("candidate_object_readback_failed:"+name)
-        descriptors[name]=descriptor
-    return descriptors
 
 
 def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, version: str,
