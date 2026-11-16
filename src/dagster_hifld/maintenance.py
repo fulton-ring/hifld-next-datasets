@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import io
 import json
 import re
 import statistics
@@ -961,14 +960,6 @@ def _nonnegative_integer(value: object) -> bool:
     return integer is not None and integer >= 0
 
 
-def _layout_relative_path(path: str, identity: VersionIdentity) -> str | None:
-    prefix = f"{identity.prefix}/"
-    relative = path.removeprefix(prefix)
-    if relative == path or not relative.startswith("geoparquet/"):
-        return None
-    return relative
-
-
 def _declared_output_relative_path(
     path: str,
     identity: VersionIdentity,
@@ -1006,21 +997,6 @@ def _read_snapshot_bytes(
     if not isinstance(data, bytes):
         raise TypeError(f"Storage returned non-bytes content: {logical}")
     return data
-
-
-def _footer_for_snapshot(
-    storage: StagingStorageResource,
-    snapshot: StorageObjectSnapshot,
-) -> tuple[_ParquetFile, bytes]:
-    """Read one footer, materializing at most one object per call.
-
-    The returned ParquetFile is intentionally typed as object because pyarrow's
-    stubs do not expose a stable common protocol across supported versions.
-    """
-    from pyarrow import parquet
-
-    data = _read_snapshot_bytes(storage, snapshot)
-    return cast(_ParquetFile, cast(object, parquet.ParquetFile(io.BytesIO(data)))), data
 
 
 @contextmanager

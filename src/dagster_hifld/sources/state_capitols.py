@@ -8,7 +8,6 @@ approve the source, schema, baseline, coverage, rights, or release.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -35,6 +34,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "state-capitols"
 PUBLISHER = "U.S. Geological Survey National Geospatial Program"
@@ -130,15 +130,6 @@ _ARROW_TYPES = {
     "esriFieldTypeGlobalID": pa.string(),
     "esriFieldTypeDouble": pa.float64(),
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _query(params: dict[str, object]) -> str:

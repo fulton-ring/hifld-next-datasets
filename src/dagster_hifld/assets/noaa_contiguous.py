@@ -120,3 +120,7 @@ noaa_contiguous_draft_refresh_schedule = ScheduleDefinition(
     execution_timezone='America/New_York',
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [noaa_24nm_contiguous_zone]
+JOBS = [noaa_contiguous_draft_refresh_job]
+SCHEDULES = [noaa_contiguous_draft_refresh_schedule]

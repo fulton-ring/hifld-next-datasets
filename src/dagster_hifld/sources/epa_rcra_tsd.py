@@ -6,7 +6,6 @@ release, field-ID, and date interpretation decisions remain pending.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -31,6 +30,7 @@ from dagster_hifld.sources.epa_frs_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "0b30c57359194330bb89c9b3cf9c0bd5"
 SERVICE_URL = "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_INTERESTS_RCRA_TSD/FeatureServer"
@@ -47,15 +47,6 @@ FRS_URL = "https://www.epa.gov/frs"
 PAGE_SIZE = 1000
 MAX_BODY_BYTES = 32 * 1024 * 1024
 EXPECTED_SCHEMA_SHA256 = "f0f50c2204dfd72bcc5df3b2faae12f45b9b9c0f02c059078a1bfc2d2054184c"
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:

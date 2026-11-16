@@ -26,7 +26,6 @@ import hashlib
 import json
 import re
 import shutil
-import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,9 +46,15 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+)
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+
+from dagster_hifld.sources.nfhl_common import (
+    DOC_CAPTURE_ATTEMPTS, DOC_CAPTURE_BASE_DELAY_SECONDS, capture_with_retry,
+    producer_error_doc,
 )
 
 DATASET_SLUG = "nfhl-transect-baselines"
@@ -67,20 +72,6 @@ SOURCE_CRS_WKID = 4269
 SEGMENT_START_RECORDS = 2000
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MIN_FREE_BYTES = 4_000_000_000
-# The producer's MapServer also intermittently answers valid requests with
-# complete HTTP 200 Esri error documents and drops long responses mid-stream
-# (observed 2026-11-12 while probing this layer: single ~24-30 MB 2000-record
-# pages repeatedly answered with persistent 500/504 responses or truncated
-# streams while identical ranges served fine at half width). Every request
-# retries a bounded number of times for that transient mode; a retry re-issues
-# the exact same request, and completeness is still enforced by the pinned
-# before/after id rosters, counts, exact segment tiling, and full-record
-# digests, so retries can never mask drift. Segments wider than one record
-# that keep failing with error documents or incomplete transport captures are
-# bisected; a single-record segment that keeps failing fails the capture
-# explicitly.
-DOC_CAPTURE_ATTEMPTS = 4
-DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 SEGMENT_PROBE_ATTEMPTS = 2
 SEGMENT_PROBE_BASE_DELAY_SECONDS = 5.0
 # Pins below are the observed 2026-11-12 complete-layer population contract,
@@ -121,10 +112,6 @@ EXPECTED_SERVICE_LAYER_ROSTER = [
 ]
 
 
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
 def _list_sha(items: list) -> str:
     """Streamed sha256 of the canonical JSON encoding of ``items``.
 
@@ -139,10 +126,6 @@ def _list_sha(items: list) -> str:
         digest.update(_canonical(item))
     digest.update(b"]")
     return digest.hexdigest()
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -433,50 +416,6 @@ def _code_identity() -> dict[str, object]:
     return identity
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents and
-    incomplete transport captures; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
-    final attempt's body is always returned as captured, so a persistent
-    producer failure surfaces to the caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
-
-
 def _capture_segments(client: httpx.Client, capture_root: Path,
                       total: int) -> dict[str, tuple[bytes, dict[str, object]]]:
     """Capture the complete layer as adaptively bisected roster segments.
@@ -498,7 +437,7 @@ def _capture_segments(client: httpx.Client, capture_root: Path,
         offset, count = segments.popleft()
         name = _segment_name(offset, count)
         try:
-            body, receipt = _capture_with_retry(
+            body, receipt = capture_with_retry(
                 client, _segment_query(offset, count), capture_root, name,
                 max_bytes=MAX_CAPTURE_BYTES,
                 attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
@@ -510,7 +449,7 @@ def _capture_segments(client: httpx.Client, capture_root: Path,
             segments.appendleft((offset + middle, count - middle))
             segments.appendleft((offset, middle))
             continue
-        if _producer_error_doc(body):
+        if producer_error_doc(body):
             if count == 1:
                 raise ValueError("source_single_feature_unservable")
             middle = count // 2
@@ -544,7 +483,7 @@ def capture_nfhl_transect_baselines(storage: StagingStorageResource, *, version:
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-transect-baselines-draft"}) as client:
-            seed_body, seed_receipt = _capture_with_retry(
+            seed_body, seed_receipt = capture_with_retry(
                 client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                 capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
                 attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -554,13 +493,13 @@ def capture_nfhl_transect_baselines(storage: StagingStorageResource, *, version:
                 raise ValueError("source_seed_id_population_drift")
             captures["ids_seed"] = (seed_body, seed_receipt)
             for name, url in _doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
+                body, receipt = capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 captures[name] = (body, receipt)
             captures.update(_capture_segments(client, capture_root, EXPECTED_COUNT))
             for name, url in _after_doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
+                body, receipt = capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
                 captures[name] = (body, receipt)

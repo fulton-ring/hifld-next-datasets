@@ -27,6 +27,7 @@ from dagster_hifld.construction_state import canonical_construction_bundle, seal
 from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "public-refrigerated-warehouses-current-gcca"
 DIRECTORY_URL = "https://www.gcca.org/directory/"
@@ -39,14 +40,6 @@ MAX_TOTAL = 20_000
 MAX_PAGE_BYTES = 4_000_000
 EXPECTED_FIELDS = ("city", "companyname", "country", "identifier", "location_geo", "parentid", "state")
 _UNSAFE_KEY_RE = re.compile(r'(?i)(\bapi_key\s*:\s*["\'])[^"\']+(["\'])')
-
-
-def _canonical(value) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _point_wkb(coordinates) -> bytes:

@@ -16,7 +16,7 @@ from dagster_hifld.assets.land_mobile_commercial_transmission_towers import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import land_mobile_commercial_transmission_towers as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 def _sha(value):

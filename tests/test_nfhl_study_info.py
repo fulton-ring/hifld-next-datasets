@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pyarrow.parquet as pq
 
 from dagster_hifld.sources import nfhl_study_info as source
+from dagster_hifld.sources import nfhl_common
 
 
 def _canonical(value):
@@ -379,7 +380,7 @@ class NfhlStudyInfoTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins(features, schema)), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(nfhl_common, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_study_info(storage, version="vfixture",
                                                            capture_directory=str(root / "captures"))

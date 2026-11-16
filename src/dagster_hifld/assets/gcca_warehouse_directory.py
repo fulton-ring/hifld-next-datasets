@@ -70,3 +70,8 @@ gcca_warehouses_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 * *",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [gcca_warehouses_current]
+ASSET_CHECKS = [gcca_warehouses_geometry_complete]
+JOBS = [gcca_warehouses_draft_job]
+SCHEDULES = [gcca_warehouses_draft_schedule]

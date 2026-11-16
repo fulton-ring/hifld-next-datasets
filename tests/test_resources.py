@@ -999,6 +999,37 @@ class StagingStorageResourceTests(unittest.TestCase):
             self.assertEqual(client_cls.call_count, 1)
             self.assertEqual(client.get.call_count, 2)
 
+    def test_download_convert_and_stage_packages_raw_shapefile_as_zip(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            raw_shp = int(9994).to_bytes(4, "big") + bytes(96)
+
+            with patch("dagster_hifld.download.httpx.Client") as client_cls:
+                client = client_cls.return_value.__enter__.return_value
+                client.get.return_value.content = raw_shp
+                client.get.return_value.headers = {}
+                client.get.return_value.raise_for_status.return_value = None
+
+                result = download_convert_and_stage(
+                    [("https://example.com/stations.shp", "stations.shp")],
+                    "amtrak-stations",
+                    "amtrak-stations",
+                    "run_test",
+                    resource,
+                )
+
+            version_root = (
+                Path(tmpdir) / "amtrak-stations" / "amtrak-stations" / "run_test"
+            )
+            archive_path = version_root / "shapefile" / "stations.shp.zip"
+            self.assertTrue(archive_path.exists())
+            with zipfile.ZipFile(archive_path) as archive:
+                self.assertEqual(archive.namelist(), ["stations.shp"])
+            self.assertEqual(
+                result["written_keys"],
+                ["amtrak-stations/amtrak-stations/run_test/shapefile/stations.shp.zip"],
+            )
+
     def test_extract_zip_rejects_parent_traversal(self):
         buffer = BytesIO()
         with zipfile.ZipFile(buffer, "w") as zf:
