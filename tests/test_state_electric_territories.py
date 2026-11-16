@@ -61,6 +61,90 @@ class StateElectricTerritoryTests(unittest.TestCase):
         self.assertEqual(pq.read_table(pa.BufferReader(body))['geometry'].to_pylist(), [invalid, None])
         self.assertEqual(quality, {'null_geometry_count': 1, 'invalid_geometry_count': 1})
 
+    def test_refresh_with_new_retrieval_time_reuses_sealed_candidate(self):
+        from dagster_hifld.resources import StagingStorageResource
+        raw = b'original-zip-bytes'
+        table = pa.table({'PSC_ID': [7], 'wkb_geometry': pa.array([None], type=pa.binary())})
+        def receipt(observed_at, wire):
+            return {'method': 'GET', 'url': source.ZIP_URL, 'final_url': source.ZIP_URL,
+                'observed_at': observed_at, 'status': 200, 'complete_body': True,
+                'bytes': len(raw), 'sha256': source.digest(raw),
+                'wire_bytes': len(wire), 'wire_sha256': source.digest(wire)}
+        captures = [{'wisconsin_zip': (raw, receipt('2026-11-15T00:00:00+00:00', b'first headers'))},
+            {'wisconsin_zip': (raw, receipt('2026-11-16T00:00:00+00:00', b'second headers'))}]
+        tables = {'cooperative': (table, 'EPSG:3071', '2026-05-27')}
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            storage = StagingStorageResource(local_dir=str(root / 'staging'))
+            (root / 'wisconsin_zip.wire').write_bytes(b'first headers')
+            remaining = iter(captures)
+            with patch.object(source, 'acquire_wisconsin', side_effect=lambda *_: (tables, next(remaining))):
+                first = source.stage_state_territories(storage, 'wisconsin', str(root))[0]
+                manifest_bytes = storage.read_key(first['staging_prefix'] + '/metadata/source_manifest.json')
+                seal_bytes = storage.read_key(first['staging_prefix'] + '/metadata/native_capture.json')
+                output_bytes = storage.read_key(first['staging_prefix'] + '/geoparquet/cooperative.parquet')
+                (root / 'wisconsin_zip.wire').write_bytes(b'second headers')
+                second = source.stage_state_territories(storage, 'wisconsin', str(root))[0]
+            self.assertEqual(second['version'], first['version'])
+            self.assertEqual(second['staging_prefix'], first['staging_prefix'])
+            self.assertEqual(second['output_sha256'], first['output_sha256'])
+            manifest = json.loads(manifest_bytes)
+            self.assertEqual(manifest['inputs'][0]['retrieved_at'], '2026-11-15T00:00:00+00:00')
+            self.assertEqual(storage.read_key(first['staging_prefix'] + '/metadata/source_manifest.json'), manifest_bytes)
+            self.assertEqual(storage.read_key(first['staging_prefix'] + '/metadata/native_capture.json'), seal_bytes)
+            self.assertEqual(storage.read_key(first['staging_prefix'] + '/geoparquet/cooperative.parquet'), output_bytes)
+            history = storage.list_prefix(f'_raw/{source.WISCONSIN}/{source.digest(raw)}')
+            self.assertEqual(sorted(json.loads(storage.read_key(key))['observed_at'] for key in history),
+                ['2026-11-15T00:00:00+00:00', '2026-11-16T00:00:00+00:00'])
+
+    def test_sealed_candidate_first_construction_conflict_refused(self):
+        from dagster_hifld.resources import StagingStorageResource
+        raw = b'original-zip-bytes'
+        receipt = {'method': 'GET', 'url': source.ZIP_URL, 'final_url': source.ZIP_URL,
+            'observed_at': '2026-11-16T00:00:00+00:00', 'status': 200, 'complete_body': True,
+            'bytes': len(raw), 'sha256': source.digest(raw), 'wire_bytes': len(raw), 'wire_sha256': source.digest(raw)}
+        table = pa.table({'PSC_ID': [7], 'wkb_geometry': pa.array([None], type=pa.binary())})
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            storage = StagingStorageResource(local_dir=str(root / 'staging'))
+            (root / 'wisconsin_zip.wire').write_bytes(raw)
+            with patch.object(source, 'acquire_wisconsin', return_value=(
+                    {'cooperative': (table, 'EPSG:3071', '2026-05-27')}, {'wisconsin_zip': (raw, receipt)})):
+                first = source.stage_state_territories(storage, 'wisconsin', str(root))[0]
+            manifest_key = first['staging_prefix'] + '/metadata/source_manifest.json'
+            tampered = json.loads(storage.read_key(manifest_key))
+            tampered['inputs'][0]['sha256'] = '0' * 64
+            storage.write_key(manifest_key, source._canonical(tampered))
+            with patch.object(source, 'acquire_wisconsin', return_value=(
+                    {'cooperative': (table, 'EPSG:3071', '2026-05-27')}, {'wisconsin_zip': (raw, receipt)})):
+                with self.assertRaisesRegex(ValueError, 'first_construction_conflict'):
+                    source.stage_state_territories(storage, 'wisconsin', str(root))
+            self.assertEqual(storage.read_key(manifest_key), source._canonical(tampered))
+
+    def test_partially_constructed_candidate_refused(self):
+        from dagster_hifld.resources import StagingStorageResource
+        raw = b'original-zip-bytes'
+        receipt = {'method': 'GET', 'url': source.ZIP_URL, 'final_url': source.ZIP_URL,
+            'observed_at': '2026-11-16T00:00:00+00:00', 'status': 200, 'complete_body': True,
+            'bytes': len(raw), 'sha256': source.digest(raw), 'wire_bytes': len(raw), 'wire_sha256': source.digest(raw)}
+        table = pa.table({'PSC_ID': [7], 'wkb_geometry': pa.array([None], type=pa.binary())})
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            storage = StagingStorageResource(local_dir=str(root / 'staging'))
+            (root / 'wisconsin_zip.wire').write_bytes(raw)
+            with patch.object(source, 'acquire_wisconsin', return_value=(
+                    {'cooperative': (table, 'EPSG:3071', '2026-05-27')}, {'wisconsin_zip': (raw, receipt)})):
+                first = source.stage_state_territories(storage, 'wisconsin', str(root))[0]
+            seal = Path(storage.local_dir) / first['staging_prefix'] / 'metadata/native_capture.json'
+            manifest_bytes = storage.read_key(first['staging_prefix'] + '/metadata/source_manifest.json')
+            seal.unlink()
+            with patch.object(source, 'acquire_wisconsin', return_value=(
+                    {'cooperative': (table, 'EPSG:3071', '2026-05-27')}, {'wisconsin_zip': (raw, receipt)})):
+                with self.assertRaisesRegex(ValueError, 'partially_constructed'):
+                    source.stage_state_territories(storage, 'wisconsin', str(root))
+            self.assertEqual(storage.read_key(first['staging_prefix'] + '/metadata/source_manifest.json'), manifest_bytes)
+            self.assertFalse(seal.exists())
+
     def test_staged_manifest_has_valid_normalized_provenance(self):
         from dagster_hifld.release_approval import validate_release_provenance
         from dagster_hifld.resources import StagingStorageResource

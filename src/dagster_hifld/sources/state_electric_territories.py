@@ -335,8 +335,53 @@ def geoparquet(table, crs):
         'invalid_geometry_count': sum(g is not None and (not g.is_valid or g.is_empty) for g in shapes)}
 
 
+def _candidate_fingerprint(captures, identity, output_digest):
+    """Content-derived candidate identity: original source bytes, processing
+    identity and output bytes. Retrieval observations never enter it, so an
+    unchanged refresh derives the same version instead of minting a new one."""
+    return digest(_canonical({'captures': {name: digest(body) for name, (body, _r) in captures.items()},
+        'processing': identity, 'output': output_digest}))
+
+
+def _existing_sealed_candidate(storage, prefix, captures, identity, output_digest):
+    """Return the first construction's sealed result, or None for a fresh prefix.
+
+    The seal is ``metadata/native_capture.json``, written last. A prefix holding
+    earlier writes without it was left incomplete by an interrupted run and is
+    never extended or overwritten; remove it explicitly. A sealed candidate is
+    reused only when its own provenance pins exactly this construction's source
+    bytes, processing identity and output digest.
+    """
+    seal_key = f'{prefix}/metadata/native_capture.json'
+    if not storage.object_exists(seal_key):
+        if storage.list_prefix(prefix):
+            raise ValueError('staged_candidate_partially_constructed:' + prefix)
+        return None
+    try:
+        manifest = json.loads(storage.read_key(f'{prefix}/metadata/source_manifest.json'))
+        sealed = json.loads(storage.read_key(seal_key))
+        stored = {item['input_id']: (item['sha256'], item['bytes']) for item in manifest['inputs']}
+        objects = manifest['prebuilt_output_policy']['formats']['geoparquet']['objects']
+        consistent = (stored == {name: (digest(body), len(body)) for name, (body, _r) in captures.items()}
+            and len(objects) == 1 and objects[0]['sha256'] == output_digest
+            and manifest['processing_code'] == identity
+            and sealed.get('version') == prefix.rsplit('/', 1)[-1]
+            and sealed.get('staging_prefix') == prefix and sealed.get('output_sha256') == output_digest)
+    except (AttributeError, IndexError, KeyError, TypeError) as exc:
+        raise ValueError('staged_candidate_first_construction_conflict:' + prefix) from exc
+    if not consistent:
+        raise ValueError('staged_candidate_first_construction_conflict:' + prefix)
+    return sealed
+
+
 def stage_state_territories(storage, state, capture_directory=None):
-    """Immutable local candidates with original bytes and all acceptance gates false."""
+    """Immutable local candidates with original bytes and all acceptance gates false.
+
+    Versions derive only from source bytes, processing identity and output
+    bytes; retrieval observations live in capture history, and a sealed
+    candidate is never rewritten, so an unchanged refresh reuses its first
+    construction instead of minting a conflicting new version.
+    """
     _safe_local_storage(storage)
     dataset = {'iowa': IOWA, 'wisconsin': WISCONSIN}[state]
     directory = Path(capture_directory).absolute() if capture_directory else Path(tempfile.mkdtemp(prefix=f'hifld-960-{state}-'))
@@ -344,15 +389,21 @@ def stage_state_territories(storage, state, capture_directory=None):
         raise ValueError('unsafe_capture_directory')
     tables, captures = (acquire_iowa if state == 'iowa' else acquire_wisconsin)(directory, bool(capture_directory))
     identity = processing_identity(Path(__file__).parents[3])
+    # Observations belong to capture history, outside every content-addressed candidate.
+    for name, (raw, receipt) in captures.items():
+        write_immutable(storage, f'_raw/{dataset}/{digest(raw)}/{name}.{digest(_canonical(receipt))}.receipt.json', _canonical(receipt))
     results = []
     for slug, (table, crs, modified) in tables.items():
         body, quality = geoparquet(table, crs)
-        fingerprint = digest(_canonical({'captures': {n: digest(b) for n, (b, _r) in captures.items()},
-            'capture_receipts': {n: r for n, (_b, r) in captures.items()},
-            'processing': identity, 'output': digest(body)}))
+        output_digest = digest(body)
+        fingerprint = _candidate_fingerprint(captures, identity, output_digest)
         version = 'v0.0.0-draft-' + fingerprint[:32]
         prefix = f'{dataset}/{slug}/{version}'
         output = f'geoparquet/{slug}.parquet'
+        sealed = _existing_sealed_candidate(storage, prefix, captures, identity, output_digest)
+        if sealed is not None:
+            results.append(sealed)
+            continue
         publisher = 'Iowa Utilities Commission' if state == 'iowa' else 'Public Service Commission of Wisconsin'
         native_audit = json.loads((table.schema.metadata or {}).get(b'hifld_native_geometry_audit', b'{}'))
         manifest = {'schema_version': 1, 'approved': False, **GATES,
@@ -393,16 +444,14 @@ def stage_state_territories(storage, state, capture_directory=None):
                 'objects': [{'path': output, 'sha256': digest(body), 'bytes': len(body)}]}}},
             'unsupported_output_formats': {'geopackage': 'No approved derived schema.', 'pmtiles': 'No approved display transformation.', 'shapefile_zip': 'Native dimensional and scalar contract requires review before a derived shapefile.'}}
         validate_release_provenance(manifest)
-        for name, (raw, receipt) in captures.items():
+        for name, (raw, _receipt) in captures.items():
             write_immutable(storage, f'{prefix}/raw/{name}.body', raw)
             write_immutable(storage, f'{prefix}/raw/{name}.wire', (directory / (name + '.wire')).read_bytes())
-            # Observations belong to capture history, outside the content-addressed candidate.
-            write_immutable(storage, f'_raw/{dataset}/{digest(raw)}/{name}.{digest(_canonical(receipt))}.receipt.json', _canonical(receipt))
         write_immutable(storage, f'{prefix}/{output}', body)
         write_immutable(storage, f'{prefix}/metadata/source_manifest.json', _canonical(manifest))
         result = {'dataset_slug': dataset, 'file_slug': slug, 'version': version,
             'staging_prefix': prefix, 'feature_count': table.num_rows, 'native_crs': crs,
-            'source_population_complete': True, 'native_geometry_audit': native_audit, 'output_sha256': digest(body), **quality, **GATES}
+            'source_population_complete': True, 'native_geometry_audit': native_audit, 'output_sha256': output_digest, **quality, **GATES}
         write_immutable(storage, f'{prefix}/metadata/native_capture.json', _canonical(result))
         results.append(result)
     return results
