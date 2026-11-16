@@ -24,7 +24,7 @@ from dagster import (
 
 from dagster_hifld.construction_state import ConstructionStateError, load_first_construction
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.epa_frs_common import (
     candidate_prefix,
     content_derived_version,

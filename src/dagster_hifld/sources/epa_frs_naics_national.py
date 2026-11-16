@@ -663,7 +663,7 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
     base = Path(storage.local_dir).absolute()
     base.mkdir(parents=True, exist_ok=True)
     capture_root = (Path(retained_capture_directory).absolute() if retained_capture_directory else
-                    Path(capture_directory or fstr(default_capture_dir("hifld-native-reconstruction", "102", "captures"))).absolute() / version)
+                    Path(capture_directory or default_capture_dir("hifld-native-reconstruction", "102", "captures")).absolute() / version)
     if retained_capture_directory:
         if not capture_root.is_dir() or capture_root.is_symlink():
             raise EPAFRSNationalNAICSError("retained_capture_directory_invalid")
