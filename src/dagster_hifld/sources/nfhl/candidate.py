@@ -365,6 +365,7 @@ def _stage_candidate(storage: StagingStorageResource, layer: NfhlLayer, root: Pa
              "source_record_sha256": record_sha, "source_geometry_sha256": result["source_geometry_sha256"],
              "source_schema_sha256": schema_sha, "source_crs_epsg": None if layer.is_table else SOURCE_CRS_WKID,
              "geometry_kind": layer.geometry, "geometry": result["geometry"], "object_id_field": result["oid_field"],
+             "declared_layer_extent": result["layer_doc"].get("extent"),
              "unique_source_id_count": result["feature_count"], "page_count": result["page_count"],
              "source_fields": result["source_fields"], "official_layer_name": layer.name,
              "layer_id": layer.layer_id, "service_url": SERVICE_URL, "source_release_date": None,
