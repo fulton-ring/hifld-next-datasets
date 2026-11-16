@@ -279,7 +279,7 @@ class ZmContractTests(NfhlCaptureCase):
         audit = json.loads(self.staged(result, "metadata/source_audit.json"))
         self.assertEqual(audit["source_declared_zm"], {"hasZ": True, "hasM": True})
         geo = json.loads(self.parquet(result, layer).schema.metadata[b"geo"])
-        self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["LineString"])
+        self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["LineString", "MultiLineString"])
 
     def test_served_zm_vertices_fail_closed_and_quarantine(self):
         layer = LAYERS_BY_SLUG["nfhl-levees"]
