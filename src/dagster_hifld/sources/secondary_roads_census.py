@@ -38,7 +38,7 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
+from dagster_hifld.sources.arcgis_layer import (
     PAGE_MAX_BYTES, _canonical, _capture_identity, _esri_polyline_wkb,
     _load_capture, _sha,
 )

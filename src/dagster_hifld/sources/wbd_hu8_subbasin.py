@@ -81,7 +81,7 @@ from dagster_hifld.sources.capture_common import (
     verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.levee_areas_usace_ienc import _esri_polygon_wkb
+from dagster_hifld.sources.arcgis_layer import esri_polygon_wkb as _esri_polygon_wkb
 from dagster_hifld.sources.wbd_hu_family import (
     producer_error_document as _producer_error_envelope,
     query_url as _layer_query_url, validate_esri_value as _validate_field_value,
