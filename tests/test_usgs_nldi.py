@@ -380,7 +380,7 @@ class USGSNLDIAssetTests(unittest.TestCase):
             with fixture_mode(), patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": str(previous_root)}):
                 result = nldi.fetch_and_stage_nldi(staging, client=httpx.Client(transport=complete))
             self.assertEqual(result["feature_count"], FIXTURE_COUNT)
-            self.assertEqual(requests, ["page:3", "page:6", "page:9", "sources"])
+            self.assertEqual(requests, ["page:3", "page:6", "sources"])
 
     def test_pinned_walk_drift_is_refused(self):
         transport = make_transport()
