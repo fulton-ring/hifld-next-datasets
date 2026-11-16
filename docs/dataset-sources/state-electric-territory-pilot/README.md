@@ -32,8 +32,10 @@ The runtime fetches only the Iowa layer metadata, count/ID queries and complete
 100-ID feature batches (explicit `returnZ=true`, no `outSR`), followed by a second
 metadata/count/ID roster; Wisconsin fetches only the PSC ZIP. Capture files retain
 bounded decoded and wire bytes with hash-pinned receipts. Offline replay requires
-all original files and never falls through to HTTP. Raw input, output and exact
-processing identity determine immutable local draft versions. Native scalars,
+all original files and never falls through to HTTP. Raw input, original retrieval receipts, output and exact
+processing identity determine immutable local draft versions. Replaying the same
+retained capture reuses its version; a new live capture has its own dated receipt.
+Normalized multi-input provenance validates before candidate metadata is staged. Native scalars,
 field order, WKB and CRS are retained in prebuilt GeoParquet; no 2D conversion,
 projection, repair or null-row removal is applied. Catalog reads the native
 prebuilt output. Geometry checks intentionally fail for the observed originals.

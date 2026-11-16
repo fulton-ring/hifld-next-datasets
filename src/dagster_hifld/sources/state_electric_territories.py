@@ -14,9 +14,8 @@ import shutil
 import stat
 import tempfile
 import zipfile
-from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import pyarrow as pa
@@ -25,6 +24,7 @@ import pyogrio
 import pyproj
 import shapely
 
+from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.sources.electric_retail_service_territories import (
     _arrow_type, _canonical, _field_signature, _safe_local_storage,
 )
@@ -214,19 +214,40 @@ def stage_state_territories(storage, state, capture_directory=None):
     for slug, (table, crs, modified) in tables.items():
         body, quality = geoparquet(table, crs)
         fingerprint = digest(_canonical({'captures': {n: digest(b) for n, (b, _r) in captures.items()},
+            'capture_receipts': {n: r for n, (_b, r) in captures.items()},
             'processing': identity, 'output': digest(body)}))
         version = 'v0.0.0-draft-' + fingerprint[:32]
         prefix = f'{dataset}/{slug}/{version}'
         output = f'geoparquet/{slug}.parquet'
+        publisher = 'Iowa Utilities Commission' if state == 'iowa' else 'Public Service Commission of Wisconsin'
         manifest = {'schema_version': 1, 'approved': False, **GATES,
-            'title': dataset + ' / ' + slug, 'publisher': 'Iowa Utilities Commission' if state == 'iowa' else 'Public Service Commission of Wisconsin',
+            'title': dataset + ' / ' + slug, 'publisher': publisher,
             'source_url': LAYER if state == 'iowa' else ZIP_URL,
             'source_modified': str(modified), 'producer_release_date': None,
             'geometry_conversion': 'GDAL ESRIJSON native WKB; no repair, projection or dimensional flattening' if state == 'iowa' else 'GDAL native shapefile WKB; original Z retained',
             'source_date_meaning': 'ArcGIS dataLastEditDate milliseconds' if state == 'iowa' else 'DBF update date; individual DATA_DATE values retained; not a release date',
             'license': 'Unaccepted; original source metadata retained, no open-rights inference.',
             'source_coverage_scope': 'Source-defined state electric service areas; approximate boundaries possible; no national ORNL parity or EIA-ID equivalence.',
-            'processing_code': identity,
+            'processor': 'HIFLD Next', 'code_commit': identity['code_commit'],
+            'code_identity_scheme': identity['code_identity_scheme'], 'processing_code': identity,
+            'inputs': [{'input_id': name, 'producer': publisher, 'role': 'producer_publication',
+                'host': urlsplit(receipt['url']).hostname,
+                'canonical_url': LAYER if state == 'iowa' else ZIP_URL,
+                'retrieval_url': receipt['url'], 'observed_final_url': receipt['final_url'],
+                'retrieved_at': receipt['observed_at'], 'http_status': receipt['status'],
+                'bytes': len(raw), 'sha256': digest(raw),
+                'wire_bytes': receipt['wire_bytes'], 'wire_sha256': receipt['wire_sha256'],
+                'release_date': None,
+                'release_date_unknown_reason': 'Publisher exposes edit/container and feature dates, not a dated common release edition.',
+                'license': 'Unresolved; public access does not establish redistribution rights acceptance.',
+                'attribution': publisher + '; original state-defined electric service polygons, accuracy and rights unaccepted.'}
+                for name, (raw, receipt) in captures.items()],
+            'transformations': [{'operation': 'native_state_electric_territory_to_geoparquet', 'parameters': {
+                'input_format': 'ESRIJSON' if state == 'iowa' else 'original PSC shapefile ZIP',
+                'attributes': 'All original field names, order and typed scalar values; no EIA joins or generated IDs.',
+                'geometry': 'GDAL native WKB; original CRS and XYZ retained, including missing/invalid geometry; no projection or repair.',
+                'scope': 'One original state layer only, not national ORNL parity.'}}],
+            'lineage': 'Original state publisher publication; source-defined populations remain separate, without national reconstruction.',
             'capture_evidence': {name: {'url': receipt['url'], 'raw_path': f'raw/{name}.body',
                 'sha256': digest(raw), 'bytes': len(raw), 'wire_path': f'raw/{name}.wire',
                 'wire_sha256': receipt['wire_sha256'], 'wire_bytes': receipt['wire_bytes']}
@@ -235,6 +256,7 @@ def stage_state_territories(storage, state, capture_directory=None):
                 'reason': 'Preserve native attributes, WKB and CRS without repair or projection; draft only.',
                 'objects': [{'path': output, 'sha256': digest(body), 'bytes': len(body)}]}}},
             'unsupported_output_formats': {'geopackage': 'No approved derived schema.', 'pmtiles': 'No approved display transformation.', 'shapefile_zip': 'Native dimensional and scalar contract requires review before a derived shapefile.'}}
+        validate_release_provenance(manifest)
         for name, (raw, receipt) in captures.items():
             write_immutable(storage, f'{prefix}/raw/{name}.body', raw)
             write_immutable(storage, f'{prefix}/raw/{name}.wire', (directory / (name + '.wire')).read_bytes())

@@ -48,6 +48,27 @@ class StateElectricTerritoryTests(unittest.TestCase):
         self.assertEqual(pq.read_table(pa.BufferReader(body))['geometry'].to_pylist(), [invalid, None])
         self.assertEqual(quality, {'null_geometry_count': 1, 'invalid_geometry_count': 1})
 
+    def test_staged_manifest_has_valid_normalized_provenance(self):
+        from dagster_hifld.release_approval import validate_release_provenance
+        from dagster_hifld.resources import StagingStorageResource
+        raw = b'original-zip-bytes'
+        receipt = {'method': 'GET', 'url': source.ZIP_URL, 'final_url': source.ZIP_URL,
+            'observed_at': '2026-11-16T00:00:00+00:00', 'status': 200, 'complete_body': True,
+            'bytes': len(raw), 'sha256': source.digest(raw), 'wire_bytes': len(raw), 'wire_sha256': source.digest(raw)}
+        table = pa.table({'PSC_ID': [7], 'wkb_geometry': pa.array([None], type=pa.binary())})
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / 'wisconsin_zip.wire').write_bytes(raw)
+            storage = StagingStorageResource(local_dir=str(root / 'staging'))
+            with patch.object(source, 'acquire_wisconsin', return_value=(
+                    {'cooperative': (table, 'EPSG:3071', '2026-05-27')}, {'wisconsin_zip': (raw, receipt)})):
+                result = source.stage_state_territories(storage, 'wisconsin', str(root))[0]
+            manifest = json.loads(storage.read_key(result['staging_prefix'] + '/metadata/source_manifest.json'))
+            validate_release_provenance(manifest)
+            self.assertEqual(manifest['inputs'][0]['retrieved_at'], receipt['observed_at'])
+            self.assertEqual(manifest['inputs'][0]['sha256'], source.digest(raw))
+            self.assertFalse(manifest['release_accepted'])
+
     def test_native_z_wkb_and_scalar_roundtrip(self):
         geometry = shapely.to_wkb(Polygon([(0, 0, 7), (0, 5, 8), (5, 0, 9), (0, 0, 7)]))
         table = pa.table({'CODE': [' 001 '], 'PSC_ID': pa.array([9007199254740993], type=pa.int64()),
