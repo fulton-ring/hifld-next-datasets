@@ -1,0 +1,256 @@
+"""Two original state publications, never a national ORNL replacement.
+
+PSC Wisconsin explicitly describes some boundaries as approximate. Its three
+native layers stay separate, including municipal Z coordinates. No EIA join,
+coordinate repair or projection is performed. Local draft construction only.
+"""
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import math
+import shutil
+import stat
+import tempfile
+import zipfile
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlencode
+
+import httpx
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pyogrio
+import pyproj
+import shapely
+
+from dagster_hifld.sources.electric_retail_service_territories import (
+    _arrow_type, _canonical, _field_signature, _safe_local_storage,
+)
+from dagster_hifld.sources.epa_frs_common import capture_get, processing_identity, write_immutable
+
+IOWA = 'iowa-electric-service-boundaries'
+WISCONSIN = 'wisconsin-psc-electric-service-territories'
+LAYER = 'https://services.arcgis.com/vPD5PVLI6sfkZ5E4/arcgis/rest/services/Electrical_Service_Boundaries/FeatureServer/14'
+ZIP_URL = 'https://psc.wi.gov/SiteAssets/Maps/EL_PSCW_ServTerr.zip'
+MAX_BYTES = 32_000_000
+GATES = {name: False for name in (
+    'source_accepted', 'source_freshness_accepted', 'schema_contract_accepted',
+    'id_contract_accepted', 'crs_accepted', 'coverage_accepted', 'rights_accepted',
+    'baseline_accepted', 'release_accepted', 'promotion_allowed')}
+WI_LAYERS = {'cooperative': 'Cooperative', 'investor-owned': 'Investor-Owned', 'municipal': 'Municipal'}
+
+
+def digest(body):
+    return hashlib.sha256(body).hexdigest()
+
+
+def capture(url, directory, name, *, replay=False):
+    """Bounded retained original response; offline mode never falls through to HTTP."""
+    path = directory / (name + '.body')
+    receipt_path = directory / (name + '.receipt.json')
+    wire_path = directory / (name + '.wire')
+    if replay:
+        for item in (path, wire_path, receipt_path):
+            info = item.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError('unsafe_capture_file')
+        if path.stat().st_size > MAX_BYTES or wire_path.stat().st_size > MAX_BYTES or receipt_path.stat().st_size > 65536:
+            raise ValueError('oversized_capture')
+        body, wire = path.read_bytes(), wire_path.read_bytes()
+        receipt = json.loads(receipt_path.read_bytes())
+        if (receipt.get('url') != url or receipt.get('final_url') != url or receipt.get('method') != 'GET'
+                or receipt.get('status') != 200 or receipt.get('complete_body') is not True
+                or receipt.get('bytes') != len(body) or receipt.get('sha256') != digest(body)
+                or receipt.get('wire_bytes') != len(wire) or receipt.get('wire_sha256') != digest(wire)):
+            raise ValueError('retained_capture_mismatch:' + name)
+        return body, receipt
+    if any(p.exists() for p in (path, wire_path, receipt_path)):
+        raise ValueError('capture_already_exists:' + name)
+    def reserve(progress):
+        if shutil.disk_usage(directory).free < 300_000_000 + progress.reserve_bytes:
+            raise ValueError('capture_disk_floor')
+    directory.mkdir(parents=True, exist_ok=True)
+    with httpx.Client(timeout=httpx.Timeout(90, connect=15), follow_redirects=False) as client:
+        return capture_get(client, url, directory, name, max_bytes=MAX_BYTES, reserve=reserve)
+
+
+def iowa_table(features, fields):
+    columns = {name: [] for name, _kind, _length in fields}
+    geometries = [None] * len(features)
+    if any(feature.get('geometry') is not None for feature in features):
+        document = {'geometryType': 'esriGeometryPolygon', 'hasZ': True, 'hasM': False,
+            'spatialReference': {'wkid': 102004}, 'fields': [dict(name=n, type=k) for n,k,l in fields],
+            'features': features}
+        _info, native = pyogrio.read_arrow(_canonical(document))
+        geometries = native['wkb_geometry'].to_pylist()
+        if len(geometries) != len(features):
+            raise ValueError('native_geometry_population_loss')
+    for feature in features:
+        attrs = feature.get('attributes')
+        if not isinstance(attrs, dict) or set(attrs) != set(columns):
+            raise ValueError('source_attributes_drift')
+        if type(attrs['OBJECTID']) is not int:
+            raise ValueError('source_objectid_drift')
+        for name, kind, _length in fields:
+            value = attrs[name]
+            if value is not None:
+                typ = _arrow_type(kind)
+                if ((pa.types.is_integer(typ) and type(value) is not int)
+                        or (pa.types.is_string(typ) and type(value) is not str)
+                        or (pa.types.is_floating(typ) and (type(value) not in (int, float) or not math.isfinite(value)))):
+                    raise ValueError('source_scalar_type_drift:' + name)
+            columns[name].append(value)
+        geometry = feature.get('geometry')
+        if geometry is not None and geometry.get('spatialReference', {'wkid': 102004}).get('wkid') != 102004:
+            raise ValueError('source_geometry_crs_drift')
+    arrays = {name: pa.array(columns[name], type=_arrow_type(kind)) for name, kind, _length in fields}
+    arrays['geometry'] = pa.array(geometries, type=pa.binary())
+    return pa.table(arrays)
+
+
+def validate_contract(file_slug, info, table):
+    expected = CONTRACTS[file_slug]
+    signature = None if table is None else [(f.name, str(f.type)) for f in table.schema]
+    if (info.get('crs') != expected['crs'] or signature != [tuple(f) for f in expected['fields']]
+            or info.get('geometry_type') != expected['geometry_type']):
+        raise ValueError('source_contract_drift:' + file_slug)
+
+
+def acquire_iowa(directory, replay):
+    captures = {}
+    def get(name, url):
+        body, receipt = capture(url, directory, name, replay=replay)
+        captures[name] = (body, receipt)
+        value = json.loads(body)
+        if not isinstance(value, dict) or 'error' in value:
+            raise ValueError('invalid_arcgis_response:' + name)
+        return value
+    def query(**params):
+        return LAYER + '/query?' + urlencode({'f': 'json', **params})
+    layer = get('layer_before', LAYER + '?f=pjson')
+    fields = _field_signature(layer.get('fields'))
+    if (layer.get('id') != 14 or layer.get('geometryType') != 'esriGeometryPolygon'
+            or layer.get('objectIdField') != 'OBJECTID' or layer.get('hasZ') is not True or layer.get('hasM') is not False
+            or layer.get('extent', {}).get('spatialReference', {}).get('wkid') != 102004):
+        raise ValueError('iowa_layer_identity_or_crs_drift')
+    if fields != [tuple(f) for f in IOWA_FIELDS]:
+        raise ValueError('iowa_native_field_contract_drift')
+    count = get('count_before', query(where='1=1', returnCountOnly='true'))['count']
+    ids = get('ids_before', query(where='1=1', returnIdsOnly='true'))['objectIds']
+    if (type(count) is not int or not 0 < count <= 5000 or len(ids) != count
+            or any(type(i) is not int for i in ids) or len(set(ids)) != count):
+        raise ValueError('iowa_population_incomplete')
+    ids = sorted(ids)
+    features = []
+    for offset in range(0, count, 100):
+        wanted = ids[offset:offset + 100]
+        page = get(f'page_{offset:05}', query(objectIds=','.join(map(str, wanted)), outFields='*',
+            returnGeometry='true', returnZ='true', returnM='false', orderByFields='OBJECTID ASC'))
+        if (page.get('exceededTransferLimit') is True or page.get('geometryType') != 'esriGeometryPolygon'
+                or page.get('spatialReference', {}).get('wkid') != 102004
+                or _field_signature(page.get('fields')) != fields
+                or [f.get('attributes', {}).get('OBJECTID') for f in page.get('features', [])] != wanted):
+            raise ValueError('iowa_page_incomplete_or_drift')
+        features.extend(page['features'])
+    if (get('count_after', query(where='1=1', returnCountOnly='true'))['count'] != count
+            or sorted(get('ids_after', query(where='1=1', returnIdsOnly='true'))['objectIds']) != ids
+            or get('layer_after', LAYER + '?f=pjson') != layer):
+        raise ValueError('iowa_changed_during_capture')
+    table = iowa_table(features, fields)
+    validate_contract('electrical-service-boundaries', {'crs': 'ESRI:102004', 'geometry_type': 'Polygon'}, table)
+    return {'electrical-service-boundaries': (table, 'ESRI:102004', layer['editingInfo'].get('dataLastEditDate'))}, captures
+
+
+def acquire_wisconsin(directory, replay):
+    body, receipt = capture(ZIP_URL, directory, 'wisconsin_zip', replay=replay)
+    path = directory / 'wisconsin_zip.body'
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
+        names = archive.namelist()
+        if (len(names) != len(set(names)) or len(names) > 40
+                or sum(i.file_size for i in archive.infolist()) > 50_000_000
+                or {Path(n).stem for n in names if n.endswith('.shp')} != set(WI_LAYERS.values())):
+            raise ValueError('wisconsin_archive_roster_drift')
+    tables = {}
+    for slug, layer in WI_LAYERS.items():
+        native = f'/vsizip/{{{path}}}/EL_PSCW_ServTerr/{layer}.shp'
+        info = pyogrio.read_info(native)
+        _meta, table = pyogrio.read_arrow(native)
+        validate_contract(slug, info, table)
+        if table.num_rows != info['features'] or not 0 < table.num_rows <= 5000:
+            raise ValueError('wisconsin_population_incomplete')
+        tables[slug] = (table, info['crs'], info['layer_metadata']['DBF_DATE_LAST_UPDATE'])
+    return tables, {'wisconsin_zip': (body, receipt)}
+
+
+def geoparquet(table, crs):
+    geometry = 'geometry' if 'geometry' in table.column_names else 'wkb_geometry'
+    shapes = shapely.from_wkb(table[geometry].to_numpy())
+    types = sorted({g.geom_type + (' Z' if g.has_z else '') for g in shapes if g is not None})
+    metadata = dict(table.schema.metadata or {})
+    metadata[b'geo'] = _canonical({'version': '1.1.0', 'primary_column': geometry,
+        'columns': {geometry: {'encoding': 'WKB', 'geometry_types': types,
+            'crs': pyproj.CRS(crs).to_json_dict()}}})
+    sink = pa.BufferOutputStream()
+    pq.write_table(table.replace_schema_metadata(metadata), sink, compression='zstd')
+    body = sink.getvalue().to_pybytes()
+    if not pq.read_table(pa.BufferReader(body)).equals(table, check_metadata=False):
+        raise ValueError('native_scalar_or_geometry_roundtrip_loss')
+    return body, {'null_geometry_count': sum(g is None for g in shapes),
+        'invalid_geometry_count': sum(g is not None and (not g.is_valid or g.is_empty) for g in shapes)}
+
+
+def stage_state_territories(storage, state, capture_directory=None):
+    """Immutable local candidates with original bytes and all acceptance gates false."""
+    _safe_local_storage(storage)
+    dataset = {'iowa': IOWA, 'wisconsin': WISCONSIN}[state]
+    directory = Path(capture_directory).absolute() if capture_directory else Path(tempfile.mkdtemp(prefix=f'hifld-960-{state}-'))
+    if any(p.is_symlink() for p in (directory, *directory.parents)):
+        raise ValueError('unsafe_capture_directory')
+    tables, captures = (acquire_iowa if state == 'iowa' else acquire_wisconsin)(directory, bool(capture_directory))
+    identity = processing_identity(Path(__file__).parents[3])
+    results = []
+    for slug, (table, crs, modified) in tables.items():
+        body, quality = geoparquet(table, crs)
+        fingerprint = digest(_canonical({'captures': {n: digest(b) for n, (b, _r) in captures.items()},
+            'processing': identity, 'output': digest(body)}))
+        version = 'v0.0.0-draft-' + fingerprint[:32]
+        prefix = f'{dataset}/{slug}/{version}'
+        output = f'geoparquet/{slug}.parquet'
+        manifest = {'schema_version': 1, 'approved': False, **GATES,
+            'title': dataset + ' / ' + slug, 'publisher': 'Iowa Utilities Commission' if state == 'iowa' else 'Public Service Commission of Wisconsin',
+            'source_url': LAYER if state == 'iowa' else ZIP_URL,
+            'source_modified': str(modified), 'producer_release_date': None,
+            'geometry_conversion': 'GDAL ESRIJSON native WKB; no repair, projection or dimensional flattening' if state == 'iowa' else 'GDAL native shapefile WKB; original Z retained',
+            'source_date_meaning': 'ArcGIS dataLastEditDate milliseconds' if state == 'iowa' else 'DBF update date; individual DATA_DATE values retained; not a release date',
+            'license': 'Unaccepted; original source metadata retained, no open-rights inference.',
+            'source_coverage_scope': 'Source-defined state electric service areas; approximate boundaries possible; no national ORNL parity or EIA-ID equivalence.',
+            'processing_code': identity,
+            'capture_evidence': {name: {'url': receipt['url'], 'raw_path': f'raw/{name}.body',
+                'sha256': digest(raw), 'bytes': len(raw), 'wire_path': f'raw/{name}.wire',
+                'wire_sha256': receipt['wire_sha256'], 'wire_bytes': receipt['wire_bytes']}
+                for name, (raw, receipt) in captures.items()},
+            'prebuilt_output_policy': {'schema_version': 1, 'formats': {'geoparquet': {
+                'reason': 'Preserve native attributes, WKB and CRS without repair or projection; draft only.',
+                'objects': [{'path': output, 'sha256': digest(body), 'bytes': len(body)}]}}},
+            'unsupported_output_formats': {'geopackage': 'No approved derived schema.', 'pmtiles': 'No approved display transformation.', 'shapefile_zip': 'Native dimensional and scalar contract requires review before a derived shapefile.'}}
+        for name, (raw, receipt) in captures.items():
+            write_immutable(storage, f'{prefix}/raw/{name}.body', raw)
+            write_immutable(storage, f'{prefix}/raw/{name}.wire', (directory / (name + '.wire')).read_bytes())
+            # Observations belong to capture history, outside the content-addressed candidate.
+            write_immutable(storage, f'_raw/{dataset}/{digest(raw)}/{name}.{digest(_canonical(receipt))}.receipt.json', _canonical(receipt))
+        write_immutable(storage, f'{prefix}/{output}', body)
+        write_immutable(storage, f'{prefix}/metadata/source_manifest.json', _canonical(manifest))
+        result = {'dataset_slug': dataset, 'file_slug': slug, 'version': version,
+            'staging_prefix': prefix, 'feature_count': table.num_rows, 'native_crs': crs,
+            'source_population_complete': True, 'output_sha256': digest(body), **quality, **GATES}
+        write_immutable(storage, f'{prefix}/metadata/native_capture.json', _canonical(result))
+        results.append(result)
+    return results
+
+
+# Exact source field order/types and native CRS, inspected 2026-11-16.
+CONTRACTS = {'electrical-service-boundaries': {'crs': 'ESRI:102004', 'geometry_type': 'Polygon', 'fields': [('OBJECTID', 'int64'), ('Owner', 'string'), ('ESB_Type', 'string'), ('ESB_ID', 'string'), ('REC_Number', 'string'), ('WebsiteURL', 'string'), ('Emergency_Phone', 'string'), ('Alternate_Phone', 'string'), ('Print_Name1', 'string'), ('Print_Name2', 'string'), ('created_user', 'string'), ('created_date', 'int64'), ('last_edited_user', 'string'), ('last_edited_date', 'int64'), ('local_edit_date', 'int64'), ('Shape__Area', 'double'), ('Shape__Length', 'double'), ('geometry', 'binary')]}, 'cooperative': {'crs': 'EPSG:3071', 'geometry_type': 'Polygon', 'fields': [('CITY', 'string'), ('CODE', 'string'), ('UTIL_LAB', 'string'), ('PSC_ID', 'int64'), ('AREA', 'double'), ('PERIMETER', 'string'), ('DATA_DATE', 'date32[day]'), ('GIS_DATA', 'string'), ('ADDRESS_1', 'string'), ('ADDRESS_2', 'string'), ('STATE', 'string'), ('ZIP', 'string'), ('PHONE', 'string'), ('WEB', 'string'), ('UTIL_TYPE', 'string'), ('LABEL', 'string'), ('FOE_Part', 'int32'), ('Shape_Leng', 'double'), ('Shape_Area', 'double'), ('wkb_geometry', 'binary')]}, 'investor-owned': {'crs': 'EPSG:3071', 'geometry_type': 'Polygon', 'fields': [('CODE', 'string'), ('UTIL_LAB', 'string'), ('PSC_ID', 'int64'), ('ADDRESS_1', 'string'), ('ADDRESS_2', 'string'), ('CITY', 'string'), ('STATE', 'string'), ('ZIP', 'string'), ('PHONE', 'string'), ('WEB', 'string'), ('AREA', 'double'), ('PERIMETER', 'string'), ('DATA_DATE', 'date32[day]'), ('GIS_DATA', 'string'), ('UTIL_TYPE', 'string'), ('LABEL', 'string'), ('FOE_Part', 'int32'), ('Shape_Leng', 'double'), ('Shape_Area', 'double'), ('wkb_geometry', 'binary')]}, 'municipal': {'crs': 'EPSG:3071', 'geometry_type': 'Polygon Z', 'fields': [('CODE', 'string'), ('COLOR', 'int32'), ('UTIL_LAB', 'string'), ('Util_Type', 'string'), ('PSC_ID', 'int64'), ('AREA', 'double'), ('PERIMETER', 'string'), ('ADDRESS_1', 'string'), ('ADDRESS_2', 'string'), ('CITY', 'string'), ('STATE', 'string'), ('ZIP', 'string'), ('PHONE', 'string'), ('WEB', 'string'), ('DATA_DATE', 'date32[day]'), ('GIS_DATA', 'string'), ('LABEL', 'string'), ('Shape_Leng', 'double'), ('Shape_Area', 'double'), ('wkb_geometry', 'binary')]}}
+
+IOWA_FIELDS = [('OBJECTID', 'esriFieldTypeOID', None), ('Owner', 'esriFieldTypeString', 255), ('ESB_Type', 'esriFieldTypeString', 50), ('ESB_ID', 'esriFieldTypeString', 50), ('REC_Number', 'esriFieldTypeString', 50), ('WebsiteURL', 'esriFieldTypeString', 255), ('Emergency_Phone', 'esriFieldTypeString', 50), ('Alternate_Phone', 'esriFieldTypeString', 50), ('Print_Name1', 'esriFieldTypeString', 255), ('Print_Name2', 'esriFieldTypeString', 255), ('created_user', 'esriFieldTypeString', 255), ('created_date', 'esriFieldTypeDate', 8), ('last_edited_user', 'esriFieldTypeString', 255), ('last_edited_date', 'esriFieldTypeDate', 8), ('local_edit_date', 'esriFieldTypeDate', 8), ('Shape__Area', 'esriFieldTypeDouble', None), ('Shape__Length', 'esriFieldTypeDouble', None)]
