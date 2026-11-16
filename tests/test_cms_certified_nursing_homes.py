@@ -40,7 +40,10 @@ class CMSTests(unittest.TestCase):
         body, fields, rows = self.fixture()
         variants = [body[:-10], body.replace(b'015010', b'015009'), body.replace(b'015009', b'15009'),
                     body.replace(b'32.123456', b'NaN'), body.replace(b'2026-10-01', b'2026-11-01'),
-                    body.replace(b'Latitude', b'LATITUDE'), body.replace(b' A, B ', b' A, C ')]
+                    body.replace(b'Latitude', b'LATITUDE'), body.replace(b' A, B ', b' A, C '),
+                    body.replace(b'CMS Certification Number (CCN)', b'Provider Name'),
+                    body.replace(b'CMS Certification Number (CCN),', b''),
+                    body.replace(b'015009', b''), body.replace(b'32.123456', b'91.0')]
         for changed in variants:
             with self.subTest(changed=changed[:60]), self.pins(body, fields), self.assertRaises(ValueError):
                 source.parse_csv(changed)
