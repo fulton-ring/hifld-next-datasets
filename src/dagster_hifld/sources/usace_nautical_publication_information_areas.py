@@ -21,9 +21,20 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.usace_administrative_areas import (
-    _canonical, _sha, _fetch_retry, _parquet_bytes, _load_replay,
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import (
+    fetch_capture_retry, layer_parquet_bytes as _parquet_bytes,
+    load_replay as _load_replay,
 )
+
+
+def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int], *,
+                 allow_arcgis_item_redirect: bool = False):
+    """Retry one transient transport/incomplete read, retaining every attempt."""
+    return fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                               prefill_empty_artifacts=True,
+                               allow_arcgis_item_redirect=allow_arcgis_item_redirect)
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,

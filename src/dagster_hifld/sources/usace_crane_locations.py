@@ -34,11 +34,13 @@ from dagster_hifld.sources.capture_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
 )
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
-from dagster_hifld.sources.usace_pylon_areas import (
-    _load_replay, _write_outputs,
-    PAGE_SIZE,
+from dagster_hifld.sources.arcgis_layer import (
+    load_replay as _load_replay, validate_crs as _validate_crs,
+    validate_dimensions as _validate_dimensions, write_outputs as _write_outputs,
 )
-from dagster_hifld.sources.usace_pylon_locations import _validate_crs, _validate_dimensions
+
+# Page size previously inherited from usace_pylon_areas.
+PAGE_SIZE = 250
 
 DATASET_SLUG = "crane-locations-usace-ienc"
 FILE_SLUG = DATASET_SLUG
