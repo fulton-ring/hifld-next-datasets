@@ -34,7 +34,7 @@ def synthetic_mineplant_members():
     dbf[header-1]=13
     rows=[]
     for fid in range(count):
-        x=seed['x_origin']+fid*seed['step'];y=seed['y_origin']+fid*seed['step'];crushed=lo<=fid<=hi
+        x=float(f"{seed['x_origin']+fid*seed['step']:.5f}");y=float(f"{seed['y_origin']+fid*seed['step']:.5f}");crushed=lo<=fid<=hi
         row={'id':fid+offset,'COMMODITY':seed['crushed_commodity'] if crushed else seed['other_commodity'],
             'SITE_NAME':seed['sample']['SITE_NAME'],'COMPANY_NA':seed['sample']['COMPANY_NA'],'STATE_LOCA':STATE_NAMES[fid%len(STATE_NAMES)],
             'COUNTY':seed['sample']['COUNTY'],'LATITUDE':f'{y:.5f}','LONGITUDE':f'{x:.5f}','PLANT_MIN':seed['sample']['PLANT_MIN']}
@@ -45,7 +45,7 @@ def synthetic_mineplant_members():
             assert len(raw)==size,(name,row[name])
             rec[off:off+size]=raw;off+=size
         dbf[header+fid*width:header+(fid+1)*width]=rec
-    xs=[seed['x_origin']+fid*seed['step'] for fid in range(count)];ys=[seed['y_origin']+fid*seed['step'] for fid in range(count)]
+    xs=[float(f"{seed['x_origin']+fid*seed['step']:.5f}") for fid in range(count)];ys=[float(f"{seed['y_origin']+fid*seed['step']:.5f}") for fid in range(count)]
     shp=bytearray(100+28*count);shx=bytearray(100+8*count)
     for value in (shp,shx):
         struct.pack_into('>i',value,0,9994);struct.pack_into('>i',value,24,len(value)//2);struct.pack_into('<ii',value,28,1000,1)
