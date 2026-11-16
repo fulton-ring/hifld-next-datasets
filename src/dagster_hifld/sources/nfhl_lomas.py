@@ -26,7 +26,7 @@ directory, and the run fails closed with
 pins set, the module reproduces every pin and stages the unapproved candidate
 exactly like its NFHL siblings.
 
-The complete 543,467-feature layer was captured 2026-11-12 as 272 full-width
+The complete 543,656-feature layer was captured 2026-11-16 as 272 full-width
 2,000-record pages of the sorted OBJECTID roster with unchanged before/after
 count/id/metadata brackets, zero null-geometry rows and zero string-"NaN"
 ordinate rows; the observed bounds are within the declared layer extent.
@@ -84,17 +84,17 @@ DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 PAGE_CAPTURE_ATTEMPTS = 3
 PAGE_CAPTURE_BASE_DELAY_SECONDS = 5.0
-# Pins below are the observed 2026-11-12 complete-layer population contract,
+# Pins below are the observed 2026-11-16 complete-layer population contract,
 # established by a dated live-mode capture of all 272 full-width roster pages
 # (before/after count/id/metadata brackets unchanged during capture); the
 # module's own capture must reproduce every pin. The service layer roster is
 # the same cheap independently re-verifiable service contract. The live-mode
 # path (pins unset, contract written to ``population_pins.json``, nothing
 # staged) remains available for future re-establishment.
-EXPECTED_COUNT = 543467
-EXPECTED_ID_SHA256 = "abaa793e351dbbd779dc2e2f1304dd5727341cca3a89ba338b1a456edf6f1eb7"
-EXPECTED_RECORD_SHA256 = "8a94b7498325bcfaba2b6bcec66f3cfcca63a04757f6e9a04f2ab345c1e5aa5b"
-EXPECTED_GEOMETRY_SHA256 = "0aa476c8a0f3b3bb6ec27000a0b305b5d340287291a842dac6b64dc0a14ffc04"
+EXPECTED_COUNT = 543656
+EXPECTED_ID_SHA256 = "4082f46fb9f9c445f31422d654f828c729d3933dc3e54fc8e9abc0f18796102c"
+EXPECTED_RECORD_SHA256 = "1c13fa6af7b42a694f8ec23ad762f06014e3e327bcf007b2c88c888cb39ae211"
+EXPECTED_GEOMETRY_SHA256 = "53ee687bad81d2b0f0840bf4493288e7954024fb7a48996cad483f40e43c7dd2"
 EXPECTED_SCHEMA_SHA256 = "328e606a5d54ce05e781cd0e7b9045912fbd1a2252fc871b9092a131ce37964d"
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_NAN_GEOMETRY_COUNT = 0
