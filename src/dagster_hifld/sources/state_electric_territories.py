@@ -27,7 +27,7 @@ import pyproj
 import shapely
 
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.sources.electric_retail_service_territories import (
+from dagster_hifld.sources.electric_retail_service_territories_common import (
     _arrow_type, _canonical, _field_signature, _safe_local_storage,
 )
 from dagster_hifld.sources.capture_common import capture_get, processing_identity, write_immutable

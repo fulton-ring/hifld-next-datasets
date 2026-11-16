@@ -1,4 +1,4 @@
-"""Immutable preservation capture of the frozen 2025 HIFLD retail-territory copy."""
+"""Shared electric service territory family core: the frozen 2025 HIFLD retail-territory capture and the capture, schema and staging helpers its sibling state publications reuse."""
 from __future__ import annotations
 
 import hashlib
