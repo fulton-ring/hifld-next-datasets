@@ -31,7 +31,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from dagster_hifld.sources.epa_frs_common import capture_get
+from dagster_hifld.sources.capture_common import capture_get
 from dagster_hifld.sources.esri_common import canonical, sha
 
 SERVICE_URL = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer"

@@ -8,7 +8,7 @@ from dagster_hifld.http_capture import (
     capture_roster_digests,
     validate_retained_capture_replay,
 )
-from dagster_hifld.sources.epa_frs_common import validate_capture_request_identity
+from dagster_hifld.sources.capture_common import validate_capture_request_identity
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import _load_capture
 

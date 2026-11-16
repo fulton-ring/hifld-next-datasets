@@ -11,7 +11,7 @@ from dagster_hifld.catalog import summarize_staged_catalog
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
-from dagster_hifld.sources.epa_frs_common import _validate_cached_catalog_sidecars
+from dagster_hifld.sources.capture_common import _validate_cached_catalog_sidecars
 from tests.test_native_geoparquet_catalog import PREFIX, write_fixture
 
 

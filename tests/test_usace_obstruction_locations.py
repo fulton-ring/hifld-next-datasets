@@ -263,7 +263,7 @@ class ObstructionLocationsTests(unittest.TestCase):
             self._capture_directory(root)
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
             with patch.object(source, "validate_construction_code_identity"), patch(
-                    "dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                    "dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = source.capture_usace_obstruction_locations(storage, version="draft", capture_directory=str(root))
             self.assertFalse(first["reused"])
             self.assertEqual(first["feature_count"], source.EXPECTED_COUNT)
@@ -281,7 +281,7 @@ class ObstructionLocationsTests(unittest.TestCase):
             capture_manifest["artifact_roster"] = capture_roster_digests(root, exclude={"capture_manifest.json"})
             (root / "capture_manifest.json").write_bytes(_canonical(capture_manifest) + b"\n")
             with patch.object(source, "validate_construction_code_identity"), patch(
-                    "dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                    "dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 second = source.capture_usace_obstruction_locations(storage, version="draft", capture_directory=str(root))
             self.assertTrue(second["reused"])
             self.assertEqual(first["version"], second["version"])

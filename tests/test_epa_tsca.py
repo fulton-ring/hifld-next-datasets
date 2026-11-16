@@ -112,7 +112,7 @@ class EpaTscaDraftTests(unittest.TestCase):
             (capture_root / "portal_item.wire").write_bytes(wire)
             with patch("dagster_hifld.sources.epa_tsca._code_identity", return_value={"code_commit":"synthetic","files":[]}), \
                  patch("dagster_hifld.sources.epa_tsca.validate_construction_code_identity"), \
-                 patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                 patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = _finalize_epa_tsca(storage, "synthetic-run", capture_root,
                     {"portal_item":(raw, receipt)}, fields, extracted, provenance)
                 self.assertFalse(first["release_accepted"])

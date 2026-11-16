@@ -25,7 +25,7 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 import dagster_hifld.sources.epa_rcra_tsd as rcra
-import dagster_hifld.sources.epa_frs_common as frs_common
+import dagster_hifld.sources.capture_common as frs_common
 
 
 def _fixture():

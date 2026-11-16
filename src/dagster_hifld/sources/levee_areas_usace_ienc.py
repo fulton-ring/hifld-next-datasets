@@ -23,7 +23,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
@@ -31,6 +31,7 @@ from dagster_hifld.sources.epa_frs_common import (
 from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture, _capture_identity, _load_capture, _sha, _validate_spatial_reference,
 )
+from dagster_hifld.sources.arcgis_layer import esri_polygon_wkb as _esri_polygon_wkb
 
 DATASET_SLUG = "levee-areas-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -96,64 +97,6 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         load_capture=_load_capture,
         validate_request_identity=validate_capture_request_identity,
     )
-
-
-def _esri_polygon_wkb(geometry: dict) -> bytes:
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
-    if type(has_z) is not bool or type(has_m) is not bool:
-        raise ValueError("source_ordinate_flags_invalid")
-    if has_z or has_m:
-        # The pinned layer contract is XY-only; correctly flagged dimensional
-        # geometry is source drift and must fail closed, never be sealed.
-        raise ValueError("source_polygon_dimensional_flags_rejected")
-    shells, holes = [], []
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise ValueError("source_polygon_ring_invalid")
-        if coords[0] != coords[-1]:
-            raise ValueError("source_polygon_ring_not_closed")
-        if any(not isinstance(point, list) for point in coords):
-            raise ValueError("source_polygon_coordinate_invalid")
-        dims = {len(point) for point in coords}
-        if len(dims) != 1:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        if next(iter(dims)) != 2:
-            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        ring = LinearRing(coords)
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon([point[:2] for point in ring])
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(ring)
-
-    def polygon_wkb(shell, hole_rings):
-        out = bytearray(struct.pack("<BI", 1, 3))
-        out.extend(struct.pack("<I", 1 + len(hole_rings)))
-        for ring in [shell, *hole_rings]:
-            out.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                out.extend(struct.pack("<dd", *point))
-        return bytes(out)
-
-    polygons = [polygon_wkb(shells[i], assignments[i]) for i in range(len(shells))]
-    if len(polygons) == 1:
-        return polygons[0]
-    multi = bytearray(struct.pack("<BI", 1, 6))
-    multi.extend(struct.pack("<I", len(polygons)))
-    for polygon in polygons:
-        multi.extend(polygon)
-    return bytes(multi)
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
