@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 import pyarrow as pa
-from dagster_hifld.sources.epa_facilities import (
+from dagster_hifld.sources.epa_facilities_common import (
     EPA_FACILITIES_PROFILE,
     LayerProfile,
     _profile_urls,
@@ -65,18 +65,18 @@ class EpaFacilitiesSourceTests(unittest.TestCase):
             **{key: manifest for key in snapshot_keys},
             **{key: b"release derivative" for key in release_keys},
         })
-        with patch("dagster_hifld.sources.epa_facilities.validate_staged_release_derivatives", return_value=release_keys) as validate_release:
+        with patch("dagster_hifld.sources.epa_facilities_common.validate_staged_release_derivatives", return_value=release_keys) as validate_release:
             _validate_cached_catalog_sidecars(storage, EPA_FACILITIES_PROFILE.ordinary, version, prefix, table, expected, source_objects)
         self.assertEqual(validate_release.call_args.args[2], set(storage.keys))
 
         storage.documents[quality_key] = {**quality, "feature_count": 2}
         with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
-            with patch("dagster_hifld.sources.epa_facilities.validate_staged_release_derivatives", return_value=release_keys):
+            with patch("dagster_hifld.sources.epa_facilities_common.validate_staged_release_derivatives", return_value=release_keys):
                 _validate_cached_catalog_sidecars(storage, EPA_FACILITIES_PROFILE.ordinary, version, prefix, table, expected, source_objects)
         storage.documents[quality_key] = quality
         storage.keys.add(f"{prefix}/metadata/unrecognized.json")
         with self.assertRaisesRegex(ValueError, "cached_candidate_object_roster_changed"):
-            with patch("dagster_hifld.sources.epa_facilities.validate_staged_release_derivatives", return_value=release_keys):
+            with patch("dagster_hifld.sources.epa_facilities_common.validate_staged_release_derivatives", return_value=release_keys):
                 _validate_cached_catalog_sidecars(storage, EPA_FACILITIES_PROFILE.ordinary, version, prefix, table, expected, source_objects)
 
     def test_accepts_the_retained_43_object_labels_catalog_roster(self):
@@ -131,8 +131,8 @@ class EpaFacilitiesSourceTests(unittest.TestCase):
 
         descriptor = entries["metadata/source_manifest.json"]
         source_objects = {"metadata/source_manifest.json": {"bytes": descriptor["bytes"], "sha256": descriptor["sha256"]}}
-        with patch("dagster_hifld.sources.epa_facilities.provenance_projection", return_value={}), \
-             patch("dagster_hifld.sources.epa_facilities.validate_staged_release_derivatives", return_value=release_keys):
+        with patch("dagster_hifld.sources.epa_facilities_common.provenance_projection", return_value={}), \
+             patch("dagster_hifld.sources.epa_facilities_common.validate_staged_release_derivatives", return_value=release_keys):
             _validate_cached_catalog_sidecars(
                 Storage(), EPA_FACILITIES_PROFILE.labels, version, prefix, table, expected, source_objects,
             )

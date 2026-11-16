@@ -1,4 +1,4 @@
-"""Native, unapproved capture of EPA's ICIS wastewater treatment plant layer."""
+"""Shared EPA ICIS wastewater family core (EPA_GEO FRS_Wastewater FeatureServer)."""
 from __future__ import annotations
 
 import json
