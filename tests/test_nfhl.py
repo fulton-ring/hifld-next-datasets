@@ -46,7 +46,15 @@ GEOMETRIES = {
                 41: ({"rings": [OUTSIDE]}, Polygon(OUTSIDE)), 100: ({"rings": [FAR_SQUARE]}, Polygon(FAR_SQUARE))},
     "none": {oid: (None, None) for oid in (3, 4, 10, 11, 12, 40, 41, 100)},
 }
-
+LEGACY_SLUGS = {
+    "nfhl-alluvial-fans", "nfhl-availability", "nfhl-base-flood-elevations", "nfhl-base-index",
+    "nfhl-coastal-gages", "nfhl-coastal-transects", "nfhl-cross-sections", "nfhl-firm-panels", "nfhl-gages",
+    "nfhl-general-structures", "nfhl-high-water-marks", "nfhl-hydrologic-reaches", "nfhl-levees",
+    "nfhl-limit-moderate-wave-action", "nfhl-lomrs", "nfhl-nodes", "nfhl-plss", "nfhl-political-jurisdictions",
+    "nfhl-primary-frontal-dunes", "nfhl-river-mile-markers", "nfhl-seclusion-boundaries",
+    "nfhl-station-start-points", "nfhl-study-info", "nfhl-subbasins", "nfhl-topographic-low-confidence-areas",
+    "nfhl-transect-baselines", "nfhl-water-areas",
+}
 
 
 class FakeMapServer:
@@ -397,6 +405,55 @@ class ResumeTests(NfhlCaptureCase):
         self.assertEqual(second["reused_page_count"], 0)
         self.assertEqual(second["feature_count"], first["feature_count"] + 1)
         self.assertTrue(list((self.captures / self.layer.slug / "previous").glob("*/page_*.body")))
+
+
+class RegistrationTests(unittest.TestCase):
+    def test_every_layer_keeps_its_asset_key_checks_job_and_stopped_schedule(self):
+        from dagster import AssetKey, DefaultScheduleStatus
+
+        from dagster_hifld.assets import nfhl as nfhl_assets
+        from dagster_hifld.definitions import defs
+
+        self.assertEqual({layer.slug for layer in LAYERS}, LEGACY_SLUGS)
+        graph = defs.resolve_asset_graph()
+        keys = set(graph.get_all_asset_keys())
+        checks = {(c.asset_key, c.name) for c in graph.asset_check_keys}
+        for layer in LAYERS:
+            key = AssetKey(["ingest", layer.slug, layer.slug])
+            self.assertIn(key, keys)
+            self.assertIn((key, f"fema_{layer.stem}_complete"), checks)
+            self.assertIn((key, f"fema_{layer.stem}_count_drift"), checks)
+            self.assertEqual(defs.get_schedule_def(f"{layer.stem}_draft_refresh_schedule").default_status,
+                             DefaultScheduleStatus.STOPPED)
+            defs.get_job_def(f"{layer.stem}_draft_refresh")
+        self.assertEqual(len(nfhl_assets.INGEST_ASSETS), len(LAYERS))
+
+    def test_asset_materializes_with_blocking_completeness_and_warn_drift_checks(self):
+        from dagster import AssetCheckSeverity, DagsterInstance, materialize
+
+        from dagster_hifld.assets import nfhl as nfhl_assets
+
+        layer = LAYERS_BY_SLUG["nfhl-gages"]
+        index = [a.key.path[1] for a in nfhl_assets.INGEST_ASSETS].index(layer.slug)
+        selection = [nfhl_assets.INGEST_ASSETS[index], *nfhl_assets.ASSET_CHECKS[2 * index:2 * index + 2]]
+        server = FakeMapServer(layer)
+        settings = CaptureSettings(doc_delay=0, page_delay=0, transport=httpx.MockTransport(server.handle))
+        with tempfile.TemporaryDirectory() as temp, DagsterInstance.ephemeral() as instance, \
+                patch.object(nfhl_candidate, "DEFAULT_SETTINGS", settings), \
+                patch.object(nfhl_candidate, "validate_construction_code_identity"):
+            storage = StagingStorageResource(use_local=True, local_dir=str(Path(temp).resolve()), prefix="")
+            evaluations = []
+            for _ in range(2):
+                result = materialize(selection, resources={"staging_storage": storage}, instance=instance)
+                self.assertTrue(result.success)
+                evaluations.append({e.check_name: e for e in result.get_asset_check_evaluations()})
+                server.features[500] = server.feature(500, {"x": 1.0, "y": 2.0})
+            for run in evaluations:
+                self.assertTrue(run[f"fema_{layer.stem}_complete"].passed)
+            self.assertTrue(evaluations[0][f"fema_{layer.stem}_count_drift"].passed)
+            drift = evaluations[1][f"fema_{layer.stem}_count_drift"]
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
 
 
 if __name__ == "__main__":
