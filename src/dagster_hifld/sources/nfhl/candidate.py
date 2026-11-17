@@ -182,7 +182,7 @@ class _EvidenceBodies(Mapping):
         return len(self.names)
 
 
-def _check_storage(storage: StagingStorageResource) -> Path:
+def check_local_staging(storage: StagingStorageResource) -> Path:
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) \
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ValueError("explicit_local_staging_resource_required")
@@ -201,7 +201,7 @@ def capture_nfhl_layer(storage: StagingStorageResource, layer: NfhlLayer, *, cap
     ``<capture_directory>/<slug>``; without it, a temporary directory is used.
     """
     settings = settings or DEFAULT_SETTINGS
-    base = _check_storage(storage)
+    base = check_local_staging(storage)
     if shutil.disk_usage(base).free < layer.min_free_bytes:
         raise ValueError("disk_floor_before_acquisition")
     with ExitStack() as stack:
@@ -244,7 +244,7 @@ def capture_nfhl_layer(storage: StagingStorageResource, layer: NfhlLayer, *, cap
                 "capture_directory": str(root) if capture_directory else None}
 
 
-def _stage(storage: StagingStorageResource, key: str, *, body: bytes | None = None,
+def stage_object(storage: StagingStorageResource, key: str, *, body: bytes | None = None,
            path: Path | None = None) -> dict[str, object]:
     if path is not None:
         size, digest = path.stat().st_size, sha256_file(path)
@@ -397,16 +397,16 @@ def _stage_candidate(storage: StagingStorageResource, layer: NfhlLayer, root: Pa
     documents = {name: canonical(document) + b"\n" for name, document in (
         ("metadata/source_manifest.json", manifest), ("metadata/source_audit.json", audit),
         ("metadata/processing_identity.json", identity))}
-    objects = {rel: _stage(storage, f"{prefix}/{rel}", path=parquet_path)}
+    objects = {rel: stage_object(storage, f"{prefix}/{rel}", path=parquet_path)}
     for name, body in documents.items():
-        objects[name] = _stage(storage, f"{prefix}/{name}", body=body)
+        objects[name] = stage_object(storage, f"{prefix}/{name}", body=body)
     for name in accepted:
         for suffix in (".body", ".wire", ".receipt.json"):
-            objects[f"raw/{name}{suffix}"] = _stage(storage, f"{prefix}/raw/{name}{suffix}",
+            objects[f"raw/{name}{suffix}"] = stage_object(storage, f"{prefix}/raw/{name}{suffix}",
                                                     path=root / f"{name}{suffix}")
     ready = {"approved": False, "version": version, "objects": {rel: objects[rel]},
              "source_record_sha256": record_sha, **_READY_FLAGS}
-    objects["metadata/candidate_ready.json"] = _stage(storage, f"{prefix}/metadata/candidate_ready.json",
+    objects["metadata/candidate_ready.json"] = stage_object(storage, f"{prefix}/metadata/candidate_ready.json",
                                                       body=canonical(ready) + b"\n")
     seal_ready_candidate(storage, state_key, version, fingerprint, {
         "processing_identity": identity, "source_record_sha256": record_sha, "source_schema_sha256": schema_sha,

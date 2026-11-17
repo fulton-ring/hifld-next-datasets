@@ -43,10 +43,18 @@ class NfhlLayer:
     min_free_bytes: int = 1_500_000_000
     # Also capture and check FEMA's ArcGIS Online registration of the service.
     portal_identity: bool = False
+    # ``rest`` captures the producer's MapServer layer; ``bulk`` reads this
+    # feature class from the shared county/community NFHL Database capture.
+    source: str = "rest"
+    feature_class: str | None = None
 
     def __post_init__(self) -> None:
         if self.geometry not in GEOMETRY_KINDS:
             raise ValueError(f"unknown_nfhl_geometry_kind:{self.geometry}")
+        if self.source not in {"rest", "bulk"}:
+            raise ValueError(f"unknown_nfhl_source:{self.source}")
+        if self.source == "bulk" and not self.feature_class:
+            raise ValueError(f"nfhl_bulk_layer_missing_feature_class:{self.slug}")
 
     @property
     def stem(self) -> str:
@@ -97,6 +105,10 @@ LAYERS: tuple[NfhlLayer, ...] = (
               _ids("RIV_MRK_ID", "START_ID", "SOURCE_CIT"), "nfhl/river-mile-markers", 239986,
               id_note="RIV_MRK_ID, START_ID and GFID are reused across producer rows; only OBJECTID and "
                       "GlobalID are unique."),
+    NfhlLayer("nfhl-datum-conversion-points", 8, "Datum Conversion Points",
+              "Datum Conversion Points (FEMA NFHL)", "point",
+              _ids("DATCONPTID", "QUAD_NM"), "nfhl/datum-conversion-points-1", 239968,
+              subject="points that convert elevations between vertical datums"),
     NfhlLayer("nfhl-coastal-gages", 9, "Coastal Gages", "Coastal Gages (FEMA NFHL)", "point",
               _ids("CSTGAGE_ID"), "nfhl/coastal-gages-1", 239797),
     NfhlLayer("nfhl-gages", 10, "Gages", "Gages (FEMA NFHL)", "point",
@@ -149,6 +161,15 @@ LAYERS: tuple[NfhlLayer, ...] = (
               subject="flood-hazard zone boundary lines (S_Fld_Haz_Ln)",
               inventory_aliases=(("nfhl/national-flood-hazard-layer-line-nfhl-1", 240863),),
               max_page_bytes=512 * MIB, min_free_bytes=160_000_000_000),
+    NfhlLayer("nfhl-flood-hazard-zones", 28, "Flood Hazard Zones",
+              "Flood Hazard Zones (FEMA NFHL)", "polygon",
+              ("DFIRM_ID", "VERSION_ID", "FLD_AR_ID"),
+              "nfhl/flood-hazard-zones-1", 239971,
+              subject="flood hazard area polygons (S_FLD_HAZ_AR)",
+              inventory_aliases=(("nfhl/national-flood-hazard-layer-area-nfhl-1-east", 240862),
+                                 ("nfhl/national-flood-hazard-layer-area-nfhl-1-west", 240891)),
+              source="bulk", feature_class="S_FLD_HAZ_AR", max_page_bytes=512 * MIB,
+              min_free_bytes=32_000_000_000),
     NfhlLayer("nfhl-seclusion-boundaries", 29, "Seclusion Boundaries", "Seclusion Boundaries (FEMA NFHL)",
               "polygon", _ids("SUBINFO_ID", "CASE_NO"), "nfhl/seclusion-boundaries", 239987),
     NfhlLayer("nfhl-alluvial-fans", 30, "Alluvial Fans", "Alluvial Fans (FEMA NFHL)", "polygon",
