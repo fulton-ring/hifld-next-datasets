@@ -10,9 +10,10 @@ overshoot behavior so evidence is never silently clipped.
 from __future__ import annotations
 
 import hashlib
+import json
 import stat
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -66,6 +67,47 @@ def capture_roster_digests(root: Path, *, exclude: set[str] = frozenset()) -> di
         body = entry.read_bytes()
         result[entry.name] = {"bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
     return result
+
+
+def validate_retained_capture_replay(
+    root: Path,
+    *,
+    capture_names: set[str],
+    expected_urls: Mapping[str, str],
+    load_capture: Callable[[Path, str], tuple[bytes, bytes, dict]],
+    validate_request_identity: Callable[[str, Mapping[str, object], str], None],
+) -> dict[str, tuple[bytes, dict]]:
+    """Replay a retained capture directory against its sealed manifest.
+
+    Reads ``capture_manifest.json`` (refusing a symlinked manifest), requires a
+    complete manifest whose receipt names match ``capture_names`` exactly,
+    validates the artifact roster and per-artifact digests with
+    ``validate_capture_roster`` and ``capture_roster_digests``, then loads every
+    capture with the caller's established loader and binds each stored receipt
+    to the manifest receipt plus the caller's expected request URL. Artifact
+    names and URLs are passed explicitly, so the validator never inherits one
+    dataset's pins from another. Returns ``{name: (body, receipt)}``.
+    """
+    manifest_path = root / "capture_manifest.json"
+    if manifest_path.is_symlink():
+        raise ValueError("retained_capture_manifest_symlink_rejected")
+    manifest = json.loads(manifest_path.read_bytes())
+    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
+        raise ValueError("retained_capture_manifest_invalid")
+    roster = manifest.get("artifact_roster")
+    if not isinstance(roster, dict) or set(manifest["receipts"]) != capture_names:
+        raise ValueError("retained_capture_roster_or_names_invalid")
+    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
+    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
+        raise ValueError("retained_capture_artifact_digest_mismatch")
+    captures = {}
+    for name in sorted(capture_names):
+        body, _wire, receipt = load_capture(root, name)
+        if receipt != manifest["receipts"].get(name):
+            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
+        validate_request_identity(name, receipt, expected_urls[name])
+        captures[name] = (body, receipt)
+    return captures
 
 
 @dataclass(frozen=True)

@@ -1,13 +1,16 @@
 """Healthcare Ready's complete inactive Rx Open dialysis category draft."""
-import os
-from dagster import AssetCheckResult, AssetKey, AssetSelection, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
+from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
 from dagster_hifld.partitions import parse_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.dialysis_centers import SLUG, stage_dialysis_centers, location_quality
 
+
+class HealthcareDialysisConfig(Config):
+    capture_directory: str = ""
+
 @asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='healthcare_ready',compute_kind='http',description='Complete producer inactive Rx Open dialysis category; original IDs/types/native points/status retained, including zero coordinates.')
-def healthcare_ready_dialysis_centers(context,staging_storage:StagingStorageResource):
-    result=stage_dialysis_centers(staging_storage,capture_dir=os.environ.get('HIFLD_DIALYSIS_CAPTURE_DIR'))
+def healthcare_ready_dialysis_centers(context,config:HealthcareDialysisConfig,staging_storage:StagingStorageResource):
+    result=stage_dialysis_centers(staging_storage,capture_dir=config.capture_directory or None)
     context.add_output_metadata(result)
     return result
 

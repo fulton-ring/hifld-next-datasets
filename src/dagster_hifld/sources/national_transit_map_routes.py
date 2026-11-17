@@ -34,11 +34,12 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     CaptureProgress, candidate_prefix, capture_get, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "985bf490e9fa462f80b1cb8ad5f6e139"
 SERVICE_URL = "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_National_Transit_Map_Routes/FeatureServer"
@@ -86,15 +87,6 @@ EXPECTED_FIELD_NAMES = ["OBJECTID", "ntd_id", "feed_id", "shape_id", "route_id",
     "route_short_name", "route_long_name", "route_desc", "route_type", "route_type_text",
     "route_url", "route_color", "route_text_color", "download_date", "Shape__Length"]
 EXPECTED_FIELD_TYPES = ["esriFieldTypeOID", *(["esriFieldTypeString"] * 14), "esriFieldTypeDouble"]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -694,7 +686,7 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < DISK_FLOOR_BYTES:
         raise ValueError("disk_floor_before_acquisition")
-    capture_base_value = capture_directory or os.environ.get("HIFLD_NTM_ROUTES_CAPTURE_DIR")
+    capture_base_value = capture_directory
     if not capture_base_value:
         raise ValueError("explicit_capture_directory_required")
     capture_base = Path(capture_base_value)

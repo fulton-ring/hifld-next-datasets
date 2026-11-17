@@ -1,4 +1,4 @@
-"""Stopped draft asset for the official 2023 Census TIGER US county boundaries."""
+"""Stopped draft asset for the official 2026 Census TIGER US county boundaries."""
 from pathlib import Path
 
 from dagster import (
@@ -8,7 +8,7 @@ from dagster import (
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 from dagster_hifld.sources.us_county_boundaries import (
     DATASET_SLUG, EXPECTED_BYTES, EXPECTED_FEATURE_COUNT, EXPECTED_GEOID_SHA256,
     EXPECTED_SHA256, FILE_SLUG, candidate_version, capture_us_county_boundaries,
@@ -24,7 +24,7 @@ class UsCountyBoundariesConfig(Config):
     group_name="census_bureau",
     compute_kind="http",
     description=(
-        "Official Census TIGER/Line 2023 US county boundaries archive. "
+        "Official Census TIGER/Line 2026 US county boundaries archive. "
         "Candidate only: the raw/published schema and ID contract await maintainer approval, "
         "and source release/freshness, coverage, rights, and release remain pending."
     ),

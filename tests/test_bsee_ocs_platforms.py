@@ -18,7 +18,7 @@ from shapely.geometry import Point
 
 from dagster_hifld.sources.bsee_ocs_platforms import SOURCE_URL, _candidate_version, _read_capture, _validate_capture
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.epa_frs_common import CODE_IDENTITY_PACKAGED, processing_identity
+from dagster_hifld.sources.capture_common import CODE_IDENTITY_PACKAGED, processing_identity
 
 
 class BseeOcsPlatformsTests(unittest.TestCase):

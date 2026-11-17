@@ -7,7 +7,6 @@ date, and no output/schema/ID/rights decision is implied.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -28,8 +27,8 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     content_derived_version,
@@ -39,6 +38,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "isolated-danger-buoy-point-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -80,14 +80,6 @@ _EXPECTED_CAPTURE_NAMES = {
     "count_before", "ids_before", "ids_seed", "page_000", "bts_item_after",
     "service_after", "layer_after", "count_after", "ids_after",
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -371,7 +363,7 @@ def capture_usace_ienc_isolated_danger(
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/130/captures")
+    attempt_root = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "130", "captures")
     capture_root = (attempt_root / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

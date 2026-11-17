@@ -7,7 +7,9 @@ from dagster import (
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_power_generation import DATASET_SLUG, FILE_SLUG, capture_epa_power_generation
+from dagster_hifld.sources.epa_power_generation import (
+    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_epa_power_generation,
+)
 
 
 class EpaPowerGenerationConfig(Config):
@@ -41,7 +43,7 @@ def epa_frs_eia_860_power_generation_facilities_by_source(
 
 @asset_check(asset=epa_frs_eia_860_power_generation_facilities_by_source, blocking=True)
 def epa_frs_eia_860_power_generation_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == 2328 and candidate.get("source_null_geometry_count") == 0
+    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_null_geometry_count") == 0
     return AssetCheckResult(
         passed=passed,
         metadata={

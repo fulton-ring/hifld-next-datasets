@@ -24,12 +24,13 @@ from shapely.geometry import Point
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "national-transit-map-agencies"
 FILE_SLUG = DATASET_SLUG
@@ -48,14 +49,6 @@ EXPECTED_RECORD_SHA256 = "e7c048ce039bffa402b2e819b9f4a213fa72c4e6bcef94a5ed4e2e
 EXPECTED_GEOMETRY_SHA256 = "cf3d7364dbfa56b5a5557495baac94d57e6ac1df308c3f20413194c29b1b49bb"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 16_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict[str, object]]:
@@ -205,7 +198,7 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     if ".." in base.parts or any(p.is_symlink() for p in (base,*base.parents)): raise ValueError("unsafe_local_staging_root")
     base.mkdir(parents=True,exist_ok=True)
     if shutil.disk_usage(base).free<256_000_000: raise ValueError("disk_floor_before_acquisition")
-    root=(Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/167/captures"))/f"{version}-{uuid4().hex}"
+    root=(Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "167", "captures"))/f"{version}-{uuid4().hex}"
     root=root.absolute();root.mkdir(parents=True,exist_ok=False)
     captures={}
     try:
@@ -278,7 +271,7 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     for n,d in descriptors.items():
         snap=storage.object_snapshot(f"{prefix}/{n}")
         if snap is None or snap.size!=d["bytes"] or storage.sha256_key(f"{prefix}/{n}")!=d["sha256"] or storage.object_snapshot(f"{prefix}/{n}")!=snap: raise ValueError("candidate_readback_failed:"+n)
-    from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
+    from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}

@@ -109,7 +109,9 @@ class FercBoundedTests(unittest.TestCase):
     def test_stopped_integrity_has_real_op_config_and_no_autonomous_feed(self):
         schedule=ferc_historical_integrity_schedule
         self.assertEqual(schedule.default_status,DefaultScheduleStatus.STOPPED)
-        self.assertEqual(schedule.evaluate_tick(build_schedule_context()).run_requests[0].run_config['ops'][ferc_historical_preservation.op.name]['config']['capture_directory'],{'env':'HIFLD_FERC_CAPTURE_DIR'})
+        request=schedule.evaluate_tick(build_schedule_context()).run_requests[0]
+        config=request.run_config.get('ops',{}).get(ferc_historical_preservation.op.name,{}).get('config',{})
+        self.assertNotIn('capture_directory',config)
         with tempfile.TemporaryDirectory()as tmp,self.assertRaisesRegex(ValueError,'explicit_pinned_capture'):
             source.acquire(StagingStorageResource(local_dir=tmp),None)
 

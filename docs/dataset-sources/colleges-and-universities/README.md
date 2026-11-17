@@ -1,8 +1,67 @@
 # Colleges and Universities
 
-Complete NCES EDGE 2025–2026 source: https://nces.ed.gov/programs/edge/Geographic/SchoolLocations . The adapter preserves all 6,438 UNITIDs, original file FIDs, 21 DBF attributes and native EPSG:4326 Points. It is an **unapproved changed successor** to the enriched DOE/ORNL product.
+Complete NCES EDGE 2025–2026 reporting-institution location source: https://nces.ed.gov/programs/edge/Geographic/SchoolLocations . The adapter preserves all 6,438 UNITIDs, original file FIDs, 21 DBF attributes and native EPSG:4326 Points. It is an **unapproved changed successor** to the enriched DOE/ORNL product.
 
-With fresh isolated `DAGSTER_HOME`, `HIFLD_STAGING_DIR` and `HIFLD_DATASETS_DIR`, and cloud bucket variables unset, run `uv run dagster job execute -m dagster_hifld.definitions -a defs -j colleges_source_integrity`. Optionally set `HIFLD_COLLEGES_CAPTURE_DIR` to the complete restored capture. The monthly schedule defaults STOPPED. Focused tests: `uv run python -m unittest discover -s tests -p 'test_colleges*.py'`; set `COLLEGES_TEST_CAPTURE_DIR` for complete-real cases.
+## Source fidelity review — 2026-11-15
+
+The source is NCES Education Demographic and Geographic Estimates (EDGE),
+**Postsecondary School Geocodes, school year 2025–2026**. The
+[official School Geocodes page](https://nces.ed.gov/programs/edge/Geographic/SchoolLocations)
+currently links the [pinned ZIP](https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2526.zip).
+The [dated source check](https://github.com/fulton-ring/hifld-next-datasets/issues/954#issuecomment-6903214379)
+retrieved 2,651,816 bytes with SHA256
+`4325bd9d8ab69155a95381f4a09eb62ad75e7960c288af6c192f224ca49b5114`,
+matching the existing adapter pin, and inspected 6,438 DBF records with 21 fields.
+This was a byte/schema check, not a repeated full-population pipeline or historical
+ORNL comparison; the retained complete execution evidence below remains separate.
+
+[NCES IPEDS institutional-grouping guidance](https://nces.ed.gov/IPEDS/use-the-data/institutional-groupings-in-ipeds)
+explains that a reporting institution can represent a main campus, a main campus
+with satellite/off-campus locations, a community-college district or a university
+system. These are reporting-institution points, not an exhaustive inventory of
+every physical campus or evidence of operating status today. `UNITID` is the
+native text identifier in a DBF C8 field; it is not one-to-one with OPEID.
+`OGC_FID` is a separate file-local index, not institutional identity or an approved
+historical published-ID mapping. The embedded metadata describes an annually
+updated IPEDS population of postsecondary institutions participating in federal
+student aid; completeness reflects that reporting universe when the shapefile
+was created, not all institutions or all locations today.
+
+The native fields are `UNITID, NAME, STREET, CITY, STATE, ZIP, STFIP, CNTY,
+NMCNTY, LOCALE, LAT, LON, CBSA, NMCBSA, CBSATYPE, CSA, NMCSA, CD, SLDL,
+SLDU, SCHOOLYEAR`. There is no operational-status field, OPEID crosswalk, ORNL
+enrichment or campus polygon in this source. The WGS84/EPSG:4326 point coordinates
+remain native; no geocoding, synthetic boundary or enrichment is implied.
+
+The ZIP's embedded metadata identifies `SCHOOLYEAR=2025-2026`, creation
+2026-03-05 and processing 2026-03-10. Its citation date is 2026-12-31, which is
+future-dated relative to this review and is not an observed publication date.
+The exact publication date remains unknown. The landing page identifies TIGER
+2025 geography/locale inputs, 119th-Congress codes and OMB July 2023 metro/micro
+delineations. School year, metadata processing, joined geography vintages and
+coordinate observation dates are distinct; the school-year label does not date
+each coordinate or establish present-day completeness.
+
+The [ORNL product-family page](https://www.ornl.gov/project/geospatial-data-sets)
+does not establish exact historical release membership, joins, enrichment or
+geometry. Historical DOE/ORNL parity remains **unmeasured**, not disproved.
+The maintainer must explicitly choose a named NCES reporting-institution
+successor versus faithful recovery of the enriched ORNL product before accepting
+a replacement. Keep existing versioned release paths stable; this draft does not
+authorize silent replacement of an ORNL release. The separate
+[campus polygon work (#39)](../colleges-and-universities-campuses/README.md) is not
+reconstructed by these points, buffers or hulls.
+
+Before successor acceptance, compare adjacent official NCES years by UNITID over
+the full population: additions/removals, null/duplicate keys, names/addresses,
+jurisdiction coverage, coordinate displacement, school years and geography codes.
+Absence alone does not establish closure; investigate with matching-year IPEDS
+status/universe definitions. ORNL parity needs the producer's exact edition,
+field dictionary and documented join keys first. Source/product, rights,
+contract/baseline and release acceptance remain pending; no acceptance is granted
+by the source check or this documentation correction.
+
+With fresh isolated `DAGSTER_HOME`, `HIFLD_STAGING_DIR` and `HIFLD_DATASETS_DIR`, and cloud bucket variables unset, run `uv run dagster job execute -m dagster_hifld.definitions -a defs -j colleges_source_integrity`. Optionally pass the complete restored capture via the `colleges_source_integrity` job's `capture_directory` run config. The monthly schedule defaults STOPPED. Focused tests: `uv run python -m unittest discover -s tests -p 'test_colleges*.py'`; set `COLLEGES_TEST_CAPTURE_DIR` for complete-real cases.
 
 Checksummed artifacts under the coordinator's `/workspace/work/hifld-coordinator/38/cleanup/` preserve full inputs, baselines, reports, replay scripts, native outputs and construction contexts:
 

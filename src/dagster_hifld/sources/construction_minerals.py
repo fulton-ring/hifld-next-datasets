@@ -1,14 +1,15 @@
-"""Explicit unapproved USGS producer-successor reconstruction; never polls.
+"""Explicit unapproved historical USGS 2003 survey reconstruction; never polls.
 
 The only candidate input package is the USGS-owned "Active Mines and Mineral
 Processing Plants in the United States in 2003" distribution (MRDATA
-mineplant), the producer's own successor product of the same 2003 Minerals
-Information Team survey as the retired National Atlas construction-minerals
-layer. The retained third-party preservation masters of that retired layer and
-the existing published HIFLD objects are pinned comparison context only; they
-are never candidate inputs. No default fetching, archive polling, USGS release
-authority claim, datum correction, uppercase conversion, identifier mapping or
-production release is performed.
+mineplant), the producer's own historical 2003 Minerals Information Team survey
+publication documenting the assigned construction-minerals scope of the retired
+National Atlas construction-minerals layer; it is a historical source, not a
+current or maintained census. The existing published HIFLD objects are pinned
+comparison context only; they are never candidate inputs. No third-party
+preservation masters are fetched or compared. No default fetching, archive
+polling, USGS release authority claim, datum correction, uppercase conversion,
+identifier mapping or production release is performed.
 """
 from __future__ import annotations
 import collections
@@ -22,7 +23,6 @@ import re
 import stat
 import struct
 import tempfile
-import xml.etree.ElementTree as ET
 import zipfile
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
@@ -42,7 +42,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
-from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 SLUG='construction-minerals-operations'
 PACKAGE='usgs-mrdata-mineplant-2003-v1'
@@ -130,12 +130,11 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
     if set(actual)!=set(expected) or any(actual[k]!=v for k,v in expected.items() if k!='code_commit'):raise MineralsQuarantineError('original_construction_manifest_or_receipts_changed')
     return original,actual
 
-PINS={'usgs_mineplant_zip': {'url': 'https://mrdata.usgs.gov/mineplant/mineplant.zip', 'bytes': 513191, 'sha256': '6dabd3bbedcb1fbf0c5155fb349228951a9b2cbd065311484eb479c25997ee4e'}, 'usgs_mineplant_metadata': {'url': 'https://mrdata.usgs.gov/metadata/mineplant.xml', 'bytes': 26366, 'sha256': '419629edaf825f2d55ed1dd03fe3a9921d0d35a8240c208b44b53d30c8b9ead0'}, 'legacy_metadata': {'url': 'https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/minop2x020.xml', 'bytes': 19769, 'sha256': 'd68776d0c1c487d7b131c4abc0643c7e0ac9fbeac656144b585ca3c6044c3e94'}, 'stanford_publicxml': {'url': 'https://purl.stanford.edu/ds401wt4784.xml', 'bytes': 22726, 'sha256': '7e25e868315f45e54bc7d3bb29a1c64ede4b814071007838154c3c9e2a82d45f'}, 'minop2x020.dbf': {'url': 'https://stacks.stanford.edu/file/druid:ds401wt4784/minop2x020.dbf', 'bytes': 139734, 'sha256': 'c5f3ad0795515c7f3080445f7c759d2285724b5df268394b226fedae665dc90a'}, 'minop2x020.prj': {'url': 'https://stacks.stanford.edu/file/druid:ds401wt4784/minop2x020.prj', 'bytes': 145, 'sha256': 'a02a27b1d1982c8516d83398e85a3c8b1aef1713c13ef4d84d7bde17430c07c4'}, 'minop2x020.shp': {'url': 'https://stacks.stanford.edu/file/druid:ds401wt4784/minop2x020.shp', 'bytes': 21548, 'sha256': '4f35b155c9ac1379223184e5156523c21cfed821e2b29a1cb0b374d75b283b53'}, 'minop2x020.shp.xml': {'url': 'https://stacks.stanford.edu/file/druid:ds401wt4784/minop2x020.shp.xml', 'bytes': 188838, 'sha256': 'b8d44bb1c9854cc7ceca85a25ea573d38a4efdc4b903e22b6b44de95ac12ba4a'}, 'minop2x020.shx': {'url': 'https://stacks.stanford.edu/file/druid:ds401wt4784/minop2x020.shx', 'bytes': 6228, 'sha256': 'b40ede8c63beec7d78a607ad90e3d768ec70e54caa08d77cbac46b3eec0e9548'}, 'baseline_geojson': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/geojson/construction-minerals-operations-geojson.geojson', 'bytes': 275487, 'sha256': 'd8f5de1e147ae977d1a780a0940996805808c67623edb00d4ba38aa20e7f7e6d'}, 'baseline_geopackage': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/geopackage/construction-minerals-operations-geopackage.gpkg', 'bytes': 270336, 'sha256': '9d18391d85ac6689596689011821799b6723b3cb9a5b633a6b4c13018a31b305'}, 'baseline_geoparquet': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/geoparquet/construction-minerals-operations.parquet', 'bytes': 76683, 'sha256': 'd5189e3387bce01681b454d035f56365e83f3d54bba34a3cbb2d388f22e4361d'}, 'baseline_pmtiles': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/pmtiles/construction-minerals-operations.pmtiles', 'bytes': 85733, 'sha256': '1d9b649236652f2ab62a7cf834be0d199f08fdd6f705073309bc4d2be62b32c6'}, 'baseline_shapefile': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/shapefile/construction-minerals-operations.zip', 'bytes': 47909, 'sha256': '3e0f83e7853f0e1d17c68603a23290cc881460e98634ae34888f002e8bde8da5'}, 'baseline_version': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/collection.json', 'bytes': 12652, 'sha256': '217f441c7acf0d3763c46a22375fa2fafaf885cd6f5d5d9bcb63aaa918dc25d6'}, 'baseline_current_metadata': {'url': 'https://storage.googleapis.com/storage/v1/b/hifld-next-datasets-prod/o?prefix=hifld%2Fconstruction-minerals-operations%2Fconstruction-minerals-operations%2Fv1.0.0%2F&maxResults=100', 'bytes': 16676, 'sha256': '4f4b3e2b34aee2174790c05bc70bedd844ea9f993b0e15b3f1aac017d1ff29c7'}}
+PINS={'usgs_mineplant_zip': {'url': 'https://mrdata.usgs.gov/mineplant/mineplant.zip', 'bytes': 513191, 'sha256': '6dabd3bbedcb1fbf0c5155fb349228951a9b2cbd065311484eb479c25997ee4e'}, 'usgs_mineplant_metadata': {'url': 'https://mrdata.usgs.gov/metadata/mineplant.xml', 'bytes': 26366, 'sha256': '419629edaf825f2d55ed1dd03fe3a9921d0d35a8240c208b44b53d30c8b9ead0'}, 'legacy_metadata': {'url': 'https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/atlas_legacy/minop2x020.xml', 'bytes': 19769, 'sha256': 'd68776d0c1c487d7b131c4abc0643c7e0ac9fbeac656144b585ca3c6044c3e94'}, 'baseline_geojson': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/geojson/construction-minerals-operations-geojson.geojson', 'bytes': 275487, 'sha256': 'd8f5de1e147ae977d1a780a0940996805808c67623edb00d4ba38aa20e7f7e6d'}, 'baseline_geopackage': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/geopackage/construction-minerals-operations-geopackage.gpkg', 'bytes': 270336, 'sha256': '9d18391d85ac6689596689011821799b6723b3cb9a5b633a6b4c13018a31b305'}, 'baseline_geoparquet': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/geoparquet/construction-minerals-operations.parquet', 'bytes': 76683, 'sha256': 'd5189e3387bce01681b454d035f56365e83f3d54bba34a3cbb2d388f22e4361d'}, 'baseline_pmtiles': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/pmtiles/construction-minerals-operations.pmtiles', 'bytes': 85733, 'sha256': '1d9b649236652f2ab62a7cf834be0d199f08fdd6f705073309bc4d2be62b32c6'}, 'baseline_shapefile': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/shapefile/construction-minerals-operations.zip', 'bytes': 47909, 'sha256': '3e0f83e7853f0e1d17c68603a23290cc881460e98634ae34888f002e8bde8da5'}, 'baseline_version': {'url': 'https://storage.googleapis.com/hifld-next-datasets-prod/releases/1704edb3-322d-469c-91da-92902fe76a2d/hifld/construction-minerals-operations/construction-minerals-operations/v1.0.0/collection.json', 'bytes': 12652, 'sha256': '217f441c7acf0d3763c46a22375fa2fafaf885cd6f5d5d9bcb63aaa918dc25d6'}, 'baseline_current_metadata': {'url': 'https://storage.googleapis.com/storage/v1/b/hifld-next-datasets-prod/o?prefix=hifld%2Fconstruction-minerals-operations%2Fconstruction-minerals-operations%2Fv1.0.0%2F&maxResults=100', 'bytes': 16676, 'sha256': '4f4b3e2b34aee2174790c05bc70bedd844ea9f993b0e15b3f1aac017d1ff29c7'}}
 
 # Only USGS-owned objects may feed candidate values; every other pinned object
 # is comparison context and is labeled as such in the source manifest and audit.
 INPUT_NAMES=frozenset({'usgs_mineplant_zip','usgs_mineplant_metadata','legacy_metadata'})
-COMPARISON_NAMES=frozenset(PINS)-INPUT_NAMES
 
 MINEPLANT_MEMBERS={'mineplant.dbf':1655861,'mineplant.shp':190080,'mineplant.shx':54380,'mineplant.txt':670146,'mineplant.prj':368}
 MINEPLANT_DBF_FIELDS=[('id','N',8,0),('COMMODITY','C',30,0),('SITE_NAME','C',50,0),('COMPANY_NA','C',50,0),('STATE_LOCA','C',40,0),('COUNTY','C',40,0),('LATITUDE','N',10,5),('LONGITUDE','N',10,5),('PLANT_MIN','C',5,0)]
@@ -145,13 +144,11 @@ CONSTRUCTION_COMMODITY_COUNTS={'Ball Clay':58,'Cement':115,'Common Clay and Shal
 CONSTRUCTION_ROWS=765
 CONSTRUCTION_STATES=46
 # Physical declarations of the retired National Atlas layer, retained because the
-# pinned published comparison objects and the pinned USGS successor-fidelity
-# comparison both depend on the original atlas schema and MINOP2X020 IDs.
+# pinned published comparison objects use the original atlas schema and MINOP2X020 IDs.
 DBF_FIELDS=[('MINOP2X020','N',3,0),('COMMODITY','C',21,0),('SITE_NAME','C',46,0),('COMPANY_NA','C',51,0),('STATE_LOCA','C',14,0),('COUNTY','C',16,0),('LATITUDE','N',9,3),('LONGITUDE','N',11,3),('PLANT_MIN','C',10,0)]
 SOURCE_NAMES=['source_fid','source_shp_record_number']+[f[0] for f in MINEPLANT_DBF_FIELDS]+['geometry']
 
 MINEPLANT_PRJ='GEOGCS["GCS_North_American_1927",DATUM["D_North_American_1927",SPHEROID["Clarke_1866", 6378206.4, 294.9786982138982, AUTHORITY["EPSG","7008"]],TOWGS84[-9.0, 151.0, 185.0, 0.0, 0.0, 0.0, 0.0],AUTHORITY["EPSG","6267"]],PRIMEM["Greenwich", 0.0, AUTHORITY["EPSG","8901"]],UNIT["degree", 0.017453292519943295],AXIS["Lon", EAST],AXIS["Lat", NORTH],AUTHORITY["EPSG","4267"]]'
-PRESERVED_PRJ='GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
 
 
 def local_only(storage):
@@ -269,39 +266,6 @@ def decode_points(body,index,count):
     return out
 
 
-def decode_dbf(body):
-    """Decode the pinned third-party preservation master of the retired atlas layer.
-
-    Comparison-only: this decodes the retired National Atlas layer schema for
-    the successor-fidelity proof and never feeds candidate values.
-    """
-    if len(body)<321:raise MineralsQuarantineError('incomplete_dbf')
-    count,header,width=struct.unpack_from('<IHH',body,4);fields=[];offset=32
-    while offset+32<=header and body[offset]!=13:
-        desc=body[offset:offset+32];fields.append((desc[:11].split(b'\0')[0].decode('ascii'),chr(desc[11]),desc[16],desc[17]));offset+=32
-    if fields!=DBF_FIELDS or count!=766 or width!=182 or header!=321 or body[offset]!=13 or len(body) not in (header+count*width,header+count*width+1):raise MineralsQuarantineError('missing_renamed_extra_ID_type_width_count_or_DBF_completeness_drift')
-    if len(body)==header+count*width+1 and body[-1]!=26:raise MineralsQuarantineError('unexpected_dbf_tail')
-    rows=[]
-    for fid in range(count):
-        rec=body[header+fid*width:header+(fid+1)*width]
-        if rec[:1]!=b' ':raise MineralsQuarantineError('deleted_or_unknown_dbf_record')
-        offset=1;row={'source_fid':fid,'source_shp_record_number':fid+1}
-        for name,kind,size,scale in fields:
-            raw=rec[offset:offset+size];offset+=size
-            if kind=='C':
-                if any(c>127 or c<32 for c in raw):raise MineralsQuarantineError('undeclared_nonASCII_source_encoding')
-                row[name]=raw.rstrip(b' ').decode('ascii')
-            else:
-                text=raw.decode('ascii').strip()
-                if not re.fullmatch(r'-?\d+(?:\.\d+)?',text):raise MineralsQuarantineError('null_nonfinite_or_unparseable_DBF_number')
-                value=Decimal(text)
-                if value.as_tuple().exponent!=-scale:raise MineralsQuarantineError('declared_DBF_scale_drift')
-                row[name]=value
-        rows.append(row)
-    if [int(r['MINOP2X020']) for r in rows]!=list(range(1,767)):raise MineralsQuarantineError('missing_duplicate_reordered_original_MINOP2X020')
-    return rows
-
-
 def verify_mineplant_geometry_values(rows,geometry):
     if len(rows)!=len(geometry):raise MineralsQuarantineError('usgs_record_geometry_alignment_drift')
     for row,wkb in zip(rows,geometry):
@@ -317,53 +281,11 @@ def construction_rows(rows):
     return subset
 
 
-def successor_comparison(captures,rows):
-    """Prove the USGS successor contains the complete assigned dataset.
-
-    Comparison-only: the pinned third-party preservation masters of the retired
-    National Atlas layer are used exclusively to verify that every one of the
-    766 retired-layer operations is present in the selected USGS successor
-    package. They never feed candidate values, and any drift fails closed.
-    """
-    atlas=decode_dbf(captures['minop2x020.dbf'][0])
-    if len(decode_points(captures['minop2x020.shp'][0],captures['minop2x020.shx'][0],766))!=len(atlas):raise MineralsQuarantineError('atlas_comparison_master_geometry_roster_drift')
-    def norm(text): return '' if text.strip().upper()=='NULL' else text.rstrip()
-    def exact(row): return (norm(row['SITE_NAME']),row['COMPANY_NA'].rstrip(),row['STATE_LOCA'].rstrip(),row['COUNTY'].rstrip(),row['COMMODITY'].rstrip(),row['LATITUDE'],row['LONGITUDE'],row['PLANT_MIN'].rstrip())
-    def reduced(row): return (norm(row['SITE_NAME']),row['STATE_LOCA'].rstrip(),row['COUNTY'].rstrip(),row['COMMODITY'].rstrip(),row['LATITUDE'],row['LONGITUDE'],row['PLANT_MIN'].rstrip())
-    index={}
-    for row in rows:index.setdefault(exact(row),[]).append(row)
-    matches=[];truncated=[];unmatched=[]
-    for row in atlas:
-        candidates=index.get(exact(row))
-        if candidates:
-            matches.append((row,candidates[0]));continue
-        prefix=row['COMPANY_NA'].rstrip()[:50]
-        near=[r for r in rows if reduced(r)==reduced(row) and r['COMPANY_NA'].rstrip()==prefix]
-        if len(near)!=1:unmatched.append(str(row['MINOP2X020']));continue
-        matches.append((row,near[0]));truncated.append({'atlas_MINOP2X020':str(row['MINOP2X020']),'atlas_COMPANY_NA':row['COMPANY_NA'],'usgs_mineplant_COMPANY_NA':near[0]['COMPANY_NA'],'reason':'the 51-character National Atlas company value exceeds the USGS successor 50-character DBF field width; all other fields and coordinates are equal'})
-    consumed=collections.Counter(id(r) for _,r in matches)
-    duplicate_pairs=[]
-    for row,r in matches:
-        if consumed[id(r)]>1 and all(p['usgs_mineplant_id']!=str(r['id']) for p in duplicate_pairs):
-            duplicate_pairs.append({'atlas_MINOP2X020_pair':sorted(str(a['MINOP2X020']) for a,b in matches if b is r),'usgs_mineplant_id':str(r['id']),'reason':'the retired layer recorded this single operation as two identical records; the USGS successor carries it once'})
-    if unmatched or len(matches)!=766 or len(consumed)!=len(rows) or any(count<1 for count in consumed.values()) or len(duplicate_pairs)>1 or len(truncated)>1:
-        raise MineralsQuarantineError('usgs_successor_does_not_contain_complete_assigned_dataset:unmatched='+str(len(unmatched))+';duplicate_pairs='+str(len(duplicate_pairs))+';truncated='+str(len(truncated)))
-    return {'approved':False,'comparison_only':True,'purpose':'prove the selected USGS successor package contains the complete assigned National Atlas construction-minerals dataset','retired_layer_source':'pinned third-party preservation masters of the retired National Atlas layer; comparison context only, never a pipeline input','atlas_records':766,'usgs_successor_construction_records':len(rows),'exact_field_value_matches':766-len(truncated),'atlas_duplicate_collapsed_cases':duplicate_pairs,'company_width_truncation_cases':truncated,'unmatched_atlas_records':unmatched,'coordinate_relationship':'LATITUDE/LONGITUDE values are numerically identical in both USGS products; no datum transformation was applied by the producer','datum_claims_unresolved':{'usgs_mineplant_prj':'North American Datum of 1927','atlas_preserved_prj':'WGS 1984','atlas_metadata':'North American Datum of 1983','resolution':'UNAPPROVED; coordinates unchanged, each product PRJ as provided only'}}
-
-
 def inspect_captures(captures):
     if set(captures)!=set(PINS):raise MineralsQuarantineError('package_capture_roster_drift')
     for name,(body,receipt) in captures.items():
         validate_capture(name,body,receipt,PINS[name]['url'])
         if digest(body)!=PINS[name]['sha256'] or len(body)!=PINS[name]['bytes']:raise MineralsQuarantineError('pinned_package_drift:'+name)
-    public=ET.fromstring(captures['stanford_publicxml'][0]);masters=[]
-    for file in public.iter('file'):
-        if file.attrib.get('role')!='master':continue
-        name=file.attrib['id'];masters.append(name)
-        if name not in PINS:raise MineralsQuarantineError('unexpected_preservation_master')
-        body=captures[name][0]
-        if len(body)!=int(file.attrib['size']) or any(hashlib.new(c.attrib['type'].lower().replace('-',''),body).hexdigest()!=c.text for c in file.findall('checksum')):raise MineralsQuarantineError('preservation_manifest_size_or_checksum_mismatch')
-    if sorted(masters)!=sorted('minop2x020.'+s for s in ('dbf','prj','shp','shp.xml','shx')):raise MineralsQuarantineError('missing_preservation_master')
     members=decode_mineplant_zip(captures['usgs_mineplant_zip'][0])
     if members['mineplant.prj'].decode('ascii')!=MINEPLANT_PRJ+'\n':raise MineralsQuarantineError('usgs_native_prj_drift')
     rows=decode_mineplant_dbf(members['mineplant.dbf'])
@@ -375,7 +297,6 @@ def inspect_captures(captures):
     for name,kind,width,scale in MINEPLANT_DBF_FIELDS:fields.append(pa.field(name,pa.string() if kind=='C' else pa.decimal128(width,scale),nullable=False,metadata={b'original_DBF_physical_declaration':encode({'type':kind,'width':width,'decimals':scale})}))
     fields.append(pa.field('geometry',pa.binary(),nullable=False))
     table=pa.Table.from_pylist([{**{f[0]:row[f[0]] for f in MINEPLANT_DBF_FIELDS},'source_fid':row['source_fid'],'source_shp_record_number':row['source_shp_record_number'],'geometry':geometry[row['source_fid']]} for row in subset],schema=pa.schema(fields))
-    comparison=successor_comparison(captures,subset)
     baseline=pq.read_table(pa.BufferReader(captures['baseline_geoparquet'][0]));published=strict_json(captures['baseline_geojson'][0])
     if baseline.num_rows!=766 or len(published.get('features',[]))!=766 or set(baseline.column_names)!={'geometry','OBJECTID','bbox',*[f[0] for f in DBF_FIELDS]}:raise MineralsQuarantineError('complete_published_baseline_schema_or_coverage_drift')
     pubrows=baseline.to_pylist();geo={f['properties']['MINOP2X020']:f for f in published['features']}
@@ -392,10 +313,10 @@ def inspect_captures(captures):
         identity.append({'published_MINOP2X020':row['MINOP2X020'],'published_OBJECTID':row['OBJECTID'],'published_geojson_FID':f['properties']['FID'],'published_geojson_feature_id':f['id'],'published_geopackage_storage_fid':gpkg_ids[row['MINOP2X020']],'published_shapefile_fid':shp_ids[row['MINOP2X020']]})
     published_ids=pa.Table.from_pylist(identity,schema=pa.schema([pa.field(n,pa.int64(),nullable=False) for n in identity[0]]))
     # IDs coexist in separate tables. This numeric equality is diagnostic, not an approved join or source-ID replacement.
-    audit={'approved':False,'package_id':PACKAGE,'classification':'USGS-owned producer successor of the retired National Atlas construction-minerals layer; unapproved draft reconstruction, not the original layer and not an authenticated historical archive of it','count':CONSTRUCTION_ROWS,'states':CONSTRUCTION_STATES,'commodities':dict(collections.Counter(row['COMMODITY'] for row in subset)),
-           'original_DBF_fields':MINEPLANT_DBF_FIELDS,'native_crs_claim':MINEPLANT_PRJ,'contradictory_original_USGS_metadata_datum':'North American Datum of 1983','atlas_preserved_prj_claim':'WGS 1984','datum_resolution':'UNAPPROVED; coordinates numerically identical in both USGS products and unchanged; each product PRJ as provided only; no correction/transform',
-           'physical_numeric_decode':'Exact DBF base10 decimal values preserved (stored exponents vary up to the declared 5-decimal scale); SHP point doubles equal the DBF values; no binary floating substitution','source_ids':'original USGS mineplant id plus original mineplant SHP/DBF record indices and record numbers, all distinct and unreplaced','published_identifiers':'complete published MINOP2X020/OBJECTID and GeoJSON FID/featureid separately retained as comparison context, no mapping approved','release':'USGS mineplant FGDC publication 2005 from the same National Minerals Information Center survey as the retired layer publication 200512; exact release day unknown'}
-    return table,published_ids,audit,comparison
+    audit={'approved':False,'package_id':PACKAGE,'classification':'USGS-owned historical 2003 National Minerals Information Team survey publication documenting the assigned scope of the retired National Atlas construction-minerals layer; unapproved draft reconstruction, not the original layer and not a current census','count':CONSTRUCTION_ROWS,'states':CONSTRUCTION_STATES,'commodities':dict(collections.Counter(row['COMMODITY'] for row in subset)),
+           'original_DBF_fields':MINEPLANT_DBF_FIELDS,'native_crs_claim':MINEPLANT_PRJ,'contradictory_original_USGS_metadata_datum':'North American Datum of 1983','datum_resolution':'UNAPPROVED; coordinates unchanged as provided; each product PRJ and metadata claim as provided only; no correction/transform',
+           'physical_numeric_decode':'Exact DBF base10 decimal values preserved (stored exponents vary up to the declared 5-decimal scale); SHP point doubles equal the DBF values; no binary floating substitution','source_ids':'original USGS mineplant id plus original mineplant SHP/DBF record indices and record numbers, all distinct and unreplaced','published_identifiers':'complete published MINOP2X020/OBJECTID and GeoJSON FID/featureid separately retained as comparison context, no mapping approved','release':'USGS mineplant FGDC publication 2005 of the 2003 Minerals Information Team survey, the same survey the retired layer publication 200512 documents; exact release day unknown'}
+    return table,published_ids,audit
 
 
 def expected_parquet(table):
@@ -420,34 +341,30 @@ def manifest_for(captures,identity,parquet_pin):
         body,receipt=captures[name];validate_capture(name,body,receipt,PINS[name]['url'])
         if name in INPUT_NAMES:
             role='producer_publication';use='candidate_input'
-            producer='U.S. Geological Survey (National Minerals Information Center successor distribution of the 2003 survey)' if name!='legacy_metadata' else 'U.S. Geological Survey (National Atlas legacy metadata for the retired construction-minerals layer)'
-            attribution='USGS MRDATA mineplant successor package and USGS National Atlas legacy metadata; the pinned USGS metadata establishes the exact assigned construction-minerals dataset family and its 200512 publication. No contract or release acceptance.'
-        elif name.startswith('minop2x020.') or name=='stanford_publicxml':
-            role='archive';use='comparison_only_retained_prior_research'
-            producer='Stanford Libraries preservation'
-            attribution='Third-party preservation masters of the retired National Atlas layer; retained solely as pinned comparison evidence proving the USGS successor contains the complete assigned dataset. Never a pipeline input.'
+            producer='U.S. Geological Survey (National Minerals Information Center historical 2003 survey distribution)' if name!='legacy_metadata' else 'U.S. Geological Survey (National Atlas legacy metadata for the retired construction-minerals layer)'
+            attribution='USGS MRDATA mineplant historical 2003 survey package and USGS National Atlas legacy metadata; the pinned USGS metadata establishes the exact assigned construction-minerals dataset family and its 200512 publication. No contract or release acceptance.'
         else:
             role='archive';use='comparison_only_retained_prior_research'
             producer='HIFLD Next existing published candidate, acceptance unresolved'
             attribution='Existing published HIFLD v1 objects retained solely to preserve the published identifier roster and comparison context. Never a pipeline input.'
         inputs.append({'input_id':name+':'+digest(body),'producer':producer,'host':urlsplit(receipt['url']).hostname,'role':role,'pipeline_use':use,'canonical_url':receipt['url'],'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],'retrieved_at':receipt['observed_at'],'http_status':200,'sha256':digest(body),'bytes':len(body),'license':LICENSE,'attribution':attribution,'release_date_unknown_reason':'USGS mineplant FGDC publication year 2005 and National Atlas layer publication 200512 have no exact release day; retrieval and portal-edit times are not source release dates.'})
-    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':identity['code_commit'],'title':'Construction Minerals Operations — USGS producer-successor reconstruction (unapproved draft)','publisher':'U.S. Geological Survey Mineral Resources Program (MRDATA successor product)','agency':'U.S. Geological Survey','source_url':'https://mrdata.usgs.gov/mineplant/','license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':inputs,'transformations':[{'operation':'explicit_usgs_producer_successor_native_lossless_reconstruction','parameters':{'package_id':PACKAGE,'input_selection':'explicit local USGS package required, no default fetch or polling; only USGS-owned objects are candidate inputs','assigned_scope':'construction minerals operations as documented by the pinned USGS National Atlas metadata: the eight USGS commodity classes ball clay, cement, common clay and shale, dimension stone, gypsum, mica, perlite and pumice, excluding construction sand and gravel and crushed stone','subset_selection':'rows of the USGS mineplant file whose COMMODITY equals one of the eight assigned classes; pinned completeness 765 rows in 46 states','geometry':'original USGS mineplant SHP coordinates and own NAD27 PRJ as provided; SHP point doubles equal the DBF values; contradictory NAD83/WGS84 claims of the retired atlas layer retained and unresolved','successor_fidelity':'pinned comparison masters prove all 766 retired-layer operations are present: exact field equality except one 51-to-50 character company width truncation and one atlas duplicate collapsed to a single USGS record; coordinates numerically identical','IDs':'USGS mineplant id and original mineplant SHP/DBF record indices preserved; complete published identifiers separately retained, no approved cross-package mapping'}}],'unsupported_output_formats':{'shapefile_zip':'No accepted source/published schema mapping; the original USGS mineplant package is retained losslessly as raw evidence, not a newly approved output.','geopackage':'DBF decimal128 precision/scale and full Arrow physical schema cannot be silently coerced to GPKG REAL/INTEGER; no migration approved.','pmtiles':'Reprojection/quantization and datum choice are unapproved; native coordinates retained.'},'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all source decimal physical declarations, original IDs, strings, native WKB and metadata, no generic conversion or schema expansion. This is capability only, not input/contract/release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**parquet_pin}]}}}}
+    manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':identity['code_commit'],'title':'Construction Minerals Operations — historical USGS 2003 survey reconstruction (unapproved draft)','publisher':'U.S. Geological Survey Mineral Resources Program (MRDATA historical 2003 survey publication)','agency':'U.S. Geological Survey','source_url':'https://mrdata.usgs.gov/mineplant/','license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':inputs,'transformations':[{'operation':'explicit_historical_usgs_survey_native_lossless_reconstruction','parameters':{'package_id':PACKAGE,'input_selection':'explicit local USGS package required, no default fetch or polling; only USGS-owned objects are candidate inputs','assigned_scope':'construction minerals operations as documented by the pinned USGS National Atlas metadata: the eight USGS commodity classes ball clay, cement, common clay and shale, dimension stone, gypsum, mica, perlite and pumice, excluding construction sand and gravel and crushed stone','subset_selection':'rows of the USGS mineplant file whose COMMODITY equals one of the eight assigned classes; pinned completeness 765 rows in 46 states','geometry':'original USGS mineplant SHP coordinates and own NAD27 PRJ as provided; SHP point doubles equal the DBF values; contradictory NAD83 claim of the retained USGS National Atlas legacy metadata retained and unresolved','IDs':'USGS mineplant id and original mineplant SHP/DBF record indices preserved; complete published identifiers separately retained, no approved cross-package mapping'}}],'unsupported_output_formats':{'shapefile_zip':'No accepted source/published schema mapping; the original USGS mineplant package is retained losslessly as raw evidence, not a newly approved output.','geopackage':'DBF decimal128 precision/scale and full Arrow physical schema cannot be silently coerced to GPKG REAL/INTEGER; no migration approved.','pmtiles':'Reprojection/quantization and datum choice are unapproved; native coordinates retained.'},'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all source decimal physical declarations, original IDs, strings, native WKB and metadata, no generic conversion or schema expansion. This is capability only, not input/contract/release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**parquet_pin}]}}}}
     validate_release_provenance(manifest);validate_output_policy(manifest);return manifest
 
 
-def source_payloads(captures,identity,audit,manifest,table,published_ids,comparison):
+def source_payloads(captures,identity,audit,manifest,table,published_ids):
     proof={'status':'pass','approved':False,'rows':CONSTRUCTION_ROWS,'method':'All USGS mineplant DBF records and physical declarations decoded and cross-checked against the producer TXT; construction subset selected; SHP/SHX native points decoded and tied to DBF values; all765values/IDs/decimaltypes/nativeWKB/schema metadata and exact deterministic Parquet bytes verified; full original USGS package retained. No source authority/datum/compatibility acceptance.'}
-    values={'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),'metadata/construction_minerals_source_audit.json':encode(audit),'metadata/successor_comparison.json':encode(comparison),'metadata/parquet_source_fidelity.json':encode(proof),'metadata/baseline_comparison.json':encode({'schema_version':1,'approved':False,'status':'blocked','reason_codes':['unapproved_usgs_successor_input_authority_datum_schema_ID_mapping_and_baseline_contract']}),'metadata/baseline_differences.jsonl':b'','metadata/baseline_field_changes.jsonl':b'','candidate/published-identifiers.parquet':parquet_bytes(published_ids)}
+    values={'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),'metadata/construction_minerals_source_audit.json':encode(audit),'metadata/parquet_source_fidelity.json':encode(proof),'metadata/baseline_comparison.json':encode({'schema_version':1,'approved':False,'status':'blocked','reason_codes':['unapproved_historical_usgs_input_authority_datum_schema_ID_mapping_and_baseline_contract']}),'metadata/baseline_differences.jsonl':b'','metadata/baseline_field_changes.jsonl':b'','candidate/published-identifiers.parquet':parquet_bytes(published_ids)}
     for name,(body,receipt) in captures.items():
         values['raw/captures/'+name+'.body']=body;values['raw/captures/'+name+'.receipt.json']=encode(receipt)
     return values
 
 
-def reconcile_cache(storage,prefix,version,table,published_ids,audit,comparison,captures,identity,pin):
+def reconcile_cache(storage,prefix,version,table,published_ids,audit,captures,identity,pin):
     root=Path(storage.local_dir)/prefix
     if not (root/READY).is_file():raise MineralsQuarantineError('incomplete_existing_candidate_missing_ready')
     captures,manifest=original_bundle(storage,version,captures,identity,manifest_for(captures,identity,pin))
-    expected=source_payloads(captures,identity,audit,manifest,table,published_ids,comparison);names={*expected,'candidate/typed-source.parquet',f'geoparquet/{SLUG}.parquet'}
+    expected=source_payloads(captures,identity,audit,manifest,table,published_ids);names={*expected,'candidate/typed-source.parquet',f'geoparquet/{SLUG}.parquet'}
     ready=strict_json((root/READY).read_bytes())
     if ready.get('version')!=version or ready.get('approved')is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready.get('objects',{}))!=names:raise MineralsQuarantineError('ready_identity_or_closed_source_inventory_drift')
     snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json'
@@ -469,7 +386,7 @@ def reconcile_cache(storage,prefix,version,table,published_ids,audit,comparison,
 def stage_construction_minerals(storage,*,capture_dir=None,package_id=None):
     local_only(storage);captures=acquire(storage,capture_dir,package_id)
     try:
-        table,published_ids,audit,comparison=inspect_captures(captures);identity=processing_identity();fingerprint=digest(encode(identity));capture_hash=digest(encode({name:digest(body) for name,(body,_) in captures.items()}))
+        table,published_ids,audit=inspect_captures(captures);identity=processing_identity();fingerprint=digest(encode(identity));capture_hash=digest(encode({name:digest(body) for name,(body,_) in captures.items()}))
         version=f'v0.0.0-draft-usgs-mineplant-{capture_hash[:16]}-{fingerprint[:16]}';prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir)
         for name,(body,receipt) in captures.items():
             key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body';immutable(storage,key,body);immutable(storage,key+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt))
@@ -478,7 +395,7 @@ def stage_construction_minerals(storage,*,capture_dir=None,package_id=None):
                 try:
                     if target.is_symlink():raise MineralsQuarantineError('linked_candidate')
                     body=parquet_bytes(expected_parquet(table));pin={'sha256':digest(body),'bytes':len(body)}
-                    reconcile_cache(storage,prefix,version,table,published_ids,audit,comparison,captures,identity,pin)
+                    reconcile_cache(storage,prefix,version,table,published_ids,audit,captures,identity,pin)
                 except (ValueError,OSError,KeyError,TypeError,RuntimeError) as exc:
                     dest=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);dest.parent.mkdir(parents=True,exist_ok=True);os.rename(target,dest)
                     immutable(storage,str(dest.relative_to(base))+'.reason.json',encode({'approved':False,'reason':str(exc),'original_prefix':prefix}));raise MineralsQuarantineError('invalid_candidate_detached_intact:'+str(exc)) from exc
@@ -488,16 +405,16 @@ def stage_construction_minerals(storage,*,capture_dir=None,package_id=None):
                 for part in ('geoparquet','candidate','metadata','raw'):(private/part).mkdir()
                 body=parquet_bytes(expected_parquet(table));(private/f'geoparquet/{SLUG}.parquet').write_bytes(body);(private/'candidate/typed-source.parquet').write_bytes(body);pin={'sha256':digest(body),'bytes':len(body)}
                 manifest=manifest_for(captures,identity,pin)
-                for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids,comparison).items():(private/name).parent.mkdir(parents=True,exist_ok=True);(private/name).write_bytes(body)
+                for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():(private/name).parent.mkdir(parents=True,exist_ok=True);(private/name).write_bytes(body)
                 ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'capture_fingerprint':capture_hash,'package_id':PACKAGE,'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
                 (private/READY).write_bytes(encode(ready));verify_outputs(private,table,published_ids)
-                for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids,comparison).items():
+                for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():
                     if (private/name).read_bytes()!=body:raise MineralsQuarantineError('incomplete_private_source_payload:'+name)
                 # Validate source semantics + exact Git identity before the first seal;
                 # the complete private candidate exists and has been verified first.
                 validate_release_provenance(manifest);validate_output_policy(manifest);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'],identity=identity)
                 captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
-                for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids,comparison).items():(private/name).write_bytes(body)
+                for name,body in source_payloads(captures,identity,audit,manifest,table,published_ids).items():(private/name).write_bytes(body)
                 ready['objects']={str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY};(private/READY).write_bytes(encode(ready));verify_outputs(private,table,published_ids);os.rename(private,target)
         return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':CONSTRUCTION_ROWS,'reused':False,'package_id':PACKAGE,'accepted':False}
     except (ValueError,OSError,KeyError,TypeError,RuntimeError,shapely.errors.GEOSException) as exc:

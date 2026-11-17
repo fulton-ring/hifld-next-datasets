@@ -1,7 +1,6 @@
 """Native, receipt-bound draft capture of the official USACE IENC building layer."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -21,11 +20,12 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "building-locations-usace-ienc"
 SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC/USACE_IENC_Master_Service/MapServer"
@@ -54,14 +54,6 @@ ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELDS if field["type"] != "esri
 EXPECTED_EXTENT = {"xmin":-96.41946399999995,"ymin":29.69832880000007,
                    "xmax":-79.51543889999994,"ymax":45.106480600000054}
 EXPECTED_CRS = CRS.from_epsg(4326)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode()
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool=True) -> bool:
@@ -234,7 +226,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
         captures=_read_replay(root,ids)
     else:
         if requested and any(requested.glob("*.body")): raise ValueError("unsealed_capture_attempt_exists")
-        root=(requested/version/uuid4().hex) if requested else Path("/tmp/hifld-native-reconstruction/building-locations")/(version+"-"+uuid4().hex)
+        root=(requested/version/uuid4().hex) if requested else default_capture_dir("hifld-native-reconstruction", "building-locations")/(version+"-"+uuid4().hex)
         if any(p.is_symlink() for p in (root,*root.parents)): raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True,exist_ok=False);captures={}
         try:

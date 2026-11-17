@@ -17,19 +17,19 @@ from shapely import from_wkb
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
+from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture, _capture_identity,
-    _load_capture, _sha, _validate_capture_request_identity,
-    _validate_spatial_reference,
+    _load_capture, _sha,    _validate_spatial_reference,
 )
 
 DATASET_SLUG = "storage-tank-or-silo-locations-usace-ienc-1"
@@ -94,27 +94,13 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
-    manifest_path = root / "capture_manifest.json"
-    if manifest_path.is_symlink():
-        raise ValueError("retained_capture_manifest_symlink_rejected")
-    manifest = json.loads(manifest_path.read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
-        raise ValueError("retained_capture_manifest_invalid")
-    roster = manifest.get("artifact_roster")
-    if not isinstance(roster, dict) or set(manifest["receipts"]) != CAPTURE_NAMES:
-        raise ValueError("retained_capture_roster_or_names_invalid")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
-        raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_roster(EXPECTED_IDS))
-    captures = {}
-    for name in sorted(CAPTURE_NAMES):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
+    return validate_retained_capture_replay(
+        root,
+        capture_names=CAPTURE_NAMES,
+        expected_urls=dict(_capture_roster(EXPECTED_IDS)),
+        load_capture=_load_capture,
+        validate_request_identity=validate_capture_request_identity,
+    )
 
 
 def _esri_point_wkb(geometry: dict) -> bytes:
@@ -322,7 +308,7 @@ def capture_storage_tank_silo_locations_usace_ienc(storage: StagingStorageResour
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/318/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "318", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)

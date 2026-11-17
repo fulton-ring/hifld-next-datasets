@@ -10,10 +10,12 @@ import hashlib
 import io
 import json
 import math
+import re
 import shutil
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
+from time import sleep, time_ns
 from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
@@ -26,7 +28,8 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import capture_get, processing_identity, write_immutable
+from dagster_hifld.sources.capture_common import capture_get, processing_identity, write_immutable
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "trails-2"
 PUBLISHER = "U.S. Geological Survey, The National Map Transportation"
@@ -68,15 +71,6 @@ ESRI_TO_ARROW_TYPE = {
 }
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
-
-
 def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
@@ -88,17 +82,117 @@ def _processing_identity(repo_root: Path | None = None) -> dict[str, object]:
     return identity
 
 
-def _capture(client: httpx.Client, url: str, root: Path, name: str, retained: int) -> tuple[bytes, dict]:
+_RETRY_ATTEMPTS = 4
+_RETRY_BASE_DELAY_SECONDS = 5.0
+
+# Refused-attempt evidence lives under ``refused/`` inside the capture root:
+# the successful capture roster must contain only the completed artifacts and
+# the manifest, so refused attempts are moved into a validated separate
+# directory (whose naming, membership and hash parity ``_load`` enforces) and
+# their bytes are counted against the capture budget.
+_REFUSED_DIR = "refused"
+_REFUSED_ENTRY = re.compile(
+    r"(?P<name>.+)\.error-(?P<stamp>[0-9]+)\.(?P<suffix>body|wire|receipt\.json)\Z")
+
+
+def _witness_refused(root: Path, name: str) -> int:
+    """Move a retained refused attempt aside so the slot can be refetched.
+
+    Returns the number of retained refused bytes, which the caller counts
+    against the capture budget so retained evidence is never free.
+    """
+    stamp = time_ns()
+    directory = root / _REFUSED_DIR
+    directory.mkdir(exist_ok=True)
+    moved = 0
+    for suffix in ("body", "wire", "receipt.json"):
+        source = root / f"{name}.{suffix}"
+        if source.exists():
+            moved += source.stat().st_size
+            source.replace(directory / f"{name}.error-{stamp}.{suffix}")
+    return moved
+
+
+def _capture(client: httpx.Client, url: str, root: Path, name: str,
+             retained: int) -> tuple[bytes, dict, int]:
     if type(retained) is not int or retained < 0 or retained > MAX_CAPTURE_BYTES:
         raise ValueError("trails_capture_budget_invalid")
+    refused_bytes = [0]
 
     def reserve(progress) -> None:
-        prospective = (retained + progress.wire_bytes_retained + progress.decoded_bytes_retained
-                       + progress.reserve_bytes)
+        prospective = (retained + refused_bytes[0] + progress.wire_bytes_retained
+                       + progress.decoded_bytes_retained + progress.reserve_bytes)
         if prospective > MAX_CAPTURE_BYTES:
             raise OSError("trails_capture_budget_exceeded")
 
-    return capture_get(client, url, root, name, max_bytes=MAX_RESPONSE_BYTES, reserve=reserve)
+    # The producer intermittently drops mid-page transports (observed on a
+    # full-width 2,000-record page); incomplete captures are witnessed aside
+    # under refused/ and retried a bounded number of times before the capture
+    # fails closed, so a capture that succeeds on a later attempt stays
+    # replayable.
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            body, receipt = capture_get(client, url, root, name,
+                                        max_bytes=MAX_RESPONSE_BYTES, reserve=reserve)
+            return body, receipt, refused_bytes[0]
+        except ValueError as exc:
+            if attempt + 1 >= _RETRY_ATTEMPTS or not str(exc).startswith("incomplete_source_capture:"):
+                raise
+            refused_bytes[0] += _witness_refused(root, name)
+            sleep(_RETRY_BASE_DELAY_SECONDS * attempt)
+    raise AssertionError("unreachable_retry_state")
+
+
+def _capture_into(captures: dict, client: httpx.Client, url: str, root: Path, name: str,
+                  retained: int) -> int:
+    """Run one capture, retain it, and return the bytes to add to the budget.
+
+    The returned total includes the artifact's own refused-attempt evidence so
+    retained retry evidence is never free.
+    """
+    body, receipt, refused = _capture(client, url, root, name, retained)
+    captures[name] = (body, receipt)
+    return refused + receipt["bytes"] + receipt["wire_bytes"]
+
+
+def _validate_refused_evidence(directory: Path, artifact_names: set[str]) -> int:
+    """Validate retained refused-attempt evidence; return its byte total.
+
+    Every refused triple must name an artifact that the completed manifest
+    eventually captured, carry exactly one body/wire/receipt with matching
+    hash-pinned receipt, and be a regular non-symlink file.
+    """
+    total = 0
+    groups: dict[tuple[str, str], dict[str, Path]] = {}
+    for entry in directory.iterdir():
+        if entry.is_symlink() or not entry.is_file():
+            raise ValueError("trails_refused_evidence_invalid")
+        match = _REFUSED_ENTRY.fullmatch(entry.name)
+        if not match or match.group("name") not in artifact_names:
+            raise ValueError("trails_refused_evidence_invalid")
+        total += entry.stat().st_size
+        slot = groups.setdefault((match.group("name"), match.group("stamp")), {})
+        if match.group("suffix") in slot:
+            raise ValueError("trails_refused_evidence_invalid")
+        slot[match.group("suffix")] = entry
+    if not groups:
+        raise ValueError("trails_refused_evidence_invalid")
+    for (_name, _stamp), slot in groups.items():
+        if set(slot) != {"body", "wire", "receipt.json"}:
+            raise ValueError("trails_refused_evidence_invalid")
+        body = slot["body"].read_bytes()
+        wire = slot["wire"].read_bytes()
+        try:
+            receipt = json.loads(slot["receipt.json"].read_bytes())
+        except (OSError, ValueError) as exc:
+            raise ValueError("trails_refused_evidence_invalid") from exc
+        if (not isinstance(receipt, dict)
+                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+            raise ValueError("trails_refused_evidence_invalid")
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise ValueError("trails_response_budget_exceeded")
+    return total
 
 
 def _load(root: Path) -> dict[str, tuple[bytes, dict]]:
@@ -109,8 +203,16 @@ def _load(root: Path) -> dict[str, tuple[bytes, dict]]:
     expected = {"capture_manifest.json"}
     for name in manifest["artifact_names"]:
         expected.update({f"{name}.body", f"{name}.receipt.json", f"{name}.wire"})
+    refused_dir = root / _REFUSED_DIR
+    has_refused = _REFUSED_DIR in actual
+    if has_refused:
+        if refused_dir.is_symlink() or not refused_dir.is_dir() or not any(refused_dir.iterdir()):
+            raise ValueError("trails_capture_roster_invalid")
+        expected.add(_REFUSED_DIR)
     if actual != expected or any((root / name).is_symlink() for name in actual):
         raise ValueError("trails_capture_roster_invalid")
+    refused_bytes = (_validate_refused_evidence(refused_dir, set(manifest["artifact_names"]))
+                     if has_refused else 0)
     result = {}
     for name in manifest["artifact_names"]:
         body = (root / f"{name}.body").read_bytes()
@@ -123,7 +225,8 @@ def _load(root: Path) -> dict[str, tuple[bytes, dict]]:
         if len(body) > MAX_RESPONSE_BYTES:
             raise ValueError("trails_response_budget_exceeded")
         result[name] = (body, receipt)
-    if sum(len(body) + int(receipt.get("wire_bytes", 0)) for body, receipt in result.values()) > MAX_CAPTURE_BYTES:
+    if (sum(len(body) + int(receipt.get("wire_bytes", 0)) for body, receipt in result.values())
+            + refused_bytes > MAX_CAPTURE_BYTES):
         raise ValueError("trails_capture_budget_exceeded")
     return result
 
@@ -159,7 +262,14 @@ def _validate_polyline_geometry(geometry: object) -> None:
             if not isinstance(point, list) or len(point) not in (2, 3):
                 raise ValueError("trails_polyline_geometry_drift")
             if len(point) == 3 and point[2] is not None:
-                raise ValueError("trails_unhandled_z_or_m_ordinate")
+                # The layer declares hasM: true (observed 2026-11-14), so a
+                # populated served m ordinate is within the producer's own
+                # declared schema and is retained verbatim; it must still be a
+                # finite number. Any served z fails closed.
+                if type(point[2]) not in (int, float):
+                    raise ValueError("trails_polyline_geometry_drift")
+                if not math.isfinite(point[2]):
+                    raise ValueError("trails_nonfinite_geometry")
             if type(point[0]) not in (int, float) or type(point[1]) not in (int, float):
                 raise ValueError("trails_polyline_geometry_drift")
             if not math.isfinite(point[0]) or not math.isfinite(point[1]):
@@ -182,10 +292,33 @@ def _validate_dimensions_probe(probe: dict, expected_oid: int) -> None:
     _validate_polyline_geometry(features[0].get("geometry"))
 
 
+# The before/after layer gate pins the data-contract projection of the layer
+# document. The producer rotates the document's drawingInfo colorRamp
+# presentation within a capture window (observed 2026-11-14: colorRamp colors
+# changed across a 34-minute live capture while every data-contract member and
+# the whole service document stayed byte-identical), so whole-document
+# canonical equality can never hold reliably for this continuously-updated
+# layer; presentation metadata stays retained verbatim in the capture but is
+# excluded from the drift gate.
+_LAYER_CONTRACT_MEMBERS = ("id", "name", "type", "geometryType", "hasM", "hasZ",
+                           "extent", "fields", "geometryField", "maxRecordCount",
+                           "supportedQueryFormats")
+
+
+def _layer_contract(layer: dict) -> dict:
+    return {member: layer.get(member) for member in _LAYER_CONTRACT_MEMBERS}
+
+
+def _layer_contract_unchanged(layer_before: dict, layer_after: dict) -> None:
+    if _canonical(_layer_contract(layer_before)) != _canonical(_layer_contract(layer_after)):
+        raise ValueError("trails_layer_changed_during_capture")
+
+
 def _fields(layer: dict) -> list[dict]:
     fields = layer.get("fields")
     if (layer.get("id") != LAYER_ID or layer.get("name") != "Trails"
             or layer.get("geometryType") != "esriGeometryPolyline"
+            or layer.get("hasM") is not True
             or not isinstance(fields, list)
             or [field.get("name") for field in fields] != [*EXPECTED_FIELD_NAMES, "shape", "shape_Length"]
             or layer.get("geometryField", {}).get("name") != "shape"):
@@ -233,10 +366,17 @@ def _validate_request_scope(name: str, receipt: dict, ids: list[int]) -> None:
         page_ids = ids[start:start + BATCH_SIZE]
         if not page_ids:
             raise ValueError("trails_unexpected_page:" + name)
+        # Pages walk the sorted roster with resultOffset/resultRecordCount
+        # pagination in producer order: a 2,000-id objectIds list is a ~20k
+        # character URI and the server answers it with HTTP 414 (observed
+        # 2026-11-14), while the equivalent resultOffset page serves the same
+        # ordered slice.
         expected_path, expected = urlsplit(LAYER_URL).path + "/query", {
-            "objectIds": [",".join(map(str, page_ids))], "outFields": ["*"],
-            "returnGeometry": ["true"], "returnZ": ["true"], "returnM": ["true"],
-            "orderByFields": ["objectid ASC"], "f": ["json"]}
+            "where": ["1=1"], "outFields": ["*"], "returnGeometry": ["true"],
+            "returnZ": ["true"], "returnM": ["true"],
+            "orderByFields": ["objectid ASC"],
+            "resultOffset": [str(start)], "resultRecordCount": [str(BATCH_SIZE)],
+            "f": ["json"]}
     else:
         raise ValueError("trails_unexpected_capture_name:" + name)
     if parsed.path != expected_path or params != expected:
@@ -247,8 +387,7 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     layer = docs["layer_before"]
     fields = _fields(layer)
-    if _canonical(layer) != _canonical(docs["layer_after"]):
-        raise ValueError("trails_layer_changed_during_capture")
+    _layer_contract_unchanged(layer, docs["layer_after"])
     if docs["service_before"] != docs["service_after"]:
         raise ValueError("trails_service_changed_during_capture")
     ids_before = docs["ids_before"].get("objectIds")
@@ -271,10 +410,12 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
         _validate_request_scope(name, receipt, ids_before)
     _validate_dimensions_probe(docs["dimensions_probe"], ids_before[0])
     names = [f["name"] for f in fields]
+    names_lower = [name.lower() for name in names]
     record_sha = hashlib.sha256()
     geometry_sha = hashlib.sha256()
     bounds = [math.inf, math.inf, -math.inf, -math.inf]
     missing_geometry = []
+    populated_m_features = 0
     null_counts = {name: 0 for name in names}
     seen = set()
     page_names = sorted(n for n in docs if n.startswith("page_"))
@@ -284,13 +425,23 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
         rows = page.get("features")
         start = int(name.rsplit("_", 1)[1])
         expected = ids_before[start:start + BATCH_SIZE]
-        if not isinstance(rows, list) or len(rows) != len(expected) or docs[name].get("exceededTransferLimit"):
+        # A resultOffset page at the producer's record cap is exactly full and
+        # the server flags more rows with exceededTransferLimit; only a page
+        # below the cap claiming more rows is a truncation.
+        if (not isinstance(rows, list) or len(rows) != len(expected)
+                or (docs[name].get("exceededTransferLimit") and len(rows) != BATCH_SIZE)):
             raise ValueError("trails_page_population_incomplete:" + name)
         for feature in rows:
             raw_attrs = feature.get("attributes")
-            if not isinstance(raw_attrs, dict) or [str(k).lower() for k in raw_attrs] != names:
+            # Esri field names are case-insensitive and the producer serves
+            # 'shape_length' for the declared 'shape_Length'; compare the
+            # served key order case-insensitively and re-key each feature by
+            # the declared name.
+            raw_lower = ({str(key).lower(): value for key, value in raw_attrs.items()}
+                         if isinstance(raw_attrs, dict) else {})
+            if list(raw_lower) != names_lower:
                 raise ValueError("trails_attribute_roster_drift")
-            attrs = {str(key).lower(): value for key, value in raw_attrs.items()}
+            attrs = {name: raw_lower[name.lower()] for name in names}
             feature["attributes"] = attrs
             oid = attrs["objectid"]
             if type(oid) is not int or oid not in expected or oid in seen:
@@ -316,6 +467,8 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
                 missing_geometry.append(oid)
             else:
                 _validate_polyline_geometry(geometry)
+                if _populated_m(geometry["paths"]):
+                    populated_m_features += 1
                 for path in geometry["paths"]:
                     for point in path:
                         bounds[0] = min(bounds[0], point[0]); bounds[1] = min(bounds[1], point[1])
@@ -326,6 +479,7 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
         raise ValueError("trails_feature_roster_mismatch")
     audit = {
         "feature_count": len(seen), "missing_geometry_objectids": missing_geometry,
+        "populated_m_feature_count": populated_m_features,
         "id_sha256": _sha(_canonical(sorted(seen))), "schema_sha256": _sha(_canonical(fields)),
         "record_sha256": record_sha.hexdigest(), "geometry_sha256": geometry_sha.hexdigest(),
         "native_crs": "EPSG:3857", "native_bounds": bounds,
@@ -335,16 +489,48 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
     return layer, audit
 
 
+# ISO WKB dimension offsets: base geometry type + 1000 (Z) / 2000 (M).
+_WKB_MULTILINESTRING = 5
+_WKB_LINESTRING = 2
+_WKB_M_OFFSET = 2000
+
+
+def _populated_m(paths: list) -> bool:
+    """True when any served vertex of the feature carries a populated m ordinate."""
+    return any(len(point) == 3 and point[2] is not None for path in paths for point in path)
+
+
 def _wkb_polyline(paths: list) -> bytes:
+    # Served third ordinates are retained verbatim: a feature whose served m
+    # ordinates are all null is emitted as plain 2D WKB (the served nulls
+    # carry no value), while a feature with any populated m ordinate is
+    # emitted as WKB MultiLineString M with the served values verbatim (a
+    # served null inside such a feature encodes as NaN, the WKB null-m
+    # convention).
+    has_m = _populated_m(paths)
     out = bytearray()
-    out += struct.pack("<BI", 1, 5)
+    out += struct.pack("<BI", 1, _WKB_MULTILINESTRING + (_WKB_M_OFFSET if has_m else 0))
     out += struct.pack("<I", len(paths))
     for path in paths:
-        out += struct.pack("<BI", 1, 2)
+        out += struct.pack("<BI", 1, _WKB_LINESTRING + (_WKB_M_OFFSET if has_m else 0))
         out += struct.pack("<I", len(path))
         for point in path:
-            out += struct.pack("<dd", float(point[0]), float(point[1]))
+            if has_m:
+                m = float(point[2]) if len(point) == 3 and point[2] is not None else math.nan
+                out += struct.pack("<ddd", float(point[0]), float(point[1]), m)
+            else:
+                out += struct.pack("<dd", float(point[0]), float(point[1]))
     return bytes(out)
+
+
+def _geometry_types(features: list[dict]) -> list[str]:
+    types = set()
+    for feature in features:
+        geometry = feature.get("geometry")
+        if geometry is None:
+            continue
+        types.add("MultiLineString M" if _populated_m(geometry["paths"]) else "MultiLineString")
+    return sorted(types)
 
 
 def _parquet(features: list[dict], fields: list[dict], count: int) -> bytes:
@@ -369,7 +555,7 @@ def _parquet(features: list[dict], fields: list[dict], count: int) -> bytes:
               for path in f["geometry"]["paths"] for p in path]
     bbox = [min(p[0] for p in coords), min(p[1] for p in coords), max(p[0] for p in coords), max(p[1] for p in coords)]
     geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {"geometry": {
-        "encoding": "WKB", "geometry_types": ["MultiLineString"], "crs": EXPECTED_CRS.to_json_dict(), "bbox": bbox}}}
+        "encoding": "WKB", "geometry_types": _geometry_types(features), "crs": EXPECTED_CRS.to_json_dict(), "bbox": bbox}}}
     table = pa.Table.from_arrays(arrays, schema=pa.schema(schema, metadata={b"geo": _canonical(geo)}))
     sink = io.BytesIO()
     pq.write_table(table, sink, compression="zstd", use_dictionary=False)
@@ -396,7 +582,7 @@ def _parquet(features: list[dict], fields: list[dict], count: int) -> bytes:
     metadata = json.loads(readback.schema.metadata[b"geo"])
     declared_crs = CRS.from_json_dict(metadata["columns"]["geometry"]["crs"])
     if (metadata["columns"]["geometry"].get("encoding") != "WKB"
-            or metadata["columns"]["geometry"].get("geometry_types") != ["MultiLineString"]
+            or metadata["columns"]["geometry"].get("geometry_types") != _geometry_types(features)
             or not declared_crs.equals(EXPECTED_CRS, ignore_axis_order=True)):
         raise ValueError("trails_parquet_crs_or_encoding_drift")
     return body
@@ -434,8 +620,7 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
                     ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
                     ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
                 for name, url in requests:
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
+                    retained += _capture_into(captures, client, url, root, name, retained)
                 ids = json.loads(captures["ids_before"][0]).get("objectIds")
                 if (not isinstance(ids, list) or any(type(value) is not int for value in ids)
                         or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
@@ -444,20 +629,18 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
                 ids = sorted(ids)
                 probe_url = _query({"objectIds": str(ids[0]), "outFields": "OBJECTID", "returnGeometry": "true",
                                     "returnZ": "true", "returnM": "true", "f": "json"})
-                captures["dimensions_probe"] = _capture(client, probe_url, root, "dimensions_probe", retained)
-                retained += captures["dimensions_probe"][1]["bytes"] + captures["dimensions_probe"][1]["wire_bytes"]
+                retained += _capture_into(captures, client, probe_url, root, "dimensions_probe", retained)
                 for start in range(0, len(ids), BATCH_SIZE):
-                    page_ids = ids[start:start + BATCH_SIZE]
                     name = f"page_{start:05d}"
-                    url = _query({"objectIds": ",".join(map(str, page_ids)), "outFields": "*", "returnGeometry": "true",
-                                  "returnZ": "true", "returnM": "true", "orderByFields": "objectid ASC", "f": "json"})
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
+                    url = _query({"where": "1=1", "outFields": "*", "returnGeometry": "true",
+                                  "returnZ": "true", "returnM": "true",
+                                  "orderByFields": "objectid ASC", "resultOffset": start,
+                                  "resultRecordCount": BATCH_SIZE, "f": "json"})
+                    retained += _capture_into(captures, client, url, root, name, retained)
                 for name, url in [("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
                     ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
                     ("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson")]:
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
+                    retained += _capture_into(captures, client, url, root, name, retained)
             manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         "artifact_names": sorted(captures), "receipts": {n:r for n,(_b,r) in sorted(captures.items())}}
             (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
@@ -466,8 +649,16 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
             for p in root.glob("*.receipt.json"):
                 try: receipts[p.name.removesuffix(".receipt.json")] = json.loads(p.read_bytes())
                 except (OSError, ValueError): receipts[p.name.removesuffix(".receipt.json")] = {"receipt_readback_failed": True}
+            refused = {}
+            refused_dir = root / _REFUSED_DIR
+            if refused_dir.is_dir() and not refused_dir.is_symlink():
+                for p in sorted(refused_dir.glob("*.receipt.json")):
+                    key = p.name.removesuffix(".receipt.json")
+                    try: refused[key] = json.loads(p.read_bytes())
+                    except (OSError, ValueError): refused[key] = {"receipt_readback_failed": True}
             (root / "capture_manifest.json").write_bytes(_canonical({"complete":False,"error_code":type(exc).__name__,
-                "captured_at":datetime.now(timezone.utc).isoformat().replace("+00:00","Z"),"artifact_names":sorted(receipts),"receipts":receipts})+b"\n")
+                "captured_at":datetime.now(timezone.utc).isoformat().replace("+00:00","Z"),"artifact_names":sorted(receipts),
+                "receipts":receipts,"refused_receipts":refused})+b"\n")
             raise
     layer, audit = _population(captures)
     fields = _fields(layer)
@@ -490,7 +681,7 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
         "processing_identity":identity,"inputs":inputs,
         "transformations":[{"operation":"Native ArcGIS polyline feature capture to typed GeoParquet WKB","parameters":{
             "attributes":"All 39 declared layer attributes retained verbatim, including the served virtual shape_Length and the producer's 'sourcedatadecscription' spelling. Source ESRI declarations are recorded verbatim in source_audit; output Arrow types use the explicit esri_to_arrow_type_mapping below. No schema conversion contract is approved.",
-            "geometry":"Native EPSG:3857 polylines preserved; no reprojection, geocoding, repair, or row dropping. M-ordinates are served as null and must stay null; any populated m or z fails closed.",
+            "geometry":"Native EPSG:3857 polylines preserved; no reprojection, geocoding, repair, or row dropping. The layer declares hasM: true and serves [x, y, m] vertices; served m ordinates are retained verbatim, not repaired: a feature whose served m ordinates are all null is emitted as 2D WKB MultiLineString, while a feature with any served m ordinate is emitted as WKB MultiLineString M with the served values verbatim (a served null inside such a feature encodes as NaN, the WKB null-m convention). Any served z ordinate, non-finite ordinate, or unexpected geometry member fails closed.",
             "source_population":"Exact objectid roster and count captured before and after all pages, with the pinned sorted-roster digest; complete current layer only."}}],
         "lineage":{"layer_id":LAYER_ID,"layer_name":"Trails","native_crs":"EPSG:3857","feature_count":EXPECTED_COUNT,
             "source_id_sha256":audit["id_sha256"],"source_schema_sha256":audit["schema_sha256"],"source_record_sha256":audit["record_sha256"],
@@ -532,6 +723,7 @@ def _parquet_pages(root: Path, fields: list[dict], count: int) -> bytes:
     names = [f["name"] for f in fields]
     arrays = {name: [] for name in names}
     wkb = []
+    geometry_types = set()
     page_names = sorted(f"page_{start:05d}" for start in range(0, count, BATCH_SIZE))
     for name in page_names:
         body = (root / f"{name}.body").read_bytes()
@@ -540,20 +732,27 @@ def _parquet_pages(root: Path, fields: list[dict], count: int) -> bytes:
             attrs = {str(key).lower(): value for key, value in feature["attributes"].items()}
             for field in fields:
                 kind = field["type"]
-                value = attrs[field["name"]]
+                # Esri field names are case-insensitive on the wire (the
+                # producer serves the declared 'shape_Length' as
+                # 'shape_length'); arrays are keyed by the declared name and
+                # values are read through the lowercased served key.
+                value = attrs[field["name"].lower()]
                 if kind == "esriFieldTypeDate":
                     value = None if value is None else datetime.fromtimestamp(value / 1000, tz=timezone.utc)
                 elif kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"}:
                     value = None if value is None else float(value)
                 arrays[field["name"]].append(value)
             geometry = feature.get("geometry")
+            if geometry is not None:
+                geometry_types.add("MultiLineString M" if _populated_m(geometry["paths"])
+                                   else "MultiLineString")
             wkb.append(None if geometry is None else _wkb_polyline(geometry["paths"]))
     schema_fields = [pa.field(f["name"], ARROW_TYPES[f["type"]], nullable=f.get("nullable") is not False) for f in fields]
     schema_fields.append(pa.field("geometry", pa.binary(), nullable=True))
     arrays["geometry"] = wkb
     table = pa.Table.from_pydict(arrays, schema=pa.schema(schema_fields, metadata=None))
     geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {"geometry": {
-        "encoding": "WKB", "geometry_types": ["MultiLineString"], "crs": EXPECTED_CRS.to_json_dict()}}}
+        "encoding": "WKB", "geometry_types": sorted(geometry_types), "crs": EXPECTED_CRS.to_json_dict()}}}
     table = table.replace_schema_metadata({b"geo": _canonical(geo)})
     sink = io.BytesIO()
     pq.write_table(table, sink, compression="zstd", use_dictionary=False)

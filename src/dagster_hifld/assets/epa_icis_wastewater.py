@@ -5,7 +5,7 @@ from dagster import (AssetCheckResult, AssetKey, AssetSelection, Config,
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_icis_wastewater import (
+from dagster_hifld.sources.epa_icis_wastewater_common import (
     DATASET_SLUG, FILE_SLUG, MAX_CAPTURE_BYTES, MAX_RESPONSE_BYTES, capture_epa_icis_wastewater,
 )
 

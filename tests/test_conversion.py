@@ -852,6 +852,10 @@ class ConversionTests(unittest.TestCase):
             )
 
     def test_geoparquet_policy_registry_uses_coarser_wbd_huc_partitions(self):
+        wbd8 = geoparquet_policy_for("wbd", "8-digit-hu-subbasin")
+        self.assertEqual(wbd8.derived_huc_column, "huc8")
+        self.assertEqual(wbd8.derived_huc_partition_columns, ("huc2",))
+
         wbd12 = geoparquet_policy_for("wbd", "12-digit-hu-subwatershed")
         self.assertEqual(wbd12.derived_huc_column, "huc12")
         self.assertEqual(wbd12.derived_huc_partition_columns, ("huc2",))

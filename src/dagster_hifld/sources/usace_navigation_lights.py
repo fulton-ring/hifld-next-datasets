@@ -5,7 +5,6 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -28,11 +27,13 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "navigation-lights-usace-ienc-2"
 FILE_SLUG = DATASET_SLUG
@@ -88,15 +89,6 @@ ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["nam
 CAPTURE_NAMES = ({"bts_item", "service_directory", "service_before", "layer_before", "count_before",
                  "ids_before", "layer_after", "count_after", "ids_after", "service_after"}
                  | {f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)})
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
@@ -185,13 +177,6 @@ def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
     return body, wire, receipt
 
 
-def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
-    """Bind retained response bytes to the exact GET endpoint that names them."""
-    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
-            or receipt.get("final_url") != expected_url):
-        raise ValueError("retained_capture_request_identity_mismatch:" + name)
-
-
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
@@ -227,7 +212,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
+        validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures
 
@@ -376,13 +361,6 @@ def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) 
     return _sha(_canonical(_capture_identity(captures, root)))
 
 
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
-            "esriFieldTypeSmallInteger": pa.int16(), "esriFieldTypeSingle": pa.float32(),
-            "esriFieldTypeDouble": pa.float64(), "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDate": pa.int64()}.get(field.get("type"), pa.string())
-
-
 def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     properties = [field for field in fields if field["name"] != "SHAPE"]
     arrays = []
@@ -428,7 +406,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/180/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "180", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)

@@ -19,7 +19,7 @@ from dagster import (AssetCheckResult, AssetKey, AssetSelection, Field,
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, write_immutable,
 )
@@ -28,6 +28,7 @@ from dagster_hifld.sources.epa_frs_contact_stream import (
     EXPECTED_ROWS, SERVICE_URL, TABLE_NAME, TABLE_URL, capture_to_parquet, canonical,
     compact_capture_receipt_index,
 )
+from dagster_hifld.validation import sha256_file
 
 
 DATASET_SLUG = "epa-frs-interest-contact"
@@ -72,17 +73,9 @@ SOURCE_METADATA = {
 }
 
 
-def _sha(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _upload_immutable_file(storage: StagingStorageResource, path: Path, key: str) -> dict[str, object]:
     """Upload a bounded-memory artifact and verify any content-addressed reuse."""
-    expected_sha = _sha(path)
+    expected_sha = sha256_file(path)
     expected_size = path.stat().st_size
     before = storage.object_snapshot(key)
     if before is not None:

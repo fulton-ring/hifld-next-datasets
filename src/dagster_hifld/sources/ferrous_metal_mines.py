@@ -45,7 +45,7 @@ from dagster_hifld.construction_state import (
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     STAGED_RELEASE_DERIVATIVE_NAMES,
     capture_get,
     candidate_prefix,
