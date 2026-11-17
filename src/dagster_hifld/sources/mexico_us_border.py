@@ -35,6 +35,7 @@ from dagster_hifld.sources.capture_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.arcgis_layer import layer_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "mexico-and-us-border-1"
@@ -289,21 +290,12 @@ def _query(params: dict[str, object]) -> str:
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("portal_item", PORTAL_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
-            ("service_before", SERVICE_URL + "?f=pjson"),
-            ("layer_before", LAYER_URL + "?f=pjson"),
-            ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-            ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds": ",".join(map(str, page_ids)),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
-                 ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                 ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                 ("service_after", SERVICE_URL + "?f=pjson")])
-    return urls
+    return layer_capture_roster(
+        ids, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(("portal_item", PORTAL_ITEM_URL),
+                         ("service_directory", SERVICE_DIRECTORY_URL)),
+        page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"},
+    )
 
 
 def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:

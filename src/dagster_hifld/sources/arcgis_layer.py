@@ -25,7 +25,7 @@ import struct
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping
+from typing import Callable, Iterable, Iterator, Mapping, Sequence
 from urllib.parse import urlencode, urlsplit
 
 import httpx
@@ -53,33 +53,71 @@ def capture_page(client: httpx.Client, url: str, root: Path, name: str, *,
     return body, receipt
 
 
-def ienc_layer_capture_roster(ids: list[int], *, bts_item_url: str, service_directory_url: str,
-                              service_url: str, layer_url: str, page_size: int,
-                              layer_format: str = "pjson") -> list[tuple[str, str]]:
-    """Return the ordered USACE IENC layer capture roster for a fixed ID list."""
-    def query(params: dict[str, object]) -> str:
+def layer_capture_roster(
+    object_ids: Sequence[int], *,
+    layer_url: str, service_url: str, page_size: int,
+    extra_documents: Sequence[tuple[str, str]] = (),
+    trailing_documents: Sequence[tuple[str, str]] = (),
+    service_format: str = "pjson", layer_format: str = "pjson",
+    page_params: Mapping[str, object] | None = None,
+    page_namer: Callable[[int, Sequence[int]], str] | None = None,
+    oid_field: str = "OBJECTID", spatial: bool = True,
+    include_ids_before: bool = True,
+) -> list[tuple[str, str]]:
+    """Ordered discovery, page and witness requests for one layer capture.
+
+    Emits the URL strings the per-adapter ``_capture_roster`` copies build:
+    optional leading documents, the service and layer documents, the
+    ``returnCountOnly`` and ``returnIdsOnly`` discovery queries, one exact-ID
+    slice page per ``page_size`` IDs, the after witnesses, and optional trailing
+    documents. Callers pass their own URL identity, page options and byte
+    budgets. Parameter order is fixed so retained receipts stay byte-identical.
+    """
+    if page_size < 1:
+        raise ValueError("page_size_invalid")
+
+    def query(params: Mapping[str, object]) -> str:
         return layer_url + "/query?" + urlencode(params)
 
-    urls = [
-        ("bts_item", bts_item_url),
-        ("service_directory", service_directory_url),
-        ("service_before", service_url + "?f=pjson"),
-        ("layer_before", layer_url + f"?f={layer_format}"),
-        ("count_before", query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-        ("ids_before", query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-    ]
-    for index, start in enumerate(range(0, len(ids), page_size)):
-        page_ids = ids[start:start + page_size]
-        urls.append((f"page_{index:03d}", query({"objectIds": ",".join(map(str, page_ids)),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})))
+    urls = list(extra_documents)
+    urls.append(("service_before", service_url + f"?f={service_format}"))
+    urls.append(("layer_before", layer_url + f"?f={layer_format}"))
+    urls.append(("count_before", query({"where": "1=1", "returnCountOnly": "true", "f": "json"})))
+    if include_ids_before:
+        urls.append(("ids_before", query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})))
+    for index, start in enumerate(range(0, len(object_ids), page_size)):
+        page_ids = list(object_ids[start:start + page_size])
+        name = page_namer(index, page_ids) if page_namer is not None else f"page_{index:03d}"
+        params: dict[str, object] = {
+            "objectIds": ",".join(map(str, page_ids)), "outFields": "*",
+        }
+        if spatial:
+            params["returnGeometry"] = "true"
+        if page_params:
+            params.update(page_params)
+        params.update({"orderByFields": f"{oid_field} ASC", "f": "json"})
+        urls.append((name, query(params)))
     urls.extend([
         ("layer_after", layer_url + f"?f={layer_format}"),
         ("count_after", query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
         ("ids_after", query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-        ("service_after", service_url + "?f=pjson"),
+        ("service_after", service_url + f"?f={service_format}"),
     ])
+    urls.extend(trailing_documents)
     return urls
+
+
+def ienc_layer_capture_roster(ids: list[int], *, bts_item_url: str, service_directory_url: str,
+                              service_url: str, layer_url: str, page_size: int,
+                              layer_format: str = "pjson") -> list[tuple[str, str]]:
+    """Return the ordered USACE IENC layer capture roster for a fixed ID list."""
+    return layer_capture_roster(
+        ids, layer_url=layer_url, service_url=service_url, page_size=page_size,
+        extra_documents=(("bts_item", bts_item_url),
+                         ("service_directory", service_directory_url)),
+        layer_format=layer_format,
+        page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"},
+    )
 
 
 def load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:

@@ -110,6 +110,46 @@ class ArcgisLayerTests(unittest.TestCase):
                           "count_before", "ids_before", "page_000", "page_001", "layer_after",
                           "count_after", "ids_after", "service_after"])
 
+    def test_layer_capture_roster_pins_discovery_and_id_slice_urls(self):
+        self.assertEqual(common.layer_capture_roster(
+            [7, 8, 9],
+            layer_url="https://svc.example/LAYER/MapServer/0",
+            service_url="https://svc.example/LAYER/MapServer",
+            page_size=2,
+            extra_documents=(("catalog_item", "https://item.example/1?f=json"),),
+            trailing_documents=(("service_directory_after", "https://svc.example/dir?f=pjson"),),
+            page_params={"returnZ": "false", "returnM": "false", "outSR": "4326"},
+            oid_field="FID",
+        ), [
+            ("catalog_item", "https://item.example/1?f=json"),
+            ("service_before", "https://svc.example/LAYER/MapServer?f=pjson"),
+            ("layer_before", "https://svc.example/LAYER/MapServer/0?f=pjson"),
+            ("count_before", "https://svc.example/LAYER/MapServer/0/query?where=1%3D1&returnCountOnly=true&f=json"),
+            ("ids_before", "https://svc.example/LAYER/MapServer/0/query?where=1%3D1&returnIdsOnly=true&f=json"),
+            ("page_000", "https://svc.example/LAYER/MapServer/0/query?objectIds=7%2C8&outFields=%2A&returnGeometry=true&returnZ=false&returnM=false&outSR=4326&orderByFields=FID+ASC&f=json"),
+            ("page_001", "https://svc.example/LAYER/MapServer/0/query?objectIds=9&outFields=%2A&returnGeometry=true&returnZ=false&returnM=false&outSR=4326&orderByFields=FID+ASC&f=json"),
+            ("layer_after", "https://svc.example/LAYER/MapServer/0?f=pjson"),
+            ("count_after", "https://svc.example/LAYER/MapServer/0/query?where=1%3D1&returnCountOnly=true&f=json"),
+            ("ids_after", "https://svc.example/LAYER/MapServer/0/query?where=1%3D1&returnIdsOnly=true&f=json"),
+            ("service_after", "https://svc.example/LAYER/MapServer?f=pjson"),
+            ("service_directory_after", "https://svc.example/dir?f=pjson"),
+        ])
+
+    def test_layer_capture_roster_can_omit_ids_before_and_pages_without_geometry(self):
+        roster = common.layer_capture_roster(
+            [1], layer_url="https://svc.example/0", service_url="https://svc.example",
+            page_size=1, include_ids_before=False, spatial=False,
+        )
+        names = [name for name, _url in roster]
+        self.assertNotIn("ids_before", names)
+        self.assertEqual(dict(roster)["page_000"],
+                         "https://svc.example/0/query?objectIds=1&outFields=%2A&orderByFields=OBJECTID+ASC&f=json")
+
+    def test_layer_capture_roster_rejects_nonpositive_page_size(self):
+        with self.assertRaisesRegex(ValueError, "page_size_invalid"):
+            common.layer_capture_roster(
+                [1], layer_url="https://svc.example/0", service_url="https://svc.example", page_size=0)
+
     def test_private_aliases_bind_the_public_implementations(self):
         self.assertIs(common._capture, common.capture_page)
         self.assertIs(common._load_capture, common.load_capture)
