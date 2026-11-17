@@ -83,6 +83,85 @@ def zero_area_rings(rings: list) -> list[int]:
     return indexes
 
 
+def _dimension_flags(esri_geom: dict, has_z: bool | None, has_m: bool | None) -> tuple[bool, bool]:
+    """Resolve declared and supplied dimension flags, refusing drift."""
+    flags = []
+    for key, supplied in (("hasZ", has_z), ("hasM", has_m)):
+        advertised = esri_geom.get(key)
+        if ((key in esri_geom and type(advertised) is not bool)
+                or (supplied is not None and type(supplied) is not bool)
+                or (supplied is not None and key in esri_geom and supplied != advertised)):
+            raise ValueError("esri_dimension_contract_drift:" + key)
+        flags.append(supplied if supplied is not None else bool(advertised))
+    return flags[0], flags[1]
+
+
+def _native_points(points: list, width: int, m: bool) -> list[list]:
+    """Normalize native ordinates, mapping a null measure to NaN."""
+    native = []
+    for point in points:
+        if not isinstance(point, (list, tuple)) or len(point) != width:
+            raise ValueError("esri_ordinate_contract_drift")
+        values = []
+        for index, value in enumerate(point):
+            if m and index == width - 1 and (value is None or
+                    (type(value) is float and math.isnan(value))):
+                values.append(float("nan"))
+            elif type(value) not in (int, float) or not math.isfinite(value):
+                raise ValueError("esri_ordinate_not_finite_numeric")
+            elif type(value) is int and int(float(value)) != value:
+                raise ValueError("esri_ordinate_precision_loss")
+            else:
+                values.append(value)
+        native.append(values)
+    return native
+
+
+def esri_polyline_wkb(geometry: dict, *, has_z: bool | None = None,
+                      has_m: bool | None = None) -> bytes | None:
+    """Read native straight Esri polyline paths through GDAL's ESRIJSON driver.
+
+    No CRS is assumed or changed. Curves, unknown dimensions and any GDAL
+    coordinate loss are refused; path order and vertex values are preserved.
+    """
+    if geometry is None:
+        return None
+    if not isinstance(geometry, dict):
+        raise ValueError("invalid_esri_geometry")
+    if "curvePaths" in geometry or "curveRings" in geometry:
+        raise ValueError("unsupported_esri_curves")
+    if set(geometry) - {"paths", "hasZ", "hasM", "spatialReference"}:
+        raise ValueError("unexpected_esri_geometry_members")
+    z, m = _dimension_flags(geometry, has_z, has_m)
+    width = 2 + z + m
+    paths = geometry.get("paths")
+    if not isinstance(paths, list) or not paths:
+        raise ValueError("invalid_esri_polyline_paths")
+    native_paths = []
+    for path in paths:
+        if not isinstance(path, list) or len(path) < 2:
+            raise ValueError("invalid_esri_polyline_path")
+        native_paths.append(_native_points(path, width, m))
+    normalized = {"paths": native_paths, "hasZ": z, "hasM": m}
+    document = {"geometryType": "esriGeometryPolyline", "hasZ": z, "hasM": m,
+                "features": [{"attributes": {}, "geometry": normalized}]}
+    _metadata, table = pyogrio.read_arrow(json.dumps(document).encode())
+    if table.num_rows != 1 or table.num_columns != 1:
+        raise ValueError("esri_conversion_row_count_drift")
+    wkb = table.column(0)[0].as_py()
+    if wkb is None:
+        raise ValueError("esri_conversion_geometry_lost")
+    decoded = from_wkb(wkb)
+    if decoded.geom_type not in ("LineString", "MultiLineString") or (decoded.has_z, decoded.has_m) != (z, m):
+        raise ValueError("esri_conversion_dimension_or_type_drift")
+    parts = decoded.geoms if decoded.geom_type == "MultiLineString" else [decoded]
+    output_paths = [[tuple(point) for point in part.coords] for part in parts]
+    source_paths = [[tuple(point) for point in path] for path in native_paths]
+    if Counter(source_paths) != Counter(output_paths):
+        raise ValueError("esri_conversion_coordinates_changed")
+    return wkb
+
+
 def to_wkb(esri_geom: object, geometry_type: str, *,
            has_z: bool | None = None, has_m: bool | None = None) -> bytes | None:
     """Read native straight Esri polygon rings through GDAL's ESRIJSON driver.
@@ -107,15 +186,7 @@ def to_wkb(esri_geom: object, geometry_type: str, *,
         raise ValueError("unsupported_esri_curves")
     if set(esri_geom) - {"rings", "hasZ", "hasM", "spatialReference"}:
         raise ValueError("unexpected_esri_geometry_members")
-    flags = []
-    for key, supplied in (("hasZ", has_z), ("hasM", has_m)):
-        advertised = esri_geom.get(key)
-        if ((key in esri_geom and type(advertised) is not bool)
-                or (supplied is not None and type(supplied) is not bool)
-                or (supplied is not None and key in esri_geom and supplied != advertised)):
-            raise ValueError("esri_dimension_contract_drift:" + key)
-        flags.append(supplied if supplied is not None else bool(advertised))
-    z, m = flags
+    z, m = _dimension_flags(esri_geom, has_z, has_m)
     width = 2 + z + m
     rings = esri_geom.get("rings")
     if not isinstance(rings, list) or not rings:
@@ -124,22 +195,7 @@ def to_wkb(esri_geom: object, geometry_type: str, *,
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4:
             raise ValueError("invalid_esri_polygon_ring")
-        native_ring = []
-        for point in ring:
-            if not isinstance(point, (list, tuple)) or len(point) != width:
-                raise ValueError("esri_ordinate_contract_drift")
-            values = []
-            for index, value in enumerate(point):
-                if m and index == width - 1 and (value is None or
-                        (type(value) is float and math.isnan(value))):
-                    values.append(float("nan"))
-                elif type(value) not in (int, float) or not math.isfinite(value):
-                    raise ValueError("esri_ordinate_not_finite_numeric")
-                elif type(value) is int and int(float(value)) != value:
-                    raise ValueError("esri_ordinate_precision_loss")
-                else:
-                    values.append(value)
-            native_ring.append(values)
+        native_ring = _native_points(ring, width, m)
         # Compare normalized values so null M also closes correctly.
         if ["null" if isinstance(v, float) and math.isnan(v) else v for v in native_ring[0]] != [
                 "null" if isinstance(v, float) and math.isnan(v) else v for v in native_ring[-1]]:
