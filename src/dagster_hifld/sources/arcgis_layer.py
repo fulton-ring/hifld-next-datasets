@@ -107,6 +107,65 @@ def layer_capture_roster(
     return urls
 
 
+def offset_layer_capture_roster(
+    count: int, *,
+    layer_url: str, service_url: str, page_size: int,
+    extra_documents: Sequence[tuple[str, str]] = (),
+    trailing_documents: Sequence[tuple[str, str]] = (),
+    service_format: str = "pjson", layer_format: str = "pjson",
+    page_params: Mapping[str, object] | None = None,
+    page_namer: Callable[[int, int], str] | None = None,
+    oid_field: str = "OBJECTID", spatial: bool = True,
+    include_ids_before: bool = True, short_last_page: bool = True,
+    after_order: Sequence[str] = ("layer_after", "count_after", "ids_after", "service_after"),
+) -> list[tuple[str, str]]:
+    """Ordered discovery, offset-page and witness requests for one layer capture.
+
+    Same shape as :func:`layer_capture_roster`, but pages with
+    ``resultOffset``/``resultRecordCount`` instead of exact-ID slices, for the
+    adapters that must keep offset paging. ``short_last_page`` trims the final
+    request to the remaining count; ``after_order`` sets the witness order and
+    must contain the four witness names once each.
+    """
+    if count < 0 or page_size < 1:
+        raise ValueError("page_count_or_size_invalid")
+    witness_names = ("layer_after", "count_after", "ids_after", "service_after")
+    if sorted(after_order) != sorted(witness_names):
+        raise ValueError("after_order_invalid")
+
+    def query(params: Mapping[str, object]) -> str:
+        return layer_url + "/query?" + urlencode(params)
+
+    urls = list(extra_documents)
+    urls.append(("service_before", service_url + f"?f={service_format}"))
+    urls.append(("layer_before", layer_url + f"?f={layer_format}"))
+    urls.append(("count_before", query({"where": "1=1", "returnCountOnly": "true", "f": "json"})))
+    if include_ids_before:
+        urls.append(("ids_before", query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})))
+    for index, offset in enumerate(range(0, count, page_size)):
+        name = page_namer(index, offset) if page_namer is not None else f"page_{index:03d}"
+        params: dict[str, object] = {"where": "1=1", "outFields": "*"}
+        if spatial:
+            params["returnGeometry"] = "true"
+        if page_params:
+            params.update(page_params)
+        params.update({
+            "orderByFields": f"{oid_field} ASC", "resultOffset": offset,
+            "resultRecordCount": min(page_size, count - offset) if short_last_page else page_size,
+            "f": "json",
+        })
+        urls.append((name, query(params)))
+    witnesses = {
+        "layer_after": ("layer_after", layer_url + f"?f={layer_format}"),
+        "count_after": ("count_after", query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
+        "ids_after": ("ids_after", query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
+        "service_after": ("service_after", service_url + f"?f={service_format}"),
+    }
+    urls.extend(witnesses[name] for name in after_order)
+    urls.extend(trailing_documents)
+    return urls
+
+
 def ienc_layer_capture_roster(ids: list[int], *, bts_item_url: str, service_directory_url: str,
                               service_url: str, layer_url: str, page_size: int,
                               layer_format: str = "pjson") -> list[tuple[str, str]]:
