@@ -9,7 +9,7 @@ byte-identical to the copy it replaces; per-dataset byte budgets and error
 types are passed explicitly by each caller. Canonical JSON, sha256, the ArcGIS
 CRS drift guard and polygon ring assembly delegate to the single
 implementations in ``sources.esri_common`` and ``sources.esri_geometry``.
-Fetch planning,
+The USACE IENC layer capture roster is shared too. Fetch planning, other
 roster/offset algorithms, checkpoint state layouts, schema, ID and geometry
 contracts stay local to each adapter.
 
@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import pyarrow as pa
@@ -51,6 +51,35 @@ def capture_page(client: httpx.Client, url: str, root: Path, name: str, *,
         raise ValueError("source_capture_budget_exceeded_before_request")
     body, receipt = capture_get(client, url, root, name, max_bytes=page_max_bytes)
     return body, receipt
+
+
+def ienc_layer_capture_roster(ids: list[int], *, bts_item_url: str, service_directory_url: str,
+                              service_url: str, layer_url: str, page_size: int,
+                              layer_format: str = "pjson") -> list[tuple[str, str]]:
+    """Return the ordered USACE IENC layer capture roster for a fixed ID list."""
+    def query(params: dict[str, object]) -> str:
+        return layer_url + "/query?" + urlencode(params)
+
+    urls = [
+        ("bts_item", bts_item_url),
+        ("service_directory", service_directory_url),
+        ("service_before", service_url + "?f=pjson"),
+        ("layer_before", layer_url + f"?f={layer_format}"),
+        ("count_before", query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
+        ("ids_before", query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
+    ]
+    for index, start in enumerate(range(0, len(ids), page_size)):
+        page_ids = ids[start:start + page_size]
+        urls.append((f"page_{index:03d}", query({"objectIds": ",".join(map(str, page_ids)),
+            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
+            "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})))
+    urls.extend([
+        ("layer_after", layer_url + f"?f={layer_format}"),
+        ("count_after", query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
+        ("ids_after", query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
+        ("service_after", service_url + "?f=pjson"),
+    ])
+    return urls
 
 
 def load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:

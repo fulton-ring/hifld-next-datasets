@@ -26,6 +26,7 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.arcgis_layer import (
+    ienc_layer_capture_roster,
     _canonical, _capture_identity,
     _load_capture, _parquet_bytes, _sha, _validate_spatial_reference,
 )
@@ -76,20 +77,15 @@ def _query(params: dict[str, object]) -> str:
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("bts_item", BTS_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
-            ("service_before", SERVICE_URL + "?f=pjson"), ("layer_before", LAYER_URL + "?f=json"),
-            ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-            ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds": ",".join(map(str, page_ids)),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=json"),
-                 ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                 ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                 ("service_after", SERVICE_URL + "?f=pjson")])
-    return urls
+    return ienc_layer_capture_roster(
+        ids,
+        bts_item_url=BTS_ITEM_URL,
+        service_directory_url=SERVICE_DIRECTORY_URL,
+        service_url=SERVICE_URL,
+        layer_url=LAYER_URL,
+        page_size=PAGE_SIZE,
+        layer_format="json",
+    )
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
