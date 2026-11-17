@@ -259,3 +259,8 @@ def esri_polygon_ring_groups(esri_geom: object, *, has_z: bool | None = None,
             group.append(source[candidates.pop(0)])
         groups.append(group)
     return groups
+
+
+def ring_is_ccw(ring: list) -> bool:
+    """Whether a closed ring winds counter-clockwise (Esri interior-ring direction)."""
+    return LinearRing([point[:2] for point in ring]).is_ccw

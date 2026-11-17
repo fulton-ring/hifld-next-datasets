@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon, Polygon
 
-from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups, ring_is_ccw
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -72,7 +72,11 @@ def _esri_polygon(geometry: dict) -> MultiPolygon:
         polygon = Polygon(ring)
         if not polygon.is_valid or polygon.area == 0:
             raise ValueError("source_polygon_ring_invalid_geometry")
-    result = esri_polygon_geometry({"rings": rings}, has_z=False, has_m=False)
+    normalized = {"rings": rings}
+    for group in esri_polygon_ring_groups(normalized, has_z=False, has_m=False):
+        if len(group) == 1 and ring_is_ccw(group[0]):
+            raise ValueError("source_polygon_hole_without_containing_shell")
+    result = esri_polygon_geometry(normalized, has_z=False, has_m=False)
     if result.geom_type != "MultiPolygon":
         result = MultiPolygon([result])
     if not result.is_valid:
