@@ -7,7 +7,6 @@ The published layer currently contains one self-intersecting ring (OBJECTID
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -23,13 +22,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from pyproj import CRS
 from shapely.geometry import LinearRing, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     content_derived_version,
@@ -41,7 +39,9 @@ from dagster_hifld.sources.epa_frs_common import (
 )
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
 
 DATASET_SLUG = "land-surface-areas-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -84,49 +84,11 @@ EXPECTED_LAYER_EXTENT = {
     "xmax": -79.46555599999994,
     "ymax": 45.14219500000007,
 }
-SOURCE_CRS = CRS.from_epsg(4326)
 PAGE_SIZE = 500
 MAX_BODY_BYTES = 48_000_000
 MAX_CAPTURE_BYTES = 450_000_000
 DISK_FLOOR_BYTES = 2_000_000_000
 _RESPONSE_LIMIT_CODES = {"wire_limit_exceeded", "decoded_limit_exceeded", "wire_block_limit_exceeded"}
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
-
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Require every advertised ArcGIS CRS representation to agree with EPSG:4326."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]) -> tuple[bytes, dict]:
@@ -239,13 +201,6 @@ def _esri_polygon(geometry: dict) -> bytes:
     for polygon in polygons:
         multi.extend(polygon)
     return bytes(multi)
-
-
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
-            "esriFieldTypeSmallInteger": pa.int16(), "esriFieldTypeSingle": pa.float32(),
-            "esriFieldTypeDouble": pa.float64(), "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDate": pa.int64()}.get(field.get("type"), pa.string())
 
 
 def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
@@ -502,7 +457,7 @@ def capture_land_surface_areas_usace_ienc(storage: StagingStorageResource, *, ve
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = requested / (version + "-" + uuid4().hex)
     else:
-        root = Path("/tmp/hifld-native-reconstruction/137/captures") / (version + "-" + uuid4().hex)
+        root = default_capture_dir("hifld-native-reconstruction", "137", "captures") / (version + "-" + uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)

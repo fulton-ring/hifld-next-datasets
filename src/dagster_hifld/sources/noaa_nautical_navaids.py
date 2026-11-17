@@ -26,12 +26,13 @@ from shapely import wkb
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.release_approval import validate_release_provenance
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "nautical-navigation-aids-navaid-locations"
 FILE_SLUG = DATASET_SLUG
@@ -71,15 +72,6 @@ CAPTURE_URLS = {
     "layer_after": LAYER_URL + "?f=pjson", "service_after": SERVICE_URL + "?f=pjson",
     "count_after": COUNT_URL, "ids_after": IDS_URL,
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _replay_capture_bundle(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
@@ -303,7 +295,7 @@ def capture_noaa_nautical_navaids(storage: StagingStorageResource, *, capture_di
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
     replay = capture_directory is not None
-    root = Path(capture_directory) if replay else Path("/tmp/hifld-native-reconstruction/176/captures") / uuid4().hex
+    root = Path(capture_directory) if replay else default_capture_dir("hifld-native-reconstruction", "176", "captures") / uuid4().hex
     root = root.absolute()
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")

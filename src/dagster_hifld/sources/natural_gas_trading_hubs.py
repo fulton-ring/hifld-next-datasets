@@ -28,12 +28,13 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "natural-gas-trading-hubs"
@@ -70,14 +71,6 @@ EXPECTED_FIELDS = [
     {"name": "Longitude", "ogr_type": "OFTReal", "arrow_type": pa.float64()},
 ]
 MAX_SOURCE_BYTES = 1_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _capture_get(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict[str, object]]:
@@ -466,7 +459,7 @@ def capture_natural_gas_trading_hubs(storage: StagingStorageResource, *, version
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
     capture_root = Path(capture_directory).absolute() if capture_directory else Path(
-        Path("/tmp/hifld-native-reconstruction/174/captures") / version
+        default_capture_dir("hifld-native-reconstruction", "174", "captures") / version
     ).absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

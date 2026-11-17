@@ -9,7 +9,6 @@ import hashlib
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -19,17 +18,19 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
-from pyproj import CRS
-from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import (
+    _validate_spatial_reference, esri_polygon_wkb as _esri_polygon,
+)
 from dagster_hifld.validation import sha256_file
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -63,44 +64,6 @@ EXPECTED_FIELD_DECLARATIONS = [
      **({"length":254} if kind == "esriFieldTypeString" else {})}
     for name,kind in EXPECTED_FIELDS
 ]
-SOURCE_CRS = CRS.from_epsg(4326)
-
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Require every advertised ArcGIS CRS representation to agree with EPSG:4326."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
@@ -171,68 +134,6 @@ def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: 
             if isinstance(exc,ValueError) and not str(exc).startswith("incomplete_source_capture:"):
                 raise
     raise last
-
-
-def _esri_polygon(geometry: dict):
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
-    if type(has_z) is not bool or type(has_m) is not bool:
-        raise ValueError("source_ordinate_flags_invalid")
-    shells, holes = [], []
-    dimension = None
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise ValueError("source_polygon_ring_invalid")
-        if coords[0] != coords[-1]:
-            raise ValueError("source_polygon_ring_not_closed")
-        if any(not isinstance(point,list) for point in coords):
-            raise ValueError("source_polygon_coordinate_invalid")
-        dims={len(point) for point in coords}
-        if len(dims)!=1:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        point_dims=next(iter(dims))
-        if dimension is None: dimension=point_dims
-        if dimension!=point_dims: raise ValueError("source_polygon_ordinate_count_drift")
-        expected_dims=2+int(has_z)+int(has_m)
-        if point_dims!=expected_dims:
-            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        xy=[point[:2] for point in coords]
-        ring = LinearRing(xy)
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon([point[:2] for point in ring])
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(ring)
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    dim_code={2:0,3:(1000 if has_z else 2000),4:3000}[dimension]
-    def polygon_wkb(shell, hole_rings):
-        out=bytearray(struct.pack("<BI",1,dim_code+3))
-        out.extend(struct.pack("<I",1+len(hole_rings)))
-        for ring in [shell,*hole_rings]:
-            out.extend(struct.pack("<I",len(ring)))
-            for point in ring: out.extend(struct.pack("<"+"d"*dimension,*point))
-        return bytes(out)
-    polygons=[polygon_wkb(shell,assignments[i]) for i,shell in enumerate(shells)]
-    if len(polygons)==1: return polygons[0]
-    multi=bytearray(struct.pack("<BI",1,dim_code+6));multi.extend(struct.pack("<I",len(polygons)))
-    for polygon in polygons: multi.extend(polygon)
-    return bytes(multi)
-
-
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID":pa.int64(), "esriFieldTypeInteger":pa.int32(),
-            "esriFieldTypeSmallInteger":pa.int16(), "esriFieldTypeSingle":pa.float32(),
-            "esriFieldTypeDouble":pa.float64(), "esriFieldTypeString":pa.string(),
-            "esriFieldTypeDate":pa.int64()}.get(field.get("type"), pa.string())
 
 
 def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
@@ -445,7 +346,7 @@ def capture_usace_pipeline_areas(storage: StagingStorageResource, *, version: st
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root=requested/(version+"-"+uuid4().hex)
     else:
-        root=Path("/tmp/hifld-native-reconstruction/270/captures")/(version+"-"+uuid4().hex)
+        root=default_capture_dir("hifld-native-reconstruction", "270", "captures")/(version+"-"+uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)
@@ -577,7 +478,7 @@ def capture_usace_pipeline_areas(storage: StagingStorageResource, *, version: st
             "rights_accepted":False,"mapping_approved":False,"release_accepted":False,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
-    from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
+    from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

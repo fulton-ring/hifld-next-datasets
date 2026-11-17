@@ -30,11 +30,12 @@ from dagster_hifld.construction_state import canonical_construction_bundle, load
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.http_capture import capture_http_response
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     STAGED_RELEASE_DERIVATIVE_NAMES, candidate_prefix, content_derived_version,
     processing_identity, validate_staged_release_derivatives, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "proposed-critical-habitat-features"
@@ -48,16 +49,7 @@ PUBLISHER = "U.S. Fish and Wildlife Service (official FWS ArcGIS Open Data item 
 PAGE_SIZE = 1
 MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 MAX_ISSUE_BYTES = 3 * 1024 * 1024 * 1024
-ISSUE_EVIDENCE_ROOT = Path("/tmp/hifld-native-reconstruction/279")
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
+ISSUE_EVIDENCE_ROOT = default_capture_dir("hifld-native-reconstruction", "279")
 
 
 def _receipt_timestamp(value: str) -> tuple[str, str | None]:
@@ -515,7 +507,7 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
         raise ValueError("unsafe_capture_directory")
     replay_root = requested if requested is not None and (requested / "replica_filegdb.receipt.json").is_file() else None
     capture_parent = (requested.parent / "dagster-runs" if replay_root is not None else
-                      requested or Path("/tmp/hifld-native-reconstruction/279/captures"))
+                      requested or default_capture_dir("hifld-native-reconstruction", "279", "captures"))
     capture_root = capture_parent / f"{version}-{uuid4().hex}"
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes | Path, dict[str, Any]]] = {}

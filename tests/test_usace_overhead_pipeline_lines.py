@@ -10,7 +10,7 @@ from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_usace_ienc,
 )
 from dagster_hifld.sources import usace_overhead_pipeline_lines as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class UsaceOverheadPipelineLinesTests(unittest.TestCase):

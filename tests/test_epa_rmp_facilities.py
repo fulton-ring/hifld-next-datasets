@@ -254,7 +254,7 @@ class EpaRmpSourceTests(unittest.TestCase):
                   patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_SCHEMA_SHA256", schema_sha),
                   patch("dagster_hifld.sources.epa_rmp_facilities._source_urls", return_value=urls),
                   patch("dagster_hifld.sources.epa_rmp_facilities.validate_construction_code_identity"),
-                  patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"),
+                  patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"),
                   patch("dagster_hifld.sources.epa_rmp_facilities.capture_get", side_effect=fake_get)):
                 first = capture_epa_rmp_facilities(storage, **args)
                 self.assertFalse(first["release_accepted"])

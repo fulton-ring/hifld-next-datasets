@@ -1,6 +1,6 @@
-"""Pinned historical EIA Natural Gas Processing Plants GIS candidate for issue #172."""
+"""Retained historical EIA processing-plant transforms; refresh acquisition is parked."""
 from __future__ import annotations
-import hashlib, io, json, math, shutil, struct, tempfile, zipfile
+import io, json, math, shutil, struct, tempfile, zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,8 +17,9 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "natural-gas-processing-plants-1"
 SOURCE_URL = "https://www.eia.gov/maps/map_data/NaturalGas_ProcessingPlants_US_EIA.zip"
@@ -45,8 +46,7 @@ GEOMETRY_SHA="2e5fd92f4b901808d9e38e4d2f1e36fe0adf6c35bb123c8c3ef5f9c4f1405531"
 BOUNDS=[-120.43285999999995,26.421190000000024,-78.65909999999997,48.87366000000003]
 WGS84=CRS.from_epsg(4326)
 
-def _canonical(x): return json.dumps(x,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode()
-def _sha(b): return hashlib.sha256(b).hexdigest()
+
 def _native(v):
     if hasattr(v,"item"): v=v.item()
     if v is None or (isinstance(v,float) and math.isnan(v)): return None
@@ -204,6 +204,17 @@ def _capture(root,storage,version):
         raise
 
 def capture_natural_gas_processing_plants(storage:StagingStorageResource,*,version:str,capture_directory:str|None=None)->dict:
+    """Refuse refresh until a maintained producer location source is available.
+
+    The 2017 GIS package and retained transforms are historical evidence, not
+    a maintained feed. Keep this guard before storage validation or acquisition,
+    including cache replay; see the dataset source README for dated probes.
+    """
+    raise ValueError(
+        "maintained_eia_processing_plants_source_unavailable: EIA-757 Schedule A is suspended; "
+        "the public report ends in 2017 and the Energy Atlas service requires a token. "
+        "Historical ZIP acquisition and replay are disabled pending a maintained producer source."
+    )
     if not isinstance(storage,StagingStorageResource) or isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix: raise ValueError("explicit_local_staging_resource_required")
     if not isinstance(version,str) or not version or Path(version).name!=version or "/" in version or "\\" in version: raise ValueError("unsafe_capture_version")
     stage=Path(storage.local_dir).absolute()
@@ -211,7 +222,7 @@ def capture_natural_gas_processing_plants(storage:StagingStorageResource,*,versi
     stage.mkdir(parents=True,exist_ok=True)
     if shutil.disk_usage(stage).free<300_000_000: raise ValueError("disk_floor_before_acquisition")
     requested=Path(capture_directory).absolute() if capture_directory else None
-    root=requested or Path("/tmp/hifld-native-reconstruction/172/captures")/(version+"-"+uuid4().hex)
+    root=requested or default_capture_dir("hifld-native-reconstruction", "172", "captures")/(version+"-"+uuid4().hex)
     body,wire,receipt=_capture(root,storage,version)
     with tempfile.TemporaryDirectory() as tmp: frame,fids,audit=_decode(body,Path(tmp));parquet=_parquet(frame,fids)
     identity=processing_identity(Path(__file__).parents[3]); evidence_sha=_sha(_canonical({"body":receipt["sha256"],"wire":receipt["wire_sha256"],"receipt":receipt}))

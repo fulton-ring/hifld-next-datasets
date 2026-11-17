@@ -1,7 +1,6 @@
 """Immutable native-CRS capture and typed GeoParquet candidate for official USGS plates."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -23,11 +22,12 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = FILE_SLUG = "plate-boundaries"
@@ -56,10 +56,6 @@ EXPECTED_CAPTURE_NAMES = {"service_before","layer_before","count_before","ids_be
 EXPECTED_CRS = CRS.from_epsg(3857)
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode("utf-8")
-
-def _sha(body: bytes) -> str: return hashlib.sha256(body).hexdigest()
 def _query(params: dict[str,object]) -> str: return LAYER_URL+"/query?"+urlencode(params)
 
 
@@ -233,7 +229,7 @@ def capture_plate_boundaries(storage:StagingStorageResource,*,version:str,captur
         root=requested; captures=_read_replay(root)
     else:
         if requested and any(requested.glob("*.body")): raise ValueError("unsealed_capture_attempt_exists")
-        root=(requested/version/uuid4().hex) if requested else Path("/tmp/hifld-native-reconstruction/plate-boundaries")/(version+"-"+uuid4().hex)
+        root=(requested/version/uuid4().hex) if requested else default_capture_dir("hifld-native-reconstruction", "plate-boundaries")/(version+"-"+uuid4().hex)
         if any(p.is_symlink() for p in (root,*root.parents)): raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True,exist_ok=False); captures={}
         try:

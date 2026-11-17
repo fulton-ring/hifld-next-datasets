@@ -1,10 +1,11 @@
 """Complete native capture for the official USACE IENC small craft facility area layer."""
 from __future__ import annotations
 
+from functools import partial
+
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -13,25 +14,27 @@ from uuid import uuid4
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
-from shapely.geometry import LinearRing, Polygon
 from shapely import from_wkb
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
+from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture, _capture_identity,
-    _load_capture, _sha, _validate_capture_request_identity,
-    _validate_spatial_reference,
+    _load_capture, _sha,    _validate_spatial_reference,
 )
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
+
+_esri_polygon_wkb = partial(esri_polygon_wkb, allow_zm=False)
 
 DATASET_SLUG = "small-craft-facility-areas-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -93,85 +96,13 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
-    manifest_path = root / "capture_manifest.json"
-    if manifest_path.is_symlink():
-        raise ValueError("retained_capture_manifest_symlink_rejected")
-    manifest = json.loads(manifest_path.read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
-        raise ValueError("retained_capture_manifest_invalid")
-    roster = manifest.get("artifact_roster")
-    if not isinstance(roster, dict) or set(manifest["receipts"]) != CAPTURE_NAMES:
-        raise ValueError("retained_capture_roster_or_names_invalid")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
-        raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_roster(EXPECTED_IDS))
-    captures = {}
-    for name in sorted(CAPTURE_NAMES):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
-
-
-def _esri_polygon_wkb(geometry: dict) -> bytes:
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
-    if type(has_z) is not bool or type(has_m) is not bool:
-        raise ValueError("source_ordinate_flags_invalid")
-    if has_z or has_m:
-        # The pinned layer contract is XY-only; correctly flagged dimensional
-        # geometry is source drift and must fail closed, never be sealed.
-        raise ValueError("source_polygon_dimensional_flags_rejected")
-    shells, holes = [], []
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise ValueError("source_polygon_ring_invalid")
-        if coords[0] != coords[-1]:
-            raise ValueError("source_polygon_ring_not_closed")
-        if any(not isinstance(point, list) for point in coords):
-            raise ValueError("source_polygon_coordinate_invalid")
-        dims = {len(point) for point in coords}
-        if len(dims) != 1:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        if next(iter(dims)) != 2:
-            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        ring = LinearRing(coords)
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon([point[:2] for point in ring])
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(ring)
-
-    def polygon_wkb(shell, hole_rings):
-        out = bytearray(struct.pack("<BI", 1, 3))
-        out.extend(struct.pack("<I", 1 + len(hole_rings)))
-        for ring in [shell, *hole_rings]:
-            out.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                out.extend(struct.pack("<dd", *point))
-        return bytes(out)
-
-    polygons = [polygon_wkb(shells[i], assignments[i]) for i in range(len(shells))]
-    if len(polygons) == 1:
-        return polygons[0]
-    multi = bytearray(struct.pack("<BI", 1, 6))
-    multi.extend(struct.pack("<I", len(polygons)))
-    for polygon in polygons:
-        multi.extend(polygon)
-    return bytes(multi)
+    return validate_retained_capture_replay(
+        root,
+        capture_names=CAPTURE_NAMES,
+        expected_urls=dict(_capture_roster(EXPECTED_IDS)),
+        load_capture=_load_capture,
+        validate_request_identity=validate_capture_request_identity,
+    )
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
@@ -372,7 +303,7 @@ def capture_small_craft_facility_areas_usace_ienc(storage: StagingStorageResourc
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/314/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "314", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)

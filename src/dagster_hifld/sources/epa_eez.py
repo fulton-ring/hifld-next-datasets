@@ -38,7 +38,7 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.catalog import summarize_staged_catalog
-from dagster_hifld.sources.epa_frs_common import validate_staged_release_derivatives
+from dagster_hifld.sources.capture_common import validate_staged_release_derivatives
 from dagster_hifld.validation import sha256_file
 
 SLUG='epa-region-boundaries-exclusive-economic-zone-eez'

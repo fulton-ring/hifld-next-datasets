@@ -28,16 +28,19 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
-    _canonical, _sha, candidate_prefix, processing_identity,
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
+    candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
 )
-from dagster_hifld.sources.usace_pylon_areas import (
-    _load_replay, _write_outputs,
-    PAGE_SIZE,
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import (
+    load_replay as _load_replay, validate_crs as _validate_crs,
+    validate_dimensions as _validate_dimensions, write_outputs as _write_outputs,
 )
-from dagster_hifld.sources.usace_pylon_locations import _validate_crs, _validate_dimensions
+
+# Page size previously inherited from usace_pylon_areas.
+PAGE_SIZE = 250
 
 DATASET_SLUG = "crane-locations-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -305,13 +308,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "drift_guard":"Exact layer id/name, count, field names/types, CRS, page errors, and before/after ID membership are checked."}
 
 
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
-            "esriFieldTypeSmallInteger": pa.int16(), "esriFieldTypeSingle": pa.float32(),
-            "esriFieldTypeDouble": pa.float64(), "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDate": pa.int64()}.get(field.get("type"), pa.string())
-
-
 def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
     properties = [field for field in fields if field["name"] != "SHAPE"]
     arrays = []
@@ -362,7 +358,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root=requested/(version+"-"+uuid4().hex)
     else:
-        root=Path("/tmp/hifld-native-reconstruction/47/captures")/(version+"-"+uuid4().hex)
+        root=default_capture_dir("hifld-native-reconstruction", "47", "captures")/(version+"-"+uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)

@@ -18,8 +18,9 @@ import shapely
 
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as shared_processing_identity, validate_staged_release_derivatives)
+from dagster_hifld.sources.esri_common import sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "census-block-groups-3"
@@ -72,10 +73,6 @@ class CensusBlockGroupsError(ValueError):
 
 def _canonical(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False) + "\n").encode()
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _safe_local_staging(storage: StagingStorageResource) -> Path:

@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 
@@ -8,6 +9,20 @@ class HelmValuesTests(unittest.TestCase):
     def setUp(self):
         values_path = Path(__file__).resolve().parents[1] / "helm" / "values.yaml"
         self.values = yaml.safe_load(values_path.read_text(encoding="utf-8"))
+
+    def test_capture_root_is_set_once_for_user_code_and_run_pods(self):
+        deployment = self.values["dagster-user-deployments"]["deployments"][0]
+        self.assertEqual(
+            deployment["env"], [{"name": "HIFLD_CAPTURE_ROOT", "value": "/tmp"}]
+        )
+
+        launcher = self.values["runLauncher"]["config"]["k8sRunLauncher"]
+        self.assertEqual(launcher["envVars"], ["HIFLD_CAPTURE_ROOT=/tmp"])
+
+        # The user-code server and the launched run/step pods share one root.
+        self.assertEqual(launcher["envVars"][0].split("=", 1)[1], deployment["env"][0]["value"])
+        # No per-dataset capture env var appears anywhere in the values.
+        self.assertNotRegex(json.dumps(self.values), r"HIFLD_[A-Z0-9_]*CAPTURE_DIR[A-Z_]*")
 
     def test_launched_runs_do_not_inherit_user_code_server_resources(self):
         deployment = self.values["dagster-user-deployments"]["deployments"][0]

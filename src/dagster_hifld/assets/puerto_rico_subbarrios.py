@@ -1,4 +1,4 @@
-"""Stopped draft asset for the official 2023 Census TIGER Puerto Rico subbarrios."""
+"""Stopped draft asset for the official 2026 Census TIGER Puerto Rico subbarrios."""
 from dagster import (
     AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
     ScheduleDefinition, asset, asset_check, define_asset_job,
@@ -21,7 +21,7 @@ class PuertoRicoSubbarriosConfig(Config):
     group_name="census_bureau",
     compute_kind="http",
     description=(
-        "Official Census TIGER/Line 2023 Puerto Rico subbarrio archive. "
+        "Official Census TIGER/Line 2026 Puerto Rico subbarrio archive. "
         "Candidate only: the raw/published schema and ID contract await maintainer approval, "
         "and source release/freshness, coverage, rights, and release remain pending."
     ),
