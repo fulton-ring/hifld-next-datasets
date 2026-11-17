@@ -27,7 +27,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from pyproj import CRS
 from shapely.geometry import LinearRing, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -39,8 +38,10 @@ from dagster_hifld.construction_state import (
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
+from dagster_hifld.sources.capture_common import (
     STAGED_RELEASE_DERIVATIVE_NAMES,
     _validate_cached_catalog_sidecars,
     validate_staged_release_derivatives,
@@ -81,46 +82,8 @@ EXPECTED_LAYER_EXTENT = {
     "xmax": -81.55682819999998,
     "ymax": 39.46351200000004,
 }
-SOURCE_CRS = CRS.from_epsg(4326)
 _LAYER_ID = 89
 _LAYER_NAME = "HARBOUR_FACILITY_AREA"
-
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Require every advertised ArcGIS CRS representation to agree with EPSG:4326."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_capture_roster(root: Path, expected: set[str] | dict[str, dict[str, object]]) -> None:
@@ -303,13 +266,6 @@ def _esri_polygon(geometry: dict):
     for polygon in polygons:
         multi.extend(polygon)
     return bytes(multi)
-
-
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
-            "esriFieldTypeSmallInteger": pa.int16(), "esriFieldTypeSingle": pa.float32(),
-            "esriFieldTypeDouble": pa.float64(), "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDate": pa.int64()}.get(field.get("type"), pa.string())
 
 
 def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
@@ -732,7 +688,7 @@ def capture_hf_areas_usace_ienc(storage: StagingStorageResource, *, version: str
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = requested / (version + "-" + uuid4().hex)
     else:
-        root = Path("/tmp/hifld-native-reconstruction/107/captures") / (version + "-" + uuid4().hex)
+        root = default_capture_dir("hifld-native-reconstruction", "107", "captures") / (version + "-" + uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)

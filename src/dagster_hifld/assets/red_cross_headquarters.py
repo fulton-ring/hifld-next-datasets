@@ -70,3 +70,8 @@ red_cross_headquarters_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
     description="Stopped proposal for a source-only monthly integrity capture; no official release cadence or acceptance is claimed.",
 )
+
+INGEST_ASSETS = [red_cross_headquarters]
+ASSET_CHECKS = [red_cross_headquarters_source_population]
+JOBS = [red_cross_headquarters_draft_job]
+SCHEDULES = [red_cross_headquarters_draft_schedule]

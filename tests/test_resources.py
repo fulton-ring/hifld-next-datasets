@@ -999,6 +999,37 @@ class StagingStorageResourceTests(unittest.TestCase):
             self.assertEqual(client_cls.call_count, 1)
             self.assertEqual(client.get.call_count, 2)
 
+    def test_download_convert_and_stage_packages_raw_shapefile_as_zip(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resource = StagingStorageResource(local_dir=tmpdir, use_local=True)
+            raw_shp = int(9994).to_bytes(4, "big") + bytes(96)
+
+            with patch("dagster_hifld.download.httpx.Client") as client_cls:
+                client = client_cls.return_value.__enter__.return_value
+                client.get.return_value.content = raw_shp
+                client.get.return_value.headers = {}
+                client.get.return_value.raise_for_status.return_value = None
+
+                result = download_convert_and_stage(
+                    [("https://example.com/stations.shp", "stations.shp")],
+                    "amtrak-stations",
+                    "amtrak-stations",
+                    "run_test",
+                    resource,
+                )
+
+            version_root = (
+                Path(tmpdir) / "amtrak-stations" / "amtrak-stations" / "run_test"
+            )
+            archive_path = version_root / "shapefile" / "stations.shp.zip"
+            self.assertTrue(archive_path.exists())
+            with zipfile.ZipFile(archive_path) as archive:
+                self.assertEqual(archive.namelist(), ["stations.shp"])
+            self.assertEqual(
+                result["written_keys"],
+                ["amtrak-stations/amtrak-stations/run_test/shapefile/stations.shp.zip"],
+            )
+
     def test_extract_zip_rejects_parent_traversal(self):
         buffer = BytesIO()
         with zipfile.ZipFile(buffer, "w") as zf:
@@ -1019,6 +1050,47 @@ class StagingStorageResourceTests(unittest.TestCase):
             zf.writestr("stations.dbf", b"dbf")
             zf.writestr("stations.shx", b"shx")
         return buffer.getvalue()
+
+
+class CaptureRootTests(unittest.TestCase):
+    """The one capture-directory convention shared by every adapter (issue 996)."""
+
+    def test_root_defaults_to_the_system_temporary_directory(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(resources.capture_root(), Path(tempfile.gettempdir()))
+
+    def test_root_comes_from_the_single_capture_root_env_var(self):
+        with patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": "/tmp/pinned-captures"}):
+            self.assertEqual(resources.capture_root(), Path("/tmp/pinned-captures"))
+
+    def test_relative_env_root_is_made_absolute_without_resolving_symlinks(self):
+        with patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": "relative/captures"}):
+            root = resources.capture_root()
+        self.assertTrue(root.is_absolute())
+        self.assertFalse(root.is_symlink())
+
+    def test_explicit_root_argument_wins_over_the_environment(self):
+        with patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": "/tmp/from-env"}):
+            self.assertEqual(resources.capture_root(Path("/tmp/explicit")), Path("/tmp/explicit"))
+        with patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": "/tmp/from-env"}):
+            self.assertEqual(resources.capture_root(""), Path(tempfile.gettempdir()))
+
+    def test_default_capture_dir_joins_components_under_the_shared_root(self):
+        with patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": "/tmp/pinned-captures"}):
+            self.assertEqual(resources.default_capture_dir("nhd-waterbody", "captures", "run-1"),
+                             Path("/tmp/pinned-captures/nhd-waterbody/captures/run-1"))
+
+    def test_default_capture_dir_refuses_unsafe_or_empty_components(self):
+        with patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": "/tmp/pinned-captures"}):
+            for components in ((), ("", "x"), (".",), ("..",), ("a/b",), ("a\\b",), (None,)):
+                with self.subTest(components=components):
+                    with self.assertRaises(ValueError):
+                        resources.default_capture_dir(*components)
+
+    def test_default_capture_dir_without_env_var_uses_the_temporary_directory(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(resources.default_capture_dir("populated-places-1", "captures"),
+                             Path(tempfile.gettempdir()) / "populated-places-1" / "captures")
 
 
 if __name__ == "__main__":

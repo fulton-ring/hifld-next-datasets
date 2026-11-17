@@ -19,7 +19,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.catalog import CatalogSummary, generate_data_dictionary, write_catalog_metadata
 from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.sources import ferrous_metal_processing_plants as source
-from dagster_hifld.sources.epa_frs_common import capture_get
+from dagster_hifld.sources.capture_common import capture_get
 
 
 def fixture_rows():
@@ -429,7 +429,7 @@ class FerrousEndToEndTests(unittest.TestCase):
             tampered_quality = json.loads(original_quality)
             tampered_quality["feature_count"] += 1
             storage.write_key(quality_key, json.dumps(tampered_quality).encode())
-            with patch("dagster_hifld.sources.epa_frs_common.summarize_staged_catalog",
+            with patch("dagster_hifld.sources.capture_common.summarize_staged_catalog",
                        return_value=summary):
                 with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
                     run(version="v2")
@@ -438,7 +438,7 @@ class FerrousEndToEndTests(unittest.TestCase):
             snapshots = sorted((Path(tmp) / prefix / "metadata/source").glob("*source_manifest.json"))
             self.assertEqual(len(snapshots), 2)
             snapshots[0].unlink()
-            with patch("dagster_hifld.sources.epa_frs_common.summarize_staged_catalog",
+            with patch("dagster_hifld.sources.capture_common.summarize_staged_catalog",
                        return_value=summary):
                 with self.assertRaisesRegex(ValueError, "cached_catalog_source_snapshot_incomplete"):
                     run(version="v3")

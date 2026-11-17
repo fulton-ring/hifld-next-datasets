@@ -28,3 +28,8 @@ def arc_regions_full_quality(arc_regions: dict):
 arc_regions_draft_job = define_asset_job('arc_regions_draft_refresh', selection=AssetSelection.assets(arc_regions))
 arc_regions_draft_schedule = ScheduleDefinition(name='arc_regions_draft_refresh_schedule', job=arc_regions_draft_job,
     cron_schedule='0 9 1 * *', execution_timezone='America/New_York', default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [arc_regions]
+ASSET_CHECKS = [arc_regions_full_quality]
+JOBS = [arc_regions_draft_job]
+SCHEDULES = [arc_regions_draft_schedule]

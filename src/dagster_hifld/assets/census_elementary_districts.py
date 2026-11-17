@@ -1,13 +1,16 @@
 """Explicit stopped draft of complete Census elementary-school districts."""
-import os
-from dagster import AssetKey, AssetSelection, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
+from dagster import AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.elementary_school_districts import SLUG, stage_elementary_districts
 
+
+class CensusElementaryDistrictsConfig(Config):
+    capture_directory: str = ""
+
 @asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='census_bureau',compute_kind='http',
        description='All25official CensusTIGER2026 elementary-district state publications; local unapproved draft, all original IDs/types/native geometries retained.')
-def census_elementary_districts(context,staging_storage:StagingStorageResource):
-    result=stage_elementary_districts(staging_storage,capture_dir=os.environ.get('HIFLD_ELSD_CAPTURE_DIR'))
+def census_elementary_districts(context,config:CensusElementaryDistrictsConfig,staging_storage:StagingStorageResource):
+    result=stage_elementary_districts(staging_storage,capture_dir=config.capture_directory or None)
     context.add_output_metadata(result)
     return result
 

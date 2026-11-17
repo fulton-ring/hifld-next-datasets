@@ -6,7 +6,6 @@ unapproved native candidate and keeps every release gate closed.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -25,12 +24,13 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "77879ddb06eb49d4a4a57298177bcd87"
 SERVICE_URL = "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_National_Tunnel_Inventory/FeatureServer"
@@ -47,15 +47,6 @@ EXPECTED_RECORD_SHA256 = "2f7a0b1fe698b1528ab0af87552951c033834b3cf861f6e35571b0
 EXPECTED_GEOMETRY_SHA256 = "645fc954ba27e4607932c0d574a7586e0ca71c458648ac5471649bbe8708b9a7"
 EXPECTED_SCHEMA_SHA256 = "faa10e3aa64029d3f69acf211d88c1d692b29edeecf6255c750681b458508d9d"
 MAX_BODY_BYTES = 100_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -241,7 +232,7 @@ def capture_fhwa_tunnel_inventory(storage: StagingStorageResource, *, version: s
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
-    capture_root = (Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/170/captures")) / f"{version}-{uuid4().hex}"
+    capture_root = (Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "170", "captures")) / f"{version}-{uuid4().hex}"
     capture_root = capture_root.absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

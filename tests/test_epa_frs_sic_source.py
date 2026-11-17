@@ -4,11 +4,13 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import urlparse, parse_qs
 
 import httpx
 import pyarrow.parquet as pq
 
+from dagster_hifld.assets import epa_frs_sic_powerplants as worker
 from dagster_hifld.assets.epa_frs_sic_powerplants import (
     DATASET_SLUG, FILE_SLUG, PROFILE, _canonical, _reuse, _schema_sha, _sha, _typed_parquet,
 )
@@ -17,12 +19,63 @@ from dagster_hifld.construction_state import seal_first_construction
 from dagster_hifld.native_verification import normalize_native_input
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, canonical_construction_bundle, processing_identity,
 )
+from dagster_hifld.sources import capture_common as frs_common
 from dagster_hifld.sources.epa_frs_arcgis_table import (
     ArcGISTableCaptureError, _metadata_contract, capture_table,
 )
+
+TINY_ROWS = [
+    {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
+     "PRIMARY_INDICATOR": "PRIMARY"},
+    {"OBJECTID": 2, "REGISTRY_ID": "009876543210", "SIC_CODE": "0041",
+     "PRIMARY_INDICATOR": "SECONDARY"},
+]
+
+
+def _tiny_sic_client() -> httpx.Client:
+    profile = replace(PROFILE, expected_rows=len(TINY_ROWS))
+    fields = [{"name": name, "type": esri_type, "nullable": nullable, "length": length}
+              for name, esri_type, nullable, length in profile.fields]
+    table = {"name": profile.table_name, "geometryType": None, "fields": fields,
+             "relationships": []}
+    service = {"description": "EIA data as of June 2014.",
+               "tables": [{"id": profile.table_id, "name": profile.table_name}]}
+    portal_item = {"id": profile.portal_item_id, "owner": profile.portal_item_owner,
+                   "title": profile.portal_item_title, "type": "Feature Service",
+                   "url": profile.service_url, "modified": 1769190978000}
+
+    class JSONStream(httpx.SyncByteStream):
+        def __init__(self, payload):
+            self.body = json.dumps(payload, separators=(",", ":")).encode()
+
+        def __iter__(self):
+            yield self.body
+
+        def close(self):
+            return None
+
+    def respond(request):
+        parsed = urlparse(str(request.url))
+        query = parse_qs(parsed.query)
+        if "/sharing/rest/content/items/" in parsed.path:
+            payload = portal_item
+        elif parsed.path.rstrip("/").endswith("FeatureServer"):
+            payload = service
+        elif parsed.path.endswith(f"/{profile.table_id}"):
+            payload = table
+        elif query.get("returnCountOnly") == ["true"]:
+            payload = {"count": len(TINY_ROWS)}
+        elif query.get("returnIdsOnly") == ["true"]:
+            payload = {"objectIds": [row["OBJECTID"] for row in TINY_ROWS]}
+        else:
+            payload = {"features": [{"attributes": row} for row in TINY_ROWS]}
+        return httpx.Response(200, stream=JSONStream(payload),
+                              headers={"content-type": "application/json"})
+
+    return httpx.Client(transport=httpx.MockTransport(respond), follow_redirects=False)
 
 
 class EPAFRSSICTests(unittest.TestCase):
@@ -67,8 +120,8 @@ class EPAFRSSICTests(unittest.TestCase):
             stage("metadata/candidate_ready.json", _canonical({"status": "READY"}))
 
             receipts = {}
-            for name in ("service", "service_after", "table_before", "count_before", "ids_before",
-                         "table_after", "count_after", "ids_after", "page_000"):
+            for name in ("service", "portal_item", "service_after", "table_before", "count_before",
+                         "ids_before", "table_after", "count_after", "ids_after", "page_000"):
                 body = b"{}"
                 receipt = {"complete_body": True, "status": 200, "bytes": len(body), "sha256": _sha(body),
                            "wire_bytes": len(body), "wire_sha256": _sha(body)}
@@ -178,23 +231,26 @@ class EPAFRSSICTests(unittest.TestCase):
 
     def test_hosted_item_identity_and_relationship_contracts_are_all_or_none(self):
         with self.assertRaisesRegex(ValueError, "portal_item_contract_must_be_complete"):
-            replace(PROFILE, portal_item_id="item-1")
+            replace(PROFILE, portal_item_id=None)
         with self.assertRaisesRegex(ValueError, "relationship_contract_must_be_complete_or_undeclared"):
-            replace(PROFILE, relationship_name=None)
+            replace(PROFILE, relationship_name="POWERPLANT_LAYER")
         with self.assertRaisesRegex(ValueError, "source_identity_contract_required"):
-            replace(PROFILE, source_vintage=None)
+            replace(PROFILE, source_vintage=None, portal_item_id=None,
+                    portal_item_owner=None, portal_item_title=None)
 
     def test_complete_source_capture_brackets_exact_ids_and_retains_receipts(self):
         profile = replace(PROFILE, expected_rows=2)
         fields = [{"name": name, "type": esri_type, "nullable": nullable, "length": length}
                   for name, esri_type, nullable, length in profile.fields]
         table = {"name": profile.table_name, "geometryType": None, "fields": fields,
-                 "relationships": [{"name": profile.relationship_name,
-                                    "relatedTableId": profile.related_table_id,
-                                    "keyField": profile.relationship_key,
-                                    "cardinality": profile.relationship_cardinality}]}
+                 "relationships": []}
         service = {"description": "EIA data as of June 2014.",
                    "tables": [{"id": profile.table_id, "name": profile.table_name}]}
+        portal_item = {
+            "id": profile.portal_item_id, "owner": profile.portal_item_owner,
+            "title": profile.portal_item_title, "type": "Feature Service",
+            "url": profile.service_url, "modified": 1769190978000,
+        }
         rows = [
             {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
              "PRIMARY_INDICATOR": "PRIMARY"},
@@ -215,9 +271,11 @@ class EPAFRSSICTests(unittest.TestCase):
         def respond(request):
             path = urlparse(str(request.url)).path
             query = parse_qs(urlparse(str(request.url)).query)
-            if path.endswith("/MapServer"):
+            if "/sharing/rest/content/items/" in path:
+                payload = portal_item
+            elif path.rstrip("/").endswith("FeatureServer"):
                 payload = service
-            elif path.endswith("/15"):
+            elif path.endswith(f"/{profile.table_id}"):
                 payload = table
             elif query.get("returnCountOnly") == ["true"]:
                 payload = {"count": 2}
@@ -234,8 +292,8 @@ class EPAFRSSICTests(unittest.TestCase):
             self.assertEqual(captured, rows)
             self.assertTrue(manifest["source_ids_equal_before_after"])
             self.assertEqual(manifest["rows_captured"], 2)
-            self.assertEqual(set(receipts), {"service", "table_before", "count_before", "ids_before",
-                "page_000", "table_after", "service_after", "count_after", "ids_after"})
+            self.assertEqual(set(receipts), {"service", "portal_item", "table_before", "count_before",
+                "ids_before", "page_000", "table_after", "service_after", "count_after", "ids_after"})
             self.assertTrue(all(receipt["complete_body"] for receipt in manifest["response_receipts"].values()))
 
     def test_exact_nonspatial_schema_and_native_values_survive_parquet(self):
@@ -247,10 +305,7 @@ class EPAFRSSICTests(unittest.TestCase):
             "name": PROFILE.table_name,
             "geometryType": None,
             "fields": fields,
-            "relationships": [{"name": PROFILE.relationship_name,
-                               "relatedTableId": PROFILE.related_table_id,
-                               "keyField": PROFILE.relationship_key,
-                               "cardinality": PROFILE.relationship_cardinality}],
+            "relationships": [],
         }
         self.assertEqual(len(_metadata_contract(metadata, PROFILE)), 4)
         changed = {**metadata, "fields": fields + [{"name": "EXTRA", "type": "esriFieldTypeString",
@@ -289,6 +344,86 @@ class EPAFRSSICTests(unittest.TestCase):
                 normalized = [json.loads(line) for line in
                               (Path(evidence_root) / "native-evidence" / "normalized_records.jsonl").read_text().splitlines()]
                 self.assertTrue(all(row["geometry"] is None for row in normalized))
+
+
+    def _fixture_mode(self):
+        return [
+            patch.object(worker, "PROFILE", replace(PROFILE, expected_rows=len(TINY_ROWS))),
+            patch.object(worker, "EXPECTED_ROWS", len(TINY_ROWS)),
+            patch.object(worker, "EXPECTED_RECORD_SHA256", _sha(_canonical(TINY_ROWS))),
+            patch.object(worker, "EXPECTED_IDS_SHA256",
+                         _sha(_canonical(sorted(row["OBJECTID"] for row in TINY_ROWS)))),
+            patch.object(worker, "EXPECTED_SCHEMA_SHA256",
+                         _schema_sha([{"name": name, "type": esri_type, "nullable": nullable,
+                                       "length": length}
+                                      for name, esri_type, nullable, length in PROFILE.fields])),
+            patch.object(frs_common, "validate_construction_code_identity"),
+        ]
+
+    def test_repeat_live_and_both_offline_modes_reuse_the_portal_item_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            contexts = self._fixture_mode()
+            for context in contexts:
+                context.start()
+            try:
+                with _tiny_sic_client() as client:
+                    captured = worker.capture_epa_frs_sic_table(storage, client=client)
+                    repeat = worker.capture_epa_frs_sic_table(storage, client=client)
+                    replayed = worker.capture_epa_frs_sic_table(
+                        storage, offline_replay_version=captured["version"])
+                    retained = worker.capture_epa_frs_sic_table(
+                        storage, offline_capture_version=captured["version"])
+            finally:
+                for context in reversed(contexts):
+                    context.stop()
+            self.assertEqual(captured["row_count"], 2)
+            self.assertFalse(captured["release_accepted"])
+            self.assertEqual(repeat["version"], captured["version"])
+            self.assertTrue(repeat["reused"])
+            self.assertTrue(replayed["reused"])
+            self.assertTrue(replayed["offline_replay"])
+            self.assertEqual(retained["version"], captured["version"])
+            self.assertTrue(retained["reused"])
+            state_key = f"_construction-state/{DATASET_SLUG}/{captured['version']}.json"
+            sealed = json.loads(storage.read_key(state_key))
+            self.assertIn("portal_item", sealed["payload"]["capture_receipts"])
+            self.assertIn("raw/portal_item.body", sealed["payload"]["objects"])
+
+    def test_repeat_live_capture_rejects_a_roster_missing_the_portal_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            contexts = self._fixture_mode()
+            for context in contexts:
+                context.start()
+            try:
+                with _tiny_sic_client() as client:
+                    captured = worker.capture_epa_frs_sic_table(storage, client=client)
+                version = captured["version"]
+                state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+                payload = json.loads(storage.read_key(state_key))["payload"]
+                self.assertIn("portal_item", payload["capture_receipts"])
+                stripped = {**payload,
+                            "capture_receipts": {name: receipt
+                                                 for name, receipt in payload["capture_receipts"].items()
+                                                 if name != "portal_item"},
+                            "objects": {name: descriptor for name, descriptor in payload["objects"].items()
+                                        if not name.startswith("raw/portal_item.")}}
+                identity = processing_identity(Path(worker.__file__).parents[3])
+                fingerprint = _sha(_canonical(identity))
+                replay_root = Path(tmp) / "replay"
+                replay_root.mkdir()
+                replay_storage = StagingStorageResource(local_dir=str(replay_root),
+                                                        use_local=True, backend="local")
+                frs_common.seal_ready_candidate(replay_storage, state_key, version, fingerprint,
+                                                stripped)
+                with self.assertRaisesRegex(worker.EPAFRSSICError,
+                                            "cached_candidate_roster_invalid"):
+                    worker.capture_epa_frs_sic_table(replay_storage,
+                                                     offline_replay_version=version)
+            finally:
+                for context in reversed(contexts):
+                    context.stop()
 
 
 if __name__ == "__main__":

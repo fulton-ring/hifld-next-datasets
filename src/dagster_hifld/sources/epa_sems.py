@@ -29,7 +29,7 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _validate_cached_catalog_sidecars
+from dagster_hifld.sources.capture_common import _validate_cached_catalog_sidecars
 from dagster_hifld.validation import sha256_file
 from urllib.parse import urlencode
 

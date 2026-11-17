@@ -7,7 +7,7 @@ from dagster import (
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.electric_retail_service_territories import (
+from dagster_hifld.sources.electric_retail_service_territories_common import (
     DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG,
     capture_electric_retail_service_territories,
 )

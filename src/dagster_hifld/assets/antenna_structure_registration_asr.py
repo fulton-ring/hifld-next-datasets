@@ -25,7 +25,8 @@ class AntennaStructureRegistrationConfig(Config):
         "FCC ULS weekly public access ASR tower registration file r_tower.zip: one row per CO coordinate row "
         "joined to its RA registration row and unique EN owner entity row, with every declared RA/CO/EN field "
         "retained verbatim plus DMS-derived latdec/londec and WKB Point geometry in native NAD83 (EPSG:4269) "
-        "(203245 coordinate rows observed over 198010 registrations). Registered structures, not a census of "
+        "(203245 coordinate rows observed over 198010 registrations). T tower-coordinate and A array-coordinate "
+        "records retain all registration statuses; array totals do not expand rows. Not a census of "
         "physical towers. Unapproved candidate; baseline, contract, coverage, rights, and release decisions "
         "remain pending."
     ),

@@ -17,14 +17,26 @@ import pyarrow.parquet as pq
 import pyproj
 import httpx
 
-from dagster_hifld.sources.usace_administrative_areas import (
-    _arrow_type, _canonical, _fetch_retry, _load_replay, _sha, _write_outputs,
+from dagster_hifld.sources.esri_common import (
+    arrow_type as _arrow_type, canonical as _canonical, sha as _sha,
 )
+from dagster_hifld.sources.arcgis_layer import (
+    fetch_capture_retry, load_replay as _load_replay, write_outputs as _write_outputs,
+)
+
+
+def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int], *,
+                 allow_arcgis_item_redirect: bool = False):
+    """Retry one transient transport/incomplete read, retaining every attempt."""
+    return fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                               prefill_empty_artifacts=True,
+                               allow_arcgis_item_redirect=allow_arcgis_item_redirect)
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
@@ -37,6 +49,9 @@ LAYER_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/NOTI
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
 EXPECTED_COUNT = 266
 PAGE_SIZE = 250
+# Byte budgets previously inherited from usace_administrative_areas.
+MAX_BODY_BYTES = 48_000_000
+MAX_CAPTURE_BYTES = 450_000_000
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"), ("SHAPE", "esriFieldTypeGeometry"),
     ("Category_of_Notice_Mark", "esriFieldTypeString"), ("Function_of_Notice_Mark", "esriFieldTypeString"),
@@ -225,7 +240,7 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 300_000_000:
         raise ValueError("disk_floor_before_acquisition")
-    root = Path(capture_directory).absolute() if capture_directory else Path("/tmp/hifld-native-reconstruction/250/captures") / (version + "-" + uuid4().hex)
+    root = Path(capture_directory).absolute() if capture_directory else default_capture_dir("hifld-native-reconstruction", "250", "captures") / (version + "-" + uuid4().hex)
     if ".." in root.parts or any(x.is_symlink() for x in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     replay = (root / "capture_manifest.json").is_file()
