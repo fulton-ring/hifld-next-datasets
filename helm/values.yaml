@@ -13,6 +13,11 @@
 #   - Secret:         dagster-db (key: postgresql-password)
 #   - ConfigMap:      dagster-env (env vars consumed by user code)
 #
+# HIFLD_CAPTURE_ROOT below is the single capture/scratch root every adapter
+# shares; it is set once here and injected into the user-code server and the
+# launched run/step pods. The run/step pods scratch volume mounts at /tmp.
+# Do not add per-dataset capture env vars.
+#
 # Values that vary per install (postgres host/user/db, image tag) are
 # intentionally left as placeholders here and overridden via `--set`
 # from infra outputs at install time. See README for the exact command.
@@ -137,6 +142,11 @@ dagster-user-deployments:
         enabled: false
       envConfigMaps:
         - name: dagster-env
+      env:
+        # The single capture root every adapter shares; includeConfigInLaunchedRuns
+        # is disabled, so run pods receive it from the run launcher below instead.
+        - name: HIFLD_CAPTURE_ROOT
+          value: /tmp
       resources:
         requests:
           cpu: "500m"
@@ -160,6 +170,11 @@ runLauncher:
         pullPolicy: IfNotPresent
       envConfigMaps:
         - name: dagster-env
+      envVars:
+        # The same single capture root as the user-code deployment above; this
+        # string form reaches the launched run pods and, through the k8s job
+        # executor's run-config merge, every step pod.
+        - "HIFLD_CAPTURE_ROOT=/tmp"
       # The run pod is now a lightweight orchestrator; heavy publish steps run
       # in isolated dagster_k8s step pods configured by the code location.
       resources:

@@ -91,7 +91,7 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
                  patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_COUNT", 1), \
                  patch("dagster_hifld.sources.fuds_district_boundaries.capture_get", fake_capture), \
                  patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
-                 patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                 patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = capture_fuds_district_boundaries(storage, version="fixture-v1",
                                                          capture_directory=f"{directory}/captures")
                 self.assertFalse(first["candidate_approved"])
@@ -156,7 +156,7 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
              patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_COUNT", 1), \
              patch("dagster_hifld.sources.fuds_district_boundaries.capture_get", fake_capture), \
              patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
-             patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+             patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
             captures_dir = Path(directory) / "captures"
             captures_dir.mkdir(parents=True, exist_ok=True)
             with self.assertRaisesRegex(ValueError, expected_regex):
@@ -236,7 +236,7 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
              patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_COUNT", 1), \
              patch("dagster_hifld.sources.fuds_district_boundaries.capture_get", fake_capture), \
              patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
-             patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"), \
+             patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"), \
              DagsterInstance.from_config(str(instance_dir)) as instance:
             result = materialize(
                 [usace_fuds_program_district_boundaries],

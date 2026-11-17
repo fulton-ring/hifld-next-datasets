@@ -12,9 +12,9 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_filegdb import canonical_json, capture_filegdb_replica, extract_filegdb, sha256, stage_filegdb_archive, verify_extracted_filegdb_cache, verify_staged_filegdb
-from dagster_hifld.sources.epa_frs_common import write_immutable
+from dagster_hifld.sources.capture_common import write_immutable
 from dagster_hifld.validation import sha256_file
 DATASET_SLUG="navigable-waterway-network-lines"; FILE_SLUG=DATASET_SLUG
 BTS_ITEM_ID="06037f2b23ff401aa1d379c2632a58f6"; USACE_SERVICE_ITEM_ID="ace7645d305647448a84492a3b909d48"
@@ -150,7 +150,7 @@ def _validate_before(bts,item,service,layer,count,ids):
 def capture_usace_waterway_lines(storage:StagingStorageResource,*,capture_directory:str|None=None)->dict:
     """Capture one complete, native, unapproved FileGDB source candidate."""
     if not isinstance(storage,StagingStorageResource) or isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:raise ValueError("explicit_local_staging_resource_required")
-    capture_base=Path(capture_directory or "/tmp/hifld-native-reconstruction/178/captures").absolute()
+    capture_base=Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "178", "captures"))).absolute()
     if (capture_base/"layer_before.receipt.json").is_file():
         root=capture_base;captured=_replay_capture(root)
     else:

@@ -1,12 +1,15 @@
 """Explicit stopped Census estate draft; no production activation."""
-import os
-from dagster import AssetKey, AssetSelection, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
+from dagster import AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.us_virgin_islands_estates import SLUG, stage_us_virgin_islands_estates
 
+
+class UsVirginIslandsEstatesConfig(Config):
+    capture_directory: str = ""
+
 @asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='census_bureau',compute_kind='http',description='Census TIGER2026 U.S. Virgin Islands estate source; unapproved draft, all original IDs/types/native WKB retained.')
-def us_virgin_islands_estates(context,staging_storage:StagingStorageResource):
-    result=stage_us_virgin_islands_estates(staging_storage,capture_dir=os.environ.get('HIFLD_ESTATE_CAPTURE_DIR'))
+def us_virgin_islands_estates(context,config:UsVirginIslandsEstatesConfig,staging_storage:StagingStorageResource):
+    result=stage_us_virgin_islands_estates(staging_storage,capture_dir=config.capture_directory or None)
     context.add_output_metadata(result)
     return result
 

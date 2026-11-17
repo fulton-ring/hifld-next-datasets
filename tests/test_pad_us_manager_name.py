@@ -17,7 +17,7 @@ from dagster_hifld.assets.pad_us_manager_name import (
 )
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 import shapely
 
 from dagster_hifld.sources import pad_us_manager_name as src
@@ -259,7 +259,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
                      return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                    "files": [], "working_tree_status": "unknown"}),
         patch.object(src, "validate_construction_code_identity"),
-        patch.object(epa_frs_common, "validate_construction_code_identity"),
+        patch.object(capture_common, "validate_construction_code_identity"),
     ]
     for context in contexts:
         context.start()

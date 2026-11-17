@@ -24,7 +24,7 @@ import pyogrio
 import pyproj
 import shapely
 
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     content_derived_version,
@@ -38,7 +38,7 @@ from dagster_hifld.sources.epa_frs_common import (
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "natural-gas-interstate-and-intrastate-pipelines"
@@ -249,7 +249,7 @@ def capture_eia_natural_gas_pipelines(
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
     replay = Path(capture_directory).absolute() if capture_directory else None
-    root = replay if replay else (Path("/tmp/hifld-native-reconstruction/171/captures") / f"{version}-{uuid4().hex}").absolute()
+    root = replay if replay else (default_capture_dir("hifld-native-reconstruction", "171", "captures") / f"{version}-{uuid4().hex}").absolute()
     if ".." in root.parts or any(parent.is_symlink() for parent in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     if not replay:

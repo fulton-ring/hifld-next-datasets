@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 from dagster_hifld.assets.nhd_waterbody import nhd_waterbody, nhd_waterbody_complete
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import nhd_waterbody as src
 from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
 
@@ -287,7 +287,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
                      return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                    "files": [], "working_tree_status": "unknown"}),
         patch.object(src, "validate_construction_code_identity"),
-        patch.object(epa_frs_common, "validate_construction_code_identity"),
+        patch.object(capture_common, "validate_construction_code_identity"),
         # CI runners hold far less than the pinned capture floor, so the floor
         # gate is evaluated against a stub that reports exactly the pinned
         # requirement; the refusal itself is exercised by the dedicated floor

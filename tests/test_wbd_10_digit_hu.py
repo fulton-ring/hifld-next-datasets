@@ -23,7 +23,7 @@ from dagster_hifld.assets.wbd_10_digit_hu import (
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wbd_10_digit_hu as source
 from dagster_hifld.sources.esri_geometry import to_wkb
-from dagster_hifld.sources.usace_obstruction_lines import _canonical
+from dagster_hifld.sources.arcgis_layer import _canonical
 
 _TEST_COUNT = 5
 _TEST_PAGE_SIZE = 2

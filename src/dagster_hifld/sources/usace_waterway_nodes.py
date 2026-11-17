@@ -32,7 +32,7 @@ from dagster_hifld.sources.arcgis_filegdb import (
     verify_extracted_filegdb_cache,
     verify_staged_filegdb,
 )
-from dagster_hifld.sources.epa_frs_common import write_immutable
+from dagster_hifld.sources.capture_common import write_immutable
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "navigable-waterway-network-node-locations-1"

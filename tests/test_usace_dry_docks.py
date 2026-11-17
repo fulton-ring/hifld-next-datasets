@@ -16,7 +16,7 @@ from dagster_hifld.assets.usace_dry_docks import (
     usace_dry_docks_complete, usace_dry_docks_draft_schedule, usace_dry_docks_usace_ienc,
 )
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 from dagster_hifld.sources import usace_dry_docks as source
 
 

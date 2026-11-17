@@ -32,7 +32,7 @@ from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.release_approval import ReleaseApprovalError
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import usace_harbor_administrative_areas as source
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
@@ -534,7 +534,7 @@ class CaptureFunctionTests(unittest.TestCase):
             with patch.multiple(source, **pins), \
                     patch.object(source.shutil, "disk_usage") as usage, \
                     patch.object(source, "validate_construction_code_identity") as identity_check, \
-                    patch("dagster_hifld.sources.epa_frs_common."
+                    patch("dagster_hifld.sources.capture_common."
                           "validate_construction_code_identity"):
                 usage.return_value.free = 1_000_000_000
                 first = source.capture_usace_harbor_administrative_areas(

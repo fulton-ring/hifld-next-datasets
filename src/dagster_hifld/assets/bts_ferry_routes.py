@@ -1,16 +1,19 @@
 """Complete actual official BTS NCFO2020 route draft; scheduled refresh is stopped."""
-import os
 
-from dagster import AssetKey, AssetSelection, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
+from dagster import AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.ferry_routes import SLUG, stage_ferry_routes
 
 
+class BtsFerryRoutesConfig(Config):
+    capture_directory: str = ""
+
+
 @asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='bureau_of_transportation_statistics',compute_kind='http',
        description='Complete actual official BTS NCFO2020 routes; preserves all original IDs,55 fields and native paths. Producer item/layer vintage conflict and all release compatibility decisions remain unapproved.')
-def bts_ferry_routes(context,staging_storage:StagingStorageResource):
-    result=stage_ferry_routes(staging_storage,capture_dir=os.environ.get('HIFLD_FERRY_ROUTES_CAPTURE_DIR'))
+def bts_ferry_routes(context,config:BtsFerryRoutesConfig,staging_storage:StagingStorageResource):
+    result=stage_ferry_routes(staging_storage,capture_dir=config.capture_directory or None)
     context.add_output_metadata(result)
     return result
 
