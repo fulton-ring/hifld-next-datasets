@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import math
 import shutil
-import struct
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -21,7 +20,7 @@ import shapely
 
 from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 from pyproj import CRS
-from shapely.geometry import Polygon, mapping
+from shapely.geometry import mapping
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction

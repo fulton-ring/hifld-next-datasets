@@ -10,7 +10,6 @@ import hashlib
 import json
 import gzip
 import io
-import math
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,7 +22,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
 
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 from shapely.prepared import prep as prepare_geometry

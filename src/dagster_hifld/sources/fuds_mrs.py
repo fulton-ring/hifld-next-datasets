@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import json
 import math
-import struct
+
+import shapely
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
@@ -11,7 +12,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
 
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
@@ -79,7 +80,7 @@ def _encode_polygon_z(rings: list[list[list[float]]]) -> bytes:
                                      has_z=True, has_m=False)
     if geometry.geom_type != "MultiPolygon":
         geometry = MultiPolygon([geometry])
-    return geometry.wkb
+    return shapely.to_wkb(geometry, flavor="iso", output_dimension=3)
 
 
 def _native_parquet(fields: list[dict], features: list[dict], feature_srs: dict[int, dict]) -> bytes:

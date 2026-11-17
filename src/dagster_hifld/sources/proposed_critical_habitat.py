@@ -23,7 +23,7 @@ import pyarrow.parquet as pq
 import pyproj
 import pyogrio
 import shapely
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
 
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
@@ -244,15 +244,6 @@ def _esri_type(field: dict[str, Any]) -> pa.DataType:
     if typ in ("esriFieldTypeString", "esriFieldTypeGUID", "esriFieldTypeGlobalID"): return pa.string()
     if typ == "esriFieldTypeDate": return pa.timestamp("ms", tz="UTC")
     raise ValueError("unsupported_source_field_type:" + str(typ))
-
-
-def _ring_area(ring: list[list[float]]) -> float:
-    # Translate to the first vertex to avoid catastrophic cancellation for
-    # small rings at large EPSG:3857 coordinate magnitudes.
-    x0, y0 = ring[0]
-    return sum((ring[i][0] - x0) * (ring[i + 1][1] - y0)
-               - (ring[i + 1][0] - x0) * (ring[i][1] - y0)
-               for i in range(len(ring) - 1)) / 2
 
 
 def _esri_polygon(geometry: dict[str, Any]) -> MultiPolygon:

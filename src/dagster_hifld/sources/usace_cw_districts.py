@@ -13,7 +13,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
 
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups
 
@@ -288,9 +288,8 @@ def _esri_multipolygon(geometry: object) -> tuple[MultiPolygon, list[list[list[l
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
-    for ring in rings:
-        _validate_ring(ring)
-    normalized = {"rings": rings}
+    validated = [_validate_ring(ring) for ring in rings]
+    normalized = {"rings": validated}
     converted = esri_polygon_geometry(normalized, has_z=False, has_m=False)
     if converted.geom_type != "MultiPolygon":
         converted = MultiPolygon([converted])

@@ -7,7 +7,6 @@ import math
 import os
 import shutil
 import stat
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit

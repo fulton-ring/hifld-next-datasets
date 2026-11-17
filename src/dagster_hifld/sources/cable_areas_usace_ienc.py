@@ -5,7 +5,6 @@ import io
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -18,7 +17,6 @@ import shapely
 
 from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 from pyproj import CRS
-from shapely.geometry import Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction

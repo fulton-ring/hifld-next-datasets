@@ -10,7 +10,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
 
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
