@@ -50,6 +50,7 @@ from dagster_hifld.sources.capture_common import (
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import layer_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
@@ -91,28 +92,15 @@ def _fetch(client: httpx.Client, url: str, directory: Path, name: str, *, max_by
 
 
 def _feature_urls(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [
-        ("epa_data_sources_page", EPA_FRS_DATA_SOURCES_URL),
-        ("portal_item", f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"),
-        ("service_before", SERVICE_URL + "?f=pjson"),
-        ("layer_before", LAYER_URL + "?f=pjson"),
-        ("count_before", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnCountOnly":"true", "f":"json"})),
-        ("ids_before", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})),
-    ]
-    for offset in range(0, len(ids), PAGE_SIZE):
-        params = {
-            "objectIds": ",".join(str(x) for x in ids[offset:offset + PAGE_SIZE]),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "3857", "orderByFields": "OBJECTID ASC", "f": "json",
-        }
-        urls.append((f"page_{offset // PAGE_SIZE:03d}", LAYER_URL + "/query?" + urlencode(params)))
-    urls.extend([
-        ("layer_after", LAYER_URL + "?f=pjson"),
-        ("service_after", SERVICE_URL + "?f=pjson"),
-        ("count_after", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnCountOnly":"true", "f":"json"})),
-        ("ids_after", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})),
-    ])
-    return urls
+    return layer_capture_roster(
+        ids, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(
+            ("epa_data_sources_page", EPA_FRS_DATA_SOURCES_URL),
+            ("portal_item", f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"),
+        ),
+        page_params={"returnZ": "true", "returnM": "true", "outSR": "3857"},
+        after_order=("layer_after", "service_after", "count_after", "ids_after"),
+    )
 
 
 def _profile_schema(layer: dict[str, object]) -> tuple[list[dict[str, object]], str]:

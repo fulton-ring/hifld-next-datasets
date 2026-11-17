@@ -191,6 +191,14 @@ class ArcgisLayerTests(unittest.TestCase):
                 1, layer_url="https://svc.example/0", service_url="https://svc.example", page_size=1,
                 after_order=("layer_after",))
 
+    def test_layer_capture_roster_honours_witness_order(self):
+        roster = common.layer_capture_roster(
+            [1], layer_url="https://svc.example/0", service_url="https://svc.example", page_size=1,
+            after_order=("layer_after", "service_after", "count_after", "ids_after"),
+        )
+        self.assertEqual([name for name, _url in roster][-4:],
+                         ["layer_after", "service_after", "count_after", "ids_after"])
+
     def test_private_aliases_bind_the_public_implementations(self):
         self.assertIs(common._capture, common.capture_page)
         self.assertIs(common._load_capture, common.load_capture)
