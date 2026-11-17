@@ -22,7 +22,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups, ring_is_ccw, zero_area_rings
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, zero_area_rings
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -105,12 +105,7 @@ def _source_polygon_geometry(rings: list[list[list[object]]]):
     for ring in rings:
         if any(not isinstance(point, list) or len(point) != 3 for point in ring):
             raise ValueError("source_xyz_coordinate_shape_drift")
-    normalized = {"rings": rings}
-    zero = {id(rings[index]) for index in zero_area_rings(rings)}
-    for group in esri_polygon_ring_groups(normalized, has_z=True, has_m=False):
-        if len(group) == 1 and id(group[0]) not in zero and ring_is_ccw(group[0]):
-            raise ValueError("source_orphan_interior_ring")
-    return esri_polygon_geometry(normalized, has_z=True, has_m=False)
+    return esri_polygon_geometry({"rings": rings}, has_z=True, has_m=False, point_fallback=True)
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
