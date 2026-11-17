@@ -293,17 +293,27 @@ class LayerCapture:
             raise ValueError(f"source_witness_inconsistent:{phase}:count={count},statistics={n},{lo},{hi}")
         return {"count": count, "min": lo, "max": hi}
 
-    def windows(self, oid_field: str, lo: int, hi: int, width: int, *, spatial: bool) -> Iterator[Page]:
+    def windows(self, oid_field: str, lo: int, hi: int, width: int, *, spatial: bool,
+                source_zm: tuple[bool, bool] | None = None) -> Iterator[Page]:
         """Yield accepted pages covering ``[lo, hi]`` in ascending OBJECTID order."""
         start = (lo // width) * width
         for base in range(start, hi + 1, width):
-            yield from self._window(oid_field, base, base + width - 1, spatial)
+            yield from self._window(oid_field, base, base + width - 1, spatial, source_zm)
 
-    def _window(self, oid_field: str, lo: int, hi: int, spatial: bool) -> Iterator[Page]:
+    def _window(self, oid_field: str, lo: int, hi: int, spatial: bool,
+                source_zm: tuple[bool, bool] | None = None) -> Iterator[Page]:
         name = page_name(lo, hi)
         params: dict[str, object] = {"where": f"{oid_field}>={lo} AND {oid_field}<={hi}", "outFields": "*"}
         if spatial:
             params["returnGeometry"] = "true"
+            # Ask for the ordinates the layer document declares. Without these
+            # flags ArcGIS silently omits Z/M, so a declared dimension could
+            # never be checked against what the producer actually serves.
+            if source_zm is not None:
+                if source_zm[0]:
+                    params["returnZ"] = "true"
+                if source_zm[1]:
+                    params["returnM"] = "true"
         params.update({"orderByFields": f"{oid_field} ASC", "f": "json"})
         url = query_url(self.layer_url, params)
         body = self.evidence.reusable(name, url)
@@ -339,8 +349,8 @@ class LayerCapture:
             if lo == hi:
                 raise ValueError(f"source_window_unservable:{oid_field}={lo}:{refusal}")
             mid = lo + (hi - lo + 1) // 2 - 1
-            yield from self._window(oid_field, lo, mid, spatial)
-            yield from self._window(oid_field, mid + 1, hi, spatial)
+            yield from self._window(oid_field, lo, mid, spatial, source_zm)
+            yield from self._window(oid_field, mid + 1, hi, spatial, source_zm)
             return
         self.log.accepted.append(name)
         self.log.reused_pages += int(reused)

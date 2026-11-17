@@ -137,7 +137,8 @@ def _capture(cap: LayerCapture, layer: NfhlLayer, evidence: EvidenceDirectory, p
     writer = LayerWriter(parquet_path, layer, layer_doc, oid_field, SOURCE_CRS_WKID)
     try:
         if before["count"]:
-            for page in cap.windows(oid_field, before["min"], before["max"], width, spatial=not layer.is_table):
+            for page in cap.windows(oid_field, before["min"], before["max"], width, spatial=not layer.is_table,
+                                    source_zm=layer.source_zm):
                 writer.add_page(page)
         summary = writer.close()
     except BaseException:
@@ -278,6 +279,10 @@ def _manifest(layer: NfhlLayer, identity: dict, receipts: dict[str, dict], rel: 
                 "stays null; geometry GDAL cannot decode (such as string-'NaN' ordinates) is null in the "
                 "candidate with raw evidence intact; empty, invalid and out-of-domain geometry is retained and "
                 "counted in source_audit.json")
+    if layer.source_zm is not None and any(layer.source_zm):
+        geometry += (" The layer document declares Z/M; the capture requests both and validates every served "
+                     "vertex, accepting only the producer's no-data placeholder (Z == 0, M null), which carries "
+                     "no data and is reduced to 2D WKB. A populated Z or M fails closed before decoding.")
     manifest = {
         "schema_version": 1, "approved": False, "title": layer.title,
         "description": f"FEMA National Flood Hazard Layer (NFHL) MapServer {kind} {layer.layer_id} "
@@ -380,6 +385,8 @@ def _stage_candidate(storage: StagingStorageResource, layer: NfhlLayer, root: Pa
              "declared_layer_extent": result["layer_doc"].get("extent"),
              "source_declared_zm": {"hasZ": result["layer_doc"].get("hasZ") is True,
                                     "hasM": result["layer_doc"].get("hasM") is True},
+             **({"source_zm_ordinates": result["source_zm_ordinates"]}
+                if "source_zm_ordinates" in result else {}),
              "unique_source_id_count": result["feature_count"], "page_count": result["page_count"],
              "source_fields": result["source_fields"], "official_layer_name": layer.name,
              "layer_id": layer.layer_id, "service_url": SERVICE_URL, "source_release_date": None,

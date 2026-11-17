@@ -12,6 +12,8 @@ record/geometry digests are computed while streaming.
 from __future__ import annotations
 
 import hashlib
+import io
+import json
 from collections import Counter
 from collections.abc import Mapping
 from itertools import pairwise
@@ -39,6 +41,65 @@ def plain_field(field: Mapping[str, object]) -> dict[str, object]:
     return {key: field[key] for key in ("name", "type", "alias", "length", "nullable", "domain") if key in field}
 
 
+_ESRI_GEOMETRY_MEMBERS = ("paths", "rings", "points")
+
+
+def _reduce_zm_vertex(vertex: object, has_z: bool, has_m: bool, expected: int) -> list[object]:
+    if not isinstance(vertex, list) or len(vertex) != expected:
+        raise ValueError("source_z_or_m_geometry_unsupported")
+    if has_z:
+        z = vertex[2]
+        if type(z) not in (int, float) or z != 0:
+            raise ValueError("source_z_or_m_geometry_unsupported")
+    if has_m:
+        m = vertex[2 + int(has_z)]
+        if m is not None:
+            raise ValueError("source_z_or_m_geometry_unsupported")
+    return [vertex[0], vertex[1]]
+
+
+def reduce_nominal_zm(geometry: object, has_z: bool, has_m: bool) -> tuple[dict[str, object], int]:
+    """Validate a served Esri geometry's declared Z/M and return an XY copy.
+
+    NFHL publishes 2D geometry. A layer document may declare Z/M while the
+    producer serves only its no-data placeholder (Z == 0, M null); that carries
+    no data and is reduced to XY. A populated Z or M, a missing declared
+    ordinate, or an unexpected ordinate count fails closed before GDAL decodes
+    it, so a served ordinate is never silently dropped or turned into null
+    geometry.
+    """
+    if not isinstance(geometry, dict):
+        raise ValueError("source_z_or_m_geometry_unsupported")
+    expected = 2 + int(has_z) + int(has_m)
+    if "x" in geometry or "y" in geometry:
+        if "x" not in geometry or "y" not in geometry:
+            raise ValueError("source_z_or_m_geometry_unsupported")
+        if has_z:
+            z = geometry.get("z")
+            if type(z) not in (int, float) or z != 0:
+                raise ValueError("source_z_or_m_geometry_unsupported")
+        if has_m and geometry.get("m") is not None:
+            raise ValueError("source_z_or_m_geometry_unsupported")
+        reduced = {key: value for key, value in geometry.items() if key not in ("z", "m", "hasZ", "hasM")}
+        return reduced, 1
+    for member in _ESRI_GEOMETRY_MEMBERS:
+        if member not in geometry:
+            continue
+        containers = geometry[member]
+        if not isinstance(containers, list):
+            raise ValueError("source_z_or_m_geometry_unsupported")
+        if member == "points":
+            reduced = [_reduce_zm_vertex(point, has_z, has_m, expected) for point in containers]
+            vertices = len(containers)
+        else:
+            reduced = [[_reduce_zm_vertex(point, has_z, has_m, expected) for point in container]
+                       for container in containers]
+            vertices = sum(len(container) for container in containers)
+        return ({key: value for key, value in geometry.items() if key not in ("hasZ", "hasM")}
+                | {member: reduced}), vertices
+    raise ValueError("source_z_or_m_geometry_unsupported")
+
+
 class LayerWriter:
     """Stream validated pages of one layer into a Parquet file."""
 
@@ -46,6 +107,10 @@ class LayerWriter:
                  crs_wkid: int):
         fields = list(layer_doc["fields"])
         self.layer, self.oid_field, self.crs_wkid = layer, oid_field, crs_wkid
+        self.source_zm = None if layer.is_table else (
+            layer_doc.get("hasZ") is True, layer_doc.get("hasM") is True)
+        self.declared_zm = self.source_zm is not None and any(self.source_zm)
+        self._zm_vertices = 0
         self.attr_fields = [f for f in fields if f["type"] != "esriFieldTypeGeometry"]
         self.attr_names = [f["name"] for f in self.attr_fields]
         self.geometry_columns = [f["name"] for f in fields if f["type"] == "esriFieldTypeGeometry"]
@@ -127,8 +192,28 @@ class LayerWriter:
             self._flush()
         return len(rows)
 
+    def _xy_page(self, page: Page) -> io.BytesIO:
+        """Return the page with declared, placeholder-only Z/M reduced to XY.
+
+        ``reduce_nominal_zm`` validates the raw ordinates before GDAL sees them;
+        GDAL's ESRIJSON driver turns a null M into missing geometry, which would
+        otherwise hide the ordinate loss behind ``unconvertible_geometry``.
+        """
+        has_z, has_m = self.source_zm
+        features = []
+        for feature in page.doc["features"]:
+            geometry = feature.get("geometry")
+            if geometry is None:
+                features.append(feature)
+                continue
+            reduced, vertices = reduce_nominal_zm(geometry, has_z, has_m)
+            self._zm_vertices += vertices
+            features.append({**feature, "geometry": reduced})
+        return io.BytesIO(json.dumps({**page.doc, "features": features}, separators=(",", ":")).encode())
+
     def _decode_geometry(self, page: Page, ordered: list[int]) -> list[bytes | None]:
-        meta, table = read_arrow(f"ESRIJSON:{page.body_path}", columns=[], return_fids=True)
+        source = self._xy_page(page) if self.declared_zm else f"ESRIJSON:{page.body_path}"
+        meta, table = read_arrow(source, columns=[], return_fids=True)
         fids = table.column(0).to_pylist()
         geometry_name = meta.get("geometry_name") or "wkb_geometry"
         by_fid = dict(zip(fids, table.column(geometry_name).to_pylist()))
@@ -144,10 +229,15 @@ class LayerWriter:
     def close(self) -> dict[str, object]:
         self._flush()
         self._writer.close()
-        return {"feature_count": self.feature_count,
-                "source_record_sha256": self._record_hash.hexdigest(),
-                "source_geometry_sha256": self._geometry_hash.hexdigest(),
-                "geometry": None if self.layer.is_table else self.report.summary()}
+        result: dict[str, object] = {"feature_count": self.feature_count,
+                                     "source_record_sha256": self._record_hash.hexdigest(),
+                                     "source_geometry_sha256": self._geometry_hash.hexdigest(),
+                                     "geometry": None if self.layer.is_table else self.report.summary()}
+        if self.declared_zm:
+            result["source_zm_ordinates"] = {
+                "declared": {"hasZ": self.source_zm[0], "hasM": self.source_zm[1]},
+                "vertices_checked": self._zm_vertices, "reduced_to_xy": True}
+        return result
 
     def abort(self) -> None:
         self._buffer = []

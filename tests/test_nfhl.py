@@ -1,6 +1,7 @@
 """Offline contract tests for the FEMA NFHL family against a fake MapServer."""
 from __future__ import annotations
 
+import copy
 import dataclasses
 import json
 import re
@@ -75,12 +76,15 @@ class FakeMapServer:
         if not layer.is_table:
             self.fields.insert(3, {"name": "SHAPE", "type": "esriFieldTypeGeometry", "alias": "SHAPE"})
         geometries = GEOMETRIES[layer.geometry]
-        self.features = {oid: self.feature(oid, geometries[oid][0])
+        self.features = {oid: self.feature(oid, copy.deepcopy(geometries[oid][0]))
                          for oid in (geometries if oids is None else oids)}
         self.max_record_count = max_record_count
         self.refuse = lambda lo, hi: None
         # Z/M flags served in the layer document; defaults to the table entry's contract.
         self.zm_doc: tuple[bool, bool] | None = layer.source_zm
+        # How page queries serve declared dimensions: the producer's no-data
+        # placeholder, one populated ordinate, or an unrequested XY response.
+        self.zm_ordinates = "nominal"
         self.hidden: set[int] = set()
         self.after_pages = None
         self.requests: list[str] = []
@@ -104,6 +108,43 @@ class FakeMapServer:
     @property
     def attr_fields(self):
         return [f for f in self.fields if f["type"] != "esriFieldTypeGeometry"]
+
+    def _with_zm(self, geometry, want_z, want_m):
+        z = 5.0 if self.zm_ordinates == "real_z" else 0
+        m = 2.5 if self.zm_ordinates == "real_m" else None
+
+        def vertex(point):
+            out = [point[0], point[1]]
+            if want_z:
+                out.append(z)
+            if want_m:
+                out.append(m)
+            return out
+
+        for member in ("paths", "rings"):
+            if member in geometry:
+                return {**geometry, member: [[vertex(point) for point in line] for line in geometry[member]]}
+        if "points" in geometry:
+            return {**geometry, "points": [vertex(point) for point in geometry["points"]]}
+        if "x" in geometry:
+            out = {**geometry}
+            if want_z:
+                out["z"] = z
+            if want_m:
+                out["m"] = m
+            return out
+        return geometry
+
+    def served_row(self, row, query):
+        """Serve Z/M only when the query asks for it, as ArcGIS does."""
+        geometry = row.get("geometry")
+        if self.layer.is_table or self.zm_doc is None or geometry is None or self.zm_ordinates == "omit":
+            return row
+        want_z = query.get("returnZ") == "true" and self.zm_doc[0]
+        want_m = query.get("returnM") == "true" and self.zm_doc[1]
+        if not (want_z or want_m):
+            return row
+        return {**row, "geometry": self._with_zm(geometry, want_z, want_m)}
 
     def layer_doc(self):
         self.palette += 1
@@ -159,7 +200,8 @@ class FakeMapServer:
             raise httpx.ReadError("connection reset", request=request)
         if refusal == "error":
             return self.json({"error": {"code": 500, "message": "Error performing query operation"}})
-        rows = [self.features[oid] for oid in oids if lo <= oid <= hi and oid not in self.hidden]
+        rows = [self.served_row(self.features[oid], query) for oid in oids
+                if lo <= oid <= hi and oid not in self.hidden]
         page = {"displayFieldName": "", "fields": self.attr_fields, "features": rows[:self.max_record_count]}
         if not self.layer.is_table:
             page.update(geometryType=GEOMETRY_TYPES[self.layer.geometry], spatialReference=CRS)
@@ -259,7 +301,10 @@ class CandidateTests(NfhlCaptureCase):
 
 class ZmContractTests(NfhlCaptureCase):
     """The producer's Z/M declaration is accepted only as the entry declares it,
-    and served Z/M vertices always fail closed because GDAL decodes them."""
+    and declared dimensions are requested and validated before GDAL decodes."""
+
+    def profile(self):
+        return dataclasses.replace(LAYERS_BY_SLUG["nfhl-profile-baselines"], min_free_bytes=1_000_000)
 
     def test_zm_declaring_document_without_entry_contract_fails(self):
         server = FakeMapServer(LAYERS_BY_SLUG["nfhl-levees"])
@@ -273,19 +318,56 @@ class ZmContractTests(NfhlCaptureCase):
     def test_zm_declaration_mismatch_fails(self):
         for doc_zm in ((False, False), (True, False), (False, True)):
             with self.subTest(doc_zm=doc_zm):
-                layer = dataclasses.replace(LAYERS_BY_SLUG["nfhl-profile-baselines"], min_free_bytes=1_000_000)
-                server = FakeMapServer(layer)
+                server = FakeMapServer(self.profile())
                 server.zm_doc = doc_zm
                 with self.assertRaisesRegex(ValueError, "nfhl_layer_zm_declaration_drift"):
                     self.run_capture(server)
 
-    def test_declared_zm_layer_records_the_producer_declaration(self):
-        layer = dataclasses.replace(LAYERS_BY_SLUG["nfhl-profile-baselines"], min_free_bytes=1_000_000)
-        result = self.run_capture(FakeMapServer(layer, max_record_count=3))
+    def test_declared_zm_layer_requests_ordinates_and_reduces_nominal_placeholders(self):
+        layer = self.profile()
+        server = FakeMapServer(layer, max_record_count=3)
+        result = self.run_capture(server)
+        page_urls = [url for url in server.requests if "query?" in url and "where=OBJECTID" in url]
+        self.assertTrue(page_urls)
+        self.assertTrue(all("returnZ=true" in url and "returnM=true" in url for url in page_urls))
         audit = json.loads(self.staged(result, "metadata/source_audit.json"))
         self.assertEqual(audit["source_declared_zm"], {"hasZ": True, "hasM": True})
-        geo = json.loads(self.parquet(result, layer).schema.metadata[b"geo"])
+        self.assertEqual(audit["source_zm_ordinates"], {
+            "declared": {"hasZ": True, "hasM": True}, "vertices_checked": 10, "reduced_to_xy": True})
+        table = self.parquet(result, layer)
+        geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["LineString", "MultiLineString"])
+        for oid, wkb in zip(table.column("OBJECTID").to_pylist(), table.column("SHAPE").to_pylist()):
+            expected = GEOMETRIES[layer.geometry][oid][1]
+            if expected is None:
+                self.assertIsNone(wkb)
+            else:
+                self.assertTrue(shapely.from_wkb(wkb).equals_exact(expected, 0), (oid,))
+
+    def test_declared_zm_layer_fails_when_producer_omits_requested_ordinates(self):
+        layer = self.profile()
+        server = FakeMapServer(layer, max_record_count=3)
+        server.zm_ordinates = "omit"
+        with self.assertRaisesRegex(ValueError, "source_z_or_m_geometry_unsupported"):
+            self.run_capture(server)
+        failures = [k for k in self.quarantines(layer) if k.endswith("failure.json")]
+        self.assertEqual(json.loads(self.storage.read_key(failures[0]))["reason_code"],
+                         "source_z_or_m_geometry_unsupported")
+
+    def test_declared_zm_layer_fails_before_decoding_populated_ordinates(self):
+        for mode in ("real_z", "real_m"):
+            with self.subTest(mode=mode):
+                layer = self.profile()
+                storage = StagingStorageResource(use_local=True, local_dir=str(self.temp / f"staging-{mode}"),
+                                                 prefix="")
+                server = FakeMapServer(layer, max_record_count=3)
+                server.zm_ordinates = mode
+                with self.assertRaisesRegex(ValueError, "source_z_or_m_geometry_unsupported"):
+                    self.run_capture(server, storage=storage)
+                failures = [k for k in storage.list_prefix(f"_quarantine/{layer.slug}/")
+                            if k.endswith("failure.json")]
+                self.assertEqual(json.loads(storage.read_key(failures[0]))["reason_code"],
+                                 "source_z_or_m_geometry_unsupported")
 
     def test_served_zm_vertices_fail_closed_and_quarantine(self):
         layer = LAYERS_BY_SLUG["nfhl-levees"]
@@ -301,6 +383,27 @@ class ZmContractTests(NfhlCaptureCase):
                          "source_z_or_m_geometry_unsupported")
         keys = self.quarantines(layer)
         self.assertTrue(any("/raw/page_" in k for k in keys))
+
+
+class ZmReductionTests(unittest.TestCase):
+    def test_point_and_polygon_placeholders_reduce_to_xy(self):
+        from dagster_hifld.sources.nfhl.convert import reduce_nominal_zm
+
+        self.assertEqual(reduce_nominal_zm({"x": 1, "y": 2, "z": 0, "m": None, "hasZ": True, "hasM": True},
+                                           True, True), ({"x": 1, "y": 2}, 1))
+        self.assertEqual(reduce_nominal_zm({"rings": [[[0, 0, 0, None], [0, 1, 0, None]]]}, True, True),
+                         ({"rings": [[[0, 0], [0, 1]]]}, 2))
+        self.assertEqual(reduce_nominal_zm({"points": [[0, 0, 0, None], [1, 1, 0, None]]}, True, True),
+                         ({"points": [[0, 0], [1, 1]]}, 2))
+
+    def test_unsupported_ordinates_and_shapes_fail_closed(self):
+        from dagster_hifld.sources.nfhl.convert import reduce_nominal_zm
+
+        for geometry in ({"paths": [[[0, 0, 5, None]]]}, {"paths": [[[0, 0, 0, 2]]]},
+                         {"paths": [[[0, 0]]]}, {"x": 1, "y": 2, "m": None}, {}):
+            with self.subTest(geometry=geometry):
+                with self.assertRaisesRegex(ValueError, "source_z_or_m_geometry_unsupported"):
+                    reduce_nominal_zm(geometry, True, True)
 
 
 class InventoryAliasTests(NfhlCaptureCase):
