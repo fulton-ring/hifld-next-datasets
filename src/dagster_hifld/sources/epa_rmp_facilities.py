@@ -31,6 +31,7 @@ from dagster_hifld.sources.capture_common import (
     capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.arcgis_layer import offset_layer_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "epa-emergency-response-rmp-facilities"
@@ -67,28 +68,18 @@ def _query_url(params: Mapping[str, object]) -> str:
 
 
 def _source_urls(ids: list[int]) -> list[tuple[str, str]]:
-    urls: list[tuple[str, str]] = [
-        ("epa_frs_sources_page", EPA_FRS_DATA_SOURCES_URL),
-        ("portal_item_before", ITEM_URL),
-        ("service_before", SERVICE_URL + "?f=pjson"),
-        ("layer_before", LAYER_URL + "?f=pjson"),
-        ("count_before", _query_url({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-        ("ids_before", _query_url({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-    ]
-    for offset in range(0, len(ids), PAGE_SIZE):
-        urls.append((f"features_{offset // PAGE_SIZE:03d}", _query_url({
-            "where": "1=1", "outFields": "*", "returnGeometry": "true", "returnZ": "true",
-            "returnM": "true", "outSR": "4269", "orderByFields": "OBJECTID ASC",
-            "resultOffset": offset, "resultRecordCount": PAGE_SIZE, "f": "json",
-        })))
-    urls.extend([
-        ("layer_after", LAYER_URL + "?f=pjson"),
-        ("service_after", SERVICE_URL + "?f=pjson"),
-        ("count_after", _query_url({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-        ("ids_after", _query_url({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-        ("portal_item_after", ITEM_URL),
-    ])
-    return urls
+    return offset_layer_capture_roster(
+        len(ids), layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(
+            ("epa_frs_sources_page", EPA_FRS_DATA_SOURCES_URL),
+            ("portal_item_before", ITEM_URL),
+        ),
+        page_params={"returnZ": "true", "returnM": "true", "outSR": "4269"},
+        page_namer=lambda index, offset: f"features_{index:03d}",
+        short_last_page=False,
+        after_order=("layer_after", "service_after", "count_after", "ids_after"),
+        trailing_documents=(("portal_item_after", ITEM_URL),),
+    )
 
 
 def _plain_object(value: object, name: str) -> dict[str, object]:
