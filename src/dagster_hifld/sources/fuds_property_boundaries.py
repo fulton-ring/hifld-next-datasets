@@ -22,8 +22,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-import shapely
-from shapely.geometry import MultiPolygon, Polygon
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups, ring_is_ccw, zero_area_rings
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -97,39 +96,14 @@ def _profile_schema(layer: dict[str, object]) -> tuple[list[dict[str, object]], 
     return plain, _sha(_canonical(plain))
 
 
-def _ring_signed_area(ring: list[list[object]]) -> float:
-    return sum(float(ring[i][0]) * float(ring[i + 1][1]) - float(ring[i + 1][0]) * float(ring[i][1])
-               for i in range(len(ring) - 1)) / 2.0
-
-
 def _source_polygon_geometry(rings: list[list[list[object]]]):
-    """Decode Esri clockwise shells/counter-clockwise holes without repair."""
-    shells: list[list[list[object]]] = []
-    holes: list[list[list[object]]] = []
-    for ring in rings:
-        area = _ring_signed_area(ring)
-        if area < 0:
-            shells.append(ring)
-        elif area > 0:
-            holes.append(ring)
-        else:
-            # Zero-area rings cannot encode shell/hole orientation. Retain them
-            # as shells for a deterministic invalid candidate and report them.
-            shells.append(ring)
-    shell_polygons = [Polygon([[*coordinate[:3]] for coordinate in ring]) for ring in shells]
-    holes_by_shell: list[list[list[list[object]]]] = [[] for _ in shells]
-    for ring in holes:
-        polygon = Polygon([[*coordinate[:3]] for coordinate in ring])
-        containing = [i for i, shell in enumerate(shell_polygons) if shell.covers(polygon.representative_point())]
-        if not containing:
+    """Decode Esri rings through the shared GDAL converter without repair."""
+    xyz = [[[*coordinate[:3]] for coordinate in ring] for ring in rings]
+    normalized = {"rings": xyz}
+    for group in esri_polygon_ring_groups(normalized, has_z=True, has_m=False):
+        if len(group) == 1 and ring_is_ccw(group[0]):
             raise ValueError("source_orphan_interior_ring")
-        owner = max(containing, key=lambda i: shell_polygons[i].area)
-        holes_by_shell[owner].append([[*coordinate[:3]] for coordinate in ring])
-    polygons = [Polygon([[*coordinate[:3]] for coordinate in ring], holes_by_shell[i])
-                for i, ring in enumerate(shells)]
-    if len(polygons) == 1:
-        return polygons[0]
-    return MultiPolygon(polygons)
+    return esri_polygon_geometry(normalized, has_z=True, has_m=False)
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
@@ -239,7 +213,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> 
         "source_geometry_bounds": actual_bounds,
         "source_z_min": min(float(x[2]) for x in all_coordinates), "source_z_max": max(float(x[2]) for x in all_coordinates),
         "source_m_vertex_count": len(all_coordinates), "source_m_nonnull_vertex_count": sum(x[3] is not None for x in all_coordinates),
-        "source_zero_area_ring_count": sum(_ring_signed_area(ring) == 0 for feature in features for ring in feature["geometry"]["rings"]),
+        "source_zero_area_ring_count": sum(len(zero_area_rings(feature["geometry"]["rings"])) for feature in features),
         "arcgis_service_item_id": service.get("serviceItemId"),
         "service_modified_is_source_release_date": False,
     }
