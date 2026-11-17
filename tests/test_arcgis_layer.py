@@ -102,8 +102,9 @@ class ArcgisLayerTests(unittest.TestCase):
             page_size=2,
             layer_format="json",
         )
-        self.assertEqual(roster[3], ("layer_before", "https://svc.example/LAYER/MapServer/1?f=json"))
-        self.assertEqual(roster[-2], ("layer_after", "https://svc.example/LAYER/MapServer/1?f=json"))
+        urls = dict(roster)
+        self.assertEqual(urls["layer_before"], "https://svc.example/LAYER/MapServer/1?f=json")
+        self.assertEqual(urls["layer_after"], "https://svc.example/LAYER/MapServer/1?f=json")
         self.assertEqual([name for name, _url in roster],
                          ["bts_item", "service_directory", "service_before", "layer_before",
                           "count_before", "ids_before", "page_000", "page_001", "layer_after",
