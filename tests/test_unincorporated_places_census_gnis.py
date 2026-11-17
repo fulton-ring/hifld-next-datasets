@@ -18,7 +18,7 @@ from dagster_hifld.assets.unincorporated_places_census_gnis import (
 )
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import unincorporated_places_census_gnis as src
 
 FIXTURE_COUNT = 9
@@ -213,7 +213,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
                                        "code_commit": "synthetic", "files": [],
                                        "working_tree_status": "unknown"}),
             patch.object(src, "validate_construction_code_identity"),
-            patch.object(epa_frs_common, "validate_construction_code_identity"),
+            patch.object(capture_common, "validate_construction_code_identity"),
         ])
     for context in contexts:
         context.start()

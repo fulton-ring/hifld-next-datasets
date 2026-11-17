@@ -5,11 +5,10 @@ ZIP files. Keep the complete GEOID roster here; there is no national ZIP in
 the official directory.
 """
 
-from __future__ import annotations
-
 from dagster import (
     AssetKey,
     AssetSelection,
+    Config,
     DefaultScheduleStatus,
     ScheduleDefinition,
     asset,
@@ -18,6 +17,11 @@ from dagster import (
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.census_cd119 import stage_cd119_candidate
+
+
+class CensusCd119Config(Config):
+    acquisitions_directory: str = ""
+
 
 CD119_DATASET_SLUG = "119th-congressional-districts"
 CD119_FILE_SLUG = "119th-congressional-districts"
@@ -50,13 +54,14 @@ _DESCRIPTION = (
     description=_DESCRIPTION,
 )
 def census_119th_congressional_districts(
-    context, staging_storage: StagingStorageResource
+    context, config: CensusCd119Config, staging_storage: StagingStorageResource
 ) -> dict:
     """Acquire live official sources or replay the pinned preserved capture."""
     return stage_cd119_candidate(
         staging_storage,
         CD119_DATASET_SLUG,
         CD119_FILE_SLUG,
+        acquisitions_dir=config.acquisitions_directory or None,
     )
 
 

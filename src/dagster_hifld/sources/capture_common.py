@@ -1,6 +1,6 @@
-"""Shared FRS capture and candidate-construction primitives.
+"""Shared source capture, candidate-construction, seal and quarantine primitives.
 
-Endpoint/schema interpretation stays in each issue adapter. These functions
+Endpoint/schema interpretation stays in each dataset adapter. These functions
 share only byte custody, immutable writes, incomplete-capture retention, and
 the first-construction CAS contract.
 """

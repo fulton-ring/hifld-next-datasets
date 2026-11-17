@@ -20,7 +20,7 @@ from dagster_hifld.definitions import defs
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import usace_ienc_isolated_danger as source
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     processing_identity,
     seal_ready_candidate,

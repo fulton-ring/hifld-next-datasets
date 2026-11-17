@@ -7,7 +7,7 @@ from dagster_hifld.sources.fdic_locations import SLUG, stage_fdic_locations
 
 
 class FdicLocationsConfig(Config):
-    capture_directory: str
+    capture_directory: str = ""
     refresh_official: bool = False
 
 
@@ -34,5 +34,4 @@ fdic_locations_draft_job = define_asset_job('fdic_locations_draft_reconstruction
 fdic_locations_draft_schedule = ScheduleDefinition(name='fdic_locations_draft_refresh_schedule',
     job=fdic_locations_draft_job, cron_schedule='0 12 * * 1', execution_timezone='America/New_York',
     default_status=DefaultScheduleStatus.STOPPED,
-    run_config={'ops': {fdic_locations_official.op.name: {'config': {
-        'capture_directory': {'env': 'HIFLD_FDIC_LOCATIONS_CAPTURE_DIR'}, 'refresh_official': True}}}})
+    run_config={'ops': {fdic_locations_official.op.name: {'config': {'refresh_official': True}}}})

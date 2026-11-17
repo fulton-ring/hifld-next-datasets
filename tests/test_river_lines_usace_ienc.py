@@ -13,7 +13,7 @@ from dagster_hifld.assets.river_lines_usace_ienc import (
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.sources import river_lines_usace_ienc as source
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.capture_common import _canonical
 
 
 class RiverLinesUsaceIencTests(unittest.TestCase):

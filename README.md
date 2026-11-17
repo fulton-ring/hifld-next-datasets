@@ -55,6 +55,12 @@ compatibility or grants publication acceptance.
 - `HIFLD_STAGING_BUCKET` — use GCS when set; otherwise local `HIFLD_STAGING_DIR` (default `data/staging`).
 - `HIFLD_DATASETS_BUCKET` — published bucket (or `HIFLD_DATASETS_DIR` locally).
 
+**Capture directories** — every adapter resolves retained-capture and scratch
+space through one shared root, `HIFLD_CAPTURE_ROOT` (default: the system
+temporary directory). Adapters accept an explicit `capture_directory` (asset
+run config or direct argument) for replay or resume; unset runs capture under
+`<root>/<dataset>/<file>/<run_id>`. There are no per-dataset capture env vars.
+
 **Run Dagster** (from this repo):
 
 ```bash

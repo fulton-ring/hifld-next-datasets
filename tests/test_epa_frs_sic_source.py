@@ -19,10 +19,10 @@ from dagster_hifld.construction_state import seal_first_construction
 from dagster_hifld.native_verification import normalize_native_input
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, canonical_construction_bundle, processing_identity,
 )
-from dagster_hifld.sources import epa_frs_common as frs_common
+from dagster_hifld.sources import capture_common as frs_common
 from dagster_hifld.sources.epa_frs_arcgis_table import (
     ArcGISTableCaptureError, _metadata_contract, capture_table,
 )

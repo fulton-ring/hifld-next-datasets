@@ -24,8 +24,8 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -256,7 +256,7 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
-    root = Path(capture_directory or "/tmp/hifld-native-reconstruction/74/captures").absolute()
+    root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "74", "captures"))).absolute()
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)

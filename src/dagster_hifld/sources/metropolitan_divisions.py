@@ -34,7 +34,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     processing_identity as package_processing_identity, seal_ready_candidate, verify_cached_candidate)
 from dagster_hifld.validation import sha256_file
 

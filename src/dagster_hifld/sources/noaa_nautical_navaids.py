@@ -26,8 +26,8 @@ from shapely import wkb
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
@@ -295,7 +295,7 @@ def capture_noaa_nautical_navaids(storage: StagingStorageResource, *, capture_di
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
     replay = capture_directory is not None
-    root = Path(capture_directory) if replay else Path("/tmp/hifld-native-reconstruction/176/captures") / uuid4().hex
+    root = Path(capture_directory) if replay else default_capture_dir("hifld-native-reconstruction", "176", "captures") / uuid4().hex
     root = root.absolute()
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
