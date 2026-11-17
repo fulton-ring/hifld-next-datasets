@@ -15,7 +15,7 @@ import pyarrow.parquet as pq
 import pyproj
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 
 DATASET_SLUG = "river-mile-markers-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -403,9 +403,9 @@ def _write_source_manifest(staging, version_key: str, metadata: dict, identity: 
                     "item_id": ITEM_ID, "item_owner": "usace_iwr_cac",
                     "service_url": SERVICE_URL,
                     **({"distribution_chain": "Captured ArcGIS item 604cdc08fe7d43cb90a0584a0b198875 (owner usace_iwr_cac, public Feature Service) identifies the River Mile Markers product; the USACE org services directory lists usace_river_mile_markers as a FeatureServer; the captured service reports that item id as serviceItemId.",
-                        "ienc_relationship": "The service description states the Navigation Mile Marker dataset is primarily sourced from the IENC with additional NOAA, USACE district, and other sources. The IENC_Feature_Classes directory (100 services verified 2026-11-12) contains no river-mile-marker feature class, so the USDOT BTS IENC delegation (item 7ec34864c8804468a9cf52d437fe4b6c) does not cover this product; IENC distance marks are separately inventoried as distance-marks-usace-ienc-2.",
+                        "ienc_relationship": "The service description states the Navigation Mile Marker dataset is primarily sourced from the IENC with additional NOAA, USACE district, and other sources. The IENC_Feature_Classes directory observed 2026-11-15 contains no river-mile-marker feature class by that name. The USDOT BTS IENC item 7ec34864c8804468a9cf52d437fe4b6c links chart products, not this WCSC endpoint; it does not establish delegation or historical equivalence for WCSC. DISTANCE_MARK_POINT is a separate chart class inventoried as distance-marks-usace-ienc-2. No row-level containment of a historical HIFLD or IENC population has been established.",
                         "hifld_continuity": {"original_hifld_item_id": "496c6859c35143c69b7458af6049658b",
-                                             "original_hifld_item_status": "dead; anonymous 2026-11-12 request returned ArcGIS CONT_0001 'Item does not exist or is inaccessible'",
+                                             "original_hifld_item_status": "anonymous 2026-11-12 request returned ArcGIS CONT_0001 'Item does not exist or is inaccessible'; deletion versus access restriction unresolved",
                                              "hifld_continuity_accepted": False},
                         "producer_succession_claimed": False}
                        if distribution_chain else {}),
@@ -521,7 +521,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             "before_id_sha256": ids_digest, "after_id_sha256": _digest(_json_bytes(after)),
             "source_record_sha256": row_digest, "parquet_sha256": _digest(parquet), "geojson_sha256": _digest(geojson),
             "native_crs": "EPSG:4269", "field_schema": SOURCE_SCHEMA, "attribute_fields": FIELDS, "pages": pages,
-            "code_identity": processor_identity, "coverage_statement": "Complete observed USACE IWR WCSC usace_river_mile_markers FeatureServer layer 0; IENC-sourced points are a subset of this mixed-source producer product.",
+            "code_identity": processor_identity, "coverage_statement": "Complete observed USACE IWR WCSC usace_river_mile_markers FeatureServer layer 0; producer-described mixed IENC/NOAA/district/other inputs; historical population containment and equivalence are unverified.",
             "capture_mode": "retained_response_replay" if raw_source_version else "live_http_capture",
             "retained_source_capture_version": raw_source_version,
             "refresh_semantics": "Default runs capture a fresh source snapshot. An explicit retained_response_replay is an evidence-only reprocessing operation, not a cache or currentness claim.",
@@ -538,7 +538,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
         return {"feature_count": len(features), "ids_sha256": ids_digest, "records_sha256": row_digest,
                 "parquet_sha256": _digest(parquet), "release_accepted": False,
                 "source_population_complete": True,
-                "source_coverage_scope": "Complete observed USACE IWR WCSC usace_river_mile_markers FeatureServer layer 0; IENC-sourced points are a subset of this mixed-source producer product."}
+                "source_coverage_scope": "Complete observed USACE IWR WCSC usace_river_mile_markers FeatureServer layer 0; producer-described mixed IENC/NOAA/district/other inputs; historical population containment and equivalence are unverified."}
     finally:
         if owned:
             client.close()

@@ -29,7 +29,6 @@ SLUG = "state-emergency-operations-centers-eoc"
 SERVICE = "https://gis.fema.gov/arcgis/rest/services/FEMA/STATE_EOC"
 BASE = SERVICE + "/FeatureServer/0"
 LANDING = "https://catalog.data.gov/dataset/state-emergency-operations-centers-eoc"
-CAPTURE_ENV = "HIFLD_EOC_CAPTURE_DIR"
 MAX_COUNT = 10000
 MAX_CAPTURE = 8 * 1024 * 1024
 EXPECTED_FIELDS = (
@@ -369,7 +368,7 @@ def _local_staging(storage: StagingStorageResource, capture_dir: str | None) -> 
     if isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
         raise EOCSourceError("isolated_local_staging_required")
     root = Path(storage.local_dir).absolute()
-    configured_capture = capture_dir or os.environ.get(CAPTURE_ENV)
+    configured_capture = capture_dir
     capture = Path(configured_capture).absolute() if configured_capture else root / "captures"
     for path in (root, capture):
         if path == Path(".").absolute():

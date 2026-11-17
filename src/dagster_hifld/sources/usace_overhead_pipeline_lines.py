@@ -23,11 +23,12 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "overhead-pipeline-lines-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -53,15 +54,6 @@ CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_befor
                  *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
 
 SOURCE_CRS = CRS.from_epsg(4326)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
@@ -395,7 +387,7 @@ def capture_usace_overhead_pipeline_lines(storage: StagingStorageResource, *, ve
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/261/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "261", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)

@@ -35,8 +35,8 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     processing_identity,
@@ -45,6 +45,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "gsa-iolp-leases"
 LANDING_URL = ("https://www.gsa.gov/tools-overview/buildings-and-real-estate-tools/"
@@ -103,15 +104,6 @@ VALUE_DOMAIN_FIELDS = ("Federal Leased Code", "Real Property Asset type",
 
 class GsaIolpLeasesError(ValueError):
     """Untrusted, incomplete or contract-drifting source input; never release."""
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _redact_url(url: object) -> str | None:
@@ -523,7 +515,7 @@ def capture_gsa_iolp_leases(storage: StagingStorageResource, *, version: str,
     if shutil.disk_usage(stage).free < 300_000_000:
         raise GsaIolpLeasesError("disk_floor_before_acquisition")
     root = (Path(capture_directory).absolute() if capture_directory
-            else Path("/tmp/hifld-native-reconstruction/395/captures")
+            else default_capture_dir("hifld-native-reconstruction", "395", "captures")
             / (version + "-" + uuid4().hex))
     captured = _capture(root, storage, version)
     identity = captured["identity"]

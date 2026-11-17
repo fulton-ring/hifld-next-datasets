@@ -1,7 +1,6 @@
 """Pinned historical EIA Biodiesel Plants shapefile candidate for issue #22."""
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -25,11 +24,12 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "biodiesel-plants-1"
 SOURCE_URL = "https://www.eia.gov/maps/map_data/Biodiesel_Plants_US_EIA.zip"
@@ -56,14 +56,6 @@ RECORD_SHA = "cef10982b160688a14831f35e0f0b819258b786c274002de00ffbb4940ce4fed"
 GEOMETRY_SHA = "793ef4131882fb3a47d4d40d9f910ce5d8095c8e9c1519b6ad95fca12919db11"
 BOUNDS = [-155.05040000005943, 19.63360000036014, -70.3281000003735, 61.16380000001767]
 WGS84 = CRS.from_epsg(4326)
-
-
-def _canonical(x):
-    return json.dumps(x, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-
-
-def _sha(b):
-    return hashlib.sha256(b).hexdigest()
 
 
 def _native(v):
@@ -300,7 +292,7 @@ def capture_eia_biodiesel_plants(storage: StagingStorageResource, *, version: st
     if shutil.disk_usage(stage).free < 300_000_000:
         raise ValueError("disk_floor_before_acquisition")
     requested = Path(capture_directory).absolute() if capture_directory else None
-    root = requested or Path("/tmp/hifld-native-reconstruction/22/captures") / (version + "-" + uuid4().hex)
+    root = requested or default_capture_dir("hifld-native-reconstruction", "22", "captures") / (version + "-" + uuid4().hex)
     caps = _capture(root, storage, version)
     with tempfile.TemporaryDirectory() as tmp:
         frame, audit = _decode(caps["eia_zip"][0], Path(tmp))

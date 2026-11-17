@@ -1,7 +1,6 @@
 """Source-faithful draft capture of the USACE/BTS Navigation Facilities layer."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import struct
@@ -17,7 +16,8 @@ import pyproj
 
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
+from dagster_hifld.sources.capture_common import processing_identity, write_immutable
+from dagster_hifld.sources.esri_common import sha as _sha
 
 DATASET_SLUG = "docks-usace-bts"
 FILE_SLUG = DATASET_SLUG
@@ -31,10 +31,6 @@ _STRINGS = {"esriFieldTypeString", "esriFieldTypeGUID", "esriFieldTypeGlobalID"}
 def _canonical(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
                        allow_nan=False) + "\n").encode("utf-8")
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _safe_version(value: str) -> bool:

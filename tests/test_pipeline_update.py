@@ -224,9 +224,9 @@ class PipelineUpdateTests(PublicationMechanicsMixin, unittest.TestCase):
             )
 
     def test_large_dataset_policy_registry_uses_admin_candidates(self):
-        census_policy = geoparquet_policy_for("2020-census-blocks-1", "tl_2024_48_tabblock20")
+        census_policy = geoparquet_policy_for("2020-census-blocks-1", "tl_2026_48_tabblock20")
         generic_policy = geoparquet_policy_for("unlisted", "layer")
-        small_census_policy = geoparquet_policy_for("2020-census-blocks-1", "tl_2024_01_tabblock20")
+        small_census_policy = geoparquet_policy_for("2020-census-blocks-1", "tl_2026_01_tabblock20")
 
         self.assertEqual(census_policy.force_admin_columns, ())
         self.assertEqual(generic_policy.force_admin_columns, ())

@@ -7,7 +7,6 @@ accepted by this draft.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -28,12 +27,13 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "formerly-used-defense-sites-public-properties"
 FILE_SLUG = DATASET_SLUG
@@ -57,14 +57,6 @@ EXPECTED_GEOMETRY_SHA256 = "ac4a611c7fc7392597b78039973869712e0bb689230bd7b65871
 EXPECTED_SCHEMA_SHA256 = "b9bc1b37325702200ff61f78024485cccaeed45bfb79e6669871d2d80fbc6c14"
 MAX_RESPONSE_BYTES = 8_000_000
 MAX_TOTAL_CAPTURE_BYTES = 512_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -254,7 +246,7 @@ def capture_fuds_public_properties(storage: StagingStorageResource, *, version: 
         raise ValueError("unsafe_local_staging_root")
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MAX_TOTAL_CAPTURE_BYTES + 64_000_000: raise ValueError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/99/captures")
+    attempt_root = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "99", "captures")
     capture_root = (attempt_root / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

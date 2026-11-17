@@ -49,12 +49,13 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "nhd-area-large-scale-2"
 FILE_SLUG = DATASET_SLUG
@@ -161,15 +162,6 @@ EXPECTED_LAYER_EXTENT = {"xmin": -19951755.6817, "ymin": -1622985.3665999994,
                          "xmax": 20021551.747199997, "ymax": 11575301.958199998}
 EXPECTED_OBSERVED_BOUNDS = {"xmin": -179.22967073889612, "ymin": -14.4246875666806,
                             "xmax": 179.85665946299667, "ymax": 71.49960643639866}
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -819,8 +811,9 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise ValueError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory else Path("/data/workspace/scratch/nhd-area-large-scale-2/captures")
-    capture_root = (attempt_root / f"{version}-{uuid4().hex}").absolute()
+    capture_root = ((Path(capture_directory) if capture_directory
+                     else default_capture_dir(DATASET_SLUG, "captures"))
+                    / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)

@@ -40,7 +40,7 @@ from dagster_hifld.partitions import SEMVER_VERSION_RE
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.epa_frs_common import processing_identity as construction_processing_identity
+from dagster_hifld.sources.capture_common import processing_identity as construction_processing_identity
 
 SLUG = 'amtrak-stations'
 ITEM_ID = '1ed62a9f46304679aaa396bed4c8565a'

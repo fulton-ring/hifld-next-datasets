@@ -13,7 +13,7 @@ from dagster_hifld.assets.roads_usace_ienc import (
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.sources import roads_usace_ienc as source
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 # The live layer has 106747 contiguous OBJECTIDs; tests exercise the identical
 # logic against a small patched roster for speed.

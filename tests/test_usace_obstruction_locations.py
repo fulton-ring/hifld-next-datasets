@@ -19,7 +19,7 @@ from dagster_hifld.assets.usace_obstruction_locations import (
     usace_obstruction_locations_usace_ienc,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 def _capture_doc_values(count=source.EXPECTED_COUNT):
@@ -81,14 +81,14 @@ class ObstructionLocationsTests(unittest.TestCase):
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
         name, url = source._capture_roster(source.EXPECTED_IDS)[0]
         receipt = {"method": "GET", "url": url, "final_url": url}
-        source._validate_capture_request_identity(name, receipt, url)
+        source.validate_capture_request_identity(name, receipt, url)
         receipt["final_url"] = "https://example.invalid/wrong"
         with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
-            source._validate_capture_request_identity(name, receipt, url)
+            source.validate_capture_request_identity(name, receipt, url)
         receipt["final_url"] = url
         receipt["method"] = "POST"
         with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
-            source._validate_capture_request_identity(name, receipt, url)
+            source.validate_capture_request_identity(name, receipt, url)
 
     def test_complete_population_native_geometry_and_declared_parquet_types(self):
         fields, features, audit = source._validate(_capture_docs())
@@ -263,7 +263,7 @@ class ObstructionLocationsTests(unittest.TestCase):
             self._capture_directory(root)
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
             with patch.object(source, "validate_construction_code_identity"), patch(
-                    "dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                    "dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = source.capture_usace_obstruction_locations(storage, version="draft", capture_directory=str(root))
             self.assertFalse(first["reused"])
             self.assertEqual(first["feature_count"], source.EXPECTED_COUNT)
@@ -281,7 +281,7 @@ class ObstructionLocationsTests(unittest.TestCase):
             capture_manifest["artifact_roster"] = capture_roster_digests(root, exclude={"capture_manifest.json"})
             (root / "capture_manifest.json").write_bytes(_canonical(capture_manifest) + b"\n")
             with patch.object(source, "validate_construction_code_identity"), patch(
-                    "dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                    "dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 second = source.capture_usace_obstruction_locations(storage, version="draft", capture_directory=str(root))
             self.assertTrue(second["reused"])
             self.assertEqual(first["version"], second["version"])

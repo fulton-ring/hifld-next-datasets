@@ -14,10 +14,8 @@ release acceptance remain pending.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
-import tempfile
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlencode, urlsplit
@@ -33,15 +31,19 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "outer-continental-shelf-ocs-oil-and-natural-gas-wells"
 FILE_SLUG = DATASET_SLUG
+# Retained capture layout: the historical parent keeps its name so existing
+# evidence under it stays addressable across releases.
+DEFAULT_CAPTURE_ROOT = default_capture_dir("boem-ocs-well-captures")
 SERVICE_URL = "https://gis.boem.gov/server/rest/services/BOEM_BSEE/MMC_Layers/FeatureServer"
 LAYER_ID = 1
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
@@ -69,15 +71,6 @@ EXPECTED_FIELDS = [
 STRING_FIELDS = ["API_NUMBER", "OPERATOR", "WELL_NAME", "SPUD_DATE", "TYPE_CODE",
                  "TYPE_CODE_DESC", "STATUS", "DEPTH", "STATUS_DESCRIPTION"]
 FIELD_NAMES = [field[0] for field in EXPECTED_FIELDS]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _query(**params: object) -> str:
@@ -344,7 +337,7 @@ def capture_boem_ocs_wells(storage: StagingStorageResource, *, version: str = "d
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("unsafe_or_low_space_staging_root")
     base.mkdir(parents=True, exist_ok=True)
-    capture_parent = Path(capture_directory).absolute() if capture_directory else Path(tempfile.gettempdir()) / "boem-ocs-well-captures"
+    capture_parent = Path(capture_directory).absolute() if capture_directory else DEFAULT_CAPTURE_ROOT
     capture_root = capture_parent / f"{version}-{uuid4().hex}"
     if ".." in capture_root.parts or any(p.is_symlink() for p in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

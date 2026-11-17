@@ -38,7 +38,8 @@ from dagster_hifld.construction_state import (
 )
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.provenance import provenance_projection
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.resources import StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_common import sha as _sha
 
 SLUG = "119th-congressional-districts"
 CAPTURE_RECEIPTS_SHA256 = "ced533ee909842e07ae40c915d5fdb8d3357361a56bbeec7c90772445addc6eb"
@@ -131,10 +132,6 @@ class CD119QuarantineError(ValueError):
     """Capture, edition, schema, identifier, or full-population drift."""
 
 
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
-
-
 def _write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
     snapshot = storage.object_snapshot(key)
     if snapshot is None:
@@ -179,8 +176,7 @@ def _canonical(value) -> bytes:
 
 
 def _capture_root() -> Path:
-    configured = os.environ.get("HIFLD_CD119_CAPTURE_DIR", "/tmp/hifld-native-reconstruction/387/capture")
-    root = Path(configured).absolute()
+    root = default_capture_dir("hifld-native-reconstruction", "387", "capture")
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)) or not root.is_dir():
         raise CD119QuarantineError("capture_root_missing_or_aliased")
     return root
@@ -234,9 +230,10 @@ def _mode() -> str:
     return value
 
 
-def _acquire_live() -> Path:
+def _acquire_live(acquisitions_dir: str | None = None) -> Path:
     """Capture each pinned official ZIP to a unique immutable acquisition dir."""
-    parent = Path(os.environ.get("HIFLD_CD119_ACQUISITIONS_DIR", "/tmp/hifld-native-reconstruction/387/acquisitions")).absolute()
+    parent = Path(acquisitions_dir).absolute() if acquisitions_dir \
+        else default_capture_dir("hifld-native-reconstruction", "387", "acquisitions")
     if ".." in parent.parts or any(p.is_symlink() for p in (parent, *parent.parents)):
         raise CD119QuarantineError("acquisition_root_missing_or_aliased")
     parent.mkdir(parents=True, exist_ok=True)
@@ -347,10 +344,11 @@ def _geo_metadata(geometry_types: list[str]) -> dict[bytes, bytes]:
     return {b"geo": _canonical(body)}
 
 
-def stage_cd119_candidate(storage: StagingStorageResource, dataset: str, file_slug: str) -> dict:
+def stage_cd119_candidate(storage: StagingStorageResource, dataset: str, file_slug: str,
+                          acquisitions_dir: str | None = None) -> dict:
     """Stage source-pinned complete population and exact typed/WKB GeoParquet."""
     mode = _mode()
-    root = _acquire_live() if mode == "live" else _capture_root()
+    root = _acquire_live(acquisitions_dir) if mode == "live" else _capture_root()
     receipts, by_name = _verify_receipts(root, replay=mode == "replay")
     expected = {f"tl_2025_{g}_cd119.zip" for g in GEOIDS}
     source_tables = []
