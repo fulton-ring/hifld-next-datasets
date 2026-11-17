@@ -634,7 +634,7 @@ class ResumeTests(NfhlCaptureCase):
 
         def handle(request):
             response = original(request)
-            if "outFields" in str(request.url) and len(server.page_requests) >= 3:
+            if "outFields" in str(request.url) and len(server.page_requests) >= 4:
                 raise SystemExit("forced restart")
             return response
 
