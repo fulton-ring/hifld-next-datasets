@@ -42,11 +42,15 @@ from dagster_hifld.sources.arcgis_layer import (
     PAGE_MAX_BYTES, _canonical, _capture_identity, _esri_polyline_wkb,
     _load_capture, _sha,
 )
+from dagster_hifld.sources.census_tiger_common import (
+    EXTENT_TOLERANCE_METERS, EXPECTED_SERVICE_LAYERS, EXPECTED_SERVICE_MAP_NAME,
+    EXPECTED_SERVICE_MAX_RECORD_COUNT, SERVICE_FOLDER_URL, SERVICE_URL,
+    WEB_MERCATOR_LIMIT, WEB_MERCATOR_PROJJSON, WEB_MERCATOR_WKIDS,
+    _publisher_stated_vintage, _validate_web_mercator_reference,
+)
 
 DATASET_SLUG = "secondary-roads-interstates-and-us-highways-2"
 FILE_SLUG = DATASET_SLUG
-SERVICE_FOLDER_URL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb?f=pjson"
-SERVICE_URL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer"
 LAYER_ID = 3
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "U.S. Census Bureau, TIGERweb Transportation (Roads and Railroads) service"
@@ -81,21 +85,6 @@ EXPECTED_FIELD_DECLARATIONS = [
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["type"] != "esriFieldTypeGeometry"]
 EXPECTED_EXTENT = {"xmin": -19017198.084, "ymin": -1616302.3542999998,
                    "xmax": 16231857.854099996, "ymax": 11136279.419299997}
-# The service advertises wkid 102100 / latestWkid 3857 (Web Mercator meters).
-WEB_MERCATOR_WKIDS = {102100, 3857}
-WEB_MERCATOR_LIMIT = 20037508.342789244
-# The pinned layer extent is the observed data bbox; every XY vertex must stay
-# inside the Web Mercator domain and the pinned extent within float noise.
-EXTENT_TOLERANCE_METERS = 1e-6
-EXPECTED_SERVICE_MAP_NAME = "Transportation (Roads and Railroads)"
-EXPECTED_SERVICE_MAX_RECORD_COUNT = 100000
-EXPECTED_SERVICE_LAYERS = [
-    (0, "Primary Roads Interstates 5M scale"), (1, "Primary Roads 2_1M scale"),
-    (2, "Primary Roads"), (3, "Secondary Roads Interstates and US Highways"),
-    (4, "Secondary Roads 578k scale"), (5, "Secondary Roads 289_144k scale"),
-    (6, "Secondary Roads 72_1k scale"), (7, "Local Roads 72k scale"),
-    (8, "Local Roads"), (9, "Railroads"),
-]
 EXPECTED_LAYER_NAME = "Secondary Roads Interstates and US Highways"
 # The publisher stamps the layer description with the vintage of the observed
 # layer population (verified live 2026-11-14); the trailing date is recorded as
@@ -115,15 +104,12 @@ _BASE_CAPTURE_NAMES = ("folder", "service_before", "layer_before", "count_before
                        "layer_after", "count_after", "ids_after", "service_after")
 _TRANSIENT_RETRY_DELAYS = (5.0, 15.0, 45.0, 90.0)
 
-
 def _capture_names() -> set[str]:
     return set(_BASE_CAPTURE_NAMES) | {
         f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}
 
-
 def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
-
 
 def _validate_roster(ids: object) -> list[int]:
     if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
@@ -133,32 +119,6 @@ def _validate_roster(ids: object) -> list[int]:
             or _sha(_canonical(ids)) != EXPECTED_ID_SHA256):
         raise ValueError("source_count_or_id_population_drift")
     return ids
-
-
-def _validate_web_mercator_reference(value: object, label: str) -> None:
-    """Validate every advertised ArcGIS Web Mercator representation."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid not in WEB_MERCATOR_WKIDS:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(CRS.from_epsg(3857), ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-    if not found:
-        raise ValueError(f"{label}_crs_drift")
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
@@ -182,7 +142,6 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[byt
                 raise
     raise ValueError(f"incomplete_source_capture:{name}")
 
-
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     urls = [("folder", SERVICE_FOLDER_URL),
             ("service_before", SERVICE_URL + "?f=pjson"), ("layer_before", LAYER_URL + "?f=pjson"),
@@ -198,7 +157,6 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
                  ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
                  ("service_after", SERVICE_URL + "?f=pjson")])
     return urls
-
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
@@ -224,27 +182,6 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     for name in sorted(captures):
         validate_capture_request_identity(name, captures[name][1], expected_urls[name])
     return captures
-
-
-_MONTH_NAMES = {name: number for number, name in enumerate(
-    ("January", "February", "March", "April", "May", "June", "July",
-     "August", "September", "October", "November", "December"), start=1)}
-
-
-def _publisher_stated_vintage(description: object) -> str:
-    """Parse the publisher-stated vintage from the captured layer description.
-
-    The TIGERweb Transportation layer description ends with a 'Month D, YYYY'
-    stamp for the vintage of the published layer population. The stamp is
-    preserved as the publisher-stated source vintage; no last-edit timestamp
-    is invented for it.
-    """
-    match = (re.fullmatch(r"(?s)(.*);\s+([A-Z][a-z]+) (\d{1,2}), (\d{4})", description)
-             if isinstance(description, str) else None)
-    if not match or match.group(2) not in _MONTH_NAMES:
-        raise ValueError("source_layer_description_or_vintage_drift")
-    return f"{int(match.group(4)):04d}-{_MONTH_NAMES[match.group(2)]:02d}-{int(match.group(3)):02d}"
-
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     if set(captures) != _capture_names():
@@ -404,189 +341,6 @@ def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) 
     return _sha(_canonical(_capture_identity(captures, root)))
 
 
-# EPSG:3857 (WGS 84 / Pseudo-Mercator) PROJJSON, pinned literally so the
-# candidate parquet bytes are reproducible across pyproj releases. The
-# datum_ensemble carries its full member list; pyproj CRS parsing rejects a
-# members-less ensemble.
-WEB_MERCATOR_PROJJSON = {
-        "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
-        "area": "World between 85.06°S and 85.06°N.",
-        "base_crs": {
-            "coordinate_system": {
-                "axis": [
-                    {
-                        "abbreviation": "Lat",
-                        "direction": "north",
-                        "name": "Geodetic latitude",
-                        "unit": "degree"
-                    },
-                    {
-                        "abbreviation": "Lon",
-                        "direction": "east",
-                        "name": "Geodetic longitude",
-                        "unit": "degree"
-                    }
-                ],
-                "subtype": "ellipsoidal"
-            },
-            "datum_ensemble": {
-                "accuracy": "2.0",
-                "ellipsoid": {
-                    "inverse_flattening": 298.257223563,
-                    "name": "WGS 84",
-                    "semi_major_axis": 6378137
-                },
-                "id": {
-                    "authority": "EPSG",
-                    "code": 6326
-                },
-                "members": [
-                    {
-                        "id": {
-                            "authority": "EPSG",
-                            "code": 1166
-                        },
-                        "name": "World Geodetic System 1984 (Transit)"
-                    },
-                    {
-                        "id": {
-                            "authority": "EPSG",
-                            "code": 1152
-                        },
-                        "name": "World Geodetic System 1984 (G730)"
-                    },
-                    {
-                        "id": {
-                            "authority": "EPSG",
-                            "code": 1153
-                        },
-                        "name": "World Geodetic System 1984 (G873)"
-                    },
-                    {
-                        "id": {
-                            "authority": "EPSG",
-                            "code": 1154
-                        },
-                        "name": "World Geodetic System 1984 (G1150)"
-                    },
-                    {
-                        "id": {
-                            "authority": "EPSG",
-                            "code": 1155
-                        },
-                        "name": "World Geodetic System 1984 (G1674)"
-                    },
-                    {
-                        "id": {
-                            "authority": "EPSG",
-                            "code": 1156
-                        },
-                        "name": "World Geodetic System 1984 (G1762)"
-                    },
-                    {
-                        "id": {
-                            "authority": "EPSG",
-                            "code": 1309
-                        },
-                        "name": "World Geodetic System 1984 (G2139)"
-                    },
-                    {
-                        "id": {
-                            "authority": "EPSG",
-                            "code": 1383
-                        },
-                        "name": "World Geodetic System 1984 (G2296)"
-                    }
-                ],
-                "name": "World Geodetic System 1984 ensemble"
-            },
-            "id": {
-                "authority": "EPSG",
-                "code": 4326
-            },
-            "name": "WGS 84"
-        },
-        "bbox": {
-            "east_longitude": 180,
-            "north_latitude": 85.06,
-            "south_latitude": -85.06,
-            "west_longitude": -180
-        },
-        "conversion": {
-            "method": {
-                "id": {
-                    "authority": "EPSG",
-                    "code": 1024
-                },
-                "name": "Popular Visualisation Pseudo Mercator"
-            },
-            "name": "Popular Visualisation Pseudo-Mercator",
-            "parameters": [
-                {
-                    "id": {
-                        "authority": "EPSG",
-                        "code": 8801
-                    },
-                    "name": "Latitude of natural origin",
-                    "unit": "degree",
-                    "value": 0
-                },
-                {
-                    "id": {
-                        "authority": "EPSG",
-                        "code": 8802
-                    },
-                    "name": "Longitude of natural origin",
-                    "unit": "degree",
-                    "value": 0
-                },
-                {
-                    "id": {
-                        "authority": "EPSG",
-                        "code": 8806
-                    },
-                    "name": "False easting",
-                    "unit": "metre",
-                    "value": 0
-                },
-                {
-                    "id": {
-                        "authority": "EPSG",
-                        "code": 8807
-                    },
-                    "name": "False northing",
-                    "unit": "metre",
-                    "value": 0
-                }
-            ]
-        },
-        "coordinate_system": {
-            "axis": [
-                {
-                    "abbreviation": "X",
-                    "direction": "east",
-                    "name": "Easting",
-                    "unit": "metre"
-                },
-                {
-                    "abbreviation": "Y",
-                    "direction": "north",
-                    "name": "Northing",
-                    "unit": "metre"
-                }
-            ],
-            "subtype": "Cartesian"
-        },
-        "id": {
-            "authority": "EPSG",
-            "code": 3857
-        },
-        "name": "WGS 84 / Pseudo-Mercator",
-        "scope": "Web mapping and visualisation.",
-        "type": "ProjectedCRS"
-    }
-
-
 def _arrow_type(field: dict):
     import pyarrow as pa
     return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeSmallInteger": pa.int16(),
@@ -610,7 +364,6 @@ def _parquet_bytes(fields: list[dict], features: list[dict], source_crs: str) ->
     sink = io.BytesIO()
     pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd", use_dictionary=False)
     return sink.getvalue()
-
 
 def capture_secondary_roads_census(storage: StagingStorageResource, *, version: str,
                                    capture_directory: str | None = None) -> dict[str, object]:
