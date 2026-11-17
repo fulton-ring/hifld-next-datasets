@@ -524,10 +524,9 @@ def _feature_schema(signature: list[list[str]]) -> list[pa.Field]:
 
 def _string_column_values(column: pa.Array, item_id: str, field: str) -> list[object]:
     try:
-        values = column.to_pylist()
+        return column.to_pylist()
     except UnicodeError as exc:
         raise ValueError(f"source_dbf_text_unencodable:{item_id}:{field}") from exc
-    return [None if value is None else str(value) for value in values]
 
 
 def _record_canonical(attributes: Mapping[str, object]) -> bytes:
