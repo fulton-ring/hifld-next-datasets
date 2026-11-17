@@ -84,7 +84,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.native_geoparquet_catalog import _safe_local_key
 from dagster_hifld.validation import sha256_file
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
