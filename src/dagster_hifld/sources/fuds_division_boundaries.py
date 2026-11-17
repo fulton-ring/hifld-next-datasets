@@ -12,6 +12,8 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon, Polygon
 
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups, ring_is_ccw
+
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -55,18 +57,11 @@ def _arrow_type(field: dict) -> pa.DataType:
             "esriFieldTypeDate": pa.int64(), "esriFieldTypeBlob": pa.binary()}[field["type"]]
 
 
-def _ring_area(ring: list[list[float]]) -> float:
-    x0, y0 = ring[0]
-    return math.fsum((ring[i][0]-x0)*(ring[i+1][1]-y0) - (ring[i+1][0]-x0)*(ring[i][1]-y0)
-                     for i in range(len(ring)-1)) / 2
-
-
 def _esri_polygon(geometry: dict) -> MultiPolygon:
-    """Interpret native Esri ring direction without repairing or simplifying."""
+    """Interpret native Esri rings through the shared GDAL converter."""
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
-    shells, holes = [], []
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
             raise ValueError("source_polygon_ring_invalid")
@@ -74,19 +69,16 @@ def _esri_polygon(geometry: dict) -> MultiPolygon:
                any(type(value) not in (int, float) or not math.isfinite(value) for value in point)
                for point in ring):
             raise ValueError("source_polygon_coordinate_dimensions_or_values_invalid")
-        poly = Polygon(ring)
-        if not poly.is_valid or poly.area == 0:
+        polygon = Polygon(ring)
+        if not polygon.is_valid or polygon.area == 0:
             raise ValueError("source_polygon_ring_invalid_geometry")
-        (shells if _ring_area(ring) < 0 else holes).append((ring, poly))
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    assigned: dict[int, list] = {i: [] for i in range(len(shells))}
-    for ring, hole in holes:
-        parents = [(p.area, i) for i, (_shell, p) in enumerate(shells) if p.contains(hole)]
-        if not parents:
+    normalized = {"rings": rings}
+    for group in esri_polygon_ring_groups(normalized, has_z=False, has_m=False):
+        if len(group) == 1 and ring_is_ccw(group[0]):
             raise ValueError("source_polygon_hole_without_containing_shell")
-        assigned[min(parents)[1]].append(ring)
-    result = MultiPolygon([Polygon(shell, assigned[i]) for i, (shell, _p) in enumerate(shells)])
+    result = esri_polygon_geometry(normalized, has_z=False, has_m=False)
+    if result.geom_type != "MultiPolygon":
+        result = MultiPolygon([result])
     if not result.is_valid:
         raise ValueError("source_polygon_invalid_no_repair_permitted")
     return result

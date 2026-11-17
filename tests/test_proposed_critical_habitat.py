@@ -2,12 +2,12 @@ from dagster import DefaultScheduleStatus
 from shapely.geometry import MultiPolygon
 
 from dagster_hifld.assets.proposed_critical_habitat import proposed_critical_habitat_draft_schedule
+from dagster_hifld.sources.esri_geometry import ring_is_ccw
 from dagster_hifld.sources.proposed_critical_habitat import (
     ITEM_ID,
     LAYER_ID,
     LAYER_NAME,
     _esri_polygon,
-    _ring_area,
     _receipt_timestamp,
 )
 
@@ -25,9 +25,9 @@ def test_esri_polygon_preserves_shell_hole_and_nested_island():
     outer = [[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]]
     hole = [[2, 2], [8, 2], [8, 8], [2, 8], [2, 2]]
     island = [[3, 3], [3, 4], [4, 4], [4, 3], [3, 3]]
-    assert _ring_area(outer) < 0
-    assert _ring_area(hole) > 0
-    assert _ring_area(island) < 0
+    assert not ring_is_ccw(outer)
+    assert ring_is_ccw(hole)
+    assert not ring_is_ccw(island)
 
     geometry = _esri_polygon({"rings": [outer, hole, island]})
 
