@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import dataclasses
+import io
 import json
 import tempfile
 import unittest
@@ -94,6 +95,20 @@ def _zip_bytes(directory: Path, file_name: str, frames: dict) -> bytes:
         for member in sorted(work.iterdir()):
             archive.write(member, arcname=member.name)
     return zip_path.read_bytes()
+
+
+def _invalid_utf8_dbf(zip_bytes: bytes, marker: bytes, replacement: bytes) -> bytes:
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    dbf_name = next(name for name in members if name.endswith(".dbf"))
+    if marker not in members[dbf_name]:
+        raise AssertionError("marker missing from fixture DBF")
+    members[dbf_name] = members[dbf_name].replace(marker, replacement)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+    return buffer.getvalue()
 
 
 def _fixture_zips(root: Path) -> dict[str, bytes]:
@@ -293,6 +308,31 @@ class StreamTests(unittest.TestCase):
             self.assertEqual(result.feature_count, 1)
             self.assertEqual(result.counters.products_without_feature_class, 3)
 
+    def test_non_utf8_dbf_text_fails_closed_with_product_and_field(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            products, capture = self._capture(root)
+            layer = LAYERS_BY_SLUG["nfhl-flood-hazard-zones"]
+            frame = _frame("01001C", [_polygon(-86.5, 32.5, 0.4, 0.3)], ["11916A3_2001"])
+            frame["SOURCE_CIT"] = "CITMARKER"
+            zip_path = capture / f"{products[0].item_id}.zip"
+            zip_path.write_bytes(_invalid_utf8_dbf(
+                _zip_bytes(root, "bad.zip", {"S_FLD_HAZ_AR": frame}),
+                b"CITMARKER", b"CITM\x92RKER"))
+            receipt = {"complete_body": True, "status": 200,
+                       "bytes": zip_path.stat().st_size,
+                       "sha256": source._file_sha256(zip_path),
+                       "item_id": products[0].item_id,
+                       "product_file_name": products[0].file_name,
+                       "product_update_date": source.update_date_iso(products[0].as_dict())}
+            (capture / f"{products[0].item_id}.receipt.json").write_bytes(
+                source._canonical(receipt) + b"\n")
+            with self.assertRaisesRegex(
+                    ValueError,
+                    rf"source_dbf_text_unencodable:{products[0].item_id}:SOURCE_CIT"):
+                source.stream_feature_class((products[0],), capture, layer,
+                                            root / "bad.parquet")
+
     def test_schema_drift_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -352,6 +392,61 @@ class CaptureTests(unittest.TestCase):
             source.capture_nfhl_bulk_layer(
                 StagingStorageResource(use_local=True, local_dir="/tmp"), 
                 LAYERS_BY_SLUG["nfhl-water-lines"])
+
+
+class GeometryValidationTests(unittest.TestCase):
+    def _validate(self, geometry):
+        import shapely.wkb
+        counters = source.StreamCounters()
+        bounds = [None, None, None, None]
+        wkb = shapely.wkb.dumps(geometry)
+        result = source._validate_feature_geometry(
+            wkb, LAYERS_BY_SLUG["nfhl-gages"], counters, bounds)
+        return result, counters, bounds
+
+    def test_nan_coordinates_become_null_geometry(self):
+        import shapely.geometry as geom
+        result, counters, _bounds = self._validate(geom.Point(float("nan"), 1.0))
+        self.assertIsNone(result)
+        self.assertEqual(counters.nan_geometry, 1)
+
+    def test_out_of_range_coordinates_fail_closed(self):
+        import shapely.geometry as geom
+        with self.assertRaisesRegex(ValueError, "source_coordinate_range_drift"):
+            self._validate(geom.Point(200.0, 1.0))
+
+    def test_z_geometry_fails_closed(self):
+        import shapely.geometry as geom
+        with self.assertRaisesRegex(ValueError, "source_z_or_m_geometry_unsupported"):
+            self._validate(geom.Point(1.0, 2.0, 3.0))
+
+
+class FailureEvidenceTests(unittest.TestCase):
+    def test_transport_failure_preserves_attempt_evidence_and_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            product = source.parse_listing(_default_listing())[0]
+
+            def handler(request):
+                if str(request.url).startswith(source.SERVLET_URL):
+                    return httpx.Response(
+                        302, headers={"Location": STATIC_BASE + product.file_name})
+                raise httpx.ConnectError("connection refused", request=request)
+
+            client = httpx.Client(transport=httpx.MockTransport(handler),
+                                  follow_redirects=False, timeout=30)
+            with self.assertRaisesRegex(
+                    ValueError, f"incomplete_source_capture:{product.item_id}"):
+                source.capture_product_zip(client, product, root, attempts=2, base_delay=0)
+            self.assertFalse((root / f"{product.item_id}.zip").exists())
+            for attempt in (1, 2):
+                receipt = json.loads(
+                    (root / f"{product.item_id}.attempt-{attempt:02d}.receipt.json").read_bytes())
+                self.assertFalse(receipt["complete_body"])
+                self.assertEqual(receipt["error_code"], "incomplete_source_capture")
+                self.assertEqual(receipt["bytes"], 0)
+                self.assertTrue(
+                    (root / f"{product.item_id}.attempt-{attempt:02d}.zip").exists())
 
 
 class LayerTableTests(unittest.TestCase):

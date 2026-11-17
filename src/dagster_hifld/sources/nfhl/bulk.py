@@ -455,8 +455,8 @@ def refresh_products(client: httpx.Client, capture_root: Path, *,
     The roster and every product receipt are the shared capture state. A
     refresh reuses a product only when its Item ID, file name, update date and
     size label are unchanged; a changed product is downloaded again. Products
-    that left the listing are dropped from the roster and their zips are
-    released.
+    that left the listing are dropped from the roster but their zips stay for
+    concurrent readers; a separate maintenance job releases them.
     """
     capture_root.mkdir(parents=True, exist_ok=True)
     listing_before = capture_listing(client, capture_root, "listing_before",
@@ -522,23 +522,12 @@ def _feature_schema(signature: list[list[str]]) -> list[pa.Field]:
     return fields
 
 
-def _string_column_values(column: pa.Array) -> list[object]:
-    values: list[object] = []
-    for value in column.to_pylist():
-        if value is None:
-            values.append(None)
-        elif isinstance(value, bytes):
-            values.append(value)
-        else:
-            values.append(str(value))
-    return values
-
-
-def _string_array_from_values(values: list[object], arrow_type: pa.DataType) -> pa.Array:
-    if arrow_type == pa.string():
-        return pa.array([value.decode("utf-8", "surrogateescape") if isinstance(value, bytes)
-                         else value for value in values], type=pa.string())
-    return pa.array(values, type=arrow_type)
+def _string_column_values(column: pa.Array, item_id: str, field: str) -> list[object]:
+    try:
+        values = column.to_pylist()
+    except UnicodeError as exc:
+        raise ValueError(f"source_dbf_text_unencodable:{item_id}:{field}") from exc
+    return [None if value is None else str(value) for value in values]
 
 
 def _record_canonical(attributes: Mapping[str, object]) -> bytes:
@@ -666,7 +655,7 @@ def stream_feature_class(products: tuple[BulkProduct, ...], capture_root: Path, 
                 raise ValueError("source_id_fields_missing:" + ",".join(missing_ids))
             try:
                 for batch in table.to_batches(max_chunksize=4096):
-                    columns = {field: (_string_column_values(batch.column(field))
+                    columns = {field: (_string_column_values(batch.column(field), product.item_id, field)
                                        if arrow_schema.field(field).type == pa.string()
                                        else batch.column(field).to_pylist())
                                for field in field_names}
@@ -695,9 +684,7 @@ def stream_feature_class(products: tuple[BulkProduct, ...], capture_root: Path, 
                     parquet_columns = {}
                     for field in field_names:
                         field_type = arrow_schema.field(field).type
-                        parquet_columns[field] = (_string_array_from_values(columns[field], field_type)
-                                                  if field_type == pa.string()
-                                                  else pa.array(columns[field], type=field_type))
+                        parquet_columns[field] = pa.array(columns[field], type=field_type)
                     parquet_columns["SHAPE"] = pa.array(shapes, type=pa.binary())
                     writer.write_table(pa.Table.from_pydict(parquet_columns, schema=arrow_schema))
             finally:
@@ -809,12 +796,12 @@ def _manifest(layer: NfhlLayer, identity: Mapping[str, object], inputs: list[dic
                                                   "producer order and physical types (unset numeric values "
                                                   "are the producer's -9999 sentinel, retained verbatim); "
                                                   "SHAPE is the original shapefile geometry as WKB",
-                                 "attribute_text": "Producer attribute text is retained verbatim: DBF "
-                                                   "character values are published as UTF-8 strings, and "
-                                                   "where FEMA's own DBF bytes are not valid UTF-8 the "
-                                                   "producer's raw bytes are carried byte-verbatim in the "
-                                                   "string column and escaped in the record digest; the raw "
-                                                   "evidence zips remain the lossless source of every byte",
+                                 "attribute_text": "Producer attribute text is published as UTF-8: DBF "
+                                                   "character values are decoded as UTF-8 and retained "
+                                                   "verbatim; a product whose DBF text is not valid UTF-8 "
+                                                   "fails closed with source_dbf_text_unencodable naming "
+                                                   "the product and field, and the raw evidence zips "
+                                                   "remain the lossless source of every byte",
                                  "source_ids": f"Preserve producer {', '.join(layer.id_fields)} values "
                                                "unchanged; no substitute IDs, casts, trimming, or joins",
                                  "geometry": "Source NAD83 (EPSG:4269) shapefile geometry retained as WKB "
@@ -881,6 +868,9 @@ def capture_nfhl_bulk_layer(storage, layer: NfhlLayer, *, capture_directory: str
         result = stream_feature_class(products, root, layer, parquet_path)
         if result.feature_count != result.id_count:
             raise ValueError("source_feature_count_roster_mismatch")
+        if (result.counters.products_with_feature_class
+                + result.counters.products_without_feature_class != len(products)):
+            raise ValueError("source_product_roster_mismatch")
         if not result.feature_count:
             raise ValueError("source_feature_count_empty")
         bounds = result.bounds

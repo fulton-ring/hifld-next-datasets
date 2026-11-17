@@ -74,6 +74,11 @@ def _layer_definitions(layer: NfhlLayer):
         passed = (type(candidate.get("feature_count")) is int
                   and candidate.get("feature_count") == candidate.get("source_count")
                   and candidate.get("candidate_ready") is not None)
+        if layer.source == "bulk":
+            passed = passed and candidate.get("feature_count", 0) > 0 and (
+                candidate.get("source_products_with_feature_class", 0)
+                + candidate.get("source_products_without_feature_class", 0)
+                == candidate.get("source_product_count"))
         metadata = {
             "feature_count": candidate.get("feature_count", 0),
             "source_count_at_capture": candidate.get("source_count", 0),
@@ -82,6 +87,8 @@ def _layer_definitions(layer: NfhlLayer):
         if layer.source == "bulk":
             metadata.update({
                 "source_product_count": candidate.get("source_product_count", 0),
+                "source_products_with_feature_class":
+                    candidate.get("source_products_with_feature_class", 0),
                 "source_products_without_feature_class":
                     candidate.get("source_products_without_feature_class", 0),
                 "rest_count_cross_check": candidate.get("rest_count_cross_check"),
