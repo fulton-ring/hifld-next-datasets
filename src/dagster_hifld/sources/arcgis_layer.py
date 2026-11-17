@@ -89,6 +89,7 @@ def esri_polyline_wkb(geometry: dict) -> bytes:
 
 def _arrow_type(field: dict) -> pa.DataType:
     return {"esriFieldTypeOID":pa.int64(), "esriFieldTypeInteger":pa.int32(),
+            "esriFieldTypeSmallInteger":pa.int16(),
             "esriFieldTypeString":pa.string()}[field["type"]]
 
 
