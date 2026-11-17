@@ -16,12 +16,19 @@ receipt binds the exact request URL and whose body and wire bytes still match
 their digests, provided the producer's before-witness is unchanged. Any other
 earlier evidence (stale or mismatched pages, witnesses, failed attempts) is
 moved under ``previous/NNN/`` and never reused.
+
+Each accepted chunk is appended to ``capture_chunks.jsonl`` with its window,
+request URL and body/wire digests. The log is flushed and synced before the next
+request, so a forced stop leaves a durable record of the chunks that completed.
+A partial trailing line from a stop during the append is ignored on resume; the
+per-chunk receipts still decide reuse.
 """
 from __future__ import annotations
 
 import bisect
 import fcntl
 import json
+import os
 import re
 import time
 from collections.abc import Iterator
@@ -46,6 +53,42 @@ EXPECTED_PORTAL_ORG = {"id": PORTAL_ORG_ID, "name": "FEMA AGOL"}
 DOC_MAX_BYTES = 64 * 1024 * 1024
 _EVIDENCE_SUFFIXES = (".body", ".wire", ".receipt.json")
 _PAGE_NAME = re.compile(r"page_([0-9]{10})_([0-9]{10})")
+_CHUNK_LOG = "capture_chunks.jsonl"
+
+
+def read_capture_chunks(root: Path) -> list[dict[str, object]]:
+    """Read the durable per-chunk log, ignoring a partial trailing line."""
+    chunks = []
+    try:
+        lines = (root / _CHUNK_LOG).read_bytes().splitlines()
+    except OSError:
+        return chunks
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict) and _PAGE_NAME.fullmatch(str(entry.get("name"))):
+            chunks.append(entry)
+    return chunks
+
+
+def append_capture_chunk(root: Path, page: "Page") -> None:
+    """Append one completed chunk and sync it before the next producer request."""
+    receipt = json.loads((root / f"{page.name}.receipt.json").read_bytes())
+    entry = {"name": page.name, "lo": page.lo, "hi": page.hi, "url": receipt["url"],
+             "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+             "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
+             "reused": page.reused}
+    line = canonical(entry) + b"\n"
+    descriptor = os.open(root / _CHUNK_LOG, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    try:
+        written = 0
+        while written < len(line):
+            written += os.write(descriptor, line[written:])
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 @dataclass(frozen=True)
@@ -158,6 +201,7 @@ class EvidenceDirectory:
             self.prior_witness = json.loads((root / "witness.json").read_bytes())
         except (OSError, ValueError):
             self.prior_witness = None
+        self.prior_chunks = read_capture_chunks(root)
         groups: dict[str, list[Path]] = {}
         for path in sorted(root.iterdir()):
             if path.is_dir() or path.name == ".lock":
@@ -173,7 +217,12 @@ class EvidenceDirectory:
             self.previous.mkdir(parents=True, exist_ok=True)
             for path in paths:
                 path.rename(self.previous / path.name)
-        self.prior_pages.sort()
+        # The chunk log is a durable hint; a page is still reusable only when
+        # its receipt, URL, body and wire bytes verify in ``reusable``.
+        logged = {(int(match.group(1)), int(match.group(2))) for entry in self.prior_chunks
+                  if (match := _PAGE_NAME.fullmatch(str(entry["name"])))
+                  and (root / f"{entry['name']}.receipt.json").exists()}
+        self.prior_pages = sorted(set(self.prior_pages) | logged)
         self.retired: list[str] = []
 
     def close(self) -> None:
