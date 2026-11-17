@@ -93,7 +93,7 @@ import json, sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[3])
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 import dagster_hifld.sources.ncua_insured_credit_unions as module
 identity = processing_identity(Path(module.__file__).resolve().parents[3])
 result = module.capture_ncua_candidate(StagingStorageResource(local_dir=sys.argv[1], use_local=True),

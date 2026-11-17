@@ -19,8 +19,8 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -332,7 +332,7 @@ def capture_bts_pipeline_terminals(storage: StagingStorageResource, *,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
-    capture_base = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/411/captures")
+    capture_base = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "411", "captures")
     capture_token = uuid4().hex
     capture_root = (capture_base / f"capture-{capture_token}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):

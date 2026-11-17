@@ -42,15 +42,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import re
 import shutil
-import time
 from array import array
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping
+from typing import Mapping
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -58,19 +56,30 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely.geometry import MultiPolygon, Polygon
+import pyogrio
+from shapely import from_wkb, is_valid_reason
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_geometry import to_wkb
+from dagster_hifld.sources import arcgis_layer
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import (
+    RetainedCaptureViews as _RetainedCaptureViews,
+    capture_with_retry as _capture_with_retry,
+    preserve_failed_attempt as _preserve_failed_attempt,
+    producer_error_doc as _producer_error_doc,
+    save_state as _save_state,
+    witness_aside as _witness_aside,
+)
 
 DATASET_SLUG = "nhd-catchment"
 FILE_SLUG = DATASET_SLUG
@@ -165,11 +174,6 @@ METADATA_NAMES = ("service_doc", "alias_service", "service_before", "layer_befor
                   "count_before", "ids_seed", "ids_before")
 AFTER_NAMES = ("layer_after", "service_after", "count_after", "ids_after")
 GEOMETRY_COLUMN = "geometry"
-UNUSABLE_GEOMETRY_MODES = frozenset({
-    "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
-    "source_polygon_ring_self_intersecting", "source_polygon_hole_unassigned",
-    "source_polygon_assembly_invalid",
-})
 
 _ARROW_TYPES: dict[str, pa.DataType] = {
     "esriFieldTypeOID": pa.int64(),
@@ -336,85 +340,6 @@ def _validate_value(name: str, esri_type: str, nullable: bool, value: object) ->
     raise NhdCatchmentError("unsupported_source_physical_type:" + esri_type)
 
 
-def _signed_area(ring: list) -> float:
-    """Signed area of a planar ring (positive counterclockwise), translated origin.
-
-    The shoelace sum is taken around the first vertex instead of the global
-    origin: per-edge terms then scale with the ring's own extent, so a tiny
-    exterior ring next to global lon/lat coordinates keeps its sign. Vertices
-    are only read to measure orientation; stored geometry is never translated.
-    """
-    closed = ring if ring[0] == ring[-1] else ring + [ring[0]]
-    x0, y0 = closed[0][0], closed[0][1]
-    area = math.fsum((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
-                     for (x1, y1, *_rest), (x2, y2, *_rest2) in zip(closed, closed[1:]))
-    return area / 2.0
-
-
-def _polygon_wkb(geometry: object) -> bytes | None:
-    """Assemble one feature's Esri JSON rings into Polygon Z / MultiPolygon Z WKB.
-
-    Esri JSON polygon semantics (verified on the pinned capture): rings are
-    closed, clockwise rings are exteriors, counterclockwise rings are holes,
-    and a feature may hold several exteriors. Assembly is the standard
-    producer reading, not a geometric interpretation: exteriors with no
-    claimable hole keep their ring order and holes join their smallest
-    containing exterior. Producer ring orientation and vertex values (x, y, z)
-    are retained verbatim (no reorientation, resampling, or projection). Rows
-    whose rings cannot form a valid OGC polygon (zero/signed-zero area slivers,
-    self-intersecting rings, unassignable holes) or whose assembled
-    Polygon/MultiPolygon fails OGC validity (e.g. nested multipart shells, a
-    hole that crosses its assigned exterior) are reported through the gating
-    modes in UNUSABLE_GEOMETRY_MODES: the caller retains the raw rings, gates
-    the candidate geometry to null and counts the failure mode instead of
-    silently coercing an invented polygon. The assembled geometry is validated
-    before the WKB is returned, so per-ring checks alone can never seal an
-    invalid multipart assembly.
-    """
-    if not isinstance(geometry, dict) or set(geometry) != {"hasZ", "rings"} \
-            or geometry.get("hasZ") is not True:
-        raise NhdCatchmentError("unexpected_source_geometry_members")
-    rings = geometry["rings"]
-    if not isinstance(rings, list) or not rings:
-        raise NhdCatchmentError("source_polygon_geometry_invalid")
-    for ring in rings:
-        for vertex in ring:
-            if not isinstance(vertex, list) or len(vertex) != 3:
-                raise NhdCatchmentError("source_polygon_ordinate_contract_drift")
-            x, y, z = vertex
-            if not (type(x) in (int, float) and type(y) in (int, float) and type(z) in (int, float)):
-                raise NhdCatchmentError("source_polygon_ordinate_not_numeric")
-            if not all(value == value and -1e308 < value < 1e308 for value in (x, y, z)):
-                raise NhdCatchmentError("source_polygon_ordinate_not_finite")
-    exteriors, holes = [], []
-    for ring in rings:
-        area = _signed_area(ring)
-        if area == 0:
-            raise NhdCatchmentError("source_polygon_ring_degenerate")
-        (exteriors if area < 0 else holes).append(ring)
-    if not exteriors:
-        raise NhdCatchmentError("source_polygon_exterior_missing")
-    shells = [(Polygon(ring), _signed_area(ring), index) for index, ring in enumerate(exteriors)]
-    for shell, _area, _index in shells:
-        if not shell.is_valid:
-            raise NhdCatchmentError("source_polygon_ring_self_intersecting")
-    assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
-    for hole in holes:
-        polygon = Polygon(hole)
-        candidates = [(abs(area), index) for shell, area, index in shells
-                      if shell.contains(polygon.representative_point())]
-        if not candidates:
-            raise NhdCatchmentError("source_polygon_hole_unassigned")
-        assigned[min(candidates)[1]].append(hole)
-    polygons = []
-    for _shell, _area, index in sorted(shells, key=lambda item: item[2]):
-        polygons.append(Polygon(exteriors[index], assigned[index]))
-    assembled = MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]
-    if not assembled.is_valid:
-        raise NhdCatchmentError("source_polygon_assembly_invalid")
-    return assembled.wkb
-
-
 def _validate_feature(feature: object, expected_names: tuple[str, ...],
                       expected_objectid: int) -> tuple[int, list]:
     """Validate one feature's attributes and geometry structure.
@@ -422,7 +347,7 @@ def _validate_feature(feature: object, expected_names: tuple[str, ...],
     Returns the OBJECTID and the verbatim rings (or None when the feature has
     no geometry). Ring ordinate values are validated here so that every
     retained record digest is computed from a structurally sound feature; the
-    ring orientation/assembly gate runs in the caller.
+    shared GDAL conversion runs in the caller.
     """
     if not isinstance(feature, dict):
         raise NhdCatchmentError("source_feature_shape_changed")
@@ -464,60 +389,15 @@ def _validate_feature(feature: object, expected_names: tuple[str, ...],
 
 
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
-    """Parse and structurally validate one retained receipt without page bytes."""
-    try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise NhdCatchmentError("retained_capture_receipt_invalid:" + name) from exc
-    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
-            or receipt.get("url") != receipt.get("final_url")
-            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
-        raise NhdCatchmentError("retained_capture_receipt_invalid:" + name)
-    return receipt
+    return arcgis_layer.load_receipt(capture_root, name, NhdCatchmentError)
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise NhdCatchmentError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
+    return arcgis_layer.read_capture(capture_root, name, NhdCatchmentError)
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
-    path = capture_root / "capture_state.json"
-    if not path.exists():
-        return {"segments": [], "complete": False}
-    try:
-        state = json.loads(path.read_bytes())
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise NhdCatchmentError("capture_state_invalid") from exc
-    if not isinstance(state, dict) or not isinstance(state.get("segments"), list):
-        raise NhdCatchmentError("capture_state_invalid")
-    return state
-
-
-def _save_state(capture_root: Path, state: Mapping[str, object]) -> None:
-    tmp = capture_root / "capture_state.json.tmp"
-    tmp.write_bytes(_canonical(dict(state)) + b"\n")
-    tmp.replace(capture_root / "capture_state.json")
-
-
-def _witness_aside(capture_root: Path, name: str) -> None:
-    """Move a retained refused/torn response aside so the slot can be refetched.
-
-    A complete HTTP 200 error body carries a self-consistent receipt, so
-    without this witness step a resumed capture would replay the same refusal
-    forever; the witnessed evidence stays on disk next to the capture.
-    """
-    from time import time_ns
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = capture_root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
+    return arcgis_layer.load_state(capture_root, NhdCatchmentError)
 
 
 def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
@@ -528,51 +408,6 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
         except NhdCatchmentError:
             _witness_aside(capture_root, name)
     return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(document, dict) and "error" in document
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents
-    and incomplete transport captures (connection resets, truncation); failed
-    attempts are preserved on disk under ``<name>.attempt-NN`` evidence names
-    and never enter the capture roster. The final attempt's body is always
-    returned as captured, so a persistent producer failure surfaces to the
-    caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
 
 
 def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
@@ -656,7 +491,8 @@ def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
                 client, _segment_query(offset, count), capture_root, name,
                 attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
                 base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS)
+                else DOC_CAPTURE_BASE_DELAY_SECONDS,
+                max_bytes=MAX_BODY_BYTES)
         except ValueError as exc:
             # The producer cap can also manifest as truncation/connection reset
             # instead of a clean error document; a multi-record segment whose
@@ -786,6 +622,7 @@ def fetch_nhd_catchment_pages(capture_root: Path, *, client: httpx.Client | None
         "source_nan_geometry_count": extracted["nan_geometry_count"],
         "source_empty_geometry_count": extracted["empty_geometry_count"],
         "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
+        "source_ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
         "observed_bounds": extracted["observed_bounds"],
@@ -838,6 +675,8 @@ class _SegmentStream:
         self.nan_geometry = 0
         self.empty_geometry = 0
         self.unusable_geometry: dict[str, int] = {}
+        self.ogc_invalid_geometry: dict[str, int] = {}
+        self.ogc_invalid_geometry_sample_objectids: list[int] = []
         self.ring_count = 0
         self.vertex_count = 0
         self._xmin = self._ymin = self._xmax = self._ymax = None
@@ -895,17 +734,16 @@ class _SegmentStream:
                             self._ymax = y
                 self.ring_count += len(rings)
                 self.vertex_count += sum(len(ring) for ring in rings)
-                try:
-                    wkb = _polygon_wkb(feature["geometry"])
-                except NhdCatchmentError as exc:
-                    if exc.code not in UNUSABLE_GEOMETRY_MODES:
-                        raise
-                    self.unusable_geometry[exc.code] = \
-                        self.unusable_geometry.get(exc.code, 0) + 1
-                    geometries.append(None)
-                else:
-                    self.geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
-                    geometries.append(wkb)
+                # Conversion failures refuse the capture; OGC invalidity is a
+                # compatibility diagnostic and never substitutes null geometry.
+                wkb = to_wkb(feature["geometry"], GEOMETRY_TYPE, has_z=True, has_m=False)
+                reason = is_valid_reason(from_wkb(wkb))
+                if reason != "Valid Geometry":
+                    self.ogc_invalid_geometry[reason] = self.ogc_invalid_geometry.get(reason, 0) + 1
+                    if len(self.ogc_invalid_geometry_sample_objectids) < 20:
+                        self.ogc_invalid_geometry_sample_objectids.append(objectid)
+                self.geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
+                geometries.append(wkb)
             for name in self.expected_names:
                 columns[name].append(attrs[name])
         if self._writer is not None:
@@ -934,6 +772,8 @@ class _SegmentStream:
                 "nan_geometry_count": self.nan_geometry,
                 "empty_geometry_count": self.empty_geometry,
                 "unusable_geometry_counts": dict(sorted(self.unusable_geometry.items())),
+                "ogc_invalid_geometry_counts": dict(sorted(self.ogc_invalid_geometry.items())),
+                "ogc_invalid_geometry_sample_objectids": self.ogc_invalid_geometry_sample_objectids,
                 "ring_count": self.ring_count, "vertex_count": self.vertex_count,
                 "max_objectid": self.last_objectid,
                 "observed_bounds": None if self._xmin is None else
@@ -1032,13 +872,16 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "nan_geometry_count": summary["nan_geometry_count"],
             "empty_geometry_count": summary["empty_geometry_count"],
             "unusable_geometry_counts": summary["unusable_geometry_counts"],
+            "ogc_invalid_geometry_counts": summary["ogc_invalid_geometry_counts"],
+            "ogc_invalid_geometry_sample_objectids": summary["ogc_invalid_geometry_sample_objectids"],
             "ring_count": summary["ring_count"], "vertex_count": summary["vertex_count"],
             "max_objectid": summary["max_objectid"],
             "observed_bounds": summary["observed_bounds"]}
 
 
 def _code_identity() -> dict[str, object]:
-    return processing_identity(Path(__file__).parents[3])
+    return {**processing_identity(Path(__file__).parents[3]),
+            "gdal": pyogrio.__gdal_version_string__, "pyogrio": pyogrio.__version__}
 
 
 def _default_client() -> httpx.Client:
@@ -1064,23 +907,6 @@ def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
     return {name: _load_receipt(capture_root, name) for name in names}
 
 
-class _RetainedCaptureViews(Mapping):
-    """Lazily materialize one capture view per access so quarantine stays bounded."""
-
-    def __init__(self, capture_root: Path, names: Iterable[str]):
-        self._capture_root = Path(capture_root)
-        self._names = tuple(names)
-
-    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
-        return _read_capture(self._capture_root, name)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._names)
-
-    def __len__(self) -> int:
-        return len(self._names)
-
-
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_segments: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
@@ -1094,7 +920,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
-             "source_schema_sha256": extracted["schema_sha"]},
+             "source_schema_sha256": extracted["schema_sha"],
+             "ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"]},
             parquet_body)
     audit = {
         "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
@@ -1107,6 +934,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "nan_geometry_count": extracted["nan_geometry_count"],
         "empty_geometry_count": extracted["empty_geometry_count"],
         "unusable_geometry_counts": extracted["unusable_geometry_counts"],
+        "ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
+        "ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_geometry_sample_objectids"],
         "unique_source_id_count": EXPECTED_COUNT,
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
@@ -1199,19 +1028,12 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                                           "base-36 identifier, documented as not "
                                                           "persistent); no substitute IDs, casts or "
                                                           "joins",
-                                            "geometry": "Source EPSG:4326 polygon rings with Z "
-                                                        "retained as WKB without projection or "
-                                                        "repair, read with the producer's Esri "
-                                                        "JSON semantics (clockwise exteriors, "
-                                                        "counterclockwise holes, each hole joined "
-                                                        "to its smallest containing exterior, "
-                                                        "producer ring and vertex order kept); "
-                                                        "rows whose rings cannot form a valid "
-                                                        "OGC polygon, or whose assembled "
-                                                        "Polygon/MultiPolygon fails OGC "
-                                                        "validity, are gated to null candidate "
-                                                        "geometry and counted by failure mode "
-                                                        "instead of being coerced",
+                                            "geometry": "Served EPSG:4326 polygon coordinates with Z "
+                                                        "retained through GDAL ESRIJSON as WKB. "
+                                                        "No projection, repair or coordinate loss. "
+                                                        "Ring start/winding can differ. OGC-invalid "
+                                                        "geometry is retained and counted by reason; "
+                                                        "conversion fidelity failures refuse capture.",
                                             "candidate_status": "unapproved; publication blocked "
                                                                 "pending succession, freshness, "
                                                                 "schema/ID contract, coverage, "
@@ -1287,6 +1109,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             "source_nan_geometry_count": extracted["nan_geometry_count"],
             "source_empty_geometry_count": extracted["empty_geometry_count"],
             "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
+            "source_ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
             "source_id_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
@@ -1323,6 +1146,7 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
             "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
             "source_id_sha256": audit.get("source_ids_sha256", ""),
             "source_schema_sha256": audit["source_schema_sha256"],
+            "source_ogc_invalid_geometry_counts": audit["ogc_invalid_geometry_counts"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_release_accepted": False, "source_freshness_accepted": False,
             "schema_contract_accepted": False, "id_contract_accepted": False,
@@ -1345,10 +1169,8 @@ def capture_nhd_catchment(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise NhdCatchmentError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory \
-        else Path("/data/workspace/scratch/nhd-catchment/captures")
     capture_root = Path(capture_directory).absolute() if capture_directory \
-        else (attempt_root / f"{version}-{uuid4().hex}").absolute()
+        else (default_capture_dir(DATASET_SLUG, "captures") / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise NhdCatchmentError("unsafe_capture_directory")
@@ -1375,7 +1197,8 @@ def capture_nhd_catchment(storage: StagingStorageResource, *, version: str,
             valid_names.append(name)
         if valid_names:
             quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          _RetainedCaptureViews(capture_root, valid_names),
+                                          _RetainedCaptureViews(capture_root, valid_names,
+                                                                NhdCatchmentError),
                                           getattr(exc, "code", type(exc).__name__)
                                           or type(exc).__name__)
         raise
@@ -1394,6 +1217,7 @@ def build_nhd_catchment_baseline(capture_root: str) -> dict[str, object]:
             "source_nan_geometry_count": extracted["nan_geometry_count"],
             "source_empty_geometry_count": extracted["empty_geometry_count"],
             "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
+            "source_ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
             "source_ring_count": extracted["ring_count"],
             "source_vertex_count": extracted["vertex_count"],
             "observed_bounds": extracted["observed_bounds"]}

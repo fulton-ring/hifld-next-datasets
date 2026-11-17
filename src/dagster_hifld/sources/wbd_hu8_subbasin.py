@@ -39,8 +39,15 @@ server-reprojected EPSG:4326 polygon rings are kept byte-exact in the raw
 evidence; the two pinned OGC-invalid ring self-intersections (OBJECTIDs 220
 and 897, valid under Esri semantics) are minimally repaired with
 ``make_valid(method=structure)`` in the candidate only, under an explicit
-unaccepted repair gate. Publication stays blocked pending succession,
-freshness, schema/ID contract, coverage, rights and release decisions.
+  unaccepted repair gate. Publication stays blocked pending succession,
+  freshness, schema/ID contract, coverage, rights and release decisions.
+
+The offset-segment checkpoint acquisition here (resumable
+``capture_state.json`` segment tiling, cross-checked attributes-only
+extraction, refreshed closing brackets) is a deliberately distinct policy from
+the keyset-window layers of the same service; it shares only the byte-equivalent
+primitives in ``dagster_hifld.sources.wbd_hu_family`` (query URL building,
+producer error detection, per-field value validation).
 """
 from __future__ import annotations
 
@@ -53,7 +60,7 @@ from array import array
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlsplit
 
 import httpx
 import pyarrow as pa
@@ -67,14 +74,18 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version,
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.levee_areas_usace_ienc import _esri_polygon_wkb
+from dagster_hifld.sources.arcgis_layer import esri_polygon_wkb as _esri_polygon_wkb
+from dagster_hifld.sources.wbd_hu_family import (
+    producer_error_document as _producer_error_envelope,
+    query_url as _layer_query_url, validate_esri_value as _validate_field_value,
+)
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "wbd"
@@ -195,7 +206,7 @@ class WbdHu8SubbasinError(ValueError):
 
 
 def _query(params: dict[str, object]) -> str:
-    return LAYER_URL + "/query?" + urlencode(params)
+    return _layer_query_url(LAYER_URL, params)
 
 
 def _segment_name(offset: int, count: int) -> str:
@@ -257,13 +268,7 @@ def _budget_ok(capture_root: Path) -> bool:
 
 
 def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(document, dict) and "error" in document
+    return _producer_error_envelope(body, max_bytes=65536, require_int_code=False)
 
 
 def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
@@ -430,30 +435,10 @@ def _validate_layer(document: object) -> tuple[list[dict[str, object]], str]:
 
 
 def _validate_value(field: dict[str, object], value: object) -> None:
-    if value is None:
-        return
-    kind = field["type"]
-    if kind == "esriFieldTypeOID":
-        if type(value) is not int or value <= 0:
-            raise WbdHu8SubbasinError("source_oid_value_type_drift")
-        return
-    if kind in ("esriFieldTypeString", "esriFieldTypeGlobalID"):
-        if not isinstance(value, str):
-            raise WbdHu8SubbasinError("source_string_value_type_drift:" + str(field["name"]))
-        if len(value) > field.get("length", 10**9):
-            raise WbdHu8SubbasinError("source_string_value_width_drift:" + str(field["name"]))
-        return
-    if kind == "esriFieldTypeDate":
-        if type(value) is not int:
-            raise WbdHu8SubbasinError("source_date_value_type_drift:" + str(field["name"]))
-        return
-    if kind == "esriFieldTypeDouble":
-        if (type(value) not in (int, float) or not math.isfinite(float(value))):
-            raise WbdHu8SubbasinError("source_double_value_type_drift:" + str(field["name"]))
-        return
-    if kind == "esriFieldTypeGeometry":
-        return
-    raise WbdHu8SubbasinError("source_unexpected_field_type:" + str(field["name"]))
+    try:
+        _validate_field_value(field, value, check_width=True)
+    except ValueError as exc:
+        raise WbdHu8SubbasinError(str(exc)) from exc
 
 
 def _validate_geometry(geometry: object, bounds: tuple[float, float, float, float]) \
@@ -1357,9 +1342,10 @@ def capture_wbd_hu8_subbasin(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise WbdHu8SubbasinError("disk_floor_before_acquisition")
-    attempt_root = (Path(capture_directory) if capture_directory else
-                    Path("/data/workspace/scratch/wbd-hu8-subbasin/captures"))
-    capture_root = attempt_root.absolute()
+    # Retained capture layout: keep the historical wbd-hu8-subbasin parent so
+    # an interrupted acquisition resumes its capture_state.json after rollout.
+    capture_root = Path(capture_directory).absolute() if capture_directory \
+        else default_capture_dir("wbd-hu8-subbasin", "captures").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent
                                          in (capture_root, *capture_root.parents)):
         raise WbdHu8SubbasinError("unsafe_capture_directory")

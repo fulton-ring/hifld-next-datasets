@@ -5,7 +5,7 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.fema_regions import SLUG,stage_fema_regions
 
 class FemaRegionsConfig(Config):
-    capture_directory:str
+    capture_directory:str=""
     refresh_official:bool=False
 
 @asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='federal_emergency_management_agency',compute_kind='local',
@@ -23,4 +23,4 @@ def fema_regions_full_quality(fema_regions_official:dict):
 fema_regions_draft_job=define_asset_job('fema_regions_draft_refresh',selection=AssetSelection.assets(fema_regions_official))
 fema_regions_draft_schedule=ScheduleDefinition(name='fema_regions_draft_refresh_schedule',job=fema_regions_draft_job,
     cron_schedule='0 10 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED,
-    run_config={'ops':{fema_regions_official.op.name:{'config':{'capture_directory':{'env':'HIFLD_FEMA_REGIONS_CAPTURE_DIR'},'refresh_official':True}}}})
+    run_config={'ops':{fema_regions_official.op.name:{'config':{'refresh_official':True}}}})

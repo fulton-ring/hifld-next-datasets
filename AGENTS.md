@@ -116,22 +116,32 @@ not here.
   approval flag `False`. Merging code never authorizes publication. Release
   approval pins the full staged inventory and happens outside PRs.
 - Reuse the shared helpers instead of copying them from another adapter:
-  `http_capture.capture_http_response`, `sources/epa_frs_common.py` (despite its
-  name, the generic capture, candidate, seal and quarantine primitives),
+  `http_capture.capture_http_response`, `sources/capture_common.py` (generic
+  capture, candidate, seal and quarantine primitives), `sources/arcgis_layer.py`
+  (ArcGIS layer capture, replay, retry and geometry encoding),
   `sources/esri_common.py`, `sources/esri_geometry.py`, `esri_pbf.py`,
   `sources/arcgis_filegdb.py`, `sources/census_tiger_common.py`,
-  `sources/nfhl_common.py`, `construction_state.py`,
+  `sources/nfhl/`, `sources/epa_facilities_common.py`,
+  `sources/epa_icis_wastewater_common.py`,
+  `sources/electric_retail_service_territories_common.py`,
+  `sources/national_inventory_of_dams_common.py`, `sources/wbd_hu_family.py`,
+  `construction_state.py`,
   `construction_provenance.py`, `provenance.py`, `validation.sha256_file` and
   `gdal.py`. If the logic you need exists only inside another dataset module,
   move it into a shared module in the same PR. Do not import it from that dataset
-  module, and do not copy it.
-- Families share infrastructure: FEMA NFHL MapServer layers (`nfhl_common`),
-  Census TIGER (`census_tiger_common`), USACE IENC, WBD hydrologic units, NHD/3DHP
-  and GNIS. Build a family member as a thin adapter over the shared module, and
-  extend the shared module when a member needs more.
-- ArcGIS layer capture: capture the service and layer documents, count and ID
-  roster before paging, page by exact ID slices, then capture the "after"
-  witnesses once the last page is done. Preserve failed attempts as evidence, keep
+  module, and do not copy it. `tests/test_sources_module_contract.py` enforces
+  this: a `sources/` dataset module may import only shared modules (or its own
+  `<stem>_spec` pinned manifest), and shared modules never import dataset
+  modules.
+- Families share infrastructure: FEMA NFHL MapServer layers (`sources/nfhl/`; a
+  new layer is one `LAYERS` entry), Census TIGER (`census_tiger_common`), USACE
+  IENC, WBD hydrologic units, NHD/3DHP and GNIS. Build a family member as a thin
+  adapter over the shared module, and extend the shared module when a member
+  needs more.
+- ArcGIS layer capture: capture the service and layer documents and the count
+  plus an ID roster or OBJECTID count/min/max statistics before paging, page by
+  exact ID slices or bisected OBJECTID windows (`sources/nfhl/capture.py`), then
+  capture the "after" witnesses once the last page is done. Preserve failed attempts as evidence, keep
   memory bounded (stream pages to disk, not to a population-wide dict), and
   enforce byte budgets during acquisition.
 - Preserve the source as served: the native ID column (including an `fid` that
@@ -141,8 +151,9 @@ not here.
   assembler, and report invalid source geometry rather than repairing it silently.
 - Every failure path that quarantines or writes evidence needs a test that
   exercises it. Untested `except` branches have shipped with `NameError`.
-- Scratch and capture directories come from asset config (`capture_directory`).
-  Do not add new hard-coded `/data/workspace` defaults or per-dataset env vars.
+- Scratch and capture directories come from asset config (`capture_directory`);
+  the shared fallback root is `HIFLD_CAPTURE_ROOT` (`resources.default_capture_dir`).
+  Do not add hard-coded capture-root defaults or per-dataset env vars.
 - Keep module docstrings to source identity and behavior. Dated investigation
   narrative belongs in the PR and the issue.
 

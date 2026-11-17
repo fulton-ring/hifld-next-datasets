@@ -15,6 +15,8 @@ import pyarrow.parquet as pq
 from dagster import DefaultScheduleStatus, Definitions, build_schedule_context, validate_run_config
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import campus_preservation as s
+
+CAPTURES = Path(__file__).resolve().parents[1] / 'docs/dataset-sources' / s.SLUG / 'evidence/captures'
 from dagster_hifld.assets.campus_preservation import (ornl_campus_historical_integrity_schedule,
     ornl_campus_historical_preservation, ornl_campus_historical_reconstruction_job, campus_historical_full_quality)
 
@@ -36,14 +38,14 @@ class CampusPackagedIdentityTests(unittest.TestCase):
             self.assertTrue(identity['code_commit'].startswith('packaged-sha256:'))
 
 
-@unittest.skipUnless(s.CAPTURES.is_dir(), 'full capture bodies are supplied outside the source tree')
+@unittest.skipUnless(CAPTURES.is_dir(), 'full capture bodies are supplied outside the source tree')
 class CampusPreservationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix='campus-real-healthy-')
         cls.base = Path(cls.temporary.name)/'staging'
         storage = StagingStorageResource(local_dir=str(cls.base))
-        cls.output = s.stage_campus_preservation(storage,s.CAPTURES)
+        cls.output = s.stage_campus_preservation(storage,CAPTURES)
         cls.prefix = s.SLUG+'/'+s.SLUG+'/'+cls.output['version']
 
     @classmethod
@@ -76,17 +78,17 @@ class CampusPreservationTests(unittest.TestCase):
     def test_publication_and_alias_roots_rejected_before_source_reads(self):
         with tempfile.TemporaryDirectory() as root,patch.object(Path,'read_bytes',side_effect=AssertionError('source read forbidden')):
             with self.assertRaisesRegex(ValueError,'explicit_unprefixed_local_staging_required'):
-                s.stage_campus_preservation(PublishedStorageResource(local_dir=root),s.CAPTURES)
+                s.stage_campus_preservation(PublishedStorageResource(local_dir=root),CAPTURES)
         with tempfile.TemporaryDirectory() as root:
             root=Path(root);(root/'actual').mkdir();(root/'alias').symlink_to(root/'actual',target_is_directory=True)
             for path in [root/'alias',root/'alias'/'child']:
                 with self.subTest(path=path),patch.object(Path,'read_bytes',side_effect=AssertionError('source read forbidden')),self.assertRaises(OSError):
-                    s.stage_campus_preservation(StagingStorageResource(local_dir=str(path)),s.CAPTURES)
+                    s.stage_campus_preservation(StagingStorageResource(local_dir=str(path)),CAPTURES)
             self.assertEqual(list((root/'actual').iterdir()),[])
 
     def test_bad_receipt_keeps_exact_untrusted_bytes_and_no_candidate(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root=Path(temporary);captures=root/'captures';shutil.copytree(s.CAPTURES,captures)
+            root=Path(temporary);captures=root/'captures';shutil.copytree(CAPTURES,captures)
             bad=b'{"status":200,"status":403,"literal":"actual bad bytes"}'
             (captures/'pasda-original-zip.receipt.json').write_bytes(bad)
             storage=StagingStorageResource(local_dir=str(root/'staging'))
@@ -97,7 +99,7 @@ class CampusPreservationTests(unittest.TestCase):
 
     def test_changed_complete_zip_quarantined_before_decode(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root=Path(temporary);captures=root/'captures';shutil.copytree(s.CAPTURES,captures)
+            root=Path(temporary);captures=root/'captures';shutil.copytree(CAPTURES,captures)
             path=captures/'pasda-original-zip.body';bad=path.read_bytes()+b'changed archive';path.write_bytes(bad)
             receipt=s.strict_json((captures/'pasda-original-zip.receipt.json').read_bytes());receipt.update(bytes=len(bad),sha256=s.digest(bad))
             (captures/'pasda-original-zip.receipt.json').write_bytes(s.encode(receipt))
@@ -112,7 +114,7 @@ class CampusPreservationTests(unittest.TestCase):
             with sqlite3.connect(gp) as db:db.execute('UPDATE gpkg_contents SET srs_id=4326')
             ready=s.strict_json((path/s.READY).read_bytes());ready['objects']['geopackage/'+s.SLUG+'.gpkg']={'sha256':s.sha256_file(gp),'bytes':gp.stat().st_size};(path/s.READY).write_bytes(s.encode(ready))
             bad=gp.read_bytes()
-            with self.assertRaisesRegex(ValueError,'fresh_native_complete_GPKG_container_disagrees'):s.stage_campus_preservation(storage,s.CAPTURES)
+            with self.assertRaisesRegex(ValueError,'fresh_native_complete_GPKG_container_disagrees'):s.stage_campus_preservation(storage,CAPTURES)
             self.assertFalse(path.exists())
             rejected=list(Path(storage.local_dir).glob('_quarantine/'+s.SLUG+'/invalid-candidate-*'))
             self.assertEqual(len(rejected),1);self.assertEqual((rejected[0]/'geopackage'/gp.name).read_bytes(),bad)
@@ -122,13 +124,13 @@ class CampusPreservationTests(unittest.TestCase):
             storage,path=self.clone(temporary);name='metadata/baseline_comparison.json';report=s.strict_json((path/name).read_bytes())
             report.update(approved=True,status='pass',acceptance='approved');(path/name).write_bytes(s.encode(report))
             ready=s.strict_json((path/s.READY).read_bytes());ready['objects'][name]={'sha256':s.sha256_file(path/name),'bytes':(path/name).stat().st_size};(path/s.READY).write_bytes(s.encode(ready))
-            with self.assertRaisesRegex(ValueError,'source_owned_full_bytes_drift'):s.stage_campus_preservation(storage,s.CAPTURES)
+            with self.assertRaisesRegex(ValueError,'source_owned_full_bytes_drift'):s.stage_campus_preservation(storage,CAPTURES)
             self.assertFalse(path.exists())
 
     def test_missing_ready_preserves_whole_old_candidate_outside_discovery(self):
         with tempfile.TemporaryDirectory() as temporary:
             storage,path=self.clone(temporary);(path/s.READY).unlink();gp=(path/'geopackage'/f'{s.SLUG}.gpkg').read_bytes()
-            with self.assertRaisesRegex(ValueError,'invalid_candidate_preserved_outside_discovery'):s.stage_campus_preservation(storage,s.CAPTURES)
+            with self.assertRaisesRegex(ValueError,'invalid_candidate_preserved_outside_discovery'):s.stage_campus_preservation(storage,CAPTURES)
             self.assertFalse(path.exists())
             rejected=next(Path(storage.local_dir).glob('_quarantine/'+s.SLUG+'/invalid-candidate-*'))
             self.assertEqual((rejected/'geopackage'/f'{s.SLUG}.gpkg').read_bytes(),gp)
@@ -139,7 +141,7 @@ class CampusPreservationTests(unittest.TestCase):
                 storage=StagingStorageResource(local_dir=temporary)
                 prior=Path(temporary)/s.SLUG/s.SLUG/'v9.9.9/geopackage/accepted-fixture.gpkg';prior.parent.mkdir(parents=True);prior.write_bytes(b'isolated accepted fixture, not real acceptance')
                 with patch.object(s,'write_geopackage',side_effect=failure),self.assertRaises(type(failure)):
-                    s.stage_campus_preservation(storage,s.CAPTURES)
+                    s.stage_campus_preservation(storage,CAPTURES)
                 self.assertFalse((Path(temporary)/'_construction-state').exists())
                 self.assertFalse(list((Path(temporary)/s.SLUG/s.SLUG).glob('v0*')))
                 self.assertEqual(prior.read_bytes(),b'isolated accepted fixture, not real acceptance')
@@ -152,10 +154,10 @@ class CampusPreservationTests(unittest.TestCase):
             original=state.read_bytes();state.unlink()
             for retry in [1,2]:
                 with self.subTest(retry=retry),self.assertRaisesRegex(ValueError,'construction_missing_original_state'):
-                    s.stage_campus_preservation(storage,s.CAPTURES)
+                    s.stage_campus_preservation(storage,CAPTURES)
                 self.assertFalse(state.exists());self.assertFalse(path.exists())
             state.write_bytes(original)
-            restored=s.stage_campus_preservation(storage,s.CAPTURES)
+            restored=s.stage_campus_preservation(storage,CAPTURES)
             self.assertFalse(restored['reused']);self.assertEqual(state.read_bytes(),original)
             self.assertEqual((path/'geoparquet'/f'{s.SLUG}.parquet').read_bytes(),(self.base/self.prefix/'geoparquet'/f'{s.SLUG}.parquet').read_bytes())
 
@@ -167,7 +169,7 @@ class CampusPreservationTests(unittest.TestCase):
             evidence=str(state.relative_to(Path(storage.local_dir)))+'.evidence/'+s.digest(body)+'.json';(Path(storage.local_dir)/evidence).write_bytes(body)
             marker={'schema_version':1,'version':self.output['version'],'processing_fingerprint':value['processing_fingerprint'],'original_bundle_sha256':s.digest(body),'original_bundle_evidence_key':evidence}
             state.with_name(state.name+'.first-construction.json').write_bytes(json.dumps(marker,sort_keys=True,separators=(',',':')).encode())
-            with self.assertRaisesRegex(ValueError,'construction_'):s.stage_campus_preservation(storage,s.CAPTURES)
+            with self.assertRaisesRegex(ValueError,'construction_'):s.stage_campus_preservation(storage,CAPTURES)
             self.assertFalse(path.exists())
 
     def test_observed_total_witness_loss_blocks_rebind_with_later_receipts(self):
@@ -177,11 +179,11 @@ class CampusPreservationTests(unittest.TestCase):
             trusted=Path(temporary)/'trusted-originals';shutil.copytree(outside,trusted)
             shutil.rmtree(outside)
             with self.assertRaisesRegex(ValueError,'construction_missing_original_state'):
-                s.stage_campus_preservation(storage,s.CAPTURES)
+                s.stage_campus_preservation(storage,CAPTURES)
             self.assertFalse(path.exists())
             incident=base/'_construction-incidents'/s.SLUG/self.output['version']/'incident.json'
             first_incident=incident.read_bytes()
-            captures=Path(temporary)/'later-simulated-receipts';shutil.copytree(s.CAPTURES,captures)
+            captures=Path(temporary)/'later-simulated-receipts';shutil.copytree(CAPTURES,captures)
             for name in s.INPUTS:
                 receipt=s.strict_json((captures/(name+'.receipt.json')).read_bytes())
                 receipt['started_at']='2026-10-20T01:02:03+00:00';receipt['observed_at']='2026-10-20T01:02:04+00:00'
@@ -199,7 +201,7 @@ class CampusPreservationTests(unittest.TestCase):
     def test_oversize_capture_rejected_before_open_and_original_retained(self):
         for suffix,limit in [('.body',16_000_000),('.receipt.json',128_000)]:
             with self.subTest(suffix=suffix),tempfile.TemporaryDirectory() as temporary:
-                root=Path(temporary);captures=root/'captures';shutil.copytree(s.CAPTURES,captures)
+                root=Path(temporary);captures=root/'captures';shutil.copytree(CAPTURES,captures)
                 name=next(iter(s.INPUTS))+suffix;path=captures/name
                 with path.open('wb') as stream: stream.truncate(limit+1)
                 storage=StagingStorageResource(local_dir=str(root/'staging'));real_open=s.os.open
@@ -221,30 +223,29 @@ class CampusPreservationTests(unittest.TestCase):
                 if key.startswith('_construction-incidents/'): raise OSError('actual incident write failure')
                 return real_immutable(resource,key,body)
             with patch.object(s,'immutable',side_effect=fail_incident),self.assertRaisesRegex(ValueError,'trust_loss_journal_failed_candidate_retained_untrusted'):
-                s.stage_campus_preservation(storage,s.CAPTURES)
+                s.stage_campus_preservation(storage,CAPTURES)
             self.assertTrue(path.exists())
             incident=base/'_construction-incidents'/s.SLUG/self.output['version']
             self.assertTrue(incident.is_dir());self.assertFalse((incident/'incident.json').exists())
             for retry in [1,2]:
                 with self.subTest(retry=retry),self.assertRaisesRegex(ValueError,'incomplete_observed_trust_loss_journal'):
-                    s.stage_campus_preservation(storage,s.CAPTURES)
+                    s.stage_campus_preservation(storage,CAPTURES)
                 self.assertTrue(path.exists());self.assertFalse((base/'_construction-state'/s.SLUG).exists())
 
     def test_relative_local_root_constructs_and_reuses_complete_real_source(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temporary:
             absolute=Path(temporary)/'staging'
             storage=StagingStorageResource(local_dir=os.path.relpath(absolute,Path.cwd()))
-            built=s.stage_campus_preservation(storage,s.CAPTURES)
-            reused=s.stage_campus_preservation(storage,s.CAPTURES)
+            built=s.stage_campus_preservation(storage,CAPTURES)
+            reused=s.stage_campus_preservation(storage,CAPTURES)
             self.assertEqual(built['feature_count'],5898);self.assertFalse(built['reused'])
             self.assertEqual(reused['version'],built['version']);self.assertTrue(reused['reused'])
 
     def test_stopped_schedule_config_matches_actual_asset_op_name(self):
         defs=Definitions(assets=[ornl_campus_historical_preservation],asset_checks=[campus_historical_full_quality],
             resources={'staging_storage':StagingStorageResource(local_dir=str(self.base))},jobs=[ornl_campus_historical_reconstruction_job])
-        with patch.dict(os.environ,{'HIFLD_CAMPUS_CAPTURE_DIR':str(s.CAPTURES)}):
-            validate_run_config(defs.resolve_job_def(ornl_campus_historical_reconstruction_job.name),
-                                ornl_campus_historical_integrity_schedule.evaluate_tick(build_schedule_context()).run_requests[0].run_config)
+        validate_run_config(defs.resolve_job_def(ornl_campus_historical_reconstruction_job.name),
+                            ornl_campus_historical_integrity_schedule.evaluate_tick(build_schedule_context()).run_requests[0].run_config)
 
 
 if __name__=='__main__':unittest.main()

@@ -18,7 +18,7 @@ from dagster_hifld.assets.nhd_hydrolocation_sink_spring_waterbody_outlet import 
 )
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import nhd_hydrolocation_sink_spring_waterbody_outlet as src
 
 FIXTURE_COUNT = 7
@@ -208,7 +208,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
                      return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                    "files": [], "working_tree_status": "unknown"}),
         patch.object(src, "validate_construction_code_identity"),
-        patch.object(epa_frs_common, "validate_construction_code_identity"),
+        patch.object(capture_common, "validate_construction_code_identity"),
     ]
     for context in contexts:
         context.start()
@@ -563,6 +563,193 @@ class NhdHydrolocationSinkSpringWaterbodyOutletTests(unittest.TestCase):
                 self.assertTrue(quarantined)
                 failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
                 self.assertTrue(failure["reason_code"].startswith("source_id_roster_drift"))
+
+
+def _segment_failures_transport(inner: httpx.MockTransport, *, fail_first: int | None):
+    """Fail the first ``fail_first`` (or every) segment-page request with a reset.
+
+    Returns the wrapped transport and the count of segment-page requests seen,
+    so a test can assert the shared retry helper's bounded attempt budget.
+    """
+    seen = {"segment_requests": 0}
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        query = parse_qs(urlparse(str(request.url)).query)
+        if query.get("resultOffset") is not None:
+            seen["segment_requests"] += 1
+            if fail_first is None or seen["segment_requests"] <= fail_first:
+                raise httpx.ConnectError("connection reset by peer")
+        return inner.handler(request)
+
+    return httpx.MockTransport(respond), seen
+
+
+class NhdHydrolocationSinkSpringWaterbodyOutletRetainedStateFailureTests(unittest.TestCase):
+    """Failure paths of the retained-capture primitives this adapter binds.
+
+    The checkpoint/receipt/retry helpers live in
+    ``dagster_hifld.sources.arcgis_layer``; every case here drives them through
+    this adapter's own error type over retained fixtures: corrupt checkpoint
+    JSON, missing and changed segment receipts, incomplete transport captures
+    retried by the shared helper, that helper's bounded retry budget, and a
+    foreign checkpoint whose coverage claims are never trusted.
+    """
+
+    def _first_capture(self, root: Path, capture_root: Path, schema_sha: str,
+                       transport: httpx.MockTransport, version: str) -> None:
+        with fixture_mode(schema_sha, transport):
+            result = src.capture_nhd_hydrolocation_sink_spring_waterbody_outlet(
+                _staging(root), version=version, capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+
+    def _row_ids(self, capture_root: Path) -> list[int]:
+        table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+        return table.column("OBJECTID").to_pylist()
+
+    def test_corrupt_checkpoint_json_refuses_and_retains_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "state-run")
+            corrupted = b'{"segments": [ truncated'
+            (capture_root / "capture_state.json").write_bytes(corrupted)
+            before = sorted(path.name for path in capture_root.iterdir())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(src.NhdHydrolocationSinkSpringWaterbodyOutletError,
+                                            "capture_state_invalid"):
+                    src.fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(capture_root)
+            self.assertEqual((capture_root / "capture_state.json").read_bytes(), corrupted)
+            self.assertEqual(sorted(path.name for path in capture_root.iterdir()), before)
+
+    def test_missing_segment_receipt_refuses_read_and_refetch_restores_rows(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "receipt-run")
+            name = src._segment_name(0, 2)
+            (capture_root / f"{name}.receipt.json").unlink()
+            with self.assertRaisesRegex(src.NhdHydrolocationSinkSpringWaterbodyOutletError,
+                                        "retained_capture_receipt_invalid:" + name):
+                src._read_capture(capture_root, name)
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_hydrolocation_sink_spring_waterbody_outlet(
+                    _staging(root), version="receipt-run-2", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
+            self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.body")))
+            self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.wire")))
+            state = json.loads((capture_root / "capture_state.json").read_bytes())
+            self.assertIn(name, [entry["name"] for entry in state["segments"]])
+
+    def test_changed_segment_receipt_refuses_read_and_refetch_restores_rows(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "tamper-run")
+            name = src._segment_name(2, 2)
+            receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
+            receipt["sha256"] = "0" * 64
+            (capture_root / f"{name}.receipt.json").write_bytes(json.dumps(receipt).encode())
+            with self.assertRaisesRegex(src.NhdHydrolocationSinkSpringWaterbodyOutletError,
+                                        "retained_capture_receipt_invalid:" + name):
+                src._read_capture(capture_root, name)
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_hydrolocation_sink_spring_waterbody_outlet(
+                    _staging(root), version="tamper-run-2", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
+            self.assertEqual(len(self._row_ids(capture_root)), len(set(self._row_ids(capture_root))))
+            for suffix in ("body", "wire", "receipt.json"):
+                self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.{suffix}")))
+
+    def test_incomplete_transport_capture_is_retried_with_retained_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport, seen = _segment_failures_transport(make_responder(rows), fail_first=1)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_hydrolocation_sink_spring_waterbody_outlet(
+                    _staging(root), version="retry-run", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            name = src._segment_name(0, 2)
+            attempt_receipt = json.loads(
+                (capture_root / f"{name}.attempt-01.receipt.json").read_bytes())
+            self.assertFalse(attempt_receipt["complete_body"])
+            self.assertIsNone(attempt_receipt["status"])
+            self.assertEqual(attempt_receipt["error_code"], "request_error")
+            for suffix in ("body", "wire", "receipt.json"):
+                self.assertTrue((capture_root / f"{name}.attempt-01.{suffix}").exists())
+            self.assertFalse(list(capture_root.glob(f"{name}.attempt-02.*")))
+            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
+
+    def test_retry_budget_exhaustion_is_bounded_and_retains_failure_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport, seen = _segment_failures_transport(make_responder(rows), fail_first=None)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(src.NhdHydrolocationSinkSpringWaterbodyOutletError,
+                                            "source_capture_failed:ValueError"):
+                    src.fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(capture_root)
+            self.assertEqual(seen["segment_requests"],
+                             src.SEGMENT_PROBE_ATTEMPTS + src.DOC_CAPTURE_ATTEMPTS)
+            segment = src._segment_name(0, 2)
+            self.assertTrue((capture_root / f"{segment}.attempt-01.receipt.json").exists())
+            self.assertTrue((capture_root / f"{segment}.attempt-02.receipt.json").exists())
+            self.assertFalse(list(capture_root.glob(f"{segment}.attempt-03.*")))
+            single = src._segment_name(0, 1)
+            for attempt in range(1, src.DOC_CAPTURE_ATTEMPTS):
+                for suffix in ("body", "wire", "receipt.json"):
+                    self.assertTrue(
+                        (capture_root / f"{single}.attempt-{attempt:02d}.{suffix}").exists(),
+                        f"missing attempt evidence {single}.attempt-{attempt:02d}.{suffix}")
+            self.assertFalse(
+                list(capture_root.glob(f"{single}.attempt-{src.DOC_CAPTURE_ATTEMPTS:02d}.*")))
+            final = json.loads((capture_root / f"{single}.receipt.json").read_bytes())
+            self.assertFalse(final["complete_body"])
+            self.assertEqual(final["error_code"], "request_error")
+            self.assertFalse((capture_root / "capture_state.json").exists())
+            self.assertFalse((capture_root / "computed_baseline.json").exists())
+
+    def test_foreign_checkpoint_coverage_is_never_trusted(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "foreign-run")
+            foreign = {"segments": [{"name": "foreign_product_segment", "offset": 0,
+                                     "count": FIXTURE_COUNT, "features": FIXTURE_COUNT,
+                                     "captured_at": "1999-01-01T00:00:00+00:00",
+                                     "body_sha256": "0" * 64}], "complete": True}
+            (capture_root / "capture_state.json").write_bytes(json.dumps(foreign).encode())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(src.NhdHydrolocationSinkSpringWaterbodyOutletError,
+                                            "source_capture_roster_incomplete_or_unexpected"):
+                    src.capture_nhd_hydrolocation_sink_spring_waterbody_outlet(
+                        _staging(root), version="foreign-run-2",
+                        capture_directory=str(capture_root))
+            self.assertTrue(sorted(capture_root.glob("page_*.error-*.body")))
+            quarantined = sorted(
+                (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"],
+                             "source_capture_roster_incomplete_or_unexpected")
 
 
 if __name__ == "__main__":

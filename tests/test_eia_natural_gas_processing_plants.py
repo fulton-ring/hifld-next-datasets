@@ -12,7 +12,6 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pyarrow as pa
 import pyarrow.parquet as pq
 import pyogrio
 from dagster import DefaultScheduleStatus
@@ -132,21 +131,6 @@ def _fixture_pins(zip_body, members, layer=FIXTURE_LAYER, fields=FIXTURE_FIELDS,
                 BOUNDS=bounds, EXPECTED_ZIP_BYTES=len(zip_body),
                 EXPECTED_ZIP_SHA256=hashlib.sha256(zip_body).hexdigest(),
                 SOURCE_GIS_PUBLICATION=FIXTURE_PUBLICATION)
-
-
-def _fake_capture_get(bodies):
-    def fake(_client, url, capture_root, name, *, max_bytes):
-        body = bodies[name]
-        digest = hashlib.sha256(body).hexdigest()
-        receipt = {"method": "GET", "url": url, "final_url": url, "observed_at": "2026-11-10T00:00:00+00:00",
-                   "status": 200, "complete_body": True, "wire_bytes": len(body), "wire_sha256": digest,
-                   "bytes": len(body), "sha256": digest, "content_encoding": None,
-                   "content_length": str(len(body)), "error_code": None}
-        (capture_root / f"{name}.body").write_bytes(body)
-        (capture_root / f"{name}.wire").write_bytes(body)
-        (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-        return body, receipt
-    return fake
 
 
 class EmptyClient:
@@ -318,8 +302,7 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
             with patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 with self.assertRaises(OSError):
-                    source.capture_natural_gas_processing_plants(storage, version="vfixture",
-                                                                capture_directory=str(root / "captures"))
+                    source._capture(root / "captures", storage, "vfixture")
             quarantine = sorted(str(p) for p in (root / "staging" / "_quarantine").rglob("eia_zip.body"))
             self.assertTrue(quarantine, "quarantine must retain the partial body")
             self.assertTrue(list((root / "staging" / "_quarantine").rglob("failure.json")))
@@ -327,58 +310,69 @@ class EiaNaturalGasProcessingPlantsTests(unittest.TestCase):
             self.assertFalse(manifest["complete"])
             self.assertEqual(manifest["error_code"], "OSError")
 
-    def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
-        from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
-        from dagster_hifld.resources import StagingStorageResource
-        from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
+    def test_refresh_refuses_before_http_or_storage_effects(self):
+        from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 
-        zip_body, members = _fixture_zip()
-        pins = _fixture_pins(zip_body, members)
-        bodies = {"eia_zip": zip_body}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            staging = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+            published = PublishedStorageResource(use_local=True, local_dir=str(root / "published"))
+            staging.write(source.DATASET_SLUG, source.FILE_SLUG, "historical-v1",
+                          "geoparquet/retained.parquet", b"historical staging")
+            published.write(source.DATASET_SLUG, source.FILE_SLUG, "accepted-v1",
+                            "geoparquet/retained.parquet", b"accepted release")
+            captures = root / "captures"
+            captures.mkdir()
+            (captures / "capture_manifest.json").write_bytes(b"retained capture")
+            before = {str(p.relative_to(root)): (p.read_bytes(), p.stat().st_mtime_ns)
+                      for p in root.rglob("*") if p.is_file()}
+            with patch.object(source.httpx, "Client") as client, \
+                 patch.object(source, "_capture") as capture:
+                for capture_path in (captures, root / "new-captures"):
+                    with self.assertRaisesRegex(ValueError, "maintained_eia_processing_plants_source_unavailable"):
+                        source.capture_natural_gas_processing_plants(
+                            staging, version="vrefused", capture_directory=str(capture_path))
+                client.assert_not_called()
+                capture.assert_not_called()
+            after = {str(p.relative_to(root)): (p.read_bytes(), p.stat().st_mtime_ns)
+                     for p in root.rglob("*") if p.is_file()}
+            self.assertEqual(after, before)
+            self.assertFalse((root / "new-captures").exists())
+            missing_stage = root / "new-staging"
+            with self.assertRaisesRegex(ValueError, "maintained_eia_processing_plants_source_unavailable"):
+                source.capture_natural_gas_processing_plants(
+                    StagingStorageResource(use_local=True, local_dir=str(missing_stage)), version="vrefused")
+            self.assertFalse(missing_stage.exists())
 
-        with tempfile.TemporaryDirectory(prefix="ngpp-e2e-") as temporary:
-            root = Path(temporary)
-            storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
-            with patch.multiple(source, **pins), \
-                 patch.object(source, "capture_get", side_effect=_fake_capture_get(bodies)), \
-                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
-                candidate = source.capture_natural_gas_processing_plants(storage, version="vfixture",
-                                                                          capture_directory=str(root / "captures"))
-                self.assertEqual(candidate["feature_count"], 2)
-                self.assertFalse(candidate["reused"])
-                prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
-                state_key = f"_construction-state/{source.DATASET_SLUG}/{candidate['version']}.json"
-                self.assertTrue(storage.object_snapshot(state_key))
-                self.assertEqual(storage.read_key(f"{prefix}/raw/eia_zip.body"), zip_body)
-                sealed = storage.read_key(f"{prefix}/geoparquet/{source.FILE_SLUG}.parquet")
-                sealed_table = pq.read_table(pa.BufferReader(sealed))
-                self.assertEqual(sealed_table.column(source.IDENTIFIER_COLUMN).to_pylist(), [1, 2])
-                snapshot_source_metadata(storage, source.DATASET_SLUG, source.FILE_SLUG, candidate["version"])
-                manifest = load_resolved_source_manifest(storage, source.DATASET_SLUG, source.FILE_SLUG,
-                                                          candidate["version"]).metadata
-                self.assertEqual(manifest["date_issued"], FIXTURE_PUBLICATION)
-                self.assertEqual(manifest["inputs"][0]["release_date"], FIXTURE_PUBLICATION)
-                self.assertNotIn("release_date_unknown_reason", manifest["inputs"][0])
-                self.assertEqual(manifest["inputs"][0]["survey_period"],
-                                 "2017 Form EIA-757 (data as of 2017-12-31)")
-                self.assertEqual(manifest["inputs"][0]["survey_data_release"], "2019-01-31")
-                self.assertEqual(manifest["inputs"][0]["package_modified"], "2020-01-10")
-                summary = summarize_staged_catalog(storage, source.DATASET_SLUG, source.FILE_SLUG,
-                                                    candidate["version"], source.DATASET_SLUG,
-                                                    source_metadata=manifest)
-                self.assertEqual(summary.quality_manifest["feature_count"], 2)
-                self.assertEqual(summary.quality_manifest["null_geometry_count"], 0)
-                self.assertTrue(summary.quality_manifest["quality_check_passed"])
-                write_catalog_metadata(storage, dataset_slug=source.DATASET_SLUG, file_slug=source.FILE_SLUG,
-                                        version=candidate["version"], quality_dict=summary.quality_manifest,
-                                        dictionary_dict=summary.data_dictionary)
-                reused = source.capture_natural_gas_processing_plants(storage, version="vfixture",
-                                                                       capture_directory=str(root / "captures"))
-                self.assertTrue(reused["reused"])
-                self.assertEqual(reused["version"], candidate["version"])
-                # Replay verifies and reuses the sealed candidate bytes exactly,
-                # including the explicit identifier column.
-                self.assertEqual(storage.read_key(f"{prefix}/geoparquet/{source.FILE_SLUG}.parquet"), sealed)
+    def test_registered_ingest_refuses_without_touching_populated_storage(self):
+        from dagster_hifld.definitions import defs
+        from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            staging = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+            published = PublishedStorageResource(use_local=True, local_dir=str(root / "published"))
+            for storage in (staging, published):
+                storage.write(source.DATASET_SLUG, source.FILE_SLUG, "retained-v1",
+                              "geoparquet/retained.parquet", b"retained")
+            before = {str(p.relative_to(root)): (p.read_bytes(), p.stat().st_mtime_ns)
+                      for p in root.rglob("*") if p.is_file()}
+            with patch.object(source.httpx, "Client") as client, \
+                 patch.object(source, "_capture") as capture:
+                job = defs.resolve_job_def("eia_natural_gas_processing_plants_draft_refresh")
+                result = job.execute_in_process(
+                    resources={"staging_storage": staging, "published_storage": published},
+                    raise_on_error=False)
+                self.assertFalse(result.success)
+                failures = [e for e in result.all_events if e.is_step_failure]
+                self.assertTrue(failures)
+                self.assertIn("maintained_eia_processing_plants_source_unavailable",
+                              failures[0].event_specific_data.error.to_string())
+                client.assert_not_called()
+                capture.assert_not_called()
+            after = {str(p.relative_to(root)): (p.read_bytes(), p.stat().st_mtime_ns)
+                     for p in root.rglob("*") if p.is_file()}
+            self.assertEqual(after, before)
 
     def test_missing_approval_preserves_populated_accepted_inventory(self):
         from dagster_hifld.assets.publish import _copy_version_files
