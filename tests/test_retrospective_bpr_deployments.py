@@ -298,7 +298,7 @@ class RetrospectiveBprSourceTests(unittest.TestCase):
         with self._patched_constants(), \
                 patch.object(source, "httpx", _TransportedHTTPX(httpx, transport)), \
                 patch.object(source, "validate_construction_code_identity"), \
-                patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
             return source.capture_retrospective_bpr_deployments(
                 storage, version="draft", capture_directory=str(Path(tmp) / "captures"))
 

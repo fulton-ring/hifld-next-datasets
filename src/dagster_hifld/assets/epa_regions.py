@@ -1,13 +1,16 @@
 """Complete EPA application-distributed generic region boundaries; unapproved draft."""
-import os
-from dagster import AssetKey, AssetSelection, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
+from dagster import AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.epa_regions import SLUG, stage_epa_regions
 
+
+class EpaRegionsConfig(Config):
+    capture_directory: str = ""
+
 @asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='epa',compute_kind='http',
        description='Complete10 generic EPA region boundaries from explicitly delegated official application; native FID/OBJECTID/types/3857 rings preserved; source/SEGS compatibility unapproved.')
-def epa_regions(context,staging_storage:StagingStorageResource):
-    result=stage_epa_regions(staging_storage,capture_dir=os.environ.get('HIFLD_EPA_REGIONS_CAPTURE_DIR'))
+def epa_regions(context,config:EpaRegionsConfig,staging_storage:StagingStorageResource):
+    result=stage_epa_regions(staging_storage,capture_dir=config.capture_directory or None)
     context.add_output_metadata(result)
     return result
 

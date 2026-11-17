@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import pyarrow.parquet as pq
@@ -86,17 +88,38 @@ def _pins(features, schema, geom):
                                           "xmax": -86.41197568433415, "ymax": 34.148463868949534})
 
 
+class _Attempt:
+    """Materialize fixture capture bodies as a streaming attempt directory."""
+
+    def __init__(self, captures):
+        self._temporary = tempfile.TemporaryDirectory(prefix="lomas-validate-")
+        self.capture_root = Path(self._temporary.name) / "attempt"
+        self.capture_root.mkdir()
+        self.receipts = {}
+        for name, (body, receipt) in captures.items():
+            (self.capture_root / f"{name}.body").write_bytes(body)
+            (self.capture_root / f"{name}.wire").write_bytes(body)
+            self.receipts[name] = receipt
+
+    def validate(self, parquet_name=None):
+        parquet_path = self.capture_root / parquet_name if parquet_name else None
+        return source._validate_and_extract(self.capture_root, self.receipts, parquet_path=parquet_path)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        self._temporary.cleanup()
+        return False
+
+
 class NfhlLomasValidationTests(unittest.TestCase):
     def test_native_fields_and_null_and_nan_geometry_preserved_in_parquet(self):
         fields, features, captures, schema, geom = _fixture()
-        with patch.multiple(source, **_pins(features, schema, geom)):
-            _, original_fields, extracted = source._validate_captures(captures)
-            body = source._parquet_bytes(original_fields, extracted["features"])
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix=".parquet") as stream:
-            stream.write(body)
-            stream.flush()
-            table = pq.read_table(stream.name)
+        with patch.multiple(source, **_pins(features, schema, geom)), _Attempt(captures) as attempt:
+            _, original_fields, extracted = attempt.validate(parquet_name="candidate.parquet")
+            table = pq.read_table(attempt.capture_root / "candidate.parquet")
+        self.assertEqual(original_fields[0]["name"], "OBJECTID")
         self.assertEqual(table.num_rows, 3)
         self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12])
         self.assertEqual(table.column("CASENUMBER").to_pylist(), ["22-01-2345A"] * 3)
@@ -110,6 +133,14 @@ class NfhlLomasValidationTests(unittest.TestCase):
         self.assertEqual(extracted["audit"]["null_geometry_count"], 1)
         self.assertEqual(extracted["audit"]["nan_string_geometry_count"], 1)
 
+    def test_streamed_candidate_keeps_one_row_group_per_page(self):
+        _, _, captures, schema, geom = _fixture()
+        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
+            attempt.validate(parquet_name="candidate.parquet")
+            parquet = pq.ParquetFile(attempt.capture_root / "candidate.parquet")
+        self.assertEqual(parquet.num_row_groups, 2)
+        self.assertEqual(parquet.metadata.num_rows, 3)
+
     def test_id_roster_response_order_is_not_population_drift(self):
         _, _, captures, schema, geom = _fixture()
         for name, ids in (("ids_seed", [12, 10, 11]), ("ids_before", [11, 12, 10]), ("ids_after", [10, 11, 12])):
@@ -118,87 +149,88 @@ class NfhlLomasValidationTests(unittest.TestCase):
             captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
         features = [row for i in range(2) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
         record_sha = hashlib.sha256(_canonical(features)).hexdigest()
-        with patch.multiple(source, **{**_pins(features, schema, geom), "EXPECTED_RECORD_SHA256": record_sha}):
-            _, _, extracted = source._validate_captures(captures)
+        with patch.multiple(source, **{**_pins(features, schema, geom), "EXPECTED_RECORD_SHA256": record_sha}), \
+                _Attempt(captures) as attempt:
+            _, _, extracted = attempt.validate()
         self.assertEqual(extracted["ids"], [10, 11, 12])
 
     def test_missing_service_documentation_link_is_rejected(self):
-        _, _, captures, schema, geom = _fixture()
+        _, _, captures, _, _ = _fixture()
         captures["service_doc"] = (b"<html>unrelated</html>", {"status": 200})
-        with patch.multiple(source, **_pinset()):
+        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "fema_service_documentation_link_drift"):
-                source._validate_captures(captures)
+                attempt.validate()
 
     def test_crs_drift_is_rejected(self):
-        _, _, captures, schema, geom = _fixture()
+        _, _, captures, _, _ = _fixture()
         page = json.loads(captures["page_000"][0])
         page["spatialReference"] = {"wkid": 4326, "latestWkid": 4326}
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()):
+        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_page_000_crs_drift"):
-                source._validate_captures(captures)
+                attempt.validate()
 
     def test_layer_geometry_type_drift_is_rejected(self):
-        _, _, captures, schema, geom = _fixture()
+        _, _, captures, _, _ = _fixture()
         layer = json.loads(captures["layer_before"][0])
         layer["geometryType"] = "esriGeometryPolyline"
         captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()):
+        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "exact_nfhl_lomas_layer_metadata_drift"):
-                source._validate_captures(captures)
+                attempt.validate()
 
     def test_unexpected_field_is_quarantined_by_contract(self):
-        _, _, captures, schema, geom = _fixture()
+        _, _, captures, _, _ = _fixture()
         layer = json.loads(captures["layer_before"][0])
         layer["fields"].append({"name": "SURPRISE", "type": "esriFieldTypeString"})
         captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()):
+        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_schema_contract_drift"):
-                source._validate_captures(captures)
+                attempt.validate()
 
     def test_missing_page_id_is_not_accepted(self):
-        _, _, captures, schema, geom = _fixture()
+        _, _, captures, _, _ = _fixture()
         page = json.loads(captures["page_000"][0])
         page["features"] = page["features"][:1]
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()):
+        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_reordered"):
-                source._validate_captures(captures)
+                attempt.validate()
 
     def test_record_value_change_is_detected(self):
-        _, _, captures, schema, geom = _fixture()
+        _, _, captures, _, _ = _fixture()
         page = json.loads(captures["page_000"][0])
         page["features"][0]["attributes"]["STATUS"] = "Changed"
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()):
+        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                source._validate_captures(captures)
+                attempt.validate()
 
     def test_coordinate_change_is_detected(self):
-        _, _, captures, schema, geom = _fixture()
+        _, _, captures, _, _ = _fixture()
         page = json.loads(captures["page_000"][0])
         page["features"][0]["geometry"]["y"] = 34.2
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()):
+        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_geometry_or_coverage_drift"):
-                source._validate_captures(captures)
+                attempt.validate()
 
     def test_observed_coverage_drift_is_detected(self):
-        _, _, captures, schema, geom = _fixture()
+        _, _, captures, _, _ = _fixture()
         pins = _pinset()
         pins["EXPECTED_OBSERVED_BOUNDS"] = {"xmin": -86.5, "ymin": 34.1, "xmax": -86.4, "ymax": 34.2}
-        with patch.multiple(source, **pins):
+        with patch.multiple(source, **pins), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
-                source._validate_captures(captures)
+                attempt.validate()
 
     def test_final_page_cannot_claim_transfer_truncation(self):
-        _, _, captures, schema, geom = _fixture()
+        _, _, captures, _, _ = _fixture()
         final = json.loads(captures["page_001"][0])
         final["exceededTransferLimit"] = True
         captures["page_001"] = (json.dumps(final, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()):
+        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_page_unexpected_exceeded_transfer_limit"):
-                source._validate_captures(captures)
+                attempt.validate()
 
 
 def _fake_capture_get(bodies):
