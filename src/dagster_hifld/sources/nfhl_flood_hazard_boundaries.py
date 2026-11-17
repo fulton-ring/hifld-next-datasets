@@ -68,15 +68,16 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
-from dagster_hifld.sources.nfhl_common import (
-    DOC_CAPTURE_ATTEMPTS, DOC_CAPTURE_BASE_DELAY_SECONDS, capture_with_retry,
-    producer_error_doc,
-)
+from dagster_hifld.sources.nfhl.capture import CaptureSettings, capture_with_retry, producer_error_doc
+
+_DOC_CAPTURE_SETTINGS = CaptureSettings()
+DOC_CAPTURE_ATTEMPTS = _DOC_CAPTURE_SETTINGS.doc_attempts
+DOC_CAPTURE_BASE_DELAY_SECONDS = _DOC_CAPTURE_SETTINGS.doc_delay
 
 DATASET_SLUG = "nfhl-flood-hazard-boundaries"
 FILE_SLUG = DATASET_SLUG

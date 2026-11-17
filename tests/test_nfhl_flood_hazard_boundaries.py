@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 from shapely import wkb
 from shapely.geometry import LineString, MultiLineString
 
-from dagster_hifld.sources import nfhl_common
+from dagster_hifld.sources.nfhl import capture as nfhl_common
 from dagster_hifld.sources import nfhl_flood_hazard_boundaries as source
 
 
