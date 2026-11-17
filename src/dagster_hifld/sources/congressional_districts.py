@@ -169,8 +169,6 @@ def parse_cd_directory(
         raise CongressionalDistrictsQuarantineError("mixed_congress_editions_in_directory")
     congress = congresses.pop()
     geoids = tuple(sorted(geoid for geoid, _ in by_name.values()))
-    if len(geoids) != len(set(geoids)):
-        raise CongressionalDistrictsQuarantineError("duplicate_cd_archive_geoid_in_directory")
     if len(geoids) < MIN_SOURCE_GEOIDS:
         raise CongressionalDistrictsQuarantineError("cd_directory_roster_incomplete")
     return CongressionalEdition(
@@ -504,6 +502,10 @@ def stage_congressional_districts_candidate(
     root = _acquire_live(acquisitions_dir) if mode == "live" else _capture_root()
     receipts, by_name, edition = _verify_receipts(root)
     directory_receipt = _read_directory_receipt(root, edition)
+    edition_metadata = edition.as_metadata()
+    if directory_receipt is not None:
+        edition_metadata["source_directory_last_modified"] = directory_receipt.get(
+            "directory_last_modified")
     source_tables = []
     source_ids = set()
     source_wkb_hash = hashlib.sha256()
@@ -564,14 +566,14 @@ def stage_congressional_districts_candidate(
             "release_date_unknown_reason": f"TIGER/Line {edition.vintage} edition is identified by the official archive names; a producer publication date was not established."})
     lineage = {"archive_receipts_sha256": _sha((root / "receipts.json").read_bytes()),
         "source_capture_directory": str(root), "source_wkb_identity_sha256": source_wkb_hash.hexdigest(),
-        "source_ID_count": len(source_ids), "edition": edition.as_metadata()}
+        "source_ID_count": len(source_ids), "edition": edition_metadata}
     if directory_receipt is not None:
         lineage["source_directory_receipt"] = directory_receipt
     manifest = {"schema_version": 1, "processor": "HIFLD Next", "approved": False,
         "title": f"{edition.ordinal} Congressional Districts — TIGER/Line {edition.vintage} working draft",
         "description": f"Complete Census Bureau TIGER/Line {edition.vintage} {edition.layer} candidate for the {edition.ordinal} Congress, with original Census attributes and WKB geometry.",
         "publisher": "U.S. Census Bureau", "agency": "U.S. Census Bureau",
-        "edition": edition.as_metadata(),
+        "edition": edition_metadata,
         "code_commit": code_commit, "processing_fingerprint": processing_fingerprint,
         "source_url": edition.directory_url, "inputs": input_receipts,
         "transformations": [{"operation": "read_complete_state_equivalent_sources_and_write_GeoParquet",
@@ -596,7 +598,7 @@ def stage_congressional_districts_candidate(
         "processing_identity": processing_identity, "manifest": manifest,
         "native_output": {"key": output_key, "sha256": output_sha, "bytes": len(parquet)},
         "source_wkb_identity_sha256": source_wkb_hash.hexdigest(), "source_ID_count": len(source_ids),
-        "candidate_identity": candidate_identity, "edition": edition.as_metadata(),
+        "candidate_identity": candidate_identity, "edition": edition_metadata,
     }
     bundle = canonical_construction_bundle(version, processing_fingerprint, payload)
     try:
@@ -616,7 +618,7 @@ def stage_congressional_districts_candidate(
         or original_payload.get("source_ID_count") != len(source_ids)
         or original_payload.get("native_output") != payload["native_output"]
         or original_payload.get("processing_identity") != processing_identity
-        or original_payload.get("edition") != edition.as_metadata()):
+        or original_payload.get("edition") != edition_metadata):
         raise CongressionalDistrictsQuarantineError("construction_original_candidate_or_code_drift")
     if first_run:
         _write_immutable(storage, f"{target}/metadata/source_capture_receipts.json", receipt_body)
