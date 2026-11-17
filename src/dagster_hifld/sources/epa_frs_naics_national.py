@@ -32,8 +32,8 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     _validate_cached_catalog_sidecars,
     candidate_prefix,
     content_derived_version,
@@ -663,7 +663,7 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
     base = Path(storage.local_dir).absolute()
     base.mkdir(parents=True, exist_ok=True)
     capture_root = (Path(retained_capture_directory).absolute() if retained_capture_directory else
-                    Path(capture_directory or f"/tmp/hifld-native-reconstruction/102/captures").absolute() / version)
+                    Path(capture_directory or default_capture_dir("hifld-native-reconstruction", "102", "captures")).absolute() / version)
     if retained_capture_directory:
         if not capture_root.is_dir() or capture_root.is_symlink():
             raise EPAFRSNationalNAICSError("retained_capture_directory_invalid")

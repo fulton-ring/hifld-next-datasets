@@ -1,6 +1,7 @@
 """Focused tests for the USGS 3DHP_all Catchment draft pipeline."""
 import io
 import json
+import os
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -9,13 +10,18 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+from dagster import AssetSpec
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
+from dagster_hifld.assets.catalog import publish_catalog
+from dagster_hifld.assets.publish import verify_release
+from dagster_hifld.partitions import build_publish_partition_key
+from dagster_hifld.resources import PublishedStorageResource
 from dagster_hifld.assets.nhd_catchment import nhd_catchment, nhd_catchment_complete
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import nhd_catchment as src
 
 FIXTURE_COUNT = 7
@@ -63,7 +69,7 @@ def _fixture_geometry(oid: object) -> object:
         rings = [[["NaN", "NaN", "NaN"], [1.0, 0.0, 0.0], [1.0, -1.0, 0.0],
                   [0.0, -1.0, 0.0], ["NaN", "NaN", "NaN"]]]
     else:
-        rings = [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 0.0]]]
+        rings = [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 0.0]]]
     return {"hasZ": True, "rings": rings}
 
 
@@ -196,6 +202,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
     import dagster_hifld.assets.nhd_catchment as asset_module
     contexts = [
         patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
+        patch.object(src, "MIN_FREE_BYTES", 0),
         patch.object(src, "EXPECTED_IDS_SHA256", ""),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
         patch.object(src, "EXPECTED_RECORD_SHA256", ""),
@@ -218,7 +225,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
                      return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                    "files": [], "working_tree_status": "unknown"}),
         patch.object(src, "validate_construction_code_identity"),
-        patch.object(epa_frs_common, "validate_construction_code_identity"),
+        patch.object(capture_common, "validate_construction_code_identity"),
     ]
     for context in contexts:
         context.start()
@@ -282,115 +289,50 @@ class NhdCatchmentTests(unittest.TestCase):
         self.assertEqual(parse_qs(urlparse(src._ids_url()).query)["returnIdsOnly"], ["true"])
         self.assertEqual(parse_qs(urlparse(src._count_url()).query)["returnCountOnly"], ["true"])
 
-    def test_polygon_wkb_keeps_ring_semantics_and_z(self):
-        import struct
-        exterior = _cw_square(0.0, 0.0, 1.0)
-        hole = _ccw_square(0.25, -0.5, 0.25)
-        wkb = src._polygon_wkb({"hasZ": True, "rings": [exterior, hole]})
-        assembled = from_wkb(wkb)
-        self.assertEqual(assembled.geom_type, "Polygon")
-        self.assertTrue(assembled.is_valid)
-        order, kind = struct.unpack_from("<BI", wkb, 0)
-        self.assertEqual((order, kind), (1, 0x80000003))
-        (ring_count,) = struct.unpack_from("<I", wkb, 5)
-        self.assertEqual(ring_count, 2)
-        offset = 9
-        for ring in (exterior, hole):
-            (points,) = struct.unpack_from("<I", wkb, offset)
-            offset += 4
-            self.assertEqual(points, len(ring))
-            for vertex in ring:
-                self.assertEqual(struct.unpack_from("<3d", wkb, offset), tuple(vertex))
-                offset += 24
-        self.assertEqual(offset, len(wkb))
-        multi = src._polygon_wkb({"hasZ": True, "rings": [_cw_square(0.0, 0.0, 1.0),
-                                                          _cw_square(2.0, 0.0, 1.0)]})
-        self.assertEqual(struct.unpack_from("<BI", multi, 0), (1, 0x80000006))
-        (parts,) = struct.unpack_from("<I", multi, 5)
-        self.assertEqual(parts, 2)
-        self.assertTrue(from_wkb(multi).is_valid)
-        # A smaller exterior nested inside a larger exterior assembles an
-        # OGC-invalid MultiPolygon ("Nested shells"): gated, never returned.
-        with self.assertRaisesRegex(src.NhdCatchmentError, "source_polygon_assembly_invalid"):
-            src._polygon_wkb({"hasZ": True, "rings": [_cw_square(0.0, -1.0, 3.0),
-                                                      _cw_square(0.5, -1.5, 1.0),
-                                                      _ccw_square(0.75, -1.75, 0.5)]})
-
-    def test_polygon_geometry_drift_is_refused(self):
-        base = {"hasZ": True, "rings": [_cw_square(0.0, 0.0, 1.0)]}
+    def test_native_geometry_structural_drift_is_still_refused(self):
+        base = _fixture_geometry(1)
         cases = {
-            "unexpected_source_geometry_members": {**base, "curves": []},
-            "source_polygon_geometry_invalid": {"hasZ": True, "rings": []},
+            "unexpected_source_geometry_members": {**base, "curveRings": []},
+            "source_polygon_geometry_invalid": {"hasZ": True, "rings": None},
+            "source_polygon_ring_too_short": {"hasZ": True, "rings": [[[1, 2, 3]]]},
             "source_polygon_ordinate_contract_drift": {
                 "hasZ": True, "rings": [[v[:2] for v in base["rings"][0]]]},
             "source_polygon_ordinate_not_numeric": {
-                "hasZ": True, "rings": [[["NaN"] + v[1:] for v in base["rings"][0]]]},
+                "hasZ": True, "rings": [[["bad"] + v[1:] for v in base["rings"][0]]]},
             "source_polygon_ordinate_not_finite": {
                 "hasZ": True, "rings": [[v[:2] + [float("inf")] for v in base["rings"][0]]]},
-            "source_polygon_ring_degenerate": {
-                "hasZ": True, "rings": [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0],
-                                         [1.0, 1.0, 0.0], [1.0, 1.0, 0.0]]]},
-            "source_polygon_ring_self_intersecting": {
-                "hasZ": True, "rings": [[[0.0, 0.0, 0.0], [3.0, 4.0, 0.0],
-                                         [1.0, 4.0, 0.0], [4.0, 0.0, 0.0],
-                                         [0.0, 0.0, 0.0]]]},
-            "source_polygon_hole_unassigned": {
-                "hasZ": True, "rings": [_cw_square(0.0, 0.0, 1.0),
-                                        _ccw_square(5.0, 5.0, 1.0)]},
-            # A hole that pokes outside its only claimable exterior assembles
-            # an OGC-invalid Polygon (Self-intersection where hole and shell
-            # cross): gated through source_polygon_assembly_invalid.
-            "source_polygon_assembly_invalid": {
-                "hasZ": True, "rings": [_cw_square(0.0, 0.0, 2.0),
-                                        _ccw_square(0.5, -0.5, 2.0)]},
-            "source_polygon_exterior_missing": {
-                "hasZ": True, "rings": [_ccw_square(0.25, -0.75, 0.5)]},
         }
-        for expected_error, geometry in cases.items():
-            with self.subTest(expected_error):
-                with self.assertRaisesRegex(src.NhdCatchmentError, expected_error):
-                    src._polygon_wkb(geometry)
+        names = tuple(field[0] for field in src.NATIVE_FIELDS)
+        for reason, geometry in cases.items():
+            with self.subTest(reason=reason):
+                with self.assertRaisesRegex(src.NhdCatchmentError, reason):
+                    src._validate_feature({"attributes": _fixture_attrs(1), "geometry": geometry},
+                                          names, 1)
 
-    def test_invalid_assembled_geometry_is_gated_counted_and_raw_rings_kept(self):
+    def test_native_invalid_geometries_are_preserved_with_compatibility_diagnostics(self):
         rows = _fixture_rows()
-        crossing_hole = {"hasZ": True, "rings": [_cw_square(0.0, 0.0, 2.0),
-                                                 _ccw_square(0.5, -0.5, 2.0)]}
-        for label, geometry in (("fixture nested shells", rows[3]["geometry"]),
-                                ("crossing hole", crossing_hole)):
-            with self.subTest(label):
-                with self.assertRaisesRegex(src.NhdCatchmentError,
-                                            "source_polygon_assembly_invalid"):
-                    src._polygon_wkb(geometry)
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         transport = make_responder(rows)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
             with fixture_mode(schema_sha, transport):
-                storage = _staging(root)
-                result = src.capture_nhd_catchment(storage, version="gate-invalid-run",
-                                                   capture_directory=str(capture_root))
-            self.assertEqual(result["source_unusable_geometry_counts"],
-                             {"source_polygon_ring_degenerate": 1,
-                              "source_polygon_assembly_invalid": 1})
-            table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
-            self.assertEqual(table.num_rows, FIXTURE_COUNT)
-            records = table.to_pylist()
-            gated = records[3]
-            self.assertEqual(gated["OBJECTID"], 4)
-            self.assertIsNone(gated["geometry"])
-            self.assertEqual({key: value for key, value in gated.items()
-                              if key != "geometry"}, _fixture_attrs(4))
-            for index in (0, 1, 2):
-                self.assertIsNotNone(records[index]["geometry"])
-                self.assertTrue(from_wkb(records[index]["geometry"]).is_valid)
+                result = src.capture_nhd_catchment(_staging(root), version="invalid-retained",
+                                                 capture_directory=str(capture_root))
+            records = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet").to_pylist()
+            self.assertEqual([r["OBJECTID"] for r in records], list(FIXTURE_OBJECTIDS))
+            for index in (3, 6):
+                geometry = from_wkb(records[index]["geometry"])
+                self.assertEqual(geometry.is_valid, index == 3)
+                self.assertEqual({k: v for k, v in records[index].items() if k != "geometry"},
+                                 _fixture_attrs(index + 1))
+            self.assertEqual(result["source_unusable_geometry_counts"], {})
+            self.assertEqual(sum(result["source_ogc_invalid_geometry_counts"].values()), 1)
             prefix = f"{src.DATASET_SLUG}/{src.FILE_SLUG}/{result['version']}"
-            sealed = json.loads((root / "staging" / prefix / "metadata"
-                                 / "source_audit.json").read_bytes())
-            self.assertEqual(sealed["unusable_geometry_counts"],
-                             {"source_polygon_ring_degenerate": 1,
-                              "source_polygon_assembly_invalid": 1})
-            self.assertEqual(sealed["source_feature_count"], FIXTURE_COUNT)
+            audit = json.loads((root / "staging" / prefix / "metadata/source_audit.json").read_bytes())
+            self.assertEqual(audit["ogc_invalid_geometry_counts"],
+                             result["source_ogc_invalid_geometry_counts"])
+            self.assertEqual(audit["ogc_invalid_geometry_sample_objectids"], [7])
 
     def test_complete_fixture_capture_materializes_and_repeats(self):
         rows = _fixture_rows()
@@ -420,10 +362,12 @@ class NhdCatchmentTests(unittest.TestCase):
             self.assertEqual(table.column("id3dhp").to_pylist(),
                              [row["attributes"]["id3dhp"] for row in rows])
             nulls = table.column("geometry").to_pylist()
-            self.assertIsNone(nulls[3])
+            self.assertIsNotNone(nulls[3])
+            self.assertTrue(from_wkb(nulls[3]).is_valid)
             self.assertIsNone(nulls[4])
             self.assertIsNone(nulls[5])
-            self.assertIsNone(nulls[6])
+            self.assertIsNotNone(nulls[6])
+            self.assertFalse(from_wkb(nulls[6]).is_valid)
             for index in (0, 1, 2):
                 self.assertIsNotNone(nulls[index])
                 self.assertTrue(from_wkb(nulls[index]).is_valid)
@@ -454,6 +398,35 @@ class NhdCatchmentTests(unittest.TestCase):
                     candidate = result.output_for_node("ingest__nhd_catchment__nhd_catchment")
                     self.assertEqual(candidate["feature_count"], FIXTURE_COUNT)
                     self.assertTrue(candidate["reused"])
+                    partition = build_publish_partition_key(src.DATASET_SLUG, src.FILE_SLUG,
+                                                            candidate["version"])
+                    catalog = materialize([publish_catalog], instance=instance,
+                                          partition_key=partition,
+                                          resources={"staging_storage": _staging(root)})
+                    self.assertTrue(catalog.success)
+                    quality = json.loads(_staging(root).read_key(
+                        f"{src.DATASET_SLUG}/{src.FILE_SLUG}/{candidate['version']}/metadata/quality_manifest.json"))
+                    self.assertEqual(quality["feature_count"], FIXTURE_COUNT)
+                    self.assertEqual(quality["invalid_geometry_count"], 1)
+                    cached = src.capture_nhd_catchment(_staging(root), version="after-catalog",
+                                                       capture_directory=str(capture_root))
+                    self.assertTrue(cached["reused"])
+                    published = PublishedStorageResource(use_local=True, local_dir=str(root / "published"))
+                    published.write(src.DATASET_SLUG, src.FILE_SLUG, "accepted-existing",
+                                    "geoparquet/existing.parquet", b"accepted-inventory-sentinel")
+                    before = {key: (published.object_snapshot(key), published.read_key(key))
+                              for key in published.list_prefix()}
+                    with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": ""}):
+                        refusal = materialize(
+                            [verify_release, *[AssetSpec(key) for key in verify_release.dependency_keys]],
+                            instance=instance, partition_key=partition, raise_on_error=False,
+                            resources={"staging_storage": _staging(root), "published_storage": published})
+                    self.assertFalse(refusal.success)
+                    self.assertIn("missing_independent_release_approval_registry",
+                                  str(refusal.get_step_failure_events()[0].event_specific_data.error))
+                    after = {key: (published.object_snapshot(key), published.read_key(key))
+                             for key in published.list_prefix()}
+                    self.assertEqual(after, before)
 
     def test_retained_geoparquet_seals_into_staging(self):
         rows = _fixture_rows()
@@ -477,8 +450,7 @@ class NhdCatchmentTests(unittest.TestCase):
             self.assertEqual(sealed["null_geometry_count"], 1)
             self.assertEqual(sealed["nan_geometry_count"], 1)
             self.assertEqual(sealed["unusable_geometry_counts"],
-                             {"source_polygon_ring_degenerate": 1,
-                              "source_polygon_assembly_invalid": 1})
+                             {})
             manifest = json.loads((root / "staging" / prefix / "metadata"
                                    / "source_manifest.json").read_bytes())
             self.assertFalse(manifest["approved"])
@@ -620,7 +592,7 @@ class NhdCatchmentTests(unittest.TestCase):
                     with self.assertRaisesRegex(src.NhdCatchmentError,
                                                 "source_null_geometry_count_drift"):
                         src.fetch_nhd_catchment_pages(capture_root)
-                with patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}):
+                with patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {"old_assembler_rejection": 1}):
                     with self.assertRaisesRegex(src.NhdCatchmentError,
                                                 "source_unusable_geometry_counts_drift"):
                         src.fetch_nhd_catchment_pages(capture_root)
@@ -660,6 +632,193 @@ class NhdCatchmentTests(unittest.TestCase):
                 self.assertTrue(quarantined)
                 failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
                 self.assertTrue(failure["reason_code"].startswith("source_id_roster_drift"))
+
+
+def _segment_failures_transport(inner: httpx.MockTransport, *, fail_first: int | None):
+    """Fail the first ``fail_first`` (or every) segment-page request with a reset.
+
+    Returns the wrapped transport and the count of segment-page requests seen,
+    so a test can assert the shared retry helper's bounded attempt budget.
+    """
+    seen = {"segment_requests": 0}
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        query = parse_qs(urlparse(str(request.url)).query)
+        if query.get("resultOffset") is not None:
+            seen["segment_requests"] += 1
+            if fail_first is None or seen["segment_requests"] <= fail_first:
+                raise httpx.ConnectError("connection reset by peer")
+        return inner.handler(request)
+
+    return httpx.MockTransport(respond), seen
+
+
+class NhdCatchmentRetainedStateFailureTests(unittest.TestCase):
+    """Failure paths of the retained-capture primitives this adapter binds.
+
+    The checkpoint/receipt/retry helpers live in
+    ``dagster_hifld.sources.arcgis_layer``; every case here drives them through
+    this adapter's own error type over retained fixtures: corrupt checkpoint
+    JSON, missing and changed segment receipts, incomplete transport captures
+    retried by the shared helper, that helper's bounded retry budget, and a
+    foreign checkpoint whose coverage claims are never trusted.
+    """
+
+    def _first_capture(self, root: Path, capture_root: Path, schema_sha: str,
+                       transport: httpx.MockTransport, version: str) -> None:
+        with fixture_mode(schema_sha, transport):
+            result = src.capture_nhd_catchment(
+                _staging(root), version=version, capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+
+    def _row_ids(self, capture_root: Path) -> list[int]:
+        table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+        return table.column("OBJECTID").to_pylist()
+
+    def test_corrupt_checkpoint_json_refuses_and_retains_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "state-run")
+            corrupted = b'{"segments": [ truncated'
+            (capture_root / "capture_state.json").write_bytes(corrupted)
+            before = sorted(path.name for path in capture_root.iterdir())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(src.NhdCatchmentError,
+                                            "capture_state_invalid"):
+                    src.fetch_nhd_catchment_pages(capture_root)
+            self.assertEqual((capture_root / "capture_state.json").read_bytes(), corrupted)
+            self.assertEqual(sorted(path.name for path in capture_root.iterdir()), before)
+
+    def test_missing_segment_receipt_refuses_read_and_refetch_restores_rows(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "receipt-run")
+            name = src._segment_name(0, 2)
+            (capture_root / f"{name}.receipt.json").unlink()
+            with self.assertRaisesRegex(src.NhdCatchmentError,
+                                        "retained_capture_receipt_invalid:" + name):
+                src._read_capture(capture_root, name)
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_catchment(
+                    _staging(root), version="receipt-run-2", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
+            self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.body")))
+            self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.wire")))
+            state = json.loads((capture_root / "capture_state.json").read_bytes())
+            self.assertIn(name, [entry["name"] for entry in state["segments"]])
+
+    def test_changed_segment_receipt_refuses_read_and_refetch_restores_rows(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "tamper-run")
+            name = src._segment_name(2, 2)
+            receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
+            receipt["sha256"] = "0" * 64
+            (capture_root / f"{name}.receipt.json").write_bytes(json.dumps(receipt).encode())
+            with self.assertRaisesRegex(src.NhdCatchmentError,
+                                        "retained_capture_receipt_invalid:" + name):
+                src._read_capture(capture_root, name)
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_catchment(
+                    _staging(root), version="tamper-run-2", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
+            self.assertEqual(len(self._row_ids(capture_root)), len(set(self._row_ids(capture_root))))
+            for suffix in ("body", "wire", "receipt.json"):
+                self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.{suffix}")))
+
+    def test_incomplete_transport_capture_is_retried_with_retained_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport, seen = _segment_failures_transport(make_responder(rows), fail_first=1)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_catchment(
+                    _staging(root), version="retry-run", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            name = src._segment_name(0, 2)
+            attempt_receipt = json.loads(
+                (capture_root / f"{name}.attempt-01.receipt.json").read_bytes())
+            self.assertFalse(attempt_receipt["complete_body"])
+            self.assertIsNone(attempt_receipt["status"])
+            self.assertEqual(attempt_receipt["error_code"], "request_error")
+            for suffix in ("body", "wire", "receipt.json"):
+                self.assertTrue((capture_root / f"{name}.attempt-01.{suffix}").exists())
+            self.assertFalse(list(capture_root.glob(f"{name}.attempt-02.*")))
+            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
+
+    def test_retry_budget_exhaustion_is_bounded_and_retains_failure_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport, seen = _segment_failures_transport(make_responder(rows), fail_first=None)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(src.NhdCatchmentError,
+                                            "source_capture_failed:ValueError"):
+                    src.fetch_nhd_catchment_pages(capture_root)
+            self.assertEqual(seen["segment_requests"],
+                             src.SEGMENT_PROBE_ATTEMPTS + src.DOC_CAPTURE_ATTEMPTS)
+            segment = src._segment_name(0, 2)
+            self.assertTrue((capture_root / f"{segment}.attempt-01.receipt.json").exists())
+            self.assertTrue((capture_root / f"{segment}.attempt-02.receipt.json").exists())
+            self.assertFalse(list(capture_root.glob(f"{segment}.attempt-03.*")))
+            single = src._segment_name(0, 1)
+            for attempt in range(1, src.DOC_CAPTURE_ATTEMPTS):
+                for suffix in ("body", "wire", "receipt.json"):
+                    self.assertTrue(
+                        (capture_root / f"{single}.attempt-{attempt:02d}.{suffix}").exists(),
+                        f"missing attempt evidence {single}.attempt-{attempt:02d}.{suffix}")
+            self.assertFalse(
+                list(capture_root.glob(f"{single}.attempt-{src.DOC_CAPTURE_ATTEMPTS:02d}.*")))
+            final = json.loads((capture_root / f"{single}.receipt.json").read_bytes())
+            self.assertFalse(final["complete_body"])
+            self.assertEqual(final["error_code"], "request_error")
+            self.assertFalse((capture_root / "capture_state.json").exists())
+            self.assertFalse((capture_root / "computed_baseline.json").exists())
+
+    def test_foreign_checkpoint_coverage_is_never_trusted(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "foreign-run")
+            foreign = {"segments": [{"name": "foreign_product_segment", "offset": 0,
+                                     "count": FIXTURE_COUNT, "features": FIXTURE_COUNT,
+                                     "captured_at": "1999-01-01T00:00:00+00:00",
+                                     "body_sha256": "0" * 64}], "complete": True}
+            (capture_root / "capture_state.json").write_bytes(json.dumps(foreign).encode())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(src.NhdCatchmentError,
+                                            "source_capture_roster_incomplete_or_unexpected"):
+                    src.capture_nhd_catchment(
+                        _staging(root), version="foreign-run-2",
+                        capture_directory=str(capture_root))
+            self.assertTrue(sorted(capture_root.glob("page_*.error-*.body")))
+            quarantined = sorted(
+                (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"],
+                             "source_capture_roster_incomplete_or_unexpected")
 
 
 if __name__ == "__main__":

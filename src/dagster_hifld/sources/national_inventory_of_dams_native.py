@@ -35,11 +35,11 @@ import shapely
 from dagster_hifld.http_capture import CaptureProgress, DECODE_BLOCK_BYTES
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources import national_inventory_of_dams as legacy
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources import national_inventory_of_dams_common as legacy
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -94,11 +94,6 @@ def _safe_official_url(url: str) -> str:
             or parsed.username or parsed.password or parsed.port not in (None, 443)):
         raise ValueError("usace_nid_untrusted_export_url")
     return url
-
-
-def _url_without_query(url: str) -> str:
-    parsed = urlsplit(url)
-    return parsed._replace(query="", fragment="").geturl()
 
 
 def _ids_url() -> str:
@@ -1065,7 +1060,7 @@ def capture_national_inventory_of_dams_native(
     if shutil.disk_usage(staging_root).free < MIN_DISK_FREE_BYTES:
         raise ValueError("disk_floor_before_acquisition")
     capture_root = (Path(capture_directory).absolute() if capture_directory else
-                    Path("/tmp/hifld-native-reconstruction/165/native-captures") / f"{version}-{uuid4().hex}")
+                    default_capture_dir("hifld-native-reconstruction", "165", "native-captures") / f"{version}-{uuid4().hex}")
     legacy._validate_local_directory_path(capture_root, capture_directory)
     if capture_root.exists():
         os.chmod(capture_root, 0o700)

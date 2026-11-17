@@ -34,7 +34,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     CaptureProgress, candidate_prefix, capture_get, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -686,7 +686,7 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < DISK_FLOOR_BYTES:
         raise ValueError("disk_floor_before_acquisition")
-    capture_base_value = capture_directory or os.environ.get("HIFLD_NTM_ROUTES_CAPTURE_DIR")
+    capture_base_value = capture_directory
     if not capture_base_value:
         raise ValueError("explicit_capture_directory_required")
     capture_base = Path(capture_base_value)

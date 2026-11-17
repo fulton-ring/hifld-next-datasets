@@ -33,8 +33,8 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
@@ -142,7 +142,7 @@ def _expected_capture_urls(ids: list[int] | None = None) -> dict[str, str]:
     return urls
 
 
-def _validate_capture_request_identity(name: str, receipt: dict, url: str) -> None:
+def _validate_capture_request_binding(name: str, receipt: dict, url: str) -> None:
     if not isinstance(receipt, dict) or receipt.get("url") != url:
         raise ValueError("capture_request_identity_drift:" + name)
     if receipt.get("final_url") != url:
@@ -217,7 +217,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("capture_receipt_manifest_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
+        _validate_capture_request_binding(name, receipt, expected_urls[name])
         result[name] = (body, receipt)
     return result
 
@@ -509,7 +509,7 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
         if requested and any(requested.glob("*.body")):
             raise ValueError("unsealed_capture_attempt_exists")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/retrospective-bpr-deployments/captures")
+                default_capture_dir("hifld-native-reconstruction", "retrospective-bpr-deployments", "captures")
                 / (version + "-" + uuid4().hex))
         if any(p.is_symlink() for p in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")

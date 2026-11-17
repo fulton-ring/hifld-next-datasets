@@ -57,13 +57,14 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import witness_aside as _witness_error_response
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "nhd-flowline"
@@ -369,20 +370,6 @@ def _retained_or_fetch(client: httpx.Client | None, capture_root: Path, name: st
     if client is None:
         raise NhdFlowlineError("retained_capture_file_missing:" + name)
     return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-
-
-def _witness_error_response(capture_root: Path, name: str) -> None:
-    """Move a retained producer error answer aside so the slot can be refetched.
-
-    A complete HTTP 200 error body carries a self-consistent receipt, so without
-    this witness step a resumed capture would replay the same error forever.
-    """
-    from time import time_ns
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = capture_root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
 
 
 def _reject_error_response(capture_root: Path, name: str, body: bytes) -> None:
@@ -1041,10 +1028,8 @@ def capture_nhd_flowline(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise NhdFlowlineError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory \
-        else Path("/data/workspace/scratch/nhd-flowline/captures")
     capture_root = Path(capture_directory).absolute() if capture_directory \
-        else (attempt_root / f"{version}-{uuid4().hex}").absolute()
+        else (default_capture_dir(DATASET_SLUG, "captures") / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise NhdFlowlineError("unsafe_capture_directory")

@@ -24,14 +24,15 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
+from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture, _capture_identity, _load_capture, _sha,
-    _validate_capture_request_identity, _validate_spatial_reference,
+    _validate_spatial_reference,
 )
 
 DATASET_SLUG = "wreck-areas-usace-ienc"
@@ -129,7 +130,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
+        validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures
 
@@ -422,7 +423,7 @@ def capture_wreck_areas_usace_ienc(storage: StagingStorageResource, *, version: 
                           or any(requested.glob("*.receipt.json"))):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/384/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "384", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)

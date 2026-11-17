@@ -1,25 +1,18 @@
 """Candidate-only acquisition of the official Census TIGER/Line national Rails."""
 from __future__ import annotations
 
-import hashlib
-import platform
 import json
-import tempfile
-import zipfile
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import geopandas as gpd
 import httpx
-import pyogrio
-import pyproj
-import shapely
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources import census_tiger_common
+from dagster_hifld.sources.capture_common import (
     capture_get,
-    quarantine_incomplete_capture,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -37,90 +30,30 @@ EXPECTED_FIELDS = ["LINEARID", "FULLNAME", "MTFCC"]
 EXPECTED_CRS = "EPSG:4269"
 EXPECTED_BOUNDS = [-158.13542, 17.997745, -65.906116, 64.92612]
 EXPECTED_MTFCC_VALUES = ["R1011"]
-CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 60_000_000
 
+SOURCE_STEM = Path(SOURCE_FILE).stem
+EXPECTED_MEMBERS = {
+    f"{SOURCE_STEM}.cpg", f"{SOURCE_STEM}.dbf", f"{SOURCE_STEM}.prj",
+    f"{SOURCE_STEM}.shp", f"{SOURCE_STEM}.shp.ea.iso.xml",
+    f"{SOURCE_STEM}.shp.iso.xml", f"{SOURCE_STEM}.shx",
+}
+SHAPEFILE_MEMBER = f"{SOURCE_STEM}.shp"
 
-def _processing_runtime() -> dict[str, str]:
-    """Report runtime versions observed during extraction without asserting Git identity."""
-    return {
-        "python": platform.python_version(),
-        "geopandas": gpd.__version__,
-        "httpx": httpx.__version__,
-        "pyogrio": pyogrio.__version__,
-        "gdal": ".".join(str(part) for part in pyogrio.__gdal_version__),
-        "pyproj": pyproj.__version__,
-        "proj": pyproj.proj_version_str,
-        "shapely": shapely.__version__,
-        "geos": shapely.geos_version_string,
-    }
-
-
-CODE_IDENTITY_SCHEME = "sha256-packaged-dagster_hifld-py-v1"
+CODE_IDENTITY_SCHEME = census_tiger_common.CODE_IDENTITY_SCHEME
 PROCESSING_SOURCE_ROOT = Path(__file__).resolve().parents[2]
 PROCESSING_SOURCE_PACKAGE = PROCESSING_SOURCE_ROOT / "dagster_hifld"
 
 
 def processing_code_identity() -> str:
     """Hash packaged Dagster source files without requiring repository metadata."""
-    files = sorted(PROCESSING_SOURCE_PACKAGE.rglob("*.py"))
-    if not files or not PROCESSING_SOURCE_PACKAGE.is_dir():
-        raise ValueError("processing_source_package_missing")
-    digest = hashlib.sha256()
-    for path in files:
-        name = path.relative_to(PROCESSING_SOURCE_ROOT).as_posix().encode("utf-8")
-        body = path.read_bytes()
-        digest.update(len(name).to_bytes(8, "big") + name)
-        digest.update(len(body).to_bytes(8, "big") + body)
-    return digest.hexdigest()
+    return census_tiger_common.packaged_code_identity(
+        PROCESSING_SOURCE_ROOT, PROCESSING_SOURCE_PACKAGE,
+    )
 
 
 def candidate_version() -> str:
-    identity = _canonical({"source_sha256": EXPECTED_SHA256,
-                           "code_identity_scheme": CODE_IDENTITY_SCHEME,
-                           "code_sha256": processing_code_identity()})
-    return "v" + _sha(identity)[:32]
-
-
-def _quarantine_attempt(
-    storage: StagingStorageResource,
-    capture_root: Path,
-    version: str,
-    reason_code: str,
-) -> str:
-    """Retain all response bytes and a receipt before rejecting a bad capture."""
-    body_path = capture_root / "source.body"
-    wire_path = capture_root / "source.wire"
-    receipt_path = capture_root / "source.receipt.json"
-    body = body_path.read_bytes() if body_path.is_file() else b""
-    wire = wire_path.read_bytes() if wire_path.is_file() else b""
-    body_path.write_bytes(body)
-    wire_path.write_bytes(wire)
-    try:
-        receipt = json.loads(receipt_path.read_text("utf-8"))
-        if not isinstance(receipt, dict):
-            raise ValueError("receipt_not_object")
-    except (OSError, ValueError):
-        receipt = {
-            "method": "GET",
-            "url": SOURCE_URL,
-            "final_url": None,
-            "status": None,
-            "observed_at": None,
-            "complete_body": False,
-            "bytes": len(body),
-            "sha256": _sha(body),
-            "wire_bytes": len(wire),
-            "wire_sha256": _sha(wire),
-            "error_code": reason_code,
-        }
-        receipt_path.write_bytes(_canonical(receipt) + b"\n")
-    # The shared helper also writes a failure marker and refuses non-staging
-    # destinations, keeping unrecognized source bytes out of catalog paths.
-    return quarantine_incomplete_capture(
-        storage, capture_root, DATASET_SLUG, version,
-        {"source": (body, receipt)}, reason_code,
-    )
+    return census_tiger_common.candidate_version(EXPECTED_SHA256, processing_code_identity())
 
 
 def _capture(
@@ -128,78 +61,26 @@ def _capture(
     staging_storage: StagingStorageResource,
     version: str,
 ) -> tuple[bytes, dict[str, object]]:
-    temporary = tempfile.TemporaryDirectory(prefix="census-railroads-capture-") if capture_directory is None else None
-    root = Path(temporary.name) if temporary is not None else Path(capture_directory)
-    try:
-        if temporary is None:
-            if root.is_symlink() or not root.is_dir():
-                raise ValueError("source_capture_directory_invalid")
-            if {p.name for p in root.iterdir()} != CAPTURE_FILES:
-                raise ValueError("source_capture_roster_mismatch")
-            body_path, wire_path, receipt_path = (root / "source.body", root / "source.wire", root / "source.receipt.json")
-            if any(p.is_symlink() or not p.is_file() for p in (body_path, wire_path, receipt_path)):
-                raise ValueError("source_capture_nonregular_file")
-            body = body_path.read_bytes()
-            wire = wire_path.read_bytes()
-            receipt = json.loads(receipt_path.read_text("utf-8"))
-            if (
-                receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-                or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-                or receipt.get("complete_body") is not True
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt.get("content_encoding") != "identity"
-            ):
-                raise ValueError("source_capture_receipt_identity_mismatch")
-        else:
-            try:
-                with httpx.Client(timeout=httpx.Timeout(180.0, connect=20.0), follow_redirects=False) as client:
-                    body, receipt = capture_get(client, SOURCE_URL, root, "source", max_bytes=MAX_SOURCE_BYTES)
-            except Exception as exc:
-                quarantine = _quarantine_attempt(staging_storage, root, version, type(exc).__name__)
-                raise ValueError(f"official_tiger_source_capture_failed; quarantined_at:{quarantine}") from exc
-
-        if (
-            receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-            or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-            or receipt.get("complete_body") is not True or receipt.get("bytes") != EXPECTED_BYTES
-            or receipt.get("sha256") != EXPECTED_SHA256 or len(body) != EXPECTED_BYTES
-            or receipt.get("content_encoding") != "identity"
-            or receipt.get("wire_bytes") != EXPECTED_BYTES or receipt.get("wire_sha256") != EXPECTED_SHA256
-            or receipt.get("content_length") not in (None, EXPECTED_BYTES)
-            or _sha(body) != EXPECTED_SHA256
-        ):
-            quarantine = _quarantine_attempt(
-                staging_storage, root, version, "official_tiger_archive_identity_or_release_drift",
-            )
-            raise ValueError(f"official_tiger_archive_identity_or_release_drift; quarantined_at:{quarantine}")
-        return body, receipt
-    finally:
-        if temporary is not None:
-            temporary.cleanup()
+    body, receipt, _wire, _receipt_bytes = census_tiger_common.capture_tiger_zip(
+        capture_directory, staging_storage, version,
+        dataset_slug=DATASET_SLUG, source_url=SOURCE_URL,
+        max_source_bytes=MAX_SOURCE_BYTES,
+        expected_bytes=EXPECTED_BYTES, expected_sha256=EXPECTED_SHA256,
+        client_timeout=httpx.Timeout(180.0, connect=20.0),
+        capture_tmp_prefix="census-railroads-capture-",
+        capture_get=capture_get,
+    )
+    return body, receipt
 
 
 def _inspect_archive(body: bytes) -> dict[str, object]:
-    expected_members = {
-        "tl_2026_us_rails.cpg", "tl_2026_us_rails.dbf", "tl_2026_us_rails.prj",
-        "tl_2026_us_rails.shp", "tl_2026_us_rails.shp.ea.iso.xml",
-        "tl_2026_us_rails.shp.iso.xml", "tl_2026_us_rails.shx",
-    }
-    with zipfile.ZipFile(__import__("io").BytesIO(body)) as archive:
-        names = {Path(info.filename).name for info in archive.infolist() if not info.is_dir()}
-        if names != expected_members or len(archive.infolist()) != len(expected_members):
-            raise ValueError("tiger_archive_member_roster_drift")
-        for info in archive.infolist():
-            path = PurePosixPath(info.filename)
-            if path.is_absolute() or ".." in path.parts or path.name != info.filename:
-                raise ValueError("tiger_archive_unsafe_member")
-        bad_member = archive.testzip()
-        if bad_member is not None:
-            raise ValueError("tiger_archive_crc_failure:" + bad_member)
-        with tempfile.TemporaryDirectory(prefix="census-railroads-") as tmp:
-            archive.extractall(tmp)
-            path = Path(tmp) / "tl_2026_us_rails.shp"
-            frame = gpd.read_file(path, engine="pyogrio")
+    frame = census_tiger_common.read_tiger_shapefile(
+        body,
+        expected_members=EXPECTED_MEMBERS,
+        shapefile_name=SHAPEFILE_MEMBER,
+        extract_tmp_prefix="census-railroads-",
+        read_file=lambda path: gpd.read_file(path, engine="pyogrio"),
+    )
     fields = list(frame.columns[:-1])
     if fields != EXPECTED_FIELDS or str(frame.crs) != EXPECTED_CRS:
         raise ValueError("tiger_source_schema_or_crs_drift")
@@ -249,7 +130,7 @@ def capture_census_railroads(
     processing_code = {
         "scheme": CODE_IDENTITY_SCHEME,
         "sha256": code_sha256,
-        "runtime_versions": _processing_runtime(),
+        "runtime_versions": census_tiger_common.processing_runtime(),
     }
     observed_at = receipt.get("observed_at")
     manifest = {

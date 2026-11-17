@@ -68,14 +68,14 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
+from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture_identity, _load_capture, _sha,
-    _validate_capture_request_identity,
 )
 
 DATASET_SLUG = FILE_SLUG = "wbd-16-digit-hu"
@@ -616,7 +616,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
         raise ValueError("source_id_roster_changed_during_capture")
     expected_urls = dict(_capture_roster(roster))
     for name in METADATA_NAMES:
-        _validate_capture_request_identity(name, receipts[name], expected_urls[name])
+        validate_capture_request_identity(name, receipts[name], expected_urls[name])
 
     tmp_path = (parquet_sink.with_name(parquet_sink.name + ".construction-tmp")
                 if parquet_sink is not None else None)
@@ -656,7 +656,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                 body, _wire, receipt = _load_capture(root, part_name)
                 expected_url = (expected_urls[name] if len(part_names) == 1
                                 else _part_url(roster, index, part_name))
-                _validate_capture_request_identity(part_name, receipt, expected_url)
+                validate_capture_request_identity(part_name, receipt, expected_url)
                 expected_part_ids = (expected_page_ids if len(part_names) == 1 else
                                      (expected_page_ids[:half] if part_name.endswith("a")
                                       else expected_page_ids[half:]))
@@ -929,15 +929,15 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
         if name.endswith("_refusal"):
             bound = next(page for page in expected_urls if name.startswith(page)) \
                 if False else name[:-len("_refusal")].rstrip("ab")
-            _validate_capture_request_identity(name, receipt, expected_urls[bound])
+            validate_capture_request_identity(name, receipt, expected_urls[bound])
             if not _is_refusal(body):
                 raise ValueError("retained_capture_refusal_document_drift:" + name)
         elif page_parts and any(name in parts for parts in page_parts.values()
                                 if len(parts) > 1):
             page = next(page for page, parts in page_parts.items() if name in parts)
-            _validate_capture_request_identity(name, receipt, _part_url(ids, int(page[5:9]), name))
+            validate_capture_request_identity(name, receipt, _part_url(ids, int(page[5:9]), name))
         else:
-            _validate_capture_request_identity(name, receipt, expected_urls[name])
+            validate_capture_request_identity(name, receipt, expected_urls[name])
         captures[name] = (body, receipt)
     return captures, page_parts
 
@@ -969,7 +969,7 @@ def capture_wbd_16_digit_hu(storage: StagingStorageResource, *, version: str,
                           or any(requested.glob("*.receipt.json"))):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/377/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "377", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
