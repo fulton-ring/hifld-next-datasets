@@ -61,7 +61,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely.geometry import MultiPolygon, Polygon
+import shapely
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -69,6 +69,7 @@ from dagster_hifld.esri_pbf import decode_feature_collection_pbf
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -124,11 +125,19 @@ EXPECTED_ZIP_SHA256 = "62ed113335e359509ad68a731146c74aa873c5a92da4f3fda572e54bc
 # bounds are pinned from the dated complete capture (see the module
 # docstring); unpinned values ("", None) are checked only once pinned.
 EXPECTED_RECORD_SHA256 = "a78bdae737ffe899263d0df21480a77790bd41a2ea8b9e2ead1f4deabe6b290a"
-EXPECTED_GEOMETRY_SHA256 = "3bd3a3fab452f9a4a4d0b0b9d37d3c9b11c42a3d644536a46f68a71ccbaf6687"
+# The geometry digest covered only assembled rows before the shared GDAL
+# converter (issue #997); every served row now assembles, so the coverage grew
+# and this transcribed pin moves to the designed pending state until the next
+# complete capture re-derives it via build_pad_us_manager_name_baseline.
+EXPECTED_GEOMETRY_SHA256 = None
 EXPECTED_NULL_GEOMETRY_COUNT = 6
 EXPECTED_NAN_GEOMETRY_COUNT = 0
 EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] | None = {"source_polygon_ring_self_intersecting": 1750}
+# Geometry quarantines retired by the shared GDAL Esri polygon converter
+# (issue #997): the producer's 1,750 self-intersecting-exterior rows now
+# convert through GDAL and are retained verbatim, counted as
+# ogc_invalid_geometry_counts instead of gated to null.
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] | None = {}
 EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = {"xmax": 179.999988541,"xmin": -179.999988541,"ymax": 74.996355101,"ymin": -15.386135526}
 EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0672, "ymin": -1733741.441300001,
                          "xmax": 20037507.067199998, "ymax": 12930675.6069}
@@ -182,10 +191,6 @@ METADATA_NAMES = ("sb_item", "agol_item", "service_before", "layer_before",
                   "count_before", "ids_seed", "ids_before")
 AFTER_NAMES = ("layer_after", "service_after", "count_after", "ids_after")
 GEOMETRY_COLUMN = "geometry"
-UNUSABLE_GEOMETRY_MODES = frozenset({
-    "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
-    "source_polygon_ring_self_intersecting", "source_polygon_hole_unassigned",
-})
 
 _ARROW_TYPES: dict[str, pa.DataType] = {
     "esriFieldTypeOID": pa.int64(),
@@ -327,31 +332,17 @@ def _validate_value(name: str, esri_type: str, nullable: bool, value: object) ->
     raise PadUsManagerNameError("unsupported_source_physical_type:" + esri_type)
 
 
-def _signed_area(ring: list) -> float:
-    """Signed area of a planar ring (positive counterclockwise), translated origin."""
-    closed = ring if ring[0] == ring[-1] else ring + [ring[0]]
-    x0, y0 = closed[0][0], closed[0][1]
-    area = 0.0
-    for (x1, y1), (x2, y2) in zip(closed, closed[1:]):
-        area += (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
-    return area / 2.0
+def _validate_polygon_geometry(rings: object) -> None:
+    """Structural contract for one decoded rings value (no assembly).
 
-
-def _polygon_wkb(geometry: object) -> bytes:
-    """Assemble one decoded Esri JSON rings value into 2D polygon WKB.
-
-    Esri JSON polygon semantics: rings are closed, clockwise rings are
-    exteriors, counterclockwise rings are holes, and a feature may hold several
-    exteriors. Assembly is the standard producer reading, not a geometric
-    interpretation: exteriors with no claimable hole keep their ring order and
-    holes join their smallest containing exterior. Decoded producer vertices
-    are retained verbatim (no reorientation, resampling, or projection). Rows
-    whose rings cannot form a valid OGC polygon are reported through the
-    UNUSABLE_GEOMETRY_MODES gates instead of silently coercing a polygon.
+    Esri JSON polygon semantics: rings are closed XY pairs in the source
+    lon/lat domain. Ordinate shape, type, finiteness and coordinate range are
+    checked here so structurally invalid source geometry refuses the capture
+    with the pinned codes. Ring orientation and hole assignment are GDAL's
+    (shared native Esri polygon conversion); OGC-invalid-but-representable
+    producer polygons are retained with a counted diagnostic instead of being
+    gated to null.
     """
-    if not isinstance(geometry, dict) or set(geometry) != {"rings"}:
-        raise PadUsManagerNameError("unexpected_source_geometry_members")
-    rings = geometry["rings"]
     if not isinstance(rings, list) or not rings:
         raise PadUsManagerNameError("source_polygon_geometry_invalid")
     for ring in rings:
@@ -365,30 +356,6 @@ def _polygon_wkb(geometry: object) -> bytes:
                 raise PadUsManagerNameError("source_polygon_ordinate_not_finite")
             if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
                 raise PadUsManagerNameError("source_coordinate_range_drift")
-    exteriors, holes = [], []
-    for ring in rings:
-        area = _signed_area(ring)
-        if area == 0:
-            raise PadUsManagerNameError("source_polygon_ring_degenerate")
-        (exteriors if area < 0 else holes).append(ring)
-    if not exteriors:
-        raise PadUsManagerNameError("source_polygon_exterior_missing")
-    shells = [(Polygon(ring), _signed_area(ring), index) for index, ring in enumerate(exteriors)]
-    for shell, _area, _index in shells:
-        if not shell.is_valid:
-            raise PadUsManagerNameError("source_polygon_ring_self_intersecting")
-    assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
-    for hole in holes:
-        polygon = Polygon(hole)
-        candidates = [(abs(area), index) for shell, area, index in shells
-                      if shell.contains(polygon.representative_point())]
-        if not candidates:
-            raise PadUsManagerNameError("source_polygon_hole_unassigned")
-        assigned[min(candidates)[1]].append(hole)
-    polygons = []
-    for _shell, _area, index in sorted(shells, key=lambda item: item[2]):
-        polygons.append(Polygon(exteriors[index], assigned[index]))
-    return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
 
 
 def _validate_feature(feature: object, expected_names: tuple[str, ...],
@@ -820,7 +787,8 @@ class _SegmentStream:
         self.null_geometry = 0
         self.nan_geometry = 0
         self.empty_geometry = 0
-        self.unusable_geometry: dict[str, int] = {}
+        self.ogc_invalid_geometry: dict[str, int] = {}
+        self.ogc_invalid_sample_objectids: list[int] = []
         self.ring_count = 0
         self.vertex_count = 0
         self._xmin = self._ymin = self._xmax = self._ymax = None
@@ -885,17 +853,21 @@ class _SegmentStream:
                             self._ymax = y
                 self.ring_count += len(rings)
                 self.vertex_count += sum(len(ring) for ring in rings)
-                try:
-                    wkb = _polygon_wkb({"rings": rings})
-                except PadUsManagerNameError as exc:
-                    if exc.code not in UNUSABLE_GEOMETRY_MODES:
-                        raise
-                    self.unusable_geometry[exc.code] = \
-                        self.unusable_geometry.get(exc.code, 0) + 1
-                    geometries.append(None)
-                else:
-                    self.geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
-                    geometries.append(wkb)
+                _validate_polygon_geometry(rings)
+                # Ring orientation and hole assignment are GDAL's through
+                # the shared native Esri polygon conversion; a conversion
+                # failure refuses the capture, and OGC invalidity is a
+                # producer defect retained verbatim with a counted reason,
+                # never repaired or coerced to null geometry.
+                wkb = to_wkb({"rings": rings}, GEOMETRY_TYPE, has_z=False, has_m=False)
+                reason = shapely.is_valid_reason(shapely.from_wkb(wkb))
+                if reason != "Valid Geometry":
+                    self.ogc_invalid_geometry[reason] = \
+                        self.ogc_invalid_geometry.get(reason, 0) + 1
+                    if len(self.ogc_invalid_sample_objectids) < 20:
+                        self.ogc_invalid_sample_objectids.append(objectid)
+                self.geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
+                geometries.append(wkb)
             for name in self.expected_names:
                 columns[name].append(attrs[name])
         if self._writer is not None:
@@ -923,7 +895,9 @@ class _SegmentStream:
                 "null_geometry_count": self.null_geometry,
                 "nan_geometry_count": self.nan_geometry,
                 "empty_geometry_count": self.empty_geometry,
-                "unusable_geometry_counts": dict(sorted(self.unusable_geometry.items())),
+                "unusable_geometry_counts": {},
+                "ogc_invalid_geometry_counts": dict(sorted(self.ogc_invalid_geometry.items())),
+                "ogc_invalid_geometry_sample_objectids": self.ogc_invalid_sample_objectids,
                 "ring_count": self.ring_count, "vertex_count": self.vertex_count,
                 "max_objectid": self.last_objectid,
                 "observed_bounds": None if self._xmin is None else
@@ -1019,6 +993,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "nan_geometry_count": summary["nan_geometry_count"],
             "empty_geometry_count": summary["empty_geometry_count"],
             "unusable_geometry_counts": summary["unusable_geometry_counts"],
+            "ogc_invalid_geometry_counts": summary["ogc_invalid_geometry_counts"],
+            "ogc_invalid_geometry_sample_objectids": summary["ogc_invalid_geometry_sample_objectids"],
             "ring_count": summary["ring_count"], "vertex_count": summary["vertex_count"],
             "max_objectid": summary["max_objectid"],
             "observed_bounds": summary["observed_bounds"]}
@@ -1180,6 +1156,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "nan_geometry_count": extracted["nan_geometry_count"],
         "empty_geometry_count": extracted["empty_geometry_count"],
         "unusable_geometry_counts": extracted["unusable_geometry_counts"],
+        "ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
+        "ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_geometry_sample_objectids"],
         "unique_source_id_count": EXPECTED_COUNT,
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
@@ -1372,6 +1350,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             "source_nan_geometry_count": extracted["nan_geometry_count"],
             "source_empty_geometry_count": extracted["empty_geometry_count"],
             "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
+            "source_ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
+            "source_ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_geometry_sample_objectids"],
             "source_id_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
@@ -1481,6 +1461,8 @@ def build_pad_us_manager_name_baseline(capture_root: str) -> dict[str, object]:
             "source_nan_geometry_count": extracted["nan_geometry_count"],
             "source_empty_geometry_count": extracted["empty_geometry_count"],
             "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
+            "source_ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
+            "source_ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_geometry_sample_objectids"],
             "source_ring_count": extracted["ring_count"],
             "source_vertex_count": extracted["vertex_count"],
             "observed_bounds": extracted["observed_bounds"]}

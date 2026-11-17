@@ -43,13 +43,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -140,11 +140,11 @@ EXPECTED_REFUSED_IDS: frozenset[int] = frozenset({
 # retained verbatim in the record/geometry digests and bounds; the candidate
 # geometry is explicitly set to null and the failure mode is counted and
 # pinned. Structural modes outside this family still fail closed.
-UNUSABLE_GEOMETRY_MODES = frozenset({
-    "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
-    "source_polygon_hole_unassigned",
-})
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {"source_polygon_ring_degenerate": 6}
+# Geometry quarantines retired by the shared GDAL Esri polygon converter
+# (issue #997): the producer's six zero-area sliver rows now convert through
+# GDAL and are retained verbatim, counted as ogc_invalid_geometry_counts
+# instead of gated to null.
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
 EXPECTED_NULL_GEOMETRY_COUNT = 9
 # Observed 2026-11-13 complete non-Lake population contract (featuretype<>3),
 # re-derived from the dated full capture (330 pages, 9.0 GB wire+body under the
@@ -391,17 +391,16 @@ def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path
     return pages, refused
 
 
-def _polygon_wkb(geometry: object) -> bytes | None:
-    """WKB for one feature's Esri rings under the producer's verified ring semantics.
+def _validate_polygon_geometry(geometry: object) -> None:
+    """Structural contract for one served polygon geometry (no assembly).
 
-    Esri JSON (verified on the pinned capture): every ring is explicitly closed,
-    clockwise rings are exteriors, counter-clockwise rings are holes, and every
-    ordinate triple carries the layer's Z value (``returnZ=true`` response).
-    Vertices are passed to shapely verbatim; exteriors with no claimable hole
-    keep their ring order and holes join their smallest containing exterior.
+    Esri JSON rings are explicitly closed Z triples in the source lon/lat
+    domain; ordinate shape, type, finiteness and coordinate range are checked
+    here so structurally invalid source geometry refuses the capture with the
+    pinned codes. Ring orientation and hole assignment are GDAL's (shared
+    native Esri polygon conversion); OGC-invalid-but-representable producer
+    polygons are retained with a counted diagnostic instead of being gated.
     """
-    if geometry is None:
-        return None
     if not isinstance(geometry, dict) or "rings" not in geometry \
             or not isinstance(geometry["rings"], list) or not geometry["rings"]:
         raise ValueError("source_polygon_geometry_invalid")
@@ -409,13 +408,10 @@ def _polygon_wkb(geometry: object) -> bytes | None:
         raise ValueError("unexpected_source_geometry_members")
     if geometry.get("hasZ") is not True:
         raise ValueError("source_geometry_z_flag_missing")
-    exteriors: list[list] = []
-    holes: list[list] = []
     for ring in geometry["rings"]:
         if not isinstance(ring, list) or len(ring) < 4:
             raise ValueError("source_polygon_ring_invalid")
-        area = 0.0
-        for index, vertex in enumerate(ring):
+        for vertex in ring:
             if not isinstance(vertex, list) or len(vertex) != 3:
                 raise ValueError("source_polygon_ordinate_contract_drift")
             x, y, z = vertex
@@ -423,47 +419,10 @@ def _polygon_wkb(geometry: object) -> bytes | None:
                 raise ValueError("source_polygon_ordinate_not_numeric")
             if not (all(value == value and -1e308 < value < 1e308 for value in (x, y, z))):
                 raise ValueError("source_polygon_ordinate_not_finite")
-            if x == "NaN" or y == "NaN" or z == "NaN":
-                raise ValueError("source_polygon_ordinate_string_nan")
             if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
                 raise ValueError("source_coordinate_range_drift")
-            nxt = ring[(index + 1) % len(ring)]
-            area += x * nxt[1] - nxt[0] * y
-        area /= 2
         if ring[0] != ring[-1]:
             raise ValueError("source_polygon_ring_not_closed")
-        if area == 0:
-            raise ValueError("source_polygon_ring_degenerate")
-        (exteriors if area < 0 else holes).append(ring)
-    if not exteriors:
-        raise ValueError("source_polygon_exterior_missing")
-    shells = [(Polygon(ring), _signed_area(ring), index) for index, ring in enumerate(exteriors)]
-    # Prepared shell geometries: hole containment is queried against every
-    # exterior, and the producer's island/coastal features carry thousands of
-    # holes over six-figure-vertex exteriors where unprepared contains() per
-    # hole is pathologically slow. Preparation builds an index only and the
-    # containment results are identical.
-    for shell, _area, _index in shells:
-        shapely.prepare(shell)
-    assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
-    for hole in holes:
-        probe = Polygon(hole).representative_point()
-        candidates = [(abs(area), index) for shell, area, index in shells if shell.contains(probe)]
-        if not candidates:
-            raise ValueError("source_polygon_hole_unassigned")
-        assigned[min(candidates)[1]].append(hole)
-    polygons = []
-    for _, _, index in sorted(shells, key=lambda item: item[2]):
-        polygons.append(Polygon(exteriors[index], assigned[index]))
-    return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
-
-
-def _signed_area(ring: list) -> float:
-    area = 0.0
-    for index, vertex in enumerate(ring):
-        nxt = ring[(index + 1) % len(ring)]
-        area += vertex[0] * nxt[1] - nxt[0] * vertex[1]
-    return area / 2
 
 
 def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
@@ -597,7 +556,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     null_geometry = 0
     observed_bounds: list[float] = []
     distribution: dict[int, int] = {}
-    unusable_geometry: dict[str, int] = {}
+    ogc_invalid_geometry: dict[str, int] = {}
+    ogc_invalid_sample_objectids: list[int] = []
     id3dhp_seen: set[str] = set()
     ring_count = 0
     vertex_count = 0
@@ -640,19 +600,18 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
                 attributes.append(attrs)
                 id3dhp_seen.add(attrs["id3dhp"])
                 continue
-            try:
-                wkb = _polygon_wkb(geometry)
-            except ValueError as exc:
-                if str(exc) not in UNUSABLE_GEOMETRY_MODES:
-                    raise
-                # The producer publishes a small number of features whose rings
-                # cannot form a valid OGC polygon (zero/signed-zero area
-                # slivers). The row and its raw rings are retained verbatim in
-                # the digests and bounds below; the candidate geometry is
-                # explicitly gated to null and the failure mode is counted and
-                # pinned, never silently coerced into an invented polygon.
-                wkb = None
-                unusable_geometry[str(exc)] = unusable_geometry.get(str(exc), 0) + 1
+            _validate_polygon_geometry(geometry)
+            # Ring orientation and hole assignment are GDAL's through the
+            # shared native Esri polygon conversion; a conversion failure
+            # refuses the capture, and OGC invalidity is a producer defect
+            # retained verbatim with a counted reason, never repaired or
+            # coerced to null geometry.
+            wkb = to_wkb(geometry, "esriGeometryPolygon", has_z=True, has_m=False)
+            reason = shapely.is_valid_reason(shapely.from_wkb(wkb))
+            if reason != "Valid Geometry":
+                ogc_invalid_geometry[reason] = ogc_invalid_geometry.get(reason, 0) + 1
+                if len(ogc_invalid_sample_objectids) < 20:
+                    ogc_invalid_sample_objectids.append(oid)
             rings = geometry["rings"]
             ring_count += len(rings)
             vertex_count += sum(len(ring) for ring in rings)
@@ -702,8 +661,6 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_featuretype_distribution_drift")
     if null_geometry != EXPECTED_NULL_GEOMETRY_COUNT:
         raise ValueError("source_null_geometry_count_drift")
-    if unusable_geometry != EXPECTED_UNUSABLE_GEOMETRY_COUNTS:
-        raise ValueError("source_unusable_geometry_count_drift")
     bounds = None
     if observed_bounds:
         bounds = {"xmin": min(observed_bounds[0::2]), "ymin": min(observed_bounds[1::2]),
@@ -735,7 +692,9 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "source_featuretype_distribution": distribution,
              "source_crs_epsg": SOURCE_CRS_WKID, "source_layer_native_sr": NATIVE_LAYER_SR,
              "geometry_type": "Polygon Z / MultiPolygon Z", "null_geometry_count": null_geometry,
-             "unusable_geometry_feature_counts": dict(sorted(unusable_geometry.items())),
+             "unusable_geometry_feature_counts": {},
+             "ogc_invalid_geometry_counts": dict(sorted(ogc_invalid_geometry.items())),
+             "ogc_invalid_geometry_sample_objectids": ogc_invalid_sample_objectids,
              "observed_bounds": bounds, "declared_layer_extent_3857": EXPECTED_LAYER_EXTENT,
              "unique_source_id_count": len(set(captured_ids)),
              "id3dhp_distinct_count": len(id3dhp_seen),

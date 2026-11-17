@@ -122,8 +122,12 @@ EXPECTED_RECORD_SHA256 = "87a5b6a972cea49fd96efc22997a8a821b3ec08633170427a2324c
 # per feature in ascending OBJECTID order, including the rows that gate to null
 # geometry — computed from the complete dated population walk (2026-11-14).
 EXPECTED_GEOMETRY_SHA256 = "0946ee86214c9fbb02f5feb900c2a43fc1a1395e34bf58c580bf42cdc61fa67e"
-EXPECTED_NULL_GEOMETRY_COUNT = 2
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {"source_polygon_ring_self_intersecting": 2}
+# Geometry quarantines retired by the shared GDAL Esri polygon converter
+# (issue #997): served rings always convert, OGC-invalid converted geometry is
+# retained verbatim and counted as ogc_invalid_geometry_counts, and the only
+# null candidate geometries are producer-null rows (none served).
+EXPECTED_NULL_GEOMETRY_COUNT = 0
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
 BASELINE_PENDING_NOTE = (
     "The record, geometry and ID-roster baselines and the geometry-gate counts "
     "are not pinned yet: no complete capture existed at draft time (observed "
@@ -140,10 +144,7 @@ PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
 METADATA_NAMES = family.METADATA_NAMES
 CAPTURE_NAMES = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
 
-GATE_MODES = family.BASE_GATE_MODES
-_GeometryGate = family.GeometryGate
-_signed_area = family.signed_area
-_assemble_geometry = family.assemble_geometry
+GATE_MODES: frozenset = frozenset()
 _EPSG3857_PROJJSON = family.EPSG3857_PROJJSON
 
 _COVERAGE_SCOPE = ("Complete observed USGS wbd MapServer layer 1 "
