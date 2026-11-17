@@ -69,6 +69,47 @@ class ArcgisLayerTests(unittest.TestCase):
                 expected.extend(struct.pack("<dd", x, y))
         self.assertEqual(common.esri_polyline_wkb(geometry), bytes(expected))
 
+    def test_ienc_layer_capture_roster_pins_pjson_urls(self):
+        self.assertEqual(common.ienc_layer_capture_roster(
+            [1, 2, 3],
+            bts_item_url="https://bts.example/item?f=json",
+            service_directory_url="https://svc.example/dir?f=pjson",
+            service_url="https://svc.example/LAYER/MapServer",
+            layer_url="https://svc.example/LAYER/MapServer/1",
+            page_size=2,
+        ), [
+            ("bts_item", "https://bts.example/item?f=json"),
+            ("service_directory", "https://svc.example/dir?f=pjson"),
+            ("service_before", "https://svc.example/LAYER/MapServer?f=pjson"),
+            ("layer_before", "https://svc.example/LAYER/MapServer/1?f=pjson"),
+            ("count_before", "https://svc.example/LAYER/MapServer/1/query?where=1%3D1&returnCountOnly=true&f=json"),
+            ("ids_before", "https://svc.example/LAYER/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=json"),
+            ("page_000", "https://svc.example/LAYER/MapServer/1/query?objectIds=1%2C2&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true&outSR=4326&orderByFields=OBJECTID+ASC&f=json"),
+            ("page_001", "https://svc.example/LAYER/MapServer/1/query?objectIds=3&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true&outSR=4326&orderByFields=OBJECTID+ASC&f=json"),
+            ("layer_after", "https://svc.example/LAYER/MapServer/1?f=pjson"),
+            ("count_after", "https://svc.example/LAYER/MapServer/1/query?where=1%3D1&returnCountOnly=true&f=json"),
+            ("ids_after", "https://svc.example/LAYER/MapServer/1/query?where=1%3D1&returnIdsOnly=true&f=json"),
+            ("service_after", "https://svc.example/LAYER/MapServer?f=pjson"),
+        ])
+
+    def test_ienc_layer_capture_roster_pins_json_urls(self):
+        roster = common.ienc_layer_capture_roster(
+            [1, 2, 3],
+            bts_item_url="https://bts.example/item?f=json",
+            service_directory_url="https://svc.example/dir?f=pjson",
+            service_url="https://svc.example/LAYER/MapServer",
+            layer_url="https://svc.example/LAYER/MapServer/1",
+            page_size=2,
+            layer_format="json",
+        )
+        urls = dict(roster)
+        self.assertEqual(urls["layer_before"], "https://svc.example/LAYER/MapServer/1?f=json")
+        self.assertEqual(urls["layer_after"], "https://svc.example/LAYER/MapServer/1?f=json")
+        self.assertEqual([name for name, _url in roster],
+                         ["bts_item", "service_directory", "service_before", "layer_before",
+                          "count_before", "ids_before", "page_000", "page_001", "layer_after",
+                          "count_after", "ids_after", "service_after"])
+
     def test_private_aliases_bind_the_public_implementations(self):
         self.assertIs(common._capture, common.capture_page)
         self.assertIs(common._load_capture, common.load_capture)
