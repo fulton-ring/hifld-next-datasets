@@ -24,8 +24,8 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
@@ -289,7 +289,7 @@ def capture_eia_ethanol_plants(storage: StagingStorageResource, *, version: str,
     if shutil.disk_usage(stage).free < 300_000_000:
         raise ValueError("disk_floor_before_acquisition")
     requested = Path(capture_directory).absolute() if capture_directory else None
-    root = requested or Path("/tmp/hifld-native-reconstruction/81/captures") / (version + "-" + uuid4().hex)
+    root = requested or default_capture_dir("hifld-native-reconstruction", "81", "captures") / (version + "-" + uuid4().hex)
     caps = _capture(root, storage, version)
     with tempfile.TemporaryDirectory() as tmp:
         frame, audit = _decode(caps["eia_zip"][0], Path(tmp))
