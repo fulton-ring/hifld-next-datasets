@@ -27,7 +27,7 @@ import pyarrow.parquet as pq
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, validate_capture_request_identity,
     verify_cached_candidate, write_immutable,

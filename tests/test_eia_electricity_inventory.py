@@ -123,7 +123,7 @@ class WorkbookTests(unittest.TestCase):
             return httpx.Response(200, stream=httpx.ByteStream(body))
         with tempfile.TemporaryDirectory() as temp:
             storage = StagingStorageResource(local_dir=temp+'/stage')
-            with httpx.Client(transport=httpx.MockTransport(respond)) as client, patch('dagster_hifld.sources.epa_frs_common.validate_construction_code_identity'):
+            with httpx.Client(transport=httpx.MockTransport(respond)) as client, patch('dagster_hifld.sources.capture_common.validate_construction_code_identity'):
                 first = source.capture_inventory(storage, capture_directory=temp+'/one', client=client)
                 same_content = source.capture_inventory(storage, capture_directory=temp+'/same', client=client)
                 self.assertEqual(first['candidates'][0]['version'], same_content['candidates'][0]['version'])
@@ -143,7 +143,7 @@ class WorkbookTests(unittest.TestCase):
             return httpx.Response(200, stream=httpx.ByteStream(self.workbook() if request.url.path.endswith('.xlsx') else b'<a href="xls/september_generator2026.xlsx">September</a>'))
         with tempfile.TemporaryDirectory() as temp:
             storage = StagingStorageResource(local_dir=temp+'/stage')
-            with httpx.Client(transport=httpx.MockTransport(respond)) as client, patch('dagster_hifld.sources.epa_frs_common.validate_construction_code_identity'):
+            with httpx.Client(transport=httpx.MockTransport(respond)) as client, patch('dagster_hifld.sources.capture_common.validate_construction_code_identity'):
                 result = source.capture_inventory(storage, capture_directory=temp+'/capture', client=client)
             item = result['candidates'][0]
             manifest = json.loads(storage.read_key(f"{item['dataset_slug']}/{item['file_slug']}/{item['version']}/metadata/source_manifest.json"))
@@ -175,7 +175,7 @@ class WorkbookTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             storage=StagingStorageResource(local_dir=temp+'/stage')
             client=httpx.Client(transport=httpx.MockTransport(respond))
-            with patch('dagster_hifld.sources.epa_frs_common.validate_construction_code_identity'):
+            with patch('dagster_hifld.sources.capture_common.validate_construction_code_identity'):
                 first=source.capture_inventory(storage,capture_directory=temp+'/capture',client=client)
                 replay=source.capture_inventory(storage,capture_directory=temp+'/capture',replay=True,client=client)
                 self.assertTrue(all(c['reused'] for c in replay['candidates']))
