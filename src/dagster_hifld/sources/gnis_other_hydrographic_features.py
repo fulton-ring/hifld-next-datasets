@@ -69,12 +69,13 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "other-hydrographic-features-1"
 FILE_SLUG = DATASET_SLUG
@@ -206,15 +207,6 @@ class GnisOtherHydrographicFeaturesError(ValueError):
     def __init__(self, code: str):
         self.code = code
         super().__init__(code)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -1458,10 +1450,8 @@ def capture_gnis_other_hydrographic_features(
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise GnisOtherHydrographicFeaturesError("disk_floor_before_acquisition")
-    attempt_root = Path("/data/workspace/scratch/other-hydrographic-features-1"
-                        "/captures")
     capture_root = Path(capture_directory).absolute() if capture_directory \
-        else (attempt_root / f"{version}-{uuid4().hex}").absolute()
+        else (default_capture_dir(DATASET_SLUG, "captures") / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise GnisOtherHydrographicFeaturesError("unsafe_capture_directory")

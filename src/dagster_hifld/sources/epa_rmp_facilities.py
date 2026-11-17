@@ -6,7 +6,6 @@ DataLumos export. Candidate creation is local-only and never grants release.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from collections import Counter
@@ -27,11 +26,12 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "epa-emergency-response-rmp-facilities"
 FILE_SLUG = DATASET_SLUG
@@ -48,15 +48,6 @@ SOURCE_SCHEMA_SHA256 = "f0f50c2204dfd72bcc5df3b2faae12f45b9b9c0f02c059078a1bfc2d
 PAGE_SIZE = 1000
 MAX_BODY_BYTES = 16 * 1024 * 1024
 _DEFAULT_SCHEMA_PIN = object()
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _field_profile(fields: object) -> list[dict[str, object]]:
@@ -373,7 +364,7 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
     staging.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(staging).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
-    attempt = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/66/captures")
+    attempt = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "66", "captures")
     capture_root = (attempt / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(path.is_symlink() for path in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

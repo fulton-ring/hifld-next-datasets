@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 import httpx
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import write_immutable
+from dagster_hifld.sources.capture_common import write_immutable
 
 DEFAULT_MAX_ARCHIVE_BYTES = 64_000_000
 MAX_UNCOMPRESSED_GDB_BYTES = 128_000_000

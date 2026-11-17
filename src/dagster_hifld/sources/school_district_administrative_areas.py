@@ -14,7 +14,7 @@ import httpx
 import json
 import pyarrow as pa
 
-from dagster_hifld.sources import census_school_districts as _shared
+from dagster_hifld.sources import census_tiger_common as _shared
 
 DATASET_SLUG = "school-district-administrative-areas"
 FILE_SLUG = DATASET_SLUG

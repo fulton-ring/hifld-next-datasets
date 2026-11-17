@@ -1,6 +1,7 @@
 """Focused tests for the USGS WBD 8-digit HU (Subbasin) native capture draft."""
 
 import json
+import os
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -17,8 +18,8 @@ from dagster_hifld.assets.wbd_hu8_subbasin import (
 )
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import wbd_hu8_subbasin as source
-from dagster_hifld.sources import epa_frs_common
-from dagster_hifld.sources.epa_frs_common import _canonical, _sha
+from dagster_hifld.sources import capture_common
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 FIXTURE_COUNT = 8
@@ -683,6 +684,40 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         self.assertEqual(refreshed["url"], source._query(
             {"where": "1=1", "returnIdsOnly": "true", "f": "json"}))
 
+    def test_mapped_previous_root_resumes_the_default_capture_state(self):
+        documents = {**_fixture_doc_bodies(), **_fixture_segment_bodies()}
+        tmp = self._tmpdir().name
+        mapped_root = Path(tmp) / "previous-root"
+        env = patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": str(mapped_root)})
+        identity_patches = (
+            patch.object(source, "processing_identity", lambda _root: dict(FAKE_IDENTITY)),
+            patch.object(source, "validate_construction_code_identity"),
+            patch.object(capture_common, "validate_construction_code_identity"),
+        )
+        storage = self._storage(tmp)
+        # The first acquisition runs to completion at the mapped default and
+        # seals its candidate from it.
+        with self._patched(*self._mocked_acquisition(documents, []), env, *identity_patches):
+            source.capture_wbd_hu8_subbasin(
+                storage, version="vtest0000000000000000000000000000")
+        # The default keeps the historical wbd-hu8-subbasin layout under the
+        # mapped root, so the interrupted state is the same directory.
+        default_root = mapped_root / "wbd-hu8-subbasin" / "captures"
+        state = json.loads((default_root / "capture_state.json").read_bytes())
+        dropped = state["segments"].pop()
+        state["complete"] = False
+        (default_root / "capture_state.json").write_bytes(_canonical(state) + b"\n")
+        for suffix in (".body", ".wire", ".receipt.json"):
+            (default_root / f"{dropped['name']}{suffix}").unlink()
+        resume_calls: list[str] = []
+        with self._patched(*self._mocked_acquisition(documents, resume_calls),
+                           env, *identity_patches):
+            result = source.capture_wbd_hu8_subbasin(
+                storage, version="vtest0000000000000000000000000000")
+        self.assertEqual(resume_calls, [dropped["name"], "service_after", "layer_after",
+                                        "count_after", "ids_after"])
+        self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+
     def test_producer_change_during_extraction_fails_closed(self):
         calls: list[str] = []
         documents = {**_fixture_doc_bodies(), **_fixture_segment_bodies()}
@@ -709,7 +744,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
                                  {"rings": [spike]})))}),
                 patch.object(source, "processing_identity", lambda _root: dict(FAKE_IDENTITY)),
                 patch.object(source, "validate_construction_code_identity"),
-                patch.object(epa_frs_common, "validate_construction_code_identity"),
+                patch.object(capture_common, "validate_construction_code_identity"),
                 patch.object(source, "_default_client", _OfflineClient)):
             tmp = self._tmpdir().name
             storage = self._storage(tmp)
@@ -757,7 +792,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         with self._patched(), \
                 patch.object(source, "processing_identity", lambda _root: dict(FAKE_IDENTITY)), \
                 patch.object(source, "validate_construction_code_identity"), \
-                patch.object(epa_frs_common, "validate_construction_code_identity"), \
+                patch.object(capture_common, "validate_construction_code_identity"), \
                 patch.object(source, "_default_client", _OfflineClient):
             tmp = self._tmpdir().name
             storage = self._storage(tmp)
@@ -812,7 +847,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         with self._patched(), \
                 patch.object(source, "processing_identity", lambda _root: dict(FAKE_IDENTITY)), \
                 patch.object(source, "validate_construction_code_identity"), \
-                patch.object(epa_frs_common, "validate_construction_code_identity"), \
+                patch.object(capture_common, "validate_construction_code_identity"), \
                 patch.object(source, "_default_client", _OfflineClient):
             tmp = self._tmpdir().name
             storage = self._storage(tmp)

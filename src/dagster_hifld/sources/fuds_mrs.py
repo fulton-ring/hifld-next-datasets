@@ -1,7 +1,6 @@
 """Lossless native capture of USACE FUDS Munitions Response Sites."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import struct
@@ -18,12 +17,13 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 SERVICE_URL = "https://geospatial.sec.usace.army.mil/server/rest/services/Military/FUDS_Data/MapServer"
 LAYER_ID = 3
@@ -42,15 +42,6 @@ EXPECTED_EXTENT = {"xmin": -178.14432731684448, "ymin": -14.27524421543228,
 EXTENT_TOLERANCE_DEGREES = 1e-9
 PAGE_SIZE = 250
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _plain_field(field: dict) -> dict:
@@ -166,7 +157,7 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
     if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
         raise ValueError("explicit_local_staging_resource_required")
-    root = Path(capture_directory or "/tmp/hifld-native-reconstruction/98/captures") / version
+    root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "98", "captures"))) / version
     root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict]] = {}
     feature_srs: dict[int, dict] = {}

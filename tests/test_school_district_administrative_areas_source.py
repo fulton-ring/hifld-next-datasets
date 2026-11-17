@@ -18,7 +18,7 @@ import shapely
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import school_district_administrative_areas as source
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.epa_frs_common import CODE_IDENTITY_PACKAGED, processing_identity
+from dagster_hifld.sources.capture_common import CODE_IDENTITY_PACKAGED, processing_identity
 
 
 def _fixture_table(rows=2):

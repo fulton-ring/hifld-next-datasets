@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -25,8 +24,8 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     processing_identity,
@@ -35,6 +34,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "dry-docks-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -78,15 +78,6 @@ EXPECTED_CAPTURE_NAMES = {
     "service_directory", "service_before", "layer_before", "count_before",
     "ids_before", "page_0000", "layer_after", "count_after", "ids_after", "service_after",
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _query(params: dict[str, object]) -> str:
@@ -472,7 +463,7 @@ def capture_usace_dry_docks(storage: StagingStorageResource, *, version: str,
     requested = Path(capture_directory).absolute() if capture_directory else None
     if requested and (".." in requested.parts or any(path.is_symlink() for path in (requested, *requested.parents))):
         raise ValueError("unsafe_capture_directory")
-    root = requested or Path("/tmp/hifld-native-reconstruction/21/captures") / (version + "-" + uuid4().hex)
+    root = requested or default_capture_dir("hifld-native-reconstruction", "21", "captures") / (version + "-" + uuid4().hex)
     if not requested:
         root.mkdir(parents=True, exist_ok=False)
     captures = _read_capture(root, storage, version)

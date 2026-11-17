@@ -8,7 +8,7 @@ import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.sources import secondary_school_districts, unified_school_districts
-from dagster_hifld.sources import census_school_districts as shared
+from dagster_hifld.sources import census_tiger_common as shared
 
 
 class UnifiedSchoolDistrictsSourceTests(unittest.TestCase):

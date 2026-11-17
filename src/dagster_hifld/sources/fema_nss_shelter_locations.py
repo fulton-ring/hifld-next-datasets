@@ -1,7 +1,6 @@
 """Native, unapproved capture of FEMA layer 5 Shelter Locations; not a historic HIFLD reconstruction."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
@@ -19,7 +18,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
@@ -29,6 +28,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.http_capture import validate_capture_roster
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "9e731f5353f94ffba848d87d98fc064c"
 PORTAL_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"
@@ -184,14 +184,6 @@ MAX_CAPTURE_MANIFEST_BYTES = 1_000_000
 MAX_CAPTURE_REQUESTS = 512
 MAX_CAPTURE_RECEIPT_BYTES = 64_000
 MAX_CAPTURE_RECEIPT_TOTAL_BYTES = 4_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _validate_capture_limits(max_capture_bytes: int, max_response_bytes: int) -> None:

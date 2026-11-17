@@ -1,7 +1,6 @@
 """Lossless, approval-gated capture of USACE's FUDS district layer."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -13,16 +12,17 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon, Polygon
 
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "formerly-used-defense-sites-district-boundaries"
 FILE_SLUG = DATASET_SLUG
@@ -33,15 +33,6 @@ LAYER_NAME = "FUDS Program District Boundaries"
 EXPECTED_SCHEMA_SHA256 = "0b76c21c490ad121358884633e644a96775cdee16af97ce5fb29606c8e799b59"
 EXPECTED_COUNT = 13
 PAGE_SIZE = 50
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _field_contract(layer: dict) -> list[dict]:
@@ -123,7 +114,7 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
     if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
         raise ValueError("explicit_local_staging_resource_required")
-    root = Path(capture_directory or "/tmp/hifld-native-reconstruction/94/captures") / version
+    root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "94", "captures"))) / version
     root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict]] = {}
 

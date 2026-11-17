@@ -13,7 +13,7 @@ from dagster_hifld.esri_pbf import (
 )
 from dagster_hifld.assets.national_forests import _get
 from dagster_hifld.assets.national_forests import national_forests_draft_schedule
-from dagster_hifld.sources.epa_frs_common import content_derived_version
+from dagster_hifld.sources.capture_common import content_derived_version
 
 
 class EsriPbfDecoderTests(unittest.TestCase):
@@ -36,6 +36,21 @@ class EsriPbfDecoderTests(unittest.TestCase):
         self.assertEqual(feature["attributes"]["ownerormanagingagency"], 11)
         self.assertEqual(feature["attributes"]["source_datadesc"], "PAD-US 4.1")
         self.assertEqual([len(ring) for ring in feature["geometry"]["rings"]], [14, 11])
+
+    def test_decodes_producer_null_geometry_feature_without_geometry_submessage(self):
+        body = (Path(__file__).parent / "fixtures"
+                / "pad_us_manager_name_oid3651_null_geometry.pbf").read_bytes()
+        decoded = decode_feature_collection_pbf(body, allow_transfer_limit=True)
+        self.assertEqual(len(decoded["fields"]), 37)
+        self.assertEqual(decoded["objectIdFieldName"], "OBJECTID")
+        self.assertEqual(decoded["spatialReference"]["latestWkid"], 4326)
+        self.assertEqual(len(decoded["features"]), 1)
+        feature = decoded["features"][0]
+        self.assertEqual(feature["attributes"]["OBJECTID"], 3651)
+        self.assertEqual(feature["attributes"]["Mang_Name"], "BLM")
+        self.assertEqual(feature["attributes"]["State_Nm"], "WY")
+        self.assertIsNone(feature["attributes"]["EsmtHldr"])
+        self.assertIsNone(feature["geometry"])
 
     def test_draft_geoparquet_preserves_typed_values_and_declarations(self):
         import pyarrow.parquet as pq

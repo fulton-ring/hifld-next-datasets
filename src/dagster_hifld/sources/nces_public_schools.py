@@ -14,7 +14,6 @@ from urllib.parse import urlsplit
 import geopandas as gpd
 import httpx
 import numpy as np
-import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
@@ -23,7 +22,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     processing_identity,
@@ -32,6 +31,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "public-schools"
@@ -66,15 +66,6 @@ INNER_MEMBERS = {
     "EDGE_GEOCODE_PUBLICSCH_2425.sbx", "EDGE_GEOCODE_PUBLICSCH_2425.shp",
     "EDGE_GEOCODE_PUBLICSCH_2425.shp.xml",
 }
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _file_descriptor(body: bytes) -> dict[str, object]:
@@ -299,8 +290,21 @@ def _normalize_retained_receipt(receipt: dict[str, object], body: bytes, wire: b
     return normalized
 
 
+def _quarantine_capture(storage: StagingStorageResource, artifacts: dict[str, bytes],
+                        receipt: dict[str, object], reason: str) -> None:
+    """Retain refusal evidence even after the acquisition workspace is cleaned up."""
+    with tempfile.TemporaryDirectory(prefix="nces-public-schools-quarantine-") as temporary:
+        root = Path(temporary)
+        (root / "source.wire").write_bytes(artifacts["source.wire"])
+        prefix = quarantine_incomplete_capture(storage, root, DATASET_SLUG,
+            "v" + _sha(artifacts["source.body"])[:32],
+            {"source": (artifacts["source.body"], receipt)}, reason)
+        write_immutable(storage, f"{prefix}/raw/source.original_receipt.json",
+                        artifacts["source.receipt.json"])
+
+
 def _capture(capture_directory: str | Path | None,
-             storage: StagingStorageResource) -> tuple[Path, dict[str, bytes], dict[str, object]]:
+             storage: StagingStorageResource) -> tuple[dict[str, bytes], dict[str, object]]:
     temporary = tempfile.TemporaryDirectory(prefix="nces-public-schools-capture-") if capture_directory is None else None
     root = Path(temporary.name) if temporary is not None else Path(capture_directory)
     try:
@@ -318,8 +322,6 @@ def _capture(capture_directory: str | Path | None,
                 with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(120, connect=15)) as client:
                     _body, receipt = capture_get(client, SOURCE_URL, root, "source", max_bytes=MAX_SOURCE_BYTES)
             except Exception as exc:
-                quarantine_incomplete_capture(storage, root, DATASET_SLUG,
-                    "v" + EXPECTED_SHA256[:32], {}, type(exc).__name__)
                 raise ValueError("nces_public_schools_source_capture_failed") from exc
             artifacts = {name: (root / name).read_bytes() for name in CAPTURE_FILES}
             raw_receipt = json.loads(artifacts["source.receipt.json"])
@@ -328,16 +330,15 @@ def _capture(capture_directory: str | Path | None,
                 or len(wire) != EXPECTED_BYTES or _sha(wire) != EXPECTED_SHA256
                 or receipt.get("content_length") not in (None, EXPECTED_BYTES)):
             raise ValueError("nces_public_schools_archive_identity_or_release_drift")
-        return root, artifacts, {**receipt, "raw_receipt_sha256": _sha(artifacts["source.receipt.json"])}
+        return artifacts, {**receipt, "raw_receipt_sha256": _sha(artifacts["source.receipt.json"])}
     except Exception as exc:
-        if root.is_dir() and (root / "source.wire").is_file() and (root / "source.receipt.json").is_file():
+        if (root.is_dir() and not root.is_symlink()
+                and all((root / name).is_file() and not (root / name).is_symlink()
+                        for name in CAPTURE_FILES)):
             try:
-                body = (root / "source.body").read_bytes()
-                receipt_raw = json.loads((root / "source.receipt.json").read_bytes())
-                wire = (root / "source.wire").read_bytes()
-                normalized = _normalize_retained_receipt(receipt_raw, body, wire)
-                quarantine_incomplete_capture(storage, root, DATASET_SLUG,
-                    "v" + EXPECTED_SHA256[:32], {"source": (body, normalized)}, type(exc).__name__)
+                artifacts = {name: (root / name).read_bytes() for name in CAPTURE_FILES}
+                receipt_raw = json.loads(artifacts["source.receipt.json"])
+                _quarantine_capture(storage, artifacts, receipt_raw, type(exc).__name__)
             except Exception:
                 pass
         if isinstance(exc, ValueError):
@@ -369,14 +370,13 @@ def capture_nces_public_schools(
     capture_directory: str | Path | None = None,
 ) -> dict[str, object]:
     """Capture or replay one complete official NCES source release into staging."""
-    root, artifacts, receipt = _capture(capture_directory, staging_storage)
+    artifacts, receipt = _capture(capture_directory, staging_storage)
     body = artifacts["source.body"]
     try:
         frame, audit, archive_roster = _inspect_archive(body)
         parquet = _parquet_bytes(frame)
     except Exception as exc:
-        quarantine_incomplete_capture(staging_storage, root, DATASET_SLUG,
-            "v" + EXPECTED_SHA256[:32], {"source": (body, receipt)}, type(exc).__name__)
+        _quarantine_capture(staging_storage, artifacts, receipt, type(exc).__name__)
         raise
 
     identity = processing_identity(Path(__file__).parents[3])

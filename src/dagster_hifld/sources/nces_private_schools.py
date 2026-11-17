@@ -1,7 +1,6 @@
 """Pinned official NCES EDGE 2023-24 private-school location snapshot."""
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import math
@@ -25,8 +24,8 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     processing_identity,
@@ -35,6 +34,7 @@ from dagster_hifld.sources.epa_frs_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "private-schools"
 SOURCE_URL = "https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_PRIVATESCH_2324.zip"
@@ -93,14 +93,6 @@ CAPTURE_URLS = {
     "ids_after": LAYER_URL + "/query?where=1%3D1&returnIdsOnly=true&f=json",
 }
 CAPTURE_NAMES = set(CAPTURE_URLS)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
 
 
 def _field_schema(dbf: Path) -> list[tuple[str, str, int, int]]:
@@ -393,7 +385,7 @@ def capture_private_schools(storage: StagingStorageResource, *, version: str, ca
     if shutil.disk_usage(staging_root).free < 300_000_000:
         raise ValueError("disk_floor_before_acquisition")
     requested = Path(capture_directory).absolute() if capture_directory else None
-    root = requested or Path("/tmp/hifld-native-reconstruction/278/captures") / (version + "-" + uuid4().hex)
+    root = requested or default_capture_dir("hifld-native-reconstruction", "278", "captures") / (version + "-" + uuid4().hex)
     bodies, receipts = _capture(root, storage, version)
     try:
         service = _service_evidence(bodies)

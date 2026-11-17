@@ -71,10 +71,6 @@ from dagster_hifld.assets.colleges_universities import (
     colleges_source_integrity_job,
     colleges_source_integrity_schedule,
 )
-from dagster_hifld.assets.arc_regions import (
-    arc_regions_draft_job, arc_regions_draft_schedule, arc_regions_full_quality,
-)
-
 
 from dagster_hifld.assets.epa_frs_naics_powerplants import (
     epa_frs_naics_complete,
@@ -144,18 +140,6 @@ from dagster_hifld.assets.fuds_public_properties import (
     usace_fuds_public_properties_complete,
     fuds_public_properties_draft_schedule,
 )
-from dagster_hifld.assets.nfhl_nodes import (
-    nfhl_nodes_draft_schedule,
-    fema_nfhl_nodes_complete,
-)
-from dagster_hifld.assets.nfhl_hydrologic_reaches import (
-    nfhl_hydrologic_reaches_draft_schedule,
-    fema_nfhl_hydrologic_reaches_complete,
-)
-from dagster_hifld.assets.nfhl_seclusion_boundaries import (
-    nfhl_seclusion_boundaries_draft_schedule,
-    fema_nfhl_seclusion_boundaries_complete,
-)
 from dagster_hifld.assets.fuds_district_boundaries import (
     fuds_district_boundaries_draft_schedule,
     usace_fuds_program_district_boundaries_complete,
@@ -186,30 +170,6 @@ from dagster_hifld.assets.bts_rail_tofc_cofc import (
 from dagster_hifld.assets.epa_small_scale import (
     epa_small_scale_source_integrity_job,
     epa_small_scale_source_integrity_schedule,
-)
-
-from dagster_hifld.assets.gcca_warehouse_directory import (
-    gcca_warehouses_geometry_complete,
-    gcca_warehouses_draft_job,
-    gcca_warehouses_draft_schedule,
-)
-
-from dagster_hifld.assets.red_cross_headquarters import (
-    red_cross_headquarters_draft_job,
-    red_cross_headquarters_draft_schedule,
-    red_cross_headquarters_source_population,
-)
-
-from dagster_hifld.assets.faa import (
-    faa_airspace_draft_refresh_job,
-    faa_airspace_draft_refresh_schedule,
-    faa_aviation_draft_refresh_job,
-    faa_aviation_draft_refresh_schedule,
-)
-
-from dagster_hifld.assets.noaa_contiguous import (
-    noaa_contiguous_draft_refresh_job,
-    noaa_contiguous_draft_refresh_schedule,
 )
 
 from dagster_hifld.assets.noaa import (
@@ -1115,7 +1075,6 @@ defs = Definitions(
             *hifld_asset_checks,
             usace_fuds_program_district_boundaries_complete,
             epa_disaster_debris_complete,
-            arc_regions_full_quality,
             eia_power_plants_complete,
             eia_ethanol_plants_complete,
             eia_natural_gas_processing_plants_complete,
@@ -1132,8 +1091,6 @@ defs = Definitions(
             usace_fuds_projects_points_complete,
             epa_frs_naics_complete,
             epa_frs_naics_published_membership_compatible,
-            gcca_warehouses_geometry_complete,
-            red_cross_headquarters_source_population,
             census_primary_roads_source_complete,
             census_block_groups_source_complete,
             census_tracts_source_complete,
@@ -1224,9 +1181,6 @@ defs = Definitions(
             fema_regions_full_quality,
             fuds_program_division_boundaries_complete,
             bts_intermodal_freight_air_to_truck_complete,
-            fema_nfhl_nodes_complete,
-            fema_nfhl_hydrologic_reaches_complete,
-            fema_nfhl_seclusion_boundaries_complete,
             usace_fuds_munitions_response_sites_complete,
             usace_fuds_public_properties_complete,
             bts_national_transit_map_agencies_candidate_complete,
@@ -1254,10 +1208,8 @@ defs = Definitions(
             census_tracts_draft_job,
             quaternary_fault_lines_draft_job,
             courthouses_draft_job,
-            faa_airspace_draft_refresh_job,
             noaa_eez_draft_refresh_job,
             noaa_territorial_draft_refresh_job,
-            noaa_contiguous_draft_refresh_job,
             noaa_dart_draft_refresh_job,
             usgs_ems_stations_draft_refresh_job,
             usace_pylon_areas_draft_job,
@@ -1302,7 +1254,6 @@ defs = Definitions(
             epa_power_generation_draft_job,
             epa_icis_wastewater_draft_job,
             epa_frs_naics_draft_job,
-            gcca_warehouses_draft_job,
             bsee_ocs_platforms_draft_job,
             proposed_critical_habitat_draft_job,
             usace_pile_locations_draft_job,
@@ -1320,12 +1271,9 @@ defs = Definitions(
             coastlines_usace_ienc_draft_job,
             locks_usace_ienc_draft_job,
             lock_basins_usace_ienc_draft_job,
-            arc_regions_draft_job,
             aiannh_source_integrity_refresh_job,
-            red_cross_headquarters_draft_job,
             usace_airport_area_draft_job,
             amtrak_draft_refresh_job,
-            faa_aviation_draft_refresh_job,
             ibc_boundary_draft_refresh_job,
             fws_cbrs_buffer_draft_refresh_job,
             fws_cmt_locations_draft_refresh_job,
@@ -1388,10 +1336,8 @@ defs = Definitions(
             usace_pylon_areas_draft_schedule,
             hf_areas_usace_ienc_draft_schedule,
             land_region_areas_usace_ienc_draft_schedule,
-            faa_airspace_draft_refresh_schedule,
             noaa_eez_draft_weekly_schedule,
             noaa_territorial_draft_weekly_schedule,
-            noaa_contiguous_draft_refresh_schedule,
             noaa_dart_draft_refresh_schedule,
             usgs_ems_stations_draft_refresh_schedule,
             pylon_locations_draft_refresh_schedule,
@@ -1439,11 +1385,7 @@ defs = Definitions(
             epa_power_generation_draft_schedule,
             epa_icis_wastewater_draft_schedule,
             fuds_projects_points_draft_schedule,
-            nfhl_nodes_draft_schedule,
-            nfhl_hydrologic_reaches_draft_schedule,
-            nfhl_seclusion_boundaries_draft_schedule,
             epa_frs_naics_draft_schedule,
-            gcca_warehouses_draft_schedule,
             bsee_ocs_platforms_draft_schedule,
             proposed_critical_habitat_draft_schedule,
             usace_pile_locations_draft_schedule,
@@ -1459,12 +1401,9 @@ defs = Definitions(
             coastlines_usace_ienc_draft_schedule,
             locks_usace_ienc_draft_schedule,
             lock_basins_usace_ienc_draft_schedule,
-            arc_regions_draft_schedule,
             aiannh_source_integrity_refresh_schedule,
-            red_cross_headquarters_draft_schedule,
             usace_airport_area_draft_schedule,
             amtrak_draft_refresh_schedule,
-            faa_aviation_draft_refresh_schedule,
             ibc_boundary_draft_refresh_schedule,
             fws_cbrs_buffer_draft_refresh_schedule,
             fws_cmt_locations_draft_refresh_schedule,

@@ -19,7 +19,6 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
-from pyproj import CRS
 from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -27,9 +26,11 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
 from dagster_hifld.validation import sha256_file
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -67,44 +68,6 @@ EXPECTED_LAYER_EXTENT = {
     "xmax": -79.56903209999996,
     "ymax": 45.14219500000007,
 }
-SOURCE_CRS = CRS.from_epsg(4326)
-
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Require every advertised ArcGIS CRS representation to agree with EPSG:4326."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _configured_capture_budget(value: object) -> int:
@@ -240,13 +203,6 @@ def _esri_polygon(geometry: dict):
     multi=bytearray(struct.pack("<BI",1,dim_code+6));multi.extend(struct.pack("<I",len(polygons)))
     for polygon in polygons: multi.extend(polygon)
     return bytes(multi)
-
-
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID":pa.int64(), "esriFieldTypeInteger":pa.int32(),
-            "esriFieldTypeSmallInteger":pa.int16(), "esriFieldTypeSingle":pa.float32(),
-            "esriFieldTypeDouble":pa.float64(), "esriFieldTypeString":pa.string(),
-            "esriFieldTypeDate":pa.int64()}.get(field.get("type"), pa.string())
 
 
 def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
@@ -471,7 +427,7 @@ def capture_usace_lakes(storage: StagingStorageResource, *, version: str,
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root=requested/(version+"-"+uuid4().hex)
     else:
-        root=Path("/tmp/hifld-native-reconstruction/131/captures")/(version+"-"+uuid4().hex)
+        root=default_capture_dir("hifld-native-reconstruction", "131", "captures")/(version+"-"+uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)
@@ -610,7 +566,7 @@ def capture_usace_lakes(storage: StagingStorageResource, *, version: str,
             "rights_accepted":False,"mapping_approved":False,"release_accepted":False,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
-    from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
+    from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

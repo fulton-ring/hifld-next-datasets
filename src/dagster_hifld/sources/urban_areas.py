@@ -34,11 +34,12 @@ import shapely
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     capture_get,
     quarantine_incomplete_capture,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "urban-areas-1"
 FILE_SLUG = DATASET_SLUG
@@ -63,14 +64,6 @@ EXPECTED_CONSTANT_VALUES = {"MTFCC20": {"G3500"}, "FUNCSTAT20": {"S"}, "LSAD20":
 EXPECTED_GEOMETRY_TYPES = {"Polygon", "MultiPolygon"}
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 90_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _processing_runtime() -> dict[str, str]:

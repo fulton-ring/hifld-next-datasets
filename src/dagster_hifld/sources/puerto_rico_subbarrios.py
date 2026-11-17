@@ -13,11 +13,12 @@ import httpx
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     capture_get,
     quarantine_incomplete_capture,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 try:  # geometry inspection needs shapely; import lazily-safe at module import time
     import geopandas as gpd
@@ -26,13 +27,13 @@ except ImportError:  # pragma: no cover - runtime environment always provides it
 
 DATASET_SLUG = "puerto-rico-subbarrios"
 FILE_SLUG = DATASET_SLUG
-SOURCE_VINTAGE = "2023"
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2023/SUBBARRIO/tl_2023_72_subbarrio.zip"
-SOURCE_FILE = "tl_2023_72_subbarrio.zip"
+SOURCE_VINTAGE = "2026"
+SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2026/SUBBARRIO/tl_2026_72_subbarrio.zip"
+SOURCE_FILE = "tl_2026_72_subbarrio.zip"
 PUBLISHER = "U.S. Census Bureau, Geography Division"
-EXPECTED_SHA256 = "5358e982d49bc6a5c099e12d32220e756e05aff848f24ba89d862dd89d7b8d8a"
-EXPECTED_BYTES = 133_211
-EXPECTED_FEATURE_COUNT = 145
+EXPECTED_SHA256 = "a85af8bea84e763c6a9150950a3aca40193dfa8bc46ece8ea97122e03cd80b64"
+EXPECTED_BYTES = 137_565
+EXPECTED_FEATURE_COUNT = 143
 EXPECTED_FIELDS = [
     "STATEFP", "COUNTYFP", "COUSUBFP", "SUBMCDFP", "SUBMCDNS", "GEOID", "GEOIDFQ",
     "NAME", "NAMELSAD", "LSAD", "CLASSFP", "MTFCC", "FUNCSTAT", "ALAND", "AWATER",
@@ -40,23 +41,14 @@ EXPECTED_FIELDS = [
 ]
 STRING_FIELDS = [name for name in EXPECTED_FIELDS if name not in ("ALAND", "AWATER")]
 EXPECTED_CRS = "EPSG:4269"
-EXPECTED_BOUNDS = [-67.192456, 17.910811, -65.624604, 18.487596]
+EXPECTED_BOUNDS = [-67.192456, 17.910811, -65.624604, 18.48101]
 EXPECTED_MTFCC = {"G4060"}
 EXPECTED_CLASSFP = {"Z6"}
 EXPECTED_FUNCSTAT = {"N"}
-EXPECTED_GEOMETRY_TYPE_COUNTS = {"Polygon": 143, "MultiPolygon": 2}
-EXPECTED_GEOID_SHA256 = "3f5265bfb87cf1f6cabfd3de49d68cc695e01aa60f41c0852c9306ca07c7695a"
+EXPECTED_GEOMETRY_TYPE_COUNTS = {"Polygon": 141, "MultiPolygon": 2}
+EXPECTED_GEOID_SHA256 = "108e5a188231f3702b1b03b246d994d16a672c2368e724f7707a37f1b943940b"
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 5_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 CODE_IDENTITY_SCHEME = "sha256-packaged-dagster_hifld-py-v1"
@@ -192,9 +184,9 @@ def _capture(
 
 def _inspect_archive(body: bytes) -> dict[str, object]:
     expected_members = {
-        "tl_2023_72_subbarrio.cpg", "tl_2023_72_subbarrio.dbf", "tl_2023_72_subbarrio.prj",
-        "tl_2023_72_subbarrio.shp", "tl_2023_72_subbarrio.shp.ea.iso.xml",
-        "tl_2023_72_subbarrio.shp.iso.xml", "tl_2023_72_subbarrio.shx",
+        "tl_2026_72_subbarrio.cpg", "tl_2026_72_subbarrio.dbf", "tl_2026_72_subbarrio.prj",
+        "tl_2026_72_subbarrio.shp", "tl_2026_72_subbarrio.shp.ea.iso.xml",
+        "tl_2026_72_subbarrio.shp.iso.xml", "tl_2026_72_subbarrio.shx",
     }
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
         names = {Path(info.filename).name for info in archive.infolist() if not info.is_dir()}
@@ -209,7 +201,7 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
             raise ValueError("tiger_archive_crc_failure:" + bad_member)
         with tempfile.TemporaryDirectory(prefix="census-subbarrio-") as tmp:
             archive.extractall(tmp)
-            path = Path(tmp) / "tl_2023_72_subbarrio.shp"
+            path = Path(tmp) / "tl_2026_72_subbarrio.shp"
             frame = gpd.read_file(path, engine="pyogrio")
     fields = [name for name in frame.columns if name != "geometry"]
     if fields != EXPECTED_FIELDS or str(frame.crs) != EXPECTED_CRS:
@@ -275,12 +267,12 @@ def capture_puerto_rico_subbarrios(
         "code_commit": code_sha256,
         "processing_code": {"scheme": CODE_IDENTITY_SCHEME, "sha256": code_sha256},
         "title": "Puerto Rico Subbarrios",
-        "description": "2023 Census TIGER/Line Puerto Rico subbarrio (FIPS 72) shapefile. Candidate only; the raw/published schema and ID contract await maintainer approval and no promotion is authorized.",
+        "description": "2026 Census TIGER/Line Puerto Rico subbarrio (FIPS 72) shapefile. Candidate only; the raw/published schema and ID contract await maintainer approval and no promotion is authorized.",
         "publisher": PUBLISHER,
         "agency": "U.S. Census Bureau",
         "source_url": SOURCE_URL,
         "license": "U.S. government work; source license and downstream redistribution terms require maintainer review.",
-        "source_modified": "2023-11-23",
+        "source_modified": "2026-10-06",
         "date_issued": SOURCE_VINTAGE,
         "inputs": [{
             "input_id": SOURCE_URL,
@@ -294,12 +286,12 @@ def capture_puerto_rico_subbarrios(
             "license": "https://www.usa.gov/government-works",
             "attribution": PUBLISHER,
             "role": "producer_publication",
-            "release_date_unknown_reason": "The producer identifies this as the 2023 TIGER/Line vintage; a precise publication date was not established. The HTTP Last-Modified date is recorded separately and is not treated as the source data release date.",
+            "release_date_unknown_reason": "The producer identifies this as the 2026 TIGER/Line vintage; a precise publication date was not established. The HTTP Last-Modified date is recorded separately and is not treated as the source data release date.",
         }],
         "transformations": ["Preserve the complete source ZIP and all sidecars; catalog the subbarrio Shapefile without ID synthesis, schema widening, or attribute mapping."],
-        "lineage": "Official Census Bureau Geography Division TIGER/Line SUBBARRIO product (producer publication). The DHS crosswalk row matches this exact URL; the DataLumos archive item 240631 V2 is the archived HIFLD copy and is retained only as a labeled fallback (HTTP 403 to automated retrieval on 2026-10-21).",
+        "lineage": "Official Census Bureau Geography Division TIGER/Line SUBBARRIO product (producer publication), migrated to the maintained TIGER2026 vintage (issue #777). The DHS crosswalk row matched the earlier TIGER2023 SUBBARRIO URL; the TIGER2026 match is unverified. The DataLumos archive item 240631 V2 is the archived HIFLD copy and is retained only as a labeled fallback (HTTP 403 to automated retrieval on 2026-10-21).",
         "unsupported_output_formats": {
-            "geopackage": "The source layer mixes Polygon (143) and MultiPolygon (2) geometry. The inherited chunked GeoPackage writer declares the layer's geometry from its first chunk and then appends incompatible geometries, producing a file that violates the GeoPackage geometry-type contract. GeoPackage output is withheld until a geometry-type-preserving writer is approved.",
+            "geopackage": "The source layer mixes Polygon (141) and MultiPolygon (2) geometry. The inherited chunked GeoPackage writer declares the layer's geometry from its first chunk and then appends incompatible geometries, producing a file that violates the GeoPackage geometry-type contract. GeoPackage output is withheld until a geometry-type-preserving writer is approved.",
             "pmtiles": "PMTiles is a lossy tiled representation that may simplify or omit source coordinates and does not preserve the full source attribute schema. No dataset-specific loss, zoom, or attribute-selection policy has been approved, so PMTiles output is withheld.",
         },
     }
@@ -321,7 +313,7 @@ def capture_puerto_rico_subbarrios(
         "wire_sha256", "bytes", "sha256", "content_encoding", "content_length",
     )}
     audit_doc = {"source": {"url": SOURCE_URL, "vintage": SOURCE_VINTAGE, "archive_sha256": EXPECTED_SHA256,
-                            "archive_bytes": EXPECTED_BYTES, "last_modified_observed": "2023-11-23T02:29:53Z"},
+                            "archive_bytes": EXPECTED_BYTES, "last_modified_observed": "2026-10-06T23:34:54Z"},
                  "acquisition_receipt": stable_receipt, **audit}
     audit_key = f"{prefix}/metadata/source_audit.json"
     write_immutable(staging_storage, audit_key, _canonical(audit_doc) + b"\n")
@@ -333,7 +325,7 @@ def capture_puerto_rico_subbarrios(
         "source_archive_sha256": EXPECTED_SHA256, "source_cache_reused": reused,
         "code_sha256": code_sha256, "code_identity_scheme": CODE_IDENTITY_SCHEME,
         "source_id_field": "GEOID",
-        "source_coverage_scope": "Puerto Rico (FIPS 72) Census TIGER subbarrios, 2023 vintage",
+        "source_coverage_scope": "Puerto Rico (FIPS 72) Census TIGER subbarrios, 2026 vintage",
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,

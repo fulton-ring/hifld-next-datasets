@@ -5,7 +5,6 @@ HIFLD/DataLumos snapshot. Source and release approvals remain false.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
@@ -28,12 +27,13 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.http_capture import validate_capture_roster
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "959b4adc3ff94bc6a46f2c1d515d09aa"
 PORTAL_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"
@@ -101,15 +101,6 @@ FIELD_DECLARATIONS = [
     {"name":"stop_type_text","type":"esriFieldTypeString","alias":"stop_type_text","length":254,"nullable":True,"domain":None},
     {"name":"download_date","type":"esriFieldTypeString","alias":"download_date","length":254,"nullable":True,"domain":None},
 ]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _metadata_url(name: str) -> str:
