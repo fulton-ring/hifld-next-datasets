@@ -106,8 +106,9 @@ def _source_polygon_geometry(rings: list[list[list[object]]]):
         if any(not isinstance(point, list) or len(point) != 3 for point in ring):
             raise ValueError("source_xyz_coordinate_shape_drift")
     normalized = {"rings": rings}
+    zero = {id(rings[index]) for index in zero_area_rings(rings)}
     for group in esri_polygon_ring_groups(normalized, has_z=True, has_m=False):
-        if len(group) == 1 and ring_is_ccw(group[0]):
+        if len(group) == 1 and id(group[0]) not in zero and ring_is_ccw(group[0]):
             raise ValueError("source_orphan_interior_ring")
     return esri_polygon_geometry(normalized, has_z=True, has_m=False)
 

@@ -100,8 +100,9 @@ def _source_polygon_geometry(rings: list[list[list[object]]]):
     """Decode Esri rings through the shared GDAL converter without repair."""
     xyz = [[[*coordinate[:3]] for coordinate in ring] for ring in rings]
     normalized = {"rings": xyz}
+    zero = {id(xyz[index]) for index in zero_area_rings(xyz)}
     for group in esri_polygon_ring_groups(normalized, has_z=True, has_m=False):
-        if len(group) == 1 and ring_is_ccw(group[0]):
+        if len(group) == 1 and id(group[0]) not in zero and ring_is_ccw(group[0]):
             raise ValueError("source_orphan_interior_ring")
     return esri_polygon_geometry(normalized, has_z=True, has_m=False)
 
