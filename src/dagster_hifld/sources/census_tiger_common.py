@@ -15,6 +15,7 @@ import io
 import json
 import os
 import platform
+import re
 import tempfile
 import zipfile
 from collections.abc import Callable
@@ -678,3 +679,248 @@ def replay_retained_capture(
         staging, version, config, retained_archive=archive, retained_receipt=receipt,
         retained_receipt_bytes=receipt_bytes,
     )
+
+
+# Shared TIGERweb Transportation service identity, Web Mercator CRS pins
+# and publisher-vintage parsing used by the Census TIGERweb road adapters.
+SERVICE_FOLDER_URL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb?f=pjson"
+SERVICE_URL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer"
+WEB_MERCATOR_WKIDS = {102100, 3857}
+WEB_MERCATOR_LIMIT = 20037508.342789244
+# The pinned layer extent is the observed data bbox; every XY vertex must stay
+# inside the Web Mercator domain and the pinned extent within float noise.
+EXTENT_TOLERANCE_METERS = 1e-6
+EXPECTED_SERVICE_MAP_NAME = "Transportation (Roads and Railroads)"
+EXPECTED_SERVICE_MAX_RECORD_COUNT = 100000
+EXPECTED_SERVICE_LAYERS = [
+    (0, "Primary Roads Interstates 5M scale"), (1, "Primary Roads 2_1M scale"),
+    (2, "Primary Roads"), (3, "Secondary Roads Interstates and US Highways"),
+    (4, "Secondary Roads 578k scale"), (5, "Secondary Roads 289_144k scale"),
+    (6, "Secondary Roads 72_1k scale"), (7, "Local Roads 72k scale"),
+    (8, "Local Roads"), (9, "Railroads"),
+]
+
+
+def _validate_web_mercator_reference(value: object, label: str) -> None:
+    """Validate every advertised ArcGIS Web Mercator representation."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{label}_crs_drift")
+    found = False
+    for key in ("wkid", "latestWkid"):
+        if key in value:
+            wkid = value[key]
+            if type(wkid) is not int or wkid not in WEB_MERCATOR_WKIDS:
+                raise ValueError(f"{label}_crs_drift")
+            found = True
+    for key in ("wkt", "wkt2"):
+        if key in value:
+            wkt = value[key]
+            if not isinstance(wkt, str) or not wkt.strip():
+                raise ValueError(f"{label}_crs_drift")
+            try:
+                parsed = pyproj.CRS.from_wkt(wkt)
+            except Exception as exc:
+                raise ValueError(f"{label}_crs_drift") from exc
+            if not parsed.equals(pyproj.CRS.from_epsg(3857), ignore_axis_order=True):
+                raise ValueError(f"{label}_crs_drift")
+    if not found:
+        raise ValueError(f"{label}_crs_drift")
+
+
+_MONTH_NAMES = {name: number for number, name in enumerate(
+    ("January", "February", "March", "April", "May", "June", "July",
+     "August", "September", "October", "November", "December"), start=1)}
+
+
+def _publisher_stated_vintage(description: object) -> str:
+    """Parse the publisher-stated vintage from the captured layer description.
+
+    The TIGERweb Transportation layer description ends with a 'Month D, YYYY'
+    stamp for the vintage of the published layer population. The stamp is
+    preserved as the publisher-stated source vintage; no last-edit timestamp
+    is invented for it.
+    """
+    match = (re.fullmatch(r"(?s)(.*);\s+([A-Z][a-z]+) (\d{1,2}), (\d{4})", description)
+             if isinstance(description, str) else None)
+    if not match or match.group(2) not in _MONTH_NAMES:
+        raise ValueError("source_layer_description_or_vintage_drift")
+    return f"{int(match.group(4)):04d}-{_MONTH_NAMES[match.group(2)]:02d}-{int(match.group(3)):02d}"
+
+
+WEB_MERCATOR_PROJJSON = {
+        "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+        "area": "World between 85.06°S and 85.06°N.",
+        "base_crs": {
+            "coordinate_system": {
+                "axis": [
+                    {
+                        "abbreviation": "Lat",
+                        "direction": "north",
+                        "name": "Geodetic latitude",
+                        "unit": "degree"
+                    },
+                    {
+                        "abbreviation": "Lon",
+                        "direction": "east",
+                        "name": "Geodetic longitude",
+                        "unit": "degree"
+                    }
+                ],
+                "subtype": "ellipsoidal"
+            },
+            "datum_ensemble": {
+                "accuracy": "2.0",
+                "ellipsoid": {
+                    "inverse_flattening": 298.257223563,
+                    "name": "WGS 84",
+                    "semi_major_axis": 6378137
+                },
+                "id": {
+                    "authority": "EPSG",
+                    "code": 6326
+                },
+                "members": [
+                    {
+                        "id": {
+                            "authority": "EPSG",
+                            "code": 1166
+                        },
+                        "name": "World Geodetic System 1984 (Transit)"
+                    },
+                    {
+                        "id": {
+                            "authority": "EPSG",
+                            "code": 1152
+                        },
+                        "name": "World Geodetic System 1984 (G730)"
+                    },
+                    {
+                        "id": {
+                            "authority": "EPSG",
+                            "code": 1153
+                        },
+                        "name": "World Geodetic System 1984 (G873)"
+                    },
+                    {
+                        "id": {
+                            "authority": "EPSG",
+                            "code": 1154
+                        },
+                        "name": "World Geodetic System 1984 (G1150)"
+                    },
+                    {
+                        "id": {
+                            "authority": "EPSG",
+                            "code": 1155
+                        },
+                        "name": "World Geodetic System 1984 (G1674)"
+                    },
+                    {
+                        "id": {
+                            "authority": "EPSG",
+                            "code": 1156
+                        },
+                        "name": "World Geodetic System 1984 (G1762)"
+                    },
+                    {
+                        "id": {
+                            "authority": "EPSG",
+                            "code": 1309
+                        },
+                        "name": "World Geodetic System 1984 (G2139)"
+                    },
+                    {
+                        "id": {
+                            "authority": "EPSG",
+                            "code": 1383
+                        },
+                        "name": "World Geodetic System 1984 (G2296)"
+                    }
+                ],
+                "name": "World Geodetic System 1984 ensemble"
+            },
+            "id": {
+                "authority": "EPSG",
+                "code": 4326
+            },
+            "name": "WGS 84"
+        },
+        "bbox": {
+            "east_longitude": 180,
+            "north_latitude": 85.06,
+            "south_latitude": -85.06,
+            "west_longitude": -180
+        },
+        "conversion": {
+            "method": {
+                "id": {
+                    "authority": "EPSG",
+                    "code": 1024
+                },
+                "name": "Popular Visualisation Pseudo Mercator"
+            },
+            "name": "Popular Visualisation Pseudo-Mercator",
+            "parameters": [
+                {
+                    "id": {
+                        "authority": "EPSG",
+                        "code": 8801
+                    },
+                    "name": "Latitude of natural origin",
+                    "unit": "degree",
+                    "value": 0
+                },
+                {
+                    "id": {
+                        "authority": "EPSG",
+                        "code": 8802
+                    },
+                    "name": "Longitude of natural origin",
+                    "unit": "degree",
+                    "value": 0
+                },
+                {
+                    "id": {
+                        "authority": "EPSG",
+                        "code": 8806
+                    },
+                    "name": "False easting",
+                    "unit": "metre",
+                    "value": 0
+                },
+                {
+                    "id": {
+                        "authority": "EPSG",
+                        "code": 8807
+                    },
+                    "name": "False northing",
+                    "unit": "metre",
+                    "value": 0
+                }
+            ]
+        },
+        "coordinate_system": {
+            "axis": [
+                {
+                    "abbreviation": "X",
+                    "direction": "east",
+                    "name": "Easting",
+                    "unit": "metre"
+                },
+                {
+                    "abbreviation": "Y",
+                    "direction": "north",
+                    "name": "Northing",
+                    "unit": "metre"
+                }
+            ],
+            "subtype": "Cartesian"
+        },
+        "id": {
+            "authority": "EPSG",
+            "code": 3857
+        },
+        "name": "WGS 84 / Pseudo-Mercator",
+        "scope": "Web mapping and visualisation.",
+        "type": "ProjectedCRS"
+    }
