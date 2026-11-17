@@ -84,6 +84,10 @@ not here.
   not write a docs-only PR for that.
 - If the only route to a current source needs a token or access grant, stop and
   ask. Do not substitute an older public file.
+- OSM, Overture, Google and commercial POI or imagery sources are not pipeline
+  inputs without a recorded rights decision. See
+  `docs/source-licensing-and-redistribution.md` for permitted operations,
+  attribution and redistribution obligations.
 
 ## Engineering rules
 
