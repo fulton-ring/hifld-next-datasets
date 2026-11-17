@@ -5,7 +5,6 @@ import io
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -16,7 +15,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 from pyproj import CRS
-from shapely.geometry import LinearRing, Polygon
+from shapely.geometry import LinearRing
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -30,6 +29,7 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "cable-areas-usace-ienc"
@@ -194,41 +194,8 @@ def _classify_rings(rings: list) -> tuple[list, list]:
 
 
 def _esri_polygon_wkb(geometry: dict) -> bytes:
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    if geometry.get("hasZ") or geometry.get("hasM"):
-        raise ValueError("source_polygon_dimensional_flags_rejected")
-    if set(geometry) - {"rings", "hasZ", "hasM", "spatialReference"}:
-        raise ValueError("source_polygon_geometry_structure_drift")
-    shells, holes = _classify_rings(rings)
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for hole in holes:
-        hole_poly = Polygon([point[:2] for point in hole])
-        owners = [index for index, shell in enumerate(shell_polys)
-                  if shell.contains(hole_poly.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(hole)
-
-    def polygon_wkb(shell: list, hole_rings: list[list]) -> bytes:
-        out = bytearray(struct.pack("<BI", 1, 3))  # little-endian 2D Polygon
-        out.extend(struct.pack("<I", 1 + len(hole_rings)))
-        for ring in [shell, *hole_rings]:
-            out.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                out.extend(struct.pack("<dd", *point))
-        return bytes(out)
-
-    polygons = [polygon_wkb(shell, assignments[index]) for index, shell in enumerate(shells)]
-    if len(polygons) == 1:
-        return polygons[0]
-    multi = bytearray(struct.pack("<BI", 1, 6))  # little-endian 2D MultiPolygon
-    multi.extend(struct.pack("<I", len(polygons)))
-    for polygon in polygons:
-        multi.extend(polygon)
-    return bytes(multi)
+    """Encode native ArcGIS polygon rings through the shared GDAL converter."""
+    return esri_polygon_wkb(geometry, allow_zm=False)
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
