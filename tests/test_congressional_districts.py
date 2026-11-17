@@ -134,7 +134,7 @@ class DirectoryDiscoveryTests(unittest.TestCase):
     def test_candidate_vintages_are_recent_and_newest_first(self):
         index = "".join(f'<a href="TIGER{year}/">TIGER{year}/</a>'
                         for year in (2019, 2020, 2024, 2025, 2026))
-        self.assertEqual(source._candidate_vintages(index), [2026, 2025, 2024])
+        self.assertEqual(source._candidate_vintages(index), [2026, 2025])
 
     def test_discovery_skips_a_vintage_without_a_cd_directory(self):
         index = "".join(f'<a href="TIGER{year}/">TIGER{year}/</a>'

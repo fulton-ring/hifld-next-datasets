@@ -49,7 +49,9 @@ FILE_SLUG = DATASET_SLUG
 SOURCE_HOST = "www2.census.gov"
 TIGER_ROOT_URL = f"https://{SOURCE_HOST}/geo/tiger/"
 MIN_TIGER_VINTAGE = 2020
-MAX_VINTAGE_PROBES = 3
+# Probe the newest index entry and the one before it: a new TIGER vintage can
+# appear in the index before its CD directory is published.
+MAX_VINTAGE_PROBES = 2
 # Floor that catches a truncated directory listing. It is not an exact roster
 # pin: every archive the producer lists is still captured and validated.
 MIN_SOURCE_GEOIDS = 50
