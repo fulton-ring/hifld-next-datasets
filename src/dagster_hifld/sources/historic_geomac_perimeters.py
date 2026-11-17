@@ -623,16 +623,15 @@ def capture_historic_perimeters(storage: StagingStorageResource, *, version: str
     }
     validate_output_policy(manifest)
     provenance_projection(manifest)
-    outputs = {parquet_path: parquet,
-               "metadata/source_manifest.json": _canonical(manifest) + b"\n",
-               "metadata/source_audit.json": _canonical(audit) + b"\n"}
+    del features
+    write_immutable(storage, f"{prefix}/{parquet_path}", parquet)
+    write_immutable(storage, f"{prefix}/metadata/source_manifest.json", _canonical(manifest) + b"\n")
+    write_immutable(storage, f"{prefix}/metadata/source_audit.json", _canonical(audit) + b"\n")
     for name, receipt in receipts.items():
         body = static[name][0] if name in static else _page_body(root, name, receipt)
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (root / f"{name}.wire").read_bytes()
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
+        write_immutable(storage, f"{prefix}/raw/{name}.body", body)
+        write_immutable(storage, f"{prefix}/raw/{name}.wire", (root / f"{name}.wire").read_bytes())
+        write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
     ready = {"approved": False, "version": resolved_version,
              "objects": {parquet_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
              "source_population_complete": True,
