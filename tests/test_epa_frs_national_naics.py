@@ -14,6 +14,7 @@ import httpx
 import pyarrow.parquet as pq
 from dagster import DagsterInstance, DefaultScheduleStatus, build_schedule_context, materialize
 
+from dagster_hifld.assets import supported_assets as _supported_assets  # noqa: F401
 from dagster_hifld.assets.catalog import publish_catalog
 from dagster_hifld.assets.epa_frs_naics_national import (
     epa_frs_national_naics,
@@ -24,6 +25,7 @@ from dagster_hifld.assets.epa_frs_naics_national import (
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import epa_frs_naics_national as source
+from dagster_hifld.sources import epa_frs_national_archive as archive
 from dagster_hifld.assets import epa_frs_naics_national as assets_module
 
 CSV_HEADER = '"REGISTRY_ID","PGM_SYS_ACRNM","PGM_SYS_ID","INTEREST_TYPE","NAICS_CODE","PRIMARY_INDICATOR","CODE_DESCRIPTION"'
@@ -41,9 +43,9 @@ class Fixture:
     def __init__(self):
         csv_body = (CSV_HEADER + "\n" + "\n".join(CSV_ROWS) + "\n").encode("utf-8")
         buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("NATIONAL_NAICS_FILE.CSV", csv_body)
-            archive.writestr("NATIONAL_FACILITY_FILE.CSV", '"REGISTRY_ID","PRIMARY_NAME"\n')
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zip_archive:
+            zip_archive.writestr("NATIONAL_NAICS_FILE.CSV", csv_body)
+            zip_archive.writestr("NATIONAL_FACILITY_FILE.CSV", '"REGISTRY_ID","PRIMARY_NAME"\n')
         self.zip_bytes = buffer.getvalue()
         info = zipfile.ZipFile(io.BytesIO(self.zip_bytes)).getinfo("NATIONAL_NAICS_FILE.CSV")
         self.member_compressed = info.compress_size
@@ -54,7 +56,7 @@ class Fixture:
         self.page_bytes = (
             "<html><body><p>EPA State Combined CSV Download Files</p>"
             "<p>A combined National Zip file of 732 MB is available "
-            f'<a href="{source.NATIONAL_COMBINED_ZIP_URL}">here.</a></p></body></html>'
+            f'<a href="{archive.NATIONAL_COMBINED_ZIP_URL}">here.</a></p></body></html>'
         ).encode("utf-8")
         self.member_names = frozenset({"NATIONAL_NAICS_FILE.CSV", "NATIONAL_FACILITY_FILE.CSV"})
 
@@ -66,11 +68,11 @@ class Fixture:
         return generate()
 
     def handler(self, request: httpx.Request) -> httpx.Response:
-        if str(request.url) == source.AUTHORITY_PAGE_URL:
+        if str(request.url) == archive.AUTHORITY_PAGE_URL:
             return httpx.Response(200, content=self._stream(self.page_bytes), request=request,
                                  headers={"Accept-Ranges": "bytes",
                                           "Content-Length": str(len(self.page_bytes))})
-        if str(request.url) == source.NATIONAL_COMBINED_ZIP_URL:
+        if str(request.url) == archive.NATIONAL_COMBINED_ZIP_URL:
             start_end = request.headers.get("Range")
             if not start_end:
                 return httpx.Response(200, content=self._stream(self.zip_bytes), request=request)
@@ -93,7 +95,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
     def setUp(self):
         # Unit fixtures exercise capture policy with tiny responses; production
         # disk capacity behavior is checked by the live guard.
-        self.disk_guard = patch.object(source, "_require_disk_space")
+        self.disk_guard = patch.object(archive, "_require_disk_space")
         self.disk_guard.start()
         self.fixture = Fixture()
 
@@ -112,7 +114,10 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
             "PRIOR_CANDIDATE_ROWS": self.fixture.csv_rows,
         }
         values.update(overrides)
-        patchers = [patch.object(source, name, value) for name, value in values.items()]
+        archive_values = {name: values.pop(name) for name in
+                          ("EXPECTED_ZIP_TOTAL_BYTES", "EXPECTED_ARCHIVE_MEMBER_NAMES")}
+        patchers = [patch.object(archive, name, value) for name, value in archive_values.items()]
+        patchers.extend(patch.object(source, name, value) for name, value in values.items())
         # The Dagster asset/check bindings were imported separately.
         for module in (source, assets_module):
             patchers.append(patch.object(module, "EXPECTED_SOURCE_ROWS", values["EXPECTED_SOURCE_ROWS"]))
@@ -163,7 +168,7 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
                 self.assertEqual(item["release_date"], None)
             capture_manifest = json.loads((captures / "capture_manifest.json").read_bytes())
             self.assertTrue(capture_manifest["capture_complete"])
-            self.assertEqual(capture_manifest["capture_budget_bytes"], source.MAX_CAPTURE_BYTES)
+            self.assertEqual(capture_manifest["capture_budget_bytes"], archive.MAX_CAPTURE_BYTES)
 
     def test_retained_replay_reuses_candidate_without_network(self):
         with tempfile.TemporaryDirectory() as tmp:
