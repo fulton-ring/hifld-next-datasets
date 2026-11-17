@@ -13,7 +13,6 @@ import math
 import platform
 import shutil
 import stat
-import struct
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -27,7 +26,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import LinearRing, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import (
@@ -41,12 +39,14 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
-    esri_polygon as _esri_polygon, fetch_capture_retry,
+    fetch_capture_retry,
     layer_parquet_bytes as _parquet_bytes,
     load_replay as _load_replay, write_outputs as _write_outputs,
 )
 
-from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
+from dagster_hifld.sources.esri_geometry import (
+    _validate_spatial_reference, esri_polygon_wkb as _esri_polygon,
+)
 from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
