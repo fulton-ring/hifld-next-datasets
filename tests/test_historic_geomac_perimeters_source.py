@@ -1,505 +1,295 @@
-"""Offline gate tests with a mocked pyogrio/zip roster grant no approval.
-
-pyogrio cannot write OpenFileGDB fixtures, so the synthetic scenario mocks
-pyogrio layer reads and the archive zip while every hash, receipt, census,
-candidate, provenance, cache-reconcile and quarantine path runs for real.
-Real complete captures are exercised opt-in via
-HIFLD_GEOMAC_PERIMETERS_TEST_CAPTURE_DIR (see
-docs/dataset-sources/historic-perimeters-combined-2000-2018-geomac/README.md).
-"""
-import contextlib
+"""Synthetic coherent-capture checks and adversarial drift gates; no network."""
+import copy
 import json
-import os
-import shutil
 import tempfile
 import unittest
-import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
+from urllib.parse import urlsplit
 
-import numpy as np
-import pyarrow as pa
 import shapely
-from shapely.geometry import MultiPolygon, Polygon, mapping
+from pyarrow import parquet as pq
 
-from dagster import DefaultScheduleStatus
-from dagster_hifld.assets.historic_geomac_perimeters import (
-    historic_geomac_perimeters as historic_geomac_perimeters_asset,
-    historic_geomac_perimeters_draft_refresh_schedule,
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import historic_geomac_perimeters as source
+
+ITEM_ID = "e02b85c0ea784ce7bd8add7ae3d293d0"
+ORG_ID = "T4QMspbfLg3qTGWY"
+SERVICE_URL = (
+    "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/"
+    "InterAgencyFirePerimeterHistory_All_Years_View/FeatureServer"
 )
-from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
-from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
-from dagster_hifld.sources import historic_geomac_perimeters as s
+LAYER_URL = SERVICE_URL + "/0"
+WITNESS = {"lastEditDate": 1784758459952, "schemaLastEditDate": 1784758459952,
+           "dataLastEditDate": 1782422738160}
 
-_CAPTURE_ENV = 'HIFLD_GEOMAC_PERIMETERS_TEST_CAPTURE_DIR'
-CAPTURE = Path(os.environ[_CAPTURE_ENV]) if os.environ.get(_CAPTURE_ENV) else None
-
-OBSERVED_AT = '2026-11-12T01:50:41+00:00'
-FIELD_NAMES = [name for name, _ in s.EXPECTED_FIELDS]
+FIELDS = [{"name": name, "type": kind, "length": length, "nullable": nullable}
+          for name, kind, length, nullable in source.EXPECTED_FIELDS]
 
 
-def _square(x: float, y: float) -> MultiPolygon:
-    return MultiPolygon([Polygon([(x, y), (x + 1, y), (x + 1, y + 1), (x, y + 1), (x, y)])])
+def _ring(points):
+    return [list(point) for point in points] + [list(points[0])]
 
 
-class _Scenario:
-    """Synthetic offline roster: real identity pins, small pinned census."""
-
-    def __init__(self, root: Path):
-        self.root = root
-        self.capture = root / 'capture'
-        self.capture.mkdir(parents=True)
-        self.features = 6
-        self.top_dir = s.GDB_TOP_DIR
-        self.members = {'a.tdb': b'x' * 100, 'b.tdb': b'y' * 100, 'c.tdb': b'z' * 100}
-        self.arrow_names = ['OBJECTID', *FIELD_NAMES, 'shape']
-        self.per_year_observed = {'US_HIST_FIRE_PERIM_2000_DD83': 4, 'US_HIST_FIRE_PERIM_2001_DD83': 2}
-        self.columns = {
-            'OBJECTID': list(range(1, self.features + 1)),
-            'agency': ['USFS', 'BLM\r\n', 'USFS', 'USFS', 'USFS', 'USFS'],
-            'comments': [None, 'c2', 'c3', None, 'c5', 'c6'],
-            'mapmethod': ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'],
-            'datecurrent': ['2002-04-26T00:00:00Z', None, '2010-05-05T00:00:00Z',
-                            '2010-05-05T00:00:00Z', '2010-05-05T00:00:00Z', '2010-05-05T00:00:00Z'],
-            'uniquefireidentifier': ['A', 'B', 'C', 'A', 'D', 'E'],
-            'fireyear': [2000, 2000, 2001, 2001, 2002, 2002],
-            'incidentname': ['i1', 'i2', 'i3', 'i4', 'i5', 'i6'],
-            'pooownerunit': [None, None, None, None, None, None],
-            'perimeterdatetime': ['1712-08-01T00:00:00Z', '2018-02-12T17:00:00Z', None,
-                                  '2010-05-05T00:00:00Z', '2010-05-05T00:00:00Z', '2010-05-05T00:00:00Z'],
-            'gisacres': [1.5, 2.5, 3.5, 4.5, 5.5, 6.5],
-            'complexname': [None, None, None, None, None, None],
-            'firecode': ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'],
-            'complexparentirwinid': [None, None, None, None, None, None],
-            'pooresponsibleunit': ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'],
-            'state': ['AZ', 'AZ', 'CA', 'CA', 'WA', 'WA'],
-            'inciwebid': [None, None, None, None, None, None],
-            'localincidentidentifier': [None, None, None, None, None, None],
-            'irwinid': [None, None, None, None, None, None],
-            'incomplex': ['n', 'n', 'n', 'n', 'n', 'n'],
-            'complexfirecode': [None, None, None, None, None, None],
-            'shape_Length': [4.0, 4.0, 4.0, 4.0, 4.0, 4.0],
-            'shape_Area': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-            'shape': [shapely.to_wkb(_square(i, i)) for i in range(self.features)],
-        }
-        self.nulls = {name: sum(1 for value in values if value is None)
-                      for name, values in self.columns.items() if name != 'shape'}
-        self.zip_bytes = self._write_archive()
-        self.pins = self._pins()
-        self._write_captures()
-
-    def _write_archive(self) -> bytes:
-        buffer_root = self.root / 'build'
-        buffer_root.mkdir(exist_ok=True)
-        for name, body in self.members.items():
-            (buffer_root / name).write_bytes(body)
-        archive = self.root / 'archive.zip'
-        archive.unlink(missing_ok=True)
-        with zipfile.ZipFile(archive, 'w') as zipped:
-            for name in self.members:
-                zipped.write(buffer_root / name, f'{self.top_dir}/{name}')
-        shutil.rmtree(buffer_root)
-        return archive.read_bytes()
-
-    def _pins(self) -> dict:
-        return {
-            'ARCHIVE_BYTES': len(self.zip_bytes),
-            'ARCHIVE_SHA256': s.sha(self.zip_bytes),
-            'ZIP_MEMBERS': len(self.members),
-            'ZIP_UNCOMPRESSED_BYTES': sum(len(body) for body in self.members.values()),
-            'COMBINED_FEATURES': self.features,
-            'EXPECTED_NULLS': dict(self.nulls),
-            'EXPECTED_BOUNDS': [0.0, 0.0, float(self.features), float(self.features)],
-            'EXPECTED_INVALID_GEOMETRY_COUNT': 0,
-            'EXPECTED_VERTICES': 5 * self.features,
-            'EXPECTED_UNIQUE_FIRE_IDS': 5,
-            'EXPECTED_UNIQUE_FIRE_ID_DUPLICATES': 1,
-            'EXPECTED_FIREYEAR_RANGE': (2000, 2002),
-            'EXPECTED_DATECURRENT_RANGE': ('2002-04-26T00:00:00Z', '2010-05-05T00:00:00Z'),
-            'EXPECTED_PERIMETERDATETIME_RANGE': ('1712-08-01T00:00:00Z', '2018-02-12T17:00:00Z'),
-            'SPOT_OBJECTIDS': (1, 2, 3, 4, 5),
-            'PER_YEAR_LAYERS': dict(self.per_year_observed),
-            'PER_YEAR_TOTAL': sum(self.per_year_observed.values()),
-        }
-
-    def control_docs(self) -> dict:
-        return {
-            'gdb_item': {'id': s.GDB_ITEM_ID, 'owner': s.OWNER, 'orgId': s.ORG,
-                         'name': s.ARCHIVE_NAME, 'title': 'Historic_Geomac_Perimeters_All_Years_2000_2018_gdb',
-                         'type': 'File Geodatabase', 'size': len(self.zip_bytes)},
-            'service_item': {'id': s.SERVICE_ITEM_ID, 'owner': s.OWNER, 'orgId': s.ORG,
-                             'title': 'Historic Perimeters Combined 2000-2018 GeoMAC',
-                             'type': 'Feature Service', 'url': s.SERVICE_URL},
-            'layer': {'name': s.COMBINED_LAYER, 'geometryType': 'esriGeometryPolygon',
-                      'serviceItemId': s.SERVICE_ITEM_ID,
-                      'extent': {'xmin': 1.0, 'ymin': 2.0, 'xmax': 3.0, 'ymax': 4.0,
-                                 'spatialReference': {'wkid': 102100, 'latestWkid': 3857}},
-                      'fields': [dict(field) for field in s.SERVICE_FIELDS]},
-            'count': {'count': self.features},
-        }
-
-    def spotcheck(self) -> dict:
-        features = []
-        for oid in self.pins['SPOT_OBJECTIDS']:
-            geometry = shapely.from_wkb(self.columns['shape'][oid - 1])
-            rings = [[list(point) for point in mapping(part)['coordinates'][0]]
-                     for part in geometry.geoms]
-            features.append({'attributes': {'OBJECTID': oid,
-                                            'uniquefireidentifier': self.columns['uniquefireidentifier'][oid - 1],
-                                            'fireyear': self.columns['fireyear'][oid - 1],
-                                            'gisacres': self.columns['gisacres'][oid - 1]},
-                             'geometry': {'rings': rings}})
-        return {'objectIdFieldName': 'OBJECTID', 'spatialReference': {'wkid': 4269},
-                'features': features}
-
-    def bodies(self) -> dict:
-        return {**{name: s.encode(doc) for name, doc in self.control_docs().items()},
-                'spotcheck': s.encode(self.spotcheck()), 'archive': self.zip_bytes}
-
-    def rewrite_capture(self, name: str, body: bytes) -> None:
-        """Replace one capture body and re-pin its receipt like a real capture."""
-        (self.capture / f'{name}.body').write_bytes(body)
-        receipt = {'requested_url': s.URLS[name], 'status': 200, 'byte_length': len(body),
-                   'sha256': s.sha(body), 'observed_at': OBSERVED_AT,
-                   'final_url': 'https://www.arcgis.com/itemdata/synthetic'
-                                if name == 'archive' else s.URLS[name]}
-        (self.capture / f'{name}.receipt.json').write_bytes(s.encode(receipt))
-
-    def _write_captures(self) -> None:
-        for name, body in self.bodies().items():
-            self.rewrite_capture(name, body)
-
-    def _arrow_table(self) -> pa.Table:
-        fields, columns = [], []
-        arrow_types = {'int64': pa.int64(), 'int32': pa.int32(), 'double': pa.float64(),
-                       'string': pa.string(), 'binary': pa.binary()}
-        for name in self.arrow_names:
-            kind = 'int64' if name == 'OBJECTID' else 'binary' if name == 'shape' \
-                else dict(s.EXPECTED_FIELDS).get(name, 'string')
-            kind = 'string' if kind == 'timestamp' else kind
-            arrow_type = arrow_types[kind]
-            fields.append(pa.field(name, arrow_type))
-            columns.append(pa.array(self.columns.get(name, [1] * self.features), type=arrow_type))
-        return pa.Table.from_arrays(columns, schema=pa.schema(fields))
-
-    def patches(self):
-        def read_info(path, layer=None, **kwargs):
-            if layer == s.COMBINED_LAYER:
-                dtypes = []
-                for field_name, kind in s.EXPECTED_FIELDS:
-                    if kind == 'timestamp':
-                        dtypes.append('datetime64[ms]')
-                    elif kind == 'int32':
-                        dtypes.append('int32')
-                    elif kind == 'double':
-                        dtypes.append('float64')
-                    else:
-                        dtypes.append('object')
-                return {'features': self.features, 'crs': 'EPSG:4269',
-                        'geometry_type': 'MultiPolygon', 'fid_column': 'OBJECTID',
-                        'geometry_name': 'shape', 'driver': 'OpenFileGDB',
-                        'fields': np.array(FIELD_NAMES), 'dtypes': np.array(dtypes),
-                        'total_bounds': np.array(self.pins['EXPECTED_BOUNDS'])}
-            for name, count in self.per_year_observed.items():
-                if layer == name:
-                    return {'features': count}
-            raise AssertionError('unexpected layer ' + str(layer))
-
-        def read_arrow(path, layer=None, **kwargs):
-            assert layer == s.COMBINED_LAYER and kwargs.get('return_fids') and kwargs.get('datetime_as_string')
-            return ({'fid_column': 'OBJECTID', 'geometry_name': 'shape'}, self._arrow_table())
-
-        layers = [(s.COMBINED_LAYER, 'MultiPolygon')]
-        layers += [(name, 'MultiPolygon') for name in self.per_year_observed]
-        items = [patch.object(s, name, value) for name, value in self.pins.items()]
-        items += [patch.object(s.pyogrio, 'list_layers', return_value=layers),
-                  patch.object(s.pyogrio, 'read_info', read_info),
-                  patch.object(s.pyogrio, 'read_arrow', read_arrow)]
-        return items
+def _cw(x0, y0, x1, y1):
+    return _ring([(x0, y0), (x0, y1), (x1, y1), (x1, y0)])
 
 
-@contextlib.contextmanager
-def scenario(mutate=None):
-    with tempfile.TemporaryDirectory() as tmp:
-        case = _Scenario(Path(tmp))
-        if mutate is not None:
-            mutate(case)
-        with contextlib.ExitStack() as stack:
-            for item in case.patches():
-                stack.enter_context(item)
-            staging = Path(tmp) / 'staging'
-            staging.mkdir()
-            yield case, StagingStorageResource(local_dir=str(staging))
+def _ccw(x0, y0, x1, y1):
+    return _ring([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
 
 
-class GeoMACMechanicsTests(unittest.TestCase):
-    def test_registry_schedule_and_remote_rejected(self):
-        self.assertIn(historic_geomac_perimeters_asset, hifld_ingest_assets)
-        self.assertEqual(historic_geomac_perimeters_draft_refresh_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        for storage in [PublishedStorageResource(local_dir='/tmp/no-write'),
-                        StagingStorageResource(bucket='never', use_local=False)]:
-            with patch.object(s, 'acquire') as acquire, self.assertRaises(ValueError):
-                s.stage_historic_geomac_perimeters_candidate(storage, capture_dir=None)
-            acquire.assert_not_called()
+def _attributes(oid, **overrides):
+    values = {
+        "OBJECTID": oid, "IRWINID": None, "FORID": None, "INCIDENT": "Test Fire",
+        "GIS_ACRES": 10.5, "UNQE_FIRE_ID": "2013-NMLNF-000015", "DATE_CUR": "20140201000000",
+        "FIRE_YEAR_INT": 2013, "UNIT_ID": "NMLNF", "POO_RESP_I": "NMLNF", "LOCAL_NUM": "000015",
+        "FEATURE_CA": "Wildfire Final Fire Perimeter", "MAP_METHOD": "GPS - Uncorrected Data",
+        "COMMENTS": "Data received from district fire personnel",
+        "GEO_ID": "{29F9DCCC-6429-4CB7-9797-0A1FDE5339B7}", "SOURCE": "USFS", "AGENCY": "USFS",
+        "FIRE_YEAR": "2013", "GlobalID": f"{oid:08d}-1111-1111-1111-111111111111",
+    }
+    values.update(overrides)
+    return values
 
-    def test_organize_polygons_must_stay_default(self):
-        with scenario() as (case, store), patch.dict(os.environ, {'OGR_ORGANIZE_POLYGONS': 'SKIP'}):
-            with self.assertRaisesRegex(ValueError, 'polygon_organization'):
-                s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
 
-    def test_replay_build_and_idempotent_reuse(self):
-        with scenario() as (case, store):
-            result = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-            self.assertFalse(result['reused'])
-            self.assertEqual(result['feature_count'], case.features)
-            self.assertEqual(result['source_invalid_geometry_count'], 0)
-            self.assertEqual(result['source_unique_id_count'], case.features)
-            self.assertTrue(result['release_blocked'])
-            self.assertFalse(result['release_accepted'])
-            root = Path(store.local_dir) / s.SLUG / s.SLUG / result['version']
-            for relative in (f'geoparquet/{s.SLUG}.parquet', 'metadata/source_manifest.json',
-                             'metadata/source_audit.json', 'metadata/processing_identity.json',
-                             'metadata/source_capture_manifest.json', 'metadata/candidate_ready.json',
-                             'raw/captures/archive.body', 'raw/captures/archive.receipt.json'):
-                self.assertTrue((root / relative).is_file(), relative)
-            replay = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-            self.assertEqual({**result, 'reused': True}, replay)
-            self.assertEqual(len(list((Path(store.local_dir) / s.SLUG / s.SLUG).glob('v*'))), 1)
+def _features():
+    return [
+        {"attributes": _attributes(10),
+         "geometry": {"rings": [_cw(-12000000, 4000000, -11900000, 4100000)]}},
+        {"attributes": _attributes(20, SOURCE="BLM", AGENCY="BLM", GIS_ACRES=12.25),
+         "geometry": {"rings": [_cw(-12100000, 4000000, -12000000, 4100000),
+                                _ccw(-12060000, 4030000, -12040000, 4070000)]}},
+        {"attributes": _attributes(30, INCIDENT=None, COMMENTS=None, FIRE_YEAR_INT=9999),
+         "geometry": {"rings": [_cw(-11800000, 4400000, -11750000, 4450000),
+                                _ccw(-11790000, 4410000, -11760000, 4440000)]}},
+        {"attributes": _attributes(40, SOURCE="CALFIRE", AGENCY="CALFIRE", GIS_ACRES=None),
+         "geometry": {"rings": [_cw(-11400000, 4600000, -11350000, 4650000)]}},
+        {"attributes": _attributes(50, UNQE_FIRE_ID=None),
+         "geometry": {"rings": [_cw(-13000000, 3000000, -12900000, 3100000),
+                                _cw(-12800000, 3000000, -12700000, 3100000)]}},
+    ]
 
-    def test_reuse_tolerates_portal_view_counter_change(self):
-        with scenario() as (case, store):
-            result = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-            self.assertFalse(result['reused'])
-            root = Path(store.local_dir) / s.SLUG / s.SLUG / result['version']
-            before = {str(path.relative_to(root)): s.sha(path.read_bytes())
-                      for path in root.rglob('*') if path.is_file()}
-            for name in ('gdb_item', 'service_item'):
-                doc = json.loads((case.capture / f'{name}.body').read_bytes())
-                doc['numViews'] = 4242
-                case.rewrite_capture(name, s.encode(doc))
-            replay = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-            self.assertEqual({**result, 'reused': True}, replay)
-            self.assertFalse(list((Path(store.local_dir) / '_quarantine').rglob('*')))
-            self.assertEqual(before, {str(path.relative_to(root)): s.sha(path.read_bytes())
-                                      for path in root.rglob('*') if path.is_file()})
 
-    def test_reuse_fails_closed_on_real_source_drift(self):
-        def drifted_spotcheck_with_view_counters(case):
-            for name in ('gdb_item', 'service_item'):
-                doc = json.loads((case.capture / f'{name}.body').read_bytes())
-                doc['numViews'] = 99
-                case.rewrite_capture(name, s.encode(doc))
-            spot = case.spotcheck()
-            spot['features'][0]['attributes']['unexpected_field'] = 'x'
-            case.rewrite_capture('spotcheck', s.encode(spot))
+def _layer(editing_info=None, fields=None):
+    return {"id": 0, "name": "InteragencyFirePerimeterHistory", "type": "Feature Layer",
+            "geometryType": "esriGeometryPolygon",
+            "spatialReference": {"wkid": 3857, "latestWkid": 3857},
+            "hasZ": False, "hasM": False, "maxRecordCount": 2000,
+            "objectIdField": "OBJECTID", "globalIdField": "GlobalID",
+            "geometryField": None, "supportedQueryFormats": "JSON, geoJSON, PBF",
+            "editingInfo": copy.deepcopy(editing_info) if editing_info is not None else copy.deepcopy(WITNESS),
+            "fields": copy.deepcopy(fields if fields is not None else FIELDS)}
 
-        def renamed_gdb_owner(case):
-            doc = json.loads((case.capture / 'gdb_item.body').read_bytes())
-            doc['owner'] = 'some_other_account'
-            case.rewrite_capture('gdb_item', s.encode(doc))
 
-        for mutate, quarantined, reason in [(drifted_spotcheck_with_view_counters, True,
-                                             'cached_capture_differs_from_fresh_source'),
-                                            (renamed_gdb_owner, False,
-                                             'official_nifc_gdb_item_identity_changed')]:
-            with scenario() as (case, store):
-                first = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-                self.assertFalse(first['reused'])
-                root = Path(store.local_dir) / s.SLUG / s.SLUG / first['version']
-                mutate(case)
-                with self.assertRaisesRegex(ValueError, reason):
-                    s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-                self.assertEqual(root.exists(), not quarantined)
-                self.assertEqual(quarantined, bool(
-                    list((Path(store.local_dir) / '_quarantine' / s.SLUG).glob('invalid-cache-*'))))
+def _item():
+    return {"id": ITEM_ID, "owner": source.OWNER, "orgId": ORG_ID,
+            "type": "Feature Service", "url": SERVICE_URL,
+            "title": "InterAgencyFirePerimeterHistory_AllYears_View"}
 
-    def test_registered_catalog_metadata_then_replay(self):
-        with scenario() as (case, store):
-            result = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-            version = result['version']
-            snapshot_source_metadata(store, s.SLUG, s.SLUG, version)
-            resolved = load_resolved_source_manifest(store, s.SLUG, s.SLUG, version)
-            summary = summarize_staged_catalog(store, s.SLUG, s.SLUG, version, s.SLUG,
-                                               source_metadata=resolved.metadata)
-            write_catalog_metadata(store, s.SLUG, s.SLUG, version,
-                                   summary.quality_manifest, summary.data_dictionary)
-            root = Path(store.local_dir) / s.SLUG / s.SLUG / version
-            for relative in ('metadata/quality_manifest.json', 'metadata/data_dictionary.json',
-                             'metadata/resolved_provenance.json', 'metadata/source/source_manifest.json'):
-                self.assertTrue((root / relative).is_file(), relative)
-            self.assertEqual({**result, 'reused': True},
-                             s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture))
 
-    def test_receipt_preflight_rejects_forgeries(self):
-        for member in ('archive', 'count'):
-            for field, value in [('requested_url', 'https://example.com'), ('status', True),
-                                 ('byte_length', True), ('sha256', '0' * 64),
-                                 ('observed_at', '2026-11-12'), ('final_url', 'http://evil/')]:
-                with scenario() as (case, store), self.subTest(member=member, field=field):
-                    receipt_path = case.capture / f'{member}.receipt.json'
-                    receipt = json.loads(receipt_path.read_bytes())
-                    receipt[field] = value
-                    receipt_path.write_bytes(s.encode(receipt))
-                    with self.assertRaises(ValueError):
-                        s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-                    self.assertFalse((Path(store.local_dir) / s.SLUG).exists())
+def _service():
+    return {"serviceItemId": ITEM_ID, "currentVersion": 12,
+            "capabilities": "Query,Extract", "supportedQueryFormats": "JSON, geoJSON, PBF",
+            "layers": [{"id": 0, "name": "InteragencyFirePerimeterHistory"}]}
 
-    def test_control_identity_and_census_drift(self):
-        def mutate(case, mode):
-            def rewrite(name, doc):
-                case.rewrite_capture(name, s.encode(doc) if not isinstance(doc, bytes) else doc)
-            if mode == 'gdb_owner':
-                doc = case.control_docs()['gdb_item']; doc['owner'] = 'other'; rewrite('gdb_item', doc)
-            elif mode == 'service_url':
-                doc = case.control_docs()['service_item']; doc['url'] = 'https://example.com'; rewrite('service_item', doc)
-            elif mode == 'layer_item':
-                doc = case.control_docs()['layer']; doc['serviceItemId'] = 'other'; rewrite('layer', doc)
-            elif mode == 'service_fields':
-                doc = case.control_docs()['layer']; doc['fields'][0]['name'] = 'renamed'; rewrite('layer', doc)
-            elif mode == 'service_crs':
-                doc = case.control_docs()['layer']; doc['extent']['spatialReference'] = {'wkid': 4269}; rewrite('layer', doc)
-            elif mode == 'count':
-                rewrite('count', s.encode({'count': case.features - 1}))
-            elif mode == 'archive_sha':
-                case.pins['ARCHIVE_SHA256'] = '0' * 64
-            elif mode == 'zip_member':
-                case.pins['ZIP_MEMBERS'] = 2
-            elif mode == 'zip_uncompressed':
-                case.pins['ZIP_UNCOMPRESSED_BYTES'] = 299
-            elif mode == 'top_dir':
-                case.top_dir = 'Other.gdb'
-                case.zip_bytes = case._write_archive()
-                case.pins = case._pins()
-                case.rewrite_capture('archive', case.zip_bytes)
-            elif mode == 'field_roster':
-                case.arrow_names.insert(-1, 'surprise')
-            elif mode == 'objectid':
-                case.columns['OBJECTID'] = [1, 1, 3, 4, 5, 6]
-            elif mode == 'nulls':
-                case.columns['state'][0] = None
-            elif mode == 'bounds':
-                case.pins['EXPECTED_BOUNDS'] = [0.0, 0.0, 12.0, 11.0]
-            elif mode == 'invalid':
-                case.pins['EXPECTED_INVALID_GEOMETRY_COUNT'] = 1
-            elif mode == 'vertices':
-                case.pins['EXPECTED_VERTICES'] = 5 * case.features + 1
-            elif mode == 'ufi':
-                case.pins['EXPECTED_UNIQUE_FIRE_IDS'] = 6
-            elif mode == 'peryear':
-                case.per_year_observed['US_HIST_FIRE_PERIM_2000_DD83'] = 5
-            elif mode == 'fireyear':
-                case.pins['EXPECTED_FIREYEAR_RANGE'] = (2000, 2003)
-            elif mode == 'spot_deviation':
-                spot = case.spotcheck()
-                spot['features'][0]['geometry']['rings'][0][0][0] += 1.0
-                case.rewrite_capture('spotcheck', s.encode(spot))
-            elif mode == 'spot_attribute':
-                spot = case.spotcheck()
-                spot['features'][0]['attributes']['gisacres'] = 99.0
-                case.rewrite_capture('spotcheck', s.encode(spot))
-            elif mode == 'spot_crs':
-                spot = case.spotcheck()
-                spot['spatialReference'] = {'wkid': 3857}
-                case.rewrite_capture('spotcheck', s.encode(spot))
-        modes = ['gdb_owner', 'service_url', 'layer_item', 'service_fields', 'service_crs', 'count',
-                 'archive_sha', 'zip_member', 'zip_uncompressed', 'top_dir', 'field_roster', 'objectid',
-                 'nulls', 'bounds', 'invalid', 'vertices', 'ufi', 'peryear', 'fireyear',
-                 'spot_deviation', 'spot_attribute', 'spot_crs']
-        for mode in modes:
-            with self.subTest(mode=mode):
-                def mutation(case, mode=mode):
-                    mutate(case, mode)
-                with scenario(mutate=mutation) as (case, store):
-                    with self.assertRaises(ValueError):
-                        s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-                    self.assertFalse((Path(store.local_dir) / s.SLUG).exists())
 
-    def test_atomic_install_and_prior_preserved(self):
-        for failure in [OSError('disk'), KeyboardInterrupt()]:
-            with tempfile.TemporaryDirectory() as tmp, patch.object(s.os, 'rename', side_effect=failure), \
-                    self.assertRaises(type(failure)):
-                try:
-                    s.commit_complete_candidate(StagingStorageResource(local_dir=tmp), 'a/a/v0-fixture',
-                                               {'geoparquet/a.parquet': b'candidate'}, {})
-                finally:
-                    self.assertFalse(Path(tmp, 'a/a/v0-fixture').exists())
-        with tempfile.TemporaryDirectory() as tmp:
-            store = StagingStorageResource(local_dir=tmp)
-            s.commit_complete_candidate(store, 'a/a/v0-fixture', {'geoparquet/a.parquet': b'prior'}, {})
+def _capture_docs(page_size=2, features=None, witness=None, count_override=None,
+                  ids_override=None):
+    features = _features() if features is None else features
+    ordered = sorted(features, key=lambda feature: feature["attributes"]["OBJECTID"])
+    ids = [feature["attributes"]["OBJECTID"] for feature in ordered]
+    docs = {"item": _item(), "service_before": _service(), "service_after": _service(),
+            "layer_before": _layer(witness), "layer_after": _layer(witness),
+            "count_before": {"count": len(ids) if count_override is None else count_override},
+            "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": ids if ids_override is None else ids_override},
+            "count_after": {"count": len(ids) if count_override is None else count_override},
+            "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": ids if ids_override is None else ids_override}}
+    for start in range(0, len(ordered), page_size):
+        page = {"objectIdFieldName": "OBJECTID",
+                "spatialReference": {"wkid": 3857, "latestWkid": 3857},
+                "geometryType": "esriGeometryPolygon",
+                "features": copy.deepcopy(ordered[start:start + page_size])}
+        if start + page_size < len(ordered):
+            page["exceededTransferLimit"] = True
+        docs[f"page_{start:05d}"] = page
+    return docs
+
+
+def _write_capture(root: Path, docs: dict, page_size: int) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    observed = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    receipts = {}
+    for name, doc in docs.items():
+        body = (json.dumps(doc, ensure_ascii=False, allow_nan=False) + "\n").encode()
+        (root / f"{name}.body").write_bytes(body)
+        (root / f"{name}.wire").write_bytes(body)
+        url = source.ITEM_URL if name == "item" else source._scope_query(name, page_size)
+        receipt = {"method": "GET", "url": url, "final_url": url, "observed_at": observed,
+                   "status": 200, "complete_body": True, "wire_bytes": len(body),
+                   "wire_sha256": source._sha(body), "bytes": len(body), "sha256": source._sha(body),
+                   "content_encoding": None, "content_length": None, "error_code": None,
+                   "error_type": None}
+        (root / f"{name}.receipt.json").write_bytes(source._canonical(receipt) + b"\n")
+        receipts[name] = receipt
+    (root / "capture_manifest.json").write_bytes(source._canonical(
+        {"complete": True, "captured_at": observed, "artifact_names": sorted(docs),
+         "receipts": receipts}) + b"\n")
+
+
+class HistoricPerimetersSourceTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.storage = StagingStorageResource(local_dir=self.tmp.name, use_local=True)
+
+    def stage(self, docs=None, page_size=2, **kwargs):
+        root = Path(self.tmp.name) / "capture"
+        _write_capture(root, _capture_docs(page_size=page_size, **kwargs) if docs is None else docs, page_size)
+        return source.capture_historic_perimeters(
+            self.storage, capture_directory=str(root), page_size=page_size)
+
+    def test_complete_snapshot_candidate_and_readback_parity(self):
+        result = self.stage()
+        self.assertTrue(result["source_population_complete"])
+        self.assertEqual(result["feature_count"], 5)
+        self.assertEqual(result["source_invalid_geometry_count"], 0)
+        self.assertFalse(result["release_accepted"])
+        root = Path(self.storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / result["version"]
+        table = pq.read_table(root / "geoparquet" / f"{source.FILE_SLUG}.parquet")
+        self.assertEqual(table.num_rows, 5)
+        self.assertEqual(table.schema.names, source.FIELD_NAMES + ["geometry"])
+        self.assertEqual(str(table.schema.field("OBJECTID").type), "int64")
+        self.assertEqual(str(table.schema.field("FIRE_YEAR_INT").type), "int16")
+        self.assertEqual(str(table.schema.field("GIS_ACRES").type), "float")
+        self.assertEqual(str(table.schema.field("GlobalID").type), "string")
+        self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 20, 30, 40, 50])
+        geo = json.loads(table.schema.metadata[b"geo"])
+        self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 3857)
+        self.assertTrue(all(shapely.from_wkb(value).is_valid for value in table.column("geometry").to_pylist()))
+        manifest = json.loads((root / "metadata" / "source_manifest.json").read_bytes())
+        self.assertFalse(manifest["approved"])
+        self.assertEqual(manifest["lineage"]["item_owner"], source.OWNER)
+        self.assertEqual(manifest["lineage"]["supersedes"],
+                         "Historic Perimeters Combined 2000-2018 GeoMAC (retired)")
+        self.assertEqual({urlsplit(entry["retrieval_url"]).hostname for entry in manifest["inputs"]},
+                         {"services3.arcgis.com", "www.arcgis.com"})
+        audit = json.loads((root / "metadata" / "source_audit.json").read_bytes())
+        self.assertEqual(audit["feature_count"], 5)
+        self.assertEqual(audit["null_counts"]["INCIDENT"], 1)
+        self.assertEqual(audit["fire_year_counts"]["9999"], 1)
+        ready = json.loads((root / "metadata" / "candidate_ready.json").read_bytes())
+        self.assertFalse(ready["release_accepted"])
+        self.assertEqual(ready["source_invalid_geometry_count"], 0)
+
+    def test_holes_and_multipart_polygons_are_preserved(self):
+        result = self.stage()
+        root = Path(self.storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / result["version"]
+        table = pq.read_table(root / "geoparquet" / f"{source.FILE_SLUG}.parquet")
+        geometries = [shapely.from_wkb(value) for value in table.column("geometry").to_pylist()]
+        self.assertIsInstance(geometries[1], shapely.Polygon)
+        self.assertEqual(len(geometries[1].interiors), 1)
+        self.assertIsInstance(geometries[4], shapely.MultiPolygon)
+        self.assertEqual(len(geometries[4].geoms), 2)
+
+    def test_replay_is_idempotent_and_immutable(self):
+        root = Path(self.tmp.name) / "capture"
+        _write_capture(root, _capture_docs(), 2)
+        first = source.capture_historic_perimeters(self.storage, capture_directory=str(root), page_size=2)
+        second = source.capture_historic_perimeters(self.storage, capture_directory=str(root), page_size=2)
+        self.assertTrue(first["reused"])
+        self.assertTrue(second["reused"])
+        self.assertEqual(first["version"], second["version"])
+        base = Path(self.storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG
+        first_parquet = (base / first["version"] / "geoparquet" / f"{source.FILE_SLUG}.parquet").read_bytes()
+        second_parquet = (base / second["version"] / "geoparquet" / f"{source.FILE_SLUG}.parquet").read_bytes()
+        self.assertEqual(first_parquet, second_parquet)
+
+    def test_page_order_ids_and_metadata_drifts_fail_closed(self):
+        docs = _capture_docs()
+
+        def mutate(change):
+            altered = copy.deepcopy(docs)
+            change(altered)
             with self.assertRaises(ValueError):
-                s.commit_complete_candidate(store, 'a/a/v0-fixture', {'geoparquet/a.parquet': b'new'}, {})
-            self.assertEqual((Path(tmp, 'a/a/v0-fixture/geoparquet/a.parquet')).read_bytes(), b'prior')
+                self.stage(docs=altered)
 
-    def test_invalid_cache_self_repin_rejected(self):
-        with scenario() as (case, store):
-            result = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-            root = Path(store.local_dir) / s.SLUG / s.SLUG / result['version']
-            pristine = Path(store.local_dir) / 'pristine'
-            shutil.copytree(root, pristine)
-            ready_file = root / 'metadata/candidate_ready.json'
-            ready_bytes = ready_file.read_bytes()
-            parquet = root / 'geoparquet' / f'{s.SLUG}.parquet'
-            original_parquet = parquet.read_bytes()
-            for mode in ('tampered_parquet', 'tampered_archive', 'forged_approval', 'missing_ready'):
-                if not root.exists():
-                    shutil.copytree(pristine, root)
-                ready = json.loads(ready_file.read_bytes())
-                if mode == 'tampered_parquet':
-                    parquet.write_bytes(original_parquet + b'trailing')
-                    ready['objects'][f'geoparquet/{s.SLUG}.parquet'] = s.sha(parquet.read_bytes())
-                elif mode == 'tampered_archive':
-                    raw = root / 'raw/captures/archive.body'
-                    raw.write_bytes(raw.read_bytes()[:-1] + b'!')
-                    ready['objects']['raw/captures/archive.body'] = s.sha(raw.read_bytes())
-                elif mode == 'forged_approval':
-                    ready['approved'] = True
-                else:
-                    ready_file.unlink()
-                if mode != 'missing_ready':
-                    ready_file.write_bytes(s.encode(ready))
-                with self.subTest(mode=mode), self.assertRaises(ValueError):
-                    s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-                self.assertFalse(root.exists())
-                self.assertTrue(list((Path(store.local_dir) / '_quarantine' / s.SLUG).glob('invalid-cache-*')))
-            shutil.copytree(pristine, root)
-            self.assertEqual({**result, 'reused': True},
-                             s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture))
+        def drop_feature(current):
+            current["page_00002"]["features"].pop()
 
-    def test_concurrent_install_winner_is_preserved(self):
-        with scenario() as (case, store):
-            install = s.commit_complete_candidate
+        def duplicate_oid(current):
+            current["page_00002"]["features"][0]["attributes"]["OBJECTID"] = 10
 
-            def competing(storage, prefix, payloads, ready):
-                install(storage, prefix, payloads, ready)
-                raise s.GeoMACQuarantineError('simulated_concurrent_install_winner')
-            with patch.object(s, 'commit_complete_candidate', side_effect=competing), \
-                    self.assertRaisesRegex(ValueError, 'simulated_concurrent_install_winner'):
-                s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-            versions = list((Path(store.local_dir) / s.SLUG / s.SLUG).glob('v*'))
-            self.assertEqual(len(versions), 1)
-            before = {str(p.relative_to(versions[0])): s.sha(p.read_bytes())
-                      for p in versions[0].rglob('*') if p.is_file()}
-            result = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=case.capture)
-            self.assertEqual(result['feature_count'], case.features)
-            self.assertEqual({str(p.relative_to(versions[0])): s.sha(p.read_bytes())
-                               for p in versions[0].rglob('*') if p.is_file()}, before)
+        def out_of_order(current):
+            rows = current["page_00000"]["features"]
+            rows[0], rows[1] = rows[1], rows[0]
+
+        def extra_attribute(current):
+            current["page_00000"]["features"][0]["attributes"]["NEW"] = 1
+
+        def drop_attribute(current):
+            del current["page_00000"]["features"][0]["attributes"]["SOURCE"]
+
+        def string_length_drift(current):
+            current["page_00000"]["features"][0]["attributes"]["AGENCY"] = "TOO-LONG-AGENCY"
+
+        def count_drift(current):
+            current["count_after"]["count"] = 3
+
+        def ids_drift(current):
+            current["ids_after"]["objectIds"].pop()
+
+        def field_type_drift(current):
+            current["layer_before"]["fields"][4]["type"] = "esriFieldTypeString"
+
+        def field_added(current):
+            current["layer_after"]["fields"].append({"name": "NEW", "type": "esriFieldTypeString",
+                                                     "length": 5, "nullable": True})
+
+        def witness_drift(current):
+            current["layer_after"]["editingInfo"]["lastEditDate"] += 1
+
+        def item_drift(current):
+            current["item"]["owner"] = "SomeMirror"
+
+        def service_changed(current):
+            current["service_after"]["capabilities"] = "Query"
+
+        def crs_drift(current):
+            current["layer_before"]["spatialReference"] = {"wkid": 4326, "latestWkid": 4326}
+
+        def short_page_transfer_flag(current):
+            current["page_00004"]["exceededTransferLimit"] = True
+
+        def null_geometry(current):
+            current["page_00000"]["features"][0]["geometry"] = None
+
+        def invalid_geometry(current):
+            ring = _ring([(-12000000, 4000000), (-11900000, 4100000),
+                          (-11900000, 4000000), (-12000000, 4100000)])
+            current["page_00000"]["features"][0]["geometry"] = {"rings": [ring]}
+
+        for change in (drop_feature, duplicate_oid, out_of_order, extra_attribute, drop_attribute,
+                       string_length_drift, count_drift, ids_drift, field_type_drift, field_added,
+                       witness_drift, item_drift, service_changed, crs_drift,
+                       short_page_transfer_flag, null_geometry, invalid_geometry):
+            with self.subTest(change=change.__name__):
+                mutate(change)
+
+    def test_page_receipt_mismatch_fails_closed(self):
+        root = Path(self.tmp.name) / "capture"
+        _write_capture(root, _capture_docs(), 2)
+        receipt_path = root / "page_00000.receipt.json"
+        receipt = json.loads(receipt_path.read_bytes())
+        receipt["bytes"] += 1
+        receipt_path.write_bytes(source._canonical(receipt) + b"\n")
+        manifest_path = root / "capture_manifest.json"
+        manifest = json.loads(manifest_path.read_bytes())
+        manifest["receipts"]["page_00000"] = receipt
+        manifest_path.write_bytes(source._canonical(manifest) + b"\n")
+        with self.assertRaises(ValueError):
+            source.capture_historic_perimeters(self.storage, capture_directory=str(root), page_size=2)
 
 
-@unittest.skipUnless(os.environ.get(_CAPTURE_ENV), 'complete original NIFC captures opt-in required')
-class GeoMACRealCaptureTests(unittest.TestCase):
-    def test_real_capture_replay_and_reuse(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            store = StagingStorageResource(local_dir=tmp)
-            result = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=CAPTURE)
-            self.assertEqual(result['feature_count'], 23776)
-            self.assertEqual(result['source_invalid_geometry_count'], 881)
-            self.assertEqual(result['source_vertices'], 13400285)
-            self.assertTrue(result['release_blocked'])
-            replay = s.stage_historic_geomac_perimeters_candidate(store, capture_dir=CAPTURE)
-            self.assertEqual({**result, 'reused': True}, replay)
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
