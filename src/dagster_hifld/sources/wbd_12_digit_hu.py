@@ -153,10 +153,11 @@ EXPECTED_RECORD_SHA256 = "393ff32e209b061ffe28dc9c8218a8f139e35e38e66f57a6d05a85
 # complete capture re-derives it.
 EXPECTED_GEOMETRY_SHA256 = None
 # Polygon-ring quarantines retired by the shared GDAL Esri polygon converter
-# (issue #997): the 7 defect rows (4 assemblies invalid, 3 self-intersecting
-# exteriors) now convert through GDAL and are retained verbatim, counted as
-# ogc_invalid_geometry_counts; the 5 producer-refused attributes-only windows
-# keep their explicit null geometry and pinned count.
+# (issue #997): the 7 rows the retired assembler gated (4 assembly-invalid,
+# 3 self-intersecting exteriors) now convert through GDAL; any that stay
+# OGC-invalid are retained verbatim in ogc_invalid_geometry_counts. The 5
+# producer-refused attributes-only windows keep their explicit null geometry
+# and pinned count.
 EXPECTED_NULL_GEOMETRY_COUNT = 5
 EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {"source_page_window_refused_geometry": 5}
 # Refused single-feature windows (attributes-only rows published with null

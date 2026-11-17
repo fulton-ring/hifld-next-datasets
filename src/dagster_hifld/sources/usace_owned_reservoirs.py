@@ -108,10 +108,11 @@ EXPECTED_GEOMETRY_SHA256 = "2be036dbdd8ef51c9b6a1ff5d7c9d0bd827d6a2f52f6de353838
 OBSERVED_VERTEX_COUNT = 2_134_520
 OBSERVED_WINDING_COUNTS = {"cw_shells": 3971, "ccw_holes": 8461}
 # Geometry quarantines retired by the shared GDAL Esri polygon converter
-# (issue #997): the producer's 16 defect rows (6 zero-area sliver rings,
-# 9 self-intersecting exteriors, 1 assembly that failed OGC validity under the
-# retired hand-written assembler) now convert through GDAL and are retained
-# verbatim, counted as ogc_invalid_geometry_counts instead of gated to null.
+# (issue #997): the 16 rows the retired hand-written assembler gated (6
+# zero-area sliver rings, 9 self-intersecting exteriors, 1 assembly-invalid)
+# all convert through GDAL and none is nulled. A live read of the 418-feature
+# layer leaves 12 of them OGC-invalid, reported in ogc_invalid_geometry_counts;
+# the rest assemble into OGC-valid geometry. Coordinates are never repaired.
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
 CAPTURE_NAMES = {"catalog_item", "service_before", "layer_before", "count_before",
