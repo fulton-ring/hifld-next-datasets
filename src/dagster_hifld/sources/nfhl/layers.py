@@ -33,9 +33,9 @@ class NfhlLayer:
     inventory_aliases: tuple[tuple[str, int], ...] = ()
     # The (hasZ, hasM) declaration in the producer's layer document this entry
     # accepts. ``None`` requires the document to declare no Z or M geometry. A
-    # declared dimension is captured with returnZ/returnM and accepted only when
-    # every served vertex carries the producer's no-data placeholder (Z == 0,
-    # M null), which is reduced to 2D WKB; populated Z/M fails closed.
+    # declared dimension is captured with returnZ/returnM and retained in ISO
+    # WKB (GeoParquet 2.0 for measured geometry); a missing declared ordinate or
+    # a decoded dimension mismatch fails closed.
     source_zm: tuple[bool, bool] | None = None
     # Initial OBJECTID-window target; ``None`` uses the layer's live maxRecordCount.
     page_records: int | None = None

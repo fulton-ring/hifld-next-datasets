@@ -281,8 +281,10 @@ def _manifest(layer: NfhlLayer, identity: dict, receipts: dict[str, dict], rel: 
                 "counted in source_audit.json")
     if layer.source_zm is not None and any(layer.source_zm):
         geometry += (" The layer document declares Z/M; the capture requests both and validates every served "
-                     "vertex, accepting only the producer's no-data placeholder (Z == 0, M null), which carries "
-                     "no data and is reduced to 2D WKB. A populated Z or M fails closed before decoding.")
+                     "vertex before decoding. Served ordinates are retained in ISO WKB with the declared "
+                     "dimensions (null or string-'NaN' Z/M ordinates map to WKB NaN, the no-value convention), "
+                     "and measured geometry uses GeoParquet 2.0 metadata because GeoParquet 1.1 cannot carry M. "
+                     "A missing declared ordinate or a decoded dimension mismatch fails closed.")
     manifest = {
         "schema_version": 1, "approved": False, "title": layer.title,
         "description": f"FEMA National Flood Hazard Layer (NFHL) MapServer {kind} {layer.layer_id} "

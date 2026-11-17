@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import json
+import math
 import re
 import tempfile
 import unittest
@@ -48,6 +49,24 @@ GEOMETRIES = {
                 41: ({"rings": [OUTSIDE]}, Polygon(OUTSIDE)), 100: ({"rings": [FAR_SQUARE]}, Polygon(FAR_SQUARE))},
     "none": {oid: (None, None) for oid in (3, 4, 10, 11, 12, 40, 41, 100)},
 }
+def served_coordinates(geometry):
+    """Flatten an Esri geometry into (x, y, z, m) tuples."""
+    if geometry is None:
+        return None
+    if "x" in geometry:
+        return [(geometry["x"], geometry["y"], geometry.get("z"), geometry.get("m"))]
+    for member in ("paths", "rings", "points"):
+        if member not in geometry:
+            continue
+        containers = geometry[member]
+        if member == "points":
+            return [(p[0], p[1], p[2] if len(p) > 2 else None, p[3] if len(p) > 3 else None)
+                    for p in containers]
+        return [(p[0], p[1], p[2] if len(p) > 2 else None, p[3] if len(p) > 3 else None)
+                for container in containers for p in container]
+    return []
+
+
 FAMILY_SLUGS = {
     "nfhl-alluvial-fans", "nfhl-availability", "nfhl-base-flood-elevations", "nfhl-base-index",
     "nfhl-coastal-gages", "nfhl-coastal-transects", "nfhl-cross-sections", "nfhl-flood-hazard-boundaries",
@@ -109,11 +128,23 @@ class FakeMapServer:
     def attr_fields(self):
         return [f for f in self.fields if f["type"] != "esriFieldTypeGeometry"]
 
+    def _zm_value(self, index):
+        if self.zm_ordinates == "nominal":
+            return 0, None
+        if self.zm_ordinates == "populated":
+            return 100.0 + index, 200.0 + index
+        if self.zm_ordinates == "mixed":
+            return (None, None) if index % 3 == 0 else ((0, 200.0 + index) if index % 3 == 1
+                                                        else (100.0 + index, None))
+        raise AssertionError(f"unknown zm_ordinates mode {self.zm_ordinates}")
+
     def _with_zm(self, geometry, want_z, want_m):
-        z = 5.0 if self.zm_ordinates == "real_z" else 0
-        m = 2.5 if self.zm_ordinates == "real_m" else None
+        counter = {"index": 0}
 
         def vertex(point):
+            index = counter["index"]
+            counter["index"] += 1
+            z, m = self._zm_value(index)
             out = [point[0], point[1]]
             if want_z:
                 out.append(z)
@@ -127,6 +158,7 @@ class FakeMapServer:
         if "points" in geometry:
             return {**geometry, "points": [vertex(point) for point in geometry["points"]]}
         if "x" in geometry:
+            z, m = self._zm_value(0)
             out = {**geometry}
             if want_z:
                 out["z"] = z
@@ -205,6 +237,11 @@ class FakeMapServer:
         page = {"displayFieldName": "", "fields": self.attr_fields, "features": rows[:self.max_record_count]}
         if not self.layer.is_table:
             page.update(geometryType=GEOMETRY_TYPES[self.layer.geometry], spatialReference=CRS)
+            if self.zm_doc is not None and self.zm_ordinates != "omit":
+                if query.get("returnZ") == "true" and self.zm_doc[0]:
+                    page["hasZ"] = True
+                if query.get("returnM") == "true" and self.zm_doc[1]:
+                    page["hasM"] = True
         if len(rows) > self.max_record_count:
             page["exceededTransferLimit"] = True
         return self.json(page)
@@ -278,12 +315,20 @@ class CandidateTests(NfhlCaptureCase):
                 geo = json.loads(table.schema.metadata[b"geo"])
                 self.assertEqual(geo["primary_column"], "SHAPE")
                 self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"], {"authority": "EPSG", "code": 4269})
+                suffix = " ZM" if layer.source_zm == (True, True) else ""
+                self.assertEqual(geo["version"], "2.0.0" if suffix else "1.1.0")
+                self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"],
+                                 [f"{name}{suffix}" for name in ("LineString", "MultiLineString")]
+                                 if layer.geometry == "line" else geo["columns"]["SHAPE"]["geometry_types"])
                 for oid, wkb in zip(table.column("OBJECTID").to_pylist(), table.column("SHAPE").to_pylist()):
                     expected = GEOMETRIES[layer.geometry][oid][1]
                     if expected is None:
                         self.assertIsNone(wkb)
                     else:
-                        self.assertTrue(shapely.from_wkb(wkb).equals_exact(expected, 0), (slug, oid))
+                        decoded = shapely.from_wkb(wkb)
+                        if suffix:
+                            decoded = shapely.force_2d(decoded)
+                        self.assertTrue(decoded.equals_exact(expected, 0), (slug, oid))
                 ready = json.loads(self.staged(result, "metadata/candidate_ready.json"))
                 self.assertFalse(ready["approved"])
                 self.assertFalse(any(v for k, v in ready.items() if k.endswith("_accepted")))
@@ -301,7 +346,7 @@ class CandidateTests(NfhlCaptureCase):
 
 class ZmContractTests(NfhlCaptureCase):
     """The producer's Z/M declaration is accepted only as the entry declares it,
-    and declared dimensions are requested and validated before GDAL decodes."""
+    and declared dimensions are requested, validated and retained."""
 
     def profile(self):
         return dataclasses.replace(LAYERS_BY_SLUG["nfhl-profile-baselines"], min_free_bytes=1_000_000)
@@ -323,9 +368,10 @@ class ZmContractTests(NfhlCaptureCase):
                 with self.assertRaisesRegex(ValueError, "nfhl_layer_zm_declaration_drift"):
                     self.run_capture(server)
 
-    def test_declared_zm_layer_requests_ordinates_and_reduces_nominal_placeholders(self):
+    def test_declared_zm_layer_requests_and_preserves_ordinates(self):
         layer = self.profile()
         server = FakeMapServer(layer, max_record_count=3)
+        server.zm_ordinates = "populated"
         result = self.run_capture(server)
         page_urls = [url for url in server.requests if "query?" in url and "where=OBJECTID" in url]
         self.assertTrue(page_urls)
@@ -333,16 +379,45 @@ class ZmContractTests(NfhlCaptureCase):
         audit = json.loads(self.staged(result, "metadata/source_audit.json"))
         self.assertEqual(audit["source_declared_zm"], {"hasZ": True, "hasM": True})
         self.assertEqual(audit["source_zm_ordinates"], {
-            "declared": {"hasZ": True, "hasM": True}, "vertices_checked": 10, "reduced_to_xy": True})
+            "declared": {"hasZ": True, "hasM": True}, "vertices_checked": 10,
+            "null_z_vertices": 0, "null_m_vertices": 0})
         table = self.parquet(result, layer)
         geo = json.loads(table.schema.metadata[b"geo"])
-        self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["LineString", "MultiLineString"])
+        self.assertEqual(geo["version"], "2.0.0")
+        self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["LineString ZM", "MultiLineString ZM"])
         for oid, wkb in zip(table.column("OBJECTID").to_pylist(), table.column("SHAPE").to_pylist()):
-            expected = GEOMETRIES[layer.geometry][oid][1]
-            if expected is None:
+            source = GEOMETRIES[layer.geometry][oid][0]
+            if source is None:
                 self.assertIsNone(wkb)
-            else:
-                self.assertTrue(shapely.from_wkb(wkb).equals_exact(expected, 0), (oid,))
+                continue
+            expected = served_coordinates(server._with_zm(copy.deepcopy(source), True, True))
+            geometry = shapely.from_wkb(wkb)
+            self.assertEqual(shapely.get_coordinate_dimension(geometry), 4)
+            coordinates = shapely.get_coordinates(geometry, include_z=True, include_m=True)
+            self.assertEqual(len(coordinates), len(expected))
+            for (x, y, z, m), row in zip(expected, coordinates):
+                self.assertEqual((row[0], row[1]), (x, y))
+                self.assertEqual((row[2], row[3]), (z, m))
+
+    def test_declared_zm_layer_maps_the_producer_null_m_to_wkb_nan(self):
+        layer = self.profile()
+        server = FakeMapServer(layer, max_record_count=3)
+        server.zm_ordinates = "nominal"
+        result = self.run_capture(server)
+        audit = json.loads(self.staged(result, "metadata/source_audit.json"))
+        self.assertEqual(audit["source_zm_ordinates"], {
+            "declared": {"hasZ": True, "hasM": True}, "vertices_checked": 10,
+            "null_z_vertices": 0, "null_m_vertices": 10})
+        table = self.parquet(result, layer)
+        for oid, wkb in zip(table.column("OBJECTID").to_pylist(), table.column("SHAPE").to_pylist()):
+            if GEOMETRIES[layer.geometry][oid][0] is None:
+                self.assertIsNone(wkb)
+                continue
+            geometry = shapely.from_wkb(wkb)
+            self.assertEqual(shapely.get_coordinate_dimension(geometry), 4)
+            coordinates = shapely.get_coordinates(geometry, include_z=True, include_m=True)
+            self.assertTrue(all(value == 0 for value in coordinates[:, 2]))
+            self.assertTrue(all(math.isnan(value) for value in coordinates[:, 3]))
 
     def test_declared_zm_layer_fails_when_producer_omits_requested_ordinates(self):
         layer = self.profile()
@@ -353,21 +428,6 @@ class ZmContractTests(NfhlCaptureCase):
         failures = [k for k in self.quarantines(layer) if k.endswith("failure.json")]
         self.assertEqual(json.loads(self.storage.read_key(failures[0]))["reason_code"],
                          "source_z_or_m_geometry_unsupported")
-
-    def test_declared_zm_layer_fails_before_decoding_populated_ordinates(self):
-        for mode in ("real_z", "real_m"):
-            with self.subTest(mode=mode):
-                layer = self.profile()
-                storage = StagingStorageResource(use_local=True, local_dir=str(self.temp / f"staging-{mode}"),
-                                                 prefix="")
-                server = FakeMapServer(layer, max_record_count=3)
-                server.zm_ordinates = mode
-                with self.assertRaisesRegex(ValueError, "source_z_or_m_geometry_unsupported"):
-                    self.run_capture(server, storage=storage)
-                failures = [k for k in storage.list_prefix(f"_quarantine/{layer.slug}/")
-                            if k.endswith("failure.json")]
-                self.assertEqual(json.loads(storage.read_key(failures[0]))["reason_code"],
-                                 "source_z_or_m_geometry_unsupported")
 
     def test_served_zm_vertices_fail_closed_and_quarantine(self):
         layer = LAYERS_BY_SLUG["nfhl-levees"]
@@ -385,25 +445,40 @@ class ZmContractTests(NfhlCaptureCase):
         self.assertTrue(any("/raw/page_" in k for k in keys))
 
 
-class ZmReductionTests(unittest.TestCase):
-    def test_point_and_polygon_placeholders_reduce_to_xy(self):
-        from dagster_hifld.sources.nfhl.convert import reduce_nominal_zm
+class ZmSanitizeTests(unittest.TestCase):
+    def test_null_and_string_nan_ordinates_become_wkb_nan(self):
+        from dagster_hifld.sources.nfhl.convert import sanitize_zm_geometry
 
-        self.assertEqual(reduce_nominal_zm({"x": 1, "y": 2, "z": 0, "m": None, "hasZ": True, "hasM": True},
-                                           True, True), ({"x": 1, "y": 2}, 1))
-        self.assertEqual(reduce_nominal_zm({"rings": [[[0, 0, 0, None], [0, 1, 0, None]]]}, True, True),
-                         ({"rings": [[[0, 0], [0, 1]]]}, 2))
-        self.assertEqual(reduce_nominal_zm({"points": [[0, 0, 0, None], [1, 1, 0, None]]}, True, True),
-                         ({"points": [[0, 0], [1, 1]]}, 2))
+        geometry, vertices, null_z, null_m = sanitize_zm_geometry(
+            {"x": 1, "y": 2, "z": None, "m": "NaN", "hasZ": True, "hasM": True}, True, True)
+        self.assertEqual((vertices, null_z, null_m), (1, 1, 1))
+        self.assertEqual((geometry["x"], geometry["y"]), (1, 2))
+        self.assertTrue(math.isnan(geometry["z"]))
+        self.assertTrue(math.isnan(geometry["m"]))
+        self.assertNotIn("hasZ", geometry)
+
+        geometry, vertices, null_z, null_m = sanitize_zm_geometry(
+            {"rings": [[[0, 0, 0, None], [0, 1, 100.0, 200.0]]]}, True, True)
+        self.assertEqual((vertices, null_z, null_m), (2, 0, 1))
+        self.assertEqual(geometry["rings"][0][0][:3], [0, 0, 0.0])
+        self.assertTrue(math.isnan(geometry["rings"][0][0][3]))
+        self.assertEqual(geometry["rings"][0][1], [0, 1, 100.0, 200.0])
+
+        geometry, vertices, null_z, null_m = sanitize_zm_geometry(
+            {"points": [[0, 0, None, None], [1, 1, 5.0, 6.0]]}, True, True)
+        self.assertEqual((vertices, null_z, null_m), (2, 1, 1))
+        self.assertTrue(math.isnan(geometry["points"][0][2]))
+        self.assertTrue(math.isnan(geometry["points"][0][3]))
+        self.assertEqual(geometry["points"][1], [1, 1, 5.0, 6.0])
 
     def test_unsupported_ordinates_and_shapes_fail_closed(self):
-        from dagster_hifld.sources.nfhl.convert import reduce_nominal_zm
+        from dagster_hifld.sources.nfhl.convert import sanitize_zm_geometry
 
-        for geometry in ({"paths": [[[0, 0, 5, None]]]}, {"paths": [[[0, 0, 0, 2]]]},
-                         {"paths": [[[0, 0]]]}, {"x": 1, "y": 2, "m": None}, {}):
+        for geometry in ({"paths": [[[0, 0, 5]]]}, {"paths": [[[0, 0]]]}, {"x": 1, "y": 2, "m": None},
+                         {"paths": [[[0, 0, "bad", None]]]}, {}):
             with self.subTest(geometry=geometry):
                 with self.assertRaisesRegex(ValueError, "source_z_or_m_geometry_unsupported"):
-                    reduce_nominal_zm(geometry, True, True)
+                    sanitize_zm_geometry(geometry, True, True)
 
 
 class InventoryAliasTests(NfhlCaptureCase):
