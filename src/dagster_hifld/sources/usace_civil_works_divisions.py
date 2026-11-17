@@ -367,6 +367,20 @@ def _profile_fields(layer: Mapping[str, object]) -> list[dict[str, object]]:
     return simple
 
 
+def _validate_ring_points(ring: object) -> list[list[float]]:
+    if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
+        raise ValueError("source_polygon_ring_invalid")
+    for point in ring:
+        if not isinstance(point, list) or len(point) != 2:
+            raise ValueError("source_polygon_ring_invalid")
+        if any(type(v) not in (int, float) or v != v
+               or v in (float("inf"), float("-inf")) for v in point):
+            raise ValueError("source_polygon_vertex_invalid")
+        if not (-180 <= point[0] <= 180 and -90 <= point[1] <= 90):
+            raise ValueError("source_polygon_coordinates_invalid")
+    return ring
+
+
 def _ring_geometry(rings: object) -> tuple[object, int, int, int] | None:
     """Build one feature geometry from native Esri rings, or None when empty.
 
