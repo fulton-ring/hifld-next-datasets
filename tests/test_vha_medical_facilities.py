@@ -15,7 +15,7 @@ from shapely import from_wkb
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import vha_medical_facilities as va
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 
 
 def record(identifier, kind='health', status='NORMAL'):
@@ -158,7 +158,7 @@ class VhaMedicalFacilitiesTests(unittest.TestCase):
         with fixture_pins(), tempfile.TemporaryDirectory() as tmp, \
                 patch.object(va, 'processing_identity', return_value=identity), \
                 patch.object(va, 'validate_construction_code_identity'), \
-                patch.object(epa_frs_common, 'validate_construction_code_identity'):
+                patch.object(capture_common, 'validate_construction_code_identity'):
             storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / 'stage'))
             with patch.object(va, 'acquire', return_value=captures()):
                 first = va.capture_vha_medical_facilities(storage, capture_directory=str(Path(tmp) / 'capture'))
