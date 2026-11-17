@@ -250,7 +250,15 @@ def _esri_polygons(rings) -> dict:
         if (not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]
                 or any(not isinstance(c, list) or len(c) != 2 for c in ring)):
             raise CBRSQuarantineError('geometry_layout_drift')
-    converted = esri_polygon_wkb({"rings": rings}, allow_zm=False)
+    try:
+        converted = esri_polygon_wkb({"rings": rings}, allow_zm=False)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "source_polygon_shell_missing":
+            raise CBRSQuarantineError('esri_shell_missing') from exc
+        if code == "source_hole_ownership_ambiguous":
+            raise CBRSQuarantineError('esri_ring_nesting_ambiguous') from exc
+        raise
     geometry = shapely.from_wkb(converted)
     if geometry.is_empty or not geometry.is_valid:
         raise CBRSQuarantineError('invalid_native_geometry')
