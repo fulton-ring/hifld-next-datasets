@@ -238,8 +238,8 @@ class _PatchedContext:
                          "BOUNDS": audit["source_bounds"]})
         self.exit_stack = contextlib.ExitStack()
         self.exit_stack.enter_context(patch.multiple(m, **{**base, **self.extra_patches}))
-        from dagster_hifld.sources import epa_frs_common
-        self.exit_stack.enter_context(patch.object(epa_frs_common, "validate_construction_code_identity",
+        from dagster_hifld.sources import capture_common
+        self.exit_stack.enter_context(patch.object(capture_common, "validate_construction_code_identity",
                                                    lambda *args, **kwargs: None))
         return self
 
