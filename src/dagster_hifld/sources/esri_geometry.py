@@ -1,9 +1,9 @@
 """Shared native Esri polygon conversion and spatial-reference primitives.
 
-Canonical CRS-drift guard for ArcGIS service payloads. The error codes
-(``<label>_crs_drift``) are part of the contract with downstream checks and
-must not change; the function body is byte-identical to the copies it
-replaces.
+Canonical CRS-drift guard and ArcGIS ring contract for service payloads. The
+error codes (``<label>_crs_drift`` and ``source_*``) are part of the contract
+with downstream checks and must not change; the function bodies are
+byte-identical to the copies they replace.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from collections import Counter
 import pyogrio
 from pyproj import CRS
 from shapely import from_wkb
+from shapely.geometry import LinearRing, Polygon
 
 
 SOURCE_CRS = CRS.from_epsg(4326)
@@ -143,3 +144,56 @@ def to_wkb(esri_geom: object, geometry_type: str, *,
     if Counter(map(_ring_coordinates, native_rings)) != Counter(map(_ring_coordinates, output_rings)):
         raise ValueError("esri_conversion_coordinates_changed")
     return wkb
+
+
+def esri_polygon_wkb(geometry: dict, *, allow_zm: bool = True) -> bytes:
+    """Validate ArcGIS polygon rings and return their WKB.
+
+    ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
+    Reject non-standard winding rather than repairing or guessing. Holes must
+    fall inside exactly one shell. When ``allow_zm`` is false, correctly flagged
+    Z/M geometry is source drift and fails closed. Serialization delegates to
+    ``to_wkb`` so GDAL owns the byte encoding.
+    """
+    rings = geometry.get("rings")
+    if not isinstance(rings, list) or not rings:
+        raise ValueError("source_polygon_rings_missing")
+    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
+    if type(has_z) is not bool or type(has_m) is not bool:
+        raise ValueError("source_ordinate_flags_invalid")
+    if not allow_zm and (has_z or has_m):
+        raise ValueError("source_polygon_dimensional_flags_rejected")
+    shells, holes = [], []
+    dimension = None
+    for coords in rings:
+        if not isinstance(coords, list) or len(coords) < 4:
+            raise ValueError("source_polygon_ring_invalid")
+        if coords[0] != coords[-1]:
+            raise ValueError("source_polygon_ring_not_closed")
+        if any(not isinstance(point, list) for point in coords):
+            raise ValueError("source_polygon_coordinate_invalid")
+        dims = {len(point) for point in coords}
+        if len(dims) != 1:
+            raise ValueError("source_polygon_ordinate_count_drift")
+        point_dims = next(iter(dims))
+        if dimension is None:
+            dimension = point_dims
+        if dimension != point_dims:
+            raise ValueError("source_polygon_ordinate_count_drift")
+        expected_dims = 2 + int(has_z) + int(has_m)
+        if point_dims != expected_dims:
+            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
+        ring = LinearRing([point[:2] for point in coords])
+        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
+    if not shells:
+        raise ValueError("source_polygon_shell_missing")
+    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
+    assignments = [[] for _ in shell_polys]
+    for ring in holes:
+        hole = Polygon([point[:2] for point in ring])
+        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
+        if len(owners) != 1:
+            raise ValueError("source_hole_ownership_ambiguous")
+        assignments[owners[0]].append(ring)
+    ordered = [ring for i, shell in enumerate(shells) for ring in (shell, *assignments[i])]
+    return to_wkb({"rings": ordered, "hasZ": has_z, "hasM": has_m}, "esriGeometryPolygon")
