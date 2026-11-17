@@ -9,7 +9,7 @@ import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -31,7 +31,7 @@ from dagster_hifld.sources.capture_common import (
 )
 from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture_identity, _load_capture, _sha,
-    _validate_spatial_reference,
+    _validate_spatial_reference, layer_capture_roster,
 )
 from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 
@@ -117,26 +117,14 @@ CAPTURE_NAMES = {"inport_item", "service_directory", "service_before", "layer_be
 RETRYABLE_HTTP_STATUS = {500, 502, 503, 504, 429}
 
 
-def _query(params: dict[str, object]) -> str:
-    return LAYER_URL + "/query?" + urlencode(params)
-
-
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("inport_item", INPORT_URL),
-            ("service_directory", SERVICE_DIRECTORY_URL),
-            ("service_before", SERVICE_URL + "?f=json"), ("layer_before", LAYER_URL + "?f=json"),
-            ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-            ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds": ",".join(map(str, page_ids)),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=json"),
-                 ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                 ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                 ("service_after", SERVICE_URL + "?f=json")])
-    return urls
+    return layer_capture_roster(
+        ids, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(("inport_item", INPORT_URL),
+                         ("service_directory", SERVICE_DIRECTORY_URL)),
+        service_format="json", layer_format="json",
+        page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"},
+    )
 
 
 def _retry_budget(attempt: int) -> float:
