@@ -1,10 +1,11 @@
 """Complete native capture for the official USACE IENC levee area layer."""
 from __future__ import annotations
 
+from functools import partial
+
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -13,7 +14,6 @@ from uuid import uuid4
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
-from shapely.geometry import LinearRing, Polygon
 from shapely import from_wkb
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -32,7 +32,9 @@ from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture, _capture_identity,
     _load_capture, _sha,    _validate_spatial_reference,
 )
-from dagster_hifld.sources.arcgis_layer import esri_polygon_wkb as _esri_polygon_wkb
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
+
+_esri_polygon_wkb = partial(esri_polygon_wkb, allow_zm=False)
 
 DATASET_SLUG = "levee-areas-usace-ienc"
 FILE_SLUG = DATASET_SLUG

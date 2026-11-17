@@ -26,8 +26,9 @@ from dagster_hifld.sources.capture_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb as _esri_polygon
 from dagster_hifld.sources.arcgis_layer import (
-    esri_polygon as _esri_polygon, fetch_capture_retry,
+    fetch_capture_retry,
     layer_parquet_bytes as _parquet_bytes,
     load_replay as _load_replay, write_outputs as _write_outputs,
 )

@@ -3,12 +3,13 @@
 One canonical copy of the checkpoint load/save, retained-capture read, refusal
 witness, failed-attempt evidence and bounded-retry mechanics shared by the
 segmented NHD/3DHP adapters, plus the paged capture, replay, candidate-identity
-digest, budget-guarded fetch with bounded retry, Esri polyline/polygon WKB
-encoding and GeoParquet serialization the ArcGIS dataset adapters share. Every
-body is byte-identical to the copy it replaces; per-dataset byte budgets and
-error types are passed explicitly by each caller. Canonical JSON, sha256 and
-the ArcGIS CRS drift guard delegate to the single implementations in
-``sources.esri_common`` and ``sources.esri_geometry``. Fetch planning,
+digest, budget-guarded fetch with bounded retry, Esri polyline encoding and
+GeoParquet serialization the ArcGIS dataset adapters share. Every body is
+byte-identical to the copy it replaces; per-dataset byte budgets and error
+types are passed explicitly by each caller. Canonical JSON, sha256, the ArcGIS
+CRS drift guard and polygon ring assembly delegate to the single
+implementations in ``sources.esri_common`` and ``sources.esri_geometry``.
+Fetch planning,
 roster/offset algorithms, checkpoint state layouts, schema, ID and geometry
 contracts stay local to each adapter.
 
@@ -31,12 +32,13 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely.geometry import LinearRing, Polygon
 
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.sources.capture_common import capture_get, write_immutable
 from dagster_hifld.sources.esri_common import arrow_type, canonical as _canonical, sha as _sha
-from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
+from dagster_hifld.sources.esri_geometry import (
+    _validate_spatial_reference, esri_polygon_wkb as _shared_esri_polygon_wkb,
+)
 
 PAGE_MAX_BYTES = 8_000_000
 
@@ -115,124 +117,13 @@ def polyline_parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
 
 
 def esri_polygon(geometry: dict) -> bytes:
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
-    if type(has_z) is not bool or type(has_m) is not bool:
-        raise ValueError("source_ordinate_flags_invalid")
-    shells, holes = [], []
-    dimension = None
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise ValueError("source_polygon_ring_invalid")
-        if coords[0] != coords[-1]:
-            raise ValueError("source_polygon_ring_not_closed")
-        if any(not isinstance(point, list) for point in coords):
-            raise ValueError("source_polygon_coordinate_invalid")
-        dims = {len(point) for point in coords}
-        if len(dims) != 1:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        point_dims = next(iter(dims))
-        if dimension is None:
-            dimension = point_dims
-        if dimension != point_dims:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        expected_dims = 2 + int(has_z) + int(has_m)
-        if point_dims != expected_dims:
-            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        xy = [point[:2] for point in coords]
-        ring = LinearRing(xy)
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon([point[:2] for point in ring])
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(ring)
-    dim_code = {2: 0, 3: (1000 if has_z else 2000), 4: 3000}[dimension]
-
-    def polygon_wkb(shell, hole_rings):
-        out = bytearray(struct.pack("<BI", 1, dim_code + 3))
-        out.extend(struct.pack("<I", 1 + len(hole_rings)))
-        for ring in [shell, *hole_rings]:
-            out.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                out.extend(struct.pack("<" + "d" * dimension, *point))
-        return bytes(out)
-
-    polygons = [polygon_wkb(shell, assignments[i]) for i, shell in enumerate(shells)]
-    if len(polygons) == 1:
-        return polygons[0]
-    multi = bytearray(struct.pack("<BI", 1, dim_code + 6))
-    multi.extend(struct.pack("<I", len(polygons)))
-    for polygon in polygons:
-        multi.extend(polygon)
-    return bytes(multi)
+    """Encode an ArcGIS polygon, preserving XY/Z/M and rejecting ambiguous rings."""
+    return _shared_esri_polygon_wkb(geometry)
 
 
 def esri_polygon_wkb(geometry: dict) -> bytes:
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
-    if type(has_z) is not bool or type(has_m) is not bool:
-        raise ValueError("source_ordinate_flags_invalid")
-    if has_z or has_m:
-        # The pinned layer contract is XY-only; correctly flagged dimensional
-        # geometry is source drift and must fail closed, never be sealed.
-        raise ValueError("source_polygon_dimensional_flags_rejected")
-    shells, holes = [], []
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise ValueError("source_polygon_ring_invalid")
-        if coords[0] != coords[-1]:
-            raise ValueError("source_polygon_ring_not_closed")
-        if any(not isinstance(point, list) for point in coords):
-            raise ValueError("source_polygon_coordinate_invalid")
-        dims = {len(point) for point in coords}
-        if len(dims) != 1:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        if next(iter(dims)) != 2:
-            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        ring = LinearRing(coords)
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon([point[:2] for point in ring])
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(ring)
-
-    def polygon_wkb(shell, hole_rings):
-        out = bytearray(struct.pack("<BI", 1, 3))
-        out.extend(struct.pack("<I", 1 + len(hole_rings)))
-        for ring in [shell, *hole_rings]:
-            out.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                out.extend(struct.pack("<dd", *point))
-        return bytes(out)
-
-    polygons = [polygon_wkb(shells[i], assignments[i]) for i in range(len(shells))]
-    if len(polygons) == 1:
-        return polygons[0]
-    multi = bytearray(struct.pack("<BI", 1, 6))
-    multi.extend(struct.pack("<I", len(polygons)))
-    for polygon in polygons:
-        multi.extend(polygon)
-    return bytes(multi)
+    """Encode an XY-only ArcGIS polygon, rejecting flagged Z/M geometry."""
+    return _shared_esri_polygon_wkb(geometry, allow_zm=False)
 
 
 def layer_parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:

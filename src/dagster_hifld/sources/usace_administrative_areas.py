@@ -8,7 +8,6 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -18,7 +17,6 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
-from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -27,8 +25,9 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb as _esri_polygon
 from dagster_hifld.sources.arcgis_layer import (
-    esri_polygon as _esri_polygon, fetch_capture_retry,
+    fetch_capture_retry,
     layer_parquet_bytes as _parquet_bytes,
     load_replay as _load_replay, write_outputs as _write_outputs,
 )
