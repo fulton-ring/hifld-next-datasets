@@ -14,7 +14,6 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 from shapely.wkb import dumps as to_wkb
@@ -222,21 +221,8 @@ def _validate_layer(layer: dict, expected_signature: list[tuple[str, str, int | 
     return signature
 
 
-def _ring_area(ring: list[list[float]]) -> float:
-    # Translate to the first vertex before shoelace accumulation to avoid
-    # cancellation for small polygons at large projected coordinates.
-    origin_x, origin_y = ring[0]
-    return sum((ring[i][0] - origin_x) * (ring[(i + 1) % len(ring)][1] - origin_y)
-               - (ring[(i + 1) % len(ring)][0] - origin_x) * (ring[i][1] - origin_y)
-               for i in range(len(ring) - 1)) / 2
-
-
 def _polygon_from_esri(geometry: dict):
-    """Convert Esri rings through the shared GDAL converter without repair.
-
-    Zero-area source rings are kept as explicit polygon parts so quality checks
-    still see them; they are never dropped or repaired.
-    """
+    """Convert Esri rings through the shared GDAL converter without repair."""
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
@@ -246,14 +232,7 @@ def _polygon_from_esri(geometry: dict):
                        or any(type(value) not in (int, float) or not math.isfinite(value) for value in point)
                        for point in ring)):
             raise ValueError("source_polygon_ring_invalid")
-    collapsed = {index for index, ring in enumerate(rings) if _ring_area(ring) == 0}
-    if collapsed and len(collapsed) == len(rings):
-        raise ValueError("source_polygon_shell_missing")
-    kept = [ring for index, ring in enumerate(rings) if index not in collapsed]
-    geometry_obj = esri_polygon_geometry({"rings": kept}, has_z=False, has_m=False)
-    parts = list(geometry_obj.geoms) if geometry_obj.geom_type == "MultiPolygon" else [geometry_obj]
-    parts.extend(Polygon(rings[index]) for index in sorted(collapsed))
-    result = parts[0] if len(parts) == 1 else MultiPolygon(parts)
+    result = esri_polygon_geometry({"rings": rings}, has_z=False, has_m=False)
     if result.is_empty:
         raise ValueError("source_polygon_empty")
     return result

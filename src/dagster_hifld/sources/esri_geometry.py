@@ -14,7 +14,7 @@ from collections import Counter
 import pyogrio
 from pyproj import CRS
 from shapely import from_wkb
-from shapely.geometry import LinearRing, Polygon
+from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
 
 SOURCE_CRS = CRS.from_epsg(4326)
@@ -220,16 +220,47 @@ def esri_polygon_wkb(geometry: dict, *, allow_zm: bool = True) -> bytes:
 
 
 def esri_polygon_geometry(esri_geom: object, *, has_z: bool | None = None,
-                          has_m: bool | None = None):
+                          has_m: bool | None = None, point_fallback: bool = False):
     """Decode native Esri polygon rings into a Shapely geometry through GDAL.
 
     GDAL owns ring orientation, hole assignment and nesting. Callers keep their
-    own structural validation and error vocabulary before calling this.
+    own structural validation and error vocabulary before calling this. With
+    ``point_fallback`` an interior ring GDAL could not attach is re-attached to
+    the smallest shell containing its representative point, preserving the
+    caller's deterministic invalid-candidate behaviour; a ring no shell
+    contains still raises ``source_orphan_interior_ring``.
     """
     wkb = to_wkb(esri_geom, "esriGeometryPolygon", has_z=has_z, has_m=has_m)
     if wkb is None:
         return None
-    return from_wkb(wkb)
+    geometry = from_wkb(wkb)
+    if not point_fallback:
+        return geometry
+    return _attach_point_contained_holes(geometry, esri_geom)
+
+
+def _attach_point_contained_holes(geometry, esri_geom: object):
+    groups = _ring_groups(geometry, esri_geom)
+    zero = {id(esri_geom["rings"][index]) for index in zero_area_rings(esri_geom["rings"])}
+    parts = list(geometry.geoms) if geometry.geom_type == "MultiPolygon" else [geometry]
+    shells: list[list] = []
+    orphans: list = []
+    for part, group in zip(parts, groups):
+        if len(group) == 1 and id(group[0]) not in zero and ring_is_ccw(group[0]):
+            orphans.append(group[0])
+        else:
+            shells.append([part, group])
+    for ring in orphans:
+        hole = Polygon(ring)
+        containers = [(shell.area, index) for index, (shell, _group) in enumerate(shells)
+                      if shell.covers(hole.representative_point())]
+        if not containers:
+            raise ValueError("source_orphan_interior_ring")
+        index = min(containers)[1]
+        shell, group = shells[index]
+        shells[index] = [Polygon(shell.exterior, [*shell.interiors, hole.exterior]), group + [ring]]
+    rebuilt = [shell for shell, _group in shells]
+    return rebuilt[0] if len(rebuilt) == 1 else MultiPolygon(rebuilt)
 
 
 def esri_polygon_ring_groups(esri_geom: object, *, has_z: bool | None = None,
@@ -243,6 +274,10 @@ def esri_polygon_ring_groups(esri_geom: object, *, has_z: bool | None = None,
     geometry = esri_polygon_geometry(esri_geom, has_z=has_z, has_m=has_m)
     if geometry is None:
         return []
+    return _ring_groups(geometry, esri_geom)
+
+
+def _ring_groups(geometry, esri_geom: object) -> list[list[list]]:
     source = list(esri_geom["rings"])
     remaining: dict[tuple, list[int]] = {}
     for index, ring in enumerate(source):
