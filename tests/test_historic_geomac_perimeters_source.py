@@ -74,7 +74,7 @@ def _features():
 def _layer(editing_info=None, fields=None):
     return {"id": 0, "name": "InteragencyFirePerimeterHistory", "type": "Feature Layer",
             "geometryType": "esriGeometryPolygon",
-            "spatialReference": {"wkid": 3857, "latestWkid": 3857},
+            "spatialReference": {"wkid": 102100, "latestWkid": 3857},
             "hasZ": False, "hasM": False, "maxRecordCount": 2000,
             "objectIdField": "OBJECTID", "globalIdField": "GlobalID",
             "geometryField": None, "supportedQueryFormats": "JSON, geoJSON, PBF",
@@ -107,7 +107,7 @@ def _capture_docs(page_size=2, features=None, witness=None, count_override=None,
             "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": ids if ids_override is None else ids_override}}
     for start in range(0, len(ordered), page_size):
         page = {"objectIdFieldName": "OBJECTID",
-                "spatialReference": {"wkid": 3857, "latestWkid": 3857},
+                "spatialReference": {"wkid": 102100, "latestWkid": 3857},
                 "geometryType": "esriGeometryPolygon",
                 "features": copy.deepcopy(ordered[start:start + page_size])}
         if start + page_size < len(ordered):

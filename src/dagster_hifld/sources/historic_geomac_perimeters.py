@@ -145,7 +145,10 @@ def _spatial_reference(value: object, label: str) -> None:
     if not isinstance(value, dict):
         raise ValueError("ifph_spatial_reference_missing:" + label)
     observed = {key: value.get(key) for key in ("wkid", "latestWkid") if key in value}
-    if not observed or any(code != NATIVE_WKID for code in observed.values()):
+    # ArcGIS advertises Web Mercator as wkid 102100 with latestWkid 3857.
+    if (not observed
+            or observed.get("latestWkid", NATIVE_WKID) != NATIVE_WKID
+            or observed.get("wkid", NATIVE_WKID) not in (102100, NATIVE_WKID)):
         raise ValueError("ifph_spatial_reference_drift:" + label)
 
 
