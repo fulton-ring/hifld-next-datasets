@@ -150,6 +150,47 @@ class ArcgisLayerTests(unittest.TestCase):
             common.layer_capture_roster(
                 [1], layer_url="https://svc.example/0", service_url="https://svc.example", page_size=0)
 
+    def test_offset_layer_capture_roster_pins_short_offset_pages_and_witness_order(self):
+        self.assertEqual(common.offset_layer_capture_roster(
+            5, layer_url="https://svc.example/0", service_url="https://svc.example",
+            page_size=2,
+            extra_documents=(("epa_item", "https://item.example/1?f=json"),),
+            trailing_documents=(("portal_item_after", "https://item.example/1?f=json"),),
+            page_params={"outSR": "4269"},
+            page_namer=lambda index, offset: f"features_{index:03d}",
+            after_order=("layer_after", "service_after", "count_after", "ids_after"),
+        ), [
+            ("epa_item", "https://item.example/1?f=json"),
+            ("service_before", "https://svc.example?f=pjson"),
+            ("layer_before", "https://svc.example/0?f=pjson"),
+            ("count_before", "https://svc.example/0/query?where=1%3D1&returnCountOnly=true&f=json"),
+            ("ids_before", "https://svc.example/0/query?where=1%3D1&returnIdsOnly=true&f=json"),
+            ("features_000", "https://svc.example/0/query?where=1%3D1&outFields=%2A&returnGeometry=true&outSR=4269&orderByFields=OBJECTID+ASC&resultOffset=0&resultRecordCount=2&f=json"),
+            ("features_001", "https://svc.example/0/query?where=1%3D1&outFields=%2A&returnGeometry=true&outSR=4269&orderByFields=OBJECTID+ASC&resultOffset=2&resultRecordCount=2&f=json"),
+            ("features_002", "https://svc.example/0/query?where=1%3D1&outFields=%2A&returnGeometry=true&outSR=4269&orderByFields=OBJECTID+ASC&resultOffset=4&resultRecordCount=1&f=json"),
+            ("layer_after", "https://svc.example/0?f=pjson"),
+            ("service_after", "https://svc.example?f=pjson"),
+            ("count_after", "https://svc.example/0/query?where=1%3D1&returnCountOnly=true&f=json"),
+            ("ids_after", "https://svc.example/0/query?where=1%3D1&returnIdsOnly=true&f=json"),
+            ("portal_item_after", "https://item.example/1?f=json"),
+        ])
+
+    def test_offset_layer_capture_roster_can_keep_full_last_page(self):
+        roster = common.offset_layer_capture_roster(
+            3, layer_url="https://svc.example/0", service_url="https://svc.example",
+            page_size=2, short_last_page=False,
+        )
+        self.assertIn("resultOffset=2&resultRecordCount=2", dict(roster)["page_001"])
+
+    def test_offset_layer_capture_roster_rejects_bad_page_or_witness_order(self):
+        with self.assertRaisesRegex(ValueError, "page_count_or_size_invalid"):
+            common.offset_layer_capture_roster(
+                1, layer_url="https://svc.example/0", service_url="https://svc.example", page_size=0)
+        with self.assertRaisesRegex(ValueError, "after_order_invalid"):
+            common.offset_layer_capture_roster(
+                1, layer_url="https://svc.example/0", service_url="https://svc.example", page_size=1,
+                after_order=("layer_after",))
+
     def test_private_aliases_bind_the_public_implementations(self):
         self.assertIs(common._capture, common.capture_page)
         self.assertIs(common._load_capture, common.load_capture)
