@@ -151,7 +151,7 @@ class FloodwallsUsaceIencTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "capture"; root.mkdir(); self._capture_directory(root)
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
-            with patch.object(source, "validate_construction_code_identity") as code_identity_check, patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+            with patch.object(source, "validate_construction_code_identity") as code_identity_check, patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = source.capture_floodwalls_usace_ienc(storage, version="draft", capture_directory=str(root))
             code_identity_check.assert_called_once()
             code_identity_args, code_identity_kwargs = code_identity_check.call_args
@@ -170,7 +170,7 @@ class FloodwallsUsaceIencTests(unittest.TestCase):
                                             for n in capture_manifest["receipts"]}
             capture_manifest["artifact_roster"] = capture_roster_digests(root, exclude={"capture_manifest.json"})
             (root / "capture_manifest.json").write_bytes(_canonical(capture_manifest) + b"\n")
-            with patch.object(source, "validate_construction_code_identity"), patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+            with patch.object(source, "validate_construction_code_identity"), patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 second = source.capture_floodwalls_usace_ienc(storage, version="draft", capture_directory=str(root))
             self.assertTrue(second["reused"])
             self.assertEqual(first["version"], second["version"])

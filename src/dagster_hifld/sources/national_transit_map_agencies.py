@@ -24,8 +24,8 @@ from shapely.geometry import Point
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, verify_cached_candidate,
     write_immutable,
@@ -198,7 +198,7 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     if ".." in base.parts or any(p.is_symlink() for p in (base,*base.parents)): raise ValueError("unsafe_local_staging_root")
     base.mkdir(parents=True,exist_ok=True)
     if shutil.disk_usage(base).free<256_000_000: raise ValueError("disk_floor_before_acquisition")
-    root=(Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/167/captures"))/f"{version}-{uuid4().hex}"
+    root=(Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "167", "captures"))/f"{version}-{uuid4().hex}"
     root=root.absolute();root.mkdir(parents=True,exist_ok=False)
     captures={}
     try:
@@ -271,7 +271,7 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     for n,d in descriptors.items():
         snap=storage.object_snapshot(f"{prefix}/{n}")
         if snap is None or snap.size!=d["bytes"] or storage.sha256_key(f"{prefix}/{n}")!=d["sha256"] or storage.object_snapshot(f"{prefix}/{n}")!=snap: raise ValueError("candidate_readback_failed:"+n)
-    from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
+    from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}

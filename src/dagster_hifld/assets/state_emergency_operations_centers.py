@@ -1,12 +1,15 @@
 """Explicit FEMA State EOC source asset; draft schedule remains stopped."""
-import os
 
-from dagster import AssetCheckResult, AssetKey, AssetSelection, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
+from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
 
 from dagster_hifld.download import build_version_id
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.sources.state_emergency_operations_centers import SLUG, stage_state_eoc
+
+
+class StateEocConfig(Config):
+    capture_directory: str = ""
 
 
 @asset(
@@ -15,9 +18,9 @@ from dagster_hifld.sources.state_emergency_operations_centers import SLUG, stage
     compute_kind="http",
     description="Exact FEMA-hosted State Emergency Operations Centers layer 0. Full source fields, IDs, nullability and WGS84 points are retained in an unapproved native draft.",
 )
-def fema_state_emergency_operations_centers(context, staging_storage: StagingStorageResource) -> dict:
+def fema_state_emergency_operations_centers(context,config:StateEocConfig, staging_storage: StagingStorageResource) -> dict:
     version = build_version_id(context)
-    result = stage_state_eoc(staging_storage, version=version, capture_dir=os.environ.get("HIFLD_EOC_CAPTURE_DIR"))
+    result = stage_state_eoc(staging_storage, version=version, capture_dir=config.capture_directory or None)
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,
         [build_publish_partition_key(SLUG, SLUG, result["version"])],

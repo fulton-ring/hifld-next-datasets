@@ -23,7 +23,7 @@ from dagster import (
 
 from dagster_hifld.esri_pbf import DraftGeoParquetWriter, decode_feature_collection_pbf
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )

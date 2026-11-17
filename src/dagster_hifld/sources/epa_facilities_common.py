@@ -1,4 +1,4 @@
-"""EPA Locations MapServer profiles and native staging for Facilities layers.
+"""Shared EPA Locations MapServer family core for the Facilities layers.
 
 Layer 1 is ordinary EPA Facilities and layer 0 is the distinct labels layer.
 Both profiles preserve producer field declarations, source IDs and NAD83 Shape.
@@ -38,7 +38,7 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     STAGED_RELEASE_DERIVATIVE_NAMES,
     validate_staged_release_derivatives,
 )

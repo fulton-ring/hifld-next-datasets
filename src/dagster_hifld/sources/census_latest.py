@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 
-from dagster_hifld.sources.epa_frs_common import capture_get
+from dagster_hifld.sources.capture_common import capture_get
 from dagster_hifld.sources.esri_common import canonical, sha
 
 ROOT = 'https://www2.census.gov/geo/tiger/'

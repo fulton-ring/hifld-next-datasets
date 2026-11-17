@@ -26,8 +26,8 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -213,7 +213,7 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
         raise ValueError("explicit_local_staging_resource_required")
     base = Path(storage.local_dir).absolute(); base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000: raise ValueError("disk_floor_before_acquisition")
-    caproot = Path(capture_directory).absolute() if capture_directory else Path("/tmp/hifld-native-reconstruction/125/captures") / f"{version}-{uuid4().hex}"
+    caproot = Path(capture_directory).absolute() if capture_directory else default_capture_dir("hifld-native-reconstruction", "125", "captures") / f"{version}-{uuid4().hex}"
     replay = capture_directory is not None and (caproot / "service_before.body").is_file()
     if not replay:
         caproot = (caproot / f"{version}-{uuid4().hex}").absolute(); caproot.mkdir(parents=True, exist_ok=False)

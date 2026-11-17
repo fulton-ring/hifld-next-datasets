@@ -3,7 +3,7 @@
 Official federal catalog: https://catalog.data.gov/dataset/epa-facility-registry-service-frs-sems
 The linked EPA_GEO service contains the complete FRS SEMS interest view, including non-NPL sites.
 Run registered `epa_sems_source_integrity` with isolated local staging; its monthly schedule is STOPPED.
-`HIFLD_EPA_SEMS_CAPTURE_DIR` selects complete original `.body`/`.receipt.json` inputs instead of live HTTP.
+The asset's `capture_directory` run config selects complete original `.body`/`.receipt.json` inputs instead of live HTTP.
 The adapter verifies complete ID-targeted pages and before/after IDs, count, schema and editing metadata.
 All 32 attributes and original NAD83 points survive; geometry is never rebuilt from coordinate attributes.
 Native GeoParquet only; raw bodies, original receipts, declarations and first-construction witnesses persist.

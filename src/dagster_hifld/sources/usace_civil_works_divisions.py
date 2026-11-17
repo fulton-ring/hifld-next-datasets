@@ -63,7 +63,6 @@ import hashlib
 import json
 import math
 import shutil
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -82,8 +81,8 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -91,6 +90,9 @@ from dagster_hifld.sources.epa_frs_common import (
 
 DATASET_SLUG = "usace-civil-works-divisions"
 FILE_SLUG = DATASET_SLUG
+# Retained capture layout: the historical parent keeps its name so existing
+# evidence under it stays addressable across releases.
+DEFAULT_CAPTURE_ROOT = default_capture_dir("usace-civil-works-divisions-captures")
 SERVICE_URL = ("https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/"
                "services/usace_cw_divisions/FeatureServer")
 LAYER_ID = 0
@@ -740,7 +742,7 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
     if shutil.disk_usage(base).free < 1_000_000_000:
         raise ValueError("unsafe_or_low_space_staging_root")
     capture_parent = Path(capture_directory).absolute() if capture_directory \
-        else Path(tempfile.gettempdir()) / "usace-civil-works-divisions-captures"
+        else DEFAULT_CAPTURE_ROOT
     capture_root = capture_parent / f"{version}-{uuid4().hex}"
     if ".." in capture_root.parts or any(p.is_symlink() for p in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

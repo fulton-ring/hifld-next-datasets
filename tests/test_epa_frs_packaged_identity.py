@@ -9,7 +9,7 @@ from dagster_hifld.construction_provenance import (
     ConstructionCodeIdentityError,
     validate_construction_code_identity,
 )
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 
 
 class EpaFrsPackagedIdentityTests(unittest.TestCase):

@@ -1,4 +1,4 @@
-"""Immutable preservation capture of the frozen 2025 HIFLD retail-territory copy."""
+"""Shared electric service territory family core: the frozen 2025 HIFLD retail-territory capture and the capture, schema and staging helpers its sibling state publications reuse."""
 from __future__ import annotations
 
 import hashlib
@@ -19,7 +19,7 @@ from shapely.wkb import dumps as to_wkb
 
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
+from dagster_hifld.sources.capture_common import processing_identity, write_immutable
 from dagster_hifld.sources.esri_common import sha as _sha
 
 DATASET_SLUG = "electric-retail-service-territories"
