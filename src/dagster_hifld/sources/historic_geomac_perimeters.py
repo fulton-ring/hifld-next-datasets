@@ -626,6 +626,7 @@ def capture_historic_perimeters(storage: StagingStorageResource, *, version: str
     }
     validate_output_policy(manifest)
     provenance_projection(manifest)
+    feature_count = len(features)
     del features
     write_immutable(storage, f"{prefix}/{parquet_path}", parquet)
     write_immutable(storage, f"{prefix}/metadata/source_manifest.json", _canonical(manifest) + b"\n")
@@ -647,7 +648,7 @@ def capture_historic_perimeters(storage: StagingStorageResource, *, version: str
              "mapping_approved": False, "release_accepted": False}
     write_immutable(storage, f"{prefix}/metadata/candidate_ready.json", _canonical(ready) + b"\n")
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": resolved_version,
-            "feature_count": len(features), "source_population_complete": True,
+            "feature_count": feature_count, "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "source_record_sha256": audit["source_record_sha256"],
