@@ -219,7 +219,7 @@ def _validate_attributes(attributes: dict, fields: list[dict], label: str) -> No
             raise ValueError("ifph_attribute_type_drift:" + name + ":" + label)
 
 
-def _geometry(raw: object, label: str) -> bytes:
+def _geometry(raw: object, label: str) -> tuple[bytes, shapely.Geometry]:
     if raw is None:
         raise ValueError("ifph_null_geometry:" + label)
     if not isinstance(raw, dict):
@@ -232,7 +232,7 @@ def _geometry(raw: object, label: str) -> bytes:
         raise ValueError("ifph_empty_geometry:" + label)
     if not decoded.is_valid:
         raise ValueError("ifph_invalid_geometry:" + label + ":" + shapely.is_valid_reason(decoded))
-    return wkb
+    return wkb, decoded
 
 
 def _page_body(root: Path, name: str, receipt: dict) -> bytes:
@@ -326,8 +326,7 @@ def _population(root: Path, static: dict[str, tuple[bytes, dict]],
             source_counts[str(source)] = source_counts.get(str(source), 0) + 1
             agency = attributes.get("AGENCY")
             agency_counts[str(agency)] = agency_counts.get(str(agency), 0) + 1
-            wkb = _geometry(row.get("geometry"), name + ":" + str(oid))
-            decoded = shapely.from_wkb(wkb)
+            wkb, decoded = _geometry(row.get("geometry"), name + ":" + str(oid))
             geometry_types.add(decoded.geom_type)
             vertices += int(shapely.get_num_coordinates(decoded))
             west, south, east, north = decoded.bounds
@@ -497,7 +496,8 @@ def capture_historic_perimeters(storage: StagingStorageResource, *, version: str
                 ]
                 for name, url in documents:
                     body, receipt = _capture(client, url, root, name)
-                    static[name], receipts[name] = (body, receipt), receipt
+                    static[name] = (body, receipt)
+                    receipts[name] = receipt
                 ids = json.loads(static["ids_before"][0]).get("objectIds")
                 if (not isinstance(ids, list) or not ids
                         or any(type(value) is not int for value in ids)
@@ -515,7 +515,8 @@ def capture_historic_perimeters(storage: StagingStorageResource, *, version: str
                     ("service_after", SERVICE_URL + "?f=pjson"),
                 ]:
                     body, receipt = _capture(client, url, root, name)
-                    static[name], receipts[name] = (body, receipt), receipt
+                    static[name] = (body, receipt)
+                    receipts[name] = receipt
             manifest = {"complete": True,
                         "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         "artifact_names": sorted(receipts), "receipts": receipts}
@@ -605,6 +606,7 @@ def capture_historic_perimeters(storage: StagingStorageResource, *, version: str
             "source_record_sha256": audit["source_record_sha256"],
             "source_geometry_sha256": audit["source_geometry_sha256"],
             "service_item_id": ITEM_ID,
+            "landing_url": LANDING_URL,
             "item_owner": OWNER,
             "item_org_id": ORG_ID,
             "edit_witness": audit["edit_witness"],
