@@ -399,7 +399,7 @@ def _validate_cached_catalog(root,storage,version,base_roster,roster,dataset=REG
     if roster!=expected_roster:raise EpaRegions2023Error('unknown_or_incomplete_cached_object_roster')
 
 
-def stage_epa_regions_2023(storage,*,capture_dir=None,dataset=REGIONS_IDENTITY):
+def stage_epa_regions_common(storage,*,capture_dir=None,dataset=REGIONS_IDENTITY):
     local_only(storage);captures=acquire(storage,capture_dir,dataset)
     try:table,audit=inspect_captures(captures)
     except Exception as exc:

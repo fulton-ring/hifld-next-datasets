@@ -2,7 +2,7 @@
 import copy
 import json
 
-from dagster_hifld.sources import epa_regions_2023 as s
+from dagster_hifld.sources import epa_regions_common as s
 
 
 def layer_metadata():

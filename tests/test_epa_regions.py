@@ -13,8 +13,8 @@ from dagster import AssetKey, DefaultScheduleStatus
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import epa_regions as s
-from dagster_hifld.sources import epa_regions_2023 as shared
-from epa_regions_2023_support import captures, documents, page, write_capture_dir
+from dagster_hifld.sources import epa_regions_common as shared
+from epa_regions_common_support import captures, documents, page, write_capture_dir
 
 
 def stage(storage, capture_dir):

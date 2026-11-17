@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from dagster_hifld.sources import epa_small_scale as f
-from dagster_hifld.sources import epa_regions_2023 as shared
+from dagster_hifld.sources import epa_regions_common as shared
 
 
 class SmallScaleTests(unittest.TestCase):
@@ -13,7 +13,7 @@ class SmallScaleTests(unittest.TestCase):
         self.assertNotIn('EPA_Locations', ' '.join(shared.URLS.values()))
 
     def test_stage_delegates_with_its_dataset_identity(self):
-        with patch.object(f, 'stage_epa_regions_2023', return_value={'ok': True}) as staged:
+        with patch.object(f, 'stage_epa_regions_common', return_value={'ok': True}) as staged:
             self.assertEqual(f.stage_epa_small_scale('storage', capture_dir='inputs'), {'ok': True})
         staged.assert_called_once_with('storage', capture_dir='inputs', dataset=shared.SMALL_SCALE_IDENTITY)
 
