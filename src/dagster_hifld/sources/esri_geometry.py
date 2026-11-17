@@ -217,3 +217,45 @@ def esri_polygon_wkb(geometry: dict, *, allow_zm: bool = True) -> bytes:
         assignments[owners[0]].append(ring)
     ordered = [ring for i, shell in enumerate(shells) for ring in (shell, *assignments[i])]
     return to_wkb({"rings": ordered, "hasZ": has_z, "hasM": has_m}, "esriGeometryPolygon")
+
+
+def esri_polygon_geometry(esri_geom: object, *, has_z: bool | None = None,
+                          has_m: bool | None = None):
+    """Decode native Esri polygon rings into a Shapely geometry through GDAL.
+
+    GDAL owns ring orientation, hole assignment and nesting. Callers keep their
+    own structural validation and error vocabulary before calling this.
+    """
+    wkb = to_wkb(esri_geom, "esriGeometryPolygon", has_z=has_z, has_m=has_m)
+    if wkb is None:
+        return None
+    return from_wkb(wkb)
+
+
+def esri_polygon_ring_groups(esri_geom: object, *, has_z: bool | None = None,
+                             has_m: bool | None = None) -> list[list[list]]:
+    """Group native Esri rings per GDAL-decoded polygon, preserving source rings.
+
+    GDAL owns orientation and hole assignment. Each output polygon's exterior
+    and interior rings are matched back to the exact source ring lists by
+    coordinate fingerprint (start vertex and winding independent).
+    """
+    geometry = esri_polygon_geometry(esri_geom, has_z=has_z, has_m=has_m)
+    if geometry is None:
+        return []
+    source = list(esri_geom["rings"])
+    remaining: dict[tuple, list[int]] = {}
+    for index, ring in enumerate(source):
+        remaining.setdefault(_ring_coordinates(ring), []).append(index)
+    parts = list(geometry.geoms) if geometry.geom_type == "MultiPolygon" else [geometry]
+    groups = []
+    for part in parts:
+        group = []
+        for ring in [part.exterior, *part.interiors]:
+            key = _ring_coordinates([list(point) for point in ring.coords])
+            candidates = remaining.get(key)
+            if not candidates:
+                raise ValueError("esri_conversion_ring_unmatched")
+            group.append(source[candidates.pop(0)])
+        groups.append(group)
+    return groups

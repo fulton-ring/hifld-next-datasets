@@ -24,6 +24,8 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 from shapely.geometry import MultiPolygon, Polygon
+
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 from shapely.prepared import prep as prepare_geometry
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -188,53 +190,16 @@ def _esri_type(field: dict[str, Any]) -> pa.DataType:
     raise ValueError("unsupported_source_field_type:" + str(typ))
 
 
-def _ring_area(ring: list[list[float]]) -> float:
-    # Translate to a local origin before shoelace accumulation. Global Web
-    # Mercator coordinates can otherwise cancel small rings to a false zero.
-    x0,y0=ring[0]
-    return math.fsum((ring[i][0]-x0)*(ring[i+1][1]-y0)
-                     -(ring[i+1][0]-x0)*(ring[i][1]-y0)
-                     for i in range(len(ring)-1))/2
-
-
 def _esri_polygon(geometry: dict[str, Any]) -> MultiPolygon:
-    """Assign each hole to its nearest containing shell without ring repair."""
+    """Convert Esri rings through the shared GDAL converter without repair."""
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
-    shells, holes = [], []
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
             raise ValueError("source_polygon_ring_invalid")
-        polygon = Polygon(ring)
-        if _ring_area(ring) < 0: shells.append((ring, polygon))
-        else: holes.append((ring, polygon))
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    prepared_shells = []
-    for index, (_, shell_poly) in enumerate(shells):
-        minx, miny, maxx, maxy = shell_poly.bounds
-        prepared_shells.append((shell_poly.area, index, (minx, miny, maxx, maxy),
-                                prepare_geometry(shell_poly)))
-    # Bounding-box containment is a necessary cheap check. Exact checks use
-    # prepared polygons and visit smallest shells first, preserving the prior
-    # nearest-containing-shell assignment including nested islands.
-    prepared_shells.sort(key=lambda item: (item[0], item[1]))
-    assigned: dict[int, list[list[list[float]]]] = {index: [] for index in range(len(shells))}
-    for ring, hole in holes:
-        hminx, hminy, hmaxx, hmaxy = hole.bounds
-        parent = None
-        for _, index, (sminx, sminy, smaxx, smaxy), prepared_shell in prepared_shells:
-            if (sminx <= hminx and sminy <= hminy and
-                    smaxx >= hmaxx and smaxy >= hmaxy and
-                    prepared_shell.contains(hole)):
-                parent = index
-                break
-        if parent is None:
-            raise ValueError("source_polygon_hole_without_containing_shell")
-        assigned[parent].append(ring)
-    members = [Polygon(shell, assigned[index]) for index, (shell, _) in enumerate(shells)]
-    return MultiPolygon(members)
+    result = esri_polygon_geometry({"rings": rings}, has_z=False, has_m=False)
+    return result if result.geom_type == "MultiPolygon" else MultiPolygon([result])
 
 
 def _feature_rows(captures: dict[str, tuple[bytes, dict[str, Any]]], fields: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:

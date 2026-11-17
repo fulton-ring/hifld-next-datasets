@@ -11,7 +11,9 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
+
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -58,18 +60,10 @@ def _arrow_type(field: dict) -> pa.DataType:
     }[field["type"]]
 
 
-def _ring_area(ring: list[list[float]]) -> float:
-    x0, y0 = ring[0][:2]
-    return math.fsum((ring[i][0]-x0)*(ring[i+1][1]-y0) - (ring[i+1][0]-x0)*(ring[i][1]-y0)
-                     for i in range(len(ring)-1)) / 2
-
-
 def _encode_polygon_z(rings: list[list[list[float]]]) -> bytes:
     """Encode XY/Z vertices as ISO WKB; M ordinates are retained separately."""
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
-    shells: list[tuple[list[list[float]], Polygon]] = []
-    holes: list[tuple[list[list[float]], Polygon]] = []
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
             raise ValueError("source_polygon_ring_invalid")
@@ -81,34 +75,11 @@ def _encode_polygon_z(rings: list[list[list[float]]]) -> bytes:
                 raise ValueError("source_polygon_xy_geographic_domain_violation")
         if ring[0][2] is None:
             raise ValueError("source_z_ordinate_null")
-        ring_polygon = Polygon([point[:2] for point in ring])
-        if _ring_area(ring) < 0:
-            shells.append((ring, ring_polygon))
-        else:
-            holes.append((ring, ring_polygon))
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    # Esri specifies clockwise exterior rings and counterclockwise holes.
-    # Test full hole polygon containment so an inner island cannot steal a
-    # hole merely because the hole's first vertex happens to fall inside it.
-    assigned: dict[int, list] = {i: [] for i in range(len(shells))}
-    for hole, hole_polygon in holes:
-        parents = [(abs(_ring_area(shell)), i) for i, (shell, shell_polygon) in enumerate(shells)
-                   if shell_polygon.contains(hole_polygon)]
-        if not parents:
-            raise ValueError("source_polygon_hole_without_containing_shell")
-        assigned[min(parents)[1]].append(hole)
-    le = "<"
-    def ring_bytes(ring):
-        return struct.pack(le + "I", len(ring)) + b"".join(
-            struct.pack(le + "ddd", float(x), float(y), float(z)) for x, y, z, _m in ring)
-    polygons = []
-    for i, (shell, _shell_polygon) in enumerate(shells):
-        all_rings = [shell, *assigned[i]]
-        polygon = b"\x01" + struct.pack(le + "I", 1003) + struct.pack(le + "I", len(all_rings))
-        polygon += b"".join(ring_bytes(r) for r in all_rings)
-        polygons.append(polygon)
-    return b"\x01" + struct.pack(le + "I", 1006) + struct.pack(le + "I", len(polygons)) + b"".join(polygons)
+    geometry = esri_polygon_geometry({"rings": [[point[:3] for point in ring] for ring in rings]},
+                                     has_z=True, has_m=False)
+    if geometry.geom_type != "MultiPolygon":
+        geometry = MultiPolygon([geometry])
+    return geometry.wkb
 
 
 def _native_parquet(fields: list[dict], features: list[dict], feature_srs: dict[int, dict]) -> bytes:

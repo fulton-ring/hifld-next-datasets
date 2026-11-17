@@ -17,8 +17,10 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
+
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 from pyproj import CRS
-from shapely.geometry import LinearRing, Polygon
+from shapely.geometry import Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -306,15 +308,13 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
 
 
 def _esri_polygon_wkb(geometry: dict, oid: int) -> bytes:
-    """Encode native ArcGIS polygon rings in source order without reorientation or repair."""
+    """Encode native XY ArcGIS polygon rings through the shared GDAL converter."""
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError(f"source_polygon_rings_missing:{oid}")
     for flag in ("hasZ", "hasM"):
         if flag in geometry and geometry[flag] is not False:
             raise ValueError(f"source_polygon_ordinate_flag_drift:{oid}")
-    shells: list[list[list[float]]] = []
-    holes: list[list[list[float]]] = []
     for coords in rings:
         if not isinstance(coords, list) or len(coords) < 4:
             raise ValueError(f"source_polygon_ring_invalid:{oid}")
@@ -325,38 +325,15 @@ def _esri_polygon_wkb(geometry: dict, oid: int) -> bytes:
                       or not math.isfinite(float(value)) for value in point)
                for point in coords):
             raise ValueError(f"source_polygon_coordinate_not_finite_xy:{oid}")
-        ring = LinearRing([point[:2] for point in coords])
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    if not shells:
-        raise ValueError(f"source_polygon_shell_missing:{oid}")
-    shell_polys = [Polygon(ring) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon(ring)
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError(f"source_hole_ownership_ambiguous:{oid}")
-        assignments[owners[0]].append(ring)
-
-    def polygon_wkb(shell, hole_rings):
-        out = bytearray(struct.pack("<BI", 1, 3))
-        out.extend(struct.pack("<I", 1 + len(hole_rings)))
-        for ring in [shell, *hole_rings]:
-            out.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                out.extend(struct.pack("<dd", float(point[0]), float(point[1])))
-        return bytes(out)
-
-    polygons = [polygon_wkb(shells[index], assignments[index]) for index in range(len(shells))]
-    if len(polygons) == 1:
-        return polygons[0]
-    multi = bytearray(struct.pack("<BI", 1, 6))
-    multi.extend(struct.pack("<I", len(polygons)))
-    for polygon in polygons:
-        multi.extend(polygon)
-    return bytes(multi)
+        if not Polygon([point[:2] for point in coords]).is_valid:
+            raise ValueError(f"source_polygon_topology_invalid:{oid}")
+    try:
+        return esri_polygon_wkb(geometry, allow_zm=False)
+    except ValueError as exc:
+        code = str(exc)
+        if code in ("source_polygon_shell_missing", "source_hole_ownership_ambiguous"):
+            raise ValueError(f"{code}:{oid}") from exc
+        raise
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
@@ -480,9 +457,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                 ys.append(point[1])
                 vertex_count += 1
         wkb = _esri_polygon_wkb(geometry, oid)
-        shell_count += sum(1 for ring in rings if not LinearRing([point[:2] for point in ring]).is_ccw)
-        hole_count += len(rings) - sum(1 for ring in rings if not LinearRing([point[:2] for point in ring]).is_ccw)
         shape = shapely.from_wkb(wkb)
+        parts = shape.geoms if shape.geom_type == "MultiPolygon" else [shape]
+        shell_count += len(parts)
+        hole_count += sum(len(part.interiors) for part in parts)
         # Reject invalid or empty topology before anything is staged or sealed.
         # The captured geometry is preserved verbatim; it is never repaired.
         if shape.is_empty:

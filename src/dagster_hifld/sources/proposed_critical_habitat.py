@@ -25,6 +25,8 @@ import pyogrio
 import shapely
 from shapely.geometry import MultiPolygon, Polygon
 
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
+
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -244,41 +246,16 @@ def _esri_type(field: dict[str, Any]) -> pa.DataType:
     raise ValueError("unsupported_source_field_type:" + str(typ))
 
 
-def _ring_area(ring: list[list[float]]) -> float:
-    # Translate to the first vertex to avoid catastrophic cancellation for
-    # small rings at large EPSG:3857 coordinate magnitudes.
-    x0, y0 = ring[0]
-    return sum((ring[i][0] - x0) * (ring[i + 1][1] - y0)
-               - (ring[i + 1][0] - x0) * (ring[i][1] - y0)
-               for i in range(len(ring) - 1)) / 2
-
-
 def _esri_polygon(geometry: dict[str, Any]) -> MultiPolygon:
-    """Convert Esri clockwise-shell rings without dissolving or repairing them."""
+    """Convert Esri rings through the shared GDAL converter without repair."""
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
-    shells, holes = [], []
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
             raise ValueError("source_polygon_ring_invalid")
-        polygon = Polygon(ring)
-        if _ring_area(ring) < 0: shells.append((ring, polygon))
-        else: holes.append((ring, polygon))
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    assigned: dict[int, list[list[list[float]]]] = {i: [] for i in range(len(shells))}
-    for ring, hole in holes:
-        # Esri represents islands nested inside holes as a separate shell. A
-        # hole belongs to the smallest shell that contains its entire ring.
-        containers = [(polygon.area, i) for i, (_shell, polygon) in enumerate(shells)
-                      if polygon.contains(hole)]
-        if not containers:
-            raise ValueError("source_polygon_ring_nesting_ambiguous")
-        _area, owner = min(containers)
-        assigned[owner].append(ring)
-    members = [Polygon(shell, assigned[i]) for i, (shell, _polygon) in enumerate(shells)]
-    return MultiPolygon(members)
+    result = esri_polygon_geometry({"rings": rings}, has_z=False, has_m=False)
+    return result if result.geom_type == "MultiPolygon" else MultiPolygon([result])
 
 
 def _feature_rows(captures: dict[str, tuple[bytes, dict[str, Any]]], fields: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
