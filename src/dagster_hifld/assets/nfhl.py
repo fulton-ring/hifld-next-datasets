@@ -22,6 +22,7 @@ from dagster import (
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.nfhl import LAYERS, NfhlLayer, capture_nfhl_layer
+from dagster_hifld.sources.nfhl.bulk import capture_nfhl_bulk_layer
 from dagster_hifld.sources.nfhl.candidate import APPROVAL_FLAGS
 
 
@@ -41,14 +42,27 @@ def _previous_feature_count(context, key: AssetKey) -> int | None:
 def _layer_definitions(layer: NfhlLayer):
     key = AssetKey(["ingest", layer.slug, layer.slug])
     kind = "table" if layer.is_table else "layer"
+    if layer.source == "bulk":
+        source_text = (f"FEMA NFHL county/community NFHL Databases feature class {layer.feature_class} "
+                       f"(MapServer {kind} {layer.layer_id} '{layer.name}') from the shared bulk capture, "
+                       "complete against every listed product and cross-checked against the producer's "
+                       "live REST count. Candidate extraction only; release date, freshness, rights, and "
+                       "schema/ID acceptance remain pending.")
+    else:
+        source_text = (f"FEMA NFHL MapServer {kind} {layer.layer_id} '{layer.name}' from the producer's own "
+                       "REST publication, complete against the producer's count at capture time. Candidate "
+                       "extraction only; release date, freshness, rights, and schema/ID acceptance remain "
+                       "pending.")
 
-    @asset(key=key, group_name="fema", compute_kind="http",
-           description=(f"FEMA NFHL MapServer {kind} {layer.layer_id} '{layer.name}' from the producer's own REST "
-                        "publication, complete against the producer's count at capture time. Candidate extraction "
-                        "only; release date, freshness, rights, and schema/ID acceptance remain pending."))
+    @asset(key=key, group_name="fema", compute_kind="http", description=source_text)
     def ingest(context, config: NfhlCaptureConfig, staging_storage: StagingStorageResource) -> dict:
         previous = _previous_feature_count(context, key)
-        result = capture_nfhl_layer(staging_storage, layer, capture_directory=config.capture_directory or None)
+        if layer.source == "bulk":
+            result = capture_nfhl_bulk_layer(staging_storage, layer,
+                                             capture_directory=config.capture_directory or None)
+        else:
+            result = capture_nfhl_layer(staging_storage, layer,
+                                        capture_directory=config.capture_directory or None)
         result = {**result, "previous_feature_count": previous}
         context.instance.add_dynamic_partitions(
             PUBLISH_PARTITION_NAME, [build_publish_partition_key(layer.slug, layer.slug, result["version"])])
@@ -60,11 +74,19 @@ def _layer_definitions(layer: NfhlLayer):
         passed = (type(candidate.get("feature_count")) is int
                   and candidate.get("feature_count") == candidate.get("source_count")
                   and candidate.get("candidate_ready") is not None)
-        return AssetCheckResult(passed=passed, metadata={
+        metadata = {
             "feature_count": candidate.get("feature_count", 0),
             "source_count_at_capture": candidate.get("source_count", 0),
             **{k: v for k, v in candidate.items() if k.endswith("_geometry_count")},
-            "technical_geometry_quality_accepted": False, **APPROVAL_FLAGS})
+            "technical_geometry_quality_accepted": False, **APPROVAL_FLAGS}
+        if layer.source == "bulk":
+            metadata.update({
+                "source_product_count": candidate.get("source_product_count", 0),
+                "source_products_without_feature_class":
+                    candidate.get("source_products_without_feature_class", 0),
+                "rest_count_cross_check": candidate.get("rest_count_cross_check"),
+                "rest_count_delta": candidate.get("rest_count_delta")})
+        return AssetCheckResult(passed=passed, metadata=metadata)
 
     @asset_check(asset=ingest, name=f"fema_{layer.stem}_count_drift", blocking=False)
     def count_drift(candidate: dict) -> AssetCheckResult:

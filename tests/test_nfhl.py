@@ -69,7 +69,8 @@ def served_coordinates(geometry):
 
 FAMILY_SLUGS = {
     "nfhl-alluvial-fans", "nfhl-availability", "nfhl-base-flood-elevations", "nfhl-base-index",
-    "nfhl-coastal-gages", "nfhl-coastal-transects", "nfhl-cross-sections", "nfhl-flood-hazard-boundaries",
+    "nfhl-coastal-gages", "nfhl-coastal-transects", "nfhl-cross-sections", "nfhl-datum-conversion-points",
+    "nfhl-flood-hazard-boundaries", "nfhl-flood-hazard-zones",
     "nfhl-firm-panels", "nfhl-gages", "nfhl-general-structures", "nfhl-high-water-marks",
     "nfhl-hydrologic-reaches", "nfhl-levees", "nfhl-limit-moderate-wave-action", "nfhl-lomrs", "nfhl-nodes",
     "nfhl-plss", "nfhl-political-jurisdictions", "nfhl-primary-frontal-dunes", "nfhl-profile-baselines",
@@ -650,6 +651,19 @@ class ResumeTests(NfhlCaptureCase):
         self.assertEqual(second["reused_page_count"], 0)
         self.assertEqual(second["feature_count"], first["feature_count"] + 1)
         self.assertTrue(list((self.captures / self.layer.slug / "previous").glob("*/page_*.body")))
+
+
+class DatumConversionTests(NfhlCaptureCase):
+    def test_datum_conversion_points_captures_from_the_rest_layer(self):
+        layer = LAYERS_BY_SLUG["nfhl-datum-conversion-points"]
+        server = FakeMapServer(layer)
+        result = self.run_capture(server)
+        self.assertEqual(result["feature_count"], len(server.features))
+        self.assertEqual(result["source_count"], len(server.features))
+        table = self.parquet(result, layer)
+        self.assertEqual(table.num_rows, len(server.features))
+        self.assertIn("DATCONPTID", table.column_names)
+        self.assertIn("QUAD_NM", table.column_names)
 
 
 class RegistrationTests(unittest.TestCase):
