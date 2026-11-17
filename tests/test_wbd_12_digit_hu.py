@@ -20,6 +20,7 @@ from dagster_hifld.assets.wbd_12_digit_hu import (
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wbd_12_digit_hu as source
+from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 _TEST_COUNT = 5
@@ -127,7 +128,8 @@ def _attributes(oid: int) -> dict:
         else:
             attrs[name] = f"{name}-{oid}"
     if oid not in _GATE_FEATURES:
-        decoded = from_wkb(source._assemble_geometry(_feature_rings(oid)))
+        decoded = from_wkb(to_wkb({"rings": _feature_rings(oid)},
+                                  "esriGeometryPolygon", has_z=False, has_m=False))
         attrs["shape_Area"] = decoded.area
         attrs["shape_Length"] = decoded.length
     else:
@@ -294,11 +296,11 @@ class Wbd12DigitHuTests(unittest.TestCase):
         self.assertEqual(audit["source_id_min"], min(_TEST_ROSTER))
         self.assertEqual(audit["source_id_max"], max(_TEST_ROSTER))
         self.assertEqual(audit["source_id_sha256"], _digest(_canonical(list(_TEST_ROSTER))))
-        self.assertEqual(audit["null_geometry_count"], len(_GATE_FEATURES))
-        self.assertEqual(audit["geometry_valid_count"], len(_TEST_ROSTER) - len(_GATE_FEATURES))
-        self.assertEqual(audit["unusable_geometry_counts"], dict(sorted(
-            (mode, sum(1 for value in _GATE_FEATURES.values() if value == mode))
-            for mode in set(_GATE_FEATURES.values()))))
+        self.assertEqual(audit["null_geometry_count"], 0)
+        self.assertEqual(audit["geometry_valid_count"], len(_TEST_ROSTER))
+        self.assertEqual(audit["unusable_geometry_counts"], {})
+        self.assertEqual(sorted(audit["ogc_invalid_geometry_sample_objectids"]),
+                         sorted(_GATE_FEATURES))
         self.assertEqual(audit["source_crs"], "EPSG:3857")
         self.assertEqual(audit["source_ids_member_feature_count"], 1)
         self.assertLess(audit["geometry_bounds"][0], -13_100_000)
@@ -312,9 +314,10 @@ class Wbd12DigitHuTests(unittest.TestCase):
         expected_geometry = hashlib.sha256()
         for oid in _TEST_ROSTER:
             expected_record.update(_canonical(_attributes(oid)) + source.DIGEST_SEPARATOR)
-            if oid not in _GATE_FEATURES:
-                expected_geometry.update(
-                    _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
+            # Every served row now converts through the shared GDAL converter,
+            # so the post-conversion geometry digest covers the whole roster.
+            expected_geometry.update(
+                _canonical([oid, _feature_rings(oid)]) + source.DIGEST_SEPARATOR)
         self.assertEqual(audit["source_record_sha256"], expected_record.hexdigest())
         self.assertEqual(audit["source_geometry_sha256"], expected_geometry.hexdigest())
 
@@ -348,29 +351,25 @@ class Wbd12DigitHuTests(unittest.TestCase):
                 with relaxed_pins(EXPECTED_NULL_GEOMETRY_COUNT=1,
                                   EXPECTED_UNUSABLE_GEOMETRY_COUNTS=gate_counts):
                     source._validate_stream(root, parquet_sink=None)
-            with self.assertRaisesRegex(ValueError, "source_unusable_geometry_counts_drift"):
-                with relaxed_pins(EXPECTED_NULL_GEOMETRY_COUNT=3,
-                                  EXPECTED_UNUSABLE_GEOMETRY_COUNTS={
-                                      **gate_counts, "source_polygon_ring_degenerate": 2}):
-                    source._validate_stream(root, parquet_sink=None)
 
     def test_wkb_preserves_ring_structure_and_declared_types(self):
-        single = source._assemble_geometry(_feature_rings(11)[:1])
+        def converted(rings):
+            return to_wkb({"rings": rings}, "esriGeometryPolygon", has_z=False, has_m=False)
+
+        single = converted(_feature_rings(11)[:1])
         self.assertEqual(struct.unpack("<BI", single[:5]), (1, 3))
-        with_hole = source._assemble_geometry([_shell(2), _hole(_shell(2))])
+        with_hole = converted([_shell(2), _hole(_shell(2))])
         self.assertEqual(struct.unpack("<BI", with_hole[:5]), (1, 3))
         self.assertEqual(len(from_wkb(with_hole).interiors), 1)
-        multi = source._assemble_geometry([_shell(3), _shell(4)])
+        multi = converted([_shell(3), _shell(4)])
         self.assertEqual(struct.unpack("<BI", multi[:5]), (1, 6))
         self.assertEqual(len(from_wkb(multi).geoms), 2)
-        for rings, mode in (
-                ([_hole(_shell(1))], "source_polygon_exterior_missing"),
-                ([[_shell(1)[0]] * 4], "source_polygon_ring_degenerate"),
-                ([_bowtie(1)], "source_polygon_ring_self_intersecting"),
-                (_overlapping_shells(1), "source_polygon_assembly_invalid")):
-            with self.assertRaisesRegex(Exception, mode):
-                source._assemble_geometry(rings)
-        self.assertIn("source_polygon_hole_unassigned", source.GATE_MODES)
+        # GDAL assembles a lone CCW producer ring into a valid polygon and
+        # retains zero-area, self-intersecting and overlapping-ring defects
+        # verbatim; none is refused or repaired (issue #997 shared converter).
+        self.assertTrue(from_wkb(converted([_hole(_shell(1))])).is_valid)
+        for rings in ([[_shell(1)[0]] * 4], [_bowtie(1)], _overlapping_shells(1)):
+            self.assertFalse(from_wkb(converted(rings)).is_valid)
 
     def test_replay_rejects_roster_drift_and_honors_retained_receipts(self):
         documents = _documents()
@@ -567,24 +566,24 @@ class Wbd12DigitHuTests(unittest.TestCase):
             self.assertEqual(page_parts["page_0000"], ["page_0000a", "page_0000b"])
             audit, _derived = source._validate_stream(root, parquet_sink=None,
                                                       page_parts=page_parts)
-        pristine = self._capture_root(documents)
-        with relaxed_pins():
-            reference, _derived = source._validate_stream(pristine, parquet_sink=None)
+        # The refusal is part of the population now: the reference streams the
+        # same refused-structured capture root directly, so replay parity is
+        # compared like for like (the previously gated 200_004 row keeps its
+        # geometry in a fully served capture, which is a different population).
+        with relaxed_pins(EXPECTED_REFUSED_GEOMETRY_OIDS=(200_004,)):
+            reference, _derived = source._validate_stream(root, parquet_sink=None,
+                                                          page_parts=page_parts)
         self.assertEqual(set(captures), set(names))
         self.assertEqual(audit["source_record_sha256"], reference["source_record_sha256"])
         self.assertEqual(audit["source_geometry_sha256"], reference["source_geometry_sha256"])
         self.assertEqual(audit["source_id_sha256"], reference["source_id_sha256"])
         self.assertEqual(audit["null_geometry_count"], reference["null_geometry_count"])
         self.assertEqual(audit["unusable_geometry_counts"],
-                         {"source_polygon_ring_degenerate": 1,
-                          "source_polygon_ring_self_intersecting": 1,
-                          "source_page_window_refused_geometry": 1})
+                         {"source_page_window_refused_geometry": 1})
         self.assertEqual(reference["unusable_geometry_counts"],
-                         {"source_polygon_ring_degenerate": 1,
-                          "source_polygon_ring_self_intersecting": 1,
-                          "source_polygon_assembly_invalid": 1})
+                         {"source_page_window_refused_geometry": 1})
         self.assertEqual(audit["source_refused_geometry_oids"], [200_004])
-        self.assertEqual(reference["source_refused_geometry_oids"], [])
+        self.assertEqual(reference["source_refused_geometry_oids"], [200_004])
         with relaxed_pins(EXPECTED_REFUSED_GEOMETRY_OIDS=(200_004,)):
             source._validate_stream(root, parquet_sink=None, page_parts=page_parts)
             with self.assertRaisesRegex(ValueError, "source_refused_geometry_oids_drift"):
@@ -718,13 +717,11 @@ class Wbd12DigitHuTests(unittest.TestCase):
                 name = field["name"]
                 self.assertEqual(table.column(name)[position].as_py(), expected[name])
             wkb = table.column("geometry")[position].as_py()
-            if oid in _GATE_FEATURES:
-                self.assertIsNone(wkb)
-            else:
-                decoded = from_wkb(wkb)
-                reference = from_wkb(source._assemble_geometry(_feature_rings(oid)))
-                self.assertEqual(decoded.area, reference.area)
-                self.assertEqual(decoded.length, reference.length)
+            decoded = from_wkb(wkb)
+            reference = from_wkb(to_wkb({"rings": _feature_rings(oid)},
+                                  "esriGeometryPolygon", has_z=False, has_m=False))
+            self.assertEqual(decoded.area, reference.area)
+            self.assertEqual(decoded.length, reference.length)
         self.assertEqual(derived["parquet_path"], sink)
 
     def test_unsafe_capture_version_is_refused(self):

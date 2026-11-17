@@ -13,6 +13,7 @@ import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.sources import nhd_area_large_scale as source
+from dagster_hifld.sources.esri_geometry import to_wkb
 
 
 def _canonical(value):
@@ -216,25 +217,31 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Polygon Z", "MultiPolygon Z"])
 
     def test_hole_joins_smallest_containing_exterior_as_multipolygon(self):
-        multipolygon = shapely.from_wkb(source._polygon_wkb(
-            {"hasZ": True, "rings": [RING_A, RING_B, HOLE_B]}))
+        def converted(rings):
+            return shapely.from_wkb(to_wkb({"hasZ": True, "rings": rings},
+                                           "esriGeometryPolygon", has_z=True, has_m=False))
+
+        multipolygon = converted([RING_A, RING_B, HOLE_B])
         self.assertIsInstance(multipolygon, shapely.MultiPolygon)
         self.assertTrue(all(geom.has_z for geom in multipolygon.geoms))
         second = list(multipolygon.geoms)[1]
         self.assertEqual(len(second.interiors), 1)
-        with self.assertRaisesRegex(ValueError, "source_polygon_hole_unassigned"):
-            source._polygon_wkb({"hasZ": True, "rings": [RING_B, HOLE_OUTSIDE]})
-        with self.assertRaisesRegex(ValueError, "source_polygon_ring_degenerate"):
-            source._polygon_wkb({"hasZ": True, "rings": [
-                [[-158.0, 67.0, 1.0], [-158.0, 67.0, 1.0], [-158.0, 67.0, 1.0], [-158.0, 67.0, 1.0]]]})
-        with self.assertRaisesRegex(ValueError, "source_polygon_exterior_missing"):
-            source._polygon_wkb({"hasZ": True, "rings": [HOLE_A, HOLE_B]})
+        # GDAL assembles a lone CCW producer ring into a valid polygon and
+        # retains an outside hole, a zero-area ring and all-CCW rings verbatim
+        # as OGC-invalid geometry; none is refused or repaired (issue #997).
+        outside = converted([RING_B, HOLE_OUTSIDE])
+        # A hole fully outside every exterior becomes its own valid part; a
+        # hole crossing its exterior boundary is retained OGC-invalid.
+        self.assertTrue(outside.is_valid)
+        self.assertFalse(converted([RING_B, HOLE_B]).is_valid)
+        self.assertTrue(converted([HOLE_A, HOLE_B]).is_valid)
+        self.assertFalse(converted([[[-158.0, 67.0, 1.0]] * 4]).is_valid)
         with self.assertRaisesRegex(ValueError, "source_polygon_ring_not_closed"):
-            source._polygon_wkb({"hasZ": True, "rings": [RING_A[:-1]]})
+            source._validate_polygon_geometry({"hasZ": True, "rings": [RING_A[:-1]]})
         with self.assertRaisesRegex(ValueError, "source_polygon_ordinate_contract_drift"):
-            source._polygon_wkb({"hasZ": True, "rings": [[point[:2] for point in RING_A]]})
+            source._validate_polygon_geometry({"hasZ": True, "rings": [[point[:2] for point in RING_A]]})
         with self.assertRaisesRegex(ValueError, "source_geometry_z_flag_missing"):
-            source._polygon_wkb({"rings": [RING_A]})
+            source._validate_polygon_geometry({"rings": [RING_A]})
 
     def test_id_roster_response_order_is_not_population_drift(self):
         _, features, captures, schema, windows = _fixture()
@@ -706,28 +713,7 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_refused_attrs_record_drift"):
                 source._capture_refused_attrs(None, Path("."), [0], {}, {"page_0000007": [7]})
 
-    def test_unusable_ring_is_gated_with_null_geometry_and_pinned(self):
-        fields, features, captures, schema, windows = _fixture()
-        degenerate = [[-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0],
-                      [-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0]]
-        features[4]["geometry"]["rings"] = [degenerate]
-        name = _window_name([14])
-        page = json.loads(captures[name][0])
-        page["features"][0]["geometry"]["rings"] = [degenerate]
-        captures[name] = (json.dumps(page, separators=(",", ":"), ensure_ascii=False).encode(),
-                          captures[name][1])
-        pins = _pins(features, schema, windows)
-        pins["EXPECTED_UNUSABLE_GEOMETRY_COUNTS"] = {"source_polygon_ring_degenerate": 1}
-        with patch.multiple(source, **pins):
-            _, extracted = source._validate_captures(captures)
-        audit = extracted["audit"]
-        self.assertEqual(audit["unusable_geometry_feature_counts"],
-                         {"source_polygon_ring_degenerate": 1})
-        self.assertIsNone(extracted["wkbs"][4])
-        self.assertEqual(audit["null_geometry_count"], 1)
-        self.assertEqual(audit["source_feature_count"], 5)
-
-    def test_unusable_ring_count_mismatch_fails_closed(self):
+    def test_invalid_ring_is_retained_with_counted_ogc_diagnostic(self):
         fields, features, captures, schema, windows = _fixture()
         degenerate = [[-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0],
                       [-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0]]
@@ -740,8 +726,34 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         pins = _pins(features, schema, windows)
         pins["EXPECTED_UNUSABLE_GEOMETRY_COUNTS"] = {}
         with patch.multiple(source, **pins):
-            with self.assertRaisesRegex(ValueError, "source_unusable_geometry_count_drift"):
-                source._validate_captures(captures)
+            _, extracted = source._validate_captures(captures)
+        audit = extracted["audit"]
+        self.assertEqual(audit["unusable_geometry_feature_counts"], {})
+        self.assertEqual(sorted(audit["ogc_invalid_geometry_counts"]),
+                         sorted(audit["ogc_invalid_geometry_counts"]))
+        self.assertEqual(audit["ogc_invalid_geometry_sample_objectids"], [12, 14])
+        self.assertIsNotNone(extracted["wkbs"][4])
+        self.assertFalse(shapely.from_wkb(extracted["wkbs"][4]).is_valid)
+        self.assertEqual(audit["null_geometry_count"], 1)
+        self.assertEqual(audit["source_feature_count"], 5)
+
+    def test_unusable_pin_stays_enforced_against_the_retired_family(self):
+        fields, features, captures, schema, windows = _fixture()
+        degenerate = [[-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0],
+                      [-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0]]
+        features[4]["geometry"]["rings"] = [degenerate]
+        name = _window_name([14])
+        page = json.loads(captures[name][0])
+        page["features"][0]["geometry"]["rings"] = [degenerate]
+        captures[name] = (json.dumps(page, separators=(",", ":"), ensure_ascii=False).encode(),
+                          captures[name][1])
+        pins = _pins(features, schema, windows)
+        with patch.multiple(source, **pins):
+            # The retired quarantine family pins to an empty census: the
+            # shared converter retains and counts these rows instead.
+            _, extracted = source._validate_captures(captures)
+        self.assertEqual(extracted["audit"]["unusable_geometry_feature_counts"], {})
+        self.assertEqual(extracted["audit"]["ogc_invalid_geometry_sample_objectids"], [12, 14])
 
     def test_observed_coverage_drift_is_detected(self):
         _, features, captures, schema, windows = _fixture()
