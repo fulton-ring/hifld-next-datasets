@@ -336,6 +336,7 @@ from dagster_hifld.assets.usace_pylon_locations import (
 from dagster_hifld.assets.usace_distance_marks import (
     distance_marks_draft_refresh_job,
     distance_marks_draft_refresh_schedule,
+    usace_distance_marks_drift,
 )
 
 from dagster_hifld.assets.usace_recommended_tracks import (
@@ -883,6 +884,7 @@ defs = Definitions(
             usace_dumping_ground_areas_complete,
             coastlines_usace_ienc_complete,
             coastlines_usace_ienc_drift,
+            usace_distance_marks_drift,
             locks_usace_ienc_complete,
             locks_usace_ienc_drift,
             lock_basins_usace_ienc_complete,
