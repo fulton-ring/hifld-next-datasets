@@ -13,6 +13,8 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest, snapsho
 from dagster_hifld.sources import usace_river_mile_markers as source
 
 
+FEATURE_COUNT = 11389
+
 _ITEM = {
     "id": source.ITEM_ID,
     "owner": "usace_iwr_cac",
@@ -44,8 +46,8 @@ class ArcGISFixture(httpx.BaseTransport):
                  geometry_z=False, fail_page_once=None, item_denial=False, item_foreign_owner=False,
                  item_description_drift=False, directory_drift=False, service_change_after=False,
                  shifted_roster=False, omit_layer_extent=False):
-        self.ids = (list(range(2, source.EXPECTED_COUNT + 2)) if shifted_roster
-                    else list(range(1, source.EXPECTED_COUNT + 1)))
+        self.ids = (list(range(2, FEATURE_COUNT + 2)) if shifted_roster
+                    else list(range(1, FEATURE_COUNT + 1)))
         self.changed_after = changed_after
         self.schema_drift = schema_drift
         self.changed_page_crs = changed_page_crs
@@ -96,10 +98,10 @@ class ArcGISFixture(httpx.BaseTransport):
                 data.pop("extent")
         elif query.get("returnIdsOnly") == "true":
             self.id_calls += 1
-            ids = self.ids[:-1] + [source.EXPECTED_COUNT + 1] if self.changed_after and self.id_calls == 2 else self.ids
+            ids = self.ids[:-1] + [FEATURE_COUNT + 1] if self.changed_after and self.id_calls == 2 else self.ids
             data = {"objectIdFieldName": "OBJECTID", "objectIds": ids}
         elif query.get("returnCountOnly") == "true":
-            data = {"count": source.EXPECTED_COUNT}
+            data = {"count": FEATURE_COUNT}
         else:
             requested = [int(value) for value in query["objectIds"].split(",")]
             if requested and requested[0] == self.fail_page_once:
@@ -137,7 +139,7 @@ class BaselineFixture(httpx.BaseTransport):
     counts and objectIds pages, and raises on any other request."""
 
     def __init__(self):
-        self.ids = list(range(1, source.EXPECTED_COUNT + 1))
+        self.ids = list(range(1, FEATURE_COUNT + 1))
         self.id_calls = 0
 
     def handle_request(self, request):
@@ -152,7 +154,7 @@ class BaselineFixture(httpx.BaseTransport):
             self.id_calls += 1
             data = {"objectIdFieldName": "OBJECTID", "objectIds": self.ids}
         elif query.get("returnCountOnly") == "true":
-            data = {"count": source.EXPECTED_COUNT}
+            data = {"count": FEATURE_COUNT}
         else:
             requested = [int(value) for value in query["objectIds"].split(",")]
             features = []
@@ -192,7 +194,7 @@ class RiverMileMarkerCaptureTests(unittest.TestCase):
         manifest = json.loads(storage.read_key(prefix + "metadata/native_capture.json"))
         self.assertEqual(len(manifest["pages"]), 46)
         self.assertEqual(manifest["pages"][-1]["count"], 139)
-        self.assertEqual(manifest["before_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(manifest["before_id_sha256"], source._digest(source._json_bytes(list(range(1, FEATURE_COUNT + 1)))))
         raw_name = prefix + "raw/page_0000000.json"
         wire_name = prefix + "raw/page_0000000.wire"
         receipt_name = prefix + "raw/page_0000000.receipt.json"
@@ -224,7 +226,7 @@ class RiverMileMarkerCaptureTests(unittest.TestCase):
         version = "v20261112T000000Z"
         self.assertEqual(source.NATIVE_GEOJSON_CRS["properties"]["name"], "urn:ogc:def:crs:EPSG::4269")
         staged = load_staged_geodata(storage, source.DATASET_SLUG, source.FILE_SLUG, version)
-        self.assertEqual(len(staged), source.EXPECTED_COUNT)
+        self.assertEqual(len(staged), FEATURE_COUNT)
         self.assertEqual(staged.crs.to_epsg(), 4269)
         snapshot_source_metadata(storage, source.DATASET_SLUG, source.FILE_SLUG, version)
         resolved = load_resolved_source_manifest(storage, source.DATASET_SLUG, source.FILE_SLUG, version)
@@ -233,7 +235,7 @@ class RiverMileMarkerCaptureTests(unittest.TestCase):
             source.DATASET_SLUG, source_metadata=resolved.metadata,
         )
         quality = summary.quality_manifest
-        self.assertEqual(quality["feature_count"], source.EXPECTED_COUNT)
+        self.assertEqual(quality["feature_count"], FEATURE_COUNT)
         self.assertEqual(quality["catalog_mode"], "streaming_geospatial")
         self.assertTrue(quality["quality_check_passed"])
         self.assertEqual(quality["bounds"], [-92.69999, 31.4525, -92.58611, 31.4525])
@@ -286,7 +288,7 @@ class RiverMileMarkerCaptureTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         storage = StagingStorageResource(use_local=True, local_dir=temporary.name)
         with httpx.Client(transport=transport) as client:
-            with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+            with self.assertRaisesRegex(ValueError, "source_population_changed_during_capture"):
                 source.capture_validated(storage, "v20261112T000000Z", client=client)
         self.assertFalse(storage.object_exists(storage.build_target_location(
             source.DATASET_SLUG, source.FILE_SLUG, "v20261112T000000Z",
@@ -392,17 +394,15 @@ class RiverMileMarkerCaptureTests(unittest.TestCase):
             source.DATASET_SLUG, source.FILE_SLUG, "v20261112T000000Z",
             f"metadata/native_candidate/{source.FILE_SLUG}.parquet")))
 
-    def test_shifted_id_roster_of_same_size_is_refused(self):
+    def test_shifted_id_roster_of_same_size_is_captured(self):
         transport = ArcGISFixture(shifted_roster=True)
         temporary = tempfile.TemporaryDirectory(prefix="river-mile-markers-roster-")
         self.addCleanup(temporary.cleanup)
         storage = StagingStorageResource(use_local=True, local_dir=temporary.name)
         with httpx.Client(transport=transport) as client:
-            with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
-                source.capture_validated(storage, "v20261112T000000Z", client=client)
-        self.assertFalse(storage.object_exists(storage.build_target_location(
-            source.DATASET_SLUG, source.FILE_SLUG, "v20261112T000000Z",
-            f"metadata/native_candidate/{source.FILE_SLUG}.parquet")))
+            result = source.capture_validated(storage, "v20261112T000000Z", client=client)
+        self.assertEqual(result["feature_count"], FEATURE_COUNT)
+        self.assertEqual(result["source_reported_count"], FEATURE_COUNT)
 
     def test_pre_chain_retained_capture_without_item_is_refused(self):
         temporary = tempfile.TemporaryDirectory(prefix="river-mile-markers-pre-chain-replay-")
@@ -493,10 +493,6 @@ class USACESourceChainContractTests(unittest.TestCase):
         self.assertEqual(source._request_url("service_after", {"f": "json"}), source.SERVICE_URL)
         self.assertEqual(source._request_url("layer", {"f": "json"}), source.LAYER_URL)
         self.assertEqual(source._request_url("count_before", {"f": "json"}), source.LAYER_URL + "/query")
-        self.assertEqual(source.EXPECTED_ID_SHA256,
-                         "251c79ad1bed2abb5cdb3a59a2bf95e4b5f468bc160d40764bbc3cf3922ae456")
-        self.assertEqual(source.EXPECTED_IDS[0], 1)
-        self.assertEqual(source.EXPECTED_IDS[-1], source.EXPECTED_COUNT)
 
     def test_denial_body_and_identity_drift_fail_closed(self):
         denial = {"error": {"code": 403, "messageCode": "GWM_0003",
@@ -551,19 +547,22 @@ class USACESourceChainContractTests(unittest.TestCase):
 
 
 class RepositoryRegistrationTests(unittest.TestCase):
-    def test_blocking_completeness_check_passes_only_on_the_pinned_population(self):
+    def test_blocking_completeness_check_uses_the_capture_reported_count(self):
         from dagster_hifld.assets.usace_river_mile_markers import river_mile_markers_usace_ienc_complete
 
         passed = river_mile_markers_usace_ienc_complete({
-            "feature_count": source.EXPECTED_COUNT, "source_population_complete": True,
+            "feature_count": FEATURE_COUNT, "source_reported_count": FEATURE_COUNT,
+            "source_population_complete": True,
             "ids_sha256": "a" * 64, "records_sha256": "b" * 64, "source_coverage_scope": "scope"})
         self.assertTrue(passed.passed)
         failed = river_mile_markers_usace_ienc_complete({
-            "feature_count": source.EXPECTED_COUNT - 1, "source_population_complete": True,
+            "feature_count": FEATURE_COUNT - 1, "source_reported_count": FEATURE_COUNT,
+            "source_population_complete": True,
             "ids_sha256": "a" * 64, "records_sha256": "b" * 64, "source_coverage_scope": "scope"})
         self.assertFalse(failed.passed)
         incomplete = river_mile_markers_usace_ienc_complete({
-            "feature_count": source.EXPECTED_COUNT, "source_population_complete": False,
+            "feature_count": FEATURE_COUNT, "source_reported_count": FEATURE_COUNT,
+            "source_population_complete": False,
             "ids_sha256": "a" * 64, "records_sha256": "b" * 64, "source_coverage_scope": "scope"})
         self.assertFalse(incomplete.passed)
 

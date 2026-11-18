@@ -59,7 +59,7 @@ def _attributes(oid: int) -> dict:
 
 
 def _docs() -> dict[str, dict]:
-    object_ids = list(source.EXPECTED_IDS)
+    object_ids = list(FIXTURE_IDS)
     crs = {"wkid": 4326, "latestWkid": 4326}
     service = {"mapName": "LOCK_GATE_AREA", "copyrightText": "USACE IENC",
                "spatialReference": crs}
@@ -87,12 +87,12 @@ def _docs() -> dict[str, dict]:
             {"name": "IENC_Feature_Classes/LOCK_GATE_AREA", "type": "MapServer"}]},
         "service_before": copy.deepcopy(service),
         "layer_before": layer,
-        "count_before": {"count": source.EXPECTED_COUNT},
+        "count_before": {"count": FIXTURE_COUNT},
         "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": object_ids},
         "page_000": {"geometryType": "esriGeometryPolygon", "spatialReference": crs,
                      "features": features},
         "layer_after": copy.deepcopy(layer),
-        "count_after": {"count": source.EXPECTED_COUNT},
+        "count_after": {"count": FIXTURE_COUNT},
         "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": object_ids},
     }
 
@@ -113,16 +113,12 @@ def _fixture_pins(docs: dict[str, dict]) -> dict[str, str]:
     features = sorted(docs["page_000"]["features"],
                      key=lambda feature: feature["attributes"]["OBJECTID"])
     return {
-        "EXPECTED_RECORD_SHA256": source._sha(source._canonical(
-            [feature["attributes"] for feature in features])),
-        "EXPECTED_GEOMETRY_SHA256": source._sha(source._canonical(
-            [[feature["attributes"]["OBJECTID"], feature["geometry"]] for feature in features])),
         "EXPECTED_SCHEMA_SHA256": source._sha(source._canonical(docs["layer_before"]["fields"])),
     }
 
 
 def _sealed_capture_directory(root: Path, docs: dict[str, dict]) -> None:
-    expected_urls = dict(source._capture_urls(source.EXPECTED_IDS))
+    expected_urls = dict(source._capture_urls(FIXTURE_IDS))
     receipts = {}
     for name, url in expected_urls.items():
         body = _body(docs[name])
@@ -141,6 +137,10 @@ def _sealed_capture_directory(root: Path, docs: dict[str, dict]) -> None:
         "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
     }) + b"\n")
 
+
+
+FIXTURE_IDS = list(range(1, 95))
+FIXTURE_COUNT = len(FIXTURE_IDS)
 
 class _FakeClient:
     """Minimal httpx.Client stand-in replaying canned bodies per exact URL."""
@@ -175,13 +175,13 @@ class RegistrationGateTests(unittest.TestCase):
         self.assertEqual(usace_lock_gate_areas_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         passed = usace_lock_gate_areas_complete(
-            {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True})
+            {"feature_count": FIXTURE_COUNT, "source_reported_count": FIXTURE_COUNT, "source_population_complete": True})
         self.assertTrue(passed.passed)
         self.assertFalse(passed.metadata["release_accepted"].value)
         self.assertFalse(passed.metadata["rights_accepted"].value)
         self.assertFalse(passed.metadata["mapping_approved"].value)
         failed = usace_lock_gate_areas_complete(
-            {"feature_count": source.EXPECTED_COUNT - 1, "source_population_complete": True})
+            {"feature_count": FIXTURE_COUNT - 1, "source_reported_count": FIXTURE_COUNT, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_asset_check_job_and_schedule_are_registered_in_definitions(self):
@@ -198,18 +198,10 @@ class RegistrationGateTests(unittest.TestCase):
 
 class LiveCapturePinTests(unittest.TestCase):
     def test_pins_record_the_verified_live_capture(self):
-        self.assertEqual(source.EXPECTED_COUNT, 94)
-        self.assertEqual(source.EXPECTED_IDS, list(range(1, 95)))
-        self.assertEqual(source.EXPECTED_ID_SHA256,
-                         "0e23b6e4dfbf50733e1b02554bf2e094265eaa4482c886717fbfb47cd042c0e2")
-        self.assertEqual(source.EXPECTED_RECORD_SHA256,
-                         "d4bdbc39a0857e00a62460ab2b64162a8850c4835c7a234313c0e12e6a31dcf1")
-        self.assertEqual(source.EXPECTED_GEOMETRY_SHA256,
-                         "aed206fac00c1fc7a2e753e96abb24241200c6bd0f03a0372dda226671683bfa")
         self.assertEqual(source.EXPECTED_SCHEMA_SHA256,
                          "1c15259a627ba5a989d34c88f147216630867d88713a984aea385d6034d18992")
         self.assertTrue(source.LAYER_URL.endswith("LOCK_GATE_AREA/MapServer/78"))
-        self.assertEqual(source.EXPECTED_CAPTURE_NAMES, {
+        self.assertEqual(source._capture_names(FIXTURE_IDS), {
             "bts_item", "service_directory", "service_before", "layer_before", "count_before",
             "ids_before", "page_000", "layer_after", "count_after", "ids_after"})
 
@@ -223,7 +215,7 @@ class BtsSourceChainTests(unittest.TestCase):
             "https://www.arcgis.com/sharing/rest/content/items/"
             "7ec34864c8804468a9cf52d437fe4b6c?f=json",
         )
-        requested = [url for _name, url in source._capture_urls(source.EXPECTED_IDS)]
+        requested = [url for _name, url in source._capture_urls(FIXTURE_IDS)]
         self.assertIn(source.BTS_ITEM_URL, requested)
         self.assertTrue(all(source.PRIOR_BTS_ITEM_ID not in url for url in requested))
 
@@ -274,18 +266,18 @@ class DriftRefusalTests(unittest.TestCase):
     def test_count_and_id_roster_drift_fail_closed(self):
         self.assertEqual(
             self._drift(lambda d: d["count_after"].update(count=93)),
-            "source_count_drift")
+            "source_count_or_id_roster_drift")
         self.assertEqual(
             self._drift(lambda d: d["ids_after"].update(
-                objectIds=list(range(1, source.EXPECTED_COUNT)) + [95])),
-            "source_id_population_drift")
+                objectIds=list(range(1, FIXTURE_COUNT)) + [95])),
+            "source_count_or_id_roster_drift")
         self.assertEqual(
             self._drift(lambda d: d["ids_before"].update(
                 objectIdFieldName="ROWID")),
             "source_id_population_drift")
         self.assertEqual(
             self._drift(lambda d: d["ids_before"].update(objectIds=[2, *list(range(3, 96))])),
-            "source_id_population_drift")
+            "source_count_or_id_roster_drift")
 
     def test_schema_and_service_identity_drift_fail_closed(self):
         def rename_field(docs):
@@ -363,11 +355,12 @@ class DriftRefusalTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_geometry_coverage_extent_drift"):
                 source._validate(_captures(docs))
 
-    def test_snapshot_drift_against_live_pins_fails_closed(self):
+    def test_record_edit_is_accepted_without_a_snapshot_pin(self):
         docs = _docs()
-        captures = _captures(docs)
-        with self.assertRaisesRegex(ValueError, "source_record_snapshot_drift"):
-            source._validate(captures)
+        docs["page_000"]["features"][0]["attributes"]["Feature_ID"] = "edited"
+        fields, features, audit = source._validate(_captures(docs))
+        self.assertEqual(len(features), FIXTURE_COUNT)
+        self.assertEqual(features[0]["attributes"]["Feature_ID"], "edited")
 
 
 class SyntheticCompleteCaptureTests(unittest.TestCase):
@@ -376,15 +369,15 @@ class SyntheticCompleteCaptureTests(unittest.TestCase):
         with patch.multiple(source, **_fixture_pins(docs)):
             fields, features, audit = source._validate(_captures(docs))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_feature_count"], source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(len(features), FIXTURE_COUNT)
+        self.assertEqual(audit["source_feature_count"], FIXTURE_COUNT)
+        self.assertEqual(audit["source_id_sha256"], source._sha(source._canonical(FIXTURE_IDS)))
         self.assertEqual(audit["source_id_min"], 1)
-        self.assertEqual(audit["source_id_max"], source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_feature_id_unique_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["source_id_max"], FIXTURE_COUNT)
+        self.assertEqual(audit["source_feature_id_unique_count"], FIXTURE_COUNT)
         self.assertEqual(audit["source_feature_id_duplicate_count"], 0)
-        self.assertEqual(audit["source_polygon_vertex_count"], source.EXPECTED_COUNT * 5)
-        self.assertEqual(audit["source_ring_count_histogram"], {"1": source.EXPECTED_COUNT})
+        self.assertEqual(audit["source_polygon_vertex_count"], FIXTURE_COUNT * 5)
+        self.assertEqual(audit["source_ring_count_histogram"], {"1": FIXTURE_COUNT})
         self.assertEqual(audit["source_coverage_extent"], source.EXPECTED_EXTENT)
         self.assertFalse(audit["bts_item_succession_claimed"])
         self.assertEqual(audit["prior_bts_item_id"], source.PRIOR_BTS_ITEM_ID)
@@ -396,7 +389,7 @@ class SyntheticCompleteCaptureTests(unittest.TestCase):
         docs["page_000"]["features"][2]["attributes"]["Feature_ID"] = None
         with patch.multiple(source, **_fixture_pins(docs)):
             _fields, features, audit = source._validate(_captures(docs))
-        self.assertEqual(audit["source_feature_id_unique_count"], source.EXPECTED_COUNT - 1)
+        self.assertEqual(audit["source_feature_id_unique_count"], FIXTURE_COUNT - 1)
         self.assertEqual(audit["source_feature_id_duplicate_count"], 1)
         self.assertEqual(features[1]["attributes"]["Feature_ID"],
                          features[0]["attributes"]["Feature_ID"])
@@ -477,8 +470,9 @@ class CaptureFunctionTests(unittest.TestCase):
         # live capture path fails inside validation and must quarantine everything
         # it already captured instead of leaving an unsealed attempt behind.
         docs = _docs()
+        docs["count_after"]["count"] = FIXTURE_COUNT + 1
         bodies = {url: _body(docs[name])
-                  for name, url in source._capture_urls(source.EXPECTED_IDS)}
+                  for name, url in source._capture_urls(FIXTURE_IDS)}
         with tempfile.TemporaryDirectory() as tmp:
             capture_root = Path(tmp) / "captures"
             capture_root.mkdir()
@@ -487,13 +481,13 @@ class CaptureFunctionTests(unittest.TestCase):
                     patch.object(source.httpx, "Client",
                                  lambda **kwargs: _FakeClient(bodies)):
                 usage.return_value.free = 1_000_000_000
-                with self.assertRaisesRegex(ValueError, "source_record_snapshot_drift"):
+                with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                     source.capture_usace_lock_gate_areas(
                         storage, version="draft", capture_directory=str(capture_root))
             manifest = json.loads((capture_root / "capture_manifest.json").read_bytes())
             self.assertIs(manifest["complete"], False)
             self.assertEqual(manifest["error_code"], "ValueError")
-            self.assertEqual(set(manifest["receipts"]), source.EXPECTED_CAPTURE_NAMES)
+            self.assertEqual(set(manifest["receipts"]), source._capture_names(FIXTURE_IDS))
             quarantined = [key for key in storage.list_prefix()
                            if key.startswith(f"_quarantine/{source.DATASET_SLUG}/")]
             self.assertTrue(quarantined)
@@ -502,9 +496,10 @@ class CaptureFunctionTests(unittest.TestCase):
             failure = json.loads(storage.read_key(base + "metadata/failure.json"))
             self.assertEqual(failure["reason_code"], "ValueError")
             self.assertEqual(sorted(failure["captured_names"]),
-                             sorted(source.EXPECTED_CAPTURE_NAMES))
-            for name in source.EXPECTED_CAPTURE_NAMES:
-                self.assertEqual(storage.read_key(f"{base}raw/{name}.body"), _body(docs[name]))
+                             sorted(source._capture_names(FIXTURE_IDS)))
+            urls = dict(source._capture_urls(FIXTURE_IDS))
+            for name in source._capture_names(FIXTURE_IDS):
+                self.assertEqual(storage.read_key(f"{base}raw/{name}.body"), bodies[urls[name]])
             for key in quarantined:
                 self.assertFalse(key.startswith(f"{source.DATASET_SLUG}/"))
 
@@ -551,7 +546,7 @@ class CaptureFunctionTests(unittest.TestCase):
                 audit_before = storage.read_key(f"{prefix}/metadata/source_audit.json")
                 receipts_before = {
                     name: storage.read_key(f"{prefix}/raw/{name}.receipt.json")
-                    for name in source.EXPECTED_CAPTURE_NAMES}
+                    for name in source._capture_names(FIXTURE_IDS)}
                 for name, receipt in json.loads(
                         (root / "capture_manifest.json").read_bytes())["receipts"].items():
                     receipt["observed_at"] = "2026-11-10T00:00:00Z"
@@ -567,7 +562,7 @@ class CaptureFunctionTests(unittest.TestCase):
                     storage, version="draft", capture_directory=str(root))
             self.assertTrue(second["reused"])
             self.assertEqual(first["version"], second["version"])
-            self.assertEqual(second["feature_count"], source.EXPECTED_COUNT)
+            self.assertEqual(second["feature_count"], FIXTURE_COUNT)
             self.assertEqual(second["source_population_complete"], True)
             self.assertFalse(second["release_accepted"])
             self.assertEqual(storage.read_key(f"{prefix}/metadata/source_manifest.json"),
@@ -576,7 +571,7 @@ class CaptureFunctionTests(unittest.TestCase):
                              audit_before)
             self.assertEqual({
                 name: storage.read_key(f"{prefix}/raw/{name}.receipt.json")
-                for name in source.EXPECTED_CAPTURE_NAMES}, receipts_before)
+                for name in source._capture_names(FIXTURE_IDS)}, receipts_before)
 
 
 class PromotionRefusalTests(unittest.TestCase):

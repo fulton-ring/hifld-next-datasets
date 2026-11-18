@@ -16,11 +16,15 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
+
+FIXTURE_IDS = list(range(1, 557))
+FIXTURE_COUNT = len(FIXTURE_IDS)
+
 class HarborFacilityLocationsUsaceIencTests(unittest.TestCase):
     def test_registered_asset_and_stopped_refresh_gate(self):
         self.assertIn(harbor_facility_locations_usace_ienc, hifld_ingest_assets)
         self.assertEqual(harbor_facility_locations_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        passed = harbor_facility_locations_usace_ienc_complete({"feature_count": 556, "source_population_complete": True})
+        passed = harbor_facility_locations_usace_ienc_complete({"feature_count": 556, "source_reported_count": FIXTURE_COUNT, "source_population_complete": True})
         self.assertTrue(passed.passed)
         self.assertFalse(passed.metadata["release_accepted"].value)
 
@@ -37,7 +41,7 @@ class HarborFacilityLocationsUsaceIencTests(unittest.TestCase):
                  "spatialReference": {"latestWkid": 4326}, "extent": {**source.EXPECTED_EXTENT, "spatialReference": {"latestWkid": 4326}},
                  "fields": source.EXPECTED_FIELD_DECLARATIONS}
         attributes = []
-        for oid in source.EXPECTED_IDS:
+        for oid in FIXTURE_IDS:
             values = {field["name"]: (oid if field["name"] == "OBJECTID" else
                                       60000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}")
                       for field in source.ATTRIBUTE_FIELDS}
@@ -49,15 +53,15 @@ class HarborFacilityLocationsUsaceIencTests(unittest.TestCase):
             "bts_item": {"id": source.BTS_ITEM_ID, "owner": "USDOT_BTS", "type": "PDF", "title": "Inland Electronic Navigational Charts",
                          "description": "USACE updates. Feature classes are https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes and USACE_IENC_Master_Service_gdb.zip."},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/HARBOUR_FACILITY_POINT", "type": "MapServer"}]},
-            "service_before": service, "layer_before": layer, "count_before": {"count": 556}, "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "service_before": service, "layer_before": layer, "count_before": {"count": 556}, "ids_before": {"objectIds": FIXTURE_IDS},
             "features": features, "layer_after": json.loads(json.dumps(layer)), "count_after": {"count": 556},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "ids_after": {"objectIds": FIXTURE_IDS},
         }
 
     def _capture_directory(self, root: Path):
         docs = self._documents()
         receipts = {}
-        expected_urls = dict(source._capture_urls(source.EXPECTED_IDS))
+        expected_urls = dict(source._capture_urls(FIXTURE_IDS))
         for name, doc in docs.items():
             body = _canonical(doc)
             (root / f"{name}.body").write_bytes(body)
@@ -103,7 +107,7 @@ class HarborFacilityLocationsUsaceIencTests(unittest.TestCase):
         fields, features, audit = source._validate(captures)
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 556)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], source._sha(_canonical(FIXTURE_IDS)))
         self.assertEqual(audit["source_vertex_count"], 556)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "Feature_ID-1")
         self.assertEqual(features[0]["geometry"]["x"], source.EXPECTED_EXTENT["xmin"] + 0.0001)
@@ -112,8 +116,8 @@ class HarborFacilityLocationsUsaceIencTests(unittest.TestCase):
         docs = self._documents(); docs = json.loads(json.dumps(docs)); docs["layer_before"]["fields"][2]["name"] = "Changed"
         with self.assertRaisesRegex(ValueError, "source_field_schema_drift"):
             source._validate({n: (_canonical(v), {}) for n, v in docs.items()})
-        docs = self._documents(); docs = json.loads(json.dumps(docs)); docs["ids_after"]["objectIds"] = [*source.EXPECTED_IDS[:-1]]
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        docs = self._documents(); docs = json.loads(json.dumps(docs)); docs["ids_after"]["objectIds"] = [*FIXTURE_IDS[:-1]]
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate({n: (_canonical(v), {}) for n, v in docs.items()})
         docs = self._documents(); docs = json.loads(json.dumps(docs))
         docs["features"]["features"][0]["geometry"]["unexpected_ordinate"] = 20

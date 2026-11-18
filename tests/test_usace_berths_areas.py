@@ -24,7 +24,7 @@ class UsaceBerthsAreasTests(unittest.TestCase):
     def test_asset_is_registered_and_refresh_is_stopped_with_acceptance_false(self):
         self.assertIn(usace_berths_areas_usace_ienc, hifld_ingest_assets)
         self.assertEqual(usace_berths_areas_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        result = usace_berths_areas_complete({"feature_count": 1108, "source_population_complete": True})
+        result = usace_berths_areas_complete({"feature_count": 1108, "source_reported_count": 1108, "source_population_complete": True})
         self.assertTrue(result.passed)
         self.assertFalse(result.metadata["release_accepted"].value)
         self.assertFalse(result.metadata["rights_accepted"].value)
@@ -125,7 +125,7 @@ class BtsSourceChainContractTests(unittest.TestCase):
             "https://www.arcgis.com/sharing/rest/content/items/"
             "7ec34864c8804468a9cf52d437fe4b6c?f=json",
         )
-        requested = [url for _name, url in source._capture_urls(source.EXPECTED_IDS)]
+        requested = [url for _name, url in source._capture_urls(list(range(1, 4)))]
         self.assertIn(source.BTS_ITEM_URL, requested)
         self.assertTrue(all(source.PRIOR_BTS_ITEM_ID not in url for url in requested))
 

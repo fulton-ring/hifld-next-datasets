@@ -27,6 +27,7 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
+from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "submarine-pipeline-locations-usace-ienc"
@@ -38,9 +39,6 @@ SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/SU
 LAYER_ID = 26
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 919
-EXPECTED_IDS = list(range(1, 920))
-EXPECTED_ID_SHA256 = "ebce9f718feaf9cceea314d7883bc01fb9f963191ec82e6e61c140f0df1f06be"
 PAGE_MAX_BYTES = 8_000_000
 CAPTURE_MAX_BYTES = 192_000_000
 EXPECTED_EXTENT = {"xmin": -96.38209099999995, "ymin": 30.979718800000057,
@@ -157,7 +155,11 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_urls(EXPECTED_IDS))
+    ids_body, _ids_wire, _ids_receipt = _load_capture(root, "ids_before")
+    replay_ids = json.loads(ids_body).get("objectIds")
+    if not isinstance(replay_ids, list) or not replay_ids or any(type(oid) is not int for oid in replay_ids):
+        raise ValueError("retained_capture_id_roster_invalid")
+    expected_urls = dict(_capture_urls(replay_ids))
     captures = {}
     for name in sorted(manifest["receipts"]):
         body, _wire, receipt = _load_capture(root, name)
@@ -206,18 +208,13 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     # vertex is checked below to be exactly XY; no ordinate is discarded.
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (ids_before != EXPECTED_IDS or ids_after != ids_before or len(set(ids_before)) != EXPECTED_COUNT
-            or _sha(_canonical(ids_before)) != EXPECTED_ID_SHA256):
-        raise ValueError("source_id_population_drift")
+    ids_before = capture_witness(captures)
     page = docs["features"]
     if "error" in page or page.get("exceededTransferLimit") is True:
         raise ValueError("source_feature_query_error_or_truncation")
     _validate_spatial_reference(page.get("spatialReference"), "source_feature_query")
     features = page.get("features")
-    if not isinstance(features, list) or len(features) != EXPECTED_COUNT:
+    if not isinstance(features, list) or len(features) != len(ids_before):
         raise ValueError("source_feature_population_incomplete")
     expected_attrs = [field["name"] for field in ATTRIBUTE_FIELDS]
     ids = []
@@ -238,7 +235,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                 raise ValueError("source_string_value_type_drift:" + field["name"])
         feature["attributes"] = {name: attrs[name] for name in expected_attrs}
         oid = attrs["OBJECTID"]
-        if oid not in EXPECTED_IDS:
+        if oid not in ids_before:
             raise ValueError("source_oid_roster_drift")
         ids.append(oid)
         if not isinstance(geometry, dict) or set(geometry) - {"x", "y", "spatialReference"}:
@@ -257,7 +254,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                 and EXPECTED_EXTENT["ymin"] <= latitude <= EXPECTED_EXTENT["ymax"]):
             raise ValueError("source_feature_outside_coverage_extent")
         coordinate_values.append((longitude, latitude))
-    if sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT:
+    if sorted(ids) != ids_before or len(set(ids)) != len(ids_before):
         raise ValueError("source_feature_ID_population_drift")
     observed_extent = {
         "xmin": min(x for x, _ in coordinate_values), "ymin": min(y for _, y in coordinate_values),
@@ -363,8 +360,9 @@ def capture_submarine_pipeline_locations_usace_ienc(storage: StagingStorageResou
                 body, receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                                          root, "ids_before")
                 ids = json.loads(body).get("objectIds")
-                if (not isinstance(ids, list) or ids != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT
-                        or any(type(oid) is not int for oid in ids)):
+                if (not isinstance(ids, list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
                     raise ValueError("source_seed_ID_population_drift")
                 urls = _capture_urls(ids)
                 urls = [(name, url) for name, url in urls if name != "ids_before"]
@@ -430,7 +428,7 @@ def capture_submarine_pipeline_locations_usace_ienc(storage: StagingStorageResou
                 "source_modified": None, "date_issued": None, "date_modified": None, "processor": "HIFLD Next",
                 "code_commit": identity["code_commit"], "inputs": inputs,
                 "transformations": [{"operation": "Esri JSON Point to GeoParquet WKB candidate; source XY ordinates preserved",
-                                     "parameters": {"feature_count": EXPECTED_COUNT, "source_fields": "all declared non-geometry fields retained in source order and declared types",
+                                     "parameters": {"feature_count": audit["source_feature_count"], "source_fields": "all declared non-geometry fields retained in source order and declared types",
                                                     "source_ids": "OBJECTID and Feature_ID preserved unchanged", "source_crs": "EPSG:4326", "source_geometry": "2D point ordinates exactly as captured; no projection or coordinate repair",
                                                     "raw_evidence": "complete decoded response and wire bytes retained with checksummed receipts", "candidate_status": "unapproved"}}],
                 "lineage": "BTS NTAD IENC item 7ec34864c8804468a9cf52d437fe4b6c identifies the IENC program, states that USACE/Army Geospatial Center updates it twice monthly, and links this official USACE IENC Feature Classes service and master file geodatabase. This candidate is exactly the SUBMARINE_PIPELINE_POINT service layer 26; its observed 919 features cover inland waterway submarine pipeline locations and are not represented as national coverage. The DataLumos item 240657 (HIFLD archive inventory entry submarine-pipeline-locations-usace-ienc) is the historical archive fallback, not the maintained feed.",
@@ -479,9 +477,10 @@ def capture_submarine_pipeline_locations_usace_ienc(storage: StagingStorageResou
                 raise ValueError("cached_source_evidence_changed:" + name)
         verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version, fingerprint, identity,
                                 audit["source_record_sha256"], audit["source_schema_sha256"], original.get("objects", {}), original_receipts)
-        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version, "feature_count": EXPECTED_COUNT,
-                "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1,
-                "source_id_max": EXPECTED_COUNT, "source_schema_sha256": audit["source_schema_sha256"],
+        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version, "feature_count": audit["source_feature_count"],
+                "source_reported_count": audit["source_feature_count"],
+                "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+                "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
                 "source_coverage_scope": audit["source_coverage_scope"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_capture_evidence_sha256": capture_sha,
@@ -506,9 +505,10 @@ def capture_submarine_pipeline_locations_usace_ienc(storage: StagingStorageResou
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
     )
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version, "feature_count": EXPECTED_COUNT,
-            "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1,
-            "source_id_max": EXPECTED_COUNT, "source_schema_sha256": audit["source_schema_sha256"],
+    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version, "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"],
+            "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+            "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "source_capture_evidence_sha256": capture_sha,
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,

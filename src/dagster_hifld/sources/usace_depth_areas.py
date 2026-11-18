@@ -27,6 +27,7 @@ from dagster_hifld.http_capture import capture_http_response, capture_roster_dig
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import (
     _validate_spatial_reference, esri_polygon_wkb as _esri_polygon,
@@ -46,9 +47,6 @@ SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_
 BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PUBLISHER = "U.S. Army Corps of Engineers, USACE IENC Feature Classes service"
-EXPECTED_COUNT = 5778
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "b3f5daae6c2a30af51ca89fb68353fd6a5bf0e75b9133a594940ac430accc28e"
 PAGE_SIZE = 200
 PAGE_SIZE_AFTER_14 = 50
 PAGE_SIZE_TRANSITION_ID = 2801
@@ -243,7 +241,8 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
-    expected_names = {name for name,_url in _capture_roster(EXPECTED_IDS)}
+    before = capture_witness(captures)
+    expected_names = {name for name,_url in _capture_roster(before)}
     if not expected_names <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
@@ -289,14 +288,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     extent = layer.get("extent", {})
     if "spatialReference" in extent:
         _validate_spatial_reference(extent["spatialReference"], "source_layer_extent")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if not isinstance(before,list) or before != after or before != EXPECTED_IDS or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT or _sha(_canonical(before)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_population_drift")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
-    batches=_page_batches(EXPECTED_IDS)
+    batches=_page_batches(before)
     if pages != [f"page_{index:03d}" for index in range(len(batches))]:
         raise ValueError("source_page_roster_incomplete")
     for index, name in enumerate(pages):
@@ -357,7 +351,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         geometry=shapely.from_wkb(_esri_polygon(geom))
         geometry_empty += int(geometry.is_empty)
         geometry_valid += int(geometry.is_valid and not geometry.is_empty)
-    if len(features)!=EXPECTED_COUNT or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT:
+    if len(features)!=len(before) or sorted(got)!=sorted(before) or len(set(got))!=len(before):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     rows=[{"attributes":f["attributes"],"geometry":f["geometry"]} for f in features]
@@ -427,9 +421,10 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
                 raise ValueError("retained_capture_artifact_digest_mismatch")
             ids_body,ids_receipt=_load_replay(root,"ids_before")
             ids=json.loads(ids_body).get("objectIds")
-            if not isinstance(ids,list): raise ValueError("retained_id_roster_invalid")
-            if ids != EXPECTED_IDS or _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-                raise ValueError("retained_id_population_drift")
+            if (not isinstance(ids,list) or not ids
+                    or any(type(oid) is not int or oid <= 0 for oid in ids)
+                    or len(set(ids)) != len(ids)):
+                raise ValueError("retained_id_roster_invalid")
             names=[name for name,_url in _capture_roster(ids)]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
@@ -457,29 +452,44 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
             existing_bytes=sum(p.stat().st_size for p in budget_root.rglob("*") if p.is_file() and p.suffix in {".body",".wire"})
             capture_budget=[existing_bytes]
             if existing_bytes>MAX_CAPTURE_BYTES: raise ValueError("source_capture_budget_exceeded_before_request")
+            found=set()
             if preexisting:
-                expected_urls=dict(_capture_roster(EXPECTED_IDS))
-                expected_names=set(expected_urls)
                 found={path.name.removesuffix(".body") for path in root.glob("*.body")}
-                if not found or not found <= expected_names:
+                if not found:
                     raise ValueError("partial_capture_name_roster_invalid")
-                for name in found:
-                    body,receipt=_load_replay(root,name)
-                    if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
-                            or receipt.get("final_url") != expected_urls[name]):
-                        raise ValueError("partial_capture_request_identity_mismatch:" + name)
-                    captures[name]=(body,receipt)
-                for name in found:
-                    if not (root/f"{name}.wire").is_file() or not (root/f"{name}.receipt.json").is_file():
-                        raise ValueError("partial_capture_artifact_trio_incomplete:" + name)
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
-                expected_urls=dict(_capture_roster(EXPECTED_IDS))
+                if "ids_before" in found:
+                    ids_body,ids_receipt=_load_replay(root,"ids_before")
+                else:
+                    ids_body,ids_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_before",capture_budget)
+                    found.add("ids_before")
+                ids=json.loads(ids_body).get("objectIds")
+                if (not isinstance(ids,list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
+                    raise ValueError("source_seed_id_population_drift")
+                captures["ids_before"]=(ids_body,ids_receipt)
+                expected_urls=dict(_capture_roster(ids))
                 if preexisting:
+                    expected_names=set(expected_urls)
+                    if not found <= expected_names:
+                        raise ValueError("partial_capture_name_roster_invalid")
+                    for name in found:
+                        if name == "ids_before":
+                            continue
+                        body,receipt=_load_replay(root,name)
+                        if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
+                                or receipt.get("final_url") != expected_urls[name]):
+                            raise ValueError("partial_capture_request_identity_mismatch:" + name)
+                        captures[name]=(body,receipt)
+                    for name in found:
+                        if not (root/f"{name}.wire").is_file() or not (root/f"{name}.receipt.json").is_file():
+                            raise ValueError("partial_capture_artifact_trio_incomplete:" + name)
                     for suffix in ("body", "wire", "receipt.json"):
                         artifact_names={path.name.removesuffix("."+suffix) for path in root.glob("*."+suffix)}
                         if artifact_names != found:
                             raise ValueError("partial_capture_artifact_roster_mismatch")
-                for name,url in _capture_roster(EXPECTED_IDS):
+                for name,url in _capture_roster(ids):
                     if name in captures:
                         continue
                     captures[name]=_fetch_retry(client,url,root,name,capture_budget)
@@ -559,7 +569,7 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
             fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],
             payload.get("objects",{}),original_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":audit["source_feature_count"],"source_population_complete":True,
+            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_capture_sha256":audit["source_capture_sha256"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
@@ -572,4 +582,4 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
     from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_capture_sha256":audit["source_capture_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_capture_sha256":audit["source_capture_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

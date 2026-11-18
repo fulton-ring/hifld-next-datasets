@@ -47,8 +47,6 @@ HISTORICAL_ARCHIVE_URL = "https://www.datalumos.org/datalumos/project/239729/ver
 SERVICE_URL = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/Waterway_Networks/FeatureServer"
 LAYER_ID = 0
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-EXPECTED_COUNT = 6255
-EXPECTED_SOURCE_IDS = tuple(range(1, EXPECTED_COUNT + 1))
 EXPECTED_FIELDS = (
     "OBJECTID", "DATA", "NODENUM", "FEATURID", "PORT_ID", "PORT_NAME",
     "STATE", "WHO_MOD", "DATE_MOD", "NODE_SRC", "FIPS", "NON_US",
@@ -137,16 +135,13 @@ def _validate_source(bts: dict, item: dict, service: dict, layer: dict, count: d
     id_meta = next(f for f in fields if f["name"] == EXPECTED_ID_FIELD)
     if id_meta.get("type") != "esriFieldTypeOID" or id_meta.get("nullable") is not False:
         raise ValueError("USACE_node_ID_contract_drift")
-    if count.get("count") != EXPECTED_COUNT:
-        raise ValueError("USACE_node_population_drift")
+    count_value = count.get("count")
     values = ids.get("objectIds")
-    if (not isinstance(values, list) or len(values) != EXPECTED_COUNT
-            or len(set(values)) != EXPECTED_COUNT or any(type(value) is not int for value in values)):
-        raise ValueError("USACE_node_ID_population_invalid")
-    source_ids = sorted(values)
-    if tuple(source_ids) != EXPECTED_SOURCE_IDS:
-        raise ValueError("USACE_node_ID_baseline_drift")
-    return fields, source_ids
+    if (type(count_value) is not int or count_value < 1 or not isinstance(values, list)
+            or len(values) != count_value or len(set(values)) != count_value
+            or any(type(value) is not int or value <= 0 for value in values)):
+        raise ValueError("USACE_node_population_or_ID_invalid")
+    return fields, sorted(values)
 
 
 def _processing_identity() -> dict[str, object]:
@@ -215,7 +210,7 @@ def _load_retained_input(root: Path) -> tuple[Path, dict, dict, list[int]]:
         raise ValueError("retained_native_input_missing_or_unsafe")
     manifest, audit = json.loads(manifest_path.read_text()), json.loads(audit_path.read_text())
     if (manifest.get("source_url") != LAYER_URL or manifest.get("bts_distribution_item") != BTS_ITEM_URL
-            or manifest.get("source_count") != EXPECTED_COUNT or audit.get("source_count") != EXPECTED_COUNT
+            or manifest.get("source_count") != audit.get("source_count")
             or manifest.get("source_id_field") != EXPECTED_ID_FIELD
             or manifest.get("source_CRS") != f"EPSG:{EXPECTED_CRS}"
             or manifest.get("source_geometry_type") != "Point"
@@ -248,8 +243,10 @@ def _load_retained_input(root: Path) -> tuple[Path, dict, dict, list[int]]:
             or sha256_file(archive_path) != export["sha256"]
             or archive_path.stat().st_size != export["bytes"]):
         raise ValueError("retained_native_archive_digest_drift")
-    ids = list(EXPECTED_SOURCE_IDS)
-    if sha256(canonical_json(ids)) != audit.get("source_id_sha256"):
+    ids = audit.get("source_ids")
+    if (not isinstance(ids, list) or len(ids) != audit.get("source_count")
+            or any(type(value) is not int or value <= 0 for value in ids)
+            or sha256(canonical_json(ids)) != audit.get("source_id_sha256")):
         raise ValueError("retained_native_input_ID_baseline_drift")
     if sha256(canonical_json(fields)) != audit.get("source_schema_sha256"):
         raise ValueError("retained_native_input_schema_digest_drift")
@@ -405,7 +402,7 @@ def capture_usace_waterway_nodes(
                 captured[name] = _capture(client, url, capture_root, name)
         after = {name: json.loads(body) for name, (body, _) in captured.items() if name.endswith("_after")}
         if (after["layer_after"] != docs["layer_before"]
-                or after["count_after"].get("count") != EXPECTED_COUNT
+                or after["count_after"].get("count") != docs["count_before"].get("count")
                 or sorted(after["ids_after"].get("objectIds", [])) != source_ids):
             raise ValueError("USACE_node_source_changed_during_capture")
         receipts = {name: receipt for name, (_, receipt) in sorted(captured.items())}
@@ -431,7 +428,7 @@ def capture_usace_waterway_nodes(
         gdb_path, gdb_root, integrity = extract_filegdb(
             archive_path, Path(scratch), expected_layer="Waterway_Network_Node",
             expected_property_names=[name for name in EXPECTED_FIELDS if name != EXPECTED_ID_FIELD],
-            expected_count=EXPECTED_COUNT, expected_ids=source_ids, expected_zm=False, binary_fields=(),
+            expected_count=len(source_ids), expected_ids=source_ids, expected_zm=False, binary_fields=(),
         )
         if offline_replay:
             current_files = {path.relative_to(prior_gdb_root).as_posix(): sha256_file(path)
@@ -456,7 +453,7 @@ def capture_usace_waterway_nodes(
                     raise ValueError("USACE_node_nonfinite_coordinate")
                 bounds = [min(bounds[0], x), min(bounds[1], y), max(bounds[2], x), max(bounds[3], y)]
                 geometry_count += 1
-        if (geometry_count + null_geometry_count != EXPECTED_COUNT or geometry_count == 0
+        if (geometry_count + null_geometry_count != len(source_ids) or geometry_count == 0
                 or any(not math.isclose(actual, expected, rel_tol=0.0, abs_tol=1e-6)
                        for actual, expected in zip(bounds, EXPECTED_EXTENT))):
             raise ValueError("USACE_node_export_geometry_coverage_drift")
@@ -481,7 +478,7 @@ def capture_usace_waterway_nodes(
         staged_integrity = verify_staged_filegdb(storage, prefix, objects_list)
         original_audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_id_sha256": ids_sha,
+            "feature_count": len(source_ids), "source_reported_count": len(source_ids), "source_id_sha256": ids_sha,
             "source_archive_sha256": archive_hash, "source_archive_bytes": archive_descriptor["bytes"],
             "candidate_ready": True, "native_filegdb_preserved": True, "reused": True,
             "staged_filegdb_integrity": staged_integrity,
@@ -503,11 +500,11 @@ def capture_usace_waterway_nodes(
         "inputs": _provenance_inputs(receipts),
         "transformations": [{"operation": "Export-only ArcGIS syncModel=none FileGDB capture; exact point layer; no geometry or attribute conversion",
             "parameters": {"layer_id": LAYER_ID, "source_fields": len(fields), "source_CRS": f"EPSG:{EXPECTED_CRS}",
-                "hasZ": False, "hasM": False, "feature_count": EXPECTED_COUNT, "archive_sha256": archive_hash,
+                "hasZ": False, "hasM": False, "feature_count": len(source_ids), "archive_sha256": archive_hash,
                 "capture_mode": "retained_input_offline_replay" if offline_replay else "live_capture",
                 "retained_metadata_body_policy": "original metadata response bodies were not retained; original receipt hashes/timestamps are preserved" if offline_replay else "metadata response bodies are available in the retained capture directory"}}],
         "lineage": "BTS NTAD item 5bc82e3026354c9d92cbb551b3b2e2d2 links layer 0 of USACE service item ace7645d305647448a84492a3b909d48, owned by usace_iwr_cac. The native source identity remains pending maintainer decision.",
-        "source_fields": fields, "source_id_field": EXPECTED_ID_FIELD, "source_count": EXPECTED_COUNT,
+        "source_fields": fields, "source_id_field": EXPECTED_ID_FIELD, "source_count": len(source_ids),
         "source_CRS": f"EPSG:{EXPECTED_CRS}", "source_geometry_type": "Point",
         "source_hasZ": False, "source_hasM": False, "source_extent": list(EXPECTED_EXTENT),
         "exported_geometry_extent": bounds, "source_binary_fields": [],
@@ -529,7 +526,7 @@ def capture_usace_waterway_nodes(
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
     resolved_provenance = provenance_projection(manifest)
-    audit = {"source_count": EXPECTED_COUNT, "source_id_sha256": ids_sha,
+    audit = {"source_count": len(source_ids), "source_ids": source_ids, "source_id_sha256": ids_sha,
         "source_schema_sha256": schema_sha, "source_fields": fields,
         "source_CRS": f"EPSG:{EXPECTED_CRS}", "source_geometry_type": "Point",
         "source_hasZ": False, "source_hasM": False, "source_extent": list(EXPECTED_EXTENT),
@@ -575,7 +572,7 @@ def capture_usace_waterway_nodes(
         validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     staged_integrity = verify_staged_filegdb(storage, prefix, objects_list)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_COUNT, "source_id_sha256": ids_sha,
+        "feature_count": len(source_ids), "source_reported_count": len(source_ids), "source_id_sha256": ids_sha,
         "source_archive_sha256": archive_hash, "source_archive_bytes": archive_descriptor["bytes"],
         "candidate_ready": True, "native_filegdb_preserved": True, "reused": replayed,
         "staged_filegdb_integrity": staged_integrity, "source_null_geometry_count": null_geometry_count,

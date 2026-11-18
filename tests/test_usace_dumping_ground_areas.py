@@ -82,7 +82,7 @@ class UsaceDumpingGroundAreasSourceTest(unittest.TestCase):
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual([feature["attributes"]["OBJECTID"] for feature in features], [1])
         self.assertEqual(audit["source_feature_count"], 1)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], source._sha(source._canonical([1])))
         self.assertEqual(audit["observed_coordinate_dimensions"], [2])
         self.assertEqual(audit["source_vertex_count"], 5)
         self.assertEqual(audit["source_coverage_scope"],
@@ -91,7 +91,7 @@ class UsaceDumpingGroundAreasSourceTest(unittest.TestCase):
     def test_population_or_page_geometry_drift_fails_closed(self) -> None:
         docs = _docs()
         docs["ids_after"] = {"objectIds": [2]}
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate(_captures(docs))
         docs = _docs()
         docs["page_000"]["geometryType"] = "esriGeometryPoint"

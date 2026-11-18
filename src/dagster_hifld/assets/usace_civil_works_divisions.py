@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.usace_civil_works_divisions import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_usace_civil_works_divisions,
+    DATASET_SLUG, FILE_SLUG, capture_usace_civil_works_divisions,
 )
 
 
@@ -53,11 +54,12 @@ def usace_civil_works_divisions(context, config: UsaceCivilWorksDivisionsConfig,
 def usace_civil_works_divisions_complete(candidate: dict) -> AssetCheckResult:
     count = candidate.get("feature_count", 0)
     passed = (isinstance(count, int) and count > 0
-              and (EXPECTED_COUNT is None or count == EXPECTED_COUNT)
+              and count == candidate.get("source_reported_count")
               and bool(candidate.get("candidate_ready"))
               and not candidate.get("release_accepted", False))
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": count,
+        "source_reported_count": candidate.get("source_reported_count", "missing"),
         "null_geometry_count": candidate.get("null_geometry_count"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_release_accepted": False,
@@ -84,7 +86,10 @@ usace_civil_works_divisions_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+usace_civil_works_divisions_drift = register_approved_baseline_drift(
+    usace_civil_works_divisions, "usace_civil_works_divisions_drift")
+
 INGEST_ASSETS = [usace_civil_works_divisions]
-ASSET_CHECKS = [usace_civil_works_divisions_complete]
+ASSET_CHECKS = [usace_civil_works_divisions_complete, usace_civil_works_divisions_drift]
 JOBS = [usace_civil_works_divisions_draft_job]
 SCHEDULES = [usace_civil_works_divisions_draft_schedule]

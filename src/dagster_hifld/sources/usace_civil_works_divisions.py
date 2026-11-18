@@ -118,31 +118,6 @@ PAGE_SIZE = 200
 MAX_BODY_BYTES = 64_000_000
 SOURCE_SPATIAL_REFERENCE = {"wkid": 4140, "latestWkid": 4140}
 MAX_RECORD_COUNT = 1_000
-# The per-value and per-geometry baselines, gate counts and observed bounds are
-# pinned from a complete dated capture (2026-11-14). Unpinned values (None or
-# "") are checked only once pinned; a later producer republish surfaces as an
-# explicit roster, record or geometry drift refusal.
-EXPECTED_COUNT = 8
-EXPECTED_IDS_SHA256 = ("b2ddd6543011e658aaebc223b42021e89fa9a18bd1f2207f6cb68e73ca"
-                       "5688b3")
-EXPECTED_SCHEMA_SHA256 = ("d068c175b5fe1d48ed3d05549c313655c38a68a04f7d587fa2ce651d2"
-                          "1d7a4f8")
-EXPECTED_RECORD_SHA256 = ("76fb71879f960856fe609c9f206746215ef0cbe30cc020250e30e615b"
-                          "5c6808f")
-EXPECTED_GEOMETRY_SHA256 = ("4e5400aaffd04f623be76d54ade5eb7e9c47b7be290f2386d7bfdc4c"
-                            "3b8b993b")
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_SHELL_COUNT_DISTRIBUTION = {1: 4, 2: 1, 7: 2, 94: 1}
-EXPECTED_HOLE_COUNT = 119
-EXPECTED_VERTEX_COUNT = 404_216
-EXPECTED_OBSERVED_BOUNDS = [-179.231070639888, -14.6018199641378,
-                            179.775108112044, 71.439786190856]
-BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests, gate counts and observed bounds "
-    "are pinned from a completed capture; unpinned values are checked only once "
-    "pinned. The producer republishes this hosted service and can resequence all "
-    "OBJECTIDs between requests; a later republish surfaces as an explicit drift "
-    "refusal.")
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID", False),
     ("DIVISION", "esriFieldTypeString", True),
@@ -331,8 +306,6 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
             if not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids) \
                     or len(ids) != len(set(ids)):
                 raise ValueError("source_seed_id_roster_invalid")
-            if EXPECTED_COUNT is not None and len(ids) != EXPECTED_COUNT:
-                raise ValueError("source_count_drift")
             urls = [(n, u) for n, u in _capture_names(sorted(ids)) if n != "ids_before"]
             for name, url in urls:
                 body, receipt = _acquire_document(client, root, name, url)
@@ -436,10 +409,6 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
             or len(ids_before) != len(set(ids_before))):
         raise ValueError("source_id_population_changed_during_capture")
     count = len(ids_before)
-    if EXPECTED_COUNT is not None and count != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(sorted(ids_before))) != EXPECTED_IDS_SHA256:
-        raise ValueError("source_id_roster_drift")
     if docs["count_before"].get("count") != count or docs["count_after"].get("count") != count:
         raise ValueError("source_count_bracket_mismatch")
     service, layer, item = docs["service_before"], docs["layer_before"], docs["item_before"]
@@ -472,8 +441,6 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
     fields = _profile_fields(layer)
     if fields != _profile_fields(docs["layer_after"]):
         raise ValueError("source_schema_changed_during_capture")
-    if EXPECTED_SCHEMA_SHA256 and _sha(_canonical(fields)) != EXPECTED_SCHEMA_SHA256:
-        raise ValueError("source_schema_baseline_drift")
     if (docs["service_before"] != docs["service_after"] or layer != docs["layer_after"]
             or item != docs["item_after"]):
         raise ValueError("source_metadata_changed_during_capture")
@@ -551,28 +518,13 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
         for name in BLOB_FIELDS:
             if attrs[name] != EXPECTED_BLOB_JSON_VALUE:
                 raise ValueError("source_blob_field_json_value_drift:" + name)
-    if EXPECTED_NULL_GEOMETRY_COUNT is not None and null_geometry != EXPECTED_NULL_GEOMETRY_COUNT:
-        raise ValueError("source_null_geometry_count_drift")
-    if (EXPECTED_SHELL_COUNT_DISTRIBUTION is not None
-            and dict(sorted(shell_counts.items())) != EXPECTED_SHELL_COUNT_DISTRIBUTION):
-        raise ValueError("source_shell_count_distribution_drift")
-    if EXPECTED_HOLE_COUNT is not None and hole_count != EXPECTED_HOLE_COUNT:
-        raise ValueError("source_hole_count_drift")
-    if EXPECTED_VERTEX_COUNT is not None and vertex_count != EXPECTED_VERTEX_COUNT:
-        raise ValueError("source_vertex_count_drift")
     flat = [point for rings in geometry_parts if rings is not None
             for ring in rings for point in ring]
     bounds = None if not flat else [min(p[0] for p in flat), min(p[1] for p in flat),
                                     max(p[0] for p in flat), max(p[1] for p in flat)]
-    if EXPECTED_OBSERVED_BOUNDS is not None and bounds != EXPECTED_OBSERVED_BOUNDS:
-        raise ValueError("source_observed_bounds_drift")
     record_sha = _sha(_canonical(features))
-    if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_value_or_geometry_baseline_drift")
     geometry_sha = _sha(_canonical([[f["attributes"]["OBJECTID"], rings]
                                     for f, rings in zip(features, geometry_parts)]))
-    if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_or_coverage_drift")
     nulls = {name: sum(1 for f in features if f["attributes"][name] is None)
              for name in FIELD_NAMES}
     invalid_geometry_ids = [f["attributes"]["OBJECTID"] for f, geometry in zip(features, built)
@@ -601,7 +553,6 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
              "observed_service_last_data_edit": observed_data_edit,
              "service_current_version": service.get("currentVersion"),
              "source_fields": fields,
-             "baseline_pending_note": BASELINE_PENDING_NOTE,
              "crosswalk_doi": CROSSWALK_DOI,
              "crosswalk_anonymous_403_note": CROSSWALK_ANONYMOUS_403_NOTE,
              "hifld_portal_item_id": HIFLD_PORTAL_ITEM_ID,
@@ -752,7 +703,7 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
                                 audit["source_record_sha256"], audit["source_schema_sha256"],
                                 payload["objects"], receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-                "feature_count": audit["feature_count"],
+                "feature_count": audit["feature_count"], "source_reported_count": audit["feature_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json",
                 "null_geometry_count": audit["null_geometry_count"],
                 "source_id_sha256": audit["source_id_sha256"],
@@ -913,7 +864,7 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": audit["feature_count"],
+            "feature_count": audit["feature_count"], "source_reported_count": audit["feature_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "null_geometry_count": audit["null_geometry_count"],
             "source_id_sha256": audit["source_id_sha256"],
@@ -923,23 +874,3 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
             "rights_accepted": False, "source_authority_accepted": False,
             "mapping_approved": False, "release_accepted": False,
             "capture_directory": str(capture_root)}
-
-
-def build_usace_civil_works_divisions_baseline(capture_directory: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
-    capture_root = Path(capture_directory)
-    summary = json.loads((capture_root / "capture-summary.json").read_bytes())
-    if summary.get("complete") is not True:
-        raise ValueError("offline_native_capture_incomplete")
-    captures = _load_offline(capture_root)
-    _layer, _fields, _features, audit = _validate(captures)
-    return {"source_feature_count": audit["feature_count"],
-            "source_ids_sha256": audit["source_id_sha256"],
-            "source_schema_sha256": audit["source_schema_sha256"],
-            "source_record_sha256": audit["source_record_sha256"],
-            "source_geometry_sha256": audit["source_geometry_sha256"],
-            "source_null_geometry_count": audit["null_geometry_count"],
-            "source_shell_count_distribution": audit["shell_count_distribution"],
-            "source_hole_count": audit["hole_count"],
-            "source_vertex_count": audit["vertex_count"],
-            "observed_bounds": audit["geometry_bounds"]}
