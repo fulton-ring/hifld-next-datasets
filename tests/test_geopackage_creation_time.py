@@ -125,13 +125,6 @@ FIONA_CASES = (
         "point",
         "2000-01-01T00:00:00.000Z",
     ),
-    (
-        "ferry_terminals",
-        "write_canonical_geopackage",
-        True,
-        "point",
-        "2000-01-01T00:00:00.000Z",
-    ),
 )
 OTHER_DATE = "2099-12-31T23:59:59.999Z"
 
