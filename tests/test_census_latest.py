@@ -49,6 +49,111 @@ class CensusLatestTests(unittest.TestCase):
         self.assertNotEqual(version, census_latest.release_version('2026', 'b'*64, 'code'))
         self.assertNotEqual(version, census_latest.release_version('2027', 'a'*64, 'code'))
 
+
+class TigerGeodatabaseDiscoveryTests(unittest.TestCase):
+    ROOT = 'https://www2.census.gov/geo/tiger/'
+
+    def resolve(self, product, root, directories):
+        def respond(request):
+            url = str(request.url)
+            if url == self.ROOT:
+                return httpx.Response(200, stream=httpx.ByteStream(root.encode()), request=request)
+            if url in directories:
+                body = directories[url]
+                if body is None:
+                    return httpx.Response(404, stream=httpx.ByteStream(b''), request=request)
+                return httpx.Response(200, stream=httpx.ByteStream(body.encode()), request=request)
+            return httpx.Response(404, stream=httpx.ByteStream(b''), request=request)
+        with tempfile.TemporaryDirectory() as tmp, httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            return census_latest.discover_geodatabase(client, Path(tmp), product)
+
+    def test_newest_published_edition_and_exact_national_archive(self):
+        release = self.resolve(
+            'substategeo',
+            '<a href="TGRGDB24/">24</a><a href="TGRGDB26/">26</a>',
+            {'https://www2.census.gov/geo/tiger/TGRGDB26/':
+             '<a href="tlgdb_2026_01_al.gdb.zip">al</a><a href="tlgdb_2026_us_substategeo.gdb.zip">us</a>'})
+        self.assertEqual(release.vintage, 2026)
+        self.assertEqual(release.source_file, 'tlgdb_2026_us_substategeo.gdb.zip')
+        self.assertEqual(release.source_url, self.ROOT + 'TGRGDB26/tlgdb_2026_us_substategeo.gdb.zip')
+
+    def test_legacy_a_national_name_is_accepted(self):
+        release = self.resolve(
+            'school', '<a href="TGRGDB24/">24</a>',
+            {'https://www2.census.gov/geo/tiger/TGRGDB24/':
+             '<a href="tlgdb_2024_a_us_school.gdb.zip">us</a>'})
+        self.assertEqual(release.source_file, 'tlgdb_2024_a_us_school.gdb.zip')
+
+    def test_newest_incomplete_edition_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, 'published_geodatabase_missing_or_ambiguous'):
+            self.resolve(
+                'substategeo',
+                '<a href="TGRGDB26/">26</a><a href="TGRGDB27/">27</a>',
+                {'https://www2.census.gov/geo/tiger/TGRGDB27/':
+                 '<a href="tlgdb_2027_01_al.gdb.zip">al</a>'})
+
+    def test_absent_newest_directory_probes_the_previous_edition(self):
+        release = self.resolve(
+            'substategeo',
+            '<a href="TGRGDB26/">26</a><a href="TGRGDB27/">27</a>',
+            {'https://www2.census.gov/geo/tiger/TGRGDB27/': None,
+             'https://www2.census.gov/geo/tiger/TGRGDB26/':
+             '<a href="tlgdb_2026_us_substategeo.gdb.zip">us</a>'})
+        self.assertEqual(release.vintage, 2026)
+
+    def test_lookalike_and_external_links_are_not_editions(self):
+        with self.assertRaisesRegex(ValueError, 'geodatabase_editions_missing'):
+            self.resolve('substategeo', '<a href="TGRGDB26preview/">x</a>'
+                         '<a href="https://elsewhere.test/TGRGDB27/">x</a>', {})
+
+    def test_duplicate_archive_is_ambiguous(self):
+        with self.assertRaisesRegex(ValueError, 'published_geodatabase_missing_or_ambiguous'):
+            self.resolve(
+                'substategeo', '<a href="TGRGDB26/">26</a>',
+                {'https://www2.census.gov/geo/tiger/TGRGDB26/':
+                 '<a href="tlgdb_2026_us_substategeo.gdb.zip">a</a>'
+                 '<a href="tlgdb_2026_us_substategeo.gdb.zip">b</a>'})
+
+
+class TigerShapefileDiscoveryTests(unittest.TestCase):
+    ROOT = 'https://www2.census.gov/geo/tiger/'
+
+    def resolve(self, layer, product, root, directories, **kwargs):
+        def respond(request):
+            url = str(request.url)
+            if url == self.ROOT:
+                return httpx.Response(200, stream=httpx.ByteStream(root.encode()), request=request)
+            if url in directories:
+                body = directories[url]
+                if body is None:
+                    return httpx.Response(404, stream=httpx.ByteStream(b''), request=request)
+                return httpx.Response(200, stream=httpx.ByteStream(body.encode()), request=request)
+            return httpx.Response(404, stream=httpx.ByteStream(b''), request=request)
+        with tempfile.TemporaryDirectory() as tmp, httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            return census_latest.discover_shapefile(client, Path(tmp), layer, product, **kwargs)
+
+    def test_national_shapefile_uses_newest_complete_edition(self):
+        release = self.resolve(
+            'COUNTY', 'county', '<a href="TIGER2026/">26</a><a href="TIGER2027/">27</a>',
+            {'https://www2.census.gov/geo/tiger/TIGER2027/COUNTY/':
+             '<a href="tl_2027_us_county.zip">us</a>'})
+        self.assertEqual(release.vintage, 2027)
+        self.assertEqual(release.source_url, self.ROOT + 'TIGER2027/COUNTY/tl_2027_us_county.zip')
+
+    def test_state_shapefile_uses_exact_state_geoid(self):
+        release = self.resolve(
+            'SUBBARRIO', 'subbarrio', '<a href="TIGER2026/">26</a>',
+            {'https://www2.census.gov/geo/tiger/TIGER2026/SUBBARRIO/':
+             '<a href="tl_2026_72_subbarrio.zip">pr</a>'}, geoid='72')
+        self.assertEqual(release.source_file, 'tl_2026_72_subbarrio.zip')
+
+    def test_newest_incomplete_shapefile_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, 'published_archive_missing_or_ambiguous'):
+            self.resolve(
+                'COUNTY', 'county', '<a href="TIGER2026/">26</a><a href="TIGER2027/">27</a>',
+                {'https://www2.census.gov/geo/tiger/TIGER2027/COUNTY/':
+                 '<a href="tl_2026_us_county.zip">old</a>'})
+
 class CurrentRoadsTests(unittest.TestCase):
     @staticmethod
     def tiny_archive(directory, count=1, edition='2027'):
