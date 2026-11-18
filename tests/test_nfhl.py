@@ -628,6 +628,46 @@ class ResumeTests(NfhlCaptureCase):
         self.assertFalse(served & set(server.page_requests))
         self.assertEqual(result["page_count"], len(served) + len(server.page_requests))
 
+    def test_forced_restart_leaves_chunk_manifest_and_resume_does_not_refetch(self):
+        server = FakeMapServer(self.layer, max_record_count=3)
+        original = server.handle
+
+        def handle(request):
+            response = original(request)
+            if "outFields" in str(request.url) and len(server.page_requests) >= 4:
+                raise SystemExit("forced restart")
+            return response
+
+        settings = CaptureSettings(doc_delay=0, page_delay=0, transport=httpx.MockTransport(handle))
+        with self.assertRaises(SystemExit):
+            capture_nfhl_layer(self.storage, self.layer, settings=settings,
+                               capture_directory=str(self.captures))
+        root = self.captures / self.layer.slug
+        self.assertFalse((root / "capture_manifest.json").exists())
+        entries = [json.loads(line) for line in (root / "capture_chunks.jsonl").read_bytes().splitlines()]
+        completed = {entry["name"] for entry in entries}
+        self.assertTrue(completed)
+        self.assertTrue(all(entry["url"].startswith(SERVICE_URL) and entry["sha256"] for entry in entries))
+
+        resumed = FakeMapServer(self.layer, max_record_count=3)
+        result = self.run_capture(resumed, capture_directory=self.captures)
+        self.assertEqual(result["feature_count"], len(resumed.features))
+        self.assertGreaterEqual(result["reused_page_count"], len(completed))
+        reused_windows = {(int(name[5:15]), int(name[16:])) for name in completed}
+        self.assertFalse(reused_windows & set(resumed.page_requests))
+
+    def test_partial_trailing_chunk_log_line_is_ignored_on_resume(self):
+        server = FakeMapServer(self.layer, max_record_count=3)
+        first = self.run_capture(server, capture_directory=self.captures)
+        root = self.captures / self.layer.slug
+        with (root / "capture_chunks.jsonl").open("ab") as stream:
+            stream.write(b'{"name": "page_')
+        resumed = FakeMapServer(self.layer, max_record_count=3)
+        second = self.run_capture(resumed, capture_directory=self.captures)
+        self.assertEqual(second["version"], first["version"])
+        self.assertEqual(second["reused_page_count"], second["page_count"])
+        self.assertEqual(resumed.page_requests, [])
+
     def test_mismatched_page_evidence_is_retired_not_reused(self):
         server = FakeMapServer(self.layer, max_record_count=3)
         first = self.run_capture(server, capture_directory=self.captures)

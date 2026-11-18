@@ -23,6 +23,7 @@ import pyogrio
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.evidence_io import write_text_atomic
 from dagster_hifld.gdal import with_large_geojson_support
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
@@ -47,6 +48,7 @@ from dagster_hifld.sources.nfhl.capture import (
     CaptureSettings,
     EvidenceDirectory,
     LayerCapture,
+    append_capture_chunk,
     check_spatial_reference,
     strip_rotating_palette,
     window_width,
@@ -140,6 +142,7 @@ def _capture(cap: LayerCapture, layer: NfhlLayer, evidence: EvidenceDirectory, p
             for page in cap.windows(oid_field, before["min"], before["max"], width, spatial=not layer.is_table,
                                     source_zm=layer.source_zm):
                 writer.add_page(page)
+                append_capture_chunk(evidence.root, page)
         summary = writer.close()
     except BaseException:
         writer.abort()
@@ -180,6 +183,14 @@ class _EvidenceBodies(Mapping):
 
     def __len__(self) -> int:
         return len(self.names)
+
+
+def _chunk_count(cap: LayerCapture) -> int:
+    return sum(name.startswith("page_") for name in cap.log.accepted)
+
+
+def _write_capture_manifest(root: Path, manifest: dict[str, object]) -> None:
+    write_text_atomic(root / "capture_manifest.json", (canonical(manifest) + b"\n").decode())
 
 
 def check_local_staging(storage: StagingStorageResource) -> Path:
@@ -223,18 +234,20 @@ def capture_nfhl_layer(storage: StagingStorageResource, layer: NfhlLayer, *, cap
         except Exception as exc:
             parquet_path.unlink(missing_ok=True)
             reason = str(exc).split(":", 1)[0] or type(exc).__name__
-            (root / "capture_manifest.json").write_bytes(canonical({
+            _write_capture_manifest(root, {
                 "complete": False, "error": str(exc)[:2000], "error_type": type(exc).__name__,
                 "accepted": cap.log.accepted, "set_aside": cap.log.set_aside,
-                "retired_to": str(evidence.previous), "retired": evidence.retired}) + b"\n")
+                "chunk_count": _chunk_count(cap), "retired_to": str(evidence.previous),
+                "retired": evidence.retired})
             bodies = _EvidenceBodies(root)
             if bodies:
                 quarantine_incomplete_capture(storage, root, layer.slug, "capture", bodies, reason)
             raise
-        (root / "capture_manifest.json").write_bytes(canonical({
+        _write_capture_manifest(root, {
             "complete": True, "accepted": cap.log.accepted, "set_aside": cap.log.set_aside,
-            "retired": evidence.retired, "source_feature_count": result["feature_count"],
-            "source_record_sha256": result["source_record_sha256"]}) + b"\n")
+            "chunk_count": _chunk_count(cap), "retired": evidence.retired,
+            "source_feature_count": result["feature_count"],
+            "source_record_sha256": result["source_record_sha256"]})
         try:
             candidate = _stage_candidate(storage, layer, root, cap.log.accepted, result, parquet_path)
         finally:
