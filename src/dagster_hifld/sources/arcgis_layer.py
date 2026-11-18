@@ -63,6 +63,7 @@ def layer_capture_roster(
     page_namer: Callable[[int, Sequence[int]], str] | None = None,
     oid_field: str = "OBJECTID", spatial: bool = True,
     include_ids_before: bool = True,
+    after_order: Sequence[str] = ("layer_after", "count_after", "ids_after", "service_after"),
 ) -> list[tuple[str, str]]:
     """Ordered discovery, page and witness requests for one layer capture.
 
@@ -72,9 +73,14 @@ def layer_capture_roster(
     slice page per ``page_size`` IDs, the after witnesses, and optional trailing
     documents. Callers pass their own URL identity, page options and byte
     budgets. Parameter order is fixed so retained receipts stay byte-identical.
+    ``after_order`` sets the witness order and must contain the four witness
+    names once each.
     """
     if page_size < 1:
         raise ValueError("page_size_invalid")
+    witness_names = ("layer_after", "count_after", "ids_after", "service_after")
+    if sorted(after_order) != sorted(witness_names):
+        raise ValueError("after_order_invalid")
 
     def query(params: Mapping[str, object]) -> str:
         return layer_url + "/query?" + urlencode(params)
@@ -97,12 +103,13 @@ def layer_capture_roster(
             params.update(page_params)
         params.update({"orderByFields": f"{oid_field} ASC", "f": "json"})
         urls.append((name, query(params)))
-    urls.extend([
-        ("layer_after", layer_url + f"?f={layer_format}"),
-        ("count_after", query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-        ("ids_after", query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-        ("service_after", service_url + f"?f={service_format}"),
-    ])
+    witnesses = {
+        "layer_after": ("layer_after", layer_url + f"?f={layer_format}"),
+        "count_after": ("count_after", query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
+        "ids_after": ("ids_after", query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
+        "service_after": ("service_after", service_url + f"?f={service_format}"),
+    }
+    urls.extend(witnesses[name] for name in after_order)
     urls.extend(trailing_documents)
     return urls
 
