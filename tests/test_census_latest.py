@@ -125,6 +125,28 @@ class TigerGeodatabaseDiscoveryTests(unittest.TestCase):
                  '<a href="tlgdb_2026_us_substategeo.gdb.zip">b</a>'})
 
 
+class RetainedGeodatabaseReleaseTests(unittest.TestCase):
+    def test_url_and_receipt_rebuild_the_resolved_release(self):
+        url = 'https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_addr.gdb.zip'
+        release = census_latest.geodatabase_release_from_url(url, 'addr')
+        self.assertEqual(release.vintage, 2026)
+        self.assertEqual(release.source_file, 'tlgdb_2026_us_addr.gdb.zip')
+        self.assertEqual(release.directory_url, 'https://www2.census.gov/geo/tiger/TGRGDB26/')
+        self.assertEqual(release.as_metadata()['tiger_vintage'], '2026')
+        self.assertEqual(census_latest.geodatabase_release_from_receipt({'url': url}, 'addr'), release)
+
+    def test_wrong_product_host_or_edition_is_rejected(self):
+        for url, product in [
+            ('https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_addr.gdb.zip', 'substategeo'),
+            ('https://elsewhere.test/geo/tiger/TGRGDB26/tlgdb_2026_us_addr.gdb.zip', 'addr'),
+            ('https://www2.census.gov/geo/tiger/TGRGDB25/tlgdb_2026_us_addr.gdb.zip', 'addr'),
+        ]:
+            with self.subTest(url=url, product=product), self.assertRaisesRegex(ValueError, 'source_url_not_current_tgrgdb'):
+                census_latest.geodatabase_release_from_url(url, product)
+        with self.assertRaisesRegex(ValueError, 'source_url_not_current_tgrgdb'):
+            census_latest.geodatabase_release_from_receipt({'url': None}, 'addr')
+
+
 class TigerShapefileDiscoveryTests(unittest.TestCase):
     ROOT = 'https://www2.census.gov/geo/tiger/'
 

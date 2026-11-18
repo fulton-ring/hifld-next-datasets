@@ -17,7 +17,19 @@ import pandas as pd
 import pyarrow as pa
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources import address_ranges as source
+
+
+def _release(vintage=2026):
+    source_file = f"tlgdb_{vintage}_us_addr.gdb.zip"
+    directory = f"https://www2.census.gov/geo/tiger/TGRGDB{vintage % 100:02d}/"
+    return census_latest.GeodatabaseRelease(
+        vintage=vintage, product="addr", source_file=source_file,
+        source_url=directory + source_file, directory_url=directory,
+        listing_sha256="", listing_bytes=0,
+        latest_checked_at="2026-11-15T00:00:00+00:00", annual_listing_sha256="",
+    )
 
 
 ARCHIVE_MEMBERS = [
@@ -68,26 +80,33 @@ ARCHIVE_MEMBERS = [
 ]
 
 
-def _canonical_archive(member_count: int | None = None, corrupt: bool = False) -> bytes:
-    members = ARCHIVE_MEMBERS if member_count is None else ARCHIVE_MEMBERS[:member_count]
+def _members_for(release=None) -> list[str]:
+    root = (release or _release()).source_file[:-4]
+    return [name.replace("tlgdb_2026_us_addr.gdb", root) for name in ARCHIVE_MEMBERS]
+
+
+def _canonical_archive(member_count: int | None = None, corrupt: bool = False,
+                       release=None) -> bytes:
+    members = _members_for(release)
+    members = members if member_count is None else members[:member_count]
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
         for name in members:
             archive.writestr(name, b"fixture-" + name.encode())
     body = buffer.getvalue()
     if corrupt:
-        marker = body.index(b"fixture-" + ARCHIVE_MEMBERS[-1].encode())
+        marker = body.index(b"fixture-" + members[-1].encode())
         mutated = bytearray(body)
         mutated[marker] ^= 0xFF
         body = bytes(mutated)
     return body
 
 
-def _validate_archive_bytes(body: bytes) -> dict:
+def _validate_archive_bytes(body: bytes, release=None) -> dict:
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "archive.zip"
         path.write_bytes(body)
-        return source._validate_archive(path)
+        return source._validate_archive(path, release or _release())
 
 
 def _fixture_rows() -> pd.DataFrame:
@@ -157,24 +176,19 @@ def _batch_digest(batch: pa.RecordBatch, batch_index: int = 1) -> str:
 
 
 class AddressRangesContractTests(unittest.TestCase):
-    def test_pins_the_producer_maintained_tgrgdb26_archive(self):
+    def test_declares_current_tgrgdb_discovery_contract(self):
         self.assertEqual(source.DATASET_SLUG, "address-ranges")
         self.assertEqual(source.FILE_SLUG, "address-ranges")
-        self.assertEqual(source.SOURCE_URL,
-                         "https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_addr.gdb.zip")
+        self.assertEqual(source.GEODATABASE_PRODUCT, "addr")
         self.assertEqual(source.SOURCE_HOST, "www2.census.gov")
-        self.assertEqual(source.SOURCE_VINTAGE, "2026")
-        self.assertEqual(source.CANONICAL_SOURCE_KEY, "file_geodatabase/tlgdb_2026_us_addr.gdb.zip")
-        self.assertEqual(source.EXPECTED_ARCHIVE_BYTES, 1_756_498_039)
-        self.assertEqual(source.EXPECTED_ARCHIVE_SHA256,
-                         "73f3cd35d66a149684a6153c161ad6e94e7fb8a54530aae05f44e1e325ed72d4")
-        self.assertEqual(source.EXPECTED_MEMBER_COUNT, 44)
-        self.assertEqual(source.GDB_ROOT, "tlgdb_2026_us_addr.gdb")
         self.assertEqual(source.SCAN_BATCH_ROWS, 200_000)
+        self.assertEqual(source.FEATURE_COUNT_RANGE, (25_000_000, 50_000_000))
+        self.assertLess(source.FEATURE_COUNT_RANGE[0], source.FEATURE_COUNT_RANGE[1])
+        self.assertFalse(hasattr(source, "SOURCE_URL"))
+        self.assertFalse(hasattr(source, "EXPECTED_FEATURE_COUNT"))
 
     def test_pins_the_attribute_only_layer_schema(self):
         self.assertEqual(source.LAYER_NAME, "Address_Ranges")
-        self.assertEqual(source.EXPECTED_FEATURE_COUNT, 37_730_671)
         self.assertEqual([name for name, _kind, _width in source.EXPECTED_FIELD_DECLARATIONS],
                          ["TLID", "TFIDL", "TFIDR", "LINEARID", "FULLNAME", "FROMHN", "TOHN",
                           "EDGE_MTFCC", "ROAD_MTFCC", "PARITYL", "PARITYR", "OFFSETL", "OFFSETR",
@@ -192,41 +206,44 @@ class AddressRangesContractTests(unittest.TestCase):
         self.assertEqual(source.VALUE_PATTERNS["ZIP"].pattern, "^[0-9]{5}$")
         self.assertEqual(source.VALUE_PATTERNS["FROMHN"].pattern, "^[^\\x00-\\x1F\\x7F]{1,12}$")
 
-    def test_lineage_names_producer_pin_and_banned_context(self):
-        self.assertIn("TGRGDB24 tlgdb_2024_a_us_addr.gdb.zip", source.LINEAGE)
-        self.assertIn("TGRGDB26 tlgdb_2026_us_addr.gdb.zip", source.LINEAGE)
+    def test_lineage_names_producer_and_banned_context(self):
+        self.assertIn("Address Range geodatabase", source.LINEAGE)
+        self.assertNotIn("TGRGDB", source.LINEAGE)
+        self.assertNotIn("tlgdb_", source.LINEAGE)
         self.assertIn("DOI 10.3886/E241367V1", source.LINEAGE)
         self.assertIn("DataLumos", source.LINEAGE)
         self.assertIn("never fetched", source.LINEAGE)
 
 
 class ArchiveValidationTests(unittest.TestCase):
-    def test_accepts_the_pinned_canonical_roster(self):
-        integrity = _validate_archive_bytes(_canonical_archive())
-        self.assertEqual(integrity["member_count"], 44)
+    def test_accepts_a_bounded_canonical_roster(self):
+        release = _release()
+        integrity = _validate_archive_bytes(_canonical_archive(release=release), release)
+        self.assertEqual(integrity["member_count"], len(_members_for(release)))
         self.assertGreater(integrity["uncompressed_bytes"], 0)
 
     def test_rejects_member_roster_and_crc_and_unsafe_drift(self):
         with self.assertRaisesRegex(ValueError, "source_archive_member_roster_drift"):
-            _validate_archive_bytes(_canonical_archive(member_count=43))
+            _validate_archive_bytes(_canonical_archive(member_count=0))
+        with patch.object(source, "MAX_ARCHIVE_MEMBERS", len(ARCHIVE_MEMBERS) - 1):
+            with self.assertRaisesRegex(ValueError, "source_archive_member_roster_drift"):
+                _validate_archive_bytes(_canonical_archive())
         with self.assertRaisesRegex(ValueError, "source_archive_crc_failure"):
             _validate_archive_bytes(_canonical_archive(corrupt=True))
         extra_root = io.BytesIO()
         with zipfile.ZipFile(extra_root, "w") as archive:
-            for name in ARCHIVE_MEMBERS:
+            for name in _members_for():
                 archive.writestr(name, b"fixture")
             archive.writestr("other.gdb/a00000001.gdbtable", b"fixture")
-        with patch.object(source, "EXPECTED_MEMBER_COUNT", 45):
-            with self.assertRaisesRegex(ValueError, "source_archive_geodatabase_roster_drift"):
-                _validate_archive_bytes(extra_root.getvalue())
+        with self.assertRaisesRegex(ValueError, "source_archive_geodatabase_roster_drift"):
+            _validate_archive_bytes(extra_root.getvalue())
         unsafe = io.BytesIO()
         with zipfile.ZipFile(unsafe, "w") as archive:
-            for name in ARCHIVE_MEMBERS:
+            for name in _members_for():
                 archive.writestr(name, b"fixture")
             archive.writestr("../escape.gdb/gdb", b"fixture")
-        with patch.object(source, "EXPECTED_MEMBER_COUNT", 45):
-            with self.assertRaisesRegex(ValueError, "source_archive_unsafe_member_path"):
-                _validate_archive_bytes(unsafe.getvalue())
+        with self.assertRaisesRegex(ValueError, "source_archive_unsafe_member_path"):
+            _validate_archive_bytes(unsafe.getvalue())
         with patch.object(source, "MAX_UNCOMPRESSED_BYTES", 16):
             with self.assertRaisesRegex(ValueError, "source_archive_expansion_limit_exceeded"):
                 _validate_archive_bytes(_canonical_archive())
@@ -243,7 +260,8 @@ class LayoutAndScanTests(unittest.TestCase):
         directory = Path(cls._temporary.name)
         cls.gdb = _build_fixture_gdb(directory)
         cls.rows = 2
-        for applied in (patch.object(source, "EXPECTED_FEATURE_COUNT", cls.rows),
+        cls.release = _release()
+        for applied in (patch.object(source, "FEATURE_COUNT_RANGE", (1, 10)),
                         patch.object(source, "EXPECTED_FIELD_WIDTHS", {})):
             applied.start()
             cls.addClassCleanup(applied.stop)
@@ -253,7 +271,7 @@ class LayoutAndScanTests(unittest.TestCase):
         cls._temporary.cleanup()
 
     def test_layout_pins_layer_schema_and_feature_count(self):
-        layout = source._require_geodatabase_layout(self.gdb)
+        layout = source._require_geodatabase_layout(self.gdb, self.release)
         self.assertEqual(layout["layers"], ["Address_Ranges"])
         self.assertEqual(layout["feature_count"], self.rows)
         self.assertIsNone(layout["geometry_type"])
@@ -261,9 +279,9 @@ class LayoutAndScanTests(unittest.TestCase):
         self.assertEqual(layout["field_kinds"], source.EXPECTED_FIELD_KINDS)
 
     def test_layout_rejects_count_geometry_schema_and_layer_drift(self):
-        with patch.object(source, "EXPECTED_FEATURE_COUNT", self.rows + 1):
+        with patch.object(source, "FEATURE_COUNT_RANGE", (self.rows + 1, 10)):
             with self.assertRaisesRegex(ValueError, "source_feature_count_drift"):
-                source._require_geodatabase_layout(self.gdb)
+                source._require_geodatabase_layout(self.gdb, self.release)
         with self.subTest(change="unexpected_geometry"):
             import pyogrio
 
@@ -276,14 +294,14 @@ class LayoutAndScanTests(unittest.TestCase):
 
             with patch.object(pyogrio, "read_info", spatial_info):
                 with self.assertRaisesRegex(ValueError, "source_attribute_only_contract_drift"):
-                    source._require_geodatabase_layout(self.gdb)
+                    source._require_geodatabase_layout(self.gdb, self.release)
         with self.subTest(change="renamed_field"):
             import pyogrio
 
             renamed = _build_fixture_gdb(self.gdb.parent, _fixture_rows().rename(columns={"ZIP": "ZIP5"}),
                                          name="renamed.gdb")
             with self.assertRaisesRegex(ValueError, "source_schema_or_field_order_drift"):
-                source._require_geodatabase_layout(renamed)
+                source._require_geodatabase_layout(renamed, self.release)
         with self.subTest(change="wrong_layer_roster"):
             import pyogrio
 
@@ -291,14 +309,14 @@ class LayoutAndScanTests(unittest.TestCase):
             pyogrio.write_dataframe(_fixture_rows(), extra_layer, layer="Other_Layer",
                                     driver="OpenFileGDB")
             with self.assertRaisesRegex(ValueError, "source_geodatabase_layer_roster_drift"):
-                source._require_geodatabase_layout(extra_layer)
+                source._require_geodatabase_layout(extra_layer, self.release)
 
     def test_native_id_roster_is_contiguous(self):
-        roster = source._verify_native_id_roster(self.gdb)
+        roster = source._verify_native_id_roster(self.gdb, self.rows)
         self.assertEqual(roster, {"min": 1, "max": self.rows, "count": self.rows})
 
     def test_scan_records_domains_nulls_and_deterministic_digest(self):
-        scan = source._scan_native_values(self.gdb)
+        scan = source._scan_native_values(self.gdb, self.rows)
         self.assertEqual(scan["row_count"], self.rows)
         self.assertEqual(scan["scan_batches"], 1)
         self.assertEqual(scan["value_domains"]["MTFCC"], {"D1000": self.rows})
@@ -310,23 +328,22 @@ class LayoutAndScanTests(unittest.TestCase):
         self.assertEqual(scan["value_violations"]["FROMHN"], 0)
         self.assertEqual(scan["value_violations"]["integral_doubles"], 0)
         self.assertEqual(scan["value_violations"]["fullname_length"], 0)
-        again = source._scan_native_values(self.gdb)
+        again = source._scan_native_values(self.gdb, self.rows)
         self.assertEqual(again["record_digest"], scan["record_digest"])
         self.assertEqual(scan["record_digest_scheme"], source.SCAN_DIGEST_SCHEME)
 
     def test_scan_rejects_row_count_field_roster_and_width_drift(self):
-        with patch.object(source, "EXPECTED_FEATURE_COUNT", self.rows + 1):
-            with self.assertRaisesRegex(ValueError, "source_scan_row_count_drift"):
-                source._scan_native_values(self.gdb)
+        with self.assertRaisesRegex(ValueError, "source_scan_row_count_drift"):
+            source._scan_native_values(self.gdb, self.rows + 1)
         import pyogrio
 
         renamed = _build_fixture_gdb(self.gdb.parent, _fixture_rows().rename(columns={"ZIP": "ZIP5"}),
                                      name="renamed-scan.gdb")
         with self.assertRaisesRegex(ValueError, "source_arrow_field_roster_drift"):
-            source._scan_native_values(renamed)
+            source._scan_native_values(renamed, self.rows)
         with patch.object(source, "EXPECTED_FIELD_WIDTHS", {"ZIP": 9, "PLUS4": 4}):
             with self.assertRaisesRegex(ValueError, "source_arrow_field_width_drift"):
-                source._scan_native_values(self.gdb)
+                source._scan_native_values(self.gdb, self.rows)
 
 
 class BatchValidationTests(unittest.TestCase):
@@ -379,41 +396,44 @@ class CaptureTransferTests(unittest.TestCase):
 
         return SimpleNamespace(stream=stream)
 
-    def _official_response(self, body: bytes, last_modified: str = "Wed, 29 Jul 2026 15:01:52 GMT"):
+    def _official_response(self, body: bytes, last_modified: str = "Wed, 29 Jul 2026 15:01:52 GMT",
+                           url: str | None = None):
         return httpx.Response(
             200,
             headers={"content-type": "application/zip", "last-modified": last_modified},
             content=body,
-            request=httpx.Request("GET", source.SOURCE_URL),
+            request=httpx.Request("GET", url or _release().source_url),
         )
 
-    def _stub_transfer(self, body: bytes):
+    def _stub_transfer(self, body: bytes, wire_sha256: str | None = None):
         """Stand in for the streamed decoder; the decoder itself is covered by
         the repo's dedicated http_capture tests. This stub feeds the exact
         retained body so the staging, receipt and identity gates run for real."""
+        digest = wire_sha256 or hashlib.sha256(body).hexdigest()
         def capture(response, *, reserve, retain_wire, retain_decoded, **kwargs):
             retain_wire(body)
             return SimpleNamespace(
                 status_code=200, content_encoding="identity",
                 decoded_bytes_produced=len(body), complete=True,
                 wire_bytes_received=len(body), wire_bytes_retained=len(body),
-                wire_sha256=hashlib.sha256(body).hexdigest(), error_code=None,
+                wire_sha256=digest, error_code=None,
                 content_length_header=str(len(body)),
             )
 
         return capture
 
-    def _patched_transfer(self, body: bytes):
-        return patch.object(source, "capture_http_response", side_effect=self._stub_transfer(body))
+    def _patched_transfer(self, body: bytes, wire_sha256: str | None = None):
+        return patch.object(source, "capture_http_response",
+                            side_effect=self._stub_transfer(body, wire_sha256))
 
     def test_transfer_writes_staged_canonical_copy_and_receipt(self):
-        body = _canonical_archive()
+        release = _release()
+        body = _canonical_archive(release=release)
         storage = _RecordingStorage()
-        with self._patched_transfer(body), \
-                patch.object(source, "EXPECTED_ARCHIVE_BYTES", len(body)), \
-                patch.object(source, "EXPECTED_ARCHIVE_SHA256", hashlib.sha256(body).hexdigest()):
-            _archive, receipt = source._capture_archive(storage, "vtest",
-                                                        self._stream_client(self._official_response(body)))
+        with self._patched_transfer(body):
+            _archive, receipt, version = source._capture_archive(
+                storage, "vtest", self._stream_client(self._official_response(body)), release)
+        self.assertEqual(version, "vtest")
         self.assertEqual(receipt["raw_sha256"], hashlib.sha256(body).hexdigest())
         self.assertEqual(receipt["raw_archive_key"], "file_geodatabase/tlgdb_2026_us_addr.gdb.zip")
         self.assertEqual(
@@ -426,31 +446,31 @@ class CaptureTransferTests(unittest.TestCase):
         self.assertTrue(persisted["transfer_complete"])
 
     def test_transfer_identity_drift_fails_closed_with_evidence(self):
-        body = _canonical_archive()
+        release = _release()
+        body = _canonical_archive(release=release)
         storage = _RecordingStorage()
-        with self._patched_transfer(body):
+        with self._patched_transfer(body, wire_sha256="0" * 64):
             with self.assertRaisesRegex(ValueError, "source_archive_transfer_or_identity_drift"):
                 source._capture_archive(storage, "vdrift",
-                                        self._stream_client(self._official_response(body)))
+                                        self._stream_client(self._official_response(body)), release)
         self.assertIn(
             "address-ranges/address-ranges/vdrift/file_geodatabase/tlgdb_2026_us_addr.gdb.zip",
             storage.objects)
         receipt = json.loads(
             storage.objects["address-ranges/address-ranges/vdrift/raw/source_archive.receipt.json"])
-        self.assertEqual(receipt["raw_sha256"], hashlib.sha256(body).hexdigest())
+        self.assertEqual(receipt["raw_sha256"], "0" * 64)
         self.assertNotIn(
             "address-ranges/address-ranges/vdrift/raw/source_archive.failure_receipt.json",
             storage.objects)
 
-    def test_transfer_header_drift_fails_closed(self):
-        body = _canonical_archive()
+    def test_transfer_final_host_drift_fails_closed(self):
+        release = _release()
+        body = _canonical_archive(release=release)
         storage = _RecordingStorage()
-        response = self._official_response(body, last_modified="Thu, 30 Jul 2026 10:00:00 GMT")
-        with self._patched_transfer(body), \
-                patch.object(source, "EXPECTED_ARCHIVE_BYTES", len(body)), \
-                patch.object(source, "EXPECTED_ARCHIVE_SHA256", hashlib.sha256(body).hexdigest()):
+        response = self._official_response(body, url="https://mirror.example.net/addr.gdb.zip")
+        with self._patched_transfer(body):
             with self.assertRaisesRegex(ValueError, "source_archive_transfer_or_identity_drift"):
-                source._capture_archive(storage, "vheader", self._stream_client(response))
+                source._capture_archive(storage, "vheader", self._stream_client(response), release)
 
     def test_failed_transport_retains_partial_wire_and_receipt(self):
         storage = _RecordingStorage()
@@ -474,7 +494,7 @@ class CaptureTransferTests(unittest.TestCase):
 
         with patch.object(source, "capture_http_response", side_effect=interrupted):
             with self.assertRaisesRegex(ValueError, "source_archive_transport_error"):
-                source._capture_archive(storage, "vpartial", Client())
+                source._capture_archive(storage, "vpartial", Client(), _release())
         self.assertEqual(
             storage.objects["address-ranges/address-ranges/vpartial/raw/source_archive.partial.zip"],
             b"partial-wire")
@@ -485,14 +505,14 @@ class CaptureTransferTests(unittest.TestCase):
         self.assertEqual(receipt["transfer_error_type"], "OSError")
 
     def test_capture_quarantines_validation_failures(self):
-        body = _canonical_archive()
+        release = _release()
+        body = _canonical_archive(release=release)
         identity = {"code_identity_scheme": "git-commit-blobs-v1", "code_commit": "fixture",
                     "files": {}, "python": "3.12.0"}
         with tempfile.TemporaryDirectory() as directory:
             staging = StagingStorageResource(local_dir=directory)
             with self._patched_transfer(body), \
-                    patch.object(source, "EXPECTED_ARCHIVE_BYTES", len(body)), \
-                    patch.object(source, "EXPECTED_ARCHIVE_SHA256", hashlib.sha256(body).hexdigest()), \
+                    patch.object(census_latest, "discover_geodatabase", return_value=release), \
                     patch.object(source, "processing_identity", return_value=identity), \
                     patch.object(source, "validate_construction_code_identity"), \
                     patch.object(StagingStorageResource, "sha256_key", return_value="0" * 64):
@@ -504,19 +524,46 @@ class CaptureTransferTests(unittest.TestCase):
             self.assertEqual(quarantine["failure_code"], "staged_source_archive_integrity_failure")
             self.assertFalse(quarantine["release_accepted"])
 
+    def test_capture_discovers_current_release_and_derives_version(self):
+        release = _release(2027)
+        body = _canonical_archive(release=release)
+        identity = {"code_identity_scheme": "git-commit-blobs-v1", "code_commit": "fixture",
+                    "files": {}, "python": "3.12.0"}
+        fixture_result = {"feature_count": 2, "archive_sha256": hashlib.sha256(body).hexdigest(),
+                          "archive_bytes": len(body), "record_digest": "f" * 64,
+                          "native_objectid": {"min": 1, "max": 2, "count": 2},
+                          "value_domains": {}, "null_counts": {}, "release_accepted": False}
+        with tempfile.TemporaryDirectory() as directory:
+            staging = StagingStorageResource(local_dir=directory)
+            with self._patched_transfer(body), \
+                    patch.object(census_latest, "discover_geodatabase", return_value=release) as discover, \
+                    patch.object(source, "processing_identity", return_value=identity), \
+                    patch.object(source, "validate_construction_code_identity"), \
+                    patch.object(source, "_validate_staged_population", return_value=fixture_result) as population:
+                result = source.capture(
+                    staging, None,
+                    self._stream_client(self._official_response(body, url=release.source_url)))
+        self.assertEqual(discover.call_args.args[2], source.GEODATABASE_PRODUCT)
+        self.assertEqual(population.call_args.kwargs["release"], release)
+        self.assertRegex(result["version"], r"^v[0-9a-f]{32}$")
+        self.assertEqual(result["version"], census_latest.release_version(
+            "2027", hashlib.sha256(body).hexdigest(), "fixture"))
+
 
 class ReplayTests(unittest.TestCase):
-    def _receipt(self, archive: bytes) -> dict:
+    def _receipt(self, archive: bytes, release=None) -> dict:
+        release = release or _release()
         return {
-            "method": "GET", "requested_url": source.SOURCE_URL,
-            "final_url": source.SOURCE_URL, "final_host": source.SOURCE_HOST,
+            "method": "GET", "url": release.source_url,
+            "requested_url": release.source_url,
+            "final_url": release.source_url, "final_host": source.SOURCE_HOST,
             "status": 200, "observed_at": "2026-11-15T14:40:00+00:00",
             "content_type": "application/zip",
-            "last_modified": source.EXPECTED_ARCHIVE_LAST_MODIFIED,
+            "last_modified": "Wed, 29 Jul 2026 15:01:52 GMT",
             "content_encoding": "identity", "transfer_complete": True,
             "decoded_bytes_produced": len(archive), "wire_bytes_received": len(archive),
             "wire_bytes_retained": len(archive), "wire_sha256": hashlib.sha256(archive).hexdigest(),
-            "raw_archive_key": source.CANONICAL_SOURCE_KEY,
+            "raw_archive_key": source._canonical_source_key(release),
             "raw_sha256": hashlib.sha256(archive).hexdigest(),
         }
 
@@ -524,32 +571,46 @@ class ReplayTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "retained_capture_receipt_invalid"):
             source.replay_retained_capture(StagingStorageResource(local_dir="/tmp/never"), "v1",
                                            b"archive", b"not-json")
-        archive = _canonical_archive()
-        bad_sha = {"raw_sha256": "0" * 64, "wire_bytes_retained": len(archive),
-                   "raw_archive_key": source.CANONICAL_SOURCE_KEY}
+        release = _release()
+        archive = _canonical_archive(release=release)
+        bad_sha = self._receipt(archive, release)
+        bad_sha["raw_sha256"] = "0" * 64
         with self.assertRaisesRegex(ValueError, "retained_capture_archive_receipt_mismatch"):
             source.replay_retained_capture(StagingStorageResource(local_dir="/tmp/never"), "v1",
                                            archive, json.dumps(bad_sha).encode())
-        bad_key = {"raw_sha256": hashlib.sha256(archive).hexdigest(),
-                   "wire_bytes_retained": len(archive), "raw_archive_key": "raw/other.zip"}
+        bad_key = self._receipt(archive, release)
+        bad_key["raw_archive_key"] = "raw/other.zip"
         with self.assertRaisesRegex(ValueError, "retained_capture_archive_receipt_mismatch"):
             source.replay_retained_capture(StagingStorageResource(local_dir="/tmp/never"), "v1",
                                            archive, json.dumps(bad_key).encode())
 
+    def test_replay_rejects_old_or_mismatched_receipt_url(self):
+        release = _release()
+        archive = _canonical_archive(release=release)
+        for url in (
+            "https://www2.census.gov/geo/tiger/TIGER2024/tl_2024_us_addr.zip",
+            "https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_nationgeo.gdb.zip",
+        ):
+            with self.subTest(url=url):
+                receipt = self._receipt(archive, release)
+                receipt["url"] = url
+                with self.assertRaisesRegex(ValueError, "retained_capture_release_mismatch"):
+                    source.replay_retained_capture(StagingStorageResource(local_dir="/tmp/never"),
+                                                   "v1", archive, json.dumps(receipt).encode())
+
     def test_replay_restages_bytes_and_flags_replay(self):
-        archive = _canonical_archive()
-        receipt = self._receipt(archive)
+        release = _release()
+        archive = _canonical_archive(release=release)
+        receipt = self._receipt(archive, release)
         identity = {"code_identity_scheme": "git-commit-blobs-v1", "code_commit": "fixture",
                     "files": {}, "python": "3.12.0"}
-        fixture_result = {"feature_count": source.EXPECTED_FEATURE_COUNT,
+        fixture_result = {"feature_count": 2,
                           "archive_sha256": receipt["raw_sha256"], "archive_bytes": len(archive),
-                          "record_digest": "f" * 64, "native_objectid": {"min": 1, "max": 44, "count": 44},
+                          "record_digest": "f" * 64, "native_objectid": {"min": 1, "max": 2, "count": 2},
                           "value_domains": {}, "null_counts": {}, "release_accepted": False}
         with tempfile.TemporaryDirectory() as directory:
             staging = StagingStorageResource(local_dir=directory)
-            with patch.object(source, "EXPECTED_ARCHIVE_SHA256", hashlib.sha256(archive).hexdigest()), \
-                    patch.object(source, "EXPECTED_ARCHIVE_BYTES", len(archive)), \
-                    patch.object(source, "processing_identity", return_value=identity), \
+            with patch.object(source, "processing_identity", return_value=identity), \
                     patch.object(source, "validate_construction_code_identity"), \
                     patch.object(source, "_validate_staged_population", return_value=fixture_result):
                 result = source.replay_retained_capture(staging, "vreplay", archive,
@@ -565,11 +626,11 @@ class ReplayTests(unittest.TestCase):
     def test_replay_rejects_saved_receipts_that_capture_would_reject(self):
         """A retained receipt rejected by the fresh-transfer acquisition policy
         must fail replay closed with replay quarantine, never a normal manifest."""
-        archive = _canonical_archive()
+        release = _release()
+        archive = _canonical_archive(release=release)
         identity = {"code_identity_scheme": "git-commit-blobs-v1", "code_commit": "fixture",
                     "files": {}, "python": "3.12.0"}
         drifted = {
-            "changed_last_modified": {"last_modified": "Thu, 30 Jul 2026 10:00:00 GMT"},
             "foreign_producer_host": {"final_host": "mirror.example.net"},
             "failed_incomplete_transfer": {"status": 503, "transfer_complete": False},
             "missing_transfer_completeness": {"transfer_complete": None},
@@ -577,14 +638,11 @@ class ReplayTests(unittest.TestCase):
         }
         for label, drift in drifted.items():
             with self.subTest(drift=label):
-                receipt = self._receipt(archive)
+                receipt = self._receipt(archive, release)
                 receipt.update(drift)
                 with tempfile.TemporaryDirectory() as directory:
                     staging = StagingStorageResource(local_dir=directory)
-                    with patch.object(source, "EXPECTED_ARCHIVE_SHA256",
-                                      hashlib.sha256(archive).hexdigest()), \
-                            patch.object(source, "EXPECTED_ARCHIVE_BYTES", len(archive)), \
-                            patch.object(source, "processing_identity", return_value=identity), \
+                    with patch.object(source, "processing_identity", return_value=identity), \
                             patch.object(source, "validate_construction_code_identity"), \
                             patch.object(source, "_validate_staged_population") as population:
                         with self.assertRaisesRegex(

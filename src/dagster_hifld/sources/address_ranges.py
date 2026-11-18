@@ -1,12 +1,12 @@
 """Candidate-only capture of the official Census TIGER national Address Ranges.
 
-The retired HIFLD Open inventory row pins the producer's own download
-(www2.census.gov TGRGDB24 ``tlgdb_2024_a_us_addr.gdb.zip``); the maintained
-successor edition of the same national publication is the TGRGDB26 archive
-``tlgdb_2026_us_addr.gdb.zip``, captured here losslessly as the staged
-canonical source. The archive holds one attribute-only FileGDB layer,
-``Address_Ranges``, whose native row identifiers are contiguous GDB OBJECTIDs.
-The DataLumos record is banned identification context and is never fetched.
+The retired HIFLD Open inventory row pins the producer's own national Address
+Range geodatabase download. This adapter discovers the currently maintained
+national publication of the same product on www2.census.gov and captures it
+losslessly as the staged canonical source. The archive holds one attribute-only
+FileGDB layer, ``Address_Ranges``, whose native row identifiers are contiguous
+GDB OBJECTIDs. The DataLumos record is banned identification context and is
+never fetched.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import hashlib
 import json
 import platform
 import re
+import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,27 +31,19 @@ import pyproj
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources.capture_common import processing_identity
 
 DATASET_SLUG = "address-ranges"
 FILE_SLUG = DATASET_SLUG
-SOURCE_VINTAGE = "2026"
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_addr.gdb.zip"
-SOURCE_FILE = "tlgdb_2026_us_addr.gdb.zip"
-CANONICAL_SOURCE_KEY = f"file_geodatabase/{SOURCE_FILE}"
+GEODATABASE_PRODUCT = "addr"
+FEATURE_COUNT_RANGE = (25_000_000, 50_000_000)
 SOURCE_HOST = "www2.census.gov"
 PUBLISHER = "U.S. Census Bureau, Geography Division"
-# Archive identity observed live from the pinned producer URL on 2026-11-15
-# (HTTP 200, identity encoding, 1,756,498,039 bytes); any drift fails closed.
-EXPECTED_ARCHIVE_SHA256 = "73f3cd35d66a149684a6153c161ad6e94e7fb8a54530aae05f44e1e325ed72d4"
-EXPECTED_ARCHIVE_BYTES = 1_756_498_039
-EXPECTED_ARCHIVE_LAST_MODIFIED = "Wed, 29 Jul 2026 15:01:52 GMT"
 MAX_ARCHIVE_BYTES = 2_100_000_000
 MAX_UNCOMPRESSED_BYTES = 5_500_000_000
-GDB_ROOT = "tlgdb_2026_us_addr.gdb"
+MAX_ARCHIVE_MEMBERS = 256
 LAYER_NAME = "Address_Ranges"
-EXPECTED_FEATURE_COUNT = 37_730_671
-EXPECTED_MEMBER_COUNT = 44
 SCAN_BATCH_ROWS = 200_000
 # Native FileGDB layer declaration: (name, pyogrio read_info dtype, declared
 # width). TLID/TFIDL/TFIDR are native doubles (read_info float64); every other
@@ -119,14 +112,13 @@ OBJECTID_DIGEST_SCHEME = (
 
 LINEAGE = (
     "The HIFLD Open inventory row 'Address Ranges' pins the producing agency's "
-    "own download, the Census TIGER national Address Range geodatabase "
-    "(TGRGDB24 tlgdb_2024_a_us_addr.gdb.zip). This pipeline captures the "
-    "producer's currently maintained successor edition of the same national "
-    "publication, TGRGDB26 tlgdb_2026_us_addr.gdb.zip (2026-07-29 directory "
-    "stamp), directly from www2.census.gov. The DHS crosswalk "
-    "(DOI 10.3886/E241367V1) row and equivalence to the retired HIFLD "
-    "publication remain unverified. The DataLumos archive record is banned "
-    "identification context only and is never fetched."
+    "own download, the Census TIGER national Address Range geodatabase. This "
+    "pipeline discovers the producer's currently maintained national publication "
+    "of the same product from www2.census.gov and captures the exact archive "
+    "selected by that listing. The DHS crosswalk (DOI 10.3886/E241367V1) row and "
+    "equivalence to the retired HIFLD publication remain unverified. The "
+    "DataLumos archive record is banned identification context only and is never "
+    "fetched."
 )
 
 
@@ -137,6 +129,10 @@ def _json_bytes(value: object) -> bytes:
 
 def _sha256(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
+
+
+def _canonical_source_key(release: census_latest.GeodatabaseRelease) -> str:
+    return f"file_geodatabase/{release.source_file}"
 
 
 def _processing_runtime() -> dict[str, str]:
@@ -158,15 +154,16 @@ def _reserve(current: int, upcoming: int) -> None:
         raise ValueError("source_archive_capture_budget_exceeded")
 
 
-def _require_accepted_transfer(receipt: dict, body: bytes) -> None:
+def _require_accepted_transfer(receipt: dict, body: bytes,
+                               release: census_latest.GeodatabaseRelease) -> None:
     """Apply the fresh-transfer acquisition policy to one transfer receipt.
 
     Both the live capture and the retained-transfer replay must accept the
     receipt's transfer completeness, HTTP status, final producer host,
-    encoding, headers and archive identity pins before any further
-    validation; a matching archive hash alone does not establish receipt or
-    source provenance.
+    encoding and archive identity before any further validation; a matching
+    archive hash alone does not establish receipt or source provenance.
     """
+    source_host = str(urlsplit(release.source_url).hostname or "").lower()
     if (
         not receipt.get("transfer_complete")
         or not isinstance(receipt.get("status"), int)
@@ -174,23 +171,28 @@ def _require_accepted_transfer(receipt: dict, body: bytes) -> None:
         or receipt.get("content_encoding") != "identity"
         or receipt.get("decoded_bytes_produced") != len(body)
         or receipt.get("wire_bytes_received") != len(body)
-        or str(receipt.get("final_host") or "").lower() != SOURCE_HOST
+        or str(receipt.get("final_host") or "").lower() != source_host
         or not str(receipt.get("content_type") or "").lower().startswith("application/zip")
-        or len(body) != EXPECTED_ARCHIVE_BYTES
-        or receipt.get("wire_sha256") != EXPECTED_ARCHIVE_SHA256
-        or receipt.get("raw_sha256") != EXPECTED_ARCHIVE_SHA256
-        or receipt.get("last_modified") != EXPECTED_ARCHIVE_LAST_MODIFIED
+        or not body
+        or len(body) > MAX_ARCHIVE_BYTES
+        or receipt.get("requested_url") != release.source_url
+        or receipt.get("final_url") != release.source_url
+        or receipt.get("wire_sha256") != _sha256(body)
+        or receipt.get("raw_sha256") != _sha256(body)
     ):
         raise ValueError("source_archive_transfer_or_identity_drift")
 
 
-def _capture_archive(staging: StagingStorageResource, version: str, client: httpx.Client) -> tuple[bytes, dict]:
+def _capture_archive(staging: StagingStorageResource, version: str | None,
+                     client: httpx.Client,
+                     release: census_latest.GeodatabaseRelease) -> tuple[bytes, dict, str]:
     """Stream one exact official archive, receipt it, and stage its canonical copy."""
+    canonical_key = _canonical_source_key(release)
     wire = bytearray()
     attempt_observed_at = datetime.now(timezone.utc).isoformat()
     transfer_receipt_written = False
     try:
-        with client.stream("GET", SOURCE_URL, headers={"Accept-Encoding": "identity"}) as response:
+        with client.stream("GET", release.source_url, headers={"Accept-Encoding": "identity"}) as response:
             final_host = response.request.url.host
             result = capture_http_response(
                 response,
@@ -201,7 +203,7 @@ def _capture_archive(staging: StagingStorageResource, version: str, client: http
                 retain_decoded=lambda _block: None,
             )
             receipt = {
-                "method": "GET", "requested_url": SOURCE_URL,
+                "method": "GET", "requested_url": release.source_url,
                 "final_url": str(response.request.url), "final_host": final_host,
                 "status": result.status_code,
                 "observed_at": datetime.now(timezone.utc).isoformat(),
@@ -215,34 +217,41 @@ def _capture_archive(staging: StagingStorageResource, version: str, client: http
                 "decoded_bytes_produced": result.decoded_bytes_produced,
                 "transfer_complete": result.complete,
                 "transfer_error_code": result.error_code,
-                "raw_archive_key": CANONICAL_SOURCE_KEY,
+                "raw_archive_key": canonical_key,
                 "raw_sha256": result.wire_sha256,
                 "release_accepted": False,
             }
             body = bytes(wire)
-            staging.write(DATASET_SLUG, FILE_SLUG, version, CANONICAL_SOURCE_KEY, body)
+            if version is None:
+                identity = processing_identity(Path(__file__).parents[3])
+                version = census_latest.release_version(
+                    str(release.vintage), receipt["raw_sha256"], identity["code_commit"])
+            staging.write(DATASET_SLUG, FILE_SLUG, version, canonical_key, body)
             staging.write(DATASET_SLUG, FILE_SLUG, version, "raw/source_archive.receipt.json",
                           _json_bytes(receipt))
             transfer_receipt_written = True
-            _require_accepted_transfer(receipt, body)
-            return body, receipt
+            _require_accepted_transfer(receipt, body, release)
+            return body, receipt, version
     except ValueError as exc:
         if not transfer_receipt_written:
-            _retain_partial_transfer(staging, version, wire, attempt_observed_at, type(exc).__name__)
+            _retain_partial_transfer(staging, version or "unresolved", wire,
+                                     attempt_observed_at, type(exc).__name__, release)
         raise
     except Exception as exc:
-        _retain_partial_transfer(staging, version, wire, attempt_observed_at, type(exc).__name__)
+        _retain_partial_transfer(staging, version or "unresolved", wire,
+                                 attempt_observed_at, type(exc).__name__, release)
         raise ValueError("source_archive_transport_error:" + type(exc).__name__) from exc
 
 
 def _retain_partial_transfer(staging: StagingStorageResource, version: str, wire: bytearray,
-                             observed_at: str, error_type: str) -> None:
+                             observed_at: str, error_type: str,
+                             release: census_latest.GeodatabaseRelease) -> None:
     partial = bytes(wire)
     partial_key = "raw/source_archive.partial.zip" if partial else None
     if partial_key:
         staging.write(DATASET_SLUG, FILE_SLUG, version, partial_key, partial)
     staging.write(DATASET_SLUG, FILE_SLUG, version, "raw/source_archive.failure_receipt.json", _json_bytes({
-        "method": "GET", "requested_url": SOURCE_URL,
+        "method": "GET", "requested_url": release.source_url,
         "observed_at": observed_at,
         "wire_bytes_retained": len(partial),
         "wire_sha256": _sha256(partial),
@@ -251,14 +260,16 @@ def _retain_partial_transfer(staging: StagingStorageResource, version: str, wire
     }))
 
 
-def _validate_archive(zip_path: Path) -> dict[str, object]:
-    """Require one intact bounded geodatabase archive with the pinned roster."""
+def _validate_archive(zip_path: Path,
+                      release: census_latest.GeodatabaseRelease) -> dict[str, object]:
+    """Require one intact bounded geodatabase archive with a safe roster."""
     try:
         with zipfile.ZipFile(zip_path) as source:
             entries = source.infolist()
-            if len(entries) != EXPECTED_MEMBER_COUNT:
+            if not entries or len(entries) > MAX_ARCHIVE_MEMBERS:
                 raise ValueError("source_archive_member_roster_drift")
-            if sum(item.file_size for item in entries) > MAX_UNCOMPRESSED_BYTES:
+            uncompressed_bytes = sum(item.file_size for item in entries)
+            if uncompressed_bytes <= 0 or uncompressed_bytes > MAX_UNCOMPRESSED_BYTES:
                 raise ValueError("source_archive_expansion_limit_exceeded")
             if any(item.file_size > MAX_UNCOMPRESSED_BYTES for item in entries):
                 raise ValueError("source_archive_member_limit_exceeded")
@@ -268,25 +279,28 @@ def _validate_archive(zip_path: Path) -> dict[str, object]:
                     raise ValueError("source_archive_unsafe_member_path")
             gdb_roots = {"/".join(item.filename.split("/")[:1]) for item in entries
                          if ".gdb/" in item.filename}
-            if gdb_roots != {GDB_ROOT}:
+            if gdb_roots != {release.source_file[:-4]}:
                 raise ValueError("source_archive_geodatabase_roster_drift")
             corrupt = source.testzip()
             if corrupt is not None:
                 raise ValueError("source_archive_crc_failure")
             return {"member_count": len(entries),
-                    "uncompressed_bytes": sum(item.file_size for item in entries)}
+                    "uncompressed_bytes": uncompressed_bytes}
     except zipfile.BadZipFile as exc:
         raise ValueError("source_archive_invalid_zip") from exc
 
 
-def _require_geodatabase_layout(zip_path: Path) -> dict[str, object]:
+def _require_geodatabase_layout(zip_path: Path,
+                                release: census_latest.GeodatabaseRelease) -> dict[str, object]:
     """Pin the single attribute-only producer layer and its physical schema."""
     try:
         layers = [str(row[0]) for row in pyogrio.list_layers(zip_path)]
         if layers != [LAYER_NAME]:
             raise ValueError("source_geodatabase_layer_roster_drift")
         info = pyogrio.read_info(zip_path, layer=LAYER_NAME, force_feature_count=True)
-        if info.get("features") != EXPECTED_FEATURE_COUNT:
+        feature_count = info.get("features")
+        if (not isinstance(feature_count, int)
+                or not FEATURE_COUNT_RANGE[0] <= feature_count <= FEATURE_COUNT_RANGE[1]):
             raise ValueError("source_feature_count_drift")
         if info.get("geometry_type") is not None or info.get("crs") is not None:
             raise ValueError("source_attribute_only_contract_drift")
@@ -294,7 +308,7 @@ def _require_geodatabase_layout(zip_path: Path) -> dict[str, object]:
                     for name, kind in zip(info["fields"], info["dtypes"])]
         if observed != EXPECTED_FIELD_KINDS:
             raise ValueError("source_schema_or_field_order_drift")
-        return {"layers": layers, "feature_count": int(info["features"]),
+        return {"layers": layers, "feature_count": feature_count,
                 "geometry_type": None, "crs": None,
                 "field_kinds": observed}
     except ValueError:
@@ -303,7 +317,7 @@ def _require_geodatabase_layout(zip_path: Path) -> dict[str, object]:
         raise ValueError("source_geodatabase_read_error:" + type(exc).__name__) from exc
 
 
-def _verify_native_id_roster(zip_path: Path) -> dict[str, int]:
+def _verify_native_id_roster(zip_path: Path, expected_count: int) -> dict[str, int]:
     """Require contiguous unique native OBJECTIDs 1..N over one narrow pass."""
     try:
         frame = pyogrio.read_dataframe(zip_path, layer=LAYER_NAME, columns=["MTFCC"],
@@ -311,10 +325,10 @@ def _verify_native_id_roster(zip_path: Path) -> dict[str, int]:
     except Exception as exc:
         raise ValueError("source_geodatabase_read_error:" + type(exc).__name__) from exc
     ids = frame.index.to_numpy()
-    if (len(ids) != EXPECTED_FEATURE_COUNT
-            or np.any(np.sort(ids) != np.arange(1, EXPECTED_FEATURE_COUNT + 1, dtype=ids.dtype))):
+    if (expected_count <= 0 or len(ids) != expected_count
+            or np.any(np.sort(ids) != np.arange(1, expected_count + 1, dtype=ids.dtype))):
         raise ValueError("source_native_id_population_drift")
-    return {"min": 1, "max": EXPECTED_FEATURE_COUNT, "count": len(ids)}
+    return {"min": 1, "max": expected_count, "count": len(ids)}
 
 
 def _arrow_widths(batch: pa.RecordBatch) -> dict[str, int | None]:
@@ -329,7 +343,7 @@ def _arrow_widths(batch: pa.RecordBatch) -> dict[str, int | None]:
     return widths
 
 
-def _scan_native_values(zip_path: Path) -> dict[str, object]:
+def _scan_native_values(zip_path: Path, expected_count: int) -> dict[str, object]:
     """Chunked full-population scan pinning values, domains and a record digest."""
     nulls = {name: 0 for name in FIELD_NAMES}
     domains: dict[str, dict[object, int]] = {name: {} for name in DOMAIN_FIELDS}
@@ -357,7 +371,7 @@ def _scan_native_values(zip_path: Path) -> dict[str, object]:
         raise
     except Exception as exc:
         raise ValueError("source_scan_error:" + type(exc).__name__) from exc
-    if rows != EXPECTED_FEATURE_COUNT or batch_index == 0:
+    if rows != expected_count or batch_index == 0:
         raise ValueError("source_scan_row_count_drift")
     return {
         "scan_batches": batch_index,
@@ -418,29 +432,32 @@ def _validate_batch(batch: pa.RecordBatch, nulls: dict[str, int],
                                  ensure_ascii=False, allow_nan=False).encode())
 
 
-def _manifest(receipt: dict, identity: dict, replayed: bool) -> dict[str, object]:
+def _manifest(receipt: dict, identity: dict, replayed: bool,
+              release: census_latest.GeodatabaseRelease,
+              feature_count: int) -> dict[str, object]:
     return {
         "schema_version": 1,
         "title": "Address Ranges",
         "description": (
-            "Draft lossless capture of the complete current (TGRGDB26) Census TIGER national "
+            "Draft lossless capture of the complete current Census TIGER national "
             "Address Ranges attribute-only FileGDB layer. Proposed source route for HIFLD "
             "inventory issue #408; DHS crosswalk row, historical HIFLD equivalence, schema/ID "
             "contract, baseline, rights and release acceptance remain unresolved."
         ),
         "publisher": PUBLISHER,
         "agency": "U.S. Census Bureau",
-        "source_url": SOURCE_URL,
+        "source_url": release.source_url,
+        "source_release": release.as_metadata(),
         "processor": "HIFLD Next",
         "code_commit": identity["code_commit"],
         "processing_identity": identity,
         "inputs": [{
-            "input_id": f"census_tiger_address_range_geodatabase_{SOURCE_VINTAGE}",
+            "input_id": f"census_tiger_address_range_geodatabase_{release.vintage}",
             "producer": PUBLISHER,
-            "host": urlsplit(SOURCE_URL).hostname,
+            "host": urlsplit(release.source_url).hostname,
             "role": "producer_publication",
-            "canonical_url": SOURCE_URL,
-            "retrieval_url": receipt.get("final_url", SOURCE_URL),
+            "canonical_url": release.source_url,
+            "retrieval_url": receipt.get("final_url", release.source_url),
             "retrieved_at": receipt.get("observed_at"),
             "sha256": receipt["raw_sha256"],
             "bytes": receipt.get("wire_bytes_received"),
@@ -448,29 +465,29 @@ def _manifest(receipt: dict, identity: dict, replayed: bool) -> dict[str, object
             "content_type": receipt.get("content_type"),
             "last_modified": receipt.get("last_modified"),
             "last_modified_meaning": (
-                "HTTP Last-Modified on www2.census.gov and the TGRGDB26 directory stamp; "
-                "packaging evidence, not an independently published producer release date."
+                "HTTP Last-Modified on www2.census.gov; packaging evidence, not an "
+                "independently published producer release date."
             ),
             "release_date_unknown_reason": (
-                "The producer publishes the TGRGDB26 edition without an explicit release date "
-                "on the archive; the HTTP Last-Modified value is retained in the receipt and is "
-                "not treated as a producer release date."
+                "The producer publishes this TIGER geodatabase edition without an explicit "
+                "release date on the archive; the HTTP Last-Modified value is retained in the "
+                "receipt and is not treated as a producer release date."
             ),
             "license": "Not adjudicated; source reuse terms and rights require maintainer review before release.",
             "attribution": (
                 f"U.S. Census Bureau, TIGER national Address Range geodatabase "
-                f"({SOURCE_VINTAGE} edition); historical HIFLD attribution and reuse terms "
+                f"({release.vintage} edition); historical HIFLD attribution and reuse terms "
                 "remain under review."
             ),
         }],
         "transformations": [
             {"name": "stage_lossless_source_archive", "parameters": {
-                "canonical_object": CANONICAL_SOURCE_KEY,
+                "canonical_object": _canonical_source_key(release),
                 "recompression": "none", "extraction": "none",
                 "attribute_only_layer": LAYER_NAME,
             }},
             {"name": "validate_native_population", "parameters": {
-                "layer": LAYER_NAME, "row_count": EXPECTED_FEATURE_COUNT,
+                "layer": LAYER_NAME, "row_count": feature_count,
                 "native_objectid_roster": "contiguous 1..N verified",
                 "value_domains_and_nulls": "recorded in metadata/native_capture.json",
                 "schema_change": "none; native field names, order, widths and types pinned",
@@ -490,22 +507,25 @@ def _manifest(receipt: dict, identity: dict, replayed: bool) -> dict[str, object
 
 
 def _capture_manifest(receipt: dict, integrity: dict, layout: dict, ids: dict,
-                      scan: dict, replayed: bool) -> dict[str, object]:
+                      scan: dict, replayed: bool,
+                      release: census_latest.GeodatabaseRelease) -> dict[str, object]:
     return {
-        "source_url": SOURCE_URL, "source_host": SOURCE_HOST,
-        "source_vintage": SOURCE_VINTAGE,
+        "source_url": release.source_url,
+        "source_host": urlsplit(release.source_url).hostname,
+        "source_vintage": str(release.vintage),
+        "source_release": release.as_metadata(),
         "archive_sha256": receipt["raw_sha256"], "archive_bytes": receipt.get("wire_bytes_received"),
         "archive_receipt": "raw/source_archive.receipt.json",
         "archive_last_modified": receipt.get("last_modified"),
         "archive_members_crc_checked": True,
         "archive_member_count": integrity["member_count"],
         "archive_uncompressed_bytes": integrity["uncompressed_bytes"],
-        "geodatabase_root": GDB_ROOT,
+        "geodatabase_root": release.source_file[:-4],
         "source_layer": LAYER_NAME,
         "source_layer_roster": layout["layers"],
         "attribute_only": True,
         "feature_count": int(layout["feature_count"]),
-        "expected_feature_count": EXPECTED_FEATURE_COUNT,
+        "feature_count_range": list(FEATURE_COUNT_RANGE),
         "native_objectid": ids,
         "native_objectids_digest_scheme": OBJECTID_DIGEST_SCHEME,
         "scan": scan,
@@ -516,8 +536,9 @@ def _capture_manifest(receipt: dict, integrity: dict, layout: dict, ids: dict,
             }} if replayed else {"capture_mode": "live_http_capture",
                                  "new_network_retrieval_performed": True}),
         "refresh_semantics": (
-            "Each live run fetches the producer's current TGRGDB26 edition and fails closed "
-            "on any archive/identity drift; prior staged versions remain untouched."
+            "Each live run discovers the producer's current national Address Ranges "
+            "geodatabase and fails closed on any archive/identity drift; prior staged "
+            "versions remain untouched."
         ),
         "release_accepted": False,
         "rights_contract_approved": False,
@@ -525,20 +546,23 @@ def _capture_manifest(receipt: dict, integrity: dict, layout: dict, ids: dict,
 
 
 def _validate_staged_population(staging: StagingStorageResource, version: str,
-                                identity: dict, receipt: dict, replayed: bool) -> dict[str, object]:
+                                identity: dict, receipt: dict, replayed: bool,
+                                release: census_latest.GeodatabaseRelease) -> dict[str, object]:
     """Validate the actual staged canonical bytes and return the capture evidence."""
-    staged_sha256 = staging.sha256_key(f"{DATASET_SLUG}/{FILE_SLUG}/{version}/{CANONICAL_SOURCE_KEY}")
-    if staged_sha256 != EXPECTED_ARCHIVE_SHA256:
+    canonical_key = _canonical_source_key(release)
+    staged_sha256 = staging.sha256_key(f"{DATASET_SLUG}/{FILE_SLUG}/{version}/{canonical_key}")
+    if staged_sha256 != receipt["raw_sha256"]:
         raise ValueError("staged_source_archive_integrity_failure")
     with staging.get_local_version_dir(DATASET_SLUG, FILE_SLUG, version) as version_dir:
-        zip_path = Path(version_dir) / CANONICAL_SOURCE_KEY
-        integrity = _validate_archive(zip_path)
-        layout = _require_geodatabase_layout(zip_path)
-        ids = _verify_native_id_roster(zip_path)
-        scan = _scan_native_values(zip_path)
+        zip_path = Path(version_dir) / canonical_key
+        integrity = _validate_archive(zip_path, release)
+        layout = _require_geodatabase_layout(zip_path, release)
+        feature_count = int(layout["feature_count"])
+        ids = _verify_native_id_roster(zip_path, feature_count)
+        scan = _scan_native_values(zip_path, feature_count)
     staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/source_manifest.json",
-                  _json_bytes(_manifest(receipt, identity, replayed)))
-    capture_manifest = _capture_manifest(receipt, integrity, layout, ids, scan, replayed)
+                  _json_bytes(_manifest(receipt, identity, replayed, release, feature_count)))
+    capture_manifest = _capture_manifest(receipt, integrity, layout, ids, scan, replayed, release)
     staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/native_capture.json",
                   _json_bytes(capture_manifest))
     return {
@@ -553,13 +577,17 @@ def _validate_staged_population(staging: StagingStorageResource, version: str,
     }
 
 
-def capture(staging: StagingStorageResource, version: str,
+def capture(staging: StagingStorageResource, version: str | None = None,
             client: httpx.Client | None = None) -> dict[str, object]:
-    """Capture the bounded official archive losslessly and validate its population."""
+    """Discover the current release, capture it losslessly and validate its population."""
     owned = client is None
     client = client or httpx.Client(timeout=300, follow_redirects=True)
+    release: census_latest.GeodatabaseRelease | None = None
     try:
-        _archive, receipt = _capture_archive(staging, version, client)
+        with tempfile.TemporaryDirectory(prefix="address-ranges-discovery-") as temporary:
+            release = census_latest.discover_geodatabase(
+                client, Path(temporary), GEODATABASE_PRODUCT)
+        _archive, receipt, version = _capture_archive(staging, version, client, release)
         identity = processing_identity(Path(__file__).parents[3])
         try:
             validate_construction_code_identity(
@@ -567,10 +595,13 @@ def capture(staging: StagingStorageResource, version: str,
             )
         except Exception as exc:
             raise ValueError("source_code_identity_invalid:" + type(exc).__name__) from exc
-        return _validate_staged_population(staging, version, identity, receipt, replayed=False)
+        result = _validate_staged_population(
+            staging, version, identity, receipt, replayed=False, release=release)
+        return {**result, "version": version}
     except Exception as exc:
-        staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/quarantine.json", _json_bytes({
-            "status": "quarantined", "source_url": SOURCE_URL,
+        staging.write(DATASET_SLUG, FILE_SLUG, version or "unresolved", "metadata/quarantine.json", _json_bytes({
+            "status": "quarantined",
+            "source_url": release.source_url if release is not None else None,
             "observed_at": datetime.now(timezone.utc).isoformat(),
             "failure_code": str(exc).split(":", 1)[0],
             "release_accepted": False,
@@ -597,29 +628,37 @@ def replay_retained_capture(staging: StagingStorageResource, version: str, archi
         receipt = json.loads(receipt_bytes)
     except (TypeError, json.JSONDecodeError) as exc:
         raise ValueError("retained_capture_receipt_invalid") from exc
-    if (not isinstance(receipt, dict)
-            or receipt.get("raw_sha256") != _sha256(archive)
+    if not isinstance(receipt, dict):
+        raise ValueError("retained_capture_receipt_invalid")
+    try:
+        release = census_latest.geodatabase_release_from_receipt(receipt, GEODATABASE_PRODUCT)
+    except ValueError as exc:
+        raise ValueError("retained_capture_release_mismatch") from exc
+    canonical_key = _canonical_source_key(release)
+    if (receipt.get("raw_sha256") != _sha256(archive)
             or receipt.get("wire_bytes_retained") != len(archive)
-            or receipt.get("raw_archive_key") != CANONICAL_SOURCE_KEY
-            or receipt.get("raw_sha256") != EXPECTED_ARCHIVE_SHA256):
+            or receipt.get("raw_archive_key") != canonical_key
+            or receipt.get("requested_url") != release.source_url
+            or receipt.get("final_url") != release.source_url):
         raise ValueError("retained_capture_archive_receipt_mismatch")
     # Copy the original evidence bytes verbatim. This path is for a local
     # replay of an already observed transfer; it makes no new network request
     # and does not invent a retrieval timestamp.
-    staging.write(DATASET_SLUG, FILE_SLUG, version, CANONICAL_SOURCE_KEY, archive)
+    staging.write(DATASET_SLUG, FILE_SLUG, version, canonical_key, archive)
     staging.write(DATASET_SLUG, FILE_SLUG, version, "raw/source_archive.receipt.json", receipt_bytes)
     identity = processing_identity(Path(__file__).parents[3])
     try:
-        _require_accepted_transfer(receipt, archive)
+        _require_accepted_transfer(receipt, archive, release)
         validate_construction_code_identity(
             Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
         )
-        result = _validate_staged_population(staging, version, identity, receipt, replayed=True)
-        result["replayed"] = True
+        result = {**_validate_staged_population(
+            staging, version, identity, receipt, replayed=True, release=release),
+            "version": version, "replayed": True}
         return result
     except Exception as exc:
         staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/quarantine.json", _json_bytes({
-            "status": "quarantined", "source_url": SOURCE_URL,
+            "status": "quarantined", "source_url": release.source_url,
             "observed_at": datetime.now(timezone.utc).isoformat(),
             "failure_code": str(exc).split(":", 1)[0],
             "release_accepted": False,

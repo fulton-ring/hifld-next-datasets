@@ -183,6 +183,29 @@ def discover_geodatabase(client: httpx.Client, capture_root: Path, product: str)
     raise ValueError('geodatabase_editions_missing')
 
 
+_GEODATABASE_URL = re.compile(
+    r'https://www2\.census\.gov/geo/tiger/TGRGDB(\d{2})/(tlgdb_(\d{4})_(?:a_)?us_([a-z0-9_]+)\.gdb\.zip)'
+)
+
+
+def geodatabase_release_from_url(url: str, product: str) -> GeodatabaseRelease:
+    """Rebuild one retained national geodatabase release identity from its URL."""
+    match = _GEODATABASE_URL.fullmatch(url)
+    if match is None or match.group(4) != product or int(match.group(3)) % 100 != int(match.group(1)):
+        raise ValueError('source_url_not_current_tgrgdb')
+    return GeodatabaseRelease(
+        vintage=int(match.group(3)), product=product, source_file=match.group(2),
+        source_url=url, directory_url=url.rsplit('/', 1)[0] + '/',
+        listing_sha256='', listing_bytes=0, latest_checked_at='', annual_listing_sha256='',
+    )
+
+
+def geodatabase_release_from_receipt(receipt: dict, product: str) -> GeodatabaseRelease:
+    """Rebuild the release identity recorded by one retained capture receipt."""
+    url = receipt.get('url')
+    return geodatabase_release_from_url(url if isinstance(url, str) else '', product)
+
+
 def discover_shapefile(
     client: httpx.Client, capture_root: Path, layer: str, product: str, *,
     geoid: str | None = None,
