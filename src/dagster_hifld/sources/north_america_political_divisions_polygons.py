@@ -39,6 +39,7 @@ SOURCE_RELEASE = "Political Boundaries, 2021 (edition 3, boundaries_p_2021_v3)"
 SOURCE_RELEASE_DATE = "2022-10-26"
 SOURCE_PRODUCT_CREATION = "2022-09-15"
 IDENTIFIER_COLUMN = "source_record_number"
+# Frozen publisher release: CEC Political Boundaries 2021, edition 3 (boundaries_p_2021_v3); this edition is not revised.
 EXPECTED_SHA256 = "29f3aec70604ed5be9e18c22e2d504da883fedd6d81aff27156456b4899a0c28"
 EXPECTED_BYTES = 184_774_593
 EXPECTED_UNCOMPRESSED_BYTES = 252_775_497
