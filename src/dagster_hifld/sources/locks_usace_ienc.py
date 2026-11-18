@@ -50,8 +50,6 @@ FILE_SLUG = DATASET_SLUG
 SERVICE_URL = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/Locks/FeatureServer"
 LAYER_URL = SERVICE_URL + "/0"
 CREATE_REPLICA_URL = SERVICE_URL + "/createReplica"
-EXPECTED_COUNT = 234
-EXPECTED_OIDS = list(range(1, EXPECTED_COUNT + 1))
 SOURCE_WKID = 4019
 LAYER_NAME = "Lock"
 MAX_RECEIPT_BYTES = 65_536
@@ -232,9 +230,10 @@ def _validate_layer_metadata(document: dict) -> dict:
 
 def _validate_count_ids(count_doc: dict, ids_doc: dict, label: str) -> list[int]:
     ids = ids_doc.get("objectIds")
-    if (count_doc.get("count") != EXPECTED_COUNT or not isinstance(ids, list)
-            or len(ids) != EXPECTED_COUNT or any(type(i) is not int for i in ids)
-            or len(set(ids)) != EXPECTED_COUNT or sorted(ids) != EXPECTED_OIDS):
+    count = count_doc.get("count")
+    if (type(count) is not int or count < 1 or not isinstance(ids, list)
+            or len(ids) != count or any(type(i) is not int or i <= 0 for i in ids)
+            or len(set(ids)) != count):
         raise LocksQuarantineError("source_count_or_id_roster_drift:" + label)
     return sorted(ids)
 
@@ -271,7 +270,7 @@ def validate_native_table(table: pa.Table, metadata: dict, expected_oids: list[i
     """Validate exact native Arrow shape and return source-faithful candidate table."""
     if not isinstance(table, pa.Table) or table.column_names != EXPECTED_COLUMN_ORDER:
         raise LocksQuarantineError("native_arrow_field_order_or_roster_drift")
-    if table.num_rows != EXPECTED_COUNT:
+    if table.num_rows != len(expected_oids):
         raise LocksQuarantineError("native_feature_count_drift")
     if set(table.schema.names) != set(EXPECTED_COLUMN_ORDER):
         raise LocksQuarantineError("native_arrow_field_set_drift")
@@ -280,7 +279,7 @@ def validate_native_table(table: pa.Table, metadata: dict, expected_oids: list[i
             raise LocksQuarantineError("native_arrow_field_type_drift:" + name)
     oid = table.column("OBJECTID")
     oids = [int(v.as_py()) for v in oid]
-    if (oid.null_count or len(set(oids)) != EXPECTED_COUNT or sorted(oids) != expected_oids):
+    if (oid.null_count or len(set(oids)) != len(expected_oids) or sorted(oids) != expected_oids):
         raise LocksQuarantineError("native_oid_roster_drift")
     blob = table.column("SE_ANNO_CAD_DATA")
     if blob.null_count or any(value is None or len(value) != 0 for value in blob.to_pylist()):
@@ -304,8 +303,8 @@ def validate_native_table(table: pa.Table, metadata: dict, expected_oids: list[i
              "source_schema_sha256": digest(canonical(service_schema)),
              "source_geometry_type": "Point", "source_wkid": SOURCE_WKID,
              "source_blob_type": "esriFieldTypeBlob -> Arrow binary",
-             "source_blob_nonnull_count": EXPECTED_COUNT,
-             "source_blob_empty_count": EXPECTED_COUNT,
+             "source_blob_nonnull_count": len(oids),
+             "source_blob_empty_count": len(oids),
              "source_blob_payload_bytes": 0,
              "native_field_count_including_oid": len(EXPECTED_FIELDS),
              "native_attribute_count_excluding_oid": len(EXPECTED_ATTRIBUTE_NAMES),
@@ -364,7 +363,8 @@ def _validate_service_bundle(captures: dict[str, tuple[bytes, dict]], *,
             break
         if job.get("status") in {"Failed","Cancelled","TimedOut","esriJobFailed","esriJobCancelled","esriJobTimedOut"}:
             raise LocksQuarantineError("replica_job_failed")
-    if not isinstance(job,dict) or job.get("status") != "Completed" or job.get("recordCount") != EXPECTED_COUNT:
+    if (not isinstance(job,dict) or job.get("status") != "Completed"
+            or job.get("recordCount") != len(ids_before)):
         raise LocksQuarantineError("replica_job_not_complete_or_count_drift")
     result_url=_validate_url(job.get("resultUrl"),path_prefix="/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/Locks/FeatureServer/replicafilescache/")
     if (captures["result_head"][1].get("url")!=result_url
@@ -428,7 +428,8 @@ def _load_capture(root: Path) -> tuple[dict[str,tuple[bytes,dict]],dict]:
     continued=manifest.get("continued_completed_replica")
     if continued is not None:
         if (not isinstance(continued,dict) or continued.get("failed_head_status")!=302
-                or continued.get("completed_replica_record_count")!=EXPECTED_COUNT
+                or type(continued.get("completed_replica_record_count")) is not int
+                or continued["completed_replica_record_count"] < 1
                 or not isinstance(continued.get("artifact_roster_sha256"),str)
                 or not re.fullmatch(r"[0-9a-f]{64}",continued["artifact_roster_sha256"])
                 or not isinstance(continued.get("failed_head_observed_at"),str)):
@@ -706,7 +707,8 @@ def _load_partial_completed_replica(root: Path) -> tuple[dict[str,tuple[bytes,di
             raise LocksQuarantineError("resume_replica_job_failed")
         if job.get("status")=="Completed" and index!=len(polls)-1:
             raise LocksQuarantineError("resume_replica_poll_after_completion")
-    if not isinstance(job,dict) or job.get("status")!="Completed" or job.get("recordCount")!=EXPECTED_COUNT:
+    if (not isinstance(job,dict) or job.get("status")!="Completed"
+            or job.get("recordCount")!=len(ids)):
         raise LocksQuarantineError("resume_replica_not_completed_or_count_drift")
     if job.get("replicaName")!=params["replicaName"]:
         raise LocksQuarantineError("resume_replica_name_drift")
@@ -759,6 +761,9 @@ def _capture_live(root: Path, *, resume_from: Path | None = None) -> tuple[dict[
             get("metadata_before",meta_url)
             get("count_before",query+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"}))
             get("ids_before",query+urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}))
+            expected_count = len(_validate_count_ids(
+                _strict_json(captures["count_before"][0], "count_before"),
+                _strict_json(captures["ids_before"][0], "ids_before"), "before"))
             response,receipt=_perform(client,"POST",CREATE_REPLICA_URL,root,"create_replica",
                 content=request_body,max_bytes=MAX_RECEIPT_BYTES,
                 request_headers={"Content-Type":"application/x-www-form-urlencoded"},budget=budget)
@@ -776,7 +781,8 @@ def _capture_live(root: Path, *, resume_from: Path | None = None) -> tuple[dict[
                 if job.get("status") in {"Failed","Cancelled","TimedOut","esriJobFailed","esriJobCancelled","esriJobTimedOut"}:
                     raise LocksQuarantineError("replica_job_failed")
                 if index<MAX_POLL_COUNT:time.sleep(POLL_INTERVAL_SECONDS)
-            if not isinstance(job,dict) or job.get("status")!="Completed" or job.get("recordCount")!=EXPECTED_COUNT:
+            if (not isinstance(job,dict) or job.get("status")!="Completed"
+                    or job.get("recordCount")!=expected_count):
                 raise LocksQuarantineError("replica_job_not_complete_or_count_drift")
             result_url=_validate_url(job.get("resultUrl"),path_prefix="/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/Locks/FeatureServer/replicafilescache/")
         head_body,head_receipt=_perform(client,"HEAD",result_url,root,"result_head",max_bytes=MAX_RECEIPT_BYTES,
@@ -857,7 +863,7 @@ def _load_native_table(captures: dict[str,tuple[bytes,dict]], schema: dict, ids:
     uri=f"/vsizip/{path}/{gdb_root}"
     try:
         info=pyogrio.read_info(uri,layer=LAYER_NAME)
-        if (info.get("features")!=EXPECTED_COUNT or info.get("geometry_type")!="Point"
+        if (info.get("features")!=len(ids) or info.get("geometry_type")!="Point"
                 or info.get("crs")!="EPSG:4019" or info.get("fid_column")!="OBJECTID"):
             raise LocksQuarantineError("native_filegdb_layer_identity_drift")
         gdal_meta,table=pyogrio.read_arrow(uri,layer=LAYER_NAME,return_fids=True)
@@ -865,7 +871,7 @@ def _load_native_table(captures: dict[str,tuple[bytes,dict]], schema: dict, ids:
     except Exception as exc:raise LocksQuarantineError("native_filegdb_unreadable:"+type(exc).__name__) from exc
     if gdal_meta.get("fid_column")!="OBJECTID" or gdal_meta.get("crs")!="EPSG:4019":
         raise LocksQuarantineError("native_filegdb_ogr_metadata_drift")
-    if table.column_names!=EXPECTED_COLUMN_ORDER or table.num_rows!=EXPECTED_COUNT:
+    if table.column_names!=EXPECTED_COLUMN_ORDER or table.num_rows!=len(ids):
         raise LocksQuarantineError("native_filegdb_arrow_schema_or_count_drift")
     for f in schema["fields"]:
         if f["name"]!="OBJECTID":
@@ -987,9 +993,9 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
     audit={**native_audit,"source_record_sha256":record_sha,"source_schema_sha256":schema_sha,
         "source_capture_sha256":capture_sha,"source_archive_sha256":archive_receipt["sha256"],
         "source_archive_bytes":archive_receipt["bytes"],"source_capture_history_prefix":history_prefix,
-        "source_feature_count":EXPECTED_COUNT,"source_id_sha256":native_audit["source_id_sha256"],
+        "source_feature_count":len(ids),"source_id_sha256":native_audit["source_id_sha256"],
         "source_id_min":min(ids),"source_id_max":max(ids),"source_coverage_scope":"Complete observed USACE NDC/LPMS Lock point layer. Producer scope is USACE built, maintained, owned, or operated locks, not every U.S. lock or an IENC chart class; historical HIFLD population, baseline equivalence, edition and currentness remain unestablished.",
-        "drift_guard":"Before/after service metadata schema and exact 234-object ID roster; native FileGDB layer type, CRS, field names/types/string widths, IDs, non-null zero-length BLOB; ZIP entry safety/CRC/size.",
+        "drift_guard":"Before/after service metadata schema and exact capture-time OBJECTID roster; native FileGDB layer type, CRS, field names/types/string widths, IDs, non-null zero-length BLOB; ZIP entry safety/CRC/size.",
         "producer_release_date":None,"producer_release_date_reason":"ArcGIS service editingInfo dataLastEditDate is a data edit timestamp, not a producer release date.",
         "source_data_last_edit_epoch_ms":(before.get("editingInfo") or {}).get("dataLastEditDate"),
         "source_schema_last_edit_epoch_ms":(before.get("editingInfo") or {}).get("schemaLastEditDate"),
@@ -1012,7 +1018,7 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
             "release_date_unknown_reason":"Fetch/edit timestamp is not a producer release date."}
             for name,(_body,receipt) in sorted(captures.items())],
         "lineage":"The HIFLD inventory description for issue 151 exactly matches the USACE Locks service layer metadata, which names NDC, LPMS, the Lock Characteristics database, and NDC surveys. The current official source is the public USACE ArcGIS item 78ef8693f30b40b980737c561ce6b103. The separate USACE IENC master chart service has lock gate/basin classes and no LOCK_POINT class; no IENC equivalence is claimed. The DataLumos historical archive bytes/FGDC metadata have not been compared.",
-        "transformations":[{"operation":"native_filegdb_to_geoparquet_candidate","parameters":{"source_format":"Official anonymous createReplica syncModel=none FileGDB export","source_layer":"Lock","record_population":"234; OBJECTID roster exact match to before/after service IDs","source_fields":"All 48 service-declared fields including OBJECTID OID, all 47 attributes and SE_ANNO_CAD_DATA Binary field retained.","binary_blob":"All 234 current BLOB values are non-null zero-length bytes. Refresh validation requires the field, no nulls, and zero-length values; drift quarantines.","geometry":"Native Point WKB values copied without repair, coordinate transform, or reprojection.","crs":"EPSG:4019 preserved. EPSG definition is unknown datum based on GRS 1980; no NAD83/4326 inference.","release_status":"Unapproved; historical HIFLD archive equivalence, vintage, baseline, rights and mapping decisions remain pending."}}],
+        "transformations":[{"operation":"native_filegdb_to_geoparquet_candidate","parameters":{"source_format":"Official anonymous createReplica syncModel=none FileGDB export","source_layer":"Lock","record_population":"complete capture-time OBJECTID roster, exact match to before/after service IDs","source_fields":"All 48 service-declared fields including OBJECTID OID, all 47 attributes and SE_ANNO_CAD_DATA Binary field retained.","binary_blob":"All 234 current BLOB values are non-null zero-length bytes. Refresh validation requires the field, no nulls, and zero-length values; drift quarantines.","geometry":"Native Point WKB values copied without repair, coordinate transform, or reprojection.","crs":"EPSG:4019 preserved. EPSG definition is unknown datum based on GRS 1980; no NAD83/4326 inference.","release_status":"Unapproved; historical HIFLD archive equivalence, vintage, baseline, rights and mapping decisions remain pending."}}],
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Source-faithful draft retains every attribute, native OID values, Binary Blob, WKB point geometry and producer-declared EPSG:4019; compatibility/release decisions remain pending.","objects":[{"path":f"geoparquet/{DATASET_SLUG}.parquet","bytes":len(parquet),"sha256":digest(parquet)}]}}},
         "unsupported_output_formats":{"shapefile_zip":"Would truncate or alter field names/types and drop the binary attribute."}}
     validate_release_provenance(manifest);validate_output_policy(manifest)
@@ -1043,7 +1049,7 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
         if not isinstance(original_receipts,dict):raise LocksQuarantineError("cached_candidate_receipts_missing")
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,
             identity,record_sha,schema_sha,original["payload"]["objects"],original_receipts)
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
+        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(ids),"source_reported_count":len(ids),
             "source_population_complete":True,"source_id_sha256":native_audit["source_id_sha256"],
             "source_schema_sha256":schema_sha,"candidate_ready":prefix+"/metadata/candidate_ready.json",
             "source_capture_evidence_sha256":capture_sha,"reused":True,"capture_directory":str(root),
@@ -1054,7 +1060,7 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
         "source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipt_map,
         "objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(ids),"source_reported_count":len(ids),
         "source_population_complete":True,"source_id_sha256":native_audit["source_id_sha256"],
         "source_schema_sha256":schema_sha,"candidate_ready":prefix+"/metadata/candidate_ready.json",
         "source_capture_evidence_sha256":capture_sha,"reused":False,"capture_directory":str(root),

@@ -39,6 +39,8 @@ _ITEM = {
 _SERVICE_DIRECTORY = {"services": [{"name": "usace_cw_districts", "type": "FeatureServer"}]}
 _SERVICE = {"serviceItemId": source.ITEM_ID, "maxRecordCount": 1000,
             "serviceDescription": "USACE Civil Works District Boundaries"}
+FEATURE_COUNT = 39
+
 _LAYER = {
     "id": source.LAYER_ID, "name": "USACE Districts", "geometryType": "esriGeometryPolygon",
     "maxRecordCount": 1000, "hasZ": False, "hasM": False,
@@ -87,8 +89,8 @@ class ArcGISFixture(httpx.BaseTransport):
                  item_description_drift=False, directory_drift=False, service_change_after=False,
                  shifted_roster=False, omit_layer_extent=False, count_drift=False,
                  editing_info_drift=False, page_id_mismatch=False, extra_attribute=False):
-        self.ids = (list(range(2, source.EXPECTED_COUNT + 2)) if shifted_roster
-                    else list(range(1, source.EXPECTED_COUNT + 1)))
+        self.ids = (list(range(2, FEATURE_COUNT + 2)) if shifted_roster
+                    else list(range(1, FEATURE_COUNT + 1)))
         self.changed_after = changed_after
         self.schema_drift = schema_drift
         self.changed_page_crs = changed_page_crs
@@ -141,11 +143,11 @@ class ArcGISFixture(httpx.BaseTransport):
                 data["editingInfo"] = {"dataLastEditDate": "yesterday"}
         elif query.get("returnIdsOnly") == "true":
             self.id_calls += 1
-            ids = self.ids[:-1] + [source.EXPECTED_COUNT + 1] if self.changed_after and self.id_calls == 2 else self.ids
+            ids = self.ids[:-1] + [FEATURE_COUNT + 1] if self.changed_after and self.id_calls == 2 else self.ids
             data = {"objectIdFieldName": "OBJECTID", "objectIds": ids}
         elif query.get("returnCountOnly") == "true":
             self.count_calls += 1
-            count = source.EXPECTED_COUNT - 1 if self.count_drift and self.count_calls == 2 else source.EXPECTED_COUNT
+            count = FEATURE_COUNT - 1 if self.count_drift and self.count_calls == 2 else FEATURE_COUNT
             data = {"count": count}
         elif path.endswith("/FeatureServer/0/query"):
             requested = [int(value) for value in query["objectIds"].split(",")]
@@ -209,23 +211,23 @@ class UsaceCwDistrictsCaptureTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(usace_civil_works_districts, hifld_ingest_assets)
         self.assertEqual(usace_cw_districts_draft_refresh_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_civil_works_districts_complete({"feature_count": source.EXPECTED_COUNT, "source_population_complete": True})
+        check = usace_civil_works_districts_complete({"feature_count": FEATURE_COUNT, "source_reported_count": FEATURE_COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = usace_civil_works_districts_complete({"feature_count": source.EXPECTED_COUNT - 1, "source_population_complete": True})
+        failed = usace_civil_works_districts_complete({"feature_count": FEATURE_COUNT - 1, "source_reported_count": FEATURE_COUNT, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_complete_capture_preserves_native_fields_ids_and_page_raw_wire(self):
         storage, result = self._capture(ArcGISFixture())
-        self.assertEqual(result["feature_count"], source.EXPECTED_COUNT)
+        self.assertEqual(result["feature_count"], FEATURE_COUNT)
         self.assertFalse(result["release_accepted"])
         self.assertTrue(result["source_population_complete"])
-        self.assertEqual(result["ids_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(result["ids_sha256"], source._digest(source._json_bytes(list(range(1, FEATURE_COUNT + 1)))))
         prefix = self._prefix(storage)
         manifest = json.loads(storage.read_key(prefix + "metadata/native_capture.json"))
         self.assertEqual(len(manifest["pages"]), 4)
-        self.assertEqual(manifest["pages"][-1]["count"], source.EXPECTED_COUNT - 3 * source.PAGE_SIZE)
-        self.assertEqual(manifest["before_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(manifest["pages"][-1]["count"], FEATURE_COUNT - 3 * source.PAGE_SIZE)
+        self.assertEqual(manifest["before_id_sha256"], source._digest(source._json_bytes(list(range(1, FEATURE_COUNT + 1)))))
         self.assertEqual(manifest["native_crs"], "EPSG:4140")
         self.assertEqual(manifest["source_last_data_edit_ms"], 1737994782386)
         self.assertEqual(manifest["item_last_modified_ms"], 1737994785000)
@@ -241,8 +243,8 @@ class UsaceCwDistrictsCaptureTests(unittest.TestCase):
         with open(parquet_path.name, "wb") as out:
             out.write(storage.read_key(prefix + f"metadata/native_candidate/{source.FILE_SLUG}.parquet"))
         table = pq.read_table(parquet_path.name)
-        self.assertEqual(table.num_rows, source.EXPECTED_COUNT)
-        self.assertEqual(table.column("OBJECTID").to_pylist(), source.EXPECTED_IDS)
+        self.assertEqual(table.num_rows, FEATURE_COUNT)
+        self.assertEqual(table.column("OBJECTID").to_pylist(), list(range(1, FEATURE_COUNT + 1)))
         self.assertEqual(table.column("DISTRICT").to_pylist()[0], "DISTRICT-1")
         self.assertEqual(table.column("USACE_DIVISION_CODE").to_pylist()[0], None)
         self.assertEqual(table.column("Shape__Area").to_pylist()[0], 11.5)
@@ -257,7 +259,7 @@ class UsaceCwDistrictsCaptureTests(unittest.TestCase):
         version = "v20261114T000000Z"
         self.assertEqual(source.NATIVE_GEOJSON_CRS["properties"]["name"], "urn:ogc:def:crs:EPSG::4140")
         staged = load_staged_geodata(storage, source.DATASET_SLUG, source.FILE_SLUG, version)
-        self.assertEqual(len(staged), source.EXPECTED_COUNT)
+        self.assertEqual(len(staged), FEATURE_COUNT)
         # The source-declared Esri wkid 4140 (NAD83 family) is a deprecated EPSG
         # entry; GDAL normalizes it to the same-datum non-deprecated 4617 when
         # reading the staged GeoJSON crs member. Coordinates are unchanged.
@@ -269,7 +271,7 @@ class UsaceCwDistrictsCaptureTests(unittest.TestCase):
             source.DATASET_SLUG, source_metadata=resolved.metadata,
         )
         quality = summary.quality_manifest
-        self.assertEqual(quality["feature_count"], source.EXPECTED_COUNT)
+        self.assertEqual(quality["feature_count"], FEATURE_COUNT)
         self.assertTrue(quality["quality_check_passed"])
         self.assertEqual(quality["bounds"], [-92.0, 31.0, -89.8, 31.5])
         manifest = resolved.metadata
@@ -314,7 +316,7 @@ class UsaceCwDistrictsCaptureTests(unittest.TestCase):
 
     def test_transient_page_failure_is_retained_before_bounded_retry(self):
         storage, result = self._capture(ArcGISFixture(fail_page_once=11))
-        self.assertEqual(result["feature_count"], source.EXPECTED_COUNT)
+        self.assertEqual(result["feature_count"], FEATURE_COUNT)
         prefix = self._prefix(storage)
         self.assertEqual(storage.read_key(prefix + "raw/page_0000010.attempt_1.json"), b"temporarily unavailable")
         receipt = json.loads(storage.read_key(prefix + "raw/page_0000010.attempt_1.receipt.json"))
@@ -328,14 +330,14 @@ class UsaceCwDistrictsCaptureTests(unittest.TestCase):
                       manifest["lineage"]["failed_retry_responses"])
 
     def test_mid_capture_id_drift_refuses_a_candidate(self):
-        self._refuse(ArcGISFixture(changed_after=True), "source_id_population_drift")
+        self._refuse(ArcGISFixture(changed_after=True), "source_population_changed_during_capture")
 
     def test_schema_drift_refuses_before_feature_fetch(self):
         storage = self._refuse(ArcGISFixture(schema_drift=True), "source_schema_drift")
         self.assertTrue(storage.object_exists(self._prefix(storage) + "metadata/quarantine.json"))
 
     def test_count_drift_refuses_a_candidate(self):
-        self._refuse(ArcGISFixture(count_drift=True), "source_count_drift")
+        self._refuse(ArcGISFixture(count_drift=True), "source_population_changed_during_capture")
 
     def test_editing_info_drift_refuses_a_candidate(self):
         self._refuse(ArcGISFixture(editing_info_drift=True), "source_editing_info_drift")
@@ -385,8 +387,10 @@ class UsaceCwDistrictsCaptureTests(unittest.TestCase):
         self._refuse(ArcGISFixture(service_change_after=True),
                      "official_usace_cw_districts_service_changed_during_capture")
 
-    def test_shifted_id_roster_of_same_size_is_refused(self):
-        self._refuse(ArcGISFixture(shifted_roster=True), "source_id_population_drift")
+    def test_shifted_id_roster_of_same_size_is_captured(self):
+        storage, result = self._capture(ArcGISFixture(shifted_roster=True))
+        self.assertEqual(result["feature_count"], FEATURE_COUNT)
+        self.assertEqual(result["source_reported_count"], FEATURE_COUNT)
 
     def test_pre_chain_retained_capture_without_item_is_refused(self):
         temporary = tempfile.TemporaryDirectory(prefix="usace-cw-districts-pre-chain-replay-")

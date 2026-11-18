@@ -162,18 +162,6 @@ def _fixture():
     return captures
 
 
-_UNPINNED = {
-    "EXPECTED_COUNT": None,
-    "EXPECTED_IDS_SHA256": "",
-    "EXPECTED_SCHEMA_SHA256": "",
-    "EXPECTED_RECORD_SHA256": "",
-    "EXPECTED_GEOMETRY_SHA256": "",
-    "EXPECTED_NULL_GEOMETRY_COUNT": None,
-    "EXPECTED_SHELL_COUNT_DISTRIBUTION": None,
-    "EXPECTED_HOLE_COUNT": None,
-    "EXPECTED_VERTEX_COUNT": None,
-    "EXPECTED_OBSERVED_BOUNDS": None,
-}
 
 
 _ERROR_DOCUMENT = {"error": {"code": 1000, "message": "Unable to complete operation",
@@ -218,27 +206,8 @@ def _replay_patches():
 
 @contextmanager
 def fixture_pins():
-    """Pin every module baseline to the fixture capture's own audit values."""
-    with ExitStack() as stack:
-        for name, value in _UNPINNED.items():
-            stack.enter_context(patch.object(ucwd, name, value))
-        audit = ucwd._validate(_fixture())[3]
-        stack.close()
-        pins = {
-            "EXPECTED_COUNT": audit["feature_count"],
-            "EXPECTED_IDS_SHA256": audit["source_id_sha256"],
-            "EXPECTED_SCHEMA_SHA256": audit["source_schema_sha256"],
-            "EXPECTED_RECORD_SHA256": audit["source_record_sha256"],
-            "EXPECTED_GEOMETRY_SHA256": audit["source_geometry_sha256"],
-            "EXPECTED_NULL_GEOMETRY_COUNT": audit["null_geometry_count"],
-            "EXPECTED_SHELL_COUNT_DISTRIBUTION": audit["shell_count_distribution"],
-            "EXPECTED_HOLE_COUNT": audit["hole_count"],
-            "EXPECTED_VERTEX_COUNT": audit["vertex_count"],
-            "EXPECTED_OBSERVED_BOUNDS": audit["geometry_bounds"],
-        }
-        for name, value in pins.items():
-            stack.enter_context(patch.object(ucwd, name, value))
-        yield audit
+    """Return the fixture capture's own audit values; nothing is pinned."""
+    yield ucwd._validate(_fixture())[3]
 
 
 class UsaceCivilWorksDivisionsTests(unittest.TestCase):
@@ -251,11 +220,13 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
         self.assertEqual(usace_civil_works_divisions_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         check = usace_civil_works_divisions_complete({"feature_count": 8,
+                                                      "source_reported_count": 8,
                                                       "candidate_ready": "ready"})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["source_authority_accepted"].value)
         failed = usace_civil_works_divisions_complete({"feature_count": 7,
+                                                       "source_reported_count": 8,
                                                        "candidate_ready": "ready"})
         self.assertFalse(failed.passed)
 
@@ -474,47 +445,6 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
         self.assertIsNone(ucwd._geometry_rings({}))
         self.assertEqual(ucwd._geometry_rings({"rings": [SHELL_A]}), [SHELL_A])
 
-    def test_pinned_baselines_are_enforced_once_set(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            storage = StagingStorageResource(use_local=True, local_dir=tmp)
-            with fixture_pins() as audit:
-                fixture = _fixture()
-                with patch.object(ucwd, "_load_offline", return_value=copy.deepcopy(fixture)), \
-                        patch.object(ucwd, "_geoparquet", return_value=b"candidate"), \
-                        patch.object(ucwd, "processing_identity",
-                                     return_value={"code_commit": "a" * 40,
-                                                   "files": {"x.py": "b" * 64}}), \
-                        patch.object(ucwd, "validate_construction_code_identity",
-                                     return_value=None), \
-                        patch.object(capture_common, "validate_construction_code_identity",
-                                     return_value=None):
-                    result = ucwd.capture_usace_civil_works_divisions(
-                        storage, offline_capture_directory=tmp)
-                    self.assertFalse(result["reused"])
-                    pins = [
-                        ("EXPECTED_IDS_SHA256", audit["source_id_sha256"]),
-                        ("EXPECTED_RECORD_SHA256", audit["source_record_sha256"]),
-                        ("EXPECTED_GEOMETRY_SHA256", audit["source_geometry_sha256"]),
-                        ("EXPECTED_NULL_GEOMETRY_COUNT", audit["null_geometry_count"]),
-                        ("EXPECTED_SHELL_COUNT_DISTRIBUTION", audit["shell_count_distribution"]),
-                        ("EXPECTED_HOLE_COUNT", audit["hole_count"]),
-                        ("EXPECTED_VERTEX_COUNT", audit["vertex_count"]),
-                        ("EXPECTED_OBSERVED_BOUNDS", audit["geometry_bounds"]),
-                    ]
-                    for name, value in pins:
-                        with self.subTest(pin=name):
-                            with patch.object(ucwd, name, value):
-                                again = ucwd.capture_usace_civil_works_divisions(
-                                    storage, offline_capture_directory=tmp)
-                                self.assertTrue(again["reused"])
-                    for name, value in (("EXPECTED_IDS_SHA256", "0" * 64),
-                                        ("EXPECTED_COUNT", audit["feature_count"] + 1)):
-                        with self.subTest(refusal=name):
-                            with patch.object(ucwd, name, value):
-                                with self.assertRaisesRegex(ValueError, "source_"):
-                                    ucwd.capture_usace_civil_works_divisions(
-                                        storage, offline_capture_directory=tmp)
-
     def test_same_content_reuses_original_receipts_and_changed_content_versions(self):
         fixture = _fixture()
         stable_identity = {"code_commit": "a" * 40, "files": {"x.py": "b" * 64}}
@@ -538,7 +468,6 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
                                        wire_bytes=len(body),
                                        wire_sha256=hashlib.sha256(body).hexdigest())
                         captures["page_000"] = (body, receipt)
-                    extra = ([patch.object(ucwd, "EXPECTED_RECORD_SHA256", "")] if mutate else [])
                     with patch.object(ucwd, "_load_offline", return_value=captures), \
                             patch.object(ucwd, "_geoparquet", side_effect=parquet), \
                             patch.object(ucwd, "processing_identity",
@@ -547,11 +476,8 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
                                          return_value=None), \
                             patch.object(capture_common, "validate_construction_code_identity",
                                          return_value=None):
-                        with ExitStack() as stack:
-                            for extra_patch in extra:
-                                stack.enter_context(extra_patch)
-                            return ucwd.capture_usace_civil_works_divisions(
-                                storage, offline_capture_directory=tmp)
+                        return ucwd.capture_usace_civil_works_divisions(
+                            storage, offline_capture_directory=tmp)
 
                 first = run("2026-01-01T00:00:00Z")
                 first_manifest = json.loads(storage.read_key(

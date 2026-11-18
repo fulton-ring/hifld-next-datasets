@@ -52,8 +52,6 @@ SERVICE_URL = f"{SERVICE_FOLDER_URL}/ISOLATED_DANGER_BUOY_POINT/MapServer"
 LAYER_ID = 2
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 MASTER_GEODATABASE_URL = "https://ienccloud.us/ienc/products/files/U37/ienc_master_dataset_gdb/USACE_IENC_Master_Service_gdb.zip"
-EXPECTED_COUNT = 1
-EXPECTED_FEATURE_IDS = {"U3 1617851130 00001"}
 EXPECTED_SCHEMA_SHA256 = "0ddd1a4cc2ae65123922e664aa24c21fdcf99b6cefeb86a991e709b8c812e30b"
 PAGE_SIZE = 2000
 MAX_BODY_BYTES = 8 * 1024 * 1024
@@ -164,9 +162,10 @@ def _validate_captures(
     ids_before = documents["ids_before"].get("objectIds")
     ids_seed = documents["ids_seed"].get("objectIds")
     ids_after = documents["ids_after"].get("objectIds")
-    if (count_before != EXPECTED_COUNT or count_after != EXPECTED_COUNT
+    if (type(count_before) is not int or count_before < 1 or count_after != count_before
             or not isinstance(ids_before, list) or not isinstance(ids_seed, list) or not isinstance(ids_after, list)
-            or len(ids_before) != EXPECTED_COUNT or len(set(ids_before)) != len(ids_before)
+            or len(ids_before) != count_before or len(set(ids_before)) != len(ids_before)
+            or any(type(value) is not int for value in ids_before)
             or sorted(ids_before) != sorted(ids_seed) or sorted(ids_before) != sorted(ids_after)):
         raise ValueError("source_count_or_objectid_roster_drift")
 
@@ -180,7 +179,7 @@ def _validate_captures(
         raise ValueError("source_page_crs_drift")
     query_fields = _expected_profile(page.get("fields"), query_field_names)
     features = page.get("features")
-    if not isinstance(features, list) or len(features) != EXPECTED_COUNT:
+    if not isinstance(features, list) or len(features) != count_before:
         raise ValueError("source_page_feature_count_mismatch")
     feature_ids: set[str] = set()
     object_ids: list[int] = []
@@ -213,8 +212,8 @@ def _validate_captures(
                 raise ValueError("source_integer_physical_type_drift:" + field["name"])
             if kind == "esriFieldTypeString" and not isinstance(value, str):
                 raise ValueError("source_string_physical_type_drift:" + field["name"])
-    if (sorted(object_ids) != sorted(ids_before) or len(set(object_ids)) != EXPECTED_COUNT
-            or feature_ids != EXPECTED_FEATURE_IDS or len(feature_ids) != EXPECTED_COUNT):
+    if (sorted(object_ids) != sorted(ids_before) or len(set(object_ids)) != count_before
+            or len(feature_ids) != count_before):
         raise ValueError("source_feature_id_or_objectid_population_drift")
     features.sort(key=lambda item: item["attributes"]["OBJECTID"])
     record_sha = _sha(_canonical(features))
@@ -251,7 +250,7 @@ def _validate_captures(
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
         "source_coverage_scope": "Single observed ISOLATED_DANGER_BUOY_POINT feature from the current official USACE IENC chart-server layer. The staged extent equals the captured feature envelope and only confirms agreement with the service metadata captured in the same acquisition; it is not an independent geographic coverage baseline, and no nationwide or historical buoy coverage is claimed.",
-        "drift_guard": "Pinned BTS item " + BTS_ITEM_ID + " identity/cadence/delegation links (prior item " + PRIOR_BTS_ITEM_ID + " is retained as denial evidence only, never fetched, no succession claimed), service-folder membership, service/layer identity, EPSG:4326 CRS, pinned schema sha, count and OBJECTID/Feature_ID roster agreement, finite XY ordinates, EPSG:4326 longitude [-180,180] and latitude [-90,90] domain (an out-of-domain point is rejected before staging or sealing and is never normalized or repaired), page errors and transfer limits, and unchanged before/after metadata are checked. A coordinated in-domain relocation of the feature together with the live service extent is not independently detectable: extent equality is same-acquisition consistency, not a geographic coverage claim.",
+        "drift_guard": "Pinned BTS item " + BTS_ITEM_ID + " identity/cadence/delegation links (prior item " + PRIOR_BTS_ITEM_ID + " is retained as denial evidence only, never fetched, no succession claimed), service-folder membership, service/layer identity, EPSG:4326 CRS, schema sha, capture-time count and OBJECTID/Feature_ID roster agreement, finite XY ordinates, EPSG:4326 longitude [-180,180] and latitude [-90,90] domain (an out-of-domain point is rejected before staging or sealing and is never normalized or repaired), page errors and transfer limits, and unchanged before/after metadata are checked. A coordinated in-domain relocation of the feature together with the live service extent is not independently detectable: extent equality is same-acquisition consistency, not a geographic coverage claim.",
     }
     return query_fields, audit, features
 
@@ -337,7 +336,7 @@ def _verify_first_candidate(storage: StagingStorageResource, state_key: str, pre
         raise ValueError("cached_native_candidate_changed")
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,
+            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_null_geometry_count":0,
             "source_invalid_geometry_count":0,
             "source_feature_id_sha256":audit["source_feature_id_sha256"],
             "source_record_sha256":audit["source_record_sha256"],
@@ -379,7 +378,7 @@ def capture_usace_ienc_isolated_danger(
             )
             seed = json.loads(seed_body).get("objectIds")
             captures["ids_seed"] = (seed_body, seed_receipt)
-            if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT or any(type(value) is not int for value in seed):
+            if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
                 raise ValueError("source_seed_id_count_drift")
             for name, url in _capture_names(seed):
                 if name == "ids_seed":
@@ -525,7 +524,7 @@ def capture_usace_ienc_isolated_danger(
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {
         "dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-        "feature_count":audit["source_feature_count"],"source_null_geometry_count":0,
+        "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_null_geometry_count":0,
         "source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json",
         "source_feature_id_sha256":audit["source_feature_id_sha256"],
         "source_record_sha256":audit["source_record_sha256"],
