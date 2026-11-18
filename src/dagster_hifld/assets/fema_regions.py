@@ -24,3 +24,8 @@ fema_regions_draft_job=define_asset_job('fema_regions_draft_refresh',selection=A
 fema_regions_draft_schedule=ScheduleDefinition(name='fema_regions_draft_refresh_schedule',job=fema_regions_draft_job,
     cron_schedule='0 10 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED,
     run_config={'ops':{fema_regions_official.op.name:{'config':{'refresh_official':True}}}})
+
+INGEST_ASSETS = [fema_regions_official]
+ASSET_CHECKS = [fema_regions_full_quality]
+JOBS = [fema_regions_draft_job]
+SCHEDULES = [fema_regions_draft_schedule]

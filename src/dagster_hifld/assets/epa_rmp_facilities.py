@@ -85,3 +85,8 @@ epa_rmp_facilities_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [epa_emergency_response_rmp_facilities]
+ASSET_CHECKS = [epa_emergency_response_rmp_facilities_complete]
+JOBS = [epa_rmp_facilities_draft_job]
+SCHEDULES = [epa_rmp_facilities_draft_schedule]

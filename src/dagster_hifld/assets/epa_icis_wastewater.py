@@ -52,3 +52,8 @@ epa_icis_wastewater_draft_schedule = ScheduleDefinition(
     run_config={"ops": {epa_icis_wastewater_treatment_plants.op.name: {
         "config": {"max_capture_bytes": MAX_CAPTURE_BYTES}
     }}})
+
+INGEST_ASSETS = [epa_icis_wastewater_treatment_plants]
+ASSET_CHECKS = [epa_icis_wastewater_capture_complete]
+JOBS = [epa_icis_wastewater_draft_job]
+SCHEDULES = [epa_icis_wastewater_draft_schedule]

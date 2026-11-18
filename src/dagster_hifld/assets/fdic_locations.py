@@ -35,3 +35,8 @@ fdic_locations_draft_schedule = ScheduleDefinition(name='fdic_locations_draft_re
     job=fdic_locations_draft_job, cron_schedule='0 12 * * 1', execution_timezone='America/New_York',
     default_status=DefaultScheduleStatus.STOPPED,
     run_config={'ops': {fdic_locations_official.op.name: {'config': {'refresh_official': True}}}})
+
+INGEST_ASSETS = [fdic_locations_official]
+ASSET_CHECKS = [fdic_locations_full_quality]
+JOBS = [fdic_locations_draft_job]
+SCHEDULES = [fdic_locations_draft_schedule]

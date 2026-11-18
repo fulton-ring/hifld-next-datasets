@@ -73,3 +73,8 @@ epa_frs_tri_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [epa_frs_toxic_release_inventory]
+ASSET_CHECKS = [epa_frs_toxic_release_inventory_complete]
+JOBS = [epa_frs_tri_draft_job]
+SCHEDULES = [epa_frs_tri_draft_schedule]

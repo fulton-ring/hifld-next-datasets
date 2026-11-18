@@ -68,3 +68,8 @@ epa_frs_interests_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [epa_frs_interests]
+ASSET_CHECKS = [epa_frs_interests_complete]
+JOBS = [epa_frs_interests_draft_job]
+SCHEDULES = [epa_frs_interests_draft_schedule]
