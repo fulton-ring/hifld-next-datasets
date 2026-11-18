@@ -62,3 +62,8 @@ state_capitols_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [state_capitols_usgs]
+ASSET_CHECKS = [state_capitols_population_complete]
+JOBS = [state_capitols_draft_job]
+SCHEDULES = [state_capitols_draft_schedule]

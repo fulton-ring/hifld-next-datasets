@@ -62,3 +62,8 @@ nces_private_schools_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 3,9 *",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [nces_private_schools_2023_24]
+ASSET_CHECKS = [nces_private_schools_complete]
+JOBS = [nces_private_schools_draft_job]
+SCHEDULES = [nces_private_schools_draft_schedule]
