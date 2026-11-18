@@ -361,7 +361,7 @@ def _capture(capture_directory: str | Path | None,
                 artifacts[f"{name}.body"] = (root / f"{name}.body").read_bytes()
                 artifacts[f"{name}.wire"] = (root / f"{name}.wire").read_bytes()
                 artifacts[f"{name}.receipt.json"] = (root / f"{name}.receipt.json").read_bytes()
-        return artifacts, {**receipt, "raw_receipt_sha256": _sha(artifacts["source.receipt.json"])}, release
+        return artifacts, {**receipt, "raw_receipt_sha256": _sha(_canonical(receipt))}, release
     except Exception as exc:
         if (root.is_dir() and not root.is_symlink()
                 and all((root / name).is_file() and not (root / name).is_symlink()
