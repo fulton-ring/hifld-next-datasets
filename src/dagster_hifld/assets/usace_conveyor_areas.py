@@ -95,3 +95,8 @@ usace_conveyor_areas_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+ASSET_CHECKS = [usace_conveyor_areas_complete]
+INGEST_ASSETS = [usace_conveyor_areas_usace_ienc]
+JOBS = [usace_conveyor_areas_draft_job]
+SCHEDULES = [usace_conveyor_areas_draft_schedule]

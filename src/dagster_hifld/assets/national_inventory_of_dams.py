@@ -85,3 +85,11 @@ national_inventory_of_dams_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+ASSET_CHECKS = [
+    national_inventory_of_dams_population_complete,
+    national_inventory_of_dams_geometry_quality,
+]
+INGEST_ASSETS = [national_inventory_of_dams_ingest]
+JOBS = [national_inventory_of_dams_draft_job]
+SCHEDULES = [national_inventory_of_dams_draft_schedule]

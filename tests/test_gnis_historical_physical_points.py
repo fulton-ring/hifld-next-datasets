@@ -12,10 +12,14 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pyarrow.parquet as pq
 
+from dagster import AssetCheckSeverity
+
 from dagster_hifld.assets.gnis_historical_physical_points import (
     gnis_historical_physical_points,
+    gnis_historical_physical_points_approved_baseline_drift,
     gnis_historical_physical_points_complete,
 )
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import capture_common
@@ -180,29 +184,11 @@ def _fixture_distributions() -> dict[str, dict]:
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_size=4,
                  mock_construction_validators=True):
-    import dagster_hifld.assets.gnis_historical_physical_points as asset_module
-    distributions = _fixture_distributions()
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(src, "EXPECTED_IDS_SHA256", ""),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
-        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
-        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
-        patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_TOTAL_POINT_COUNT", None),
-        patch.object(src, "EXPECTED_OBSERVED_BOUNDS", None),
-        patch.object(src, "EXPECTED_FEATURECLASS_DISTRIBUTION",
-                     distributions["featureclass"]),
-        patch.object(src, "EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION",
-                     distributions["isunknowncoords"]),
-        patch.object(src, "EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION", None),
-        patch.object(src, "EXPECTED_Z_ORDINATE_DISTRIBUTION", None),
         patch.object(src, "PAGE_START_RECORDS", segment_size),
         patch.object(src, "PAGE_PROBE_BASE_DELAY_SECONDS", 0.0),
         patch.object(src, "DOC_CAPTURE_BASE_DELAY_SECONDS", 0.0),
-        patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
     ]
@@ -238,19 +224,9 @@ class GnisHistoricalPhysicalPointsTests(unittest.TestCase):
         self.assertEqual(src.LAYER_ID, 14)
         self.assertEqual(src.LAYER_NAME, "Historical Physical Points")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryMultipoint")
-        self.assertEqual(src.EXPECTED_COUNT, 1_250)
         self.assertEqual(src.MAX_RECORD_COUNT, 2000)
         self.assertEqual(src.PAGE_START_RECORDS, 1000)
-        self.assertTrue(src.EXPECTED_IDS_SHA256 or True)
         self.assertTrue(src.BASELINE_PENDING_NOTE)
-        self.assertEqual(src.EXPECTED_FEATURECLASS_DISTRIBUTION,
-                         {"Island": 563, "Bar": 137, "Summit": 106, "Bend": 67,
-                          "Valley": 65, "Cape": 63, "Gut": 59, "Woods": 34,
-                          "Flat": 32, "Area": 26, "Ridge": 24, "Beach": 18,
-                          "Cliff": 16, "Pillar": 12, "Arch": 10, "Gap": 6,
-                          "Basin": 5, "Isthmus": 3, "Crater": 2, "Bench": 1,
-                          "Plain": 1})
-        self.assertEqual(src.EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION, {2: 1250})
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
                             for key in keys))
@@ -492,7 +468,7 @@ class GnisHistoricalPhysicalPointsTests(unittest.TestCase):
                                           "spatialReference": {
                                               **src.NATIVE_LAYER_SR,
                                               "xyTolerance": 0.001}}}),
-            "source_id_population_drift": dict(ids=list(FIXTURE_OBJECTIDS)[:-1]),
+            "source_id_population_drift": dict(ids=list(FIXTURE_OBJECTIDS)[:-1] + [FIXTURE_OBJECTIDS[0]]),
             "unexpected_source_geometry_members": dict(rows=[
                 {**rows[0], "geometry": {**rows[0]["geometry"], "curves": []}},
                 *rows[1:]]),
@@ -510,14 +486,7 @@ class GnisHistoricalPhysicalPointsTests(unittest.TestCase):
             "source_native_type_changed:gaz_id": dict(rows=[
                 {**rows[0], "attributes": {**rows[0]["attributes"], "gaz_id": "2400"}},
                 *rows[1:]]),
-            "source_featureclass_outside_gazetteer_population": dict(rows=[
-                {**rows[0], "attributes": {**rows[0]["attributes"],
-                                           "gaz_featureclass": "Mine"}},
-                *rows[1:]]),
-            "source_isunknowncoords_value_drift": dict(rows=[
-                {**rows[0], "attributes": {**rows[0]["attributes"],
-                                           "isunknowncoords": 1}},
-                *rows[1:]]),
+            "source_count_drift": dict(count=FIXTURE_COUNT + 1),
         }
         for expected_error, kwargs in cases.items():
             with self.subTest(expected_error):
@@ -541,79 +510,38 @@ class GnisHistoricalPhysicalPointsTests(unittest.TestCase):
                                          .read_bytes())
                     self.assertTrue(failure["reason_code"])
 
-    def test_geometry_gates_are_enforced_once_pinned(self):
+    def test_upstream_feature_addition_passes_capture_and_warns_drift(self):
         rows = _fixture_rows()
+        added = {
+            "attributes": {**_fixture_attrs(FIXTURE_OBJECTIDS[0]),
+                           "OBJECTID": 144, "gaz_id": 9999,
+                           "gaz_name": "Newly published feature"},
+            "geometry": {"hasZ": True, "points": [[-9496000.0, 4081000.0, 0]]},
+        }
+        after_ids = [*FIXTURE_OBJECTIDS, 144]
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport):
-                src.capture_gnis_historical_physical_points(
-                    _staging(root), version="gate-run", capture_directory=str(capture_root))
-                baseline = json.loads((capture_root / "computed_baseline.json").read_bytes())
-                with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0):
-                    with self.assertRaisesRegex(src.GnisHistoricalPhysicalPointsError,
-                                                "source_null_geometry_count_drift"):
-                        src.fetch_gnis_historical_physical_points_pages(
-                            capture_root)
-                with patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT", 5):
-                    with self.assertRaisesRegex(src.GnisHistoricalPhysicalPointsError,
-                                                "source_empty_geometry_count_drift"):
-                        src.fetch_gnis_historical_physical_points_pages(
-                            capture_root)
-                with patch.object(src, "EXPECTED_RECORD_SHA256",
-                                  baseline["source_record_sha256"]):
-                    with patch.object(src, "EXPECTED_GEOMETRY_SHA256",
-                                      baseline["source_geometry_sha256"]):
-                        with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT",
-                                          baseline["source_null_geometry_count"]):
-                            with patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT",
-                                              baseline["source_empty_geometry_count"]):
-                                with patch.object(
-                                        src, "EXPECTED_TOTAL_POINT_COUNT",
-                                        baseline["source_total_point_count"]):
-                                    with patch.object(
-                                            src,
-                                            "EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION",
-                                            {int(key): value for key, value in
-                                             baseline["source_multipoint_point_count_distribution"].items()}):
-                                        with patch.object(
-                                                src, "EXPECTED_Z_ORDINATE_DISTRIBUTION",
-                                                {float(key): value for key, value in
-                                                 baseline["source_z_ordinate_distribution"].items()}):
-                                            with patch.object(
-                                                    src, "EXPECTED_OBSERVED_BOUNDS",
-                                                    baseline["observed_bounds"]):
-                                                again = src.capture_gnis_historical_physical_points(
-                                                    _staging(root),
-                                                    version="gate-run-verify",
-                                                    capture_directory=str(capture_root))
-                                                self.assertTrue(again["reused"])
-
-    def test_pinned_baseline_drift_is_refused_and_quarantined(self):
-        rows = _fixture_rows()
-        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport):
-                storage = _staging(root)
-                src.capture_gnis_historical_physical_points(
-                    storage, version="pin-run", capture_directory=str(capture_root))
-                with patch.object(src, "EXPECTED_IDS_SHA256", "0" * 64):
-                    with self.assertRaisesRegex(src.GnisHistoricalPhysicalPointsError,
-                                                "source_id_roster_drift"):
-                        src.capture_gnis_historical_physical_points(
-                            storage, version="pin-run-drift",
-                            capture_directory=str(capture_root))
-                quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
-                                     .glob("*"))
-                self.assertTrue(quarantined)
-                failure = json.loads((quarantined[0] / "metadata" / "failure.json")
-                                     .read_bytes())
-                self.assertTrue(failure["reason_code"].startswith("source_id_roster_drift"))
+            with fixture_mode(schema_sha, make_responder(rows)):
+                before = src.capture_gnis_historical_physical_points(
+                    _staging(root), version="before-run",
+                    capture_directory=str(root / "before"))
+            with fixture_mode(schema_sha, make_responder(rows + [added], ids=after_ids)):
+                after = src.capture_gnis_historical_physical_points(
+                    _staging(root), version="after-run",
+                    capture_directory=str(root / "after"))
+        self.assertTrue(after["capture_complete"])
+        self.assertEqual(after["feature_count"], FIXTURE_COUNT + 1)
+        self.assertTrue(gnis_historical_physical_points_complete(after).passed)
+        skipped = gnis_historical_physical_points_approved_baseline_drift(after)
+        self.assertEqual(skipped.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(skipped.metadata["comparison_status"].value,
+                         "skipped_no_approved_baseline")
+        drift = approved_baseline_drift(after, {**before, "release_accepted": True})
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(drift.metadata["feature_count_delta"].value, 1)
+        self.assertTrue(drift.metadata["native_id_roster_changed"].value)
 
     def test_packaged_runtime_without_git_seals_and_reuses_with_real_validator(self):
         """Reproduce the shipped /app layout: package + manifests, no .git."""

@@ -10,7 +10,7 @@ from shapely import from_wkb, is_valid
 from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.sources.fuds_irm_property_boundary import (
-    DATASET_SLUG, EXPECTED_COUNT, LAYER_ID, LAYER_NAME, _parquet_bytes,
+    DATASET_SLUG, LAYER_ID, LAYER_NAME, _parquet_bytes,
     _source_polygon_geometry,
 )
 from dagster_hifld.definitions import defs
@@ -34,7 +34,7 @@ class IrmPropertyBoundaryTests(unittest.TestCase):
         self.assertIs(schedule.default_status, DefaultScheduleStatus.STOPPED)
 
     def test_source_identity_and_baseline_are_layer_specific(self):
-        self.assertEqual((LAYER_ID, LAYER_NAME, EXPECTED_COUNT), (8, "IRM Property Boundary", 601))
+        self.assertEqual((LAYER_ID, LAYER_NAME), (8, "IRM Property Boundary"))
         self.assertEqual(DATASET_SLUG, "interim-risk-management-irm-property-boundary")
 
     def test_native_json_and_ring_order_are_retained_in_candidate(self):
