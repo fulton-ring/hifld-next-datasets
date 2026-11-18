@@ -1,4 +1,4 @@
-"""Stopped refresh asset for the Census TIGER/Line 2026 State Legislative Districts - Upper layer."""
+"""Stopped refresh asset for the current Census TIGER/Line State Legislative Districts - Upper layer."""
 
 from dagster import (
     AssetCheckResult, AssetKey, AssetSelection, DefaultScheduleStatus,
@@ -8,8 +8,7 @@ from dagster import (
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.state_legislative_districts_upper import (
-    DATASET_SLUG, EXPECTED_BYTES, EXPECTED_FEATURE_COUNT, EXPECTED_SHA256, FILE_SLUG,
-    candidate_version, capture_state_legislative_districts_upper,
+    DATASET_SLUG, FILE_SLUG, capture_state_legislative_districts_upper,
 )
 
 
@@ -18,7 +17,7 @@ from dagster_hifld.sources.state_legislative_districts_upper import (
     group_name="census_bureau",
     compute_kind="http",
     description=(
-        "Official Census TIGER/Line 2026 nationwide legislative geodatabase; the "
+        "Official Census TIGER/Line current-vintage nationwide legislative geodatabase; the "
         "State_Legislative_Districts_Upper layer is extracted to native GeoParquet. "
         "Candidate only: the DHS crosswalk row and baseline compatibility are unresolved, "
         "and source, freshness, schema/ID contract, coverage, rights, and release remain pending."
@@ -27,8 +26,7 @@ from dagster_hifld.sources.state_legislative_districts_upper import (
 def state_legislative_districts_upper(context, staging_storage: StagingStorageResource) -> dict:
     if isinstance(staging_storage, PublishedStorageResource) or not staging_storage.use_local or staging_storage.bucket:
         raise ValueError("state_legislative_districts_upper_draft_requires_isolated_local_staging")
-    version = candidate_version()
-    result = capture_state_legislative_districts_upper(staging_storage, version=version)
+    result = capture_state_legislative_districts_upper(staging_storage)
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,
         [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])],
@@ -40,10 +38,10 @@ def state_legislative_districts_upper(context, staging_storage: StagingStorageRe
 @asset_check(asset=state_legislative_districts_upper, blocking=True)
 def state_legislative_districts_upper_source_complete(result: dict) -> AssetCheckResult:
     passed = (
-        result.get("feature_count") == EXPECTED_FEATURE_COUNT
+        result.get("feature_count", 0) > 0
         and result.get("source_population_complete") is True
-        and result.get("source_archive_bytes") == EXPECTED_BYTES
-        and result.get("source_archive_sha256") == EXPECTED_SHA256
+        and bool(result.get("source_archive_sha256"))
+        and bool(result.get("native_parquet_sha256"))
     )
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": result.get("feature_count", 0),
