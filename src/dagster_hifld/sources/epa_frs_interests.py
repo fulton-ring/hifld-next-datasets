@@ -34,14 +34,14 @@ from shapely.geometry import Point
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "cdff193a3e3743a5bc770e2743f215b3"
@@ -724,7 +724,7 @@ def capture_epa_frs_interests(storage: StagingStorageResource, *, version: str,
     if shutil.disk_usage(base).free < 256_000_000:
         raise EPAFRSInterestsError("disk_floor_before_acquisition")
     attempt_root = (Path(capture_directory) if capture_directory
-                    else Path(f"/tmp/hifld-native-reconstruction/{_DEFAULT_CAPTURE_ROOTS[dataset_slug]}/captures"))
+                    else default_capture_dir("hifld-native-reconstruction", _DEFAULT_CAPTURE_ROOTS[dataset_slug], "captures"))
     capture_root = Path(capture_directory).absolute() if capture_directory else (attempt_root / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise EPAFRSInterestsError("unsafe_capture_directory")

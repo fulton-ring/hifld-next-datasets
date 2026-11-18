@@ -287,7 +287,7 @@ class WreckAreasUsaceIencTests(unittest.TestCase):
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
             root = self._replay_directory(Path(tmp) / "capture", self._documents())
             with patch.object(source, "validate_construction_code_identity"), \
-                 patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                 patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = source.capture_wreck_areas_usace_ienc(storage, version="regression",
                                                               capture_directory=str(root))
             self.assertFalse(first["reused"])
@@ -316,7 +316,7 @@ class WreckAreasUsaceIencTests(unittest.TestCase):
             self.assertEqual(manifest["title"], "Wreck Areas (USACE IENC)")
             self.assertFalse(manifest["approved"])
             with patch.object(source, "validate_construction_code_identity"), \
-                 patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                 patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 second = source.capture_wreck_areas_usace_ienc(storage, version="regression",
                                                                capture_directory=str(root))
             self.assertTrue(second["reused"])

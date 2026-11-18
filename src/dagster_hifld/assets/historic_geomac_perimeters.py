@@ -1,4 +1,4 @@
-"""Explicit stopped-refresh draft asset for the NIFC GeoMAC 2000-2018 perimeters."""
+"""Stopped-refresh draft asset for the NIFC InterAgency Fire Perimeter History."""
 from pathlib import Path
 
 from dagster import (AssetCheckResult, AssetKey, AssetSelection, DefaultScheduleStatus,
@@ -7,24 +7,22 @@ from dagster import (AssetCheckResult, AssetKey, AssetSelection, DefaultSchedule
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.historic_geomac_perimeters import (
-    COMBINED_FEATURES,
-    EXPECTED_INVALID_GEOMETRY_COUNT,
-    SLUG,
-    require_local,
-    stage_historic_geomac_perimeters_candidate,
+    DATASET_SLUG,
+    FILE_SLUG,
+    capture_historic_perimeters,
 )
 
 
-@asset(key=AssetKey(['ingest', SLUG, SLUG]), group_name='usgs', compute_kind='http',
-       description=('Official NIFC-published GeoMAC historic wildfire perimeters 2000-2018 combined layer '
-                    '(23,776 native NAD83 MultiPolygon features, 881 invalid producer geometries preserved '
-                    'unrepaired and release-blocked). Faithful draft; publication unapproved.'),
+@asset(key=AssetKey(['ingest', DATASET_SLUG, FILE_SLUG]), group_name='nifc', compute_kind='http',
+       description=('NIFC InterAgency Fire Perimeter History all-years layer, the maintained '
+                    'successor to the retired GeoMAC 2000-2018 perimeters. One coherent snapshot '
+                    'per run; completeness proven by before/after count/ids/edit-witness equality. '
+                    'Faithful draft; publication unapproved.'),
        config_schema={'capture_dir': Field(str, default_value='')})
 def historic_geomac_perimeters(context, staging_storage: StagingStorageResource) -> dict:
-    require_local(staging_storage)
     capture = context.op_config.get('capture_dir', '')
-    result = stage_historic_geomac_perimeters_candidate(
-        staging_storage, capture_dir=Path(capture) if capture else None)
+    result = capture_historic_perimeters(
+        staging_storage, capture_directory=Path(capture) if capture else None)
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,
         [build_publish_partition_key(result['dataset_slug'], result['file_slug'], result['version'])])
@@ -34,20 +32,19 @@ def historic_geomac_perimeters(context, staging_storage: StagingStorageResource)
 
 @asset_check(asset=historic_geomac_perimeters, blocking=True)
 def historic_geomac_perimeters_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get('feature_count') == COMBINED_FEATURES
-              and candidate.get('source_unique_id_count') == COMBINED_FEATURES
-              and candidate.get('source_null_geometry_count') == 0
-              and candidate.get('source_invalid_geometry_count') == EXPECTED_INVALID_GEOMETRY_COUNT)
+    passed = (candidate.get('source_population_complete') is True
+              and candidate.get('feature_count', 0) > 0
+              and candidate.get('source_invalid_geometry_count') == 0
+              and candidate.get('reused') is not None)
     return AssetCheckResult(passed=passed, metadata={
-        'complete_source_population': candidate.get('feature_count', 0),
-        'unique_source_ids': candidate.get('source_unique_id_count'),
-        'source_null_geometry_count': candidate.get('source_null_geometry_count'),
+        'source_population_complete': candidate.get('source_population_complete'),
+        'feature_count': candidate.get('feature_count', 0),
+        'source_id_sha256': candidate.get('source_id_sha256', 'missing'),
         'source_invalid_geometry_count': candidate.get('source_invalid_geometry_count'),
-        'invalid_geometries_preserved_unrepaired': True,
-        'release_blocked': candidate.get('release_blocked', True),
         'source_release_accepted': False, 'source_freshness_accepted': False,
         'schema_contract_accepted': False, 'id_contract_accepted': False,
-        'rights_accepted': False, 'mapping_approved': False, 'release_accepted': False,
+        'baseline_accepted': False, 'coverage_accepted': False, 'rights_accepted': False,
+        'mapping_approved': False, 'release_accepted': False,
     })
 
 
@@ -62,8 +59,7 @@ historic_geomac_perimeters_draft_job = define_asset_job(
           default_status=DefaultScheduleStatus.STOPPED,
           required_resource_keys={'staging_storage'})
 def historic_geomac_perimeters_draft_refresh_schedule(context):
-    # Monthly integrity poll of a frozen historical archive; the schedule stays STOPPED.
-    require_local(context.resources.staging_storage)
+    # Monthly integrity poll of the maintained NIFC history layer; stays STOPPED.
     return RunRequest(run_config={'ops': {
         historic_geomac_perimeters.op.name: {'config': {'capture_dir': ''}}}})
 

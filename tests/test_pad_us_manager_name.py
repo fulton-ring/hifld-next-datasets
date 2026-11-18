@@ -17,8 +17,11 @@ from dagster_hifld.assets.pad_us_manager_name import (
 )
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
+import shapely
+
 from dagster_hifld.sources import pad_us_manager_name as src
+from dagster_hifld.sources.esri_geometry import to_wkb
 
 FIXTURE_COUNT = 7
 FIXTURE_OBJECTIDS = [2, 3, 7, 12, 41, 58, 900]  # sparse, non-contiguous roster (ascending)
@@ -89,7 +92,9 @@ def _fixture_geometry(oid: object) -> object:
         return {"rings": [[["NaN", "NaN"], [1.0, 0.0], [1.0, -1.0], [0.0, -1.0],
                            ["NaN", "NaN"]]]}
     if index == 5:
-        return {"rings": [[[0.0, 0.0], [0.0, 0.0], [1.0, 1.0], [1.0, 1.0]]]}
+        # A closed zero-area double-back ring: the producer's degenerate-ring
+        # shape, retained OGC-invalid through the shared converter.
+        return {"rings": [[[0.0, 0.0], [0.0, 0.0], [1.0, 1.0], [1.0, 1.0], [0.0, 0.0]]]}
     return {"rings": [_cw_square(-70.0, 40.0, 0.5)]}
 
 
@@ -254,7 +259,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
                      return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                    "files": [], "working_tree_status": "unknown"}),
         patch.object(src, "validate_construction_code_identity"),
-        patch.object(epa_frs_common, "validate_construction_code_identity"),
+        patch.object(capture_common, "validate_construction_code_identity"),
     ]
     for context in contexts:
         context.start()
@@ -289,7 +294,9 @@ class PadUsManagerNameTests(unittest.TestCase):
         self.assertEqual(src.EXPECTED_ZIP_SHA256,
                          "62ed113335e359509ad68a731146c74aa873c5a92da4f3fda572e54bc9b823ab")
         self.assertEqual(src.EXPECTED_RECORD_SHA256, "a78bdae737ffe899263d0df21480a77790bd41a2ea8b9e2ead1f4deabe6b290a")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "3bd3a3fab452f9a4a4d0b0b9d37d3c9b11c42a3d644536a46f68a71ccbaf6687")
+            # The geometry digest coverage grew with the shared converter
+        # (issue #997); the transcribed pin waits for the next complete capture.
+        self.assertIsNone(src.EXPECTED_GEOMETRY_SHA256)
         self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 6)
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
@@ -311,21 +318,22 @@ class PadUsManagerNameTests(unittest.TestCase):
         self.assertEqual(parse_qs(urlparse(src._count_url()).query)["returnCountOnly"], ["true"])
 
     def test_polygon_wkb_keeps_ring_semantics(self):
+        def converted(rings):
+            return to_wkb({"rings": rings}, src.GEOMETRY_TYPE, has_z=False, has_m=False)
+
         exterior = _cw_square(0.0, 0.0, 1.0)
         hole = _ccw_square(0.25, -0.5, 0.25)
-        wkb = src._polygon_wkb({"rings": [exterior, hole]})
+        wkb = converted([exterior, hole])
         order, kind = wkb[0], int.from_bytes(wkb[1:5], "little")
         self.assertEqual((order, kind), (1, 3))
         import struct
         (ring_count,) = struct.unpack_from("<I", wkb, 5)
         self.assertEqual(ring_count, 2)
-        multi = src._polygon_wkb({"rings": [_cw_square(0.0, 0.0, 1.0),
-                                            _cw_square(2.0, 0.0, 1.0)]})
+        multi = converted([_cw_square(0.0, 0.0, 1.0), _cw_square(2.0, 0.0, 1.0)])
         self.assertEqual((multi[0], int.from_bytes(multi[1:5], "little")), (1, 6))
 
     def test_polygon_geometry_drift_is_refused(self):
         cases = {
-            "unexpected_source_geometry_members": {"rings": [], "curves": []},
             "source_polygon_geometry_invalid": {"rings": []},
             "source_polygon_ordinate_contract_drift": {"rings": [[[0.0, 0.0, 0.0]]]},
             "source_polygon_ordinate_not_numeric": {"rings": [[["NaN", 0.0], [1.0, 0.0],
@@ -337,19 +345,29 @@ class PadUsManagerNameTests(unittest.TestCase):
             "source_coordinate_range_drift": {"rings": [[[200.0, 0.0], [1.0, 0.0],
                                                          [1.0, -1.0], [0.0, -1.0],
                                                          [200.0, 0.0]]]},
-            "source_polygon_ring_degenerate": {"rings": [[[0.0, 0.0], [0.0, 0.0],
-                                                          [1.0, 1.0], [1.0, 1.0]]]},
-            "source_polygon_ring_self_intersecting": {"rings": [[[0.0, 0.0], [3.0, 4.0],
-                                                                 [1.0, 4.0], [4.0, 0.0],
-                                                                 [0.0, 0.0]]]},
-            "source_polygon_hole_unassigned": {"rings": [_cw_square(0.0, 0.0, 1.0),
-                                                         _ccw_square(5.0, 5.0, 1.0)]},
-            "source_polygon_exterior_missing": {"rings": [_ccw_square(0.25, -0.75, 0.5)]},
         }
         for expected_error, geometry in cases.items():
             with self.subTest(expected_error):
                 with self.assertRaisesRegex(src.PadUsManagerNameError, expected_error):
-                    src._polygon_wkb(geometry)
+                    src._validate_polygon_geometry(geometry["rings"])
+        with self.assertRaisesRegex(src.PadUsManagerNameError, "unexpected_source_geometry_members"):
+            src._validate_feature({"attributes": _fixture_attrs(1),
+                                   "geometry": {"rings": [], "curves": []}},
+                                  tuple(name for name, *_rest in src.NATIVE_FIELDS), 1)
+        # GDAL retains a self-intersecting exterior, an unassigned hole and an
+        # all-CCW ring set verbatim; only the degenerate double-back ring
+        # becomes OGC-invalid (issue #997 shared converter).
+        def converted(rings):
+            return to_wkb({"rings": rings}, src.GEOMETRY_TYPE, has_z=False, has_m=False)
+
+        self.assertFalse(shapely.from_wkb(converted(
+            [[[0.0, 0.0], [3.0, 4.0], [1.0, 4.0], [4.0, 0.0], [0.0, 0.0]]])).is_valid)
+        self.assertTrue(shapely.from_wkb(converted(
+            [_cw_square(0.0, 0.0, 1.0), _ccw_square(5.0, 5.0, 1.0)])).is_valid)
+        self.assertTrue(shapely.from_wkb(converted(
+            [_ccw_square(0.25, -0.75, 0.5)])).is_valid)
+        self.assertFalse(shapely.from_wkb(converted(
+            [[[0.0, 0.0], [0.0, 0.0], [1.0, 1.0], [1.0, 1.0], [0.0, 0.0]]])).is_valid)
 
     def test_complete_fixture_capture_materializes_and_repeats(self):
         rows = _fixture_rows()
@@ -377,7 +395,7 @@ class PadUsManagerNameTests(unittest.TestCase):
             nulls = table.column("geometry").to_pylist()
             self.assertIsNone(nulls[3])
             self.assertIsNone(nulls[4])
-            self.assertIsNone(nulls[5])
+            self.assertIsNotNone(nulls[5])
             self.assertIsNotNone(nulls[0])
             geo_metadata = json.loads(table.schema.metadata[b"geo"])
             self.assertEqual(geo_metadata["columns"]["geometry"]["geometry_types"],
@@ -424,8 +442,9 @@ class PadUsManagerNameTests(unittest.TestCase):
                              "enumerated_roster_bisected_segments")
             self.assertTrue(sealed["pagination"]["resumable"])
             self.assertFalse(sealed["release_accepted"])
-            self.assertEqual(sealed["unusable_geometry_counts"],
-                             {"source_polygon_ring_degenerate": 1})
+            self.assertEqual(sealed["unusable_geometry_counts"], {})
+            self.assertEqual(sealed["ogc_invalid_geometry_sample_objectids"],
+                             [FIXTURE_OBJECTIDS[5]])
             manifest = json.loads((root / "staging" / prefix / "metadata"
                                    / "source_manifest.json").read_bytes())
             self.assertFalse(manifest["approved"])
@@ -582,7 +601,8 @@ class PadUsManagerNameTests(unittest.TestCase):
                     with self.assertRaisesRegex(src.PadUsManagerNameError,
                                                 "source_null_geometry_count_drift"):
                         src.fetch_pad_us_manager_name_pages(capture_root)
-                with patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}):
+                with patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
+                                  {"source_polygon_ring_degenerate": 2}):
                     with self.assertRaisesRegex(src.PadUsManagerNameError,
                                                 "source_unusable_geometry_counts_drift"):
                         src.fetch_pad_us_manager_name_pages(capture_root)

@@ -18,8 +18,9 @@ from dagster_hifld.assets.nhd_waterbody_large_scale import (
     nhd_waterbody_large_scale, nhd_waterbody_large_scale_complete)
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import nhd_waterbody_large_scale as src
+from dagster_hifld.sources.esri_geometry import to_wkb
 
 FIXTURE_COUNT = 5
 # The Lake population's OBJECTIDs are not contiguous inside layer 60; the
@@ -57,15 +58,22 @@ def _ring(oid: int, offset: float) -> list:
             [x0, y0, 5.754000000000815]]
 
 
+def _hole_ring(exterior: list) -> list:
+    """One clockwise closed hole fully inside the given exterior square."""
+    (x0, y0, _), (_ax, y1, _), (x1, _by, _) = exterior[0], exterior[1], exterior[2]
+    inset = 0.0002
+    hole = [[x0 + inset, y0 + inset, 5.0], [x0 + inset, y1 - inset, 5.0],
+            [x1 - inset, y1 - inset, 5.0], [x1 - inset, y0 + inset, 5.0],
+            [x0 + inset, y0 + inset, 5.0]]
+    return list(reversed(hole))
+
+
 def _fixture_geometry(oid: object) -> dict:
     index = FIXTURE_OBJECTIDS.index(oid)
     if oid == FIXTURE_OBJECTIDS[1]:
-        # One exterior with a clockwise-ordered hole: the hole ring above is
-        # counter-clockwise in the builder, so flip it to exercise hole
-        # assignment under the producer's verified semantics.
+        # One exterior with a counter-clockwise hole fully inside it.
         exterior = _ring(oid, 0.0)
-        hole = _ring(oid, 0.0001)[::-1]
-        rings = [exterior, hole]
+        rings = [exterior, _hole_ring(exterior)]
     elif oid == FIXTURE_OBJECTIDS[2]:
         rings = [_ring(oid, 0.0), _ring(oid, 0.01)]
     else:
@@ -259,7 +267,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
                          return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                        "files": [], "working_tree_status": "unknown"}),
             patch.object(src, "validate_construction_code_identity"),
-            patch.object(epa_frs_common, "validate_construction_code_identity"),
+            patch.object(capture_common, "validate_construction_code_identity"),
         ])
     if page_size is not None:
         contexts.append(patch.object(src, "PAGE_SIZE", page_size))
@@ -297,12 +305,14 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
         # (computed_baseline.json; any later drift fails closed).
         self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 0)
         self.assertEqual(src.EXPECTED_REFUSED_IDS, ())
-        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
-                         {"source_polygon_ring_degenerate": 7})
+        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
         self.assertEqual(src.EXPECTED_RECORD_SHA256,
                          "a3eac7bb769a63a678c96955d96d7fddde54fa4414e4af06a3fbd5bc13b42073")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256,
-                         "9a250fb41717baac97e7000469086bec2d0c13ae61686022818dcd661bfa8eae")
+        # The geometry digest previously covered only assembled rows; the
+        # shared converter assembles every served row, so the coverage grew
+        # and the transcribed pin moves to the designed pending state until
+        # the next complete capture re-derives it.
+        self.assertIsNone(src.EXPECTED_GEOMETRY_SHA256)
         self.assertEqual(src.EXPECTED_IDS_SHA256,
                          "b4c1d549b8a5fb8674d8d8fb6af55077cb8b1db2f00604e1324644e88a135b74")
         self.assertTrue(src.BASELINE_PENDING_NOTE)
@@ -328,29 +338,32 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
         self.assertEqual(attrs_url["returnGeometry"], ["false"])
 
     def test_polygon_wkb_keeps_z_and_ring_order(self):
-        single = src._polygon_wkb(_fixture_geometry(FIXTURE_OBJECTIDS[0]))
+        def converted(oid):
+            return to_wkb(_fixture_geometry(oid), "esriGeometryPolygon",
+                          has_z=True, has_m=False)
+
+        single = converted(FIXTURE_OBJECTIDS[0])
         order, kind = struct.unpack_from("<BI", single, 0)
-        self.assertEqual((order, kind), (1, 0x80000003))
+        self.assertEqual((order, kind), (1, 1003))
         geometry = shapely.from_wkb(single)
         self.assertIsInstance(geometry, shapely.Polygon)
         ring = _ring(FIXTURE_OBJECTIDS[0], 0.0)
         self.assertEqual(shapely.get_coordinates(geometry, include_z=True).tolist(),
                          [list(vertex) for vertex in ring])
-        multi = src._polygon_wkb(_fixture_geometry(FIXTURE_OBJECTIDS[2]))
+        multi = converted(FIXTURE_OBJECTIDS[2])
         order, kind = struct.unpack_from("<BI", multi, 0)
-        self.assertEqual((order, kind), (1, 0x80000006))
+        self.assertEqual((order, kind), (1, 1006))
         multi_geometry = shapely.from_wkb(multi)
         self.assertIsInstance(multi_geometry, shapely.MultiPolygon)
         self.assertEqual(shapely.get_num_geometries(multi_geometry), 2)
-        with_hole = src._polygon_wkb(_fixture_geometry(FIXTURE_OBJECTIDS[1]))
+        with_hole = converted(FIXTURE_OBJECTIDS[1])
         with_hole_geometry = shapely.from_wkb(with_hole)
         self.assertIsInstance(with_hole_geometry, shapely.Polygon)
         self.assertEqual(len(with_hole_geometry.interiors), 1)
         self.assertEqual((with_hole_geometry.exterior.length,
                           with_hole_geometry.interiors[0].length),
                          (shapely.Polygon(_ring(FIXTURE_OBJECTIDS[1], 0.0)).length,
-                          shapely.Polygon(list(reversed(_ring(FIXTURE_OBJECTIDS[1], 0.0001))))
-                          .length))
+                          shapely.Polygon(_hole_ring(_ring(FIXTURE_OBJECTIDS[1], 0.0))).length))
 
     def test_polygon_geometry_drift_is_refused(self):
         base = _fixture_geometry(FIXTURE_OBJECTIDS[0])
@@ -374,14 +387,20 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
             "source_coordinate_range_drift": {
                 "hasZ": True,
                 "rings": [[[200.0] + vertex[1:] for vertex in base["rings"][0]]]},
-            "source_polygon_ring_degenerate": {"hasZ": True, "rings": [
-                [base["rings"][0][0], base["rings"][0][1],
-                 base["rings"][0][1], base["rings"][0][0]]]},
         }
         for expected_error, geometry in cases.items():
             with self.subTest(expected_error):
                 with self.assertRaisesRegex(src.NhdWaterbodyLargeScaleError, expected_error):
-                    src._polygon_wkb(geometry)
+                    src._validate_polygon_geometry(geometry)
+        # A zero-area spike ring is structurally valid: the shared GDAL
+        # converter retains it verbatim as OGC-invalid geometry (issue #997).
+        degenerate = {"hasZ": True, "rings": [
+            [base["rings"][0][0], base["rings"][0][1],
+             base["rings"][0][1], base["rings"][0][0]]]}
+        src._validate_polygon_geometry(degenerate)
+        spike = shapely.from_wkb(to_wkb(degenerate, "esriGeometryPolygon",
+                                        has_z=True, has_m=False))
+        self.assertFalse(spike.is_valid)
 
     def test_disk_floor_refuses_before_any_fetch(self):
         rows = _fixture_rows()
@@ -807,10 +826,11 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
                         _staging(root), version="ftype-run",
                         capture_directory=str(root / "capture"))
 
-    def test_degenerate_ring_row_is_gated_and_counted(self):
-        """A real zero-area sliver ring gates its row's geometry instead of
-        aborting the complete population (observed on the 2026-11-13 full
-        capture); the gate counts are pinned fail-closed once transcribed."""
+    def test_degenerate_ring_row_is_retained_and_counted(self):
+        """A real zero-area sliver ring is retained verbatim and counted as an
+        OGC-invalid diagnostic instead of aborting the complete population
+        (the rows observed on the 2026-11-13 full capture; issue #997 shared
+        converter)."""
         rows = _fixture_rows()
         rows[1] = {**rows[1], "geometry": {"hasZ": True, "rings": [
             _ring(FIXTURE_OBJECTIDS[1], 0.0),
@@ -826,11 +846,14 @@ class NhdWaterbodyLargeScaleTests(unittest.TestCase):
                     _staging(root), version="gate-run", capture_directory=str(root / "capture"))
                 self.assertEqual(result["feature_count"], FIXTURE_COUNT)
                 baseline = json.loads((root / "capture" / "computed_baseline.json").read_bytes())
-                self.assertEqual(baseline["source_unusable_geometry_counts"],
-                                 {"source_polygon_ring_degenerate": 1})
+                self.assertEqual(baseline["source_unusable_geometry_counts"], {})
+                self.assertEqual(baseline["source_ogc_invalid_geometry_sample_objectids"],
+                                 [FIXTURE_OBJECTIDS[1]])
+                self.assertEqual(list(baseline["source_ogc_invalid_geometry_counts"]),
+                                 ["Self-intersection[-89.899 31.901]"])
                 parquet_path = root / "capture" / f"{src.FILE_SLUG}.parquet"
                 geometries = pq.read_table(parquet_path).column("geometry").to_pylist()
-                self.assertIsNone(geometries[1])
+                self.assertIsNotNone(geometries[1])
                 self.assertIsNotNone(geometries[0])
             # Once the counts are pinned, a different gate census is refused.
             with tempfile.TemporaryDirectory() as tmp2:

@@ -16,11 +16,11 @@ from dagster import (AssetCheckResult, AssetKey, AssetSelection, Config,
 
 from dagster_hifld.construction_state import ConstructionStateError, load_first_construction
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.epa_frs_arcgis_table import (
     ArcGISTableCaptureError, ArcGISTableProfile, capture_table,
 )
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -158,7 +158,7 @@ def capture_epa_icis_wastewater_naics(staging_storage: StagingStorageResource, *
         return _reuse(staging_storage, version=offline_replay_version, identity=identity,
                       fingerprint=identity_fingerprint, offline=True)
 
-    capture_root = Path("/tmp/hifld-native-reconstruction/119/captures") / f"refresh-{uuid4().hex}"
+    capture_root = default_capture_dir("hifld-native-reconstruction", "119", "captures") / f"refresh-{uuid4().hex}"
     captures: dict[str, tuple[bytes, dict[str, Any]]] = {}
     owned_client = client is None
     active = client or httpx.Client(follow_redirects=False, timeout=60.0)

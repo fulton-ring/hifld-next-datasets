@@ -20,8 +20,8 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
@@ -226,7 +226,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
         captures=_read_replay(root,ids)
     else:
         if requested and any(requested.glob("*.body")): raise ValueError("unsealed_capture_attempt_exists")
-        root=(requested/version/uuid4().hex) if requested else Path("/tmp/hifld-native-reconstruction/building-locations")/(version+"-"+uuid4().hex)
+        root=(requested/version/uuid4().hex) if requested else default_capture_dir("hifld-native-reconstruction", "building-locations")/(version+"-"+uuid4().hex)
         if any(p.is_symlink() for p in (root,*root.parents)): raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True,exist_ok=False);captures={}
         try:

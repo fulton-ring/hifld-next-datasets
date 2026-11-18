@@ -3,7 +3,7 @@ import os
 import tempfile
 import json
 from pathlib import Path
-from pathlib import Path
+from unittest.mock import patch
 
 from dagster_hifld.assets.census_cd119 import (
     CD119_DATASET_SLUG,
@@ -11,6 +11,7 @@ from dagster_hifld.assets.census_cd119 import (
     CD119_SOURCE_FILES,
     CD119_SOURCE_GEOIDS,
     CD119_SOURCE_URLS,
+    CensusCd119Config,
     census_119th_congressional_districts,
 )
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
@@ -85,9 +86,9 @@ class CensusCD119SourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="cd119-stage-test-") as temp:
             storage = StagingStorageResource(local_dir=temp, prefix="pinned-prefix", use_local=True)
             old_mode = os.environ.get("HIFLD_CD119_MODE")
-            old_root = os.environ.get("HIFLD_CD119_CAPTURE_DIR")
+            old_root = os.environ.get("HIFLD_CAPTURE_ROOT")
             os.environ["HIFLD_CD119_MODE"] = "replay"
-            os.environ["HIFLD_CD119_CAPTURE_DIR"] = "/tmp/hifld-native-reconstruction/387/capture"
+            os.environ["HIFLD_CAPTURE_ROOT"] = "/tmp"
             try:
                 first = source.stage_cd119_candidate(storage, CD119_DATASET_SLUG, CD119_FILE_SLUG)
                 second = source.stage_cd119_candidate(storage, CD119_DATASET_SLUG, CD119_FILE_SLUG)
@@ -97,9 +98,9 @@ class CensusCD119SourceTests(unittest.TestCase):
                 else:
                     os.environ["HIFLD_CD119_MODE"] = old_mode
                 if old_root is None:
-                    os.environ.pop("HIFLD_CD119_CAPTURE_DIR", None)
+                    os.environ.pop("HIFLD_CAPTURE_ROOT", None)
                 else:
-                    os.environ["HIFLD_CD119_CAPTURE_DIR"] = old_root
+                    os.environ["HIFLD_CAPTURE_ROOT"] = old_root
             self.assertEqual(first["version"], second["version"])
             self.assertEqual(first["candidate_identity"], second["candidate_identity"])
             self.assertEqual(first["source_feature_count"], 444)
@@ -117,6 +118,51 @@ class CensusCD119SourceTests(unittest.TestCase):
             self.assertEqual(quality["feature_count"], 444)
             self.assertEqual(quality["geometry_type"], "Mixed")
             self.assertEqual(quality["invalid_geometry_count"], 0)
+
+
+class CensusCD119AcquisitionRootTests(unittest.TestCase):
+    def test_explicit_acquisitions_directory_wins_and_shared_root_is_the_fallback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            explicit = Path(temp) / "acquisitions"
+            with patch.object(source, "GEOIDS", ()):
+                acquisition = source._acquire_live(str(explicit))
+                self.assertEqual(acquisition.parent, explicit.absolute())
+                self.assertRegex(acquisition.name, r"cd119-[0-9a-f]{32}")
+            with patch.object(source, "GEOIDS", ()), \
+                    patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": str(temp)}):
+                acquisition = source._acquire_live()
+                self.assertEqual(
+                    acquisition.parent,
+                    Path(temp) / "hifld-native-reconstruction" / "387" / "acquisitions")
+
+    def test_live_acquisition_parent_stays_inside_the_shared_root(self):
+        # The retired per-dataset override must not select a path outside the
+        # shared root when both variables are present.
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.object(source, "GEOIDS", ()), \
+                    patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": str(temp),
+                                            "HIFLD_CD119_ACQUISITIONS_DIR": "/elsewhere"}):
+                acquisition = source._acquire_live()
+                self.assertEqual(
+                    acquisition.parent,
+                    Path(temp) / "hifld-native-reconstruction" / "387" / "acquisitions")
+
+    def test_stage_routes_the_explicit_acquisitions_directory_to_live_capture(self):
+        with tempfile.TemporaryDirectory() as temp:
+            storage = StagingStorageResource(local_dir=temp, use_local=True)
+            with patch.object(source, "_mode", lambda: "live"), \
+                    patch.object(source, "_acquire_live",
+                                 return_value=Path(temp) / "acq") as acquire, \
+                    patch.object(source, "_verify_receipts",
+                                 side_effect=AssertionError("verify called")):
+                with self.assertRaises(AssertionError):
+                    source.stage_cd119_candidate(
+                        storage, CD119_DATASET_SLUG, CD119_FILE_SLUG,
+                        acquisitions_dir=str(temp))
+            acquire.assert_called_once_with(str(temp))
+
+    def test_asset_config_feeds_the_acquisitions_directory(self):
+        self.assertEqual(CensusCd119Config().acquisitions_directory, "")
 
 
 if __name__ == "__main__":

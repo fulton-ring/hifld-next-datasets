@@ -10,7 +10,6 @@ import hashlib
 import json
 import gzip
 import io
-import math
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,7 +22,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
+
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 from shapely.prepared import prep as prepare_geometry
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -31,8 +32,8 @@ from dagster_hifld.construction_state import canonical_construction_bundle, load
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.http_capture import capture_http_response
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     write_immutable,
 )
@@ -50,7 +51,7 @@ PUBLISHER = "U.S. Fish and Wildlife Service (ArcGIS item owner aditya_sastry@fws
 PAGE_SIZE = 50
 MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 MAX_ISSUE_BYTES = 3 * 1024 * 1024 * 1024
-ISSUE_EVIDENCE_ROOT = Path("/tmp/hifld-native-reconstruction/90")
+ISSUE_EVIDENCE_ROOT = default_capture_dir("hifld-native-reconstruction", "90")
 
 
 def _tree_bytes(root: Path) -> int:
@@ -188,53 +189,16 @@ def _esri_type(field: dict[str, Any]) -> pa.DataType:
     raise ValueError("unsupported_source_field_type:" + str(typ))
 
 
-def _ring_area(ring: list[list[float]]) -> float:
-    # Translate to a local origin before shoelace accumulation. Global Web
-    # Mercator coordinates can otherwise cancel small rings to a false zero.
-    x0,y0=ring[0]
-    return math.fsum((ring[i][0]-x0)*(ring[i+1][1]-y0)
-                     -(ring[i+1][0]-x0)*(ring[i][1]-y0)
-                     for i in range(len(ring)-1))/2
-
-
 def _esri_polygon(geometry: dict[str, Any]) -> MultiPolygon:
-    """Assign each hole to its nearest containing shell without ring repair."""
+    """Convert Esri rings through the shared GDAL converter without repair."""
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
-    shells, holes = [], []
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
             raise ValueError("source_polygon_ring_invalid")
-        polygon = Polygon(ring)
-        if _ring_area(ring) < 0: shells.append((ring, polygon))
-        else: holes.append((ring, polygon))
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    prepared_shells = []
-    for index, (_, shell_poly) in enumerate(shells):
-        minx, miny, maxx, maxy = shell_poly.bounds
-        prepared_shells.append((shell_poly.area, index, (minx, miny, maxx, maxy),
-                                prepare_geometry(shell_poly)))
-    # Bounding-box containment is a necessary cheap check. Exact checks use
-    # prepared polygons and visit smallest shells first, preserving the prior
-    # nearest-containing-shell assignment including nested islands.
-    prepared_shells.sort(key=lambda item: (item[0], item[1]))
-    assigned: dict[int, list[list[list[float]]]] = {index: [] for index in range(len(shells))}
-    for ring, hole in holes:
-        hminx, hminy, hmaxx, hmaxy = hole.bounds
-        parent = None
-        for _, index, (sminx, sminy, smaxx, smaxy), prepared_shell in prepared_shells:
-            if (sminx <= hminx and sminy <= hminy and
-                    smaxx >= hmaxx and smaxy >= hmaxy and
-                    prepared_shell.contains(hole)):
-                parent = index
-                break
-        if parent is None:
-            raise ValueError("source_polygon_hole_without_containing_shell")
-        assigned[parent].append(ring)
-    members = [Polygon(shell, assigned[index]) for index, (shell, _) in enumerate(shells)]
-    return MultiPolygon(members)
+    result = esri_polygon_geometry({"rings": rings}, has_z=False, has_m=False)
+    return result if result.geom_type == "MultiPolygon" else MultiPolygon([result])
 
 
 def _feature_rows(captures: dict[str, tuple[bytes, dict[str, Any]]], fields: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -331,7 +295,7 @@ def capture_final_critical_habitat(storage: StagingStorageResource, *, version: 
         raise ValueError("explicit_local_staging_resource_required")
     root = Path(storage.local_dir).absolute(); root.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(root).free < 300_000_000: raise ValueError("disk_floor_before_acquisition")
-    capture_root = Path(capture_directory or "/tmp/hifld-native-reconstruction/90/captures") / f"{version}-{uuid4().hex}"
+    capture_root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "90", "captures"))) / f"{version}-{uuid4().hex}"
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes | Path, dict[str, Any]]] = {}
     budget_roots = (ISSUE_EVIDENCE_ROOT, root)

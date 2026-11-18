@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import boem_ocs_diagrams as boem
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 
 
 def _body(value):
@@ -73,6 +73,10 @@ def _fixture():
 
 
 class BoemOcsDiagramsTests(unittest.TestCase):
+    def test_default_capture_root_keeps_the_historical_layout(self):
+        self.assertEqual(str(boem.DEFAULT_CAPTURE_ROOT),
+                         str(Path(tempfile.gettempdir()) / "boem-ocs-captures"))
+
     def test_all_four_regions_and_native_fields_are_required(self):
         _, fields, features, audit = boem._validate(_fixture())
         self.assertEqual([field["name"] for field in fields], [field[0] for field in boem.EXPECTED_FIELDS])
@@ -142,7 +146,7 @@ class BoemOcsDiagramsTests(unittest.TestCase):
                      patch.object(boem, "_geoparquet", side_effect=parquet), \
                      patch.object(boem, "processing_identity", return_value=stable_identity), \
                      patch.object(boem, "validate_construction_code_identity", return_value=None), \
-                     patch.object(epa_frs_common, "validate_construction_code_identity", return_value=None):
+                     patch.object(capture_common, "validate_construction_code_identity", return_value=None):
                     return boem.capture_boem_ocs_diagrams(storage, offline_capture_directory=tmp)
 
             first = run("2026-01-01T00:00:00Z")
@@ -165,7 +169,7 @@ class BoemOcsDiagramsTests(unittest.TestCase):
                  patch.object(boem, "_geoparquet", return_value=b"candidate"), \
                  patch.object(boem, "processing_identity", return_value=stable_identity), \
                  patch.object(boem, "validate_construction_code_identity", return_value=None), \
-                 patch.object(epa_frs_common, "validate_construction_code_identity", return_value=None):
+                 patch.object(capture_common, "validate_construction_code_identity", return_value=None):
                 result = boem.capture_boem_ocs_diagrams(storage, offline_capture_directory=tmp)
             base = result["candidate_ready"].replace("metadata/candidate_ready.json", "metadata/")
             manifest = json.loads(storage.read_key(base + "source_manifest.json"))
