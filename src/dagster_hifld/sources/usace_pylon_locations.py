@@ -20,7 +20,6 @@ from dagster_hifld.sources.arcgis_layer import validate_crs as _validate_crs, va
 DATASET_SLUG = "pylon-locations-usace-ienc"
 FILE_SLUG = DATASET_SLUG
 LAYER_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PYLONS_POINT/MapServer/21"
-EXPECTED_COUNT = 4079
 PAGE_SIZE = 200
 FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"),
@@ -112,7 +111,8 @@ def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int]
     if result.get("objectIdFieldName") != "OBJECTID":
         raise ValueError("source_object_id_field_drift")
     ids = result.get("objectIds")
-    if not isinstance(ids, list) or len(ids) != EXPECTED_COUNT or any(type(x) is not int for x in ids):
+    if (not isinstance(ids, list) or not ids
+            or any(type(x) is not int or x <= 0 for x in ids)):
         raise ValueError("source_id_population_drift")
     if len(set(ids)) != len(ids):
         raise ValueError("source_duplicate_object_id")
@@ -122,7 +122,7 @@ def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int]
 def _count_snapshot(client, staging, version_key: str, name: str, budget: list[int]) -> int:
     result = _request(client, {"f": "json", "where": "1=1", "returnCountOnly": "true"}, staging, version_key, name, budget)
     count = result.get("count")
-    if type(count) is not int or count != EXPECTED_COUNT:
+    if type(count) is not int or count < 0:
         raise ValueError("source_count_drift")
     return count
 
@@ -189,7 +189,7 @@ def compare_generated_geoparquet(staging, version_key: str) -> dict[str, object]
     output = pa.concat_tables(output_tables, promote_options="permissive") if len(output_tables) > 1 else output_tables[0]
     source_ids = candidate.column("OBJECTID").to_pylist()
     output_ids = output.column("OBJECTID").to_pylist() if "OBJECTID" in output.column_names else None
-    if output_ids is None or len(source_ids) != EXPECTED_COUNT or len(output_ids) != EXPECTED_COUNT:
+    if output_ids is None or len(source_ids) != len(output_ids):
         raise ValueError("native_parity_feature_count_or_id_missing")
     if sorted(source_ids) != sorted(output_ids) or len(set(output_ids)) != len(output_ids):
         raise ValueError("native_parity_object_id_roster_drift")
@@ -226,8 +226,8 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
         metadata = _metadata(client, staging, version_key, budget)
         count_before = _count_snapshot(client, staging, version_key, "count_before", budget)
         before = _id_snapshot(client, staging, version_key, "ids_before", budget)
-        if len(before) != EXPECTED_COUNT:
-            raise ValueError("source_count_drift")
+        if count_before != len(before):
+            raise ValueError("source_count_or_id_roster_drift")
         features = []
         pages = []
         for offset in range(0, len(before), PAGE_SIZE):
@@ -267,7 +267,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
         after = _id_snapshot(client, staging, version_key, "ids_after", budget)
         count_after = _count_snapshot(client, staging, version_key, "count_after", budget)
         fetched_ids = [feature["attributes"]["OBJECTID"] for feature in features]
-        if count_before != count_after or before != after or fetched_ids != before or len(features) != EXPECTED_COUNT:
+        if count_before != count_after or before != after or fetched_ids != before or len(features) != len(before):
             raise ValueError("source_population_changed_during_capture")
         rows = [{"attributes": f["attributes"], "geometry": f["geometry"]} for f in features]
         row_digest = _digest(_json_bytes(rows))

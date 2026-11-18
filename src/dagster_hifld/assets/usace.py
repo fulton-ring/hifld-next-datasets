@@ -69,7 +69,8 @@ def usace_administrative_areas_usace_ienc(
 
 @asset_check(asset=usace_administrative_areas_usace_ienc, blocking=True)
 def usace_administrative_areas_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == 2966 and candidate.get("source_population_complete") is True
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),

@@ -13,6 +13,10 @@ from dagster_hifld.assets.wreck_areas_usace_ienc import (
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wreck_areas_usace_ienc as source
+
+COUNT = 8
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "b2ddd6543011e658aaebc223b42021e89fa9a18bd1f2207f6cb68e73ca5688b3"
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
@@ -32,12 +36,12 @@ class WreckAreasUsaceIencTests(unittest.TestCase):
                  "extent": {**source.EXPECTED_EXTENT, "spatialReference": {"wkid": 4326}},
                  "fields": source.EXPECTED_FIELD_DECLARATIONS}
         rows = []
-        for oid in source.EXPECTED_IDS:
+        for oid in IDS:
             attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
                      (45000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}")
                      for field in source.ATTRIBUTE_FIELDS}
             rings = [self._shell(oid)]
-            if oid == source.EXPECTED_IDS[-1]:
+            if oid == IDS[-1]:
                 inset = 0.0002
                 shell = rings[0]
                 rings.append([[shell[0][0] + inset, shell[0][1] + inset],
@@ -56,12 +60,12 @@ class WreckAreasUsaceIencTests(unittest.TestCase):
                                         "and USACE_IENC_Master_Service_gdb.zip."},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/WRECKS_AREA", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
             "features": features, "layer_after": json.loads(json.dumps(layer)),
             "service_after": json.loads(json.dumps(service)),
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
         }
 
     def _captures(self, docs):
@@ -72,24 +76,24 @@ class WreckAreasUsaceIencTests(unittest.TestCase):
         self.assertEqual(wreck_areas_usace_ienc_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         check = wreck_areas_usace_ienc_complete({
-            "feature_count": 8, "source_population_complete": True, "source_id_sha256": "abc",
+            "feature_count": 8, "source_reported_count": 8, "source_population_complete": True, "source_id_sha256": "abc",
             "geometry_valid_count": 8, "geometry_invalid_count": 0, "geometry_empty_count": 0})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         failed = wreck_areas_usace_ienc_complete({
-            "feature_count": 7, "source_population_complete": True, "source_id_sha256": "abc",
+            "feature_count": 7, "source_reported_count": 8, "source_population_complete": True, "source_id_sha256": "abc",
             "geometry_valid_count": 8, "geometry_invalid_count": 0, "geometry_empty_count": 0})
         self.assertFalse(failed.passed)
         geometry_failed = wreck_areas_usace_ienc_complete({
-            "feature_count": 8, "source_population_complete": True, "source_id_sha256": "abc",
+            "feature_count": 8, "source_reported_count": 8, "source_population_complete": True, "source_id_sha256": "abc",
             "geometry_valid_count": 7, "geometry_invalid_count": 1, "geometry_empty_count": 0})
         self.assertFalse(geometry_failed.passed)
-        missing = wreck_areas_usace_ienc_complete({"feature_count": 8, "source_population_complete": True})
+        missing = wreck_areas_usace_ienc_complete({"feature_count": 8, "source_reported_count": 8, "source_population_complete": True})
         self.assertFalse(missing.passed)
 
     def test_capture_roster_covers_bts_service_layer_and_exact_ids(self):
-        urls = dict(source._capture_urls(source.EXPECTED_IDS))
-        self.assertEqual(sorted(urls), sorted(source.EXPECTED_CAPTURE_NAMES))
+        urls = dict(source._capture_urls(IDS))
+        self.assertEqual(sorted(urls), sorted(source.BASE_CAPTURE_NAMES))
         self.assertEqual(urls["layer_before"],
                          "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/WRECKS_AREA"
                          "/MapServer/54?f=pjson")
@@ -105,7 +109,7 @@ class WreckAreasUsaceIencTests(unittest.TestCase):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 8)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 45)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(audit["geometry_invalid_count"], 0)
@@ -174,9 +178,9 @@ class WreckAreasUsaceIencTests(unittest.TestCase):
             docs["features"]["features"][0]["geometry"]["rings"][0][1] = point
 
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_count_or_id_population_drift"),
-            ("count", lambda d: d["count_after"].update(count=7), "source_count_or_id_population_drift"),
+            ("population", lambda d: d["ids_after"].update(objectIds=IDS[:-1]),
+             "source_count_or_id_roster_drift"),
+            ("count", lambda d: d["count_after"].update(count=7), "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("page field schema", lambda d: d["features"]["fields"][2].update(name="renamed"),
@@ -245,9 +249,9 @@ class WreckAreasUsaceIencTests(unittest.TestCase):
         if mutate is not None:
             mutate(documents)
         root.mkdir(parents=True)
-        roster_urls = dict(source._capture_urls(source.EXPECTED_IDS))
+        roster_urls = dict(source._capture_urls(IDS))
         receipts = {}
-        for name in sorted(source.EXPECTED_CAPTURE_NAMES):
+        for name in sorted(source.BASE_CAPTURE_NAMES):
             body = _canonical(documents[name])
             receipt = {"method": "GET", "url": roster_urls[name], "final_url": roster_urls[name],
                        "observed_at": "2026-11-15T00:00:00+00:00", "status": 200, "complete_body": True,
@@ -260,7 +264,7 @@ class WreckAreasUsaceIencTests(unittest.TestCase):
             (root / f"{name}.wire").write_bytes(body)
             (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
         manifest = {"complete": True, "captured_at": "2026-11-15T00:00:00+00:00",
-                    "source_feature_count": source.EXPECTED_COUNT, "receipts": receipts,
+                    "source_feature_count": COUNT, "receipts": receipts,
                     "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}
         (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         return root
@@ -291,7 +295,7 @@ class WreckAreasUsaceIencTests(unittest.TestCase):
                 first = source.capture_wreck_areas_usace_ienc(storage, version="regression",
                                                               capture_directory=str(root))
             self.assertFalse(first["reused"])
-            self.assertEqual(first["feature_count"], source.EXPECTED_COUNT)
+            self.assertEqual(first["feature_count"], COUNT)
             self.assertEqual(first["source_vertex_count"], 45)
             self.assertEqual(first["geometry_valid_count"], 8)
             self.assertEqual(first["geometry_invalid_count"], 0)

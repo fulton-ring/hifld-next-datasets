@@ -6,6 +6,10 @@ from unittest.mock import patch
 
 from dagster import DefaultScheduleStatus
 from dagster_hifld.sources import land_region_locations_usace_ienc as source
+
+COUNT = 3816
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "cac2ab79c3f815fed3a82c254e0a88a7d0445b2da51a36ac64f920bbecf558d1"
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.land_region_locations_usace_ienc import (
@@ -31,11 +35,11 @@ def _documents():
         "service_directory": {"services": [{"name": "IENC_Feature_Classes/LAND_REGION_POINT", "type": "MapServer"}]},
         "service_before": service, "service_after": service,
         "layer_before": layer, "layer_after": layer,
-        "count_before": {"count": source.EXPECTED_COUNT}, "count_after": {"count": source.EXPECTED_COUNT},
-        "ids_before": {"objectIds": source.EXPECTED_IDS}, "ids_after": {"objectIds": source.EXPECTED_IDS},
+        "count_before": {"count": COUNT}, "count_after": {"count": COUNT},
+        "ids_before": {"objectIds": IDS}, "ids_after": {"objectIds": IDS},
     }
-    for page_index in range(source.PAGE_COUNT):
-        page_ids = source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]
+    for page_index in range(((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE)):
+        page_ids = IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]
         rows = []
         for oid in page_ids:
             values = {field["name"]: (oid if field["name"] == "OBJECTID" else
@@ -58,12 +62,12 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
         self.assertIn(land_region_locations_usace_ienc, hifld_ingest_assets)
         self.assertEqual(land_region_locations_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
         passed = land_region_locations_usace_ienc_complete(
-            {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True})
+            {"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(passed.passed)
         self.assertFalse(passed.metadata["release_accepted"].value)
         self.assertFalse(passed.metadata["id_contract_accepted"].value)
         failed = land_region_locations_usace_ienc_complete(
-            {"feature_count": source.EXPECTED_COUNT - 1, "source_population_complete": True})
+            {"feature_count": COUNT - 1, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_version_cannot_escape_capture_root(self):
@@ -75,12 +79,12 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
     def test_complete_capture_contract_pins_population_ids_and_attributes(self):
         fields, features, audit = source._validate({name: (_canonical(doc), {}) for name, doc in _documents().items()})
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
-        self.assertEqual(audit["source_feature_count"], source.EXPECTED_COUNT)
-        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
+        self.assertEqual(audit["source_feature_count"], COUNT)
+        self.assertEqual(audit["geometry_valid_count"], COUNT)
         self.assertEqual(audit["geometry_empty_count"] + audit["geometry_invalid_count"], 0)
-        self.assertEqual(audit["feature_id_distinct_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["feature_id_distinct_count"], COUNT)
         self.assertEqual(audit["feature_id_duplicate_count"], 0)
         self.assertEqual(audit["feature_id_null_count"], 0)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "Feature_ID-1")
@@ -94,19 +98,19 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_field_schema_drift"):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
         docs = _documents(); docs = json.loads(json.dumps(docs))
-        docs["count_after"]["count"] = source.EXPECTED_COUNT - 1
-        with self.assertRaisesRegex(ValueError, "source_count_drift"):
+        docs["count_after"]["count"] = COUNT - 1
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
         docs = _documents(); docs = json.loads(json.dumps(docs))
-        docs["ids_after"]["objectIds"] = source.EXPECTED_IDS[:-1]
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        docs["ids_after"]["objectIds"] = IDS[:-1]
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
         docs = _documents(); docs = json.loads(json.dumps(docs))
         docs["page_007"]["features"].pop()
         with self.assertRaisesRegex(ValueError, "source_page_population_incomplete:page_007"):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
         docs = _documents(); docs = json.loads(json.dumps(docs))
-        docs["page_007"]["features"][0]["attributes"]["OBJECTID"] = source.EXPECTED_IDS[0]
+        docs["page_007"]["features"][0]["attributes"]["OBJECTID"] = IDS[0]
         with self.assertRaisesRegex(ValueError, "source_oid_roster_drift:page_007"):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
         docs = _documents(); docs = json.loads(json.dumps(docs))
@@ -154,13 +158,13 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_feature_id_duplicate_drift"):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
         docs = json.loads(json.dumps(_documents()))
-        for page_index in range(source.PAGE_COUNT):
+        for page_index in range(((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE)):
             for row in docs[f"page_{page_index:03d}"]["features"]:
                 row["geometry"] = {"x": -90.0, "y": 35.0}
         with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
             source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
         docs = json.loads(json.dumps(_documents()))
-        for page_index in range(source.PAGE_COUNT):
+        for page_index in range(((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE)):
             for row in docs[f"page_{page_index:03d}"]["features"]:
                 if row["attributes"]["OBJECTID"] == 2:
                     row["geometry"] = {"x": -90.0, "y": 35.0}
@@ -200,7 +204,7 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
         self.assertTrue(table.schema.field("OBJECTID").type.equals(pyarrow.int64()))
         self.assertTrue(table.schema.field("Scale_Minimum").type.equals(pyarrow.int32()))
         self.assertTrue(table.schema.field("Feature_ID").type.equals(pyarrow.string()))
-        self.assertEqual(table.num_rows, source.EXPECTED_COUNT)
+        self.assertEqual(table.num_rows, COUNT)
         self.assertEqual(table["Feature_ID"].null_count, 0)
         self.assertEqual(table["Category_of_Land_Region"][0].as_py(), "")
         geometry = from_wkb(table["geometry"][0].as_py())
@@ -211,7 +215,7 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
     def _capture_directory(self, root: Path):
         docs = _documents()
         receipts = {}
-        expected_urls = dict(source._capture_urls(source.EXPECTED_IDS))
+        expected_urls = dict(source._capture_urls(IDS))
         for name, doc in docs.items():
             body = _canonical(doc)
             (root / f"{name}.body").write_bytes(body)
@@ -254,7 +258,7 @@ class LandRegionLocationsUsaceIencTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "capture"; root.mkdir(); self._capture_directory(root)
             captures = source._read_replay(root)
-            self.assertEqual(set(captures), source.CAPTURE_NAMES)
+            self.assertEqual(set(captures), source._capture_names(IDS))
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "capture"; root.mkdir(); self._capture_directory(root)
             (root / "page_002.body").write_bytes(b"tampered")

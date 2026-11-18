@@ -929,7 +929,7 @@ def capture_lock_basins_usace_ienc(storage: StagingStorageResource, *, version: 
             state_fingerprint, identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             payload.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": audit["source_feature_count"], "source_population_complete": True,
+            "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
             "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],
@@ -946,7 +946,7 @@ def capture_lock_basins_usace_ienc(storage: StagingStorageResource, *, version: 
                           "capture_receipts": receipts, "objects": descriptors})
     validate_processing_identity(Path(__file__).parents[3], identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": audit["source_feature_count"], "source_population_complete": True,
+        "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
         "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],

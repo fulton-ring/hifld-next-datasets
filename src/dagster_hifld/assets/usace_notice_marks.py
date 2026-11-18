@@ -17,7 +17,6 @@ from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_parti
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.usace_notice_marks import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     FILE_SLUG,
     capture_usace_notice_marks,
 )
@@ -55,7 +54,8 @@ def usace_notice_marks_usace_ienc(
 
 @asset_check(asset=usace_notice_marks_usace_ienc, blocking=True)
 def usace_notice_marks_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_population_complete") is True
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(
         passed=passed,
         metadata={

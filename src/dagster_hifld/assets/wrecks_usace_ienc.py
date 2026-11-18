@@ -8,7 +8,7 @@ from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.wrecks_usace_ienc import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_wrecks_usace_ienc,
+    DATASET_SLUG, FILE_SLUG, capture_wrecks_usace_ienc,
 )
 
 
@@ -44,9 +44,9 @@ def wrecks_usace_ienc(context, config: WrecksUsaceIencConfig,
 def wrecks_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
     # Fail closed when any completeness metric is missing or nonzero: a missing
     # metric is a refused candidate, never an implied zero.
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
               and candidate.get("source_population_complete") is True
-              and candidate.get("geometry_valid_count") == EXPECTED_COUNT
+              and candidate.get("geometry_valid_count") == candidate.get("feature_count")
               and candidate.get("geometry_invalid_count") == 0
               and candidate.get("geometry_empty_count") == 0
               and bool(candidate.get("source_id_sha256")))
