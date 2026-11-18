@@ -23,6 +23,7 @@ from dagster import (
 
 from dagster_hifld.esri_pbf import DraftGeoParquetWriter, decode_feature_collection_pbf
 from dagster_hifld.http_capture import CaptureProgress, capture_http_response
+from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -371,11 +372,7 @@ def capture_national_forests(storage: StagingStorageResource, *, capture_directo
     }
     (capture_root / "draft_schema_and_coverage.json").write_text(json.dumps(schema_record, sort_keys=True, indent=2) + "\n")
     parquet_bytes = parquet_path.stat().st_size
-    parquet_digest = hashlib.sha256()
-    with parquet_path.open("rb") as parquet_file:
-        for block in iter(lambda: parquet_file.read(1024 * 1024), b""):
-            parquet_digest.update(block)
-    parquet_sha256 = parquet_digest.hexdigest()
+    parquet_sha256 = sha256_file(parquet_path)
     repo_root = Path(__file__).parents[3]
     identity = processing_identity(repo_root)
     schema_digest = hashlib.sha256(json.dumps(native_fields, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

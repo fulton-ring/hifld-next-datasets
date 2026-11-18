@@ -44,6 +44,7 @@ from shapely.ops import transform as transform_geometry
 from dagster_hifld.file_geodatabase import iter_file_geodatabases
 from dagster_hifld.gdal import with_large_geojson_support as _with_large_geojson_support
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.validation import sha256_file
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_PRECEDENCE,
     SOURCE_FORMAT_EXTENSIONS,
@@ -1747,14 +1748,6 @@ def _row_group_uncompressed_sizes(path: Path) -> list[int]:
     ]
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _source_transformer(crs: Any) -> Transformer | None:
     if not crs:
         return None
@@ -2239,7 +2232,7 @@ async def process_layer_partitioned_geoparquet(
                 relative_path=relative_path,
                 file_size_bytes=state.path.stat().st_size,
                 footer_size_bytes=footer_size_bytes,
-                sha256=_sha256_file(state.path),
+                sha256=sha256_file(state.path),
                 row_counts=row_counts,
                 row_group_uncompressed_sizes=row_group_uncompressed_sizes,
             )

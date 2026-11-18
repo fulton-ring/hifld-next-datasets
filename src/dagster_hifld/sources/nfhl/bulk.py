@@ -155,14 +155,6 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def _plain_text(value: object) -> str:
     return " ".join(str(value).replace("\xa0", " ").split())
 
@@ -338,7 +330,7 @@ def verify_product_zip(capture_root: Path, product: BulkProduct) -> bool:
         size = zip_path.stat().st_size
     except OSError:
         return False
-    if receipt.get("bytes") != size or receipt.get("sha256") != _file_sha256(zip_path):
+    if receipt.get("bytes") != size or receipt.get("sha256") != sha256_file(zip_path):
         return False
     return _archive_has_products(capture_root, name)
 
