@@ -4,6 +4,7 @@ import io
 import json
 import unittest
 from pathlib import Path
+from urllib.parse import urlencode
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
@@ -268,7 +269,7 @@ class StateCapitolsCaptureCustodyTests(unittest.TestCase):
             status, headers={"content-type": "application/json"}, stream=stream,
         ))
         root.mkdir(parents=True, exist_ok=True)
-        url = source._query({"where": "1=1", "objectIds": "1", "f": "json"})
+        url = source.LAYER_URL + "/query?" + urlencode({"where": "1=1", "objectIds": "1", "f": "json"})
         with httpx.Client(transport=transport) as client, self.assertRaisesRegex(
             ValueError, "incomplete_source_capture"
         ):
