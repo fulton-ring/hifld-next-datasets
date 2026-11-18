@@ -1,4 +1,4 @@
-"""Shared native Esri polygon conversion and spatial-reference primitives.
+"""Shared native Esri geometry conversion and spatial-reference primitives.
 
 Canonical CRS-drift guard and ArcGIS ring contract for service payloads. The
 error codes (``<label>_crs_drift`` and ``source_*``) are part of the contract
