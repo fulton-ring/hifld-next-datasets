@@ -13,17 +13,21 @@ from dagster_hifld.assets.usace_overhead_cables import (
 from dagster_hifld.sources import usace_overhead_cables as source
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
+COUNT = 1631
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "54ad1966fd08b47108d693f72439f261522f695e0b81329900b09991f9554122"
+
 
 class UsaceOverheadCablesTests(unittest.TestCase):
     def test_asset_is_registered_refresh_stopped_and_gate_remains_unapproved(self):
         self.assertIn(usace_overhead_cables_usace_ienc, hifld_ingest_assets)
         self.assertEqual(usace_overhead_cables_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_overhead_cables_complete({"feature_count": 1631, "source_population_complete": True})
+        check = usace_overhead_cables_complete({"feature_count": 1631, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
 
     def test_capture_page_roster_covers_source_ids_without_overlapping(self):
-        urls = source._capture_roster(source.EXPECTED_IDS)
+        urls = source._capture_roster(IDS)
         page_names = [name for name, _url in urls if name.startswith("page_")]
         self.assertEqual(page_names, [f"page_{index:03d}" for index in range(7)])
         self.assertIn("objectIds=1%2C2%2C3", dict(urls)["page_000"])
@@ -45,12 +49,12 @@ class UsaceOverheadCablesTests(unittest.TestCase):
                                         "USACE_IENC_Master_Service_gdb.zip"},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/OVERHEAD_CABLE_LINE", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT}, "ids_before": {"objectIds": source.EXPECTED_IDS},
-            "layer_after": json.loads(json.dumps(layer)), "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS}, "service_after": json.loads(json.dumps(service)),
+            "count_before": {"count": COUNT}, "ids_before": {"objectIds": IDS},
+            "layer_after": json.loads(json.dumps(layer)), "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS}, "service_after": json.loads(json.dumps(service)),
         }
         for page_index in range(7):
-            ids = source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]
+            ids = IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]
             rows = []
             for oid in ids:
                 attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
@@ -66,7 +70,7 @@ class UsaceOverheadCablesTests(unittest.TestCase):
 
     def _capture_directory(self, root: Path):
         root.mkdir()
-        expected_urls=dict(source._capture_roster(source.EXPECTED_IDS))
+        expected_urls=dict(source._capture_roster(IDS))
         receipts={}
         for name,doc in self._documents().items():
             body=_canonical(doc)
@@ -113,7 +117,7 @@ class UsaceOverheadCablesTests(unittest.TestCase):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 1631)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 3262)
         self.assertEqual(audit["geometry_valid_count"], 1631)
         self.assertEqual(audit["bts_catalog_item_id"], "7ec34864c8804468a9cf52d437fe4b6c")
@@ -129,7 +133,7 @@ class UsaceOverheadCablesTests(unittest.TestCase):
 
     def test_missing_rows_schema_drift_transfer_limit_and_crs_override_fail_closed(self):
         mutations = [
-            ("missing IDs", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]), "source_count_or_id"),
+            ("missing IDs", lambda d: d["ids_after"].update(objectIds=IDS[:-1]), "source_count_or_id"),
             ("field rename", lambda d: d["layer_before"]["fields"][2].update(name="renamed"), "source_field_schema_drift"),
             ("page truncation", lambda d: d["page_000"].update(exceededTransferLimit=True), "source_page_error"),
             ("page CRS override", lambda d: d["page_000"].update(spatialReference={"wkid": 3857, "latestWkid": 4326}), "crs_drift"),

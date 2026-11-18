@@ -14,6 +14,10 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import warning_signal_stations_usace_ienc as source
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
+COUNT = 522
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "aee3c91552b300304dc7de524b3e63fcec01f57cf3f747176c57cd2e139fb56e"
+
 
 class WarningSignalStationsUsaceIencTests(unittest.TestCase):
     def _point(self, oid):
@@ -33,15 +37,15 @@ class WarningSignalStationsUsaceIencTests(unittest.TestCase):
                          "description": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes USACE_IENC_Master_Service_gdb.zip"},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/WARNING_SIGNAL_STATION_POINT", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
             "service_after": service, "layer_after": layer,
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
         }
-        for page_index in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+        for page_index in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
             rows = []
-            for oid in source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
+            for oid in IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
                 attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
                          (45000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}")
                          for field in source.ATTRIBUTE_FIELDS}
@@ -75,7 +79,7 @@ class WarningSignalStationsUsaceIencTests(unittest.TestCase):
         self.assertFalse(empty_failed.passed)
 
     def test_capture_roster_pages_cover_source_ids_without_overlapping(self):
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(IDS))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")],
                          [f"page_{index:03d}" for index in range(3)])
         self.assertIn("objectIds=1%2C2%2C3", urls["page_000"])
@@ -91,7 +95,7 @@ class WarningSignalStationsUsaceIencTests(unittest.TestCase):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 522)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 522)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(audit["geometry_invalid_count"], 0)
@@ -117,8 +121,8 @@ class WarningSignalStationsUsaceIencTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_count_or_id_population_drift"),
+            ("population", lambda d: d["ids_after"].update(objectIds=IDS[:-1]),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("transfer", lambda d: d["page_001"].update(exceededTransferLimit=True),

@@ -14,6 +14,10 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import small_craft_facility_locations_usace_ienc as source
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
+COUNT = 153
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "a324bf55f61d581163df5861328fe8d67b47495b6a5c9e1f68d21ae0d8977679"
+
 
 class SmallCraftFacilityLocationsUsaceIencTests(unittest.TestCase):
     def _point(self, oid):
@@ -32,15 +36,15 @@ class SmallCraftFacilityLocationsUsaceIencTests(unittest.TestCase):
                          "description": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes USACE_IENC_Master_Service_gdb.zip"},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/SMALL_CRAFT_FACILITY_POINT", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
             "service_after": service, "layer_after": layer,
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
         }
-        for page_index in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+        for page_index in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
             rows = []
-            for oid in source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
+            for oid in IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
                 attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
                          (12000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}")
                          for field in source.ATTRIBUTE_FIELDS}
@@ -54,27 +58,27 @@ class SmallCraftFacilityLocationsUsaceIencTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(small_craft_facility_locations_usace_ienc, hifld_ingest_assets)
         self.assertEqual(small_craft_facility_locations_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = small_craft_facility_locations_usace_ienc_complete({"feature_count": 153, "source_population_complete": True})
+        check = small_craft_facility_locations_usace_ienc_complete({"feature_count": 153, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = small_craft_facility_locations_usace_ienc_complete({"feature_count": 152, "source_population_complete": True})
+        failed = small_craft_facility_locations_usace_ienc_complete({"feature_count": 152, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_pages_cover_source_ids_without_overlapping(self):
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(IDS))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")], ["page_000"])
         self.assertIn("objectIds=1%2C2%2C3", urls["page_000"])
         self.assertNotIn("objectIds=154", urls["page_000"])
         self.assertIn("returnZ=true", urls["page_000"])
         self.assertIn("returnM=true", urls["page_000"])
         self.assertEqual(len(urls["page_000"].split("objectIds=")[1].split("&")[0].split("%2C")), 153)
-        self.assertEqual(sorted(name for name in urls), sorted(source.CAPTURE_NAMES))
+        self.assertEqual(sorted(name for name in urls), sorted(source._capture_names(IDS)))
 
     def test_complete_native_population_and_geometry_are_validated(self):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 153)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 153)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(audit["geometry_invalid_count"], 0)
@@ -97,8 +101,8 @@ class SmallCraftFacilityLocationsUsaceIencTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_count_or_id_population_drift"),
+            ("population", lambda d: d["ids_after"].update(objectIds=IDS[:-1]),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("transfer", lambda d: d["page_000"].update(exceededTransferLimit=True),
