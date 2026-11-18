@@ -9,12 +9,13 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.sources import usace_pile_locations as source
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usace_pile_locations import (
+    usace_pile_locations_complete, usace_pile_locations_draft_schedule, usace_pile_locations_usace_ienc,
+)
 
 COUNT = 3010
 IDS = list(range(1, COUNT + 1))
 ID_SHA256 = "d298d76237b21d1c44a7c23e412cf67234db786f62a537f7bcd9e5487f6c6beb"
-    usace_pile_locations_complete, usace_pile_locations_draft_schedule, usace_pile_locations_usace_ienc,
-)
+
 
 
 def _capture_docs(count=COUNT):
@@ -53,7 +54,7 @@ class PileLocationsTests(unittest.TestCase):
     def test_registered_stopped_draft_and_unapproved_release_gate(self):
         self.assertIn(usace_pile_locations_usace_ienc, hifld_ingest_assets)
         self.assertEqual(usace_pile_locations_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check=usace_pile_locations_complete({"feature_count":COUNT,"source_population_complete":True})
+        check=usace_pile_locations_complete({"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete":True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["bts_item_succession_accepted"].value)

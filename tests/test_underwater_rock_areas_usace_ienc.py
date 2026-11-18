@@ -73,16 +73,16 @@ class UnderwaterRockAreasUsaceIencTests(unittest.TestCase):
         self.assertEqual(underwater_rock_areas_usace_ienc_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         check = underwater_rock_areas_usace_ienc_complete({
-            "feature_count": 300, "source_population_complete": True,
+            "feature_count": 300, "source_reported_count": COUNT, "source_population_complete": True,
             "geometry_valid_count": 300, "geometry_invalid_count": 0, "geometry_empty_count": 0})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         failed = underwater_rock_areas_usace_ienc_complete({
-            "feature_count": 299, "source_population_complete": True,
+            "feature_count": 299, "source_reported_count": COUNT, "source_population_complete": True,
             "geometry_valid_count": 300, "geometry_invalid_count": 0, "geometry_empty_count": 0})
         self.assertFalse(failed.passed)
         geometry_failed = underwater_rock_areas_usace_ienc_complete({
-            "feature_count": 300, "source_population_complete": True,
+            "feature_count": 300, "source_reported_count": COUNT, "source_population_complete": True,
             "geometry_valid_count": 299, "geometry_invalid_count": 1, "geometry_empty_count": 0})
         self.assertFalse(geometry_failed.passed)
 

@@ -12,12 +12,13 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.special_purpose_buoys_usace_ienc import (
 
-COUNT = 104
-IDS = list(range(1, COUNT + 1))
-ID_SHA256 = "477ba57f962b706da2dd318e4bfda2db512463ce943b7216bdf22615caa49f8a"
     usace_special_purpose_buoys_complete, usace_special_purpose_buoys_draft_job,
     usace_special_purpose_buoys_draft_schedule, usace_special_purpose_buoys_usace_ienc,
 )
+
+COUNT = 104
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "477ba57f962b706da2dd318e4bfda2db512463ce943b7216bdf22615caa49f8a"
 
 
 def _capture_docs(count=COUNT):

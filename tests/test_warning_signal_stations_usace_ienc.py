@@ -61,20 +61,20 @@ class WarningSignalStationsUsaceIencTests(unittest.TestCase):
         self.assertEqual(warning_signal_stations_usace_ienc_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         check = warning_signal_stations_usace_ienc_complete({
-            "feature_count": 522, "source_population_complete": True,
+            "feature_count": 522, "source_reported_count": COUNT, "source_population_complete": True,
             "geometry_valid_count": 522, "geometry_invalid_count": 0, "geometry_empty_count": 0})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         failed = warning_signal_stations_usace_ienc_complete({
-            "feature_count": 521, "source_population_complete": True,
+            "feature_count": 521, "source_reported_count": COUNT, "source_population_complete": True,
             "geometry_valid_count": 522, "geometry_invalid_count": 0, "geometry_empty_count": 0})
         self.assertFalse(failed.passed)
         geometry_failed = warning_signal_stations_usace_ienc_complete({
-            "feature_count": 522, "source_population_complete": True,
+            "feature_count": 522, "source_reported_count": COUNT, "source_population_complete": True,
             "geometry_valid_count": 521, "geometry_invalid_count": 1, "geometry_empty_count": 0})
         self.assertFalse(geometry_failed.passed)
         empty_failed = warning_signal_stations_usace_ienc_complete({
-            "feature_count": 522, "source_population_complete": True,
+            "feature_count": 522, "source_reported_count": COUNT, "source_population_complete": True,
             "geometry_valid_count": 521, "geometry_invalid_count": 0, "geometry_empty_count": 1})
         self.assertFalse(empty_failed.passed)
 

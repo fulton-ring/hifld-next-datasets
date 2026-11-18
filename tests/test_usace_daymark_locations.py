@@ -12,12 +12,13 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.usace_daymark_locations import (
 
-COUNT = 4752
-IDS = list(range(1, COUNT + 1))
-ID_SHA256 = "415f4fcf413e557dbb20827428a466dec01b7667792517b66f9175fdf0cb10eb"
     usace_daymark_locations_complete, usace_daymark_locations_draft_job,
     usace_daymark_locations_draft_schedule, usace_daymark_locations_usace_ienc,
 )
+
+COUNT = 4752
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "415f4fcf413e557dbb20827428a466dec01b7667792517b66f9175fdf0cb10eb"
 
 
 def _capture_docs(count=COUNT):
@@ -68,7 +69,7 @@ class DaymarkLocationsTests(unittest.TestCase):
         self.assertIn(usace_daymark_locations_draft_schedule.name,
                       {schedule.name for schedule in registered.schedule_defs})
         self.assertEqual(usace_daymark_locations_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check=usace_daymark_locations_complete({"feature_count":COUNT,"source_population_complete":True})
+        check=usace_daymark_locations_complete({"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete":True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["bts_item_succession_accepted"].value)

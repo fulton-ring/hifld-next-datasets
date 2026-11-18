@@ -19,12 +19,13 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.usace_lateral_beacons import (
 
-COUNT = 3406
-IDS = list(range(1, COUNT + 1))
-ID_SHA256 = "30067c082afc872c1ae68246473e100f79bb371df8b8344574bad84508b8be34"
     usace_lateral_beacons_complete, usace_lateral_beacons_draft_job,
     usace_lateral_beacons_draft_schedule, usace_lateral_beacons_usace_ienc,
 )
+
+COUNT = 3406
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "30067c082afc872c1ae68246473e100f79bb371df8b8344574bad84508b8be34"
 
 
 def _capture_docs(count=COUNT):
@@ -77,7 +78,7 @@ class LateralBeaconsTests(unittest.TestCase):
         self.assertIn(usace_lateral_beacons_draft_schedule.name,
                       {schedule.name for schedule in registered.schedule_defs})
         self.assertEqual(usace_lateral_beacons_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check=usace_lateral_beacons_complete({"feature_count":COUNT,"source_population_complete":True})
+        check=usace_lateral_beacons_complete({"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete":True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["bts_item_succession_accepted"].value)

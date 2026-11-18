@@ -17,12 +17,13 @@ from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.assets.usace_landmark_locations import (
 
-COUNT = 552
-IDS = list(range(1, COUNT + 1))
-ID_SHA256 = "4f5bb2354d67d0e7e045fe3df10257189f9b526b0826b261f926bff54f1e4851"
     usace_landmark_locations_complete, usace_landmark_locations_draft_job,
     usace_landmark_locations_draft_schedule, usace_landmark_locations_usace_ienc,
 )
+
+COUNT = 552
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "4f5bb2354d67d0e7e045fe3df10257189f9b526b0826b261f926bff54f1e4851"
 
 
 def _capture_docs(count=COUNT):
@@ -78,7 +79,7 @@ class LandmarkLocationsTests(unittest.TestCase):
         self.assertIn(usace_landmark_locations_draft_schedule.name,
                       {schedule.name for schedule in registered.schedule_defs})
         self.assertEqual(usace_landmark_locations_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check=usace_landmark_locations_complete({"feature_count":COUNT,"source_population_complete":True})
+        check=usace_landmark_locations_complete({"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete":True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["bts_item_succession_accepted"].value)

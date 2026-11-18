@@ -14,12 +14,13 @@ from dagster_hifld.sources import usace_caution_areas as source
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usace_caution_areas import (
 
-COUNT = 36
-IDS = list(range(1, COUNT + 1))
-ID_SHA256 = "02e99fd62f6f540ab038420ccae4d559eeff82837530ee80520686aea761e7b7"
     usace_caution_areas_complete, usace_caution_areas_draft_schedule,
     usace_caution_areas_usace_ienc,
 )
+
+COUNT = 36
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "02e99fd62f6f540ab038420ccae4d559eeff82837530ee80520686aea761e7b7"
 
 
 def _captures():
