@@ -20,10 +20,21 @@ from uuid import uuid4
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.capture_common import STAGED_RELEASE_DERIVATIVE_NAMES
 
 READY_MARKER = "metadata/candidate_ready.json"
 MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_TOTAL_BYTES = 64 * 1024 * 1024
+
+_CATALOG_DERIVATIVE_NAMES = frozenset({
+    "metadata/quality_manifest.json",
+    "metadata/data_dictionary.json",
+    "metadata/geoparquet_layout.json",
+    "metadata/source/source_manifest.json",
+    "metadata/source/quality_manifest.json",
+    "metadata/source/data_dictionary.json",
+    "metadata/resolved_provenance.json",
+}) | STAGED_RELEASE_DERIVATIVE_NAMES
 
 
 class CandidateAliasError(ValueError):
@@ -129,6 +140,11 @@ def _is_ready_marker(name: str) -> bool:
     return path.parent == PurePosixPath("metadata") and path.name.endswith("candidate_ready.json")
 
 
+def _is_derivative(name: str, manifest_digest: str) -> bool:
+    return (name in _CATALOG_DERIVATIVE_NAMES
+            or name == f"metadata/source/version_{manifest_digest}_source_manifest.json")
+
+
 def _manifest_with_alias(manifest: dict, *, source_file_slug: str, target_file_slug: str,
                          title: str, transformation: dict) -> dict:
     value = json.loads(json.dumps(manifest, ensure_ascii=False, allow_nan=False))
@@ -168,8 +184,15 @@ def _source_roster(source_root: Path, source_ready_marker: str, source_file_slug
     roster = ready.get("objects")
     if not isinstance(roster, dict) or not roster:
         raise CandidateAliasError("source_ready_roster_missing")
+    for name in roster:
+        _safe_relative(name)
     actual = set(files) - {source_ready_marker}
-    if set(roster) != actual:
+    manifest_name = "metadata/source_manifest.json"
+    if manifest_name not in roster or manifest_name not in files:
+        raise CandidateAliasError("source_candidate_roster_drift")
+    manifest_digest = hashlib.sha256(_bounded_read(files[manifest_name])).hexdigest()
+    derivatives = {name for name in actual - set(roster) if _is_derivative(name, manifest_digest)}
+    if set(roster) - actual or actual - set(roster) - derivatives:
         raise CandidateAliasError("source_candidate_roster_drift")
     expected: dict[str, bytes] = {}
     total = 0
@@ -231,7 +254,10 @@ def _matches_target(target_root: Path, expected: dict[str, bytes], ready_body: b
         files = _regular_files(target_root)
     except (CandidateAliasError, OSError):
         return False
-    if set(files) != set(expected) | {READY_MARKER}:
+    required = set(expected) | {READY_MARKER}
+    manifest_digest = hashlib.sha256(expected["metadata/source_manifest.json"]).hexdigest()
+    derivatives = {name for name in set(files) - required if _is_derivative(name, manifest_digest)}
+    if not required <= set(files) or set(files) - required - derivatives:
         return False
     try:
         if _bounded_read(files[READY_MARKER]) != ready_body:

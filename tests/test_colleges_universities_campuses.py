@@ -109,6 +109,27 @@ def _write_source(root, *, parquet_body=b"parquet", audit=None, ready_approved=F
     return source
 
 
+def _write_catalog_and_release_documents(root, manifest):
+    digest = hashlib.sha256(manifest).hexdigest()
+    documents = {
+        "metadata/quality_manifest.json": b"{}",
+        "metadata/data_dictionary.json": b"{}",
+        "metadata/geoparquet_layout.json": b"{}",
+        "metadata/source/source_manifest.json": manifest,
+        "metadata/source/quality_manifest.json": b"{}",
+        "metadata/source/data_dictionary.json": b"{}",
+        "metadata/resolved_provenance.json": b"{}",
+        f"metadata/source/version_{digest}_source_manifest.json": manifest,
+        "collection.json": b"{}",
+        "README.md": b"readme",
+        "AGENTS.md": b"agents",
+    }
+    for name, body in documents.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+
+
 def _alias(storage, **overrides):
     arguments = dict(
         source_dataset_slug=SOURCE_SLUG,
@@ -186,6 +207,46 @@ class SyntheticAliasTests(unittest.TestCase):
         (source / "raw/captures/unlisted.body").write_bytes(b"unlisted")
         with self.assertRaisesRegex(alias.CandidateAliasError, "source_candidate_roster_drift"):
             _alias(self.storage)
+
+    def test_catalog_and_release_documents_on_source_do_not_break_alias(self):
+        source = _write_source(self.root)
+        _write_catalog_and_release_documents(
+            source, (source / "metadata/source_manifest.json").read_bytes()
+        )
+        result = _alias(self.storage)
+        target = self.root / TARGET_SLUG / "target-file" / VERSION
+        self.assertFalse(result["reused"])
+        self.assertFalse((target / "collection.json").exists())
+        self.assertFalse((target / "metadata/quality_manifest.json").exists())
+        self.assertTrue(_alias(self.storage)["reused"])
+
+    def test_catalog_and_release_documents_on_alias_keep_reuse(self):
+        _write_source(self.root)
+        _alias(self.storage)
+        target = self.root / TARGET_SLUG / "target-file" / VERSION
+        _write_catalog_and_release_documents(
+            target, (target / "metadata/source_manifest.json").read_bytes()
+        )
+        self.assertTrue(_alias(self.storage)["reused"])
+        self.assertFalse((self.root / "_quarantine").exists())
+
+    def test_source_snapshot_for_a_different_manifest_fails_closed(self):
+        source = _write_source(self.root)
+        snapshot = source / f"metadata/source/version_{'0' * 64}_source_manifest.json"
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        snapshot.write_bytes((source / "metadata/source_manifest.json").read_bytes())
+        with self.assertRaisesRegex(alias.CandidateAliasError, "source_candidate_roster_drift"):
+            _alias(self.storage)
+
+    def test_unexpected_alias_document_is_quarantined_and_rebuilt(self):
+        _write_source(self.root)
+        _alias(self.storage)
+        target = self.root / TARGET_SLUG / "target-file" / VERSION
+        (target / "metadata/unexpected.json").write_bytes(b"{}")
+        result = _alias(self.storage)
+        self.assertFalse(result["reused"])
+        self.assertFalse((target / "metadata/unexpected.json").exists())
+        self.assertTrue(list((self.root / "_quarantine" / TARGET_SLUG).glob("invalid-alias-*")))
 
     def test_hardlinked_source_file_is_refused(self):
         source = _write_source(self.root)
