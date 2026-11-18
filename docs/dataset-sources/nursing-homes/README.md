@@ -1,53 +1,55 @@
-# Nursing Homes source blocker
+# Nursing Homes (nursing-homes)
 
-The producer is Oak Ridge National Laboratory (ORNL), Department of Energy: the
-inventory row credits DOE/ORNL, the 2016/2024 FGDC metadata credits the ORNL
-Geographic Information Science and Technology (GIST) Group with the NGA Homeland
-Security Infrastructure Program (HSIP) Team, and the official DHS HIFLD
-deprecation crosswalk names ORNL as the layer's agency. The last HIFLD Open
-release is dated 2024-06-26 (metadata reports 53,129 point features; the
-inventory's "7,170 records added" belongs to that cycle).
+## Current source (issue #1056, 2026-11-18)
 
-On 2026-11-12 the official DHS crosswalk row for "Nursing Homes" was verified
-first-hand by parsing the dated public copy of the crosswalk workbook
-(atcoordinates.info, 61,689 bytes; the official GeoPlatform item
-41b4ff18bb094ba996dec75916de3bf3 now returns "Item does not exist or is
-inaccessible" and is not re-fetchable). The row records: Status Migrated; New
-Hosting Location "GII Portal"; DUA Required No; **GII Access Required Yes**;
-Agency "Oak Ridge National Laboratory (ORNL)"; External Landing Page None;
-Open REST Service
-https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/NursingHomes2024/FeatureServer;
-and "Migrated to GII due to the deprecation of HILFD Open".
+The maintainer selected CMS's national Provider Information dataset for this
+inventory layer. The pipeline reads dataset `4pq5-n9py` from
+<https://data.cms.gov/provider-data/dataset/4pq5-n9py> through the producer's
+metadata and datastore APIs:
 
-Fresh probes on 2026-11-12 confirmed every historical public channel is dead:
-that GeoPlatform FeatureServer returns 400 "Invalid URL"; the sibling
-`NursingHomes` service returns "Item does not exist or is inaccessible"; the old
-portal item 426ab97fbcec4f4d872340b4d8630170 is deleted on both
-geoplatform.maps.arcgis.com and www.arcgis.com; the GeoPlatform services
-directory (532 services) contains no nursing/health/care service; the HIFLD Open
-hub domains (hifld-geoplatform.opendata.arcgis.com,
-hifld-dhs-gii.opendata.arcgis.com) return "Domain record(s) not found";
-gii.dhs.gov/HIFLD redirects to a hub shell whose dataset API returns
-CONT_0001. ORNL's own channels publish no download
-(ornl.gov/projects/geospatial-data-sets lists the layer as ORNL-developed but
-has no endpoint; hdds.ornl.gov and gis.ornl.gov fail to connect).
+| URL | Publisher | Last update |
+| --- | --- | --- |
+| <https://data.cms.gov/provider-data/api/1/metastore/schemas/dataset/items/4pq5-n9py?show-reference-ids> | Centers for Medicare & Medicaid Services (CMS) | metadata modified 2026-10-01, released 2026-10-28 |
+| <https://data.cms.gov/provider-data/api/1/datastore/query/4pq5-n9py/0> | Centers for Medicare & Medicaid Services (CMS) | same release; count and CCN roster witness |
+| <https://data.cms.gov/provider-data/sites/default/files/resources/0970c657767e40f8521187d02ba8d0ed_1792181744/NH_ProviderInfo_Oct2026.csv> | Centers for Medicare & Medicaid Services (CMS) | `Processing Date` 2026-10-01; next update 2026-12-02 |
 
-Accessible copies are not eligible pipeline inputs: the DHS crosswalk itself
-names the GII Portal (HIFLD Secure on the DHS Geospatial Information
-Infrastructure) as the sole official continuation, and GII access for non-DHS
-users requires a DHS-authorized, approved Login.gov account (dhs.gov/gmo/hifld).
-The CMS Provider Information dataset (4pq5-n9py, HHS) is a maintained official
-source but a materially different product - Medicare/Medicaid certified
-facilities only, not the broader licensed/assisted-care inventory. The FEMA
-RAPT "Nursing Homes RAPT" feature service (item 47c1893618ad48ac8d0cf199593b0c9a,
-owner FEMA_HQ_Preparedness_NIC, created 2025-08-18 from a documented 2025-08-18
-download of the HIFLD ORNL layer, modified 2026-01-16) is an ArcGIS item owned
-by someone other than the producing agency. DataLumos 239713, HSDL, the Data
-Rescue Project/HIFLD Next copies and PASDA mirrors are archives and remain
-excluded under project source policy.
+The adapter selects the CSV download URL from the current metadata
+distribution, so the quarterly edition is read without a code pin. It captures
+the producer datastore count and the exact native CCN roster before and after
+the CSV, and requires all three to agree.
 
-No anonymously accessible, maintained, full-scope source of the ORNL Nursing
-Home / Assisted Care product exists. Until a maintainer either provides a GII
-access grant or explicitly approves a materially different partial product as a
-changed contract, there is no defensible endpoint to capture; no adapter,
-substitute or archive refresh was implemented.
+Current capture: **14,686 rows**, one per CMS Certification Number (CCN), with
+all 102 source fields retained as lexical strings. Observed state and territory
+codes are the 50 states plus DC, Puerto Rico and Guam.
+
+CMS supplies a coordinate pair for every row (14,686 of 14,686, 100%), so no
+Census geocoding is performed. The coordinates are preserved as a proposed
+EPSG:4326 point geometry; the source datum and positional accuracy are
+unverified. 808 rows carry CMS geocoding footnote 22, which is retained in the
+native `Geocoding Footnote` field.
+
+## Coverage limit
+
+The dataset covers **Medicare- and Medicaid-certified nursing-home providers
+only**. It is not the broader licensed nursing-home / assisted-care inventory
+described by the historical ORNL layer, and it does not claim HIFLD identifier
+or attribute parity. The CCN identifies a provider, not a timeless physical
+site.
+
+## Historical source blocker
+
+The producer named by the DHS crosswalk is Oak Ridge National Laboratory
+(ORNL), Department of Energy. The last HIFLD Open release is dated 2024-06-26.
+The crosswalk records the layer as migrated to the DHS GII Portal, which
+requires a DHS-authorized Login.gov account, and every historical public channel
+was confirmed dead on 2026-11-12: the GeoPlatform FeatureServer, the old portal
+item, the HIFLD Open hub domains and ORNL's own download channels.
+
+The FEMA RAPT "Nursing Homes RAPT" feature service is owned by a non-producing
+agency, and DataLumos, HSDL, the Data Rescue Project/HIFLD Next copies and PASDA
+mirrors are archives. They remain excluded under project source policy.
+
+The maintainer decision on #1056 accepts CMS as a changed, narrower contract for
+this layer; it does not establish ORNL population equivalence. All runtime
+approval flags remain false and the refresh schedule stays stopped. No
+production publication is implied by merging the adapter.
