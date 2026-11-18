@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import json
+import tempfile
 import unittest
 import zipfile
-from contextlib import contextmanager
+from pathlib import Path
 
 import pyarrow.parquet as pq
 
+from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import oil_and_natural_gas_platforms as source
 
 
@@ -222,6 +226,36 @@ class OilAndNaturalGasPlatformsTests(unittest.TestCase):
         broken["gulf_structures"] = (_zip(member + b"X", source.TABLE_MEMBERS["gulf_structures"]), receipt)
         with self.assertRaisesRegex(ValueError, "source_fixed_width_row_overlong"):
             source._validate_capture(broken)
+
+    def test_invalid_replay_is_quarantined_and_raises(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            replay = root / "capture"
+            replay.mkdir()
+            staging = root / "staging"
+            staging.mkdir()
+            for name, (body, _) in _captures().items():
+                (replay / f"{name}.body").write_bytes(body)
+                (replay / f"{name}.wire").write_bytes(body)
+                digest = hashlib.sha256(body).hexdigest()
+                (replay / f"{name}.receipt.json").write_text(json.dumps({
+                    "method": "GET", "status": 200, "complete_body": True,
+                    "bytes": len(body), "sha256": digest, "wire_bytes": len(body),
+                    "wire_sha256": digest, "url": source.CAPTURE_URLS[name],
+                    "final_url": source.CAPTURE_URLS[name],
+                    "observed_at": "2026-11-18T00:00:00Z"}))
+            bad = b"not a zip"
+            (replay / "gulf_masters.body").write_bytes(bad)
+            (replay / "gulf_masters.wire").write_bytes(bad)
+            digest = hashlib.sha256(bad).hexdigest()
+            receipt = json.loads((replay / "gulf_masters.receipt.json").read_text())
+            receipt.update({"bytes": len(bad), "sha256": digest, "wire_bytes": len(bad), "wire_sha256": digest})
+            (replay / "gulf_masters.receipt.json").write_text(json.dumps(receipt))
+            storage = StagingStorageResource(use_local=True, local_dir=str(staging))
+            with self.assertRaisesRegex(ValueError, "source_archive_not_a_zip"):
+                source.capture_oil_and_natural_gas_platforms(
+                    storage, version="draft", capture_directory=str(replay))
+            self.assertTrue(list((staging / "_quarantine" / source.DATASET_SLUG).iterdir()))
 
     def test_roster_and_page_time_contracts(self):
         captures = _captures()
