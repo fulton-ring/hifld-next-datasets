@@ -21,7 +21,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from dagster_hifld.sources import wbd_2_digit_hu as two
+from dagster_hifld.sources import wbd_4_digit_hu_subregion as four
+from dagster_hifld.sources import wbd_6_digit_hu as six
+from dagster_hifld.sources import wbd_10_digit_hu as ten
 from dagster_hifld.sources import wbd_12_digit_hu as twelve
+from dagster_hifld.sources import wbd_14_digit_hu as fourteen
+from dagster_hifld.sources import wbd_16_digit_hu as sixteen
 from dagster_hifld.sources import wbd_hu8_subbasin as hu8
 from shapely import from_wkb
 from dagster_hifld.sources.esri_geometry import to_wkb
@@ -37,6 +42,26 @@ from tests.test_wbd_12_digit_hu import (
     _documents as _twelve_documents,
     _write_capture_root as _twelve_write_capture_root,
     relaxed_pins as _twelve_relaxed_pins,
+)
+from tests.test_wbd_4_digit_hu_subregion import (
+    _documents as _four_documents,
+    _write_capture_root as _four_write_capture_root,
+    relaxed_pins as _four_relaxed_pins,
+)
+from tests.test_wbd_6_digit_hu import (
+    _documents as _six_documents,
+    _write_capture_root as _six_write_capture_root,
+    relaxed_pins as _six_relaxed_pins,
+)
+from tests.test_wbd_14_digit_hu import (
+    _documents as _fourteen_documents,
+    _write_capture_root as _fourteen_write_capture_root,
+    relaxed_pins as _fourteen_relaxed_pins,
+)
+from tests.test_wbd_16_digit_hu import (
+    _documents as _sixteen_documents,
+    _write_capture_root as _sixteen_write_capture_root,
+    relaxed_pins as _sixteen_relaxed_pins,
 )
 
 
@@ -79,6 +104,56 @@ class WbdHuFamilyParityTests(unittest.TestCase):
         self.assertIs(two._EPSG3857_PROJJSON, twelve._EPSG3857_PROJJSON)
         self.assertIs(two.DIGEST_SEPARATOR, twelve.DIGEST_SEPARATOR)
         self.assertIs(two.METADATA_NAMES, twelve.METADATA_NAMES)
+
+    def test_every_keyset_window_adapter_builds_the_shared_schema_and_spec(self):
+        for module, policy, root_family in (
+                (two, family.PARTS_POLICY_SINGLE_OR_AB, "379"),
+                (four, family.PARTS_POLICY_SINGLE_OR_AB, "381"),
+                (six, family.PARTS_POLICY_SINGLE_OR_AB, "382"),
+                (ten, family.PARTS_POLICY_BISECT_ATTRS, "375"),
+                (twelve, family.PARTS_POLICY_BISECT_ATTRS, "376"),
+                (fourteen, family.PARTS_POLICY_SINGLE_OR_AB, "378"),
+                (sixteen, family.PARTS_POLICY_SINGLE_OR_AB, "377")):
+            with self.subTest(adapter=module.__name__):
+                spec = module._spec()
+                self.assertEqual(spec.parts_policy, policy)
+                self.assertEqual(spec.capture_root_family, root_family)
+                self.assertIs(module._EPSG3857_PROJJSON, family.EPSG3857_PROJJSON)
+                self.assertIs(module.DIGEST_SEPARATOR, family.DIGEST_SEPARATOR)
+                self.assertEqual(module._native_schema(), family.native_schema(spec))
+                self.assertEqual(module._query({"f": "json"}),
+                                 family.query_url(module.LAYER_URL, {"f": "json"}))
+
+    def test_level_pins_stay_local_where_the_producer_differs(self):
+        self.assertEqual(six._spec().oid_field_name, "OBJECTID")
+        self.assertEqual(six._native_schema().field("InPoly_FID").type, pa.int32())
+        self.assertEqual(six._native_schema().field("SimPgnFlag").type, pa.int16())
+        self.assertEqual(six._spec().expected_layer_extent, six.EXPECTED_LAYER_EXTENT)
+        self.assertNotEqual(dict(six.EXPECTED_LAYER_EXTENT), dict(six.EXPECTED_EXTENT))
+        self.assertEqual(fourteen._spec().expected_layer_extent,
+                         fourteen.EXPECTED_LAYER_EXTENT)
+        self.assertEqual(sixteen._spec().expected_layer_copyright_text, "USGS")
+        self.assertEqual(sixteen._spec().expected_copyright_text,
+                         sixteen.EXPECTED_COPYRIGHT_TEXT)
+        self.assertEqual(four._spec().expected_layer_extent, four.EXPECTED_EXTENT)
+
+    def test_leading_zero_huc_codes_are_retained_across_every_level(self):
+        for module, documents, writer, relaxed, huc_field, huc_value, label in (
+                (four, _four_documents(), _four_write_capture_root, _four_relaxed_pins,
+                 "huc4", "0702", "four"),
+                (six, _six_documents(), _six_write_capture_root, _six_relaxed_pins,
+                 "huc6", "070200", "six"),
+                (fourteen, _fourteen_documents(), _fourteen_write_capture_root,
+                 _fourteen_relaxed_pins, "huc14", "07020004030101", "fourteen"),
+                (sixteen, _sixteen_documents(), _sixteen_write_capture_root,
+                 _sixteen_relaxed_pins, "huc16", "0702000403010101", "sixteen")):
+            with self.subTest(level=label):
+                documents["page_0000"]["features"][0]["attributes"][huc_field] = huc_value
+                sink = Path(self._tmpdir()) / f"{label}.parquet"
+                with relaxed():
+                    root = writer(Path(self._tmpdir()) / ("huc-" + label), documents)
+                    module._validate_stream(root, parquet_sink=sink)
+                self.assertEqual(pq.read_table(sink).column(huc_field)[0].as_py(), huc_value)
 
     def test_native_ring_ownership_prefers_smallest_containing_exterior(self):
         from shapely import from_wkb

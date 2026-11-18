@@ -109,12 +109,15 @@ class WbdHuSpec:
     declared_max_record_count: int
     expected_extent: Mapping[str, float]
     expected_extent_tolerance: float
+    expected_layer_extent: Mapping[str, float]
     expected_copyright_text: str
+    expected_layer_copyright_text: str
     expected_service_layers: tuple
     native_wkid: int
     native_latest_wkid: int
     source_crs_wkid: int
     display_field_name: str
+    oid_field_name: str
     user_agent: str
     doc_user_agent: str
     page_max_bytes: int
@@ -421,7 +424,7 @@ def validate_layer(spec: WbdHuSpec, layer: dict) -> None:
             or layer.get("type") != "Feature Layer"
             or layer.get("geometryType") != "esriGeometryPolygon"
             or layer.get("maxRecordCount") != spec.declared_max_record_count
-            or layer.get("copyrightText") != "U.S. Geological Survey"
+            or layer.get("copyrightText") != spec.expected_layer_copyright_text
             or layer.get("displayField") != spec.display_field_name
             or layer.get("geometryField", {}).get("name") != "shape"
             or layer.get("geometryProperties") != {"shapeAreaFieldName": "shape_Area",
@@ -432,8 +435,8 @@ def validate_layer(spec: WbdHuSpec, layer: dict) -> None:
             or layer.get("isDataVersioned") is not False
             or layer.get("isDataArchived") is not False
             or layer.get("hasZ") is True or layer.get("hasM") is True
-            or {key: layer.get("extent", {}).get(key) for key in spec.expected_extent}
-            != dict(spec.expected_extent)
+            or {key: layer.get("extent", {}).get(key) for key in spec.expected_layer_extent}
+            != dict(spec.expected_layer_extent)
             or layer.get("advancedQueryCapabilities", {}).get("supportsPagination") is not True):
         raise ValueError("source_layer_identity_or_extent_drift")
     validate_spatial_reference(layer.get("sourceSpatialReference"), "source_layer_native",
@@ -457,7 +460,7 @@ def validate_layer(spec: WbdHuSpec, layer: dict) -> None:
 
 
 def validate_roster_document(spec: WbdHuSpec, document: object, label: str) -> list[int]:
-    if not isinstance(document, dict) or document.get("objectIdFieldName") != "objectid":
+    if not isinstance(document, dict) or document.get("objectIdFieldName") != spec.oid_field_name:
         raise ValueError("source_object_id_field_drift:" + label)
     ids = document.get("objectIds")
     if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
@@ -525,6 +528,7 @@ _ARROW_TYPES = {
     "esriFieldTypeOID": pa.int64(), "esriFieldTypeString": pa.string(),
     "esriFieldTypeDate": pa.int64(), "esriFieldTypeDouble": pa.float64(),
     "esriFieldTypeGlobalID": pa.string(),
+    "esriFieldTypeInteger": pa.int32(), "esriFieldTypeSmallInteger": pa.int16(),
 }
 
 
@@ -571,6 +575,10 @@ def validate_esri_value(field: dict, value: object, *, check_width: bool = False
     if kind == "esriFieldTypeDouble":
         if type(value) not in (int, float) or not math.isfinite(float(value)):
             raise ValueError("source_double_value_type_drift:" + str(field["name"]))
+        return
+    if kind in ("esriFieldTypeInteger", "esriFieldTypeSmallInteger"):
+        if type(value) is not int:
+            raise ValueError("source_integer_value_type_drift:" + str(field["name"]))
         return
     if kind == "esriFieldTypeGeometry":
         return
@@ -739,7 +747,7 @@ def validate_stream(spec: WbdHuSpec, root: Path, *, parquet_sink: Path | None,
                         validate_esri_value(field, attrs[field["name"]],
                                             oid_suffix=":" + part_name
                                             if field["type"] == "esriFieldTypeOID" else "")
-                    oid = attrs.get("objectid")
+                    oid = attrs.get(spec.oid_field_name)
                     if type(oid) is not int or oid not in part_ids:
                         raise ValueError("source_feature_id_roster_drift:" + part_name)
                     if oid <= last_objectid:

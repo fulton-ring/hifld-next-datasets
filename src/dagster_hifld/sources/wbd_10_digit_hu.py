@@ -57,6 +57,12 @@ serializer and validates the decoded window against the same row contracts;
 a window refused by both serializers still fails the capture — gate, never
 repair. The refusal and protobuf receipts for every rescue are retained as
 raw evidence like every other capture artifact.
+
+The producer URL builders, service/layer/roster/count validation and the native
+schema come from the shared ``dagster_hifld.sources.wbd_hu_family`` module. This
+adapter keeps its distinct policy locally: recursive bisection to a ten-id
+floor, the protobuf serializer rescue for permanently refused JSON windows, and
+the bounded-memory replay that returns receipts instead of retaining every body.
 """
 from __future__ import annotations
 
@@ -70,13 +76,12 @@ from collections.abc import Iterable, Mapping
 from decimal import Decimal
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pyproj
 from shapely import from_wkb, is_valid_reason
 from shapely.geometry import LinearRing, MultiPolygon
 
@@ -89,7 +94,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.capture_common import (
-    capture_get, processing_identity, quarantine_incomplete_capture,
+    processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, validate_capture_request_identity,
     verify_cached_candidate, write_immutable,
 )
@@ -97,6 +102,8 @@ from dagster_hifld.sources.arcgis_layer import (
     _canonical, _load_capture, _sha,
 )
 from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
+
+from dagster_hifld.sources import wbd_hu_family as family
 
 DATASET_SLUG = FILE_SLUG = "wbd-10-digit-hu-watershed"
 PUBLISHER = "U.S. Geological Survey, National Geospatial Technical Operations Center"
@@ -204,59 +211,113 @@ EXPECTED_PAGE_FIELD_DECLARATIONS = [{'name': 'objectid', 'type': 'esriFieldTypeO
 EXPECTED_LAYER_FIELDS = [{'name': 'objectid', 'type': 'esriFieldTypeOID', 'alias': 'ObjectID', 'domain': None}, {'name': 'tnmid', 'type': 'esriFieldTypeString', 'alias': 'TNMID', 'length': 40, 'domain': None}, {'name': 'metasourceid', 'type': 'esriFieldTypeString', 'alias': 'MetaSourceID', 'length': 40, 'domain': None}, {'name': 'sourcedatadesc', 'type': 'esriFieldTypeString', 'alias': 'SourceDataDesc', 'length': 100, 'domain': None}, {'name': 'sourceoriginator', 'type': 'esriFieldTypeString', 'alias': 'SourceOriginator', 'length': 130, 'domain': None}, {'name': 'sourcefeatureid', 'type': 'esriFieldTypeString', 'alias': 'SourceFeatureID', 'length': 40, 'domain': None}, {'name': 'loaddate', 'type': 'esriFieldTypeDate', 'alias': 'LoadDate', 'length': 8, 'domain': None}, {'name': 'referencegnis_ids', 'type': 'esriFieldTypeString', 'alias': 'ReferenceGNIS_IDs', 'length': 50, 'domain': None}, {'name': 'areaacres', 'type': 'esriFieldTypeDouble', 'alias': 'AreaAcres', 'domain': None}, {'name': 'areasqkm', 'type': 'esriFieldTypeDouble', 'alias': 'AreaSqKm', 'domain': None}, {'name': 'states', 'type': 'esriFieldTypeString', 'alias': 'States', 'length': 50, 'domain': None}, {'name': 'huc10', 'type': 'esriFieldTypeString', 'alias': 'HUC10', 'length': 10, 'domain': None}, {'name': 'name', 'type': 'esriFieldTypeString', 'alias': 'Name', 'length': 120, 'domain': None}, {'name': 'hutype', 'type': 'esriFieldTypeString', 'alias': 'HUType', 'length': 1, 'domain': {'type': 'codedValue', 'name': 'HUType Domain', 'description': '', 'codedValues': [{'name': 'Standard', 'code': 'S'}, {'name': 'Closed Basin', 'code': 'C'}, {'name': 'Frontal', 'code': 'F'}, {'name': 'Multiple Outlet', 'code': 'M'}, {'name': 'Water', 'code': 'W'}, {'name': 'Island', 'code': 'I'}, {'name': 'Urban', 'code': 'U'}, {'name': 'Indeterminate', 'code': 'D'}], 'mergePolicy': 'esriMPTDefaultValue', 'splitPolicy': 'esriSPTDuplicate'}}, {'name': 'humod', 'type': 'esriFieldTypeString', 'alias': 'HUMod', 'length': 30, 'domain': None}, {'name': 'shape', 'type': 'esriFieldTypeGeometry', 'alias': 'Shape', 'domain': None}, {'name': 'globalid', 'type': 'esriFieldTypeGlobalID', 'alias': 'globalid', 'length': 38, 'domain': None}, {'name': 'shape_Length', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Length', 'domain': None}, {'name': 'shape_Area', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Area', 'domain': None}]
 ATTRIBUTE_FIELDS = EXPECTED_PAGE_FIELD_DECLARATIONS
 FIELD_NAMES = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
-DIGEST_SEPARATOR = b"\x00"
+DIGEST_SEPARATOR = family.DIGEST_SEPARATOR
 
 PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
 METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before",
                   "ids_before", "count_after", "ids_after", "layer_after", "service_after")
 CAPTURE_NAMES = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
 
-_EPSG3857_PROJJSON = {
-    "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
-    "type": "ProjectedCRS",
-    "name": "WGS 84 / Pseudo-Mercator",
-    "base_crs": {
-        "type": "GeographicCRS", "name": "WGS 84",
-        "datum": {"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984",
-                  "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137,
-                                "inverse_flattening": 298.257223563},
-                  "id": {"authority": "EPSG", "code": 6326}},
-        "coordinate_system": {"subtype": "ellipsoidal",
-                              "axis": [{"name": "Geodetic latitude", "abbreviation": "Lat",
-                                        "direction": "north", "unit": "degree"},
-                                       {"name": "Geodetic longitude", "abbreviation": "Lon",
-                                        "direction": "east", "unit": "degree"}]},
-        "id": {"authority": "EPSG", "code": 4326}},
-    "conversion": {"type": "Conversion", "name": "Popular Visualisation Pseudo-Mercator",
-                   "method": {"name": "Popular Visualisation Pseudo Mercator",
-                              "id": {"authority": "EPSG", "code": 1024}},
-                   "parameters": [{"name": "Latitude of natural origin", "value": 0,
-                                   "unit": "degree", "id": {"authority": "EPSG", "code": 8801}},
-                                  {"name": "Longitude of natural origin", "value": 0,
-                                   "unit": "degree", "id": {"authority": "EPSG", "code": 8802}},
-                                  {"name": "False easting", "value": 0, "unit": "metre",
-                                   "id": {"authority": "EPSG", "code": 8806}},
-                                  {"name": "False northing", "value": 0, "unit": "metre",
-                                   "id": {"authority": "EPSG", "code": 8807}}]},
-    "coordinate_system": {"subtype": "Cartesian",
-                          "axis": [{"name": "Easting", "abbreviation": "X",
-                                    "direction": "east", "unit": "metre"},
-                                   {"name": "Northing", "abbreviation": "Y",
-                                    "direction": "north", "unit": "metre"}]},
-    "id": {"authority": "EPSG", "code": 3857},
-}
+_EPSG3857_PROJJSON = family.EPSG3857_PROJJSON
+
+
+
+GATE_MODES: frozenset = frozenset()
+_COVERAGE_SCOPE = "Complete observed USGS wbd MapServer layer 5 '10-digit HU (Watershed)': every hydrologic-unit watershed polygon the producer publishes for the United States, Puerto Rico and the U.S. Virgin Islands; not asserted beyond that layer."
+_DIGEST_SCHEME = ('sha256 of the concatenation of one canonical compact-JSON document per '
+                  'feature in ascending OBJECTID order, each followed by a 0x00 byte; the '
+                  'record document is the served attribute object and the geometry document '
+                  'is [objectid, served rings] for every row, including rows that gate to '
+                  'null geometry')
+
+
+def _spec() -> family.WbdHuSpec:
+    return family.WbdHuSpec(
+        dataset_slug=DATASET_SLUG, file_slug=FILE_SLUG, publisher=PUBLISHER,
+        agency=AGENCY, service_doc_url=SERVICE_DOC_URL,
+        wbd_program_doc_url=WBD_PROGRAM_DOC_URL,
+        dhs_crosswalk_evidence_url=DHS_CROSSWALK_EVIDENCE_URL,
+        service_url=SERVICE_URL, layer_id=LAYER_ID, layer_name=LAYER_NAME,
+        map_name=MAP_NAME, expected_count=EXPECTED_COUNT,
+        expected_id_min=EXPECTED_ID_MIN, expected_id_max=EXPECTED_ID_MAX,
+        expected_id_sha256=EXPECTED_ID_SHA256, page_size=PAGE_SIZE,
+        page_count=PAGE_COUNT, declared_max_record_count=DECLARED_MAX_RECORD_COUNT,
+        expected_extent=EXPECTED_EXTENT,
+        expected_extent_tolerance=EXPECTED_EXTENT_TOLERANCE,
+        expected_layer_extent=EXPECTED_EXTENT,
+        expected_copyright_text=EXPECTED_COPYRIGHT_TEXT,
+        expected_layer_copyright_text="U.S. Geological Survey",
+        expected_service_layers=tuple(EXPECTED_SERVICE_LAYERS),
+        native_wkid=NATIVE_WKID, native_latest_wkid=NATIVE_LATEST_WKID,
+        source_crs_wkid=SOURCE_CRS_WKID, display_field_name=DISPLAY_FIELD_NAME,
+        oid_field_name="objectid",
+        user_agent=USER_AGENT, doc_user_agent=DOC_USER_AGENT,
+        page_max_bytes=PAGE_MAX_BYTES, doc_max_bytes=DOC_MAX_BYTES,
+        capture_max_bytes=CAPTURE_MAX_BYTES, disk_floor_bytes=DISK_FLOOR_BYTES,
+        shape_parity_tolerance=SHAPE_PARITY_TOLERANCE,
+        expected_schema_sha256=EXPECTED_SCHEMA_SHA256,
+        expected_record_sha256=EXPECTED_RECORD_SHA256,
+        expected_geometry_sha256=EXPECTED_GEOMETRY_SHA256,
+        expected_null_geometry_count=EXPECTED_NULL_GEOMETRY_COUNT,
+        expected_unusable_geometry_counts=EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
+        expected_refused_geometry_oids=None,
+        attribute_fields=tuple(EXPECTED_PAGE_FIELD_DECLARATIONS),
+        expected_layer_fields=EXPECTED_LAYER_FIELDS,
+        gate_modes=GATE_MODES,
+        parts_policy=family.PARTS_POLICY_BISECT_ATTRS,
+        max_bisection_depth=10**6, single_refusal_retries=0,
+        single_refusal_retry_seconds=0.0, attrs_parts=False,
+        digest_geometry_before_gate=False, capture_root_family="375",
+        baseline_pending_note=None,
+        audit_page_refusal_count=True, coverage_scope=_COVERAGE_SCOPE,
+        baseline_digest_scheme=_DIGEST_SCHEME,
+        manifest_title="10-digit HU (Watershed)",
+        manifest_description=(
+            "Complete observed USGS Watershed Boundary Dataset 10-digit HU "
+            "(Watershed) layer 5 from the USGS hydro.nationalmap.gov wbd "
+            "MapServer named by the DHS HIFLD Open crosswalk; succession, "
+            "freshness, contract, coverage, rights and release decisions "
+            "remain unaccepted."),
+        transformation_source_fields=(
+            "all 21 served attributes retained in source order with declared "
+            "physical types; esriFieldTypeDate served as epoch-milliseconds "
+            "and represented as Arrow int64 without conversion; no field "
+            "added or dropped"),
+        transformation_source_ids=(
+            "OBJECTID retained unchanged; served roster is 18,911 unique ids "
+            "from 1 to 19,567; HUC10 and TNMID retained verbatim including "
+            "leading zeros; no substitute or synthetic identifier"),
+        transformation_raw_evidence=(
+            "complete decoded response and wire bodies retained with "
+            "checksummed receipts for every page and service document"),
+        lineage=(
+            "DHS HIFLD Open crosswalk (August 2025) row 'Watershed Boundary Dataset "
+            "(WBD)' (agency U.S. Geological Survey) marks the retired GeoPlatform "
+            "item 409515c7627c444fb08b66cf89634028 as Deprecate and names the USGS "
+            "hydro.nationalmap.gov wbd MapServer as the agency's current open REST "
+            "service; its layer 5 '10-digit HU (Watershed)' is the exact producer "
+            "publication for the HIFLD Open inventory entry wbd/10-digit-hu-"
+            "watershed (publisher U.S. Geological Survey, National Geospatial "
+            "Technical Operations Center). The service documents itself as compiled "
+            "from USGS NHD and USDA NRCS WBD sources. The old GeoPlatform item is "
+            "not fetched; DataLumos project 240691 copies are research context only "
+            "and are never fetched."),
+        policy_reason=(
+            "Native attributes, OBJECTID/huc10/TNMID identifiers and served "
+            "rings are retained in a typed EPSG:3857 candidate."),
+    )
 
 
 def _query(params: dict[str, object]) -> str:
-    return LAYER_URL + "/query?" + urlencode(params)
+    return family.query_url(LAYER_URL, params)
 
 
 def _count_url() -> str:
-    return _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})
+    return family.count_url(_spec())
 
 
 def _ids_url() -> str:
-    return _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
+    return family.ids_url(_spec())
 
 
 def _page_window_url(last_objectid: int, record_count: int, *, fmt: str = "json") -> str:
@@ -268,7 +329,6 @@ def _page_window_url(last_objectid: int, record_count: int, *, fmt: str = "json"
 
 def _page_url(last_objectid: int) -> str:
     return _page_window_url(last_objectid, PAGE_SIZE)
-
 
 def _window_slice(roster: list[int], index: int, path: str) -> list[int]:
     """The roster ids one window of page ``index`` covers.
@@ -314,29 +374,14 @@ def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
     return urls
 
 
+
 def _capture(client: httpx.Client, url: str, root: Path, name: str,
              max_bytes: int = PAGE_MAX_BYTES) -> tuple[bytes, dict]:
-    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire")
-                   for path in root.glob(suffix) if path.is_file())
-    if retained + 2 * max_bytes > CAPTURE_MAX_BYTES:
-        raise ValueError("source_capture_budget_exceeded_before_request")
-    return capture_get(client, url, root, name, max_bytes=max_bytes)
+    return family.capture_budgeted(root, max_bytes, CAPTURE_MAX_BYTES, client, url, name)
 
 
 def _is_refusal(body: bytes) -> bool:
-    """The producer's deterministic refusing-window document (observed: Esri
-    error code 500 "Error performing query operation" on 9 of 190 nominal
-    100-id windows, 2026-11-14). Retained as evidence, never validated as a
-    page."""
-    if not body.lstrip().startswith(b"{") or len(body) > 4096:
-        return False
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    error = document.get("error") if isinstance(document, dict) else None
-    return isinstance(error, dict) and type(error.get("code")) is int
-
+    return family.is_refusal(body)
 
 def _read_varint(body: bytes, pos: int) -> tuple[int, int]:
     result = 0
@@ -720,143 +765,40 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
     return parts, refusals
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Validate every advertised ArcGIS CRS representation against EPSG:3857.
 
-    ArcGIS may return either/both WKID properties (102100 aliases 3857) and
-    optional WKT strings; all present representations must identify the
-    layer's native web-mercator CRS; a missing feature-level spatial reference
-    inherits only after its page CRS has been validated.
-    """
-    if value is None:
-        if required:
-            raise ValueError(f"{label}_crs_drift")
-        return False
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid not in (NATIVE_WKID, NATIVE_LATEST_WKID):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = pyproj.CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(pyproj.CRS.from_epsg(SOURCE_CRS_WKID), ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
+def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
+    return family.validate_spatial_reference(value, label, required=required,
+                                             native_wkid=NATIVE_WKID,
+                                             native_latest_wkid=NATIVE_LATEST_WKID,
+                                             source_crs_wkid=SOURCE_CRS_WKID)
 
 
 def _validate_service(service: dict, label: str) -> None:
-    if (service.get("currentVersion") != 11.3
-            or service.get("mapName") != MAP_NAME
-            or service.get("copyrightText") != EXPECTED_COPYRIGHT_TEXT
-            or service.get("capabilities") != "Map,Query,Data"
-            or service.get("maxRecordCount") != DECLARED_MAX_RECORD_COUNT
-            or service.get("units") != "esriMeters" or service.get("tables") != []):
-        raise ValueError(f"{label}_service_identity_drift")
-    _validate_spatial_reference(service.get("spatialReference"), label + "_service")
-    full = service.get("fullExtent")
-    if (not isinstance(full, dict)
-            or {key: full.get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT):
-        raise ValueError(f"{label}_service_extent_drift")
-    _validate_spatial_reference(full.get("spatialReference"), label + "_service_full_extent")
-    layers = service.get("layers")
-    roster = [(entry.get("id"), entry.get("name")) for entry in layers
-              if isinstance(entry, dict)] if isinstance(layers, list) else None
-    if roster != EXPECTED_SERVICE_LAYERS:
-        raise ValueError(f"{label}_service_layer_roster_drift")
+    family.validate_service(_spec(), service, label)
 
 
 def _validate_layer(layer: dict) -> None:
-    if layer.get("fields") != EXPECTED_LAYER_FIELDS:
-        raise ValueError("source_field_schema_drift")
-    if EXPECTED_SCHEMA_SHA256 and _sha(_canonical(layer.get("fields"))) != EXPECTED_SCHEMA_SHA256:
-        raise ValueError("source_schema_baseline_drift")
-    if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
-            or layer.get("type") != "Feature Layer"
-            or layer.get("geometryType") != "esriGeometryPolygon"
-            or layer.get("maxRecordCount") != DECLARED_MAX_RECORD_COUNT
-            or layer.get("copyrightText") != "U.S. Geological Survey"
-            or layer.get("displayField") != DISPLAY_FIELD_NAME
-            or layer.get("geometryField", {}).get("name") != "shape"
-            or layer.get("geometryProperties") != {"shapeAreaFieldName": "shape_Area",
-                                                   "shapeLengthFieldName": "shape_Length",
-                                                   "units": "esriMeters",
-                                                   "mapUnits": {"uwkid": 9001}}
-            or layer.get("typeIdField") is not None
-            or layer.get("isDataVersioned") is not False
-            or layer.get("isDataArchived") is not False
-            or layer.get("hasZ") is True or layer.get("hasM") is True
-            or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT
-            or layer.get("advancedQueryCapabilities", {}).get("supportsPagination") is not True):
-        raise ValueError("source_layer_identity_or_extent_drift")
-    _validate_spatial_reference(layer.get("sourceSpatialReference"), "source_layer_native")
-    # The served layer response carries no top-level spatialReference
-    # (observed 2026-11-14); validate it only when present.
-    _validate_spatial_reference(layer.get("spatialReference"), "source_layer",
-                                required=False)
-    extent_reference = layer.get("extent", {}).get("spatialReference")
-    if extent_reference is not None:
-        _validate_spatial_reference(extent_reference, "source_layer_extent")
+    family.validate_layer(_spec(), layer)
 
 
 def _validate_roster_document(document: object, label: str) -> list[int]:
-    if not isinstance(document, dict) or document.get("objectIdFieldName") != "objectid":
-        raise ValueError("source_object_id_field_drift:" + label)
-    ids = document.get("objectIds")
-    if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-            or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
-            or ids != sorted(ids) or min(ids) != EXPECTED_ID_MIN or max(ids) != EXPECTED_ID_MAX):
-        raise ValueError("source_id_population_drift:" + label)
-    if EXPECTED_ID_SHA256 and _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_baseline_drift:" + label)
-    return ids
+    return family.validate_roster_document(_spec(), document, label)
 
 
 def _validate_count(document: object, label: str) -> int:
-    if not isinstance(document, dict):
-        raise ValueError("source_count_population_drift:" + label)
-    count = document.get("count")
-    if type(count) is not int or count != EXPECTED_COUNT:
-        raise ValueError("source_count_population_drift:" + label)
-    return count
+    return family.validate_count(_spec(), document, label)
 
 
 def _validate_service_doc(body: bytes) -> None:
-    for marker in (b"hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer",
-                   b"StagedProducts/Hydrography/WBD"):
-        if marker not in body:
-            raise ValueError("usgs_service_documentation_drift")
+    family.validate_service_doc(body)
 
 
-def _native_schema() -> pa.Schema:
-    fields = [pa.field(field["name"], _arrow_type(field), nullable=True)
-              for field in ATTRIBUTE_FIELDS]
-    fields.append(pa.field("geometry", pa.binary(), nullable=True))
-    geo = {"version": "1.1.0", "primary_column": "geometry",
-           "columns": {"geometry": {"encoding": "WKB",
-                                    "geometry_types": ["Polygon", "MultiPolygon"],
-                                    "crs": _EPSG3857_PROJJSON, "edges": "planar"}}}
-    return pa.schema(fields, metadata={b"geo": _canonical(geo)})
+def _native_schema():
+    return family.native_schema(_spec())
 
 
-def _arrow_type(field: dict) -> pa.DataType:
-    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDate": pa.int64(), "esriFieldTypeDouble": pa.float64(),
-            "esriFieldTypeGlobalID": pa.string()}[field["type"]]
-
+def _arrow_type(field: dict):
+    return family.arrow_type(field)
 
 def _validate_stream(root: Path, *, parquet_sink: Path | None,
                      page_parts: dict[str, list[str]] | None = None) -> tuple[dict, dict]:
