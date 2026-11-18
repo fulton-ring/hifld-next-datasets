@@ -1,22 +1,23 @@
-"""FHWA National Bridge Inventory 2025 ASCII reconstruction draft; never release approval."""
+"""FHWA National Bridge Inventory SNBI reconstruction draft; never release approval."""
 from __future__ import annotations
 import fcntl
 import hashlib
+import html
 import importlib.metadata
 import json
 import os
 import platform
+import re
 import shutil
 import stat
 import struct
-from decimal import Decimal, ROUND_HALF_UP
-from collections import Counter
-import re
 import subprocess
 import tempfile
+from collections import Counter
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+from urllib.parse import urljoin
 from uuid import uuid4
 import httpx
 import pyarrow as pa
@@ -35,56 +36,54 @@ from dagster_hifld.validation import sha256_file
 
 SLUG='national-bridge-inventory-nbi'
 PRODUCER='United States Department of Transportation, Federal Highway Administration'
-LANDING='https://www.fhwa.dot.gov/bridge/nbi/ascii.cfm'
-FILES_PAGE='https://www.fhwa.dot.gov/bridge/nbi/ascii2025.cfm'
-FORMAT_PAGE='https://www.fhwa.dot.gov/bridge/nbi/format.cfm'
-CROSSWALK_URL='https://www.fhwa.dot.gov/bridge/snbi/datacrosswalk.xlsx'
-DISCLAIMER='https://www.fhwa.dot.gov/bridge/nbi/disclaim.cfm?nbiYear=2025&nbiState=DC25'
+INDEX_URL='https://www.fhwa.dot.gov/bridge/nbi/nbi_data.cfm'
+SCHEMA_PAGE_URL='https://www.fhwa.dot.gov/bridge/snbi/schema.cfm'
 PROGRAM='https://www.fhwa.dot.gov/bridge/nbi.cfm'
 LICENSE='https://www.fhwa.dot.gov/webpolicies'
+CROSSWALK_URL='https://www.fhwa.dot.gov/bridge/snbi/datacrosswalk.xlsx'
 READY='metadata/nbi_candidate_ready.json'
-SPACE_FLOOR=4_000_000_000
+SPACE_FLOOR=8_000_000_000
 MAX_AUX_BYTES=32_000_000
-MAX_BODY_BYTES=64*1024*1024
-MAX_PARQUET_BYTES=1_500_000_000
-RECORD_BYTES=445
-SHORT_RECORD_FLOOR=393
-EXPECTED_TOTAL_COUNT=624193
-EXPECTED_ID_ROSTER_SHA256='ee0414c72c0a7cd7ea75767fed6eb103d4a2edc4ed9c1f89fb28974145761856'
-EXPECTED_COMPOSITE_DUPLICATE_COUNT=2
-EXPECTED_DUPLICATE_KEYS=[('251','N100108PDDOTNBI'),('513','000000000001826')]
-EXPECTED_ZERO_COORDINATE_COUNT=6
-EXPECTED_OUT_OF_ENVELOPE_COUNT=56
-EXPECTED_BLANK_COORDINATE_COUNT=22
-EXPECTED_PARTIAL_COORDINATE_COUNT=1
-EXPECTED_SIGNED_COORDINATE_COUNT=369
-EXPECTED_WHITESPACE_COORDINATE_COUNT=1
-EXPECTED_SHORT_RECORD_COUNT=1
-EXPECTED_BLANK_STRUCTURE_NUMBER_COUNT=0
-# The frozen 2025 release embeds 7 non-ASCII bytes in NY/PR location text
-# (observed 2026-11-10); columns are decoded 1:1 as ISO-8859-1 so every
-# source byte is preserved verbatim instead of guessing a legacy codepage.
-EXPECTED_NON_ASCII_BYTES={'NY':5,'PR':2}
-# Positive-longitude Item 1 codes (64=FM,66=GU,68=MP,69=UM,70=PW) and the
-# negative-latitude code (60=AS) come from the official FHWA SNBI Data
-# Crosswalk rows B.L.05/B.L.06; none occur in the 2025 state-file roster.
-POSITIVE_LONGITUDE_CODES=frozenset({'64','66','68','69','70'})
-NEGATIVE_LATITUDE_CODES=frozenset({'60'})
+MAX_BODY_BYTES=512*1024*1024
+MAX_PARQUET_BYTES=4_000_000_000
+MIN_STATES=50
+STATE_TOKENS={'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA','colorado':'CO','connecticut':'CT','delaware':'DE','district of columbia':'DC','florida':'FL','georgia':'GA','hawaii':'HI','idaho':'ID','illinois':'IL','indiana':'IN','iowa':'IA','kansas':'KS','kentucky':'KY','louisiana':'LA','maine':'ME','maryland':'MD','massachusetts':'MA','michigan':'MI','minnesota':'MN','mississippi':'MS','missouri':'MO','montana':'MT','nebraska':'NE','nevada':'NV','new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC','north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR','pennsylvania':'PA','puerto rico':'PR','rhode island':'RI','south carolina':'SC','south dakota':'SD','tennessee':'TN','texas':'TX','utah':'UT','vermont':'VT','virginia':'VA','washington':'WA','west virginia':'WV','wisconsin':'WI','wyoming':'WY','u.s. virgin islands':'VI','us virgin islands':'VI','guam':'GU'}
 NATIVE_CRS_JSON={'$schema': 'https://proj.org/schemas/v0.7/projjson.schema.json', 'type': 'GeographicCRS', 'name': 'WGS 84', 'datum': {'type': 'GeodeticReferenceFrame', 'name': 'World Geodetic System 1984', 'ellipsoid': {'name': 'WGS 84', 'semi_major_axis': 6378137, 'inverse_flattening': 298.257223563}}, 'coordinate_system': {'subtype': 'ellipsoidal', 'axis': [{'name': 'Geodetic latitude', 'abbreviation': 'Lat', 'direction': 'north', 'unit': 'degree'}, {'name': 'Geodetic longitude', 'abbreviation': 'Lon', 'direction': 'east', 'unit': 'degree'}]}, 'id': {'authority': 'EPSG', 'code': 4326}}
-# Official FHWA "NBI Record Format" fixed-width layout (format.cfm, fetched
-# 2026-11-10): producer item name, 1-based inclusive start/end positions and
-# declared length/type. Parent rows that only group sub-items (5,6,13,28,36,
-# 42,43,44,50,54,55,75,92,93,98,108) are excluded; positions cover 1-445 once.
-LAYOUT=[
-('STATE_CODE_001',1,3,'3/N'),('STRUCTURE_NUMBER_008',4,18,'15/AN'),('RECORD_TYPE_005A',19,19,'1/AN'),('ROUTE_SIGNING_PREFIX_005B',20,20,'1/N'),('DESIGNATED_LEVEL_OF_SERVICE_005C',21,21,'1/N'),('ROUTE_NUMBER_005D',22,26,'5/AN'),('DIRECTIONAL_SUFFIX_005E',27,27,'1/N'),('HIGHWAY_AGENCY_DISTRICT_002',28,29,'2/AN'),('COUNTY_PARISH_CODE_003',30,32,'3/N'),('PLACE_CODE_004',33,37,'5/N'),('FEATURES_INTERSECTED_006A',38,61,'24/AN'),('CRITICAL_FACILITY_INDICATOR_006B',62,62,'1/AN'),('FACILITY_CARRIED_BY_STRUCTURE_007',63,80,'18/AN'),('LOCATION_009',81,105,'25/AN'),('INVENTORY_RTE_MIN_VERT_CLEARANCE_010',106,109,'4/N'),('KILOMETERPOINT_011',110,116,'7/N'),('BASE_HIGHWAY_NETWORK_012',117,117,'1/N'),('LRS_INVENTORY_ROUTE_013A',118,127,'10/AN'),('SUBROUTE_NUMBER_013B',128,129,'2/N'),('LATITUDE_016',130,137,'8/N'),('LONGITUDE_017',138,146,'9/N'),('BYPASS_DETOUR_LENGTH_019',147,149,'3/N'),('TOLL_020',150,150,'1/N'),('MAINTENANCE_RESPONSIBILITY_021',151,152,'2/N'),('OWNER_022',153,154,'2/N'),('FUNCTIONAL_CLASS_OF_INVENTORY_RTE_026',155,156,'2/N'),('YEAR_BUILT_027',157,160,'4/N'),('LANES_ON_STRUCTURE_028A',161,162,'2/N'),('LANES_UNDER_STRUCTURE_028B',163,164,'2/N'),('AVERAGE_DAILY_TRAFFIC_029',165,170,'6/N'),('YEAR_OF_AVERAGE_DAILY_TRAFFIC_030',171,174,'4/N'),('DESIGN_LOAD_031',175,175,'1/N'),('APPROACH_ROADWAY_WIDTH_032',176,179,'4/N'),('BRIDGE_MEDIAN_033',180,180,'1/N'),('SKEW_034',181,182,'2/N'),('STRUCTURE_FLARED_035',183,183,'1/N'),('BRIDGE_RAILINGS_036A',184,184,'1/AN'),('TRANSITIONS_036B',185,185,'1/AN'),('APPROACH_GUARDRAIL_036C',186,186,'1/AN'),('APPROACH_GUARDRAIL_ENDS_036D',187,187,'1/AN'),('HISTORICAL_SIGNIFICANCE_037',188,188,'1/N'),('NAVIGATION_CONTROL_038',189,189,'1/AN'),('NAVIGATION_VERTICAL_CLEARANCE_039',190,193,'4/N'),('NAVIGATION_HORIZONTAL_CLEARANCE_040',194,198,'5/N'),('STRUCTURE_OPEN_POSTED_CLOSED_041',199,199,'1/AN'),('TYPE_OF_SERVICE_ON_BRIDGE_042A',200,200,'1/N'),('TYPE_OF_SERVICE_UNDER_BRIDGE_042B',201,201,'1/N'),('KIND_OF_MATERIAL_DESIGN_043A',202,202,'1/N'),('TYPE_OF_DESIGN_CONSTRUCTION_043B',203,204,'2/N'),('KIND_OF_MATERIAL_DESIGN_044A',205,205,'1/N'),('TYPE_OF_DESIGN_CONSTRUCTION_044B',206,207,'2/N'),('NUMBER_OF_SPANS_IN_MAIN_UNIT_045',208,210,'3/N'),('NUMBER_OF_APPROACH_SPANS_046',211,214,'4/N'),('INVENTORY_RTE_TOTAL_HORZ_CLEARANCE_047',215,217,'3/N'),('LENGTH_OF_MAXIMUM_SPAN_048',218,222,'5/N'),('STRUCTURE_LENGTH_049',223,228,'6/N'),('LEFT_CURB_SIDEWALK_WIDTH_050A',229,231,'3/N'),('RIGHT_CURB_SIDEWALK_WIDTH_050B',232,234,'3/N'),('BRIDGE_ROADWAY_WIDTH_CURB_TO_CURB_051',235,238,'4/N'),('DECK_WIDTH_OUT_TO_OUT_052',239,242,'4/N'),('MIN_VERT_CLEAR_OVER_BRIDGE_ROADWAY_053',243,246,'4/N'),('REFERENCE_FEATURE_054A',247,247,'1/AN'),('MINIMUM_VERTICAL_UNDERCLEARANCE_054B',248,251,'4/N'),('REFERENCE_FEATURE_055A',252,252,'1/AN'),('MINIMUM_LATERAL_UNDERCLEARANCE_055B',253,255,'3/N'),('MIN_LATERAL_UNDERCLEAR_ON_LEFT_056',256,258,'3/N'),('DECK_058',259,259,'1/AN'),('SUPERSTRUCTURE_059',260,260,'1/AN'),('SUBSTRUCTURE_060',261,261,'1/AN'),('CHANNEL_CHANNEL_PROTECTION_061',262,262,'1/AN'),('CULVERTS_062',263,263,'1/AN'),('METHOD_USED_TO_DETERMINE_OPERATING_RATING_063',264,264,'1/N'),('OPERATING_RATING_064',265,267,'3/N'),('METHOD_USED_TO_DETERMINE_INVENTORY_RATING_065',268,268,'1/N'),('INVENTORY_RATING_066',269,271,'3/N'),('STRUCTURAL_EVALUATION_067',272,272,'1/AN'),('DECK_GEOMETRY_068',273,273,'1/AN'),('UNDERCLEAR_VERTICAL_HORIZONTAL_069',274,274,'1/AN'),('BRIDGE_POSTING_070',275,275,'1/N'),('WATERWAY_ADEQUACY_071',276,276,'1/AN'),('APPROACH_ROADWAY_ALIGNMENT_072',277,277,'1/AN'),('TYPE_OF_WORK_PROPOSED_075A',278,279,'2/N'),('WORK_DONE_BY_075B',280,280,'1/AN'),('LENGTH_OF_STRUCTURE_IMPROVEMENT_076',281,286,'6/N'),('INSPECTION_DATE_090',287,290,'4/N'),('DESIGNATED_INSPECTION_FREQUENCY_091',291,292,'2/N'),('FRACTURE_CRITICAL_DETAILS_092A',293,295,'3/AN'),('UNDERWATER_INSPECTION_092B',296,298,'3/AN'),('OTHER_SPECIAL_INSPECTION_092C',299,301,'3/AN'),('FRACTURE_CRITICAL_DETAILS_DATE_093A',302,305,'4/AN'),('UNDERWATER_INSPECTION_DATE_093B',306,309,'4/AN'),('OTHER_SPECIAL_INSPECTION_DATE_093C',310,313,'4/AN'),('BRIDGE_IMPROVEMENT_COST_094',314,319,'6/N'),('ROADWAY_IMPROVEMENT_COST_095',320,325,'6/N'),('TOTAL_PROJECT_COST_096',326,331,'6/N'),('YEAR_OF_IMPROVEMENT_COST_ESTIMATE_097',332,335,'4/N'),('NEIGHBORING_STATE_CODE_098A',336,338,'3/AN'),('PERCENT_RESPONSIBILITY_098B',339,340,'2/N'),('BORDER_BRIDGE_STRUCTURE_NUMBER_099',341,355,'15/AN'),('STRAHNET_HIGHWAY_DESIGNATION_100',356,356,'1/N'),('PARALLEL_STRUCTURE_DESIGNATION_101',357,357,'1/AN'),('DIRECTION_OF_TRAFFIC_102',358,358,'1/N'),('TEMPORARY_STRUCTURE_DESIGNATION_103',359,359,'1/AN'),('HIGHWAY_SYSTEM_OF_INVENTORY_ROUTE_104',360,360,'1/N'),('FEDERAL_LANDS_HIGHWAYS_105',361,361,'1/N'),('YEAR_RECONSTRUCTED_106',362,365,'4/N'),('DECK_STRUCTURE_TYPE_107',366,366,'1/AN'),('TYPE_OF_WEARING_SURFACE_108A',367,367,'1/AN'),('TYPE_OF_MEMBRANE_108B',368,368,'1/AN'),('DECK_PROTECTION_108C',369,369,'1/AN'),('AVERAGE_DAILY_TRUCK_TRAFFIC_109',370,371,'2/N'),('DESIGNATED_NATIONAL_NETWORK_110',372,372,'1/N'),('PIER_ABUTMENT_PROTECTION_111',373,373,'1/N'),('NBIS_BRIDGE_LENGTH_112',374,374,'1/AN'),('SCOUR_CRITICAL_BRIDGES_113',375,375,'1/AN'),('FUTURE_AVERAGE_DAILY_TRAFFIC_114',376,381,'6/N'),('YEAR_OF_FUTURE_AVG_DAILY_TRAFFIC_115',382,385,'4/N'),('MINIMUM_NAVIGATION_VERTICAL_CLEARANCE_VERTICAL_LIFT_BRIDGE_116',386,389,'4/N'),('FEDERAL_AGENCY_INDICATOR',390,390,'1/AN'),('SUBMITTED_BY',391,392,'2/N'),('WASHINGTON_HQ_USE_RESERVED',393,433,'-'),('BRIDGE_CONDITION',434,434,'1/AN'),('LOWEST_CONDITION_CODE',435,435,'1/AN'),('DECK_AREA',436,445,'10/N'),
-]
-EXPECTED_FILES={
-'AK':('5346d3bf7781c8fd1d71065229deb767bb6d934e71ae1853cc21820d23908074',742020,1660,'CRLF','020',0),'AL':('677739f195a8a84e0e325577a1fdd5cb734a9072254d19328f575f9640af058c',7232907,16181,'CRLF','014',0),'AR':('3a9e24e1275388fae8a59247f9bcf5eecdedb0ca42f90b0a050ba4eb99972ea4',5801166,12978,'CRLF','056',0),'AZ':('cf3415427146f676db9fd0ad68ad14fa04f020d86135b189df1164aa876afaae',3838389,8587,'CRLF','049',0),'CA':('741330e19676529ced5cddc4f9905b2299331404ec8aa4efab1ffcc164cdb81b',11610825,25975,'CRLF','069',0),'CO':('cd7f6e13146ff85a49e8e348199b6392ef93ae0c94ace83af732d06a23534874',4018530,8990,'CRLF','088',0),'CT':('1ab54eb6b15cc8aa5003db4566652a59abf7b6406f4a8abde904df55ae716061',1950261,4363,'CRLF','091',0),'DC':('7c1b9f2685b1b4dd86da88ec4084e5d5b940fd8feec6eee109a6acc967ad2b1f',116667,261,'CRLF','113',0),'DE':('9248f0c8e7770c384d3a6b7ca8de318dc88ce1f746f25ed4e87bd7421fd68ac2',390678,874,'CRLF','103',0),'FL':('f6a45e9e1c83636bfbe57584742a602b3e39fa38f029e7ace458d3c2b39e0c61',5842290,13070,'CRLF','124',0),'GA':('4880363d003735cf6f4165a5b90eaf5f3d5b6596d3b14742cc207181e1ec2240',6745230,15090,'CRLF','134',0),'HI':('9d6f7dde060c15e4287bb8bc057929a2f74cd15a87163e47beb39789ae30f695',527460,1180,'CRLF','159',0),'IA':('f59887dee2118b2da6c5136f0df0502976cbacacb7c303ca1cceb3e2313e201f',10601052,23716,'CRLF','197',0),'ID':('0243f2a416fc8513894da880e046ec92b714cc3612aa5db94de6301f8f505f8d',2076762,4646,'CRLF','160',0),'IL':('6b86338dca072bd632e8e97d0e315fd3c70b43cc73b993d2785de3c2b412e145',12036369,26927,'CRLF','175',0),'IN':('6b2164d5c5dfc94d06e583bd5ed479e7b647900f3e4e53a21a58d2d2ad0f4398',8735274,19542,'CRLF','185',0),'KS':('ee5ea740ffe77c26d04a708871c292514fc024f6067241d7f01332189a4c11e3',11126277,24891,'CRLF','207',0),'KY':('4684a0ac1f75dc657bc028ecc8dd0de5d3671707b89c2f24593bf41ed251d0c7',6521730,14590,'CRLF','214',0),'LA':('80cf3560df9e3ef14ab6a3b01003afc8cdde0c225e9f7b9a38ab448b542e01ba',5669748,12684,'CRLF','226',0),'MA':('6c494d47344898478c4baeaeb8b748efcc4c3d62cd26b4b0bf12719b23322f58',2374017,5311,'CRLF','251',0),'MD':('9a047d35f1ad755b697a63fcabf7bde7bb919fa4a5bda41a30c54e510273534b',2458500,5500,'CRLF','243',0),'ME':('2eb7566d00dca4cecab7736a3bfe4efc7557658712d25080483779fe24468733',1136274,2542,'CRLF','231',0),'MI':('0ef39f31b2934b6747d35c5cc9cac35aaaf3ce5eb75b6c60c119f6e5a59cc764',5094459,11397,'CRLF','265',0),'MN':('0ebb6a77d275bb32c1299a5d1b791a6193c398c61573277f7ab1e404a3300f75',6057297,13551,'CRLF','275',0),'MO':('0d42e2ad0ebb4d4d1cfef969d76f683abdf4092a536cf646479c64b0cda4680e',11017209,24647,'CRLF','297',0),'MS':('007b014065fb77662b77373b38206c0afbdd12837aeeb375cc8731962e58de49',7469817,16711,'CRLF','284',0),'MT':('8103d79181c7e1cd4841d2a09f4d917be927ab95b9cc946c30b56710b459260e',2340045,5235,'CRLF','308',0),'NC':('3ee91fb0f7d4f4be751468d9f43971b48d8c0b03ea9189cdaad96d3388f5f009',8646297,19343,'CRLF','374',1),'ND':('4963747671fb15bef746fc8f54619dfaa4fd42a2c1d85a5f0e464f0b13df7b48',1899750,4250,'CRLF','388',0),'NE':('a5a174d126932449af830ff30cd61c77189dcf7e07f34d6de91e812effcfc1f9',6889164,15412,'CRLF','317',0),'NH':('e83421afe6994a772784912e70aa28d3fc63b6e54595ef6d85f3b122c7f4f15f',1139403,2549,'CRLF','331',0),'NJ':('fe4bfd56c42b860cf961add133f715b21325df0e2439a853c3187ad5d493a740',3050775,6825,'CRLF','342',0),'NM':('b7c79d3dc0cd5df5c5348d355b94f22fe2d8983b1e958f9c2f8c48d4b49cb12a',1802751,4033,'CRLF','356',0),'NV':('3b16767259d054937e56e6c045038457e60d8144ebf960b8ef97016815f2834c',948981,2123,'CRLF','329',0),'NY':('f4d9297492276fd7109d2b757fe0969411485951ca4f6fe33b8de38b95c366d5',7896702,17666,'CRLF','362',0),'OH':('ffabdbae5480b6fc58260703d91ddf7cde483ba23b4ba52bbdcbdbafd48826fe',11940711,26713,'CRLF','395',0),'OK':('803f18287b9b39e8669e5c8e0d95af20eb40151c92e074fb3b2c17173d56b9c0',10247922,22926,'CRLF','406',0),'OR':('177091e6c9907c4ba1faaeaa6ee70d7153f304f32ebedb5beb09a34c4ca4d2af',3723063,8329,'CRLF','410',0),'PA':('5ad9e424fc74bf0887bea01145eb5762fdc691e1922df87e111f0922ef8f8a67',10421358,23314,'CRLF','423',0),'PR':('32fc6854916a0638e81564f1f399f7a7e24b187e27a9671731f8bfd40767f299',1087998,2434,'CRLF','721',0),'RI':('c8da15c0cd3c377c37474622371a0b502e5c62b3b1a712b315a3e2085f10bea8',351789,787,'CRLF','441',0),'SC':('8ef0dfb6e720a0fb735482cf354f2cc991ba34b8c06d1616741d329a355ed2ba',4248288,9504,'CRLF','454',0),'SD':('9aef6318346791d30ca10ff565e147cbdc3cb1197a9c746d86918f53873e141f',2629701,5883,'CRLF','468',0),'TN':('61d9fa06a3893413471afb0c23e2376a6748c03a45401fa1fa61e3e75fff591b',9107178,20374,'CRLF','474',0),'TX':('7b1e8d199b7e544df6acdcaf94a628a1feef70f25261076ac26ee05da5b43fa6',25457097,56951,'CRLF','486',0),'UT':('9d1c7f53b4a16423df11cfdfa2c2c3c1bd281b7b8e115969829abe9ff9629808',1405368,3144,'CRLF','498',0),'VA':('d7850d6f6656ff1581baefefc67ebcc220782755eacbc8017f4ba3b297566db9',6321921,14143,'CRLF','513',0),'VI':('97b40ec1ba39afbb4cbedda7ab8fe252721090a390c37b9d53b3f7920c5a06e5',10728,24,'CRLF','780',0),'VT':('4904becbc196211880734191340ecfa4f3e0c4ccf7db56d1bedaa11edfeecfd8',1281102,2866,'CRLF','501',0),'WA':('7932a6197a9a83ac162d172f3c63c5ce46a5274d578241f4addad6d0e02c89d6',3808440,8520,'CRLF','530',0),'WI':('6bdc0415fa4c71373c25918602ae8fe8a0c7ee337e43613091ad24a64d074a4c',6480606,14498,'CRLF','555',0),'WV':('30390ab47728de89a2d50f66d5be7f4b68ba04bd4c6bfabfc4c265495452130b',3283215,7345,'CRLF','543',0),'WY':('8ec2fbdfe937541a6d923a11f71d6488ff5d938aa16225da27aada3f7d1e0cb8',1402686,3138,'CRLF','560',0),
+# Clean 1995 Coding Guide transitions from the official FHWA SNBI Data
+# Crosswalk (datacrosswalk.xlsx). Tags not listed are SNBI fields with no
+# single clean Coding Guide equivalent; they are published under their SNBI
+# data tag rather than inventing a Coding Guide value.
+CODING_GUIDE_ITEMS={
+'BAP01':('72','Approach Roadway Alignment'),'BC01':('58','Deck'),'BC02':('59','Superstructure'),'BC03':('60','Substructure'),
+'BC04':('62','Culvert'),'BC09':('61','Channel and Channel Protetion'),'BC12':('CAT10','Bridge Condition'),'BC13':('CAT23','Lowest Condition Code'),
+'BCL01':('22','Owner'),'BCL02':('21','Maintenance Responsibility'),'BCL05':('20','Toll'),'BCS01':('CS1','Element Quantity Condition State One'),
+'BCS02':('CS2','Element Quantity Condition State Two'),'BCS03':('CS3','Element Quantity Condition State Three'),'BCS04':('CS4','Element Quantity Condition State Four'),
+'BE01':('EN','Element Number'),'BE02':('EPN','Element Parent Number'),'BE03':('TOTALQTY','Element Total Quantity'),
+'BF01':('42A/42B','Type of Service'),'BF02':('42A/42B','Type of Service'),'BF03':('6A/7','Features Intersected / Facility Carried by Structure'),
+'BG02':('49','Structure Length'),'BG03':('48','Length of Maximum Span'),'BG05':('52','Deck Width, Out-to-Out'),'BG06':('51','Bridge Roadway Width, Curb-to-Curb'),
+'BG07':('50A','Left curb or sidewalk width'),'BG08':('50B','Right curb or sidewalk width'),'BG09':('32','Approach Roadway Width'),
+'BG10':('33','Bridge Median'),'BG11':('34','Skew'),'BH01':('26','Functional Classification of Inventory Route'),'BH03':('104','Highway System of the Inventory Route'),
+'BH05':('100','STRAHNET Highway Designation'),'BH07':('11','Kilometerpoint'),'BH08':('28A','Lanes on Structure'),'BH09':('29','Average Daily Traffic'),
+'BH10':('109','Average Daily Truck Traffic'),'BH11':('30','Year of Average Daily Traffic'),'BH12':('10','Inventory Route, Minimum Vertical Clearance'),
+'BH13':('53/54A/54B','Minimum Vertical Clearance Over Bridge Roadway / Reference Feature / Minimum Vertical Underclearance'),
+'BH14':('55A/56','Reference Feature / Minimum Lateral Underclearance on Left'),'BH15':('55A/55B','Reference Feature / Minimum Lateral Underclearance on Right'),
+'BH16':('47','Inventory Route, Total Horizontal Clearance'),'BH17':('19','Bypass, Detour Length'),'BID01':('8','Structure Number'),
+'BIR01':('92A','Critical Feature Inspection- Fracture Critical Details'),'BIR03':('92B','Critical Feature Inspection - Underwater Inspection'),
+'BL01':('1','State Code'),'BL02':('3','County (Parish) Code'),'BL03':('4','Place Code'),'BL04':('2','Highway Agency District'),'BL05':('16','Latitude'),
+'BL06':('17','Longitude'),'BL07':('99','Border Bridge Structure Number'),'BL08':('98A','Neighboring State Code'),'BL10':('1','State Code'),'BL11':('9','Location'),
+'BLR01':('31','Design Load'),'BLR04':('63','Method Used To Determine Operating Rating'),'BLR05':('66','Inventory Rating'),'BLR06':('64','Operating Rating'),
+'BN02':('39/43B/116','Navigation Vertical Clearance / Type of Design/Construction / Minimum Navigation Vertical Clearance Vertical Lift Bridge'),
+'BN03':('39/43B','Navigation Vertical Clearance / Type of Design/Construction'),'BN04':('40','Navigation Horizontal Clearance'),
+'BRR02':('54A/54B','Reference Feature / Minimum Vertical Underclearance'),'BRR03':('55A/55B','Reference Feature / Minimum Lateral Underclearance on Right'),
+'BRT02':('5D/5E','Route Number / Directional Suffix'),'BRT04':('5B','Route Signing Prefix'),'BRT05':('5C','Designated Level of Service'),
+'BW01':('27','Year Built'),'BW02':('106','Year Reconstructed'),
 }
-URLS={'landing':LANDING,'files_page':FILES_PAGE,'format':FORMAT_PAGE,'crosswalk':CROSSWALK_URL,'disclaimer':DISCLAIMER}
-for _token in EXPECTED_FILES: URLS['state_'+_token]='https://www.fhwa.dot.gov/bridge/nbi/2025/'+_token+'25.txt'
-del _token
-TOKENS=tuple(EXPECTED_FILES)
+# The 2026-09-03 CT and MI re-uploads serve an undeclared top-level DATA_YEAR
+# stamp (for example '8/4/2026') on every record. It is a producer extra, not a
+# schema v04 property; keep it as a string column rather than dropping it.
+PRODUCER_EXTRA_FIELDS={'DATA_YEAR':{'description':'Producer data year stamp served in the 2026-09-03 CT and MI re-uploads','type':'string'}}
+RELEASE_LINK=re.compile(r'nbi_data_(\d{4})\.cfm',re.I)
+SCHEMA_LINK=re.compile(r'SNBI\.Schema\.v[0-9.]+\.json',re.I)
 
 
 class NBIQuarantineError(ValueError):pass
@@ -250,7 +249,7 @@ def original_context(storage,version,fingerprint,captures,identity,manifest,*,cr
     a,_=inspect_captures(original);b,_=inspect_captures(captures)
     if not a.equals(b,check_metadata=True):raise NBIQuarantineError('original_source_population_drift')
     old=payload['manifest'];obj=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
-    expected=manifest_for(original,identity,{k:obj[k]for k in('bytes','sha256')})
+    expected=manifest_for(original,identity,{k:obj[k]for k in('bytes','sha256')},count=a.num_rows)
     if encode({k:v for k,v in old.items()if k!='code_commit'})!=encode({k:v for k,v in expected.items()if k!='code_commit'}):raise NBIQuarantineError('original_manifest_context_drift')
     validate_release_provenance(old);validate_output_policy(old);validate_construction_code_identity(Path(__file__).parents[3],old['code_commit'],identity['files']);return original,old
 
@@ -289,247 +288,323 @@ def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cac
     validate_output(root,table)
 
 
-def split_state_body(body,token):
-    if not body.endswith(b'\n'):raise NBIQuarantineError('state_file_missing_final_record_terminator:'+token)
-    lines=body.split(b'\n')[:-1]
-    if not lines:raise NBIQuarantineError('state_file_empty:'+token)
-    payload_crlf=all(l.endswith(b'\r')for l in lines);payload_lf=not any(l.endswith(b'\r')for l in lines)
-    style='CRLF'if payload_crlf else('LF'if payload_lf else 'MIXED')
-    payloads=[];short=0
-    for l in lines:
-        payload=l[:-1]if payload_crlf else l
-        if len(payload)==RECORD_BYTES:pass
-        elif SHORT_RECORD_FLOOR<=len(payload)<RECORD_BYTES:short+=1
-        else:raise NBIQuarantineError('state_record_length_outside_official_layout:'+token)
-        payloads.append(payload)
-    return payloads,style,short
+def discover_release(index_body):
+    years=[int(value)for value in RELEASE_LINK.findall(index_body.decode('utf-8','replace'))]
+    if not years:raise NBIQuarantineError('producer_release_index_has_no_nbi_data_year')
+    year=max(years)
+    return year,f'https://www.fhwa.dot.gov/bridge/nbi/nbi_data_{year}.cfm'
 
+def discover_schema(schema_page_body):
+    match=SCHEMA_LINK.search(schema_page_body.decode('utf-8','replace'))
+    if not match:raise NBIQuarantineError('producer_schema_page_has_no_schema_link')
+    return urljoin(SCHEMA_PAGE_URL,match.group(0))
 
-def coordinate_decimal(raw,token):
-    text=raw.decode('ascii')
-    sign=None
-    if text[:1] in '+-':
-        sign=-1 if text[0]=='-' else 1
-        text=text[1:]
-    degrees=len(text)-6
-    if degrees<1 or len(text)>9:raise NBIQuarantineError('state_coordinate_not_fixed_width_digits:'+token)
-    # The producer transition tool splits the raw field by position and
-    # numerically coerces each DMS segment (tolerating pad whitespace), so a
-    # space-shifted submission such as b' 3612109' parses as 3d61m21.09s.
-    seg_deg=text[:degrees].strip();seg_min=text[degrees:degrees+2].strip()
-    seg_sec=text[degrees+2:degrees+4].strip();seg_hun=text[degrees+4:degrees+6].strip()
-    if not(seg_deg.isdigit()and seg_min.isdigit()and seg_sec.isdigit()and seg_hun.isdigit()):
-        raise NBIQuarantineError('state_coordinate_not_fixed_width_digits:'+token)
-    value=Decimal(seg_deg)+Decimal(seg_min)/60+Decimal(seg_sec+'.'+seg_hun)/3600
-    return sign,value.quantize(Decimal('0.000001'),rounding=ROUND_HALF_UP)
+def parse_release_page(body,year,release_url):
+    text=body.decode('utf-8','replace');states={};corrections={};total=None
+    for row in re.findall(r'<tr>(.*?)</tr>',text,re.S|re.I):
+        name_match=re.search(r'<th[^>]*scope="row"[^>]*>(.*?)</th>',row,re.S|re.I)
+        count_match=re.search(r'<td[^>]*class="txtright"[^>]*>(.*?)</td>',row,re.S|re.I)
+        if not name_match or not count_match:continue
+        name=html.unescape(re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',name_match.group(1)))).strip()
+        digits=re.sub(r'[^0-9]','',count_match.group(1))
+        if not digits:raise NBIQuarantineError('producer_release_state_count_not_integer:'+name)
+        count=int(digits)
+        if name.lower().startswith('total'):
+            total=count;continue
+        hrefs=re.findall(r'href="([^"]+)"',row,re.I)
+        json_href=next((href for href in hrefs if re.search(r'/JSON/[^/]+\.json$',href,re.I)),None)
+        expected=STATE_TOKENS.get(name.casefold())
+        if expected is None:
+            if json_href is None:
+                if count!=0:raise NBIQuarantineError('producer_release_state_has_no_json_file:'+name)
+                continue
+            token_match=re.search(r'/([A-Z]{2})(\d{2})\.json$',json_href,re.I)
+            if token_match is None:raise NBIQuarantineError('producer_release_json_name_not_state_year:'+json_href)
+            token=token_match.group(1).upper()
+            if int(token_match.group(2))!=year%100:raise NBIQuarantineError('producer_release_json_year_mismatch:'+json_href)
+            url=urljoin(release_url,json_href)
+        else:
+            if json_href is None and count==0:continue
+            token=expected
+            directory=json_href.rsplit('/',1)[0]if json_href else f'{year}/JSON'
+            page_match=re.search(r'/([A-Z]{2})(\d{2})\.json$',json_href or '',re.I)
+            if page_match and(page_match.group(1).upper()!=token or int(page_match.group(2))!=year%100):
+                corrections[name]={'page_token':page_match.group(1).upper(),'used_token':token}
+            url=urljoin(release_url,f'{directory}/{token}{year%100:02d}.json')
+        if token in states:raise NBIQuarantineError('producer_release_duplicate_state:'+token)
+        states[token]={'name':name,'count':count,'url':url}
+    if total is None:raise NBIQuarantineError('producer_release_has_no_total_row')
+    if sum(state['count']for state in states.values())!=total:raise NBIQuarantineError('producer_release_state_counts_do_not_sum_to_total')
+    if len(states)<MIN_STATES:raise NBIQuarantineError('producer_release_state_roster_too_small')
+    return {'year':year,'url':release_url,'states':states,'total':total,'link_corrections':corrections}
 
+def release_urls(release,schema_url):
+    urls={'index':INDEX_URL,'release':release['url'],'schema_page':SCHEMA_PAGE_URL,'schema':schema_url}
+    urls.update({'state_'+token:state['url']for token,state in release['states'].items()})
+    return urls
 
-def geometry_for(payload,token):
-    state=payload[0:3].decode('ascii')
-    raw16=payload[129:137];raw17=payload[137:146]
-    blank16=raw16.strip()==b'';blank17=raw17.strip()==b''
-    if blank16 and blank17:return None,'blank',False,False,False
-    if blank16 or blank17:return None,'partial',False,False,False
-    sign16,lat=coordinate_decimal(raw16,token);sign17,lon=coordinate_decimal(raw17,token)
-    trimmed=state.lstrip('0')or '0'
-    if trimmed in NEGATIVE_LATITUDE_CODES:lat=-lat
-    if trimmed not in POSITIVE_LONGITUDE_CODES:lon=-lon
-    if sign16 is not None and lat!=0 and sign16!=(1 if lat>0 else -1):raise NBIQuarantineError('state_coordinate_sign_contradicts_documented_hemisphere:'+token)
-    if sign17 is not None and lon!=0 and sign17!=(1 if lon>0 else -1):raise NBIQuarantineError('state_coordinate_sign_contradicts_documented_hemisphere:'+token)
-    signed=sign16 is not None or sign17 is not None
-    padded=b' ' in raw16 or b' ' in raw17
-    zero=lat==0 and lon==0
-    return struct.pack('<BIdd',1,1,float(lon),float(lat)),'present',signed,padded,zero
+def context_from_captures(captures):
+    missing={'index','release','schema_page','schema'}-set(captures)
+    if missing:raise NBIQuarantineError('capture_roster_drift')
+    year,release_url=discover_release(captures['index'][0])
+    release=parse_release_page(captures['release'][0],year,release_url)
+    schema_url=discover_schema(captures['schema_page'][0])
+    schema=json.loads(captures['schema'][0])
+    return release_urls(release,schema_url),release,schema
 
+def schema_parts(schema):
+    try:
+        properties=schema['items']['properties']
+    except (KeyError,TypeError)as exc:
+        raise NBIQuarantineError('snbi_schema_missing_top_level_properties')from exc
+    scalar={};nested={}
+    for tag,spec in properties.items():
+        kind=spec.get('type')
+        if kind=='array':nested[tag]=spec
+        elif kind in('integer','number','string'):scalar[tag]=spec
+        else:raise NBIQuarantineError('snbi_schema_unsupported_field_type:'+tag)
+    return schema['items'],scalar,nested
 
-def parse_state_file(body,token,expected):
-    if digest(body)!=expected[0]or len(body)!=expected[1]:raise NBIQuarantineError('state_file_bytes_drift:'+token)
-    non_ascii=sum(1 for b in body if b>127)
-    if non_ascii!=EXPECTED_NON_ASCII_BYTES.get(token,0):raise NBIQuarantineError('state_non_ascii_byte_drift_requires_review:'+token)
-    payloads,style,short=split_state_body(body,token)
-    if len(payloads)!=expected[2]or style!=expected[3]or short!=expected[5]:raise NBIQuarantineError('state_file_shape_drift:'+token)
-    expected_state=expected[4]
-    columns={n:[] for n,_,_,_ in LAYOUT};geometry=[];ids=[];zero=blank=partial=signed=padded=0;out_of_envelope=0;blank_structure=0
-    for payload in payloads:
-        state=payload[0:3]
-        if state.decode('ascii')!=expected_state:raise NBIQuarantineError('state_item1_code_drift:'+token)
-        for n,s,e,_ in LAYOUT:
-            columns[n].append(payload[s-1:e].decode('iso-8859-1')if len(payload)>=e else None)
-        structure=columns[STRUCTURE_NUMBER][len(ids)]
-        if not structure.strip():blank_structure+=1
-        ids.append((expected_state,structure))
-        point,category,was_signed,was_padded,was_zero=geometry_for(payload,token)
+def arrow_type(spec,tag):
+    kind=spec.get('type');mapping={'integer':pa.int64(),'number':pa.float64(),'string':pa.string(),'array':pa.string()}
+    if kind not in mapping:raise NBIQuarantineError('snbi_schema_unsupported_field_type:'+tag)
+    return mapping[kind]
+
+def build_schema(schema):
+    _,scalar,nested=schema_parts(schema);fields=[]
+    for tag,spec in schema['items']['properties'].items():
+        metadata={'snbi_tag':tag,'snbi_description':spec.get('description',''),'snbi_type':spec.get('type','')}
+        if tag in CODING_GUIDE_ITEMS:
+            metadata['coding_guide_item'],metadata['coding_guide_name']=CODING_GUIDE_ITEMS[tag]
+        if tag in nested:metadata['snbi_relationship']='nested_array_json'
+        fields.append(pa.field(tag,arrow_type(spec,tag),nullable=True,metadata={key:encode(value)for key,value in metadata.items()}))
+    for tag,spec in PRODUCER_EXTRA_FIELDS.items():
+        metadata={'snbi_tag':tag,'snbi_description':spec.get('description',''),'snbi_type':spec.get('type',''),'snbi_relationship':'producer_extra_top_level'}
+        fields.append(pa.field(tag,arrow_type(spec,tag),nullable=True,metadata={key:encode(value)for key,value in metadata.items()}))
+    fields.append(pa.field('geometry',pa.binary(),nullable=True,metadata={b'original_crs':b'EPSG:4326',b'original_geometry_type':b'SNBI B.L.05/B.L.06 point'}))
+    return pa.schema(fields)
+
+def validate_value(tag,value,spec,token,required=False):
+    if value is None:
+        if required:raise NBIQuarantineError('snbi_required_field_missing:'+token+':'+tag)
+        return
+    kind=spec.get('type')
+    if kind=='integer':
+        if type(value)is int:pass
+        elif type(value)is float and value.is_integer():pass
+        else:raise NBIQuarantineError('snbi_field_type_drift:'+token+':'+tag)
+    elif kind=='number':
+        if type(value)not in(int,float):raise NBIQuarantineError('snbi_field_type_drift:'+token+':'+tag)
+    elif kind=='string':
+        if type(value)is not str:raise NBIQuarantineError('snbi_field_type_drift:'+token+':'+tag)
+    else:raise NBIQuarantineError('snbi_schema_unsupported_field_type:'+tag)
+
+def validate_nested(tag,value,spec,token):
+    if value is None:return
+    if type(value)is not list:raise NBIQuarantineError('snbi_nested_field_not_array:'+token+':'+tag)
+    item=spec.get('items')or{}
+    if isinstance(item,list):item=next((value for value in item if isinstance(value,dict)),{})
+    if not isinstance(item,dict):return
+    properties=item.get('properties')or{}
+    for index,record in enumerate(value):
+        if type(record)is not dict:raise NBIQuarantineError('snbi_nested_item_not_object:'+token+':'+tag)
+        for key,item_spec in properties.items():
+            if key in record:
+                if item_spec.get('type')=='array':validate_nested(key,record[key],item_spec,token)
+                else:validate_value(key,record[key],item_spec,token)
+
+def geometry_for(record,token):
+    latitude=record.get('BL05');longitude=record.get('BL06')
+    if latitude is None and longitude is None:return None,'blank',False,False
+    if latitude is None or longitude is None:return None,'partial',False,False
+    if type(latitude)not in(int,float)or type(longitude)not in(int,float):raise NBIQuarantineError('snbi_coordinate_not_number:'+token)
+    latitude=float(latitude);longitude=float(longitude)
+    zero=latitude==0 and longitude==0
+    out_of_envelope=not(-90<=latitude<=90 and -180<=longitude<=180)
+    return struct.pack('<BIdd',1,1,longitude,latitude),'present',zero,out_of_envelope
+
+def parse_state_file(body,token,schema):
+    try:records=json.loads(body)
+    except ValueError as exc:raise NBIQuarantineError('state_file_not_json:'+token)from exc
+    if type(records)is not list:raise NBIQuarantineError('state_file_not_array:'+token)
+    item,scalar,nested=schema_parts(schema);properties=item['properties'];required=set(item.get('required')or[])
+    columns={tag:[]for tag in scalar};nested_columns={tag:[]for tag in nested};extra_columns={tag:[]for tag in PRODUCER_EXTRA_FIELDS}
+    ids=[];geometry=[];zero=blank=partial=out_of_envelope=non_ascii=0
+    for record in records:
+        if type(record)is not dict:raise NBIQuarantineError('state_record_not_object:'+token)
+        unknown=set(record)-set(properties)-set(PRODUCER_EXTRA_FIELDS)
+        if unknown:raise NBIQuarantineError('state_record_unknown_field:'+token+':'+sorted(unknown)[0])
+        missing=required-set(record)
+        if missing:raise NBIQuarantineError('state_record_required_field_missing:'+token+':'+sorted(missing)[0])
+        for tag,spec in scalar.items():
+            value=record.get(tag);validate_value(tag,value,spec,token,required=tag in required)
+            if spec.get('type')=='integer' and type(value)is float:value=int(value)
+            columns[tag].append(value)
+            if type(value)is str:non_ascii+=sum(1 for char in value if ord(char)>127)
+        for tag,spec in nested.items():
+            value=record.get(tag);validate_nested(tag,value,spec,token)
+            nested_columns[tag].append(None if value is None else json.dumps(value,separators=(',',':'),ensure_ascii=False,allow_nan=False))
+        for tag,spec in PRODUCER_EXTRA_FIELDS.items():
+            value=record.get(tag);validate_value(tag,value,spec,token)
+            extra_columns[tag].append(value)
+        ids.append((record['BL01'],record['BID01']))
+        point,category,was_zero,was_out=geometry_for(record,token)
         if point is None:
             if category=='blank':blank+=1
             else:partial+=1
         else:
-            if was_signed:signed+=1
-            if was_padded:padded+=1
             if was_zero:zero+=1
-            else:
-                lon_value=struct.unpack('<d',point[5:13])[0];lat_value=struct.unpack('<d',point[13:21])[0]
-                if not(-180<=lon_value<=180 and -90<=lat_value<=90):out_of_envelope+=1
+            if was_out:out_of_envelope+=1
         geometry.append(point)
-    arrays=[pa.array(columns[n],type=pa.string())for n,_,_,_ in LAYOUT]+[pa.array(geometry,type=pa.binary())]
-    return arrays,ids,{'rows':len(payloads),'style':style,'short':short,'zero':zero,'blank':blank,'partial':partial,'signed':signed,'padded':padded,'out_of_envelope':out_of_envelope,'blank_structure':blank_structure,'non_ascii_bytes':non_ascii}
-
-
-def build_schema():
-    fields=[pa.field(n,pa.string(),nullable=True,metadata={b'nbi_ascii_layout':encode({'name':n,'start':s,'end':e,'format':t})})for n,s,e,t in LAYOUT]
-    fields.append(pa.field('geometry',pa.binary(),nullable=True,metadata={b'original_crs':b'EPSG:4326',b'original_geometry_type':b'esriGeometryPoint-equivalent NBI DMS-derived point'}))
-    return pa.schema(fields)
-
-STRUCTURE_NUMBER=next(n for n,_,_,_ in LAYOUT if n=='STRUCTURE_NUMBER_008')
-
-
-def state_tokens(body):
-    return {t.decode('ascii')for t in re.findall(rb'nbiState=([A-Z]{2})25',body)}
-
+    arrays=[pa.array(columns[tag],type=arrow_type(scalar[tag],tag))for tag in scalar]
+    arrays.extend(pa.array(nested_columns[tag],type=pa.string())for tag in nested)
+    arrays.extend(pa.array(extra_columns[tag],type=arrow_type(PRODUCER_EXTRA_FIELDS[tag],tag))for tag in PRODUCER_EXTRA_FIELDS)
+    arrays.append(pa.array(geometry,type=pa.binary()))
+    table=pa.Table.from_arrays(arrays,schema=build_schema(schema))
+    stats={'rows':len(records),'zero':zero,'blank':blank,'partial':partial,'out_of_envelope':out_of_envelope,'non_ascii':non_ascii,
+        'nested_counts':{tag:sum(0 if record.get(tag)is None else len(record[tag])for record in records)for tag in nested},
+        'producer_extra_counts':{tag:sum(1 for record in records if tag in record)for tag in PRODUCER_EXTRA_FIELDS}}
+    return table,ids,stats
 
 def inspect_captures(captures):
-    if set(captures)!=set(URLS):raise NBIQuarantineError('capture_roster_drift')
-    for n,(b,r)in captures.items():
-        validate_receipt(n,b,r)
-        if r['url']!=URLS[n]:raise NBIQuarantineError('capture_request_population_drift')
-    tokens=state_tokens(captures['files_page'][0])
-    if tokens!=set(TOKENS):raise NBIQuarantineError('producer_state_file_roster_drift')
-    arrays=[];roster=[];per_state={};duplicates=Counter()
-    for token in TOKENS:
-        body=captures['state_'+token][0]
-        columns,ids,stats=parse_state_file(body,token,EXPECTED_FILES[token])
-        arrays.append(columns);roster.extend(ids);duplicates.update(ids);per_state[token]=stats
-    if sum(p['blank_structure']for p in per_state.values())!=EXPECTED_BLANK_STRUCTURE_NUMBER_COUNT:raise NBIQuarantineError('blank_structure_number_drift_requires_review')
-    blank_structure=sum(p['blank_structure']for p in per_state.values())
-    non_ascii={t:per_state[t]['non_ascii_bytes']for t in TOKENS if per_state[t]['non_ascii_bytes']}
-    extra=sum(v-1 for v in duplicates.values()if v>1)
-    duplicate_keys=sorted(k for k,v in duplicates.items()if v>1)
-    if extra!=EXPECTED_COMPOSITE_DUPLICATE_COUNT or duplicate_keys!=sorted(EXPECTED_DUPLICATE_KEYS):raise NBIQuarantineError('composite_ID_duplicate_drift_requires_review')
-    if sum(duplicates.values())!=EXPECTED_TOTAL_COUNT:raise NBIQuarantineError('complete_count_drift_requires_review')
-    roster_sha=digest(('\n'.join(sorted(f'{s}|{n}'for s,n in duplicates))+'\n').encode())
-    if roster_sha!=EXPECTED_ID_ROSTER_SHA256:raise NBIQuarantineError('complete_ID_roster_drift_requires_review')
-    zero=sum(p['zero']for p in per_state.values());blank=sum(p['blank']for p in per_state.values())
-    partial=sum(p['partial']for p in per_state.values());signed=sum(p['signed']for p in per_state.values())
-    padded=sum(p['padded']for p in per_state.values())
-    ooe=sum(p['out_of_envelope']for p in per_state.values());short=sum(p['short']for p in per_state.values())
-    if zero!=EXPECTED_ZERO_COORDINATE_COUNT:raise NBIQuarantineError('zero_coordinate_count_drift_requires_review')
-    if ooe!=EXPECTED_OUT_OF_ENVELOPE_COUNT:raise NBIQuarantineError('out_of_envelope_coordinate_count_drift_requires_review')
-    if blank!=EXPECTED_BLANK_COORDINATE_COUNT or partial!=EXPECTED_PARTIAL_COORDINATE_COUNT:raise NBIQuarantineError('blank_or_partial_coordinate_drift_requires_review')
-    if signed!=EXPECTED_SIGNED_COORDINATE_COUNT:raise NBIQuarantineError('signed_coordinate_count_drift_requires_review')
-    if padded!=EXPECTED_WHITESPACE_COORDINATE_COUNT:raise NBIQuarantineError('whitespace_padded_coordinate_count_drift_requires_review')
-    if short!=EXPECTED_SHORT_RECORD_COUNT:raise NBIQuarantineError('short_record_count_drift_requires_review')
-    columns=[pa.concat_arrays([a[i]for a in arrays])for i in range(len(LAYOUT)+1)]
-    table=pa.Table.from_arrays(columns,schema=build_schema())
-    audit={'count':table.num_rows,'field_count':len(LAYOUT),'state_rows':{t:per_state[t]['rows']for t in TOKENS},
-        'state_item1_codes':{t:EXPECTED_FILES[t][4]for t in TOKENS},
-        'composite_ID_sha256':roster_sha,'composite_ID_duplicate_keys':[list(k)for k in duplicate_keys],
+    urls,release,schema=context_from_captures(captures)
+    if set(captures)!=set(urls):raise NBIQuarantineError('capture_roster_drift')
+    for name in sorted(captures):validate_receipt(name,*captures[name],urls)
+    tables=[];roster=[];per_state={};duplicates=Counter();nested_totals={tag:0 for tag in schema_parts(schema)[2]}
+    extra_totals={tag:0 for tag in PRODUCER_EXTRA_FIELDS}
+    for token,state in release['states'].items():
+        table,ids,stats=parse_state_file(captures['state_'+token][0],token,schema)
+        tables.append(table);roster.extend(ids);duplicates.update(ids);per_state[token]=stats
+        for tag,count in stats['nested_counts'].items():nested_totals[tag]+=count
+        for tag,count in stats['producer_extra_counts'].items():extra_totals[tag]+=count
+    if sum(state['count']for state in release['states'].values())!=release['total']:raise NBIQuarantineError('producer_release_total_drift')
+    table=pa.concat_tables(tables)
+    page_count_drift={token:per_state[token]['rows']-state['count']for token,state in release['states'].items()if per_state[token]['rows']!=state['count']}
+    extra=sum(value-1 for value in duplicates.values()if value>1)
+    duplicate_keys=sorted(key for key,value in duplicates.items()if value>1)
+    roster_sha=digest(('\n'.join(sorted(f'{state}|{number}'for state,number in duplicates))+'\n').encode())
+    zero=sum(stats['zero']for stats in per_state.values());blank=sum(stats['blank']for stats in per_state.values())
+    partial=sum(stats['partial']for stats in per_state.values());out_of_envelope=sum(stats['out_of_envelope']for stats in per_state.values())
+    non_ascii=sum(stats['non_ascii']for stats in per_state.values())
+    release_dates={}
+    for token in release['states']:
+        modified=captures['state_'+token][1].get('server_last_modified')
+        if modified:release_dates[token]=parsedate_to_datetime(modified).date().isoformat()
+    audit={'count':table.num_rows,'field_count':len(schema['items']['properties']),'column_count':table.num_columns,'producer_extra_fields':sorted(PRODUCER_EXTRA_FIELDS),'state_rows':{token:stats['rows']for token,stats in per_state.items()},
+        'release_year':release['year'],'release_url':release['url'],'release_page_total':release['total'],
+        'release_page_state_counts':{token:state['count']for token,state in release['states'].items()},
+        'release_page_count_drift':page_count_drift,'release_page_total_drift':table.num_rows-release['total'],
+        'snbi_schema_digest':digest(captures['schema'][0]),'snbi_schema_title':schema.get('title'),
+        'composite_ID_sha256':roster_sha,'composite_ID_duplicate_count':extra,'composite_ID_duplicate_keys':[list(key)for key in duplicate_keys],
+        'nested_item_counts':nested_totals,'producer_extra_field_counts':extra_totals,
         'zero_coordinate_count':zero,'blank_coordinate_count':blank,'partial_coordinate_count':partial,
-        'signed_coordinate_values':signed,'whitespace_padded_coordinate_values':padded,'out_of_envelope_coordinate_count':ooe,'short_tail_records':short,
-        'blank_structure_number_count':blank_structure,'non_ascii_bytes':non_ascii,
-        'crs':'EPSG:4326 (WGS 84) decimal degrees, matching the producer SNBI submittal formats B.L.05/B.L.06 and the archived NTAD distribution spatial reference',
-        'coordinate_basis':'Points are derived only from fixed-width Items 16/17 by the official FHWA SNBI Data Crosswalk conversion (DMS to decimal degrees, 6-decimal quantization, documented Item 1 hemisphere rules, producer position-split segment coercion). Blank or partially blank source coordinates yield null geometry; raw fixed-width strings are preserved unchanged in LATITUDE_016/LONGITUDE_017. Signed (369), space-padded (1, producing 4.022525/-8.036781 exactly as the producer SNBI transition outputs), zero (6) and out-of-envelope (56) source values are preserved with pinned counts. Coding Guide datum is unspecified; producer GeoJSON and archived NTAD layer both declare WGS 84.',
-        'release_basis':'2025 is the final Coding Guide ASCII submission year (FHWA ascii.cfm). All 53 state files were posted in one producer release event (HTTP Last-Modified 2025-06-12 16:53-16:55 GMT, observed 2026-11-10); per-input server Last-Modified values are retained in raw receipts.',
-        'archive_relationship':'The archived HIFLD inventory (DataLumos 239684, NTAD vintage) is an USDOT/BTS redistribution of FHWA data with derived typed/metric fields. This draft reconstructs from the producer directly; total record count 624193 equals the archived NTAD layer count observed 2026-11-08. SNBI JSON/GeoJSON successors are not equivalent populations (e.g. Idaho ASCII 4646 records vs producer SNBI GeoJSON 4643 features; blank/partial-coordinate ASCII records absent).',
-        'temporary_objectID_warning':'none: no producer row identifier exists in the ASCII release; the composite (STATE_CODE_001, STRUCTURE_NUMBER_008) pair is a proposed join key with pinned exact duplicate pairs, not an approved unique ID.',
-        'release_date_established':True,'release_date':'2025-06-12','approved':False}
+        'out_of_envelope_coordinate_count':out_of_envelope,'non_ascii_character_count':non_ascii,
+        'state_file_last_modified':release_dates,'release_date':max(release_dates.values())if release_dates else None,
+        'crs':'EPSG:4326 (WGS 84) decimal degrees from SNBI B.L.05/B.L.06 and the producer GeoJSON spatial reference',
+        'coordinate_basis':'Points are derived only from SNBI B.L.05/B.L.06 decimal-degree values. Missing or partially missing coordinates yield null geometry; zero and out-of-envelope values are preserved with counts, not repaired.',
+        'release_basis':'The FHWA NBI data index lists the newest nbi_data_YYYY.cfm release; that release page supplies the per-state JSON links. Its per-state counts and total are advisory cross-checks: the producer files are authoritative, and every page-count difference is recorded in release_page_state_counts and release_page_count_drift. 2025 was the final Coding Guide ASCII year and 2026 is the first SNBI-format release.',
+        'schema_basis':'One row per bridge from the producer SNBI JSON. All top-level SNBI fields keep their data tag, native JSON type and value; nested SNBI arrays are retained as JSON text. The official SNBI Data Crosswalk maps clean 1995 Coding Guide items to SNBI tags; SNBI fields without a clean Coding Guide equivalent keep their SNBI tag rather than inventing a value. The 2026 files differ from the published schema inside nested arrays (for example Routes.BF01 is present but not declared, and Elements.BE02 is declared required but often absent); nested values are preserved verbatim as served and are not fabricated or dropped. The 2026-09-03 CT and MI re-uploads also serve an undeclared top-level DATA_YEAR stamp, kept as a producer-extra string column rather than dropped.',
+        'coding_guide_basis':'CODING_GUIDE_ITEMS documents all 71 clean 1995 Coding Guide transitions from the official crosswalk, including tags that appear only inside nested SNBI arrays. Only top-level SNBI tags receive coding_guide_item and coding_guide_name column metadata; nested-tag entries document the relationship and are not emitted as columns.',
+        'archive_relationship':'The archived HIFLD inventory (DataLumos 239684) is research context only and is not fetched. This draft reconstructs from the FHWA producer publication.',
+        'temporary_objectID_warning':'none: the SNBI JSON has no producer row identifier; the composite (BL01, BID01) pair is a proposed join key with duplicates counted, not merged or approved as unique.',
+        'approved':False}
     return table,audit
 
-
 def source_fingerprint(captures):
-    # Original state-file bytes bind every record; the frozen 2025 release
-    # keeps its first draft namespace and unchanged refreshes reuse it.
-    return digest(encode({n:digest(b)for n,(b,r)in captures.items()if n.startswith('state_')}))
+    return digest(encode({name:digest(body)for name,(body,receipt)in captures.items()}))
 
-
-def expected_url(name,url):
-    if name in URLS:
-        if url!=URLS[name]:raise NBIQuarantineError('unexpected_original_input_url')
-        return url
-    raise NBIQuarantineError('unknown_original_input')
-
-
-def validate_receipt(name,body,receipt):
-    url=expected_url(name,receipt.get('url'))
+def validate_receipt(name,body,receipt,urls):
+    if name not in urls:raise NBIQuarantineError('unknown_original_input:'+name)
+    url=urls[name]
     if(receipt.get('url')!=url or receipt.get('final_url')!=url or type(receipt.get('status'))is not int or receipt['status']!=200
         or type(receipt.get('bytes'))is not int or receipt['bytes']!=len(body)or receipt.get('sha256')!=digest(body)or receipt.get('complete_body')is not True):raise NBIQuarantineError('invalid_original_receipt:'+name)
     if not isinstance(receipt.get('observed_at'),str)or datetime.fromisoformat(receipt['observed_at']).tzinfo is None:raise NBIQuarantineError('original_retrieval_timezone_required')
     server_last_modified=receipt.get('server_last_modified')
-    if server_last_modified is not None and (type(server_last_modified)is not str or not server_last_modified):raise NBIQuarantineError('invalid_server_last_modified:'+name)
+    if server_last_modified is not None and(type(server_last_modified)is not str or not server_last_modified):raise NBIQuarantineError('invalid_server_last_modified:'+name)
     if name.startswith('state_'):
         release={'release_date':parsedate_to_datetime(server_last_modified).date().isoformat()}if server_last_modified else {'release_date_unknown_reason':'No server Last-Modified available for this state file.'}
     else:
-        release={'release_date_unknown_reason':'FHWA documentation-page edit time is not a data release date; the 2025 ASCII release is established per state file by its server Last-Modified.'}
+        release={'release_date_unknown_reason':'FHWA documentation-page edit time is not a data release date; the release is established per state JSON file by its server Last-Modified.'}
     return {'input_id':name+':'+digest(body),'producer':PRODUCER,'host':httpx.URL(url).host,
         'role':'producer_publication','distributor':'FHWA first-party publication on www.fhwa.dot.gov (original producer; no mirror or portal intermediary)',
-        'delegation_evidence':{'producer_program_url':PROGRAM,'landing_url':LANDING,'files_page_url':FILES_PAGE,'format_url':FORMAT_PAGE,'data_crosswalk_url':CROSSWALK_URL,'download_disclaimer_url':DISCLAIMER},
+        'delegation_evidence':{'producer_program_url':PROGRAM,'release_index_url':INDEX_URL,'release_page_url':urls['release'],'schema_page_url':SCHEMA_PAGE_URL,'data_crosswalk_url':CROSSWALK_URL},
         'canonical_url':url,'retrieval_url':url,'observed_final_url':url,'retrieved_at':receipt['observed_at'],'http_status':200,'sha256':digest(body),'bytes':len(body),'server_last_modified':server_last_modified,'license':LICENSE,
-        'attribution':'FHWA National Bridge Inventory, 2025 ASCII state files; 23 U.S.C. 409 applies (FHWA download disclaimer); complete original item descriptions, attribution and rights retained.',
+        'attribution':'FHWA National Bridge Inventory SNBI state JSON; 23 U.S.C. 409 applies; complete original item descriptions, attribution and rights retained.',
         **release}
-
 
 def acquire(storage,capture_dir=None):
     local_only(storage);captures={};attempt=f'_acquisition-attempts/{SLUG}/{uuid4().hex}';root=Path(capture_dir).absolute()if capture_dir is not None else None
     if root is not None and('..'in root.parts or any(p.is_symlink()for p in[root,*root.parents])):raise NBIQuarantineError('unsafe_capture_root')
-    try:
-        for name,url in URLS.items():
-            if root is not None:
-                body=bounded_input(root/(name+'.body'),MAX_BODY_BYTES)
-                immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body)
-                immutable(storage,f'{attempt}/{name}.body-reference.json',encode({'bytes':len(body),'sha256':digest(body),'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body'}))
-                raw=bounded_input(root/(name+'.receipt.json'),65536)
-            else:
-                path=Path(storage.local_dir)/attempt/name;path.mkdir(parents=True)
-                with(path/'wire.body').open('xb')as wire,(path/'decoded.body').open('xb')as decoded:
-                    def retain(stream,block,target):
-                        before=os.fstat(stream.fileno());written=stream.write(block);stream.flush();os.fsync(stream.fileno())
-                        if written!=len(block):raise OSError('short_capture_write')
-                        reader=os.open(target,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
-                        try:
-                            actual=os.fstat(reader)
-                            if(not stat.S_ISREG(actual.st_mode)or actual.st_nlink!=1 or(actual.st_dev,actual.st_ino)!=(before.st_dev,before.st_ino)
-                                or actual.st_size!=before.st_size+len(block)or os.pread(reader,len(block),before.st_size)!=block):raise OSError('capture_block_readback_mismatch')
-                        finally:os.close(reader)
-                    def reserve(progress):
-                        if shutil.disk_usage(path).free<SPACE_FLOOR+progress.reserve_bytes:raise OSError('disk_floor_before_read')
-                    receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat()};result=None
+    def fetch(name,url):
+        if root is not None:
+            body=bounded_input(root/(name+'.body'),MAX_BODY_BYTES)
+            immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body)
+            immutable(storage,f'{attempt}/{name}.body-reference.json',encode({'bytes':len(body),'sha256':digest(body),'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body'}))
+            raw=bounded_input(root/(name+'.receipt.json'),65536)
+        else:
+            path=Path(storage.local_dir)/attempt/name;path.mkdir(parents=True)
+            with(path/'wire.body').open('xb')as wire,(path/'decoded.body').open('xb')as decoded:
+                def retain(stream,block,target):
+                    before=os.fstat(stream.fileno());written=stream.write(block);stream.flush();os.fsync(stream.fileno())
+                    if written!=len(block):raise OSError('short_capture_write')
+                    reader=os.open(target,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
                     try:
-                        with httpx.Client(follow_redirects=False,timeout=60,headers={'Accept-Encoding':'identity'})as client,client.stream('GET',url)as response:
-                            result=capture_http_response(response,max_wire_bytes=MAX_BODY_BYTES,max_decoded_bytes=MAX_BODY_BYTES,reserve=reserve,
-                                retain_wire=lambda b:retain(wire,b,path/'wire.body'),retain_decoded=lambda b:retain(decoded,b,path/'decoded.body'))
-                            receipt.update(final_url=str(response.url),status=response.status_code,complete_body=result.complete,bytes=result.decoded_bytes_retained,
-                                sha256=result.decoded_sha256,wire_bytes=result.wire_bytes_received,error_code=result.error_code,
-                                server_last_modified=response.headers.get('last-modified'))
-                    finally:
-                        if result is not None:readback=preserve_transfer_result(path,result)
-                        wire.flush();decoded.flush()
-                receipt['complete_body']=result.complete and readback;receipt['independent_sink_readback_matches']=readback
-                body=bounded_input(path/'decoded.body',MAX_BODY_BYTES+1024*1024)
-                immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body);raw=encode(receipt)
-            immutable(storage,f'{attempt}/{name}.raw-receipt.body',raw)
-            receipt=strict_json(raw);validate_receipt(name,body,receipt);captures[name]=(body,receipt)
-            if name=='files_page' and state_tokens(body)!=set(TOKENS):raise NBIQuarantineError('producer_state_file_roster_drift')
+                        actual=os.fstat(reader)
+                        if(not stat.S_ISREG(actual.st_mode)or actual.st_nlink!=1 or(actual.st_dev,actual.st_ino)!=(before.st_dev,before.st_ino)
+                            or actual.st_size!=before.st_size+len(block)or os.pread(reader,len(block),before.st_size)!=block):raise OSError('capture_block_readback_mismatch')
+                    finally:os.close(reader)
+                def reserve(progress):
+                    if shutil.disk_usage(path).free<SPACE_FLOOR+progress.reserve_bytes:raise OSError('disk_floor_before_read')
+                receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat()};result=None
+                try:
+                    with httpx.Client(follow_redirects=False,timeout=60,headers={'Accept-Encoding':'identity'})as client,client.stream('GET',url)as response:
+                        result=capture_http_response(response,max_wire_bytes=MAX_BODY_BYTES,max_decoded_bytes=MAX_BODY_BYTES,reserve=reserve,
+                            retain_wire=lambda b:retain(wire,b,path/'wire.body'),retain_decoded=lambda b:retain(decoded,b,path/'decoded.body'))
+                        receipt.update(final_url=str(response.url),status=response.status_code,complete_body=result.complete,bytes=result.decoded_bytes_retained,
+                            sha256=result.decoded_sha256,wire_bytes=result.wire_bytes_received,error_code=result.error_code,
+                            server_last_modified=response.headers.get('last-modified'))
+                finally:
+                    if result is not None:readback=preserve_transfer_result(path,result)
+                    wire.flush();decoded.flush()
+            receipt['complete_body']=result.complete and readback;receipt['independent_sink_readback_matches']=readback
+            body=bounded_input(path/'decoded.body',MAX_BODY_BYTES+1024*1024)
+            immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body);raw=encode(receipt)
+        immutable(storage,f'{attempt}/{name}.raw-receipt.body',raw)
+        receipt=strict_json(raw);captures[name]=(body,receipt)
+        return body
+    try:
+        index_body=fetch('index',INDEX_URL);year,release_url=discover_release(index_body)
+        release_body=fetch('release',release_url);release=parse_release_page(release_body,year,release_url)
+        schema_page_body=fetch('schema_page',SCHEMA_PAGE_URL);schema_url=discover_schema(schema_page_body)
+        fetch('schema',schema_url);urls=release_urls(release,schema_url)
+        for token,state in release['states'].items():fetch('state_'+token,state['url'])
+        for name in sorted(captures):validate_receipt(name,*captures[name],urls)
         return captures
     except Exception as exc:
         immutable(storage,attempt+'/failure.json',encode({'approved':False,'reason_type':type(exc).__name__}))
         where=quarantine(storage,captures,str(exc));raise NBIQuarantineError('source_acquisition_failed:'+str(exc)+';retained:'+where)from exc
 
 
-def manifest_for(captures,identity,output_pin):
+def manifest_for(captures,identity,output_pin,*,count=None):
+    urls,release,schema=context_from_captures(captures)
+    if count is None:count=sum(len(json.loads(body))for name,(body,_)in captures.items()if name.startswith('state_'))
     manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),
-        'title':'National Bridge Inventory (NBI) — FHWA 2025 ASCII reconstruction draft','publisher':PRODUCER,'agency':'Federal Highway Administration','source_url':LANDING,'license':LICENSE,
-        'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(n,*captures[n])for n in sorted(captures)],
-        'transformations':[{'operation':'complete_fixed_width_ascii_reconstruction','parameters':{
-            'grain':'All 624193 records of the official FHWA 2025 NBI ASCII release (50 states, DC, PR, VI). No filtering, deduplication, reordering or repair.',
-            'source_ids':'Every record keeps its exact fixed-width slice for all 124 official layout items, preserving leading zeros and embedded/trailing spaces. The composite (STATE_CODE_001, STRUCTURE_NUMBER_008) pair is proposed as the join key; its two exact duplicate pairs are pinned in the audit, not silently merged.',
-            'types':'All 124 items are published as exact source-width strings with start/end/format metadata from the producer NBI Record Format page; no numeric coercion, unit conversion or trimming. Columns decode 1:1 as ISO-8859-1 so every source byte is preserved verbatim (7 non-ASCII bytes in NY/PR location text; counts pinned). The reserved Washington HQ Use block and computed CAT10/CAT23/CAT29 tail columns are retained; the single producer-truncated NC record stores null tail values, matching the producer SNBI transition output.',
-            'geometry':'Points are derived only from Items 16/17 by the official FHWA SNBI Data Crosswalk rules (DMS to decimal degrees, 6-decimal quantization, negative latitude for Item 1 code 60, negative longitude except codes 64/66/68/69/70, producer position-split segment coercion). Blank or partially blank coordinates yield null geometry; all-zero and out-of-envelope source values are preserved and their counts pinned. EPSG:4326 per producer GeoJSON and the archived NTAD layer; Coding Guide datum is unspecified.',
-            'relationship':'2025 is the final Coding Guide ASCII year; SNBI Excel/JSON/GeoJSON are a changed successor with a different population and schema. The archived HIFLD copy (DataLumos 239684) is an USDOT/BTS NTAD redistribution with derived typed/metric fields; its 624193-record count equals this producer release. Source, schema/ID contract, coordinate basis, rights and publication acceptance remain pending human decisions.'}}],
-        'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve all 124 original fixed-width ASCII items as exact strings plus the crosswalk-derived point geometry; no generic conversion or schema mapping approved.','objects':[{'path':'geoparquet/'+SLUG+'.parquet',**output_pin}]}}},
-        'unsupported_output_formats':{'geopackage':'Fixed-width string widths, blanks-as-nulls tail and the proposed composite ID need an approved contract; no implicit conversion.','shapefile_zip':'124-character-limit and width/null semantics cannot be silently coerced.','pmtiles':'Projection, quantization and feature ID mappings remain unapproved.'}}
+        'title':f'National Bridge Inventory (NBI) — FHWA {release["year"]} SNBI reconstruction draft','publisher':PRODUCER,'agency':'Federal Highway Administration','source_url':release['url'],'license':LICENSE,
+        'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(name,*captures[name],urls)for name in sorted(captures)],
+        'transformations':[{'operation':'complete_snbi_json_reconstruction','parameters':{
+            'grain':f'All {count} bridge records of the official FHWA {release["year"]} SNBI release ({len(release["states"])} state and territory JSON files). No filtering, deduplication, reordering or repair.',
+            'source_ids':'Every SNBI top-level field keeps its producer data tag, JSON type and value. Nested SNBI arrays (Features, Routes, Elements, Inspections, PostingEvaluations, PostingStatuses, SpanSets, SubstructureSets, Works) are retained as JSON text. The undeclared top-level DATA_YEAR stamp served in the 2026-09-03 CT and MI re-uploads is kept as a producer-extra string column. The composite (BL01, BID01) pair is proposed as the join key; duplicates are counted in the audit, not silently merged.',
+            'types':'Native JSON integers, numbers and strings are stored without coercion or trimming. The SNBI schema digest and title are recorded. The official SNBI Data Crosswalk maps clean 1995 Coding Guide items to SNBI tags; SNBI fields with no clean Coding Guide equivalent keep their SNBI tag rather than inventing a value. Release-page counts are advisory and their differences from the producer files are recorded in the audit.',
+            'geometry':'Points are derived only from SNBI B.L.05/B.L.06 decimal degrees as EPSG:4326. Missing or partially missing coordinates yield null geometry; zero and out-of-envelope source values are preserved and counted.',
+            'relationship':'2025 was the final Coding Guide ASCII year; 2026 is the first SNBI-format release. The archived HIFLD copy (DataLumos 239684) is research context only and is not an input. Source, schema/ID contract, coordinate basis, rights and publication acceptance remain pending human decisions.'}}],
+        'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve every top-level SNBI field at its native type plus nested SNBI arrays as JSON text and the B.L.05/B.L.06 point geometry; no generic conversion or schema mapping approved.','objects':[{'path':'geoparquet/'+SLUG+'.parquet',**output_pin}]}}},
+        'unsupported_output_formats':{'geopackage':'Nested SNBI arrays, native JSON types and the proposed composite ID need an approved contract; no implicit conversion.','shapefile_zip':'Nested arrays, field widths and null semantics cannot be silently coerced.','pmtiles':'Projection, quantization and feature ID mappings remain unapproved.'}}
     validate_release_provenance(manifest);validate_output_policy(manifest);return manifest
 
 
 def stage_national_bridge_inventory(storage,*,capture_dir=None):
-    local_only(storage);captures=acquire(storage,capture_dir);table,audit=inspect_captures(captures);identity=processing_identity();fingerprint=digest(encode(identity));version='v0.0.0-draft-fhwa-nbi-2025-'+source_fingerprint(captures)[:16]+'-'+fingerprint[:16]
+    local_only(storage);captures=acquire(storage,capture_dir);table,audit=inspect_captures(captures);identity=processing_identity();fingerprint=digest(encode(identity))
+    _,release,_=context_from_captures(captures);version=f'v0.0.0-draft-fhwa-snbi-{release["year"]}-'+source_fingerprint(captures)[:16]+'-'+fingerprint[:16]
     base=Path(storage.local_dir).absolute();prefix=f'{SLUG}/{SLUG}/{version}';root=base/prefix;locks=base/'_locks';locks.mkdir(exist_ok=True)
     descriptor=os.open(locks/(SLUG+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
     with os.fdopen(descriptor,'r+b')as lock:
@@ -538,7 +613,7 @@ def stage_national_bridge_inventory(storage,*,capture_dir=None):
         build=base/'_building'/SLUG;build.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='candidate-',dir=build)as temporary:
             temp=Path(temporary);(temp/'geoparquet').mkdir();path=temp/'geoparquet'/f'{SLUG}.parquet';pq.write_table(parquet_table(table),path,compression='zstd');validate_output(temp,table)
-            manifest=manifest_for(captures,identity,{'bytes':path.stat().st_size,'sha256':sha256_file(path)})
+            manifest=manifest_for(captures,identity,{'bytes':path.stat().st_size,'sha256':sha256_file(path)},count=table.num_rows)
             if root.exists()or state_present(storage,version):
                 try:
                     captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest)

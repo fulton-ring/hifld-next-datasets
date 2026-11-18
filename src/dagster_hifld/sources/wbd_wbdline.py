@@ -64,7 +64,6 @@ import hashlib
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -75,6 +74,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 from shapely import from_wkb
+
+from dagster_hifld.sources.esri_geometry import esri_polyline_wkb
 from shapely.geometry import MultiLineString
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -378,8 +379,7 @@ GATE_MODES = frozenset({
 
 
 def _assemble_geometry(paths: list) -> bytes:
-    """Assemble structurally validated served XY paths verbatim into WKB, or
-    raise a gate code.
+    """Assemble structurally validated served XY paths into WKB, or raise a gate code.
 
     Producer vertex values and path order are retained unchanged (no
     resampling, reordering or projection). A missing or empty path roster
@@ -394,21 +394,10 @@ def _assemble_geometry(paths: list) -> bytes:
     for path in paths:
         if not isinstance(path, list) or len(path) < 2:
             raise _GeometryGate("source_polyline_path_degenerate")
-    if len(paths) == 1:
-        wkb = bytearray(struct.pack("<BI", 1, 2))
-    else:
-        wkb = bytearray(struct.pack("<BI", 1, 5))
-        wkb.extend(struct.pack("<I", len(paths)))
-    for path in paths:
-        if len(paths) > 1:
-            wkb.extend(struct.pack("<BI", 1, 2))
-        wkb.extend(struct.pack("<I", len(path)))
-        for point in path:
-            wkb.extend(struct.pack("<dd", point[0], point[1]))
-    decoded = from_wkb(bytes(wkb))
-    if decoded.is_empty:
+    wkb = esri_polyline_wkb({"paths": paths})
+    if from_wkb(wkb).is_empty:
         raise _GeometryGate("source_polyline_assembly_invalid")
-    return bytes(wkb)
+    return wkb
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:

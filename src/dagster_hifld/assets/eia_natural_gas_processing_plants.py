@@ -32,3 +32,8 @@ def eia_natural_gas_processing_plants_complete(candidate: dict) -> AssetCheckRes
 eia_natural_gas_processing_plants_draft_job = define_asset_job("eia_natural_gas_processing_plants_draft_refresh", selection=AssetSelection.assets(eia_natural_gas_processing_plants_historical), description="Parked pending a maintained EIA processing-plant location source; manual execution also refuses acquisition and cache replay.")
 eia_natural_gas_processing_plants_draft_schedule = ScheduleDefinition(name="eia_natural_gas_processing_plants_draft_refresh_schedule", job=eia_natural_gas_processing_plants_draft_job,
     cron_schedule="0 8 1 * *", default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [eia_natural_gas_processing_plants_historical]
+ASSET_CHECKS = [eia_natural_gas_processing_plants_complete]
+JOBS = [eia_natural_gas_processing_plants_draft_job]
+SCHEDULES = [eia_natural_gas_processing_plants_draft_schedule]

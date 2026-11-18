@@ -16,7 +16,7 @@ from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_float_dt
 
 from dagster_hifld.gdal import with_large_geojson_support as _with_large_geojson_support
 from dagster_hifld.file_geodatabase import iter_file_geodatabases
-from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.provenance import REFRESH_METADATA_FIELDS, enrich_dictionary_columns, provenance_projection, validate_dictionary_semantics
 from dagster_hifld.evidence_io import validate_evidence_directory
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.native_geoparquet_catalog import has_other_source, pinned_native_path, summarize_native_path, resolve_native_metadata
@@ -282,10 +282,12 @@ def generate_data_dictionary(
 
     dictionary = {
         "name": name,
-        "columns": columns,
+        "columns": enrich_dictionary_columns(columns, source_metadata),
     }
     if source_metadata:
         for key in (
+            *REFRESH_METADATA_FIELDS,
+            "documentation_url",
             "title",
             "description",
             "publisher",
@@ -331,6 +333,7 @@ def write_catalog_metadata(
     dictionary_dict: dict,
 ) -> dict[str, str]:
     provenance = provenance_projection(dictionary_dict)
+    validate_dictionary_semantics(dictionary_dict)
     if staging.use_local or not staging.bucket:
         validate_evidence_directory(Path(staging.local_dir).resolve() / staging.build_target_location(dataset_slug, file_slug, version, "metadata"))
     documents = {"quality_manifest": ("quality_manifest.json", quality_dict), "data_dictionary": ("data_dictionary.json", dictionary_dict)}

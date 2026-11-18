@@ -53,6 +53,156 @@ def _retrieved_at(value: object) -> None:
         raise ValueError("invalid_retrieved_at_timestamp") from exc
 
 
+# Optional evidence fields are additive to schema v1; absent legacy claims stay absent.
+REFRESH_METADATA_FIELDS = ("coverage", "source_relationship", "documentation", "field_definitions", "format_transformations")
+_INPUT_PURPOSES = {"data", "schema", "methodology", "license", "geocoding"}
+
+
+def _input_refs(value: object, identities: set[str]) -> None:
+    if not isinstance(value, list) or any(not isinstance(ref, str) or ref not in identities for ref in value):
+        raise ValueError("unresolved_metadata_input_reference")
+
+
+def validate_refresh_metadata(manifest: dict) -> None:
+    """Validate optional claims only after manifest layers have been resolved."""
+    identities = {item["input_id"] for item in manifest["inputs"]}
+    for item in manifest["inputs"]:
+        if "purpose" in item and (not isinstance(item["purpose"], str) or item["purpose"] not in _INPUT_PURPOSES):
+            raise ValueError("invalid_input_purpose")
+        if "refresh" not in item:
+            continue
+        refresh = item["refresh"]
+        if not isinstance(refresh, dict):
+            raise ValueError("invalid_input_refresh")
+        status = refresh.get("maintenance_status")
+        if not isinstance(status, str) or status not in {"maintained", "unverified", "retired"}:
+            raise ValueError("invalid_maintenance_status")
+        for field in ("maintenance_evidence_input_id", "latest_evidence_input_id"):
+            if field in refresh:
+                _input_refs([refresh[field]], identities)
+        if status == "maintained" and "maintenance_evidence_input_id" not in refresh:
+            raise ValueError("maintained_source_requires_evidence")
+        if "latest_checked_at" in refresh:
+            _retrieved_at(refresh["latest_checked_at"])
+            if "latest_evidence_input_id" not in refresh:
+                raise ValueError("latest_check_requires_evidence")
+        for field in ("source_release_id", "data_period", "update_cadence", "selection_rule", "source_state_fingerprint"):
+            if field in refresh:
+                if field == "source_release_id" and refresh[field] is None:
+                    reasons = refresh.get("unknown_reasons")
+                    _text(reasons.get(field) if isinstance(reasons, dict) else None,
+                          "unknown_source_release_id_requires_reason")
+                    continue
+                _text(refresh[field], "invalid_refresh_text")
+        reasons = refresh.get("unknown_reasons", {})
+        if not isinstance(reasons, dict):
+            raise ValueError("invalid_refresh_unknown_reasons")
+        for field, reason in reasons.items():
+            _text(field, "invalid_refresh_unknown_reason")
+            _text(reason, "invalid_refresh_unknown_reason")
+        if status == "unverified" and not reasons:
+            raise ValueError("unverified_maintenance_requires_unknown_reason")
+    if "coverage" in manifest and not isinstance(manifest["coverage"], dict):
+        raise ValueError("invalid_source_coverage")
+    if "source_relationship" in manifest:
+        relation = manifest["source_relationship"]
+        if not isinstance(relation, dict):
+            raise ValueError("invalid_source_relationship")
+        name = relation.get("relationship")
+        if not isinstance(name, str) or name not in {"equivalent", "changed_successor", "partial_successor", "unverified"}:
+            raise ValueError("invalid_source_relationship")
+        _input_refs(relation.get("evidence_input_ids"), identities)
+        if name != "unverified" and not relation["evidence_input_ids"]:
+            raise ValueError("source_relationship_requires_evidence")
+        if name == "unverified":
+            _text(relation.get("unknown_reason"), "unverified_relationship_requires_reason")
+    if "documentation" in manifest:
+        documents = manifest["documentation"]
+        if not isinstance(documents, list):
+            raise ValueError("invalid_documentation")
+        paths = set()
+        for doc in documents:
+            if not isinstance(doc, dict):
+                raise ValueError("invalid_documentation")
+            path = doc.get("path")
+            if (not isinstance(path, str) or not path or path in paths or "\\" in path
+                    or any(c in path for c in "?#%") or PurePosixPath(path).is_absolute()
+                    or ".." in PurePosixPath(path).parts or PurePosixPath(path).as_posix() != path
+                    or not path.startswith(("metadata/", "raw/"))):
+                raise ValueError("unsafe_documentation_path")
+            paths.add(path)
+            _input_refs([doc.get("input_id")], identities)
+            if not isinstance(doc.get("purpose"), str) or doc["purpose"] not in _INPUT_PURPOSES:
+                raise ValueError("invalid_documentation_purpose")
+            media_type = _text(doc.get("media_type"), "invalid_documentation_media_type")
+            if not re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+(?:;[^\r\n]+)?", media_type):
+                raise ValueError("invalid_documentation_media_type")
+            if (type(doc.get("bytes")) is not int or doc["bytes"] < 0 or not isinstance(doc.get("sha256"), str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", doc["sha256"])):
+                raise ValueError("invalid_documentation_checksum_or_length")
+    if "field_definitions" in manifest:
+        definitions = manifest["field_definitions"]
+        if not isinstance(definitions, dict):
+            raise ValueError("invalid_field_definitions")
+        for name, definition in definitions.items():
+            _text(name, "invalid_field_definition_name")
+            if not isinstance(definition, dict):
+                raise ValueError("invalid_field_definition")
+            basis = definition.get("basis")
+            if not isinstance(basis, str) or basis not in {"publisher", "derived", "unknown"}:
+                raise ValueError("invalid_field_definition_basis")
+            _input_refs(definition.get("input_ids"), identities)
+            if basis != "unknown" and not definition["input_ids"]:
+                raise ValueError("field_definition_requires_evidence")
+            fields = definition.get("source_fields")
+            if not isinstance(fields, list) or any(not isinstance(field, str) or not field.strip() for field in fields):
+                raise ValueError("invalid_field_definition_source_fields")
+            for field in ("description", "units", "null_meaning", "identifier_meaning"):
+                if field in definition:
+                    _text(definition[field], "invalid_field_definition_text")
+            for field in ("codes", "sentinel_values"):
+                if field in definition and not isinstance(definition[field], dict):
+                    raise ValueError("invalid_field_definition_codes")
+    if "format_transformations" in manifest:
+        formats = manifest["format_transformations"]
+        if not isinstance(formats, dict):
+            raise ValueError("invalid_format_transformations")
+        for name, operations in formats.items():
+            _text(name, "invalid_transformation_format")
+            if not isinstance(operations, list):
+                raise ValueError("invalid_format_transformations")
+            for operation in operations:
+                if not isinstance(operation, dict):
+                    raise ValueError("invalid_format_transformation")
+                _text(operation.get("name"), "invalid_format_transformation")
+                _input_refs(operation.get("input_ids"), identities)
+
+
+def enrich_dictionary_columns(columns: list[dict], metadata: dict | None) -> list[dict]:
+    """Attach evidenced semantics without touching native types or statistics."""
+    definitions = (metadata or {}).get("field_definitions", {})
+    for column in columns:
+        definition = definitions.get(column["name"])
+        if definition is not None:
+            column["semantic_definition"] = json.loads(json.dumps(definition))
+            if "description" in definition:
+                column["description"] = definition["description"]
+        # Observed examples/frequencies are not publisher-declared value domains.
+        if "possibleValues" in column:
+            column["valuesBasis"] = "observed_values_not_publisher_domain"
+    return columns
+
+
+def validate_dictionary_semantics(dictionary: dict) -> None:
+    """Reject column projections that lose or change authored semantic evidence."""
+    definitions = dictionary.get("field_definitions", {})
+    for column in dictionary.get("columns", []):
+        expected = definitions.get(column["name"])
+        if expected is not None and (column.get("semantic_definition") != expected
+                or ("description" in expected and column.get("description") != expected["description"])):
+            raise ValueError("dictionary_column_semantics_differ_from_evidenced_definition")
+
+
 def validate_provenance(manifest: object) -> None:
     """Validate complete captured multi-input metadata without certifying claims.
 
@@ -158,17 +308,20 @@ def validate_provenance(manifest: object) -> None:
             raise ValueError("unexplained_unknown_release_date")
         if "release_date_unknown_reason" in item and item["release_date_unknown_reason"] is not None:
             _text(item["release_date_unknown_reason"], "invalid_unknown_release_date_explanation")
+    validate_refresh_metadata(manifest)
     if any(identity not in seen for layer in manifest.get("manifest_layers", []) for identity in layer["input_ids"]):
         raise ValueError("authored_manifest_layer_has_unresolved_input_identity")
 
 
 PROVENANCE_FIELDS = ("schema_version", "processor", "inputs", "transformations", "code_commit", "processing_code", "code_identity_scheme", "lineage", "documentation_url", "manifest_layers",
-                     "unsupported_output_formats", "prebuilt_output_policy", "literal_geojson_catalog")
+                     "unsupported_output_formats", "prebuilt_output_policy", "literal_geojson_catalog", *REFRESH_METADATA_FIELDS)
 
 
 def provenance_projection(metadata: dict) -> dict | None:
     """Copy complete authored provenance without importing legacy fallback claims."""
     if "inputs" not in metadata and "processor" not in metadata:
+        if any(field in metadata for field in REFRESH_METADATA_FIELDS):
+            raise ValueError("refresh_metadata_requires_input_provenance")
         return None
     value = {key: metadata[key] for key in PROVENANCE_FIELDS if key in metadata}
     validate_provenance(value)

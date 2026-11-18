@@ -41,7 +41,7 @@ from dagster_hifld.conversion import (
 )
 from dagster_hifld.partitions import PUBLISH_PARTITIONS, parse_publish_partition_key
 from dagster_hifld.promotion import promote_immutable_objects, write_immutable_object
-from dagster_hifld.release_approval import require_release_approval, _registry as load_release_approvals
+from dagster_hifld.release_approval import ReleaseApprovalError, require_release_approval, _registry as load_release_approvals
 from dagster_hifld.sources.usace_pylon_locations import (
     DATASET_SLUG as USACE_PYLON_LOCATIONS_DATASET_SLUG,
     compare_generated_geoparquet as compare_usace_pylon_locations_geoparquet,
@@ -56,6 +56,7 @@ from dagster_hifld.source_manifest import (
     snapshot_source_metadata,
     unsupported_output_reason,
     prebuilt_output_keys,
+    validate_documentation_objects,
 )
 from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_DIRS,
@@ -222,6 +223,11 @@ def _copy_version_files(
 ) -> list[str]:
     load_release_approvals(staging_storage, published_storage)
     _, destination_prefix = read_staged_release(staging_storage, f"{dataset_slug}/{file_slug}/{version}")
+    try:
+        metadata = load_resolved_source_manifest(staging_storage, dataset_slug, file_slug, version).metadata
+        validate_documentation_objects(staging_storage, f"{dataset_slug}/{file_slug}/{version}", metadata)
+    except ValueError as exc:
+        raise ReleaseApprovalError("invalid_or_missing_resolved_provenance_metadata:" + str(exc)) from exc
     keys = staging_storage.list_keys(dataset_slug, file_slug, version)
     legacy = _legacy_unknown_shapefile_archive(
         staging_storage, dataset_slug, file_slug, version, keys

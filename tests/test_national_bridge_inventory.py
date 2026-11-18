@@ -1,5 +1,4 @@
-"""Small, explicit synthetic NBI fixtures; the complete official input is opt-in."""
-import hashlib
+"""Small, explicit synthetic SNBI fixtures; the complete official input is opt-in."""
 import json
 import os
 import struct
@@ -11,165 +10,132 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from dagster import AssetKey, DefaultScheduleStatus
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
-from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 from dagster_hifld.sources import national_bridge_inventory as f
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.national_bridge_inventory import nbi_source_integrity_schedule
 
+SCHEMA={'$id':'synthetic.schema.json','title':'Synthetic SNBI','type':'array','items':{'required':['BL01','BID01'],'properties':{
+    'BL01':{'description':'State Code','type':'integer'},'BID01':{'description':'Bridge Number','type':'string'},
+    'BID02':{'description':'Bridge Name','type':'string'},'BL05':{'description':'Latitude','type':'number'},
+    'BL06':{'description':'Longitude','type':'number'},'BG01':{'description':'NBIS Bridge Length','type':'number'},
+    'BC01':{'description':'Deck Condition Rating','type':'string'},
+    'Features':{'description':'Features','type':'array','items':{'type':'object','required':['BF01'],'properties':{
+        'BF01':{'description':'Feature Type','type':'string'},'BF03':{'description':'Feature Name','type':'string'},
+        'BH08':{'description':'Lanes on Highway','type':'integer'},'Routes':{'type':'array','items':{'type':'object','required':['BRT01'],'properties':{
+            'BRT01':{'description':'Route Designation','type':'string'},'BRT02':{'description':'Route Number','type':'string'}}}}}}}}}}
 
-def record(state=b'113',structure=b'0001           ',lat=b'38554600',lon=b'077070110',features=b'STREET OVER CREEK',location=b'0.1 KM S OF JUNCTION'):
-    payload=bytearray(b' '*445)
-    payload[0:3]=state;payload[3:18]=structure.ljust(15)[:15];payload[37:61]=features.ljust(24)[:24];payload[80:105]=location.ljust(25)[:25]
-    payload[129:137]=lat;payload[137:146]=lon;payload[389:390]=b'1';payload[433:434]=b'1';payload[434:435]=b'7'
-    payload[435:445]=b'0000010000'
-    return bytes(payload)
+def record(state=11,number='0001',name='Chain Bridge',lat=38.929444,lon=-77.116972,features=None):
+    return {'BL01':state,'BID01':number,'BID02':name,'BL05':lat,'BL06':lon,'BG01':1383.0,'BC01':'7',
+        'Features':features if features is not None else [{'BF01':'H01','BF03':'Chain Bridge Road','BH08':3.0,'Routes':[{'BF01':'H01','BRT01':'R01','BRT02':'0'}]}]}
 
 def state_body(*records):
-    return b''.join(r+b'\r\n' for r in records)
+    return json.dumps(list(records),separators=(',',':')).encode()
 
-def expected_for(body,item1,rows=1,short=0):
-    return (hashlib.sha256(body).hexdigest(),len(body),rows,'CRLF',item1,short)
+def release_page(rows):
+    cells=[]
+    for name,href,count in rows:
+        links=''
+        if href:
+            links=f'<td><a href="{href}">JSON</a></td>'
+        cells.append(f'<tr><th scope="row" class="row">{name}</th><td class="txtright">{count:,}</td>{links}</tr>')
+    total=sum(count for _,_,count in rows)
+    cells.append(f'<tr><th scope="row" class="row">Total: All Hwy Bridges</th><td class="txtright">{total:,}</td></tr>')
+    return ('<table>'+''.join(cells)+'</table>').encode()
 
 def receipt(url,body,**over):
-    r={'url':url,'final_url':url,'status':200,'bytes':len(body),'sha256':f.digest(body),'complete_body':True,
-        'observed_at':'2026-11-10T00:00:00+00:00','server_last_modified':'Thu, 12 Jun 2025 16:53:24 GMT'}
-    r.update(over);return r
+    value={'url':url,'final_url':url,'status':200,'bytes':len(body),'sha256':f.digest(body),'complete_body':True,
+        'observed_at':'2026-11-17T00:00:00+00:00','server_last_modified':'Wed, 07 Oct 2026 12:00:00 GMT'}
+    value.update(over);return value
 
-
-class PatchedContract:
-    """Two synthetic state files plus matching URL/pin mocks for inspect_captures."""
-    def __init__(self):
-        self.dc=state_body(record())
-        self.tx=state_body(record(state=b'486',structure=b'0002           '),record(state=b'486',structure=b'1103(RAMP C)'))
-        self.bodies={'landing':b'explicit synthetic landing','files_page':b'links nbiState=DC25 nbiState=TX25',
-            'format':b'explicit synthetic record format page','crosswalk':b'explicit synthetic data crosswalk',
-            'disclaimer':b'explicit synthetic download disclaimer','state_DC':self.dc,'state_TX':self.tx}
-        self.urls={'landing':f.LANDING,'files_page':f.FILES_PAGE,'format':f.FORMAT_PAGE,'crosswalk':f.CROSSWALK_URL,
-            'disclaimer':f.DISCLAIMER,'state_DC':'https://www.fhwa.dot.gov/bridge/nbi/2025/DC25.txt',
-            'state_TX':'https://www.fhwa.dot.gov/bridge/nbi/2025/TX25.txt'}
-        self.expected={'DC':expected_for(self.dc,'113'),'TX':expected_for(self.tx,'486',rows=2)}
-        ids=sorted([('113','0001           '),('486','0002           '),('486','1103(RAMP C)   ')])
-        self.roster_sha=f.digest(('\n'.join(f'{s}|{n}'for s,n in ids)+'\n').encode())
-    def pins(self):
-        return {'EXPECTED_FILES':self.expected,'URLS':self.urls,'TOKENS':('DC','TX'),'EXPECTED_TOTAL_COUNT':3,
-            'EXPECTED_ID_ROSTER_SHA256':self.roster_sha,'EXPECTED_COMPOSITE_DUPLICATE_COUNT':0,'EXPECTED_DUPLICATE_KEYS':[],
-            'EXPECTED_ZERO_COORDINATE_COUNT':0,'EXPECTED_OUT_OF_ENVELOPE_COUNT':0,'EXPECTED_BLANK_COORDINATE_COUNT':0,
-            'EXPECTED_PARTIAL_COORDINATE_COUNT':0,'EXPECTED_SIGNED_COORDINATE_COUNT':0,'EXPECTED_WHITESPACE_COORDINATE_COUNT':0,'EXPECTED_SHORT_RECORD_COUNT':0,
-            'EXPECTED_BLANK_STRUCTURE_NUMBER_COUNT':0,'EXPECTED_NON_ASCII_BYTES':{}}
+class Contract:
+    def __init__(self,tx_records=None,dc_records=None):
+        self.index=b'<a href="nbi_data_2025.cfm">2025</a><a href="nbi_data_2026.cfm">2026</a>'
+        self.release=release_page([('District of Columbia','2026/JSON/DC26.json',len(dc_records or [record()])),
+            ('Texas','2026/JSON/TX26.json',len(tx_records or [record(state=48,number='0002'),record(state=48,number='1103(RAMP C)')])),
+            ('Massachusetts','2026/JSON/MS26.json',1),('Guam',None,0)])
+        self.schema_page=b'<a href="SNBI.Schema.v04.json">schema</a>'
+        self.schema=json.dumps(SCHEMA,separators=(',',':')).encode()
+        self.bodies={'index':self.index,'release':self.release,'schema_page':self.schema_page,'schema':self.schema,
+            'state_DC':state_body(*(dc_records or [record()])),
+            'state_TX':state_body(*(tx_records or [record(state=48,number='0002'),record(state=48,number='1103(RAMP C)')])),
+            'state_MA':state_body(record(state=25,number='0003',name='Berkshire Bridge'))}
+    def urls(self):
+        base='https://www.fhwa.dot.gov/bridge/nbi/2026/JSON/'
+        return {'index':f.INDEX_URL,'release':'https://www.fhwa.dot.gov/bridge/nbi/nbi_data_2026.cfm','schema_page':f.SCHEMA_PAGE_URL,
+            'schema':'https://www.fhwa.dot.gov/bridge/snbi/SNBI.Schema.v04.json','state_DC':base+'DC26.json','state_TX':base+'TX26.json','state_MA':base+'MA26.json'}
     def captures(self):
-        return {n:(body,receipt(self.urls[n],body))for n,body in self.bodies.items()}
+        urls=self.urls();return {name:(body,receipt(urls[name],body))for name,body in self.bodies.items()}
 
 
 class NBIParseTests(unittest.TestCase):
-    def test_layout_covers_official_record_exactly_once(self):
-        self.assertEqual(len(f.LAYOUT),124);covered=[]
-        for name,start,end,declared in f.LAYOUT:
-            if declared!='-':self.assertEqual(end-start+1,int(declared.split('/')[0]))
-            covered.extend(range(start,end+1))
-        self.assertEqual(sorted(covered),list(range(1,446)))
-        self.assertEqual(len({n for n,_,_,_ in f.LAYOUT}),124)
-    def test_parse_preserves_exact_fixed_width_bytes(self):
-        body=state_body(record())
-        arrays,ids,stats=f.parse_state_file(body,'DC',expected_for(body,'113'))
-        table=pa.Table.from_arrays(arrays,schema=f.build_schema())
-        self.assertEqual(table.num_rows,1);self.assertEqual(table.num_columns,125)
-        self.assertEqual(table['STRUCTURE_NUMBER_008'].to_pylist(),['0001           '])
-        self.assertEqual(table['LATITUDE_016'].to_pylist(),['38554600']);self.assertEqual(table['LONGITUDE_017'].to_pylist(),['077070110'])
-        self.assertEqual(table['KILOMETERPOINT_011'].to_pylist(),['       '])
-        self.assertEqual(table['WASHINGTON_HQ_USE_RESERVED'].to_pylist(),[' '*41])
-        self.assertEqual(table['DECK_AREA'].to_pylist(),['0000010000'])
+    def test_discover_release_uses_newest_year(self):
+        year,url=f.discover_release(b'<a href="nbi_data_2024.cfm">2024</a><a href="nbi_data_2026.cfm">2026</a>')
+        self.assertEqual((year,url),(2026,'https://www.fhwa.dot.gov/bridge/nbi/nbi_data_2026.cfm'))
+    def test_release_page_roster_total_and_massachusetts_link_correction(self):
+        with mock.patch.object(f,'MIN_STATES',1):
+            release=f.parse_release_page(Contract().release,2026,'https://www.fhwa.dot.gov/bridge/nbi/nbi_data_2026.cfm')
+        self.assertEqual(release['total'],4);self.assertEqual(set(release['states']),{'DC','TX','MA'})
+        self.assertEqual(release['states']['MA']['url'],'https://www.fhwa.dot.gov/bridge/nbi/2026/JSON/MA26.json')
+        self.assertEqual(release['link_corrections']['Massachusetts'],{'page_token':'MS','used_token':'MA'})
+    def test_parse_preserves_native_types_and_nested_arrays(self):
+        table,ids,stats=f.parse_state_file(state_body(record()),'DC',SCHEMA)
+        self.assertEqual(table.num_rows,1);self.assertEqual(table.num_columns,10)
+        self.assertEqual(table['BL01'].to_pylist(),[11]);self.assertEqual(table['BID01'].to_pylist(),['0001'])
+        self.assertEqual(table['BG01'].to_pylist(),[1383.0]);self.assertEqual(table['DATA_YEAR'].to_pylist(),[None])
+        self.assertEqual(table['Features'].to_pylist(),['[{"BF01":"H01","BF03":"Chain Bridge Road","BH08":3.0,"Routes":[{"BF01":"H01","BRT01":"R01","BRT02":"0"}]}]'])
         self.assertEqual(table['geometry'].to_pylist(),[struct.pack('<BIdd',1,1,-77.116972,38.929444)])
-        self.assertEqual(json.loads(table.schema.field('LATITUDE_016').metadata[b'nbi_ascii_layout'])['start'],130)
-    def test_official_crosswalk_conversion_and_hemisphere_rules(self):
-        cases=[(b'38554600',b'077070110',b'113',(38.929444,-77.116972)),
-            (b'00385444',b'770301400',b'113',(0.648456,-770.503889)),
-            (b'00000039',b'-00000007',b'243',(0.000108,-0.000019)),
-            (b'00000000',b'000000000',b'113',(0.0,0.0)),
-            (b' 3612109',b'008017241',b'374',(4.022525,-8.036781)),
-            (b'13190000',b'144301230',b'066',(13.316667,144.503417)),
-            (b'14033000',b'170120000',b'060',(-14.058333,-170.2))]
-        for lat,lon,state,expect in cases:
-            point,category,signed,padded,zero=f.geometry_for(record(state=state,lat=lat,lon=lon),state.decode())
-            self.assertEqual((struct.unpack('<d',point[13:21])[0],struct.unpack('<d',point[5:13])[0]),expect,(lat,lon,state))
-        point,category,signed,padded,zero=f.geometry_for(record(lat=b' 3612109'),'NC')
-        self.assertTrue(padded)
-        point,category,signed,padded,zero=f.geometry_for(record(lat=b'        ',lon=b'         '),'DC')
-        self.assertIsNone(point);self.assertEqual(category,'blank')
-        point,category,signed,padded,zero=f.geometry_for(record(lat=b'        '),'DC')
-        self.assertIsNone(point);self.assertEqual(category,'partial')
-    def test_signed_value_contradicting_documented_hemisphere_fails_closed(self):
-        with self.assertRaisesRegex(ValueError,'sign_contradicts'):f.geometry_for(record(lon=b'+077070110'),'DC')
-        with self.assertRaisesRegex(ValueError,'sign_contradicts'):f.geometry_for(record(state=b'066',lat=b'13190000',lon=b'-144301230'),'GU')
-    def test_malformed_coordinates_and_line_handling(self):
-        with self.assertRaises(ValueError):f.geometry_for(record(lat=b'38554A00',lon=b'077070110'),'DC')
-        with self.assertRaises(ValueError):f.coordinate_decimal(b'385546A0','DC')
-        with self.assertRaises(ValueError):f.split_state_body(b'38554600','DC')
-        with self.assertRaises(ValueError):f.split_state_body(record(),'DC')
-        with self.assertRaises(ValueError):f.split_state_body(record()[:300]+b'\r\n','DC')
-    def test_producer_short_tail_record_keeps_available_items(self):
-        body=state_body(record()[:421])
-        arrays,ids,stats=f.parse_state_file(body,'DC',expected_for(body,'113',short=1))
-        table=pa.Table.from_arrays(arrays,schema=f.build_schema())
-        self.assertEqual(stats['short'],1)
-        self.assertEqual(table['STRUCTURE_NUMBER_008'].to_pylist(),['0001           '])
-        self.assertIsNone(table['BRIDGE_CONDITION'][0].as_py());self.assertIsNone(table['DECK_AREA'][0].as_py())
-        self.assertEqual(table['FEDERAL_AGENCY_INDICATOR'][0].as_py(),'1')
-    def test_non_ascii_bytes_are_pinned_and_preserved(self):
-        body=state_body(record(features=b'A\xa5ASCO BRIDGE'))
-        with mock.patch.object(f,'EXPECTED_NON_ASCII_BYTES',{'PR':1}):
-            arrays,ids,stats=f.parse_state_file(body,'PR',expected_for(body,'113'))
-            table=pa.Table.from_arrays(arrays,schema=f.build_schema())
-            self.assertEqual(stats['non_ascii_bytes'],1)
-            self.assertEqual(table['FEATURES_INTERSECTED_006A'].to_pylist(),['A\xa5ASCO BRIDGE           '])
-        with mock.patch.object(f,'EXPECTED_NON_ASCII_BYTES',{}):
-            with self.assertRaisesRegex(ValueError,'non_ascii'):f.parse_state_file(body,'PR',expected_for(body,'113'))
+        self.assertEqual(ids,[(11,'0001')]);self.assertEqual(stats['nested_counts'],{'Features':1});self.assertEqual(stats['producer_extra_counts'],{'DATA_YEAR':0})
+    def test_known_producer_extra_data_year_is_preserved_as_served(self):
+        table,ids,stats=f.parse_state_file(state_body(record(),{**record(number='0002'),'DATA_YEAR':'8/4/2026'}),'CT',SCHEMA)
+        self.assertEqual(table['DATA_YEAR'].to_pylist(),[None,'8/4/2026'])
+        self.assertEqual(stats['producer_extra_counts'],{'DATA_YEAR':1})
+    def test_geometry_categories_and_out_of_envelope_values(self):
+        body=state_body(record(lat=None,lon=None),record(number='0002',lat=None),record(number='0003',lat=0.0,lon=0.0),record(number='0004',lat=95.0,lon=200.0))
+        table,ids,stats=f.parse_state_file(body,'DC',SCHEMA)
+        self.assertEqual(table['geometry'].to_pylist()[:3],[None,None,struct.pack('<BIdd',1,1,0.0,0.0)])
+        self.assertEqual((stats['blank'],stats['partial'],stats['zero'],stats['out_of_envelope']),(1,1,1,1))
+    def test_top_level_type_and_required_fields_fail_closed(self):
+        with self.assertRaisesRegex(ValueError,'snbi_field_type_drift'):f.parse_state_file(state_body(record(number=1)),'DC',SCHEMA)
+        bad=record();del bad['BID01']
+        with self.assertRaisesRegex(ValueError,'state_record_required_field_missing'):f.parse_state_file(state_body(bad),'DC',SCHEMA)
+        bad=record();bad['RENAMED']='x'
+        with self.assertRaisesRegex(ValueError,'state_record_unknown_field'):f.parse_state_file(state_body(bad),'DC',SCHEMA)
 
 
 class NBIContractTests(unittest.TestCase):
     def setUp(self):
-        self.contract=PatchedContract();self.pins=self.contract.pins()
-        self.originals={name:getattr(f,name)for name in self.pins}
-        for name,value in self.pins.items():setattr(f,name,value)
-    def tearDown(self):
-        for name,value in self.originals.items():setattr(f,name,value)
-    def test_inspect_binds_complete_synthetic_population(self):
+        self.contract=Contract();self.patch=mock.patch.object(f,'MIN_STATES',1);self.patch.start()
+    def tearDown(self):self.patch.stop()
+    def test_inspect_binds_complete_population(self):
         table,audit=f.inspect_captures(self.contract.captures())
-        self.assertEqual(table.num_rows,3);self.assertEqual(audit['count'],3)
-        self.assertEqual(audit['state_rows'],{'DC':1,'TX':2})
-        self.assertEqual(audit['composite_ID_duplicate_keys'],[])
-        self.assertEqual(table['STRUCTURE_NUMBER_008'].to_pylist(),['0001           ','0002           ','1103(RAMP C)   '])
-    def test_state_file_bytes_roster_and_population_drift(self):
-        good=self.contract.captures()
-        bad=dict(good);changed=state_body(record(structure=b'0999           '))
-        bad['state_DC']=(changed,receipt(self.contract.urls['state_DC'],changed))
-        with self.assertRaisesRegex(ValueError,'state_file_bytes_drift'):f.inspect_captures(bad)
-        bad=dict(good);page=good['files_page'][0].replace(b'nbiState=DC25',b'nbiState=XX25')
-        bad['files_page']=(page,receipt(self.contract.urls['files_page'],page))
-        with self.assertRaisesRegex(ValueError,'producer_state_file_roster_drift'):f.inspect_captures(bad)
-        bad=dict(good);del bad['state_TX']
+        self.assertEqual(table.num_rows,4);self.assertEqual(audit['count'],4);self.assertEqual(audit['release_year'],2026)
+        self.assertEqual(audit['state_rows'],{'DC':1,'TX':2,'MA':1});self.assertEqual(audit['composite_ID_duplicate_count'],0)
+        self.assertEqual(audit['field_count'],8);self.assertEqual(audit['release_page_total'],4)
+        self.assertEqual(audit['release_page_count_drift'],{});self.assertEqual(audit['release_page_total_drift'],0)
+        self.assertEqual(audit['producer_extra_field_counts'],{'DATA_YEAR':0})
+    def test_duplicate_composite_ids_are_counted_not_merged(self):
+        tx=[record(state=48,number='0002'),record(state=48,number='0002')]
+        table,audit=f.inspect_captures(Contract(tx_records=tx).captures())
+        self.assertEqual(table.num_rows,4);self.assertEqual(audit['composite_ID_duplicate_count'],1)
+        self.assertEqual(audit['composite_ID_duplicate_keys'],[[48,'0002']])
+    def test_release_page_counts_are_advisory_and_recorded(self):
+        captures=self.contract.captures();bad=dict(captures);body=state_body(record(),record(number='0002'))
+        bad['state_DC']=(body,receipt(captures['state_DC'][1]['url'],body))
+        table,audit=f.inspect_captures(bad)
+        self.assertEqual(table.num_rows,5);self.assertEqual(audit['count'],5)
+        self.assertEqual(audit['release_page_count_drift'],{'DC':1});self.assertEqual(audit['release_page_total_drift'],1)
+        bad=dict(captures);del bad['state_TX']
         with self.assertRaisesRegex(ValueError,'capture_roster_drift'):f.inspect_captures(bad)
-        extended=good['state_TX'][0]+record(state=b'486',structure=b'0003           ')+b'\r\n'
-        bad=dict(good);bad['state_TX']=(extended,receipt(self.contract.urls['state_TX'],extended))
-        rebind=dict(self.contract.expected);rebind['TX']=expected_for(extended,'486',rows=3)
-        with mock.patch.object(f,'EXPECTED_FILES',rebind):
-            with self.assertRaisesRegex(ValueError,'complete_count_drift'):f.inspect_captures(bad)
-        duplicated=good['state_TX'][0]+record(state=b'486',structure=b'1103(RAMP C)')+b'\r\n'
-        bad=dict(good);bad['state_TX']=(duplicated,receipt(self.contract.urls['state_TX'],duplicated))
-        rebind=dict(self.contract.expected);rebind['TX']=expected_for(duplicated,'486',rows=3)
-        with mock.patch.object(f,'EXPECTED_FILES',rebind):
-            with self.assertRaisesRegex(ValueError,'composite_ID_duplicate_drift'):f.inspect_captures(bad)
     def test_receipt_strictness_and_first_party_provenance(self):
-        n='state_DC';body=self.contract.dc
-        item=f.validate_receipt(n,body,receipt(self.contract.urls[n],body))
+        captures=self.contract.captures();url=captures['state_DC'][1]['url'];body=captures['state_DC'][0]
+        item=f.validate_receipt('state_DC',body,receipt(url,body),self.contract.urls())
         self.assertEqual(item['role'],'producer_publication');self.assertIn('Federal Highway Administration',item['producer'])
-        self.assertEqual(item['release_date'],'2025-06-12')
-        self.assertEqual(item['delegation_evidence']['producer_program_url'],f.PROGRAM)
-        self.assertEqual(item['server_last_modified'],'Thu, 12 Jun 2025 16:53:24 GMT')
-        for key,value in[('status',200.0),('bytes',True),('complete_body',1),('observed_at','2026-11-10'),('url',self.contract.urls[n]+'x'),('server_last_modified','')]:
-            bad=receipt(self.contract.urls[n],body);bad[key]=value
-            with self.assertRaises(ValueError,msg=key):f.validate_receipt(n,body,bad)
+        self.assertEqual(item['release_date'],'2026-10-07');self.assertEqual(item['delegation_evidence']['release_index_url'],f.INDEX_URL)
+        for key,value in[('status',200.0),('bytes',True),('complete_body',1),('observed_at','2026-11-10'),('url',url+'x'),('server_last_modified','')]:
+            bad=receipt(url,body);bad[key]=value
+            with self.assertRaises(ValueError,msg=key):f.validate_receipt('state_DC',body,bad,self.contract.urls())
     def test_registration_explicit_asset_and_stopped_refresh(self):
         key=AssetKey(['ingest',f.SLUG,f.SLUG])
         self.assertEqual(set(defs.resolve_job_def('nbi_source_integrity').asset_layer.executable_asset_keys),{key})
@@ -182,6 +148,7 @@ class NBIContractTests(unittest.TestCase):
         original=f.manifest_for(captures,identity,pin)
         self.assertEqual([r['input_id'].split(':')[0]for r in original['inputs']],sorted(captures))
         self.assertEqual(f.encode(original),f.encode(f.manifest_for(dict(reversed(list(captures.items()))),identity,pin)))
+        self.assertIn('2026',original['title'])
         self.assertEqual(original['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]['path'],'geoparquet/'+f.SLUG+'.parquet')
     def test_checked_private_READY_failure_precedes_any_outside_seal(self):
         captures=self.contract.captures()
@@ -228,11 +195,14 @@ class NBIContractTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get('HIFLD_NBI_TEST_CAPTURE_DIR'),'Complete official real capture is explicit external input')
 class CompleteNBI(unittest.TestCase):
-    def test_complete_official_2025_ascii_release(self):
+    def test_complete_official_snbi_release(self):
         root=Path(os.environ['HIFLD_NBI_TEST_CAPTURE_DIR'])
-        captures={n:(f.bounded_input(root/(n+'.body'),f.MAX_BODY_BYTES),f.strict_json(f.bounded_input(root/(n+'.receipt.json'),65536)))for n in f.URLS}
+        names=('index','release','schema_page','schema')
+        captures={name:(f.bounded_input(root/(name+'.body'),f.MAX_BODY_BYTES),f.strict_json(f.bounded_input(root/(name+'.receipt.json'),65536)))for name in names}
+        _,release,_=f.context_from_captures(captures)
+        for token in release['states']:
+            captures['state_'+token]=(f.bounded_input(root/('state_'+token+'.body'),f.MAX_BODY_BYTES),f.strict_json(f.bounded_input(root/('state_'+token+'.receipt.json'),65536)))
         table,audit=f.inspect_captures(captures)
-        self.assertEqual(table.num_rows,624193);self.assertEqual(table.num_columns,125)
-        self.assertEqual(audit['state_rows']['DC'],261);self.assertEqual(audit['non_ascii_bytes'],{'NY':5,'PR':2})
+        self.assertGreaterEqual(table.num_rows,600000);self.assertEqual(audit['release_year'],2026)
 
 if __name__=='__main__':unittest.main()

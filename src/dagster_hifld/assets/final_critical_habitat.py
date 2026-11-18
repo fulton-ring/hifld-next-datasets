@@ -41,3 +41,8 @@ final_critical_habitat_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [final_critical_habitat_features]
+ASSET_CHECKS = [final_critical_habitat_complete]
+JOBS = [final_critical_habitat_draft_job]
+SCHEDULES = [final_critical_habitat_draft_schedule]
