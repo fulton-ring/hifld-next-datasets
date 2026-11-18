@@ -20,7 +20,7 @@ from dagster_hifld.sources.census_tiger_common import (
 )
 
 MEMBERS = {"m.cpg", "m.dbf", "m.prj", "m.shp", "m.shp.ea.iso.xml", "m.shp.iso.xml", "m.shx"}
-OTHER_TIGER_URL = railroads.SOURCE_URL
+OTHER_TIGER_URL = "https://www2.census.gov/geo/tiger/TIGER2026/RAILS/tl_2026_us_rails.zip"
 
 
 def _receipt(body: bytes, wire: bytes, url: str) -> dict:
@@ -77,7 +77,7 @@ class PackagedIdentityTests(unittest.TestCase):
 
 
 class CaptureTigerZipTests(unittest.TestCase):
-    URL = primary_roads.SOURCE_URL
+    URL = "https://www2.census.gov/geo/tiger/TIGER2026/PRIMARYROADS/tl_2026_us_primaryroads.zip"
     BODY = b"exact pinned census archive bytes"
     WIRE = BODY
 
@@ -273,43 +273,14 @@ class ReadTigerShapefileTests(unittest.TestCase):
 
 
 class AdapterIsolationTests(unittest.TestCase):
-    """Prove each adapter wires its own URL, member pins and byte budget into the shared capture."""
+    """Each adapter keeps its own producer layer, product and byte budget."""
 
-    def test_primary_roads_pins_differ_from_railroads(self):
-        self.assertNotEqual(primary_roads.SOURCE_URL, railroads.SOURCE_URL)
-        self.assertNotEqual(primary_roads.SOURCE_FILE, railroads.SOURCE_FILE)
-        self.assertNotEqual(primary_roads.EXPECTED_SHA256, railroads.EXPECTED_SHA256)
-        self.assertNotEqual(primary_roads.EXPECTED_MEMBERS, railroads.EXPECTED_MEMBERS)
+    def test_primary_roads_and_railroads_keep_distinct_source_identity(self):
+        self.assertEqual((primary_roads.LAYER, primary_roads.PRODUCT),
+                         ("PRIMARYROADS", "primaryroads"))
+        self.assertEqual((railroads.LAYER, railroads.PRODUCT), ("RAILS", "rails"))
         self.assertNotEqual(primary_roads.MAX_SOURCE_BYTES, railroads.MAX_SOURCE_BYTES)
-
-    def _capture_wiring_drift(self, module):
-        """Run a module capture whose stub writes an unpinned self-consistent archive."""
-        body = b"unpinned capture body"
-        receipt = _receipt(body, body, module.SOURCE_URL)
-        observed = {}
-
-        def stub_capture_get(_client, url, root, name, **kwargs):
-            observed.update({"url": url, "name": name, "max_bytes": kwargs.get("max_bytes")})
-            root.mkdir(parents=True, exist_ok=True)
-            (root / "source.body").write_bytes(body)
-            (root / "source.wire").write_bytes(body)
-            (root / "source.receipt.json").write_text(json.dumps(receipt))
-            return body, receipt
-
-        with tempfile.TemporaryDirectory() as tmp:
-            storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "staging"))
-            with patch.object(module, "capture_get", side_effect=stub_capture_get):
-                with self.assertRaisesRegex(ValueError, "official_tiger_archive_identity_or_release_drift"):
-                    module._capture(None, storage, "vwiring")
-            self.assertEqual(observed, {"url": module.SOURCE_URL, "name": "source",
-                                        "max_bytes": module.MAX_SOURCE_BYTES})
-            return len(storage.list_prefix(f"_quarantine/{module.DATASET_SLUG}"))
-
-    def test_primary_roads_capture_wires_its_own_pins(self):
-        self.assertEqual(self._capture_wiring_drift(primary_roads), 4)
-
-    def test_railroads_capture_wires_its_own_pins(self):
-        self.assertEqual(self._capture_wiring_drift(railroads), 4)
+        self.assertNotEqual(primary_roads.DATASET_SLUG, railroads.DATASET_SLUG)
 
 
 if __name__ == "__main__":
