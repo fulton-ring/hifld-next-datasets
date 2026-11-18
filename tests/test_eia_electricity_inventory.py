@@ -30,8 +30,9 @@ class EIAInventoryTests(unittest.TestCase):
 
     def test_remote_staging_is_rejected_before_capture_or_storage(self):
         from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources import eia_860m_common as common
         storage = StagingStorageResource(use_local=False, bucket='not-accessed-eia-test')
-        with tempfile.TemporaryDirectory() as temp, patch.object(source, 'capture_get', side_effect=AssertionError('HTTP attempted')) as capture, patch.object(source, 'write_immutable', side_effect=AssertionError('storage attempted')) as write:
+        with tempfile.TemporaryDirectory() as temp, patch.object(common, 'capture_get', side_effect=AssertionError('HTTP attempted')) as capture, patch.object(common, 'write_immutable', side_effect=AssertionError('storage attempted')) as write:
             with self.assertRaisesRegex(ValueError, 'local_staging'):
                 source.capture_inventory(storage, capture_directory=temp+'/uncreated')
             capture.assert_not_called()

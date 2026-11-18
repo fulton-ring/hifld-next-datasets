@@ -82,7 +82,7 @@ from dagster_hifld.assets.usace_dynamic_buoys import usace_dynamic_buoys_usace_i
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_areas_usace_ienc
 from dagster_hifld.assets.usace_dumping_ground_areas import usace_dumping_ground_areas_usace_ienc
-from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
+from dagster_hifld.assets.ornl_power_plants import eia_power_plants
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
 from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
@@ -211,7 +211,7 @@ hifld_ingest_assets = [
     usace_pipeline_areas_usace_ienc,
     usace_data_quality_areas_usace_ienc,
     usace_dumping_ground_areas_usace_ienc,
-    eia_power_plants_historical,
+    eia_power_plants,
     epa_frs_eia_860_power_generation_facilities_by_source,
     epa_icis_wastewater_treatment_plants,
     fuds_irm_property_point_ingest,
