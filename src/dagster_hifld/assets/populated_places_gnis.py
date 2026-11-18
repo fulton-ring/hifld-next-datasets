@@ -12,13 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.populated_places_gnis import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_populated_places_gnis,
 )
@@ -63,9 +62,9 @@ def populated_places_gnis(
 @asset_check(asset=populated_places_gnis, blocking=True)
 def populated_places_gnis_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and (EXPECTED_NULL_GEOMETRY_COUNT is None
-             or candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT)
+        candidate.get("capture_complete") is True
+        and type(candidate.get("feature_count")) is int
+        and candidate["feature_count"] > 0
     )
     return AssetCheckResult(
         passed=passed,
@@ -86,6 +85,10 @@ def populated_places_gnis_complete(candidate: dict) -> AssetCheckResult:
     )
 
 
+populated_places_gnis_approved_baseline_drift = register_approved_baseline_drift(
+    populated_places_gnis, "populated_places_gnis_approved_baseline_drift")
+
+
 populated_places_gnis_draft_job = define_asset_job(
     "populated_places_gnis_draft_refresh",
     selection=AssetSelection.assets(populated_places_gnis),
@@ -99,6 +102,6 @@ populated_places_gnis_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [populated_places_gnis]
-ASSET_CHECKS = [populated_places_gnis_complete]
+ASSET_CHECKS = [populated_places_gnis_complete, populated_places_gnis_approved_baseline_drift]
 JOBS = [populated_places_gnis_draft_job]
 SCHEDULES = [populated_places_gnis_draft_schedule]

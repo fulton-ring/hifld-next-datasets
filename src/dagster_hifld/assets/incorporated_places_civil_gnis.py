@@ -12,13 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.incorporated_places_civil_gnis import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_incorporated_places_civil_gnis,
 )
@@ -63,9 +62,9 @@ def incorporated_places_civil_gnis(
 @asset_check(asset=incorporated_places_civil_gnis, blocking=True)
 def incorporated_places_civil_gnis_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and (EXPECTED_NULL_GEOMETRY_COUNT is None
-             or candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT)
+        candidate.get("capture_complete") is True
+        and type(candidate.get("feature_count")) is int
+        and candidate["feature_count"] > 0
     )
     return AssetCheckResult(
         passed=passed,
@@ -86,6 +85,10 @@ def incorporated_places_civil_gnis_complete(candidate: dict) -> AssetCheckResult
     )
 
 
+incorporated_places_civil_gnis_approved_baseline_drift = register_approved_baseline_drift(
+    incorporated_places_civil_gnis, "incorporated_places_civil_gnis_approved_baseline_drift")
+
+
 incorporated_places_civil_gnis_draft_job = define_asset_job(
     "incorporated_places_civil_gnis_draft_refresh",
     selection=AssetSelection.assets(incorporated_places_civil_gnis),
@@ -99,6 +102,6 @@ incorporated_places_civil_gnis_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [incorporated_places_civil_gnis]
-ASSET_CHECKS = [incorporated_places_civil_gnis_complete]
+ASSET_CHECKS = [incorporated_places_civil_gnis_complete, incorporated_places_civil_gnis_approved_baseline_drift]
 JOBS = [incorporated_places_civil_gnis_draft_job]
 SCHEDULES = [incorporated_places_civil_gnis_draft_schedule]
