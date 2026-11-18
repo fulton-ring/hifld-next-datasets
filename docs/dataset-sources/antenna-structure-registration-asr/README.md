@@ -12,17 +12,19 @@ with the tower-table field layouts in `https://www.fcc.gov/sites/default/files/p
 and `https://www.fcc.gov/sites/default/files/patower-4.pdf` (RA registration/application, CO
 coordinates, EN entity, HS history, RE remarks, SC special condition, DE FAA determinations).
 
-## Dated access evidence (2026-11-12, anonymous, current runtime)
+## Dated access evidence (2026-11-18, anonymous, current runtime)
 
 - `https://data.fcc.gov/download/pub/uls/complete/index.html` returned HTTP 200 listing
-  `a_tower.zip`, `d_tower.zip`, `r_tower.zip`, each dated 2026-11-08.
-- `r_tower.zip` (weekly registration tables): 37,877,036 bytes, SHA-256
-  `fe21a1ac2ac9b168172a17dd8bf21560727c1b833305092aec8bfc7598cc4ab5`; members `counts`, `CO.dat`,
+  `a_tower.zip`, `d_tower.zip`, `r_tower.zip`, each dated 2026-11-15.
+- `r_tower.zip` (weekly registration tables): 37,937,572 bytes, SHA-256
+  `51ff4fd54169bb7525b52b30422d856296033656e0dded246db810fa445b3243`; members `counts`, `CO.dat`,
   `EN.dat`, `HS.dat`, `RA.dat`, `RE.dat`, `SC.dat`; `counts` records "File Creation Date:
-  Sun Nov  8 06:21:02 EST 2026" with per-member record counts (RA 198,010; CO 203,245;
-  EN 374,223; HS 325,193; RE 23,483; SC 4,297).
-- `a_tower.zip` (weekly application tables): 209,500,055 bytes, SHA-256
-  `bcbc5fa4b32b0d549536bebc42d099053458aa9dc5345c2f8c85b1415f083b47`.
+  Sun Nov 15 06:19:55 EST 2026" with per-member record counts (RA 198,069; CO 203,304;
+  EN 374,343; HS 325,165; RE 23,483; SC 4,299).
+- The superseded 2026-11-12 probe captured the 2026-11-08 edition: `r_tower.zip` 37,877,036
+  bytes, SHA-256 `fe21a1ac2ac9b168172a17dd8bf21560727c1b833305092aec8bfc7598cc4ab5`, counts
+  "File Creation Date: Sun Nov  8 06:21:02 EST 2026" (RA 198,010; CO 203,245; EN 374,223),
+  and `a_tower.zip` 209,500,055 bytes.
 - The superseded October probes: the prior runtime's fresh anonymous GETs on 2026-10-19
   returned origin HTTP 403 Akamai Access Denied (see
   [blocker comment](https://github.com/fulton-ring/hifld-next-datasets/issues/18#issuecomment-6260784882),
@@ -34,24 +36,24 @@ coordinates, EN entity, HS history, RE remarks, SC special condition, DE FAA det
   current runtime; the October 403s were an access artifact of that environment, not an
   absence of an official feed.
 
-## Observed weekly registry facts (2026-11-08 edition, from `r_tower.zip` bytes)
+## Observed weekly registry facts (2026-11-15 edition, from `r_tower.zip` bytes)
 
-- `RA.dat` (49 pipe-delimited fields per FCC's tower table layout): 198,010 registration
+- `RA.dat` (49 pipe-delimited fields per FCC's tower table layout): 198,069 registration
   records; `registration_number` and `unique_system_identifier` are each distinct across all
-  rows; status codes C 141,986 / G 18,447 / A 15,913 / I 12,740 / T 8,911 / empty 13;
-  archive flags C 160,682 / A 37,327 / empty 1.
-- `CO.dat` (18 fields): 203,245 coordinate rows — 198,009 tower (`T`) rows (one per coordinate
+  rows; status codes C 142,026 / G 18,441 / A 15,925 / I 12,753 / T 8,911 / empty 13;
+  archive flags C 160,716 / A 37,352 / empty 1.
+- `CO.dat` (18 fields): 203,304 coordinate rows — 198,068 tower (`T`) rows (one per coordinate
   registration) and 5,236 array (`A`) rows for 5,236 multi-point array registrations. Every CO
   row joins to RA on (`registration_number`, `unique_system_identifier`); coordinate type is
   part of the published row key, not a physical structure ID. Only 354 `A` rows carry
   `array_tower_position`; 4,882 do not. `array_total_tower` is preserved as a field and
   does not establish that the file supplies one coordinate per array member. Exactly one RA
   registration has no CO row; 124 CO rows carry empty or unparsable coordinate components.
-  Latitude directions N 203,102 / S 23 / empty 120; longitude W 203,023 / E 102 / empty 120;
+  Latitude directions N 203,161 / S 23 / empty 120; longitude W 203,082 / E 102 / empty 120;
   DMS-decimal points span latitude -15.15 to 71.310361 and longitude -176.705472 to 174.138861
   (including Caribbean and Pacific territories). ASR coordinates are NAD83 (the FCC ASR search
   help states "Based on NAD83"), i.e. EPSG:4269, matching the FCC-required ULS datum policy.
-- `EN.dat` (25 fields): 374,223 entity rows carrying registrant/owner names per
+- `EN.dat` (25 fields): 374,343 entity rows carrying registrant/owner names per
   (`registration_number`, `unique_system_identifier`).
 
 ## Proposed draft contract (unapproved)
@@ -119,7 +121,7 @@ operation, or equivalence to a historical HIFLD release.
 | Land Mobile Commercial / `l_LMcomm.zip` | LO license-location; (`UniqSysID`, `LocNum`) jointly unique | HD status `A`, complete file service roster; no structure-type filter. Missing coordinates remain null; documented local-datum coordinates are retained without falsely assigning NAD83 geometry. |
 | Land Mobile Private / `l_LMpriv.zip` | LO license-location; (`UniqSysID`, `LocNum`) retained, not unique | HD status `A`, both degree components present, excluding local-datum `MP`/`UM` filings from candidate points. 603,775 rows, 27 duplicate keys; 322,063 active rows without a coordinate pair remain in raw capture, 15 local-datum rows also preserved in audit. |
 | Land Mobile Broadcast Auxiliary / `l_LMbcast.zip` | LO fixed-location record; native `unique_system_identifier` + `location_number` retained without an invented row or structure ID | LO type `F`, services `LP RP LV`, **all** HD statuses; only mappable coordinates enter candidate points. Missing/invalid coordinates are counted and retained raw. This adapter does not assert uniqueness of the native location pair. |
-| ASR / `r_tower.zip` | CO registration-coordinate; (`ra_registration_number`, `ra_unique_system_identifier`, `co_coordinate_type`) jointly unique in the pinned edition | All RA status and archive codes; 198,010 RA registrations, 203,245 CO rows (198,009 `T`, 5,236 `A`), one RA without CO has no candidate row. 124 CO rows keep null geometry. No expansion by array total or position. |
+| ASR / `r_tower.zip` | CO registration-coordinate; (`ra_registration_number`, `ra_unique_system_identifier`, `co_coordinate_type`) jointly unique in the pinned edition | All RA status and archive codes; 198,069 RA registrations, 203,304 CO rows (198,068 `T`, 5,236 `A`), one RA without CO has no candidate row. 124 CO rows keep null geometry. No expansion by array total or position. |
 
 ULS joins HD and the unique EN licensee (`L`) on the native license system ID;
 one license may have multiple LO rows. ASR joins CO to RA on registration number
