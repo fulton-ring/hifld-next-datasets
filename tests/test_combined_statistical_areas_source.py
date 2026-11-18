@@ -97,7 +97,7 @@ class CSASourceTests(unittest.TestCase):
             self.assertFalse((Path(tmp)/c.SLUG).exists())
             self.assertEqual(next((Path(tmp)/'_quarantine').rglob('response.body')).read_bytes(),b'PKbad')
     def test_cached_native_rederivation_rejects_repinned_payload_tampering(self):
-        props={'OBJECTID':[1],'GEOID':['001'],'GEOIDFQ':['x'],'NAMELSAD':['x'],'LSAD':['M0'],'ALAND':[1.0],'AWATER':[0.0],'INTPTLAT':['1'],'INTPTLON':['1'],'SHAPE':[c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(1,0),(0,1),(0,0)])]))]}
+        props={'OBJECTID':[1],'CSAFP':['001'],'GEOID':['001'],'GEOIDFQ':['x'],'NAME':['x'],'NAMELSAD':['x'],'LSAD':['M0'],'MTFCC':['G3100'],'ALAND':[1.0],'AWATER':[0.0],'INTPTLAT':['1'],'INTPTLON':['1'],'SHAPE':[c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(1,0),(0,1),(0,0)])]))]}
         original=pa.Table.from_pydict(props,schema=pa.schema([pa.field(n,t) for n,t in zip(c.FIELDS,c.TYPES)]))
         original=c.expected_parquet_table(original)
         with tempfile.TemporaryDirectory() as tmp:
@@ -113,14 +113,14 @@ class CSASourceTests(unittest.TestCase):
                     c.reconcile_cached_native_outputs(root,original)
             c.pq.write_table(original,parquet)
             gpkg.unlink()
-            changed=original.set_column(3,'NAMELSAD',pa.array(['tampered']))
+            changed=original.set_column(original.column_names.index('NAMELSAD'),'NAMELSAD',pa.array(['tampered']))
             c.write_native_gpkg(changed,gpkg)
             with self.assertRaisesRegex(ValueError,'fresh_original'):
                 c.reconcile_cached_native_outputs(root,original)
 
     def test_geometry_declaration_metadata_mutations_are_not_fidelity(self):
         geometry=c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(1,0),(0,1),(0,0)])]))
-        props={'OBJECTID':[1],'GEOID':['001'],'GEOIDFQ':['x'],'NAMELSAD':['x'],'LSAD':['M0'],'ALAND':[1.0],'AWATER':[0.0],'INTPTLAT':['1'],'INTPTLON':['1'],'SHAPE':[geometry]}
+        props={'OBJECTID':[1],'CSAFP':['001'],'GEOID':['001'],'GEOIDFQ':['x'],'NAME':['x'],'NAMELSAD':['x'],'LSAD':['M0'],'MTFCC':['G3100'],'ALAND':[1.0],'AWATER':[0.0],'INTPTLAT':['1'],'INTPTLON':['1'],'SHAPE':[geometry]}
         original=pa.Table.from_pydict(props,schema=pa.schema([pa.field(n,t) for n,t in zip(c.FIELDS,c.TYPES)]))
         expected=c.expected_parquet_table(original)
         mutations=[('crs',c.pyproj.CRS(3857).to_json_dict()),('encoding','WKT'),('geometry_types',['Polygon']),('bbox',[0,0,999,999])]
@@ -143,7 +143,7 @@ class CSASourceTests(unittest.TestCase):
 
     def test_full_canonical_container_rejects_srs_headers_and_spatial_index_changes(self):
         geometry=c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(1,0),(0,1),(0,0)])]))
-        props={'OBJECTID':[1],'GEOID':['001'],'GEOIDFQ':['x'],'NAMELSAD':['x'],'LSAD':['M0'],'ALAND':[1.0],'AWATER':[0.0],'INTPTLAT':['1'],'INTPTLON':['1'],'SHAPE':[geometry]}
+        props={'OBJECTID':[1],'CSAFP':['001'],'GEOID':['001'],'GEOIDFQ':['x'],'NAME':['x'],'NAMELSAD':['x'],'LSAD':['M0'],'MTFCC':['G3100'],'ALAND':[1.0],'AWATER':[0.0],'INTPTLAT':['1'],'INTPTLON':['1'],'SHAPE':[geometry]}
         original=pa.Table.from_pydict(props,schema=pa.schema([pa.field(n,t) for n,t in zip(c.FIELDS,c.TYPES)]))
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'geopackage').mkdir();(root/'candidate').mkdir()
@@ -170,12 +170,12 @@ class CSASourceTests(unittest.TestCase):
 
     def test_source_schema_types_ids_completeness_and_geometry_guards(self):
         # Fixtures test guards only and cannot approve the real release.
-        props={'OBJECTID':list(range(1,185)),'GEOID':[str(i).zfill(3) for i in range(184)],'GEOIDFQ':['x']*184,'NAMELSAD':['x']*184,'LSAD':['M0']*184,'ALAND':[1.0]*184,'AWATER':[0.0]*184,'INTPTLAT':['1']*184,'INTPTLON':['1']*184,'SHAPE':[c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(1,0),(0,1),(0,0)])]))]*184}
+        props={'OBJECTID':list(range(1,185)),'CSAFP':[str(i).zfill(3) for i in range(184)],'GEOID':[str(i).zfill(3) for i in range(184)],'GEOIDFQ':['x']*184,'NAME':['x']*184,'NAMELSAD':['x']*184,'LSAD':['M0']*184,'MTFCC':['G3100']*184,'ALAND':[1.0]*184,'AWATER':[0.0]*184,'INTPTLAT':['1']*184,'INTPTLON':['1']*184,'SHAPE':[c.shapely.to_wkb(c.shapely.MultiPolygon([c.shapely.Polygon([(0,0),(1,0),(0,1),(0,0)])]))]*184}
         table=pa.Table.from_pydict(props,schema=pa.schema([pa.field(n,t) for n,t in zip(c.FIELDS,c.TYPES)]))
         metadata={'geometry_type':'MultiPolygon','crs':'EPSG:4269','fid_column':'OBJECTID'}
         c.validate_table(table,metadata)
         out_of_range=table.slice(0,c.FEATURE_COUNT_RANGE[0]-1)
-        for candidate in [out_of_range,table.drop(['OBJECTID']),table.append_column('invented',pa.array([1]*184)),table.set_column(5,'ALAND',pa.array([1]*184)),table.set_column(0,'OBJECTID',pa.array([1]*184)),table.set_column(9,'SHAPE',pa.array([None]*184,type=pa.binary()))]:
+        for candidate in [out_of_range,table.drop(['OBJECTID']),table.append_column('invented',pa.array([1]*184)),table.set_column(table.column_names.index('ALAND'),'ALAND',pa.array([1]*184)),table.set_column(0,'OBJECTID',pa.array([1]*184)),table.set_column(table.column_names.index('SHAPE'),'SHAPE',pa.array([None]*184,type=pa.binary()))]:
             with self.assertRaises(ValueError):c.validate_table(candidate,metadata)
         with self.assertRaises(ValueError):c.validate_table(table,{**metadata,'crs':'EPSG:4326'})
 
@@ -186,7 +186,7 @@ class CSASourceTests(unittest.TestCase):
             declaration=c.read_native_definition(Path('/synthetic-unit-only.zip'),_release())
         self.assertEqual(declaration['fields']['OBJECTID']['Length'],'4')
         self.assertEqual(c.TYPES[0],pa.int64())
-        for field,key,value in [('OBJECTID','Length','8'),('OBJECTID','IsNullable','true'),('OBJECTID','Required','false'),('OBJECTID','Editable','true'),('ALAND','FieldType','esriFieldTypeInteger')]:
+        for field,key,value in [('OBJECTID','Length','8'),('OBJECTID','IsNullable','true'),('OBJECTID','Required','false'),('OBJECTID','Editable','true'),('ALAND','FieldType','esriFieldTypeInteger'),('CSAFP','Length','2'),('NAME','Length','99'),('MTFCC','FieldType','esriFieldTypeInteger')]:
             document=c.ET.fromstring(xml)
             item=next(x for x in document.findall('./GPFieldInfoExs/GPFieldInfoEx') if x.findtext('Name')==field)
             item.find(key).text=value

@@ -43,10 +43,10 @@ FEATURE_COUNT_RANGE = (100, 1000)
 MAX_SOURCE_BYTES = 400_000_000
 MAX_UNCOMPRESSED_BYTES = 1_500_000_000
 MAX_ARCHIVE_MEMBERS = 500
-FIELDS = ('OBJECTID','GEOID','GEOIDFQ','NAMELSAD','LSAD','ALAND','AWATER','INTPTLAT','INTPTLON','SHAPE')
+FIELDS = ('OBJECTID','CSAFP','GEOID','GEOIDFQ','NAME','NAMELSAD','LSAD','MTFCC','ALAND','AWATER','INTPTLAT','INTPTLON','SHAPE')
 # Producer OID is esriFieldTypeOID Length4. This int64 is the GDAL Arrow
 # return_fids/output representation, not a native-width declaration/approval.
-TYPES = (pa.int64(),pa.string(),pa.string(),pa.string(),pa.string(),pa.float64(),pa.float64(),pa.string(),pa.string(),pa.binary())
+TYPES = (pa.int64(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.float64(),pa.float64(),pa.string(),pa.string(),pa.binary())
 
 class CSAQuarantineError(ValueError):
     """A changed or incomplete input requires review, never implicit replacement."""
@@ -233,6 +233,10 @@ def read_native_definition(archive_path,release):
     for name in ('ALAND','AWATER'):
         if fields[name].get('FieldType')!='esriFieldTypeDouble' or fields[name].get('Length')!='8':
             raise CSAQuarantineError('native_double_area_declaration_drift')
+    widths={'CSAFP':'3','GEOID':'3','GEOIDFQ':'12','NAME':'100','NAMELSAD':'100','LSAD':'2','MTFCC':'5','INTPTLAT':'11','INTPTLON':'12'}
+    for name,width in widths.items():
+        if fields[name].get('FieldType')!='esriFieldTypeString' or fields[name].get('Length')!=width:
+            raise CSAQuarantineError('native_string_field_declaration_drift:'+name)
     return {'definition_xml':xml,'fields':fields,'driver_oid_representation':'Arrow return_fids int64, not producer OID width',
         'draft_output_oid_representation':'int64 attribute preserving every source value; widening/ID mapping not approved'}
 
