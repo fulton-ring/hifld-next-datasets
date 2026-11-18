@@ -95,3 +95,8 @@ usace_depth_areas_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+ASSET_CHECKS = [usace_depth_areas_complete]
+INGEST_ASSETS = [usace_depth_areas_usace_ienc]
+JOBS = [usace_depth_areas_draft_job]
+SCHEDULES = [usace_depth_areas_draft_schedule]

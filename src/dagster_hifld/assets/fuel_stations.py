@@ -840,3 +840,8 @@ fuel_stations_draft_refresh_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
     description='Proposed daily local integrity poll at 09:00 America/New_York; not an official release cadence. Disabled until separately reviewed.',
 )
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [bts_alternative_fueling_stations]
+JOBS = [fuel_stations_draft_refresh_job]
+SCHEDULES = [fuel_stations_draft_refresh_schedule]

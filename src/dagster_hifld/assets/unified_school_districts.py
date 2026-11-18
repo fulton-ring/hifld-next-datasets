@@ -74,3 +74,9 @@ def unified_school_districts_draft_refresh_schedule(context):
         run_key=f"unified-school-districts-draft-{day}",
         tags={"hifld/draft": "true", "hifld/promotion_allowed": "false"},
     )
+
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [census_unified_school_districts]
+JOBS = [unified_school_districts_draft_refresh_job]
+SCHEDULES = [unified_school_districts_draft_refresh_schedule]

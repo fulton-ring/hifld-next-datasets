@@ -98,3 +98,12 @@ usace_airport_area_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+ASSET_CHECKS = [
+    usace_airport_area_complete,
+    usace_airport_area_quality,
+    usace_airport_area_release,
+]
+INGEST_ASSETS = [usace_airport_area_ienc]
+JOBS = [usace_airport_area_draft_job]
+SCHEDULES = [usace_airport_area_draft_schedule]
