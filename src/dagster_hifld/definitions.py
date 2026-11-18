@@ -67,14 +67,17 @@ from dagster_hifld.assets.national_transit_map_agencies import (
 from dagster_hifld.assets.fuds_projects_points import (
     fuds_projects_points_draft_schedule,
     usace_fuds_projects_points_complete,
+    usace_fuds_projects_points_approved_baseline_drift,
 )
 from dagster_hifld.assets.fuds_public_properties import (
     usace_fuds_public_properties_complete,
+    usace_fuds_public_properties_approved_baseline_drift,
     fuds_public_properties_draft_schedule,
 )
 from dagster_hifld.assets.fuds_district_boundaries import (
     fuds_district_boundaries_draft_schedule,
     usace_fuds_program_district_boundaries_complete,
+    usace_fuds_program_district_boundaries_approved_baseline_drift,
 )
 from dagster_hifld.assets.fuds_irm_property_point import (
     fuds_irm_property_point_complete,
@@ -83,11 +86,13 @@ from dagster_hifld.assets.fuds_irm_property_point import (
 )
 from dagster_hifld.assets.fuds_irm_property_boundary import (
     fuds_irm_property_boundary_complete,
+    fuds_irm_property_boundary_ingest_approved_baseline_drift,
     fuds_irm_property_boundary_draft_schedule,
     fuds_irm_property_boundary_geometry_quality,
 )
 from dagster_hifld.assets.fuds_property_boundaries import (
     fuds_property_boundaries_complete,
+    fuds_property_boundaries_ingest_approved_baseline_drift,
     fuds_property_boundaries_draft_schedule,
     fuds_property_boundaries_geometry_quality,
 )
@@ -463,6 +468,7 @@ from dagster_hifld.assets.combined_statistical_areas import (
 )
 from dagster_hifld.assets.fuds_mrs import (
     usace_fuds_munitions_response_sites_complete,
+    usace_fuds_munitions_response_sites_approved_baseline_drift,
     fuds_mrs_draft_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
@@ -889,15 +895,19 @@ defs = Definitions(
         [
             *hifld_asset_checks,
             usace_fuds_program_district_boundaries_complete,
+            usace_fuds_program_district_boundaries_approved_baseline_drift,
             epa_disaster_debris_complete,
             eia_power_plants_complete,
             fuds_irm_property_point_complete,
             fuds_irm_property_point_geometry_quality,
             fuds_irm_property_boundary_complete,
+            fuds_irm_property_boundary_ingest_approved_baseline_drift,
             fuds_irm_property_boundary_geometry_quality,
             fuds_property_boundaries_complete,
+            fuds_property_boundaries_ingest_approved_baseline_drift,
             fuds_property_boundaries_geometry_quality,
             usace_fuds_projects_points_complete,
+            usace_fuds_projects_points_approved_baseline_drift,
             census_primary_roads_source_complete,
             census_block_groups_source_complete,
             census_tracts_source_complete,
@@ -961,7 +971,9 @@ defs = Definitions(
             epa_frs_sic_published_membership_compatible,
             fuds_program_division_boundaries_complete,
             usace_fuds_munitions_response_sites_complete,
+            usace_fuds_munitions_response_sites_approved_baseline_drift,
             usace_fuds_public_properties_complete,
+            usace_fuds_public_properties_approved_baseline_drift,
             bts_national_transit_map_agencies_candidate_complete,
             bts_national_transit_map_agencies_release_gate,
         ],

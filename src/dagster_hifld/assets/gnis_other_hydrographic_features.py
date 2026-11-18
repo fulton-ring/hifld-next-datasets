@@ -12,13 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.gnis_other_hydrographic_features import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_gnis_other_hydrographic_features,
 )
@@ -64,9 +63,9 @@ def gnis_other_hydrographic_features(
 @asset_check(asset=gnis_other_hydrographic_features, blocking=True)
 def gnis_other_hydrographic_features_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and (EXPECTED_NULL_GEOMETRY_COUNT is None
-             or candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT)
+        candidate.get("capture_complete") is True
+        and type(candidate.get("feature_count")) is int
+        and candidate["feature_count"] > 0
     )
     return AssetCheckResult(
         passed=passed,
@@ -87,6 +86,10 @@ def gnis_other_hydrographic_features_complete(candidate: dict) -> AssetCheckResu
     )
 
 
+gnis_other_hydrographic_features_approved_baseline_drift = register_approved_baseline_drift(
+    gnis_other_hydrographic_features, "gnis_other_hydrographic_features_approved_baseline_drift")
+
+
 gnis_other_hydrographic_features_draft_job = define_asset_job(
     "gnis_other_hydrographic_features_draft_refresh",
     selection=AssetSelection.assets(gnis_other_hydrographic_features),
@@ -100,6 +103,6 @@ gnis_other_hydrographic_features_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [gnis_other_hydrographic_features]
-ASSET_CHECKS = [gnis_other_hydrographic_features_complete]
+ASSET_CHECKS = [gnis_other_hydrographic_features_complete, gnis_other_hydrographic_features_approved_baseline_drift]
 JOBS = [gnis_other_hydrographic_features_draft_job]
 SCHEDULES = [gnis_other_hydrographic_features_draft_schedule]

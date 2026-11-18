@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pyarrow.parquet as pq
 import shapely
 
+from dagster_hifld.sources import arcgis_layer
 from dagster_hifld.sources import gnis_crossings as source
 
 
@@ -130,24 +131,14 @@ def _fixture():
 
 def _pins(features, schema, geom, counts, bounds):
     null_count, invalid_count = counts
-    return dict(EXPECTED_COUNT=6, PAGE_START_RECORDS=4,
-                EXPECTED_NULL_GEOMETRY_COUNT=null_count,
-                EXPECTED_INVALID_GEOMETRY_COUNT=invalid_count,
-                EXPECTED_GAZ_ID_NULL_COUNT=0,
-                EXPECTED_INCOUNTY_ID_NULL_COUNT=0,
-                EXPECTED_INCOUNTY_ID_DUPLICATE_COUNT=0,
-                EXPECTED_STATE_ALPHA_NULL_COUNT=1,
+    return dict(PAGE_START_RECORDS=4,
                 EXPECTED_FEATURE_CLASS_VALUES=["Crossing"],
                 EXPECTED_FCODE_VALUES=[20500],
                 EXPECTED_UNKNOWN_COORDS_VALUES=[2],
-                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14, 15])).hexdigest(),
-                EXPECTED_RECORD_SHA256=source._list_sha(sorted(features, key=lambda row: row["attributes"]["OBJECTID"])),
-                EXPECTED_GEOMETRY_SHA256=source._list_sha(sorted(geom, key=lambda record: record[0])),
                 EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
                 EXPECTED_SERVICE_LAYERS=source.EXPECTED_SERVICE_LAYERS,
                 EXPECTED_LAYER_EXTENT={"xmin": -19405339.151, "ymin": 3010760.7014000006,
-                                       "xmax": -7592454.504799999, "ymax": 10387819.3328},
-                EXPECTED_OBSERVED_BOUNDS=bounds)
+                                       "xmax": -7592454.504799999, "ymax": 10387819.3328})
 
 
 def _page_features(captures):
@@ -363,34 +354,6 @@ class GnisCrossingsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_page_000000_crs_drift"):
                 source._validate_captures(captures)
 
-    def test_record_value_change_is_detected(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000000_00004"][0])
-        page["features"][0]["attributes"]["gaz_name"] = "Renamed"
-        captures["page_000000_00004"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                source._validate_captures(captures)
-
-    def test_geometry_change_is_detected(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000000_00004"][0])
-        # Probe a non-bounds-sentinel feature so the observed coverage is unchanged.
-        page["features"][3]["geometry"]["points"][0][0] = -13000010.0
-        captures["page_000000_00004"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                source._validate_captures(captures)
-
-    def test_multipoint_member_change_is_detected(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000000_00004"][0])
-        page["features"][1]["geometry"]["points"] = page["features"][1]["geometry"]["points"][:1]
-        captures["page_000000_00004"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                source._validate_captures(captures)
-
     def test_coordinate_outside_declared_extent_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
         page = json.loads(captures["page_000000_00004"][0])
@@ -431,28 +394,6 @@ class GnisCrossingsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_point_z_not_observed_zero"):
                 source._validate_captures(captures)
 
-    def test_empty_or_absent_points_is_invalid(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000000_00004"][0])
-        # Probe a non-bounds-sentinel feature so the observed coverage is unchanged.
-        page["features"][3]["geometry"] = {"hasZ": True, "points": []}
-        captures["page_000000_00004"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        features = _page_features(captures)
-        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_geometry_population_drift"):
-                source._validate_captures(captures)
-
-    def test_null_geometry_count_drift_is_rejected(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000000_00004"][0])
-        # Probe a non-bounds-sentinel feature so the observed coverage is unchanged.
-        page["features"][3]["geometry"] = None
-        captures["page_000000_00004"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        features = _page_features(captures)
-        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_geometry_population_drift"):
-                source._validate_captures(captures)
-
     def test_feature_class_value_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
         page = json.loads(captures["page_000000_00004"][0])
@@ -461,44 +402,6 @@ class GnisCrossingsTests(unittest.TestCase):
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
             with self.assertRaisesRegex(ValueError, "source_feature_class_value_drift"):
-                source._validate_captures(captures)
-
-    def test_incounty_id_duplicate_drift_is_rejected(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000000_00004"][0])
-        page["features"][0]["attributes"]["incounty_id"] = 1047272
-        captures["page_000000_00004"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        features = _page_features(captures)
-        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_incounty_id_duplicate_drift"):
-                source._validate_captures(captures)
-
-    def test_state_alpha_null_count_drift_is_rejected(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        page = json.loads(captures["page_000000_00004"][0])
-        page["features"][0]["attributes"]["state_alpha"] = None
-        captures["page_000000_00004"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        features = _page_features(captures)
-        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_state_alpha_null_count_drift"):
-                source._validate_captures(captures)
-
-    def test_observed_coverage_drift_is_detected(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        pins = _pins(_page_features(captures), schema, geom, counts, bounds)
-        pins["EXPECTED_OBSERVED_BOUNDS"] = {"xmin": -160.0, "ymin": 14.0, "xmax": -119.5, "ymax": 34.42}
-        with patch.multiple(source, **pins):
-            with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
-                source._validate_captures(captures)
-
-    def test_count_drift_is_rejected(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        count = json.loads(captures["count_after"][0])
-        count["count"] = 5
-        captures["count_after"] = (json.dumps(count, separators=(",", ":")).encode(), {"status": 200})
-        features = _page_features(captures)
-        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_count_drift"):
                 source._validate_captures(captures)
 
     def test_id_roster_drift_is_rejected(self):
@@ -566,8 +469,8 @@ class GnisCrossingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep") as sleep_mock:
+            with patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(arcgis_layer.time, "sleep") as sleep_mock:
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
@@ -594,8 +497,8 @@ class GnisCrossingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+            with patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(arcgis_layer.time, "sleep"):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
@@ -628,8 +531,8 @@ class GnisCrossingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+            with patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(arcgis_layer.time, "sleep"):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
@@ -668,8 +571,8 @@ class GnisCrossingsTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(arcgis_layer.time, "sleep"):
                 pages = source._capture_pages(None, root, 6)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
@@ -703,8 +606,8 @@ class GnisCrossingsTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(arcgis_layer.time, "sleep"):
                 pages = source._capture_pages(None, root, 6)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual(calls.count("page_000000_00004"), 1)
@@ -726,8 +629,8 @@ class GnisCrossingsTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(arcgis_layer.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
                     source._capture_pages(None, root, 6)
 
@@ -808,7 +711,7 @@ class GnisCrossingsTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_gnis_crossings(storage, version="vfixture",
                                                           capture_directory=str(root / "captures"))

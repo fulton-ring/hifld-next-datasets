@@ -56,11 +56,8 @@ class FudsProjectsPointsTests(unittest.TestCase):
         features = [json.loads(captures[f"page_{i:03d}"][0])["features"] for i in range(2)]
         features = [row for page in features for row in page]
         record_sha = hashlib.sha256(_canonical(features)).hexdigest()
-        with patch.multiple(source, EXPECTED_COUNT=3, PAGE_SIZE=2,
+        with patch.multiple(source, PAGE_SIZE=2,
                             EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
-                            EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10,11,12])).hexdigest(),
-                            EXPECTED_RECORD_SHA256=record_sha,
-                            EXPECTED_GEOMETRY_SHA256=hashlib.sha256(_canonical(geom)).hexdigest(),
                             EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest()):
             _, _, extracted = source._validate_captures(captures)
         self.assertEqual(extracted["ids"], [10,11,12])
@@ -72,10 +69,8 @@ class FudsProjectsPointsTests(unittest.TestCase):
                 for name in ("layer_before", "layer_after"):
                     layer = json.loads(captures[name][0]); layer[dimension] = True
                     captures[name] = (json.dumps(layer,separators=(",", ":")).encode(), captures[name][1])
-                with patch.multiple(source, EXPECTED_COUNT=3, PAGE_SIZE=2,
+                with patch.multiple(source, PAGE_SIZE=2,
                                     EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
-                                    EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10,11,12])).hexdigest(),
-                                    EXPECTED_RECORD_SHA256="0"*64, EXPECTED_GEOMETRY_SHA256="0"*64,
                                     EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest()):
                     with self.assertRaisesRegex(ValueError,"source_z_or_m_geometry_unsupported"):
                         source._validate_captures(captures)
@@ -85,10 +80,7 @@ class FudsProjectsPointsTests(unittest.TestCase):
         record_sha = hashlib.sha256(_canonical(features)).hexdigest()
         schema_sha = hashlib.sha256(_canonical(schema)).hexdigest()
         geom_sha = hashlib.sha256(_canonical(geom)).hexdigest()
-        with patch.multiple(source, EXPECTED_COUNT=3, PAGE_SIZE=2, EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
-                            EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10,11,12])).hexdigest(),
-                            EXPECTED_RECORD_SHA256=record_sha,
-                            EXPECTED_GEOMETRY_SHA256=geom_sha,
+        with patch.multiple(source, PAGE_SIZE=2, EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
                             EXPECTED_SCHEMA_SHA256=schema_sha):
             _, original_fields, extracted = source._validate_captures(captures)
             self.assertEqual(extracted["audit"]["source_feature_count"],3)
@@ -109,9 +101,7 @@ class FudsProjectsPointsTests(unittest.TestCase):
         final = json.loads(captures["page_001"][0])
         final["exceededTransferLimit"] = True
         captures["page_001"] = (json.dumps(final,separators=(",", ":")).encode(),{"status":200})
-        with patch.multiple(source, EXPECTED_COUNT=3, PAGE_SIZE=2, EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
-                            EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10,11,12])).hexdigest(),
-                            EXPECTED_RECORD_SHA256="0"*64, EXPECTED_GEOMETRY_SHA256="0"*64,
+        with patch.multiple(source, PAGE_SIZE=2, EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
                             EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(_fixture()[3])).hexdigest()):
             with self.assertRaisesRegex(ValueError,"source_page_unexpected_exceeded_transfer_limit"):
                 source._validate_captures(captures)
@@ -120,9 +110,7 @@ class FudsProjectsPointsTests(unittest.TestCase):
         _, _, captures, schema, _ = _fixture()
         layer = json.loads(captures["layer_before"][0]); layer["fields"].append({"name":"SURPRISE","type":"esriFieldTypeString"})
         captures["layer_before"] = (json.dumps(layer,separators=(",", ":")).encode(),{"status":200})
-        with patch.multiple(source, EXPECTED_COUNT=3, PAGE_SIZE=2, EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
-                            EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10,11,12])).hexdigest(),
-                            EXPECTED_RECORD_SHA256="0"*64, EXPECTED_GEOMETRY_SHA256="0"*64,
+        with patch.multiple(source, PAGE_SIZE=2, EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
                             EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest()):
             with self.assertRaisesRegex(ValueError,"source_schema_contract_drift"):
                 source._validate_captures(captures)
@@ -132,25 +120,9 @@ class FudsProjectsPointsTests(unittest.TestCase):
         page = json.loads(captures["page_000"][0])
         page["features"] = page["features"][:1]
         captures["page_000"] = (json.dumps(page,separators=(",", ":")).encode(),{"status":200})
-        with patch.multiple(source, EXPECTED_COUNT=3, PAGE_SIZE=2, EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
-                            EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10,11,12])).hexdigest(),
-                            EXPECTED_RECORD_SHA256="0"*64, EXPECTED_GEOMETRY_SHA256="0"*64,
+        with patch.multiple(source, PAGE_SIZE=2, EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
                             EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest()):
             with self.assertRaisesRegex(ValueError,"source_page_id_slice_incomplete_or_reordered"):
-                source._validate_captures(captures)
-
-    def test_record_value_change_is_detected(self):
-        _, features, captures, schema, geom = _fixture()
-        page = json.loads(captures["page_000"][0])
-        page["features"][0]["attributes"]["NAME"] = "Changed"
-        captures["page_000"] = (json.dumps(page,separators=(",", ":")).encode(),{"status":200})
-        changed = page["features"] + json.loads(captures["page_001"][0])["features"]
-        with patch.multiple(source, EXPECTED_COUNT=3, PAGE_SIZE=2, EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
-                            EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10,11,12])).hexdigest(),
-                            EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(features)).hexdigest(),
-                            EXPECTED_GEOMETRY_SHA256=hashlib.sha256(_canonical(geom)).hexdigest(),
-                            EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest()):
-            with self.assertRaisesRegex(ValueError,"source_record_value_drift"):
                 source._validate_captures(captures)
 
     def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
@@ -168,7 +140,7 @@ class FudsProjectsPointsTests(unittest.TestCase):
         geometry_sha = hashlib.sha256(_canonical(geom)).hexdigest()
         bodies = {name: body for name, (body, _) in fixture_captures.items()}
 
-        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+        def fake_capture_get(_client, url, capture_root, name, **_kwargs):
             body = bodies[name]
             digest = hashlib.sha256(body).hexdigest()
             receipt = {"method":"GET","url":url,"final_url":url,"observed_at":"2026-10-19T00:00:00+00:00",
@@ -186,13 +158,10 @@ class FudsProjectsPointsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="fuds-projects-e2e-") as temporary:
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
-            with patch.multiple(source, EXPECTED_COUNT=3, PAGE_SIZE=2,
+            with patch.multiple(source, PAGE_SIZE=2,
                                 EXPECTED_LAYER_ROSTER=[(2,"FUDS Project Point","Feature Layer")],
-                                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10,11,12])).hexdigest(),
-                                EXPECTED_RECORD_SHA256=record_sha,
-                                EXPECTED_GEOMETRY_SHA256=geometry_sha,
                                 EXPECTED_SCHEMA_SHA256=schema_sha), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source, "capture_page", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_fuds_projects_points(storage, version="vfixture", capture_directory=str(root / "captures"))
                 self.assertEqual(candidate["feature_count"],3)
