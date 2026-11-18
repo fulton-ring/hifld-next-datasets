@@ -376,16 +376,19 @@ def _read_counties(body: bytes, edition: str) -> gpd.GeoDataFrame:
     return frame[["GEOID", "STATEFP", "NAME", "NAMELSAD", "geometry"]].copy()
 
 
+_OUTPUT_FIELDS = (
+    ("utility_number", pa.string()),
+    ("utility_name", pa.string()),
+    ("ownership_type", pa.string()),
+    ("state", pa.string()),
+    ("county_count", pa.int64()),
+    ("source_year", pa.int64()),
+    ("geometry", pa.binary()),
+)
+
+
 def _geoparquet(features: list[dict[str, object]]) -> bytes:
-    fields = [
-        pa.field("utility_number", pa.string(), nullable=False),
-        pa.field("utility_name", pa.string(), nullable=False),
-        pa.field("ownership_type", pa.string(), nullable=False),
-        pa.field("state", pa.string(), nullable=False),
-        pa.field("county_count", pa.int64(), nullable=False),
-        pa.field("source_year", pa.int64(), nullable=False),
-        pa.field("geometry", pa.binary(), nullable=False),
-    ]
+    fields = [pa.field(name, kind, nullable=False) for name, kind in _OUTPUT_FIELDS]
     geometries = [to_wkb(row["geometry"], byte_order=1, output_dimension=2) for row in features]
     arrays = [
         pa.array([row["utility_number"] for row in features], type=pa.string()),
@@ -515,7 +518,7 @@ def capture_electric_retail_service_territories(
             geometry_hash.update(value)
         geometry_sha = geometry_hash.hexdigest()
         schema_sha = _sha(_canonical({
-            "output_fields": [field.name for field in _geoparquet_schema()],
+            "output_fields": [name for name, _kind in _OUTPUT_FIELDS],
             "eia861_data_year": year,
             "tiger_edition": tiger_release["edition"],
             "state_fips": STATE_FIPS,
@@ -684,18 +687,6 @@ def capture_electric_retail_service_territories(
     finally:
         if owned_client:
             client.close()
-
-
-def _geoparquet_schema() -> list[pa.Field]:
-    return [
-        pa.field("utility_number", pa.string(), nullable=False),
-        pa.field("utility_name", pa.string(), nullable=False),
-        pa.field("ownership_type", pa.string(), nullable=False),
-        pa.field("state", pa.string(), nullable=False),
-        pa.field("county_count", pa.int64(), nullable=False),
-        pa.field("source_year", pa.int64(), nullable=False),
-        pa.field("geometry", pa.binary(), nullable=False),
-    ]
 
 
 def _arrow_type(kind: str):
