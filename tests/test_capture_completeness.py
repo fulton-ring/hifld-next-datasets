@@ -1,8 +1,10 @@
 """Capture integrity is independent of approved-release drift."""
 import unittest
 
-from dagster import AssetCheckSeverity
-from dagster_hifld.capture_completeness import validate_capture_witness, approved_baseline_drift
+from dagster import AssetCheckSeverity, AssetKey, asset
+from dagster_hifld.capture_completeness import (
+    approved_baseline_drift, register_approved_baseline_drift, validate_capture_witness,
+)
 
 
 class CaptureCompletenessTests(unittest.TestCase):
@@ -41,3 +43,38 @@ class CaptureCompletenessTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.severity, AssetCheckSeverity.WARN)
         self.assertEqual(result.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+
+    def test_registered_drift_check_is_nonblocking_warn_on_upstream_addition(self):
+        @asset(key=AssetKey(["test", "capture_completeness_drift_asset"]))
+        def drift_asset():
+            return 1
+
+        checks = register_approved_baseline_drift(drift_asset, "drift_check")
+        spec = list(checks.check_specs)[0]
+        self.assertEqual(spec.name, "drift_check")
+        self.assertEqual(spec.asset_key, drift_asset.key)
+        self.assertFalse(spec.blocking)
+
+        candidate = {"dataset_slug": "agency", "file_slug": "points",
+                     "feature_count": 4, "source_id_sha256": "new"}
+        result = checks.node_def.compute_fn.decorated_fn(candidate)
+        self.assertFalse(result.passed)
+        self.assertEqual(result.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(result.metadata["comparison_status"].value,
+                         "skipped_no_approved_baseline")
+
+        baseline = {**candidate, "version": "v-approved", "release_accepted": True,
+                    "feature_count": 3, "source_id_sha256": "old"}
+        drift = approved_baseline_drift(candidate, baseline)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(drift.metadata["feature_count_delta"].value, 1)
+        self.assertEqual(
+            validate_capture_witness(4, [1, 2, 3, 4], 4, [4, 3, 2, 1], [1, 2, 3, 4]),
+            [1, 2, 3, 4])
+
+    def test_register_approved_baseline_drift_rejects_invalid_name(self):
+        for name in ("", "not valid", 1):
+            with self.subTest(name=name), self.assertRaisesRegex(
+                    ValueError, "baseline_drift_check_name_invalid"):
+                register_approved_baseline_drift(object(), name)

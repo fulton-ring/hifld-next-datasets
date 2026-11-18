@@ -1,3 +1,4 @@
+import json
 import struct
 import tempfile
 import unittest
@@ -198,6 +199,72 @@ class ArcgisLayerTests(unittest.TestCase):
         )
         self.assertEqual([name for name, _url in roster][-4:],
                          ["layer_after", "service_after", "count_after", "ids_after"])
+
+    def _witness_fetch(self, bodies):
+        def fetch(_client, _url, _root, name):
+            return json.dumps(bodies[name]).encode(), {}
+        return fetch
+
+    def test_layer_capture_roster_completeness_uses_source_witnesses(self):
+        roster = common.layer_capture_roster(
+            [1, 2, 3], layer_url="https://svc.example/0",
+            service_url="https://svc.example", page_size=2)
+        bodies = {name: {} for name, _url in roster}
+        bodies.update({
+            "count_before": {"count": 4},
+            "ids_before": {"objectIds": [4, 3, 2, 1]},
+            "count_after": {"count": 4},
+            "ids_after": {"objectIds": [1, 2, 3, 4]},
+        })
+        captures = common.capture_layer_roster(
+            object(), Path("/tmp"), roster, self._witness_fetch(bodies),
+            captured_ids=[1, 2, 3, 4])
+        self.assertEqual(set(captures), {name for name, _url in roster})
+
+        bodies["count_after"] = {"count": 5}
+        bodies["ids_after"] = {"objectIds": [1, 2, 3, 4, 5]}
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+            common.capture_layer_roster(
+                object(), Path("/tmp"), roster, self._witness_fetch(bodies))
+
+        bodies["count_after"] = {"count": 4}
+        bodies["ids_after"] = {"objectIds": [1, 2, 3, 4]}
+        with self.assertRaisesRegex(ValueError, "source_captured_id_roster_incomplete"):
+            common.capture_layer_roster(
+                object(), Path("/tmp"), roster, self._witness_fetch(bodies),
+                captured_ids=[1, 2, 3])
+
+    def test_offset_layer_capture_roster_completeness_uses_source_witnesses(self):
+        roster = common.offset_layer_capture_roster(
+            3, layer_url="https://svc.example/0", service_url="https://svc.example",
+            page_size=2)
+        bodies = {name: {} for name, _url in roster}
+        bodies.update({
+            "count_before": {"count": 4},
+            "ids_before": {"objectIds": [1, 2, 3, 4]},
+            "count_after": {"count": 4},
+            "ids_after": {"objectIds": [4, 3, 2, 1]},
+        })
+        captures = common.capture_layer_roster(
+            object(), Path("/tmp"), roster, self._witness_fetch(bodies),
+            captured_ids=[1, 2, 3, 4])
+        self.assertIn("page_001", captures)
+
+    def test_capture_layer_roster_rejects_missing_witness_or_duplicate_names(self):
+        roster = common.layer_capture_roster(
+            [1], layer_url="https://svc.example/0",
+            service_url="https://svc.example", page_size=1)
+        bodies = {name: {} for name, _url in roster}
+        bodies.update({"count_before": {"count": 1}, "ids_before": {"objectIds": [1]},
+                       "count_after": {"count": 1}, "ids_after": {"objectIds": [1]}})
+        without_after = [(name, url) for name, url in roster if name != "ids_after"]
+        with self.assertRaisesRegex(ValueError, "source_capture_witness_missing:ids_after"):
+            common.capture_layer_roster(
+                object(), Path("/tmp"), without_after, self._witness_fetch(bodies))
+        with self.assertRaisesRegex(ValueError, "capture_roster_name_duplicate"):
+            common.capture_layer_roster(
+                object(), Path("/tmp"), [("page", "a"), ("page", "b")],
+                self._witness_fetch({}))
 
     def test_private_aliases_bind_the_public_implementations(self):
         self.assertIs(common._capture, common.capture_page)

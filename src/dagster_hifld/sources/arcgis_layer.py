@@ -9,9 +9,11 @@ byte-identical to the copy it replaces; per-dataset byte budgets and error
 types are passed explicitly by each caller. Canonical JSON, sha256, the ArcGIS
 CRS drift guard and polygon ring assembly delegate to the single
 implementations in ``sources.esri_common`` and ``sources.esri_geometry``.
-The USACE IENC layer capture roster is shared too. Fetch planning, other
-roster/offset algorithms, checkpoint state layouts, schema, ID and geometry
-contracts stay local to each adapter.
+The USACE IENC layer capture roster is shared too. Roster capture can validate
+the producer's own before/after count and ID witnesses so completeness comes
+from the source at capture time. Fetch planning, other roster/offset
+algorithms, checkpoint state layouts, schema, ID and geometry contracts stay
+local to each adapter.
 
 The private aliases at the bottom keep the historical import names working so
 each dataset module only changes its import line; new modules should use the
@@ -33,6 +35,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.source_release import ReleaseSignal
 from dagster_hifld.sources.capture_common import capture_get, write_immutable
@@ -185,6 +188,55 @@ def ienc_layer_capture_roster(ids: list[int], *, bts_item_url: str, service_dire
         layer_format=layer_format,
         page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"},
     )
+
+
+def capture_witness(captures: Mapping[str, tuple[bytes, dict]], *,
+                    captured_ids: Sequence[int] | None = None) -> list[int]:
+    """Validate the source count/ID witnesses retained around one layer capture.
+
+    :func:`layer_capture_roster` and :func:`offset_layer_capture_roster` emit the
+    producer's own ``count_before``, ``ids_before``, ``count_after`` and
+    ``ids_after`` requests. This decodes those retained bodies and calls
+    :func:`validate_capture_witness`, so completeness comes from the source's
+    count at capture time rather than a count pinned in code. When
+    ``captured_ids`` is supplied the captured pages must cover that roster
+    exactly. A complete upstream addition or removal passes; a torn,
+    duplicated or inconsistent capture is refused.
+    """
+    witness_names = ("count_before", "ids_before", "count_after", "ids_after")
+    missing = [name for name in witness_names if name not in captures]
+    if missing:
+        raise ValueError("source_capture_witness_missing:" + ",".join(missing))
+    docs = {}
+    for name in witness_names:
+        value = captures[name]
+        body = value[0] if isinstance(value, tuple) else value
+        docs[name] = json.loads(body)
+    return validate_capture_witness(
+        docs["count_before"].get("count"), docs["ids_before"].get("objectIds"),
+        docs["count_after"].get("count"), docs["ids_after"].get("objectIds"),
+        None if captured_ids is None else list(captured_ids))
+
+
+def capture_layer_roster(client: httpx.Client, root: Path,
+                        roster: Iterable[tuple[str, str]],
+                        fetch: Callable[[httpx.Client, str, Path, str], tuple[bytes, dict]],
+                        *, captured_ids: Sequence[int] | None = None,
+                        ) -> dict[str, tuple[bytes, dict]]:
+    """Capture one ordered layer roster and validate its source witnesses.
+
+    ``roster`` is the ordered output of :func:`layer_capture_roster` or
+    :func:`offset_layer_capture_roster`; ``fetch`` is the adapter's bounded
+    capture callable. Completeness is enforced from the source's own before and
+    after count and ID roster, not a count pinned in code.
+    """
+    roster = list(roster)
+    names = [name for name, _url in roster]
+    if len(set(names)) != len(names):
+        raise ValueError("capture_roster_name_duplicate")
+    captures = {name: fetch(client, url, root, name) for name, url in roster}
+    capture_witness(captures, captured_ids=captured_ids)
+    return captures
 
 
 def load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
