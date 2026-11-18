@@ -28,7 +28,6 @@ from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_parti
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.fuds_public_properties import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     EXPECTED_LAYER_ROSTER,
     FILE_SLUG,
     LAYER_NAME,
@@ -351,7 +350,8 @@ class FudsRegisteredLifecycleTests(unittest.TestCase):
     def _candidate(self, null_geometries, version="vtest0001"):
         return {
             "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_null_geometry_count": null_geometries,
+            "feature_count": len(IDS), "capture_complete": True,
+            "source_null_geometry_count": null_geometries,
             "candidate_ready": f"geoparquet/{DATASET_SLUG}/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False,
             "schema_contract_accepted": False, "id_contract_accepted": False,

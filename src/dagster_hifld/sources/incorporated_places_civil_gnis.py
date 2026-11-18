@@ -30,17 +30,17 @@ the capture explicitly rather than guessing.
 Geometry is the layer's native Z-aware multipoint: every feature geometry is
 ``{"points": [[x, y, z], ...]}`` in the page CRS (EPSG:3857), usually one
 location per gazetteer point and several points for features with multiple
-recorded locations (exact per-feature point distribution pinned from the
+recorded locations (observed per-feature point distribution from the
 complete capture below; every z ordinate observed 2026-11-13 was 0 and no
 geometry was null). Ordinates are validated numerically and range-checked in
 the Web Mercator domain, then stored verbatim as MultiPoint Z WKB: no
 rounding, reordering, reprojection or repair is applied.
 
-The per-value and per-geometry baseline digests, gate counts and observed
-bounds are computed and reported by
-``build_incorporated_places_civil_gnis_baseline`` from a completed
-capture directory and pinned as constants for later drift refusal; pins left
-empty (or ``None``) are checked only once pinned. Publication stays blocked
+Completeness comes from the producer's own before/after count and
+OBJECTID roster at capture time. The observed per-value histograms and
+bounds are diagnostics reported by
+``build_incorporated_places_civil_gnis_baseline`` from a completed capture directory, not
+release baselines. Publication stays blocked
 pending the succession, freshness, schema/ID contract, rights and release
 decisions; all runtime approval flags are false and the draft refresh schedule
 is stopped.
@@ -52,7 +52,6 @@ import json
 import re
 import shutil
 import struct
-import time
 from array import array
 from collections import deque
 from datetime import datetime, timezone
@@ -72,11 +71,15 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import (
+    capture_witness, capture_with_retry, load_receipt,
+    producer_error_doc, preserve_failed_attempt, read_capture, witness_aside,
+)
 
 DATASET_SLUG = "incorporated-places-civil-1"
 FILE_SLUG = DATASET_SLUG
@@ -131,38 +134,13 @@ EXPECTED_SERVICE_LAYERS = [
     (13, "Historical Hydrographic Points"),
     (14, "Historical Physical Points"),
 ]
-EXPECTED_COUNT = 29_557
 EXPECTED_LAYER_EXTENT = {"xmin": -19936672.2315, "ymin": -1636427.9285999984,
                          "xmax": 20019019.2237, "ymax": 11541612.016400004}
-# The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (captured 2026-11-13 in the
-# task sandbox, capture root /workspace/captures241); unpinned values ("", None)
-# are checked only once pinned.
-EXPECTED_IDS_SHA256 = "4b3d2417701e227d87caf7426fc554a8fff87d2eba5c9d3808bcd1c904cce99f"
 EXPECTED_SCHEMA_SHA256 = "125c6f6982d87bb339a539257aa9a7f77dd90a8401a9a5e7eb9813d160063522"
-EXPECTED_RECORD_SHA256 = "298912f18cdb2c7bd78b38d03c4a1ffe0ad8fa854fc3d838b5286a57a7d87347"
-EXPECTED_GEOMETRY_SHA256 = "8196491a4f8ac29e01b685c797535b5a327af798984384c1186bcf6544b9b9ff"
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-EXPECTED_TOTAL_POINT_COUNT = 60_941
-# GNIS gazetteer per-feature value histograms observed via grouped counts on
-# 2026-11-13 (sum 29,557); every feature must carry one of these values.
-EXPECTED_FEATURECLASS_DISTRIBUTION = {"Civil": 29_557}
-EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION = {2: 29_557}
-# Points per multipoint pinned from the complete capture.
-EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION = {
-    1: 15082, 2: 8165, 3: 1713, 4: 3095, 5: 417, 6: 522, 7: 125, 8: 140, 9: 77,
-    10: 37, 11: 43, 12: 16, 13: 22, 14: 6, 15: 9, 16: 13, 17: 3, 18: 5, 19: 2,
-    20: 9, 21: 14, 22: 1, 23: 3, 24: 6, 27: 1, 28: 3, 30: 4, 33: 4, 36: 4,
-    37: 4, 54: 1, 59: 3, 62: 5, 83: 1, 86: 1, 104: 1}
-EXPECTED_Z_ORDINATE_DISTRIBUTION = {0: 60_941}
-EXPECTED_OBSERVED_BOUNDS = {"xmin": -19743780.912, "ymin": -1619560.2219000012,
-                            "xmax": 18551422.955799997, "ymax": 11496299.766199999}
 BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests, geometry gate counts and "
-    "observed bounds are pinned from a completed resumable capture directory "
-    "by build_incorporated_places_civil_gnis_baseline; unpinned "
-    "values are checked only once pinned.")
+    "Completeness is enforced from the producer's own before/after count and "
+    "OBJECTID roster at capture time; observed value histograms and bounds are "
+    "diagnostics, not release baselines.")
 CROSSWALK_ROW = "Geographic Names Information System (GNIS) Feature Layers"
 CROSSWALK_OPEN_ID = "5091b822ad3e47f3b6bc5bc275fb3c22"
 CROSSWALK_COPY_SHA256 = ("7f3394fed2712fdcc176b7ce658293fdded656b9b719f0d90154c07dc38"
@@ -266,16 +244,13 @@ def _parse_page_name(name: str) -> tuple[int, int]:
 
 
 def _validate_roster(roster: object, label: str) -> list[int]:
-    if not isinstance(roster, list) or len(roster) != EXPECTED_COUNT \
-            or any(type(value) is not int for value in roster) \
-            or len(set(roster)) != EXPECTED_COUNT:
+    """Require a unique positive-integer native ID roster from one witness."""
+    if not isinstance(roster, list) or not roster \
+            or any(type(value) is not int or value <= 0 for value in roster) \
+            or len(set(roster)) != len(roster):
         raise IncorporatedPlacesCivilError(
             "source_id_population_drift:" + label)
-    ids = sorted(roster)
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(ids)) != EXPECTED_IDS_SHA256:
-        raise IncorporatedPlacesCivilError(
-            "source_id_roster_drift:" + label)
-    return ids
+    return sorted(roster)
 
 
 def _validate_spatial_reference(value: object, label: str) -> None:
@@ -455,46 +430,12 @@ def _validate_feature(feature: object, expected_objectid: int) \
     if objectid != expected_objectid:
         raise IncorporatedPlacesCivilError(
             "source_page_id_slice_incomplete_or_reordered")
-    featureclass = attrs["gaz_featureclass"]
-    if featureclass not in EXPECTED_FEATURECLASS_DISTRIBUTION:
-        raise IncorporatedPlacesCivilError(
-            "source_featureclass_outside_gazetteer_population")
-    if attrs["isunknowncoords"] not in EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION:
-        raise IncorporatedPlacesCivilError(
-            "source_isunknowncoords_value_drift")
     points = None
     if geometry is not None:
         points = _validate_multipoint(geometry)
     for name, esri_type, _length in NATIVE_FIELDS:
         _validate_value(name, esri_type, attrs[name])
     return objectid, geometry, points
-
-
-def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
-    """Parse and structurally validate one retained receipt without page bytes."""
-    try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise IncorporatedPlacesCivilError(
-            "retained_capture_receipt_invalid:" + name) from exc
-    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
-            or receipt.get("url") != receipt.get("final_url")
-            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
-        raise IncorporatedPlacesCivilError(
-            "retained_capture_receipt_invalid:" + name)
-    return receipt
-
-
-def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire)
-            or receipt.get("wire_sha256") != _sha(wire)):
-        raise IncorporatedPlacesCivilError(
-            "retained_capture_receipt_invalid:" + name)
-    return body, receipt
 
 
 def _validate_request_scope(name: str, receipt: Mapping[str, object],
@@ -555,21 +496,6 @@ def _save_state(capture_root: Path, state: Mapping[str, object]) -> None:
     tmp.replace(capture_root / "capture_state.json")
 
 
-def _witness_aside(capture_root: Path, name: str) -> None:
-    """Move a retained refused/torn response aside so the slot can be refetched.
-
-    A complete HTTP 200 error body carries a self-consistent receipt, so
-    without this witness step a resumed capture would replay the same refusal
-    forever; the witnessed evidence stays on disk next to the capture.
-    """
-    from time import time_ns
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = capture_root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
-
-
 def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
                        url: str) -> tuple[bytes, dict[str, object]]:
     if (capture_root / f"{name}.body").exists():
@@ -582,50 +508,23 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
                                base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(document, dict) and "error" in document
+def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
+    return read_capture(capture_root, name, IncorporatedPlacesCivilError)
 
 
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
+def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
+    return load_receipt(capture_root, name, IncorporatedPlacesCivilError)
 
 
 def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
                         attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
+    return capture_with_retry(client, url, capture_root, name, attempts=attempts,
+                              base_delay=base_delay, max_bytes=MAX_BODY_BYTES)
 
-    Retries cover the producer's transient complete-200 Esri error documents
-    and incomplete transport captures (connection resets, truncation); failed
-    attempts are preserved on disk under ``<name>.attempt-NN`` evidence names
-    and never enter the capture roster. The final attempt's body is always
-    returned as captured, so a persistent producer failure surfaces to the
-    caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name,
-                                        max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
+
+_witness_aside = witness_aside
+_producer_error_doc = producer_error_doc
+_preserve_failed_attempt = preserve_failed_attempt
 
 
 def _plan_page_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
@@ -798,7 +697,7 @@ def fetch_incorporated_places_civil_gnis_pages(
             raise IncorporatedPlacesCivilError(
                 "source_id_population_drift:ids_seed_vs_before")
         count_before = json.loads(_read_capture(capture_root, "count_before")[0])
-        if count_before.get("count") != EXPECTED_COUNT:
+        if count_before.get("count") != len(roster):
             raise IncorporatedPlacesCivilError("source_count_drift")
         _fetch_pages(active, capture_root, roster, state)
         pages = list(state["pages"])
@@ -812,7 +711,7 @@ def fetch_incorporated_places_civil_gnis_pages(
                 raise IncorporatedPlacesCivilError(
                     "source_page_error:" + name)
         count_after = json.loads(_read_capture(capture_root, "count_after")[0])
-        if count_after.get("count") != EXPECTED_COUNT:
+        if count_after.get("count") != len(roster):
             raise IncorporatedPlacesCivilError(
                 "source_metadata_or_count_changed_during_capture")
         after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
@@ -840,7 +739,7 @@ def fetch_incorporated_places_civil_gnis_pages(
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_ids_sha256": extracted["ids_sha"],
         "source_schema_sha256": extracted["schema_sha"],
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": len(roster),
         "source_total_point_count": extracted["total_point_count"],
         "source_max_objectid": extracted["max_objectid"],
         "source_null_geometry_count": extracted["null_geometry_count"],
@@ -1027,39 +926,32 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise IncorporatedPlacesCivilError("source_schema_drift")
     if EXPECTED_SCHEMA_SHA256 and schema_sha != EXPECTED_SCHEMA_SHA256:
         raise IncorporatedPlacesCivilError("source_schema_baseline_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT:
-        raise IncorporatedPlacesCivilError("source_count_drift")
     seed = _validate_roster(docs["ids_seed"].get("objectIds"), "ids_seed")
     if docs["ids_before"].get("objectIdFieldName") != "OBJECTID":
         raise IncorporatedPlacesCivilError("source_id_field_changed")
     roster = _validate_roster(docs["ids_before"].get("objectIds"), "ids_before")
     if roster != seed:
-        raise IncorporatedPlacesCivilError(
-            "source_id_population_drift:ids_seed_vs_before")
+        raise IncorporatedPlacesCivilError("source_id_population_drift:ids_seed_vs_before")
     after_roster = _validate_roster(json.loads(
         _read_capture(capture_root, "ids_after")[0]).get("objectIds"), "ids_after")
     if after_roster != roster:
-        raise IncorporatedPlacesCivilError(
-            "source_id_population_drift:ids_after")
+        raise IncorporatedPlacesCivilError("source_id_population_drift:ids_after")
     for name in ("layer_after", "service_after", "count_after"):
         body, _receipt = _read_capture(capture_root, name)
         mirror = {"layer_after": "layer_before", "service_after": "service_before",
                   "count_after": "count_before"}[name]
         if json.loads(body) != docs[mirror]:
-            raise IncorporatedPlacesCivilError(
-                "source_metadata_or_count_changed_during_capture")
+            raise IncorporatedPlacesCivilError("source_metadata_or_count_changed_during_capture")
     after_fields = json.loads(_read_capture(capture_root, "layer_after")[0]).get("fields")
     if (not isinstance(after_fields, list)
             or [_plain_field(x) for x in after_fields]
             != docs_fields_plain(docs["layer_before"])):
-        raise IncorporatedPlacesCivilError(
-            "source_field_schema_changed_during_capture")
+        raise IncorporatedPlacesCivilError("source_field_schema_changed_during_capture")
     state = _load_state(capture_root)
     pages = state.get("pages")
     if not isinstance(pages, list) or not pages \
             or any(not isinstance(item, dict) for item in pages):
-        raise IncorporatedPlacesCivilError(
-            "source_capture_roster_incomplete_or_unexpected")
+        raise IncorporatedPlacesCivilError("source_capture_roster_incomplete_or_unexpected")
     cursor = 0
     ordered: list[tuple[str, int, int]] = []
     for entry in sorted(pages, key=lambda item: (item.get("offset", -1),
@@ -1067,14 +959,12 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         offset, count, name = entry.get("offset"), entry.get("count"), entry.get("name")
         if (type(offset) is not int or type(count) is not int or offset < 0 or count < 1
                 or name != _page_name(offset, count) or offset != cursor
-                or offset + count > EXPECTED_COUNT or entry.get("features") != count):
-            raise IncorporatedPlacesCivilError(
-                "source_capture_roster_incomplete_or_unexpected")
+                or offset + count > len(roster) or entry.get("features") != count):
+            raise IncorporatedPlacesCivilError("source_capture_roster_incomplete_or_unexpected")
         ordered.append((name, offset, count))
         cursor = offset + count
-    if cursor != EXPECTED_COUNT:
-        raise IncorporatedPlacesCivilError(
-            "source_capture_roster_incomplete_or_unexpected")
+    if cursor != len(roster):
+        raise IncorporatedPlacesCivilError("source_capture_roster_incomplete_or_unexpected")
     for name in [*METADATA_NAMES, *AFTER_NAMES, *(item[0] for item in ordered)]:
         _validate_request_scope(name, _load_receipt(capture_root, name), roster)
     stream = _PageStream(capture_root, fields, parquet_sink)
@@ -1085,49 +975,16 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     except BaseException:
         stream.finish(parquet_ok=False)
         raise
-    if len(stream.ids) != EXPECTED_COUNT or summary["max_objectid"] <= 0:
+    if len(stream.ids) != len(roster) or summary["max_objectid"] <= 0:
         raise IncorporatedPlacesCivilError("source_page_population_incomplete")
-    ids_sha = summary["ids_sha"]
-    if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
-        raise IncorporatedPlacesCivilError("source_id_roster_drift")
-    if summary["featureclass_distribution"] != EXPECTED_FEATURECLASS_DISTRIBUTION:
-        raise IncorporatedPlacesCivilError(
-            "source_featureclass_distribution_drift")
-    if summary["isunknowncoords_distribution"] != EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION:
-        raise IncorporatedPlacesCivilError(
-            "source_isunknowncoords_distribution_drift")
-    if (EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION is not None
-            and summary["multipoint_point_count_distribution"]
-            != EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION):
-        raise IncorporatedPlacesCivilError(
-            "source_multipoint_point_count_distribution_drift")
-    if (EXPECTED_TOTAL_POINT_COUNT is not None
-            and summary["total_point_count"] != EXPECTED_TOTAL_POINT_COUNT):
-        raise IncorporatedPlacesCivilError("source_total_point_count_drift")
-    if (EXPECTED_Z_ORDINATE_DISTRIBUTION is not None
-            and summary["z_ordinate_distribution"] != EXPECTED_Z_ORDINATE_DISTRIBUTION):
-        raise IncorporatedPlacesCivilError(
-            "source_z_ordinate_distribution_drift")
-    if EXPECTED_RECORD_SHA256 and summary["record_sha"] != EXPECTED_RECORD_SHA256:
-        raise IncorporatedPlacesCivilError(
-            "source_value_or_geometry_baseline_drift")
-    if EXPECTED_GEOMETRY_SHA256 and summary["geometry_sha"] != EXPECTED_GEOMETRY_SHA256:
-        raise IncorporatedPlacesCivilError(
-            "source_geometry_or_coverage_drift")
-    if (EXPECTED_NULL_GEOMETRY_COUNT is not None
-            and summary["null_geometry_count"] != EXPECTED_NULL_GEOMETRY_COUNT):
-        raise IncorporatedPlacesCivilError(
-            "source_null_geometry_count_drift")
-    if (EXPECTED_EMPTY_GEOMETRY_COUNT is not None
-            and summary["empty_geometry_count"] != EXPECTED_EMPTY_GEOMETRY_COUNT):
-        raise IncorporatedPlacesCivilError(
-            "source_empty_geometry_count_drift")
-    if (EXPECTED_OBSERVED_BOUNDS is not None
-            and summary["observed_bounds"] != EXPECTED_OBSERVED_BOUNDS):
-        raise IncorporatedPlacesCivilError("source_observed_bounds_drift")
+    capture_witness(
+        {name: _read_capture(capture_root, name)
+         for name in ("count_before", "ids_before", "count_after", "ids_after")},
+        captured_ids=list(stream.ids))
     return {"fields": fields, "schema_sha": schema_sha, "pages": len(ordered),
+            "feature_count": len(stream.ids),
             "record_sha": summary["record_sha"], "geometry_sha": summary["geometry_sha"],
-            "ids_sha": ids_sha, "parquet_path": parquet_sink,
+            "ids_sha": summary["ids_sha"], "parquet_path": parquet_sink,
             "null_geometry_count": summary["null_geometry_count"],
             "empty_geometry_count": summary["empty_geometry_count"],
             "total_point_count": summary["total_point_count"],
@@ -1190,10 +1047,14 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
-             "source_schema_sha256": extracted["schema_sha"]},
+             "source_schema_sha256": extracted["schema_sha"],
+             "source_feature_count": extracted["feature_count"],
+             "null_geometry_count": extracted["null_geometry_count"],
+             "source_id_sha256": extracted["ids_sha"]},
             parquet_body)
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
+        "source_feature_count": extracted["feature_count"],
+        "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_schema_sha256": extracted["schema_sha"], "source_crs_epsg": SOURCE_CRS_WKID,
@@ -1207,7 +1068,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "z_ordinate_distribution": extracted["z_ordinate_distribution"],
         "featureclass_distribution": extracted["featureclass_distribution"],
         "isunknowncoords_distribution": extracted["isunknowncoords_distribution"],
-        "unique_source_id_count": EXPECTED_COUNT,
+        "unique_source_id_count": extracted["feature_count"],
         "source_max_objectid": extracted["max_objectid"],
         "observed_bounds": extracted["observed_bounds"],
         "declared_layer_extent_3857": EXPECTED_LAYER_EXTENT,
@@ -1219,8 +1080,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "crosswalk_open_id": CROSSWALK_OPEN_ID,
         "crosswalk_public_copy_sha256": CROSSWALK_COPY_SHA256,
         "baseline_pending_note": BASELINE_PENDING_NOTE,
-        "baseline_pending_complete_capture": bool(
-            not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256),
+        "baseline_pending_complete_capture": True,
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
@@ -1235,12 +1095,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "resumed_pages": resumed_pages,
                        "id_roster_enumeration_note":
                            "returnIdsOnly enumerated the complete OBJECTID roster "
-                           "(29,557 ids spanning 6..259901 with gaps, observed "
-                           "2026-11-13). Pages start at 1000 ids below the producer's "
-                           "2000-record cap and refused pages are bisected until "
-                           "served; accepted pages must tile the sorted roster "
-                           "exactly and before/after count/roster brackets prove "
-                           "nothing was skipped, duplicated or reordered."},
+                           "at capture time; pages start below the producer's "
+                           "record cap and refused pages are bisected until served; "
+                           "accepted pages must tile the sorted roster exactly and "
+                           "before/after count/roster brackets prove nothing was "
+                           "skipped, duplicated or reordered."},
         "capture_window_utc": {"first_page": first_captured_at,
                                "last_page": last_captured_at},
         "freshness_accepted": False, "schema_contract_accepted": False,
@@ -1380,7 +1239,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     validate_construction_code_identity(REPO_ROOT, identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
+            "capture_complete": True,
+            "feature_count": extracted["feature_count"],
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_total_point_count": extracted["total_point_count"],
             "source_featureclass_distribution": extracted["featureclass_distribution"],
@@ -1424,9 +1284,10 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str,
     validate_construction_code_identity(REPO_ROOT, identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
-            "source_id_sha256": audit.get("source_ids_sha256", ""),
+            "capture_complete": True,
+            "feature_count": audit["source_feature_count"],
+            "source_null_geometry_count": audit.get("null_geometry_count"),
+            "source_id_sha256": audit.get("source_id_sha256", ""),
             "source_schema_sha256": audit["source_schema_sha256"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_release_accepted": False, "source_freshness_accepted": False,
@@ -1499,7 +1360,7 @@ def build_incorporated_places_civil_gnis_baseline(
             "source_geometry_sha256": extracted["geometry_sha"],
             "source_ids_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
-            "source_feature_count": EXPECTED_COUNT,
+            "source_feature_count": extracted["feature_count"],
             "source_total_point_count": extracted["total_point_count"],
             "source_max_objectid": extracted["max_objectid"],
             "source_null_geometry_count": extracted["null_geometry_count"],

@@ -11,17 +11,11 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.gnis_streams_mouth import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_COUNTY_NAME_NULL_COUNT,
-    EXPECTED_INVALID_GEOMETRY_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
-    EXPECTED_OBJECTID_1_NULL_COUNT,
-    EXPECTED_ROW_IDENTITY_DUPLICATE_COUNT,
-    EXPECTED_STATE_ALPHA_NULL_COUNT,
     FILE_SLUG,
     capture_gnis_streams_mouth,
 )
@@ -59,18 +53,14 @@ def usgs_gnis_streams_mouth(context, config: GnisStreamsMouthConfig,
 
 @asset_check(asset=usgs_gnis_streams_mouth, blocking=True)
 def usgs_gnis_streams_mouth_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT
-              and candidate.get("candidate_ready") is not None
-              and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
-              and candidate.get("source_invalid_geometry_count") == EXPECTED_INVALID_GEOMETRY_COUNT)
+    passed = (candidate.get("capture_complete") is True
+              and type(candidate.get("feature_count")) is int
+              and candidate["feature_count"] > 0
+              and candidate.get("candidate_ready") is not None)
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
-            "state_alpha_null_count": EXPECTED_STATE_ALPHA_NULL_COUNT,
-            "county_name_null_count": EXPECTED_COUNTY_NAME_NULL_COUNT,
-            "gaz_id_null_count": EXPECTED_OBJECTID_1_NULL_COUNT,
-            "row_identity_duplicate_count": EXPECTED_ROW_IDENTITY_DUPLICATE_COUNT,
             "source_release_accepted": False,
             "source_freshness_accepted": False,
             "schema_contract_accepted": False,
@@ -80,6 +70,10 @@ def usgs_gnis_streams_mouth_complete(candidate: dict) -> AssetCheckResult:
             "release_accepted": False,
         },
     )
+
+
+usgs_gnis_streams_mouth_approved_baseline_drift = register_approved_baseline_drift(
+    usgs_gnis_streams_mouth, "usgs_gnis_streams_mouth_approved_baseline_drift")
 
 
 gnis_streams_mouth_draft_job = define_asset_job(
@@ -95,6 +89,6 @@ gnis_streams_mouth_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [usgs_gnis_streams_mouth]
-ASSET_CHECKS = [usgs_gnis_streams_mouth_complete]
+ASSET_CHECKS = [usgs_gnis_streams_mouth_complete, usgs_gnis_streams_mouth_approved_baseline_drift]
 JOBS = [gnis_streams_mouth_draft_job]
 SCHEDULES = [gnis_streams_mouth_draft_schedule]

@@ -12,13 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.unincorporated_places_census_gnis import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_unincorporated_places_census_gnis,
 )
@@ -63,9 +62,9 @@ def unincorporated_places_census_gnis(
 @asset_check(asset=unincorporated_places_census_gnis, blocking=True)
 def unincorporated_places_census_gnis_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and (EXPECTED_NULL_GEOMETRY_COUNT is None
-             or candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT)
+        candidate.get("capture_complete") is True
+        and type(candidate.get("feature_count")) is int
+        and candidate["feature_count"] > 0
     )
     return AssetCheckResult(
         passed=passed,
@@ -86,6 +85,10 @@ def unincorporated_places_census_gnis_complete(candidate: dict) -> AssetCheckRes
     )
 
 
+unincorporated_places_census_gnis_approved_baseline_drift = register_approved_baseline_drift(
+    unincorporated_places_census_gnis, "unincorporated_places_census_gnis_approved_baseline_drift")
+
+
 unincorporated_places_census_gnis_draft_job = define_asset_job(
     "unincorporated_places_census_gnis_draft_refresh",
     selection=AssetSelection.assets(unincorporated_places_census_gnis),
@@ -99,6 +102,6 @@ unincorporated_places_census_gnis_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [unincorporated_places_census_gnis]
-ASSET_CHECKS = [unincorporated_places_census_gnis_complete]
+ASSET_CHECKS = [unincorporated_places_census_gnis_complete, unincorporated_places_census_gnis_approved_baseline_drift]
 JOBS = [unincorporated_places_census_gnis_draft_job]
 SCHEDULES = [unincorporated_places_census_gnis_draft_schedule]
