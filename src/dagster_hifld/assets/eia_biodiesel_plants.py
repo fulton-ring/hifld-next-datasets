@@ -11,9 +11,7 @@ class BiodieselPlantsConfig(Config):
 
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="energy", compute_kind="http",
-       description="Pinned historical EIA 'Biodiesel Plants in the United States' shapefile (75 plants as of "
-                   "January 1, 2021) from the producer's own eia.gov distribution. Historical unapproved candidate; "
-                   "inventory equivalence, currentness and rights remain unresolved.")
+       description='Parked historical-source adapter: normal acquisition and cache replay refuse before network or storage effects. Existing published versions remain addressable; a maintained source-native successor is required.')
 def eia_biodiesel_plants(context, config: BiodieselPlantsConfig, staging_storage: StagingStorageResource) -> dict:
     result = capture_eia_biodiesel_plants(staging_storage, version=f"v{SOURCE_RELEASE.replace('-', '')}",
                                           capture_directory=config.capture_directory or None)

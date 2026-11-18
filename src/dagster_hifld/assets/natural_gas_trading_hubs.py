@@ -21,9 +21,7 @@ class NaturalGasTradingHubsConfig(Config):
     group_name="eia",
     compute_kind="http",
     description=(
-        "Historical EIA February 2020 natural gas trading hubs candidate. The EIA ZIP is dated "
-        "2020-07-10; relationship to the DOE/ORNL HIFLD archive and ongoing source maintenance "
-        "remain unresolved, so the schedule is stopped and release gates remain closed."
+        'Parked historical-source adapter: normal acquisition and cache replay refuse before network or storage effects. Existing published versions remain addressable; a maintained source-native successor is required.'
     ),
 )
 def natural_gas_trading_hubs_ingest(context, config: NaturalGasTradingHubsConfig,

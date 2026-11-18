@@ -75,3 +75,9 @@ modes. Evidence: [issue #22 progress](https://github.com/fulton-ring/hifld-next-
 [independent review](https://github.com/fulton-ring/hifld-next-datasets/issues/22#issuecomment-6261936232),
 and [PR #433](https://github.com/fulton-ring/hifld-next-datasets/pull/433).
 Runtime originals remain untouched.
+
+## Maintained-refresh disposition (2026-11-16)
+
+The public refresh entrypoint now refuses fresh acquisition and retained-capture replay before network or staging side effects. Its pinned historical payload is not a maintained current-source pipeline. Existing published versions remain unchanged and addressable; offline parser fixtures remain useful evidence. A stopped schedule alone was insufficient to prevent a manual historical capture.
+
+Use the [current EIA combined biofuels report](https://www.eia.gov/biofuels/capacity/) for current roster attributes. The inspected January2026 workbook lacks facility coordinates, addresses and native unique facility IDs; current point reconstruction therefore needs independently verified identity/location constituents.
