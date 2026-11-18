@@ -79,3 +79,9 @@ census_primary_roads_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+ASSET_CHECKS = [census_primary_roads_source_complete]
+INGEST_ASSETS = [census_bureau_primary_roads]
+JOBS = []
+SCHEDULES = [census_primary_roads_draft_schedule]

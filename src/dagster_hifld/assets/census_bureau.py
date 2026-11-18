@@ -61,3 +61,9 @@ aiannh_source_integrity_refresh_schedule = ScheduleDefinition(
     run_config={"ops": {census_bureau_aiannh_areas.op.name: {"config": {"vintage": 2026}}}},
     description="Inactive monthly03:00 America/New_York integrity refresh of fixed TIGER2026 (issue #777 vintage migration) into isolated local draft staging; no annual substitution or publication.",
 )
+
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [census_bureau_aiannh_areas]
+JOBS = [aiannh_source_integrity_refresh_job]
+SCHEDULES = [aiannh_source_integrity_refresh_schedule]

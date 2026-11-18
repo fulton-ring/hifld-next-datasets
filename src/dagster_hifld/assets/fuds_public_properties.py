@@ -73,3 +73,12 @@ fuds_public_properties_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+ASSET_CHECKS = [
+    usace_fuds_public_properties_complete,
+    usace_fuds_public_properties_approved_baseline_drift,
+]
+INGEST_ASSETS = [usace_fuds_public_properties]
+JOBS = [fuds_public_properties_draft_job]
+SCHEDULES = [fuds_public_properties_draft_schedule]
