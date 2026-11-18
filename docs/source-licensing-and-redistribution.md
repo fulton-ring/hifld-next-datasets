@@ -70,7 +70,7 @@ record.
 | #36 | Child Care Centers | OSM or Overture Places for discovery and matching against an independently acquired government roster. | The government roster stays the source of record. A POI match cannot establish licensed status or national coverage. |
 | #38 | Colleges and Universities | Same discovery and matching role. | Same. |
 | #115 | Hospitals | Same discovery and matching role. | Same. |
-| #251 | Nursing Homes | Same discovery and matching role. | Same. |
+| #251 | Nursing Homes | CMS Provider Information (`4pq5-n9py`) is the maintainer-selected source of record; OSM or Overture Places are discovery and matching only. | A POI match cannot establish certified status or add facilities outside CMS coverage. |
 | #39 | Colleges and Universities Campuses | Campus boundary or parcel authority is required. | An Overture building footprint or OSM fence is a different geometry and product. Do not trace Google imagery. |
 | #277 | Prison Boundaries | Boundary or parcel authority is required. | Same; a building footprint is not the facility boundary. |
 | #329 | Transmission Lines | Physical network geometry and attributes are required. | Google tracing is prohibited under standard terms. An OSM power-line extract would be an ODbL-licensed alternative product, not the ORNL/HIFLD line data. |
