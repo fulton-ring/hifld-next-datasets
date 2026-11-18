@@ -18,8 +18,6 @@ from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_parti
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.land_surface_areas_usace_ienc import (
     DATASET_SLUG,
-    EXPECTED_EMPTY_GEOMETRY_COUNT,
-    EXPECTED_FEATURE_ID_NULL_COUNT,
     FILE_SLUG,
     capture_land_surface_areas_usace_ienc,
 )
@@ -66,9 +64,8 @@ def land_surface_areas_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
     passed = (
         candidate.get("feature_count") == candidate.get("source_reported_count")
         and candidate.get("source_population_complete") is True
-        and candidate.get("geometry_invalid_count") == EXPECTED_INVALID_GEOMETRY_COUNT
-        and candidate.get("geometry_empty_count") == EXPECTED_EMPTY_GEOMETRY_COUNT
-        and candidate.get("feature_id_null_count") == EXPECTED_FEATURE_ID_NULL_COUNT
+        and candidate.get("geometry_empty_count") == 0
+        and candidate.get("feature_id_null_count") == 0
         and candidate.get("geometry_repaired") is False
     )
     return AssetCheckResult(

@@ -14,7 +14,7 @@ from dagster_hifld.assets.usace_crane_locations import (
     usace_crane_locations_release,
 )
 from dagster_hifld.sources.usace_crane_locations import (
-    BTS_ITEM_ID, EXPECTED_FIELDS, IDS, _parquet_bytes, _validate,
+    BTS_ITEM_ID, EXPECTED_FIELDS, _parquet_bytes, _validate,
 )
 
 

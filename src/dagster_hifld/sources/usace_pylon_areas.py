@@ -39,6 +39,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
     ienc_layer_capture_roster,
     fetch_capture_retry,
     layer_parquet_bytes as _parquet_bytes,

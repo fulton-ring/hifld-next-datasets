@@ -22,7 +22,6 @@ ID_SHA256 = "933b0ed3c93b8163f716acac4dc27d1e1b94711083991b649cdcb7b9f6a59fda"
 from dagster_hifld.sources.land_surface_areas_usace_ienc import (
     DATASET_SLUG,
     EXPECTED_FIELD_DECLARATIONS,
-    EXPECTED_INVALID_GEOMETRY_COUNT,
     EXPECTED_LAYER_EXTENT,
     FILE_SLUG,
     LAYER_URL,
@@ -146,25 +145,20 @@ def _captures(docs: dict[str, dict]) -> dict[str, tuple[bytes, dict]]:
 
 
 def _pins(docs: dict[str, dict]) -> dict[str, object]:
-    features = sorted(docs["page_000"]["features"], key=lambda f: f["attributes"]["OBJECTID"])
     return {
-        "COUNT": len(features),
-        "ID_SHA256": source._sha(source._canonical(docs["ids_before"]["objectIds"])),
         "EXPECTED_SCHEMA_SHA256": source._sha(source._canonical(docs["layer_before"]["fields"])),
-        "EXPECTED_RECORD_SHA256": source._sha(source._canonical([f["attributes"] for f in features])),
-        "EXPECTED_GEOMETRY_SHA256": source._sha(source._canonical(
-            [[f["attributes"]["OBJECTID"], f["geometry"]] for f in features])),
     }
 
 
 class PopulationPins(unittest.TestCase):
-    def test_expected_population_pins_match_the_published_layer(self):
-        self.assertEqual(COUNT, 18903)
-        self.assertEqual(EXPECTED_INVALID_GEOMETRY_COUNT, 1)
+    def test_no_snapshot_population_pins(self):
+        for name in (
+            "EXPECTED_COUNT", "EXPECTED_IDS", "EXPECTED_ID_SHA256",
+            "EXPECTED_RECORD_SHA256", "EXPECTED_GEOMETRY_SHA256",
+            "EXPECTED_INVALID_GEOMETRY_COUNT",
+        ):
+            self.assertFalse(hasattr(source, name), name)
         self.assertTrue(LAYER_URL.endswith("LAND_AREA/MapServer/97"))
-        self.assertEqual(
-            "933b0ed3c93b8163f716acac4dc27d1e1b94711083991b649cdcb7b9f6a59fda",
-        )
 
 
 class ValidateCompleteCapture(unittest.TestCase):
@@ -371,20 +365,6 @@ class ValidateDriftRejections(unittest.TestCase):
             docs["page_000"]["features"][0]["geometry"]["rings"] = [shell_a, shell_b, hole]
         code, _ = self._mutate(mutate)
         self.assertEqual(code, "source_hole_ownership_ambiguous")
-
-    def test_value_baseline_drift(self):
-        def mutate(docs):
-            docs["page_000"]["features"][0]["attributes"]["Source_Date"] = "19990101"
-        code, _ = self._mutate(mutate)
-        self.assertEqual(code, "source_value_baseline_drift")
-
-    def test_geometry_baseline_drift(self):
-        def mutate(docs):
-            ring = docs["page_000"]["features"][0]["geometry"]["rings"][0]
-            moved = [[x + 0.0001, y] for x, y in ring]
-            docs["page_000"]["features"][0]["geometry"]["rings"][0] = moved
-        code, _ = self._mutate(mutate)
-        self.assertEqual(code, "source_geometry_baseline_drift")
 
     def test_schema_baseline_drift(self):
         docs = _docs()
@@ -593,8 +573,8 @@ class BlockingCompletenessCheck(unittest.TestCase):
             "source_geometry_sha256": "3" * 64,
             "source_coverage_scope": "scope",
             "drift_guard": "guard",
-            "geometry_valid_count": COUNT - EXPECTED_INVALID_GEOMETRY_COUNT,
-            "geometry_invalid_count": EXPECTED_INVALID_GEOMETRY_COUNT,
+            "geometry_valid_count": COUNT - 1,
+            "geometry_invalid_count": 1,
             "geometry_empty_count": 0,
             "feature_id_null_count": 0,
             "geometry_repaired": False,
@@ -615,15 +595,9 @@ class BlockingCompletenessCheck(unittest.TestCase):
         )
         candidate = self._candidate()
         check = land_surface_areas_usace_ienc_complete
-        self.assertFalse(check(dict(candidate, geometry_invalid_count=0)).passed)
-        self.assertFalse(check(dict(candidate, geometry_invalid_count=2)).passed)
-        self.assertFalse(check(dict(candidate, geometry_valid_count=COUNT)).passed)
         self.assertFalse(check(dict(candidate, geometry_empty_count=1)).passed)
         self.assertFalse(check(dict(candidate, feature_id_null_count=1)).passed)
         self.assertFalse(check(dict(candidate, geometry_repaired=True)).passed)
-        incomplete = {key: value for key, value in candidate.items()
-                      if key != "geometry_invalid_count"}
-        self.assertFalse(check(incomplete).passed)
 
     def test_population_failures_still_fail_closed(self):
         from dagster_hifld.assets.land_surface_areas_usace_ienc import (

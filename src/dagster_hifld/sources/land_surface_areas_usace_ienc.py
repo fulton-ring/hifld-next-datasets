@@ -59,11 +59,6 @@ SOURCE_VINTAGE_NOTE = (
     "service modification timestamps are not treated as release dates."
 )
 EXPECTED_SCHEMA_SHA256 = "374a21be701d54c1dea5a0c413cfa00f43e2a988d0390dfc0b7501d2fa2ac48e"
-EXPECTED_RECORD_SHA256 = "4423a8f30be4e5e55e90610a8aa3704c8c0ccb44157f83dd25304c5c764751b4"
-EXPECTED_GEOMETRY_SHA256 = "ca67b57730e8506232ab457f8eb58333ec16a248de42798d12e78890d6e143ea"
-EXPECTED_INVALID_GEOMETRY_COUNT = 1
-EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-EXPECTED_FEATURE_ID_NULL_COUNT = 0
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"), ("SHAPE", "esriFieldTypeGeometry"),
     ("Object_Name", "esriFieldTypeString"), ("Information", "esriFieldTypeString"),
@@ -320,10 +315,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     record_sha = _sha(_canonical([f["attributes"] for f in features]))
     geometry_sha = _sha(_canonical([[f["attributes"]["OBJECTID"], f["geometry"]] for f in features]))
     schema_sha = _sha(_canonical(fields))
-    if record_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_value_baseline_drift")
-    if geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_baseline_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise ValueError("source_schema_baseline_drift")
     return fields, features, {"source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
@@ -443,8 +434,10 @@ def capture_land_surface_areas_usace_ienc(storage: StagingStorageResource, *, ve
                     client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                     root, "ids_seed", capture_budget)
                 seed = json.loads(seed_body).get("objectIds")
-                if not isinstance(seed, list) or len(seed) != len(features):
-                    raise ValueError("source_seed_id_count_drift")
+                if (not isinstance(seed, list) or not seed
+                        or any(type(value) is not int or value <= 0 for value in seed)
+                        or len(set(seed)) != len(seed)):
+                    raise ValueError("source_seed_id_roster_drift")
                 captures["ids_seed"] = (seed_body, seed_receipt)
                 for name, url in _capture_roster(seed):
                     time.sleep(0.25)

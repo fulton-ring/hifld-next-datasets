@@ -114,7 +114,7 @@ def _validate_replay_budget(root: Path, *, capture_max_bytes: int,
     total = _capture_disk_bytes(root)
     if total > capture_max_bytes or total > MAX_CAPTURE_BYTES:
         raise ValueError("retained_capture_exceeds_total_byte_budget")
-    for name in CAPTURE_NAMES:
+    for name in {path.name.removesuffix(".body") for path in root.glob("*.body")}:
         limit = layer_response_max_bytes if name in {"layer_before", "layer_after"} else response_max_bytes
         for suffix in ("wire", "body"):
             path = root / f"{name}.{suffix}"

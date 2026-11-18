@@ -35,6 +35,7 @@ from dagster_hifld.sources.capture_common import (
 )
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
     ienc_layer_capture_roster,
     load_replay as _load_replay, validate_crs as _validate_crs,
     validate_dimensions as _validate_dimensions, write_outputs as _write_outputs,
@@ -226,7 +227,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
             or any(type(value) is not int for value in before)):
         raise ValueError("source_object_id_field_or_type_drift")
     if (docs["count_before"].get("count") != len(before)
-            or docs["count_after"].get("count") != len(after)):
+            or docs["count_after"].get("count") != len(before)):
         raise ValueError("source_count_id_roster_mismatch")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
@@ -384,10 +385,12 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
         elif recover_receipted:
             ids_body, ids_receipt = _load_replay(root, "ids_seed")
             ids = json.loads(ids_body).get("objectIds")
-            if (not isinstance(ids, list) or len(ids) != len(features)
-                    or any(type(value) is not int for value in ids) or sorted(ids) != EXPECTED_IDS):
+            if (not isinstance(ids, list) or not ids
+                    or any(type(value) is not int or value <= 0 for value in ids)
+                    or len(set(ids)) != len(ids)):
                 raise ValueError("retained_unsealed_seed_roster_invalid")
-            names_urls = [("ids_seed", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})), *_capture_roster(EXPECTED_IDS)]
+            ids = sorted(ids)
+            names_urls = [("ids_seed", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})), *_capture_roster(ids)]
             expected_names = {name for name, _url in names_urls}
             actual_names = {path.name.removesuffix(".receipt.json") for path in root.glob("*.receipt.json")}
             if actual_names != expected_names:
@@ -411,10 +414,11 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
                 seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
                 ids=json.loads(seed_body).get("objectIds")
-                if (not isinstance(ids,list) or len(ids)!=len(features)
-                        or any(type(value) is not int for value in ids) or sorted(ids)!=EXPECTED_IDS):
+                if (not isinstance(ids,list) or not ids
+                        or any(type(value) is not int or value <= 0 for value in ids)
+                        or len(set(ids))!=len(ids)):
                     raise ValueError("source_seed_id_roster_drift")
-                ids=EXPECTED_IDS
+                ids=sorted(ids)
                 captures["ids_seed"]=(seed_body,seed_receipt)
                 for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name,capture_budget)
         fields,features,audit=_validate(captures)

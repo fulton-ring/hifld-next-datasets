@@ -17,6 +17,7 @@ COUNT = 6440
 IDS = list(range(1, COUNT + 1))
 ID_SHA256 = "8dc3b41f3a226207090e7b947380144179fcb92a90018eb15a7daf21aa821b4e"
 
+import dagster_hifld.sources.usace_pylon_areas as source
 from dagster_hifld.sources.usace_pylon_areas import (
     BTS_ITEM_ID,
     DATASET_SLUG,
