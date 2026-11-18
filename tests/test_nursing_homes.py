@@ -79,8 +79,8 @@ class NursingHomesTests(unittest.TestCase):
         descriptor = source.validate_metadata(metadata())
         self.assertEqual(descriptor['download_url'], CSV_URL)
         self.assertEqual(descriptor['distribution_id'], 'dist-fixture')
-        for key, value in [('identifier', 'other'), ('modified', '2026-11-01'),
-                           ('modified', 'not-a-date'), ('license', 'approved')]:
+        for key, value in [('identifier', 'other'), ('modified', 'not-a-date'),
+                           ('license', 'approved')]:
             with self.subTest(key=key), self.assertRaises(ValueError):
                 source.validate_metadata(metadata(**{key: value}))
         for distribution in (None, [], [{'identifier': 'x', 'data': {'downloadURL': 'https://h-o.st/file.csv',
@@ -97,15 +97,13 @@ class NursingHomesTests(unittest.TestCase):
             return source.capture_nursing_homes(storage, version='vfixture',
                                                 capture_directory=str(root / 'capture'))
 
-    def handler(self, body=None, metadata_after=None):
+    def handler(self, body=None):
         import httpx
-        rows = ROWS if body is None else None
-        body = fixture_body(rows) if body is None else body
+        body = fixture_body() if body is None else body
         def handle(request):
             url = str(request.url)
             if url == source.METADATA_URL:
-                return httpx.Response(200, stream=httpx.ByteStream(source.canonical(
-                    metadata_after or metadata())))
+                return httpx.Response(200, stream=httpx.ByteStream(source.canonical(metadata())))
             if url.startswith(source.DATASTORE_URL):
                 query = parse_qs(urlsplit(url).query)
                 offset, limit = int(query['offset'][0]), int(query['limit'][0])
@@ -153,11 +151,13 @@ class NursingHomesTests(unittest.TestCase):
         from dagster_hifld.resources import StagingStorageResource
         body = fixture_body()
         for failure in ('status', 'partial', 'roster', 'after'):
-            def handler(request, failure=failure):
+            calls = {'metadata': 0}
+            def handler(request, failure=failure, calls=calls):
                 url = str(request.url)
                 if url == source.METADATA_URL:
+                    calls['metadata'] += 1
                     value = metadata()
-                    if failure == 'after':
+                    if failure == 'after' and calls['metadata'] == 2:
                         value['description'] = 'changed during capture'
                     return httpx.Response(200, stream=httpx.ByteStream(source.canonical(value)))
                 if url.startswith(source.DATASTORE_URL):

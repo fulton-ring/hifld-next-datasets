@@ -252,7 +252,7 @@ def capture_nursing_homes(storage: StagingStorageResource, *, version: str,
     sink = pa.BufferOutputStream(); pq.write_table(table, sink, compression='zstd')
     parquet = sink.getvalue().to_pybytes()
     parquet_name = f'geoparquet/{FILE_SLUG}.parquet'
-    descriptor = {'bytes':len(parquet),'sha256':sha(parquet)}
+    parquet_descriptor = {'bytes':len(parquet),'sha256':sha(parquet)}
     manifest = {'schema_version':1,'approved':False,'title':'Nursing Homes: CMS Provider Information',
         'description':SCOPE + ' ' + CRS_NOTE,'publisher':PUBLISHER,'agency':PUBLISHER,'source_url':METADATA_URL,
         'license':'Unknown; absent from CMS metadata. Rights acceptance pending.',
@@ -273,7 +273,7 @@ def capture_nursing_homes(storage: StagingStorageResource, *, version: str,
         'lineage':'CMS dataset 4pq5-n9py, current original distribution. ' + SCOPE,
         'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{
             'reason':'Lexical CMS CSV preservation with explicitly proposed unaccepted geometry mapping.',
-            'objects':[{'path':parquet_name,**descriptor}]}}},
+            'objects':[{'path':parquet_name,**parquet_descriptor}]}}},
         'unsupported_output_formats':{'geopackage':'No approved mapping.','pmtiles':'No approved display transformation.'}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     outputs = {parquet_name:parquet,'metadata/source_manifest.json':canonical(manifest)+b'\n',
@@ -282,7 +282,7 @@ def capture_nursing_homes(storage: StagingStorageResource, *, version: str,
                'metadata/candidate_ready.json':canonical({**GATES,'approved':False,'version':version,
                    'source_population_complete':True,'source_count_witness':audit['source_count_witness'],
                    'source_coordinate_share':audit['source_coordinate_share'],
-                   'objects':{parquet_name:descriptor},'source_record_sha256':audit['source_record_sha256']})+b'\n'}
+                   'objects':{parquet_name:parquet_descriptor},'source_record_sha256':audit['source_record_sha256']})+b'\n'}
     for name, (body, receipt) in captures.items():
         outputs.update({f'raw/{name}.body':body, f'raw/{name}.wire':(root/f'{name}.wire').read_bytes(),
                         f'raw/{name}.receipt.json':canonical(receipt)+b'\n'})
