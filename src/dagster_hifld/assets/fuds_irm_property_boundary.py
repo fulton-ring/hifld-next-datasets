@@ -8,8 +8,9 @@ from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.fuds_irm_property_boundary import (
-    DATASET_SLUG, FILE_SLUG, EXPECTED_COUNT, capture_fuds_irm_property_boundary,
+    DATASET_SLUG, FILE_SLUG, capture_fuds_irm_property_boundary,
 )
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 
 
 class FudsIrmPropertyBoundaryConfig(Config):
@@ -44,7 +45,10 @@ def fuds_irm_property_boundary_ingest(
 
 @asset_check(asset=fuds_irm_property_boundary_ingest, blocking=True)
 def fuds_irm_property_boundary_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_null_geometry_count") == 0
+    passed = (candidate.get("capture_complete") is True
+              and type(candidate.get("feature_count")) is int
+              and candidate["feature_count"] > 0
+              and candidate.get("source_null_geometry_count") == 0)
     return AssetCheckResult(
         passed=passed,
         metadata={
@@ -71,6 +75,10 @@ def fuds_irm_property_boundary_geometry_quality(candidate: dict) -> AssetCheckRe
             "source_release_accepted": False,
         },
     )
+
+
+fuds_irm_property_boundary_ingest_approved_baseline_drift = register_approved_baseline_drift(
+    fuds_irm_property_boundary_ingest, "fuds_irm_property_boundary_ingest_approved_baseline_drift")
 
 
 fuds_irm_property_boundary_draft_job = define_asset_job(

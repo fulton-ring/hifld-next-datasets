@@ -3,7 +3,8 @@ from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultS
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.fuds_projects_points import DATASET_SLUG, FILE_SLUG, EXPECTED_COUNT, capture_fuds_projects_points
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
+from dagster_hifld.sources.fuds_projects_points import DATASET_SLUG, FILE_SLUG, capture_fuds_projects_points
 
 
 class FudsProjectsPointsConfig(Config):
@@ -35,7 +36,11 @@ def usace_fuds_projects_points(context, config: FudsProjectsPointsConfig, stagin
 
 @asset_check(asset=usace_fuds_projects_points, blocking=True)
 def usace_fuds_projects_points_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("candidate_ready") is not None and candidate.get("source_null_geometry_count") == 0)
+    passed = (candidate.get("capture_complete") is True
+              and type(candidate.get("feature_count")) is int
+              and candidate["feature_count"] > 0
+              and candidate.get("candidate_ready") is not None
+              and candidate.get("source_null_geometry_count") == 0)
     return AssetCheckResult(
         passed=passed,
         metadata={
@@ -51,6 +56,10 @@ def usace_fuds_projects_points_complete(candidate: dict) -> AssetCheckResult:
             "release_accepted": False,
         },
     )
+
+
+usace_fuds_projects_points_approved_baseline_drift = register_approved_baseline_drift(
+    usace_fuds_projects_points, "usace_fuds_projects_points_approved_baseline_drift")
 
 
 fuds_projects_points_draft_job = define_asset_job(

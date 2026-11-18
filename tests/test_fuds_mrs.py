@@ -127,9 +127,7 @@ def _mocked_service(documents, fields):
         kwargs["transport"] = httpx.MockTransport(handler)
         return real_client(*args, **kwargs)
 
-    with patch.object(fuds_mrs, "EXPECTED_COUNT",
-                      len(documents["ids_before"]["objectIds"])), \
-            patch.object(fuds_mrs, "EXPECTED_SCHEMA_SHA256", schema_sha), \
+    with patch.object(fuds_mrs, "EXPECTED_SCHEMA_SHA256", schema_sha), \
             patch.object(httpx, "Client", client_with_mocked_transport):
         yield
 

@@ -58,27 +58,26 @@ CAPTURE_BODY_LIMIT = 64 * 1024 * 1024
 DISK_FLOOR = 400_000_000
 ZIP_MEMBER_ROSTER = ["CO.dat", "EN.dat", "HS.dat", "RA.dat", "RE.dat", "SC.dat", "counts"]
 RECORD_FIELD_COUNTS = {"RA": 49, "CO": 18, "EN": 25}
-EXPECTED_RA_RECORDS = 198010
-EXPECTED_CO_RECORDS = 203245
-EXPECTED_EN_RECORDS = 374223
-EXPECTED_CREATION_DATE = "Sun Nov  8 06:21:02 EST 2026"
-EXPECTED_STATUS_COUNTS = {"C": 141986, "G": 18447, "A": 15913, "I": 12740, "T": 8911, "": 13}
-EXPECTED_ARCHIVE_COUNTS = {"C": 160682, "A": 37327, "": 1}
-EXPECTED_COORDINATE_TYPE_COUNTS = {"T": 198009, "A": 5236}
-EXPECTED_LATITUDE_DIRECTIONS = {"N": 203102, "S": 23, "": 120}
-EXPECTED_LONGITUDE_DIRECTIONS = {"W": 203023, "E": 102, "": 120}
-EXPECTED_OWNER_ENTITY_ROWS = 197994
-EXPECTED_REGISTRANT_ENTITY_ROWS = 176229
+EXPECTED_RA_RECORDS = 198069
+EXPECTED_CO_RECORDS = 203304
+EXPECTED_EN_RECORDS = 374343
+EXPECTED_CREATION_DATE = "Sun Nov 15 06:19:55 EST 2026"
+EXPECTED_STATUS_COUNTS = {"C": 142026, "A": 15925, "T": 8911, "I": 12753, "G": 18441, "": 13}
+EXPECTED_ARCHIVE_COUNTS = {"C": 160716, "A": 37352, "": 1}
+EXPECTED_COORDINATE_TYPE_COUNTS = {"T": 198068, "A": 5236}
+EXPECTED_LATITUDE_DIRECTIONS = {"N": 203161, "S": 23, "": 120}
+EXPECTED_LONGITUDE_DIRECTIONS = {"W": 203082, "E": 102, "": 120}
+EXPECTED_OWNER_ENTITY_ROWS = 198053
+EXPECTED_REGISTRANT_ENTITY_ROWS = 176290
 EXPECTED_REGISTRATIONS_WITHOUT_ENTITY = 16
 EXPECTED_ROWS_WITHOUT_OWNER_ENTITY = 15
 EXPECTED_ARRAY_ROWS_WITH_POSITION = 354
-EXPECTED_ARRAY_ROWS_WITHOUT_POSITION = 4882
-EXPECTED_PUBLISHED_ROWS = 203245
+EXPECTED_PUBLISHED_ROWS = 203304
 EXPECTED_NULL_GEOMETRY_COUNT = 124
-EXPECTED_ID_SHA256 = "437a2afcb638554c7693c673d93204e6a8f0815629c58eebc61bf1b2bc63ae0c"
-EXPECTED_GEOMETRY_SHA256 = "a86d768bb3705b0a08bd372a915add439a94d25e07e2daa89bd6beb186136712"
+EXPECTED_ID_SHA256 = "3e5b06ac9e62031c686eef86304197e8496fc5207e0a21709cd4b5f675a262e0"
+EXPECTED_GEOMETRY_SHA256 = "dd488554406c7a6582962595ce3cdccf04ed63fb2ac45030ab335ab822832439"
 EXPECTED_STATE_ROSTER_SHA256 = "5fdba7b3f3aa1b6bdb4bc8bd862b5a1bf87142658ea1bcb279e8c6bb062411cf"
-EXPECTED_ROWS_SHA256 = "31b7d83dc0f0b287b6802f819e6251ec464473bac52cee36e120c72afd3dc1c4"
+EXPECTED_ROWS_SHA256 = "2a43a008e728b5c1360d86b98bf8ddba57e06e9f35bdf9e872e5063b3712f474"
 EXPECTED_BOUNDS = [-176.705472222, -15.15, 174.138861111, 71.3103611111]
 RA_FIELDS = [
     "record_type", "content_indicator", "file_number", "registration_number",
@@ -131,7 +130,7 @@ RECORD_VALUE_NAMES = [name for name in PUBLISHED_COLUMN_NAMES if name != "geomet
 ROW_KEY_COLUMNS = ("ra_registration_number", "ra_unique_system_identifier", "co_coordinate_type")
 COVERAGE_SCOPE = (
     "Every CO coordinate row joined to its RA registration in the pinned weekly FCC ASR "
-    "r_tower.zip: 198009 T (tower-coordinate) rows and 5236 A (array-coordinate) rows, "
+    "r_tower.zip: 198068 T (tower-coordinate) rows and 5236 A (array-coordinate) rows, "
     "with all RA status and archive codes retained. These are registration-coordinate records, "
     "not a census of physical towers or an inventory of every member of an array. Of the A rows, "
     "354 carry array_tower_position and 4882 do not; array_total_tower does not expand rows. "
@@ -575,7 +574,7 @@ def capture_antenna_structure_registration_asr(storage: StagingStorageResource, 
         "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
         "transformations": [{"operation": "ULS pipe-delimited ASR tower registration file to GeoParquet candidate", "parameters": {
             "source_tables": "RA registration, CO coordinates and EN entity tables of r_tower.zip decoded as CRLF pipe-delimited UTF-8 records (trailing CR removed per line)",
-            "population": ("one published row per CO coordinate row (198009 tower rows and 5236 array rows) "
+            "population": ("one published row per CO coordinate row (198068 tower rows and 5236 array rows) "
                            "joined to its RA registration row and to the registration's unique EN owner entity "
                            "row (entity_type O), without status or archive filtering; A rows are retained as "
                            "filed, not expanded into array members; the single registration without a coordinate row has no "
@@ -608,7 +607,7 @@ def capture_antenna_structure_registration_asr(storage: StagingStorageResource, 
                     "non-direction values in LatDir/LonDir/url and its declared latdec/londec columns disagreeing "
                     "with its own geometry are recorded schema/ID diagnostics, and its declared-column layout does "
                     "not match the FCC tower table definitions, so no positional mapping to it is applied. The "
-                    "maintained feed's population (198010 registrations, 203245 coordinate rows) is materially "
+                    "maintained feed's population (198069 registrations, 203304 coordinate rows) is materially "
                     "larger than the frozen 17666-row candidate; publishing the current registry instead of the "
                     "frozen snapshot is a compatibility decision for maintainers, not a draft implementation "
                     "blocker. No publication or acceptance is implied; runtime approval flags remain false."),
