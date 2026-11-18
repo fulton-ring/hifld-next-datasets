@@ -1,18 +1,22 @@
-"""Draft capture for FHWA's National Tunnel Inventory (NTI) ArcGIS layer.
+"""Draft capture for FHWA's National Tunnel Inventory (NTI) annual XML release.
 
-The BTS-hosted item identifies FHWA as the source. Its own description has a
-conflicting compilation/publication chronology, so this extractor creates an
-unapproved native candidate and keeps every release gate closed.
+The FHWA NTI download page is the producer's own annual publication index. This
+adapter discovers the newest XML edition, preserves the producer's native
+element values and portal coordinates, and stages an unapproved candidate.
+Completeness is the complete XML population returned by the producer, not a
+code-pinned row count or snapshot digest.
 """
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
-from typing import Mapping
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urljoin, urlsplit
 from uuid import uuid4
+from xml.etree import ElementTree as ET
 
 import httpx
 import pyarrow as pa
@@ -32,183 +36,206 @@ from dagster_hifld.sources.capture_common import (
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
-ITEM_ID = "77879ddb06eb49d4a4a57298177bcd87"
-SERVICE_URL = "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_National_Tunnel_Inventory/FeatureServer"
-LAYER_ID = 0
-LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-LAYER_NAME = "National Tunnel Inventory"
+LANDING_URL = "https://www.fhwa.dot.gov/bridge/inspection/tunnel/inventory/download.cfm"
 DATASET_SLUG = "inventorynational-tunnel-inventory"
 FILE_SLUG = DATASET_SLUG
-PUBLISHER = "Federal Highway Administration (FHWA); distributed by USDOT Bureau of Transportation Statistics (BTS) NTAD"
-EDITION_NOTE = "The source item says compiled September 02, 2025 but published August 26, 2025; edition chronology and release acceptance require FHWA confirmation. ArcGIS item modified time is not a release date."
-EXPECTED_COUNT = 580
-EXPECTED_ID_SHA256 = "43840e76f01c40e59bff2beebd44da00d0370fcc8a9dde197067985ae848c4c8"
-EXPECTED_RECORD_SHA256 = "2f7a0b1fe698b1528ab0af87552951c033834b3cf861f6e35571b02a4afc6564"
-EXPECTED_GEOMETRY_SHA256 = "645fc954ba27e4607932c0d574a7586e0ca71c458648ac5471649bbe8708b9a7"
-EXPECTED_SCHEMA_SHA256 = "faa10e3aa64029d3f69acf211d88c1d692b29edeecf6255c750681b458508d9d"
+LAYER_NAME = "National Tunnel Inventory"
+PUBLISHER = "Federal Highway Administration (FHWA)"
+LICENSE_URL = "https://www.usa.gov/publicdomain/label/1.0/"
 MAX_BODY_BYTES = 100_000_000
+SOURCE_CRS_EPSG = 4326
+NESTED_ELEMENT = "FHWAElements"
+
+# The SNTI XML schema declares these element types. I1 keeps its text form so
+# leading zeros survive; I13/I14 are portal latitude/longitude in decimal
+# degrees. SubmittedBy is present in the published XML but not in the 2017 XSD.
+ELEMENT_FIELDS = (
+    ("I1", "string"), ("I2", "string"), ("I3", "int"), ("I4", "int"),
+    ("I5", "string"), ("I6", "string"), ("I7", "string"), ("I8", "string"),
+    ("I9", "string"), ("I10", "string"), ("I11", "string"), ("I12", "string"),
+    ("I13", "float"), ("I14", "float"), ("I15", "string"), ("I16", "string"),
+    ("I17", "string"), ("I18", "string"), ("A1", "string"), ("A2", "string"),
+    ("A3", "string"), ("A4", "string"), ("A5", "string"), ("A6", "string"),
+    ("A7", "string"), ("A8", "string"), ("C1", "string"), ("C2", "string"),
+    ("C3", "string"), ("C4", "string"), ("C5", "string"), ("C6", "string"),
+    ("C7", "int"), ("C8", "int"), ("G1", "string"), ("G2", "float"),
+    ("G3", "float"), ("G4", "float"), ("G5", "float"), ("D1", "string"),
+    ("D2", "string"), ("D3", "int"), ("D4", "string"), ("D5", "string"),
+    ("D6", "string"), ("L1", "string"), ("L2", "float"), ("L3", "float"),
+    ("L4", "string"), ("L5", "string"), ("L6", "string"), ("L7", "string"),
+    ("L8", "string"), ("L9", "string"), ("L10", "string"), ("L11", "string"),
+    ("L12", "string"), ("N1", "string"), ("N2", "string"), ("N3", "string"),
+    ("S1", "string"), ("S2", "string"), ("S3", "string"), ("S4", "string"),
+    ("S5", "string"), ("SubmittedBy", "string"),
+)
+ELEMENT_NAMES = tuple(name for name, _kind in ELEMENT_FIELDS)
+_EXPECTED_TAGS = frozenset(ELEMENT_NAMES) | {NESTED_ELEMENT}
+_INTEGER_TEXT = re.compile(r"[+-]?\d+")
+_DECIMAL_TEXT = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
+_RELEASE_FILE = re.compile(r"/(\d{4})NTI\.xml$", re.IGNORECASE)
 
 
-def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
-    # Preserve every producer-declared field property, including SQL type,
-    # editability, precision, and defaults, in the source-schema fingerprint.
-    return dict(field)
+class _AnchorParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.hrefs: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.casefold() != "a":
+            return
+        for name, value in attrs:
+            if name.casefold() == "href" and value:
+                self.hrefs.append(value)
 
 
-def _capture_urls() -> dict[str, str]:
-    return {
-        "portal_item": f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json",
-        "service_before": SERVICE_URL + "?f=pjson",
-        "layer_before": LAYER_URL + "?f=pjson",
-        "count_before": LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnCountOnly": "true", "f": "json"}),
-        "ids_before": LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-        # Pagination avoids oversized query strings while preserving a complete
-        # OBJECTID-ordered population in the source's declared spatial reference.
-        "page_000": LAYER_URL + "/query?" + urlencode({
-            "where": "1=1", "outFields": "*", "returnGeometry": "true",
-            "returnZ": "true", "returnM": "true", "outSR": "4326",
-            "orderByFields": "OBJECTID ASC", "resultOffset": "0",
-            "resultRecordCount": "2000", "f": "json",
-        }),
-        "layer_after": LAYER_URL + "?f=pjson",
-        "service_after": SERVICE_URL + "?f=pjson",
-        "count_after": LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnCountOnly": "true", "f": "json"}),
-        "ids_after": LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-    }
+def newest_release(index_body: bytes) -> tuple[int, str]:
+    """Return the newest NTI XML edition linked by the producer's download page."""
+    try:
+        text = index_body.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValueError("source_release_index_encoding_drift") from None
+    parser = _AnchorParser()
+    parser.feed(text)
+    releases: dict[int, str] = {}
+    for href in parser.hrefs:
+        url = urljoin(LANDING_URL, href)
+        match = _RELEASE_FILE.search(urlsplit(url).path)
+        if match:
+            year = int(match.group(1))
+            if 2000 <= year <= 2100:
+                releases[year] = url
+    if not releases:
+        raise ValueError("source_release_index_missing")
+    year = max(releases)
+    url = releases[year]
+    if urlsplit(url).hostname != urlsplit(LANDING_URL).hostname:
+        raise ValueError("source_release_host_drift")
+    return year, url
 
 
-def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) -> tuple[dict, list[dict], dict]:
-    names = {"portal_item", "service_before", "layer_before", "count_before", "ids_before",
-             "page_000", "layer_after", "service_after", "count_after", "ids_after"}
-    if set(captures) != names:
-        raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
-    portal, service, layer = docs["portal_item"], docs["service_before"], docs["layer_before"]
-    if (portal.get("id") != ITEM_ID or portal.get("owner") != "USDOT_BTS"
-            or portal.get("title") != "National Tunnel Inventory"
-            or portal.get("url") != SERVICE_URL or portal.get("access") != "public"):
-        raise ValueError("official_BTS_item_identity_or_publication_drift")
-    description = str(service.get("description", ""))
-    if (service.get("serviceItemId") != ITEM_ID or service.get("isView") is not True
-            or not any(isinstance(row, dict) and row.get("id") == LAYER_ID and row.get("name") == LAYER_NAME
-                       and row.get("geometryType") == "esriGeometryPoint" for row in service.get("layers", []))):
-        raise ValueError("official_NTAD_service_or_FHWA_lineage_drift")
-    if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
-            or layer.get("geometryType") != "esriGeometryPoint"
-            or layer.get("objectIdField") != "OBJECTID"
-            or layer.get("hasZ") is not False or layer.get("hasM") is not False
-            or layer.get("extent", {}).get("spatialReference", {}).get("latestWkid") != 4326):
-        raise ValueError("source_layer_geometry_or_identity_drift")
-    if not all(phrase in description for phrase in ("Federal Highway Administration (FHWA)",
-                 "compiled on September 02, 2025", "published on August 26, 2025")):
-        raise ValueError("source_lineage_or_edition_evidence_drift")
-    fields_raw = layer.get("fields")
-    if not isinstance(fields_raw, list) or not all(isinstance(f, dict) for f in fields_raw):
-        raise ValueError("source_field_roster_drift")
-    fields = [_plain_field(f) for f in fields_raw]
-    schema_sha = _sha(_canonical(fields))
-    if schema_sha != EXPECTED_SCHEMA_SHA256:
-        raise ValueError("source_schema_drift")
-    if docs["layer_after"] != layer or docs["service_after"] != service:
-        raise ValueError("source_metadata_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    ids_before = docs["ids_before"].get("objectIds")
-    ids_after = docs["ids_after"].get("objectIds")
-    if (not isinstance(ids_before, list) or sorted(ids_before) != sorted(ids_after or [])
-            or len(ids_before) != EXPECTED_COUNT or len(set(ids_before)) != EXPECTED_COUNT
-            or docs["ids_before"].get("objectIdFieldName") != "OBJECTID"
-            or _sha(_canonical(sorted(ids_before))) != EXPECTED_ID_SHA256):
-        raise ValueError("source_id_population_drift")
-    page = docs["page_000"]
-    if "error" in page or page.get("exceededTransferLimit") is True:
-        raise ValueError("source_page_error_or_truncated")
-    if (page.get("spatialReference", {}).get("latestWkid") != 4326
-            or page.get("geometryType") != "esriGeometryPoint"):
-        raise ValueError("source_page_crs_or_geometry_drift")
-    features = page.get("features")
-    if not isinstance(features, list) or len(features) != EXPECTED_COUNT:
-        raise ValueError("source_page_population_incomplete")
-    expected_names = [f["name"] for f in fields]
-    got_ids = []
-    geometry_rows = []
-    for feature in features:
-        attrs, geom = feature.get("attributes"), feature.get("geometry")
-        if not isinstance(attrs, dict) or list(attrs) != expected_names:
-            raise ValueError("source_record_field_roster_drift")
-        oid = attrs.get("OBJECTID")
-        if not isinstance(oid, int) or isinstance(oid, bool):
-            raise ValueError("source_objectid_physical_type_drift")
-        if not isinstance(geom, dict) or set(geom) != {"x", "y"}:
-            raise ValueError("source_point_geometry_drift")
-        if any(not isinstance(geom[k], (int, float)) or isinstance(geom[k], bool) for k in ("x", "y")):
-            raise ValueError("source_coordinate_physical_type_drift")
-        got_ids.append(oid)
-        geometry_rows.append([oid, geom["x"], geom["y"]])
-        for field in fields:
-            _validate_value_type(attrs[field["name"]], field)
-    if sorted(got_ids) != sorted(ids_before) or len(set(got_ids)) != EXPECTED_COUNT:
-        raise ValueError("source_page_id_population_incomplete")
-    features = sorted(features, key=lambda f: f["attributes"]["OBJECTID"])
-    record_sha, geometry_sha = _sha(_canonical(features)), _sha(_canonical(sorted(geometry_rows)))
-    if record_sha != EXPECTED_RECORD_SHA256 or geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_value_or_geometry_baseline_drift")
+def _parse_value(text: str | None, kind: str, name: str) -> str | int | float | None:
+    if kind == "string":
+        return "" if text is None else text
+    if text is None or not text.strip():
+        return None
+    raw = text.strip()
+    if kind == "int":
+        if not _INTEGER_TEXT.fullmatch(raw):
+            raise ValueError("source_integer_value_drift:" + name)
+        return int(raw)
+    if not _DECIMAL_TEXT.fullmatch(raw):
+        raise ValueError("source_decimal_value_drift:" + name)
+    return float(raw)
+
+
+def _validate(index_body: bytes, data_body: bytes, year: int,
+              data_url: str) -> tuple[list[dict], dict]:
+    try:
+        index_text = index_body.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValueError("source_release_index_encoding_drift") from None
+    if "Download NTI Data" not in index_text or "National Tunnel Inventory" not in index_text:
+        raise ValueError("source_release_index_identity_drift")
+    if urlsplit(data_url).hostname != urlsplit(LANDING_URL).hostname:
+        raise ValueError("source_release_host_drift")
+    try:
+        root = ET.fromstring(data_body)
+    except ET.ParseError:
+        raise ValueError("source_xml_unreadable") from None
+    if root.tag != "TunnelRoot":
+        raise ValueError("source_xml_root_drift")
+    instances = list(root)
+    if not instances or any(instance.tag != "TunnelInstance" for instance in instances):
+        raise ValueError("source_xml_record_roster_drift")
+
+    features: list[dict] = []
+    keys: list[list[object]] = []
+    for instance in instances:
+        tags = [child.tag for child in instance]
+        if len(tags) != len(_EXPECTED_TAGS) or set(tags) != _EXPECTED_TAGS:
+            raise ValueError("source_xml_element_roster_drift")
+        attributes = {
+            name: _parse_value(instance.findtext(name), kind, name)
+            for name, kind in ELEMENT_FIELDS
+        }
+        state_code, tunnel_number = attributes["I3"], attributes["I1"]
+        if type(state_code) is not int or not 0 <= state_code <= 99:
+            raise ValueError("source_state_code_drift")
+        if not isinstance(tunnel_number, str) or not tunnel_number:
+            raise ValueError("source_tunnel_number_drift")
+        latitude, longitude = attributes["I13"], attributes["I14"]
+        if (type(latitude) is not float or type(longitude) is not float
+                or not -90.0 <= latitude <= 90.0 or not -180.0 <= longitude <= 180.0):
+            raise ValueError("source_coordinate_missing_or_out_of_range")
+        keys.append([state_code, tunnel_number])
+        features.append({"attributes": attributes,
+                         "geometry": {"x": longitude, "y": latitude}})
+    if len(keys) != len({(state, tunnel) for state, tunnel in keys}):
+        raise ValueError("source_native_key_duplicate")
+
+    features.sort(key=lambda row: (row["attributes"]["I3"], row["attributes"]["I1"]))
+    ordered_keys = [[row["attributes"]["I3"], row["attributes"]["I1"]] for row in features]
+    geometry_rows = [[row["attributes"]["I3"], row["attributes"]["I1"],
+                      row["geometry"]["x"], row["geometry"]["y"]] for row in features]
+    longitudes = [row["geometry"]["x"] for row in features]
+    latitudes = [row["geometry"]["y"] for row in features]
+    schema = [[name, kind] for name, kind in ELEMENT_FIELDS]
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": EXPECTED_ID_SHA256,
-        "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
-        "source_schema_sha256": schema_sha, "source_crs_epsg": 4326,
-        "geometry_type": "Point", "null_geometry_count": 0,
-        "unique_source_id_count": EXPECTED_COUNT, "source_fields": fields,
-        "arcgis_item_id": ITEM_ID, "portal_owner": portal["owner"],
-        "portal_modified_epoch_ms": portal.get("modified"),
-        "portal_modified_is_source_release_date": False,
-        "source_edition_note": EDITION_NOTE,
+        "source_feature_count": len(features),
+        "source_population_complete": True,
+        "source_population_witness": "complete FHWA NTI XML release returned by the producer",
+        "source_id_fields": ["I3", "I1"],
+        "source_id_sha256": _sha(_canonical(ordered_keys)),
+        "source_record_sha256": _sha(_canonical([row["attributes"] for row in features])),
+        "source_geometry_sha256": _sha(_canonical(geometry_rows)),
+        "source_schema_sha256": _sha(_canonical(schema)),
+        "source_schema": schema,
+        "source_crs_epsg": SOURCE_CRS_EPSG,
+        "source_geometry_type": "Point",
+        "source_null_geometry_count": 0,
+        "source_unique_native_key_count": len(features),
+        "source_bounds": {"lon_min": min(longitudes), "lat_min": min(latitudes),
+                          "lon_max": max(longitudes), "lat_max": max(latitudes)},
+        "source_release_year": year,
+        "source_release_index_url": LANDING_URL,
+        "source_data_url": data_url,
+        "source_release_date": None,
+        "source_release_date_unknown_reason": (
+            "FHWA publishes annual NTI data by June 15; the download page does not "
+            "state an exact publication date for this edition."
+        ),
+        "source_coverage_scope": (
+            "Complete public highway tunnel point population in the FHWA NTI XML "
+            "edition linked as newest by the producer's download page."
+        ),
+        "source_element_data_note": (
+            "Nested FHWAElements is the separate National Tunnel Inventory Element "
+            "Data product and is not expanded into this point candidate; the raw "
+            "XML retains it."
+        ),
     }
-    return layer, fields, {"features": features, "audit": audit}
+    return features, audit
 
 
-def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
-    kind = field["type"]
-    if kind == "esriFieldTypeOID": return pa.int64()
-    if kind == "esriFieldTypeInteger": return pa.int32()
-    if kind == "esriFieldTypeSmallInteger": return pa.int16()
-    if kind == "esriFieldTypeDouble": return pa.float64()
-    if kind == "esriFieldTypeSingle": return pa.float32()
-    if kind == "esriFieldTypeString": return pa.string()
-    if kind == "esriFieldTypeDate": return pa.timestamp("ms", tz="UTC")
-    raise ValueError("unsupported_source_physical_type:" + str(kind))
+def _arrow_type(kind: str) -> pa.DataType:
+    return {"string": pa.string(), "int": pa.int64(), "float": pa.float64()}[kind]
 
 
-def _validate_value_type(value: object, field: Mapping[str, object]) -> None:
-    if value is None:
-        if field.get("nullable") is False:
-            raise ValueError("unexpected_null_source_value:" + str(field["name"]))
-        return
-    kind = field["type"]
-    integer_types = {"esriFieldTypeOID", "esriFieldTypeInteger", "esriFieldTypeSmallInteger"}
-    if kind in integer_types and (not isinstance(value, int) or isinstance(value, bool)):
-        raise ValueError("source_integer_physical_type_drift:" + str(field["name"]))
-    if kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"} and (
-            not isinstance(value, (int, float)) or isinstance(value, bool)):
-        raise ValueError("source_float_physical_type_drift:" + str(field["name"]))
-    if kind == "esriFieldTypeString" and not isinstance(value, str):
-        raise ValueError("source_string_physical_type_drift:" + str(field["name"]))
-    if kind == "esriFieldTypeDate" and (not isinstance(value, int) or isinstance(value, bool)):
-        raise ValueError("source_date_epoch_milliseconds_drift:" + str(field["name"]))
-
-
-def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
-    schema_fields = [pa.field(str(f["name"]), _arrow_type(f), nullable=f.get("nullable", True)) for f in fields]
-    arrays = [pa.array([row["attributes"][f["name"]] for row in features], type=_arrow_type(f)) for f in fields]
+def _parquet_bytes(features: list[dict]) -> bytes:
+    schema_fields = [pa.field(name, _arrow_type(kind), nullable=True)
+                     for name, kind in ELEMENT_FIELDS]
+    arrays = [pa.array([row["attributes"][name] for row in features], type=_arrow_type(kind))
+              for name, kind in ELEMENT_FIELDS]
     schema_fields.append(pa.field("geometry", pa.binary(), nullable=False))
-    arrays.append(pa.array([Point(row["geometry"]["x"], row["geometry"]["y"]).wkb for row in features], type=pa.binary()))
-    geo = {"version":"1.1.0", "primary_column":"geometry", "columns":{"geometry":{
-        # Point geometry has no edges; planar is the supported GeoParquet
-        # encoding marker and stores every source coordinate without change.
-        "encoding":"WKB", "geometry_types":["Point"], "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"planar",
+    arrays.append(pa.array([Point(row["geometry"]["x"], row["geometry"]["y"]).wkb
+                            for row in features], type=pa.binary()))
+    geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {"geometry": {
+        "encoding": "WKB", "geometry_types": ["Point"],
+        "crs": pyproj.CRS.from_epsg(SOURCE_CRS_EPSG).to_json_dict(), "edges": "planar",
     }}}
-    table = pa.Table.from_arrays(arrays, schema=pa.schema(schema_fields, metadata={b"geo":_canonical(geo)}))
-    sink = pa.BufferOutputStream(); pq.write_table(table, sink, compression="zstd")
+    table = pa.Table.from_arrays(arrays, schema=pa.schema(schema_fields, metadata={b"geo": _canonical(geo)}))
+    sink = pa.BufferOutputStream()
+    pq.write_table(table, sink, compression="zstd")
     return sink.getvalue().to_pybytes()
 
 
@@ -218,9 +245,32 @@ def _code_identity() -> dict[str, object]:
     return identity
 
 
+def _input(name: str, receipt: dict[str, object], canonical_url: str) -> dict[str, object]:
+    return {
+        "input_id": name,
+        "producer": PUBLISHER,
+        "host": urlsplit(str(receipt["url"])).hostname,
+        "role": "producer_publication",
+        "canonical_url": canonical_url,
+        "retrieval_url": receipt["url"],
+        "observed_final_url": receipt["final_url"],
+        "retrieved_at": receipt["observed_at"],
+        "http_status": receipt["status"],
+        "bytes": receipt["bytes"],
+        "sha256": receipt["sha256"],
+        "license": LICENSE_URL,
+        "attribution": "Federal Highway Administration, National Tunnel Inventory",
+        "release_date": None,
+        "release_date_unknown_reason": (
+            "FHWA publishes annual NTI data by June 15; the download page does not "
+            "state an exact publication date for this edition."
+        ),
+    }
+
+
 def capture_fhwa_tunnel_inventory(storage: StagingStorageResource, *, version: str,
                                   capture_directory: str | None = None) -> dict[str, object]:
-    """Capture all exact source records and stage an unapproved candidate."""
+    """Capture the newest complete NTI XML release and stage an unapproved candidate."""
     if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
         raise ValueError("explicit_local_staging_resource_required")
@@ -240,115 +290,169 @@ def capture_fhwa_tunnel_inventory(storage: StagingStorageResource, *, version: s
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
     try:
         with httpx.Client(follow_redirects=False, timeout=90,
-                          headers={"User-Agent":"hifld-next-datasets/fhwa-nti-draft", "Accept-Encoding":"identity"}) as client:
-            for name, url in _capture_urls().items():
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
-        layer, fields, extracted = _validate(captures)
+                          headers={"User-Agent": "hifld-next-datasets/fhwa-nti-draft",
+                                   "Accept-Encoding": "identity"}) as client:
+            index_body, index_receipt = capture_get(
+                client, LANDING_URL, capture_root, "release_index", max_bytes=MAX_BODY_BYTES)
+            captures["release_index"] = (index_body, index_receipt)
+            year, data_url = newest_release(index_body)
+            data_body, data_receipt = capture_get(
+                client, data_url, capture_root, "data", max_bytes=MAX_BODY_BYTES)
+            captures["data"] = (data_body, data_receipt)
+        features, audit = _validate(index_body, data_body, year, data_url)
     except Exception as exc:
         failed: dict[str, tuple[bytes, dict[str, object]]] = dict(captures)
         for receipt_path in sorted(capture_root.glob("*.receipt.json")):
-            name=receipt_path.name.removesuffix(".receipt.json")
+            name = receipt_path.name.removesuffix(".receipt.json")
             try:
-                receipt=json.loads(receipt_path.read_bytes())
-                body=(capture_root/f"{name}.body").read_bytes()
-                (capture_root/f"{name}.wire").read_bytes()
-                failed.setdefault(name,(body,receipt))
-            except (OSError,ValueError):
+                receipt = json.loads(receipt_path.read_bytes())
+                body = (capture_root / f"{name}.body").read_bytes()
+                (capture_root / f"{name}.wire").read_bytes()
+                failed.setdefault(name, (body, receipt))
+            except (OSError, ValueError):
                 continue
         if failed:
-            quarantine_incomplete_capture(storage,capture_root,DATASET_SLUG,version,failed,type(exc).__name__)
+            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, failed, type(exc).__name__)
         raise
     identity = _code_identity()
-    parquet_body = _parquet_bytes(fields, extracted["features"])
+    parquet_body = _parquet_bytes(features)
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
-    source_objects = {parquet_name:{"bytes":len(parquet_body),"sha256":_sha(parquet_body)}}
+    source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
     manifest = {
-        "schema_version":1, "approved":False,
-        "title":LAYER_NAME,
-        "description":"FHWA National Tunnel Inventory distributed through USDOT/BTS NTAD. Source item contains an unresolved compiled-versus-published date conflict; candidate is not release-approved.",
-        "publisher":PUBLISHER, "agency":"Federal Highway Administration", "source_url":LAYER_URL,
-        "license":"https://www.usa.gov/publicdomain/label/1.0/", "source_modified":None,
-        "date_issued":None, "date_modified":None, "processor":"HIFLD Next", "code_commit":identity["code_commit"],
-        "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,
-            "role":"producer_publication","canonical_url":SERVICE_URL,"retrieval_url":receipt["url"],
-            "observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],
-            "http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],
-            "license":"https://www.usa.gov/publicdomain/label/1.0/",
-            "attribution":"ArcGIS item attributes the data to FHWA and BTS distribution; rights review is pending.",
-            "release_date":None,"release_date_unknown_reason":EDITION_NOTE} for name,(_,receipt) in sorted(captures.items())],
-        "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
-            "feature_layer_id":LAYER_ID,"source_fields":"all 69 fields in producer order with declared physical types",
-            "source_ids":"Preserve every OBJECTID value exactly; no replacement IDs",
-            "geometry":"Esri point x/y encoded as WKB in declared EPSG:4326; no reprojection or repair",
-            "date_fields":"Esri epoch milliseconds represented as UTC timestamp[ms]",
-            "candidate_status":"unapproved; FHWA source edition, schema/ID contract, rights, and public-field mapping acceptance remain pending"}}],
-        "lineage":"Exact public NTAD ArcGIS item 77879ddb06eb49d4a4a57298177bcd87 is owned by USDOT_BTS, identifies FHWA as source, and serves the National Tunnel Inventory point layer. The description links the annual FHWA Specifications for the National Tunnel Inventory (https://doi.org/10.21949/1519104) and data dictionary (https://doi.org/10.21949/1529051). The compilation/publication dates conflict; portal modified time is not a source release date.",
-        "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri values, every source attribute and OBJECTID, and source point geometry retained; approval gates remain closed.","objects":[{"path":parquet_name,**source_objects[parquet_name]}]}}},
-        "unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No display transformation or generalized geometry approved."},
+        "schema_version": 1, "approved": False,
+        "title": LAYER_NAME,
+        "description": ("FHWA National Tunnel Inventory annual XML release. Native producer "
+                        "element values and portal coordinates are preserved; candidate is "
+                        "not release-approved."),
+        "publisher": PUBLISHER, "agency": "Federal Highway Administration", "source_url": data_url,
+        "license": LICENSE_URL, "source_modified": None,
+        "date_issued": None, "date_modified": None, "processor": "HIFLD Next",
+        "code_commit": identity["code_commit"],
+        "inputs": [
+            _input("release_index", captures["release_index"][1], LANDING_URL),
+            _input("data", captures["data"][1], data_url),
+        ],
+        "transformations": [{
+            "operation": "native_nti_xml_to_geoparquet_candidate",
+            "parameters": {
+                "release_year": year,
+                "source_fields": ("all 66 producer elements in fixed NTI order; native text "
+                                  "values preserved, numeric elements typed per the SNTI XML schema"),
+                "source_ids": ("I1 tunnel number preserved as text including leading zeros; "
+                               "I3 state code preserved as integer; the (I3, I1) pair is the "
+                               "documented native key, no substitute ID added"),
+                "geometry": ("Point from I14 longitude and I13 latitude in EPSG:4326; no "
+                             "reprojection or repair"),
+                "element_data": ("Nested FHWAElements is the separate National Tunnel "
+                                 "Inventory Element Data product and is not expanded into "
+                                 "this point candidate; the raw XML retains it"),
+                "candidate_status": ("unapproved; source, schema, ID, rights, mapping and "
+                                     "release acceptance remain pending"),
+            },
+        }],
+        "lineage": (
+            "FHWA's own NTI download page is the producer publication index. The newest "
+            "linked XML edition is captured in full; the BTS NTAD ArcGIS view still served "
+            "the 2025 edition when this candidate was built. No mirror or archive is used."
+        ),
+        "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
+            "reason": ("Native FHWA element values, native (I3, I1) key components, and "
+                       "portal coordinates retained; approval gates remain closed."),
+            "objects": [{"path": parquet_name, **source_objects[parquet_name]}],
+        }}},
+        "unsupported_output_formats": {
+            "geopackage": "No approved source-to-public schema mapping.",
+            "pmtiles": "No display transformation or generalized geometry approved.",
+        },
     }
-    validate_release_provenance(manifest); validate_output_policy(manifest)
-    audit={**extracted["audit"],"official_layer_name":LAYER_NAME,"service_is_view":True,
-           "freshness_accepted":False,"source_release_accepted":False,"schema_contract_accepted":False,
-           "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    version=content_derived_version(audit["source_record_sha256"],audit["source_geometry_sha256"],audit["source_schema_sha256"],identity)
-    prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,
-        "source_feature_count":EXPECTED_COUNT,"source_record_sha256":audit["source_record_sha256"],
-        "source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{n:r for n,(_,r) in sorted(captures.items())}})+b"\n")
-    state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
-    outputs={parquet_name:parquet_body,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
-        "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
-    for name,(body,receipt) in captures.items():
-        outputs[f"raw/{name}.body"]=body
-        outputs[f"raw/{name}.wire"]=(capture_root/f"{name}.wire").read_bytes()
-        outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
-    outputs["metadata/candidate_ready.json"]=_canonical({"approved":False,"version":version,"objects":source_objects,
-        "source_record_sha256":audit["source_record_sha256"],"source_release_accepted":False,
-        "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
-        "rights_accepted":False,"mapping_approved":False,"release_accepted":False})+b"\n"
-    fingerprint=_sha(_canonical(identity))
+    validate_release_provenance(manifest)
+    validate_output_policy(manifest)
+    audit = {**audit, "official_layer_name": LAYER_NAME,
+             "freshness_accepted": False, "source_release_accepted": False,
+             "schema_contract_accepted": False, "id_contract_accepted": False,
+             "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
+    version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
+                                      audit["source_schema_sha256"], identity)
+    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+    (capture_root / "capture_manifest.json").write_bytes(_canonical({
+        "captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
+        "source_feature_count": audit["source_feature_count"],
+        "source_record_sha256": audit["source_record_sha256"],
+        "source_geometry_sha256": audit["source_geometry_sha256"],
+        "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())},
+    }) + b"\n")
+    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+    outputs = {
+        parquet_name: parquet_body,
+        "metadata/source_manifest.json": _canonical(manifest) + b"\n",
+        "metadata/source_audit.json": _canonical(audit) + b"\n",
+        "metadata/processing_identity.json": _canonical(identity) + b"\n",
+    }
+    for name, (body, receipt) in captures.items():
+        outputs[f"raw/{name}.body"] = body
+        outputs[f"raw/{name}.wire"] = (capture_root / f"{name}.wire").read_bytes()
+        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
+    outputs["metadata/candidate_ready.json"] = _canonical({
+        "approved": False, "version": version, "objects": source_objects,
+        "source_record_sha256": audit["source_record_sha256"],
+        "source_population_complete": True,
+        "source_release_accepted": False, "freshness_accepted": False,
+        "schema_contract_accepted": False, "id_contract_accepted": False,
+        "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
+    }) + b"\n"
+    fingerprint = _sha(_canonical(identity))
+    result = {
+        "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+        "feature_count": audit["source_feature_count"], "source_population_complete": True,
+        "source_id_sha256": audit["source_id_sha256"],
+        "source_schema_sha256": audit["source_schema_sha256"],
+        "source_release_year": audit["source_release_year"],
+        "source_data_url": audit["source_data_url"],
+        "source_null_geometry_count": 0, "source_invalid_geometry_count": 0,
+        "candidate_ready": prefix + "/metadata/candidate_ready.json",
+        "capture_directory": str(capture_root),
+        "source_release_accepted": False, "freshness_accepted": False,
+        "schema_contract_accepted": False, "id_contract_accepted": False,
+        "rights_accepted": False, "mapping_approved": False,
+        "release_accepted": False, "quality_check_passed": False,
+    }
     if storage.object_snapshot(state_key) is not None:
         # A fresh acquisition of unchanged source content carries newly
         # timestamped receipts; the sealed candidate keeps its original
         # immutable provenance. Reuse verifies the re-acquired bytes against
         # the staged originals instead of the new receipts.
-        original=json.loads(load_first_construction(storage,state_key,version,fingerprint)).get("payload")
-        if not isinstance(original,dict) or not isinstance(original.get("capture_receipts"),dict):
+        original = json.loads(load_first_construction(storage, state_key, version, fingerprint)).get("payload")
+        if not isinstance(original, dict) or not isinstance(original.get("capture_receipts"), dict):
             raise ValueError("cached_first_candidate_receipts_missing")
-        original_receipts=original["capture_receipts"]
-        if set(original_receipts)!=set(captures):
+        original_receipts = original["capture_receipts"]
+        if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            if (storage.read_key(f"{prefix}/raw/{name}.body")!=captures[name][0]
+            if (storage.read_key(f"{prefix}/raw/{name}.body") != captures[name][0]
                     or storage.read_key(f"{prefix}/raw/{name}.wire")
-                        !=(capture_root/f"{name}.wire").read_bytes()):
-                raise ValueError("cached_source_evidence_changed:"+name)
-        verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,
-            audit["source_record_sha256"],audit["source_schema_sha256"],
-            original.get("objects",{}),original_receipts)
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
-            "source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
-            "capture_directory":str(capture_root),
-            "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,
-            "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,
-            "quality_check_passed":False}
-    descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    for name,body in outputs.items():
-        write_immutable(storage,f"{prefix}/{name}",body)
-    for name,descriptor in descriptors.items():
-        key=f"{prefix}/{name}"; snapshot=storage.object_snapshot(key)
-        if (snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]
+                    != (capture_root / f"{name}.wire").read_bytes()):
+                raise ValueError("cached_source_evidence_changed:" + name)
+        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
+                                fingerprint, identity, audit["source_record_sha256"],
+                                audit["source_schema_sha256"], original.get("objects", {}),
+                                original_receipts)
+        return {**result, "reused": True}
+    descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
+    for name, body in outputs.items():
+        write_immutable(storage, f"{prefix}/{name}", body)
+    for name, descriptor in descriptors.items():
+        key = f"{prefix}/{name}"
+        snapshot = storage.object_snapshot(key)
+        if (snapshot is None or snapshot.size != descriptor["bytes"]
+                or storage.sha256_key(key) != descriptor["sha256"]
                 or storage.object_snapshot(key) != snapshot):
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-        "source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
-        "capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
-        "source_null_geometry_count":0,"source_invalid_geometry_count":0,
-        "candidate_ready":prefix+"/metadata/candidate_ready.json","capture_directory":str(capture_root),
-        "reused":False,
-        "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,
-        "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,
-        "release_accepted":False,"quality_check_passed":False}
+            raise ValueError("candidate_output_physical_readback_failed:" + name)
+    seal_ready_candidate(storage, state_key, version, fingerprint, {
+        "processing_identity": identity,
+        "source_record_sha256": audit["source_record_sha256"],
+        "source_schema_sha256": audit["source_schema_sha256"],
+        "capture_receipts": {name: receipt for name, (_, receipt) in captures.items()},
+        "objects": descriptors,
+    })
+    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
+    return {**result, "reused": False}

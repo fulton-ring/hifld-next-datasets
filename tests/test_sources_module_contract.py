@@ -18,6 +18,7 @@ SHARED_SOURCES = frozenset({
     "arcgis_filegdb", "arcgis_layer", "capture_common", "census_latest",
     "census_tiger_common",
     "eia_860m_common", "electric_retail_service_territories_common", "epa_facilities_common",
+    "epa_regions_common",
     "epa_icis_wastewater_common", "esri_common", "esri_geometry",
     "national_inventory_of_dams_common", "wbd_hu_family",
 })

@@ -1,10 +1,27 @@
-# EPA Regions Small Scale working draft
+# EPA Regions Small Scale draft
 
-Exact producer: [EPA_Locations/MapServer/2](https://geodata.epa.gov/arcgis/rest/services/OEI/EPA_Locations/MapServer/2), literal small-scale title/maxScale5,000,001. Ten regions; producer2011 TIGER/Line lineage/service2012 title establish no modern release. Ordinary regions, large-scale and EEZ layers are distinct.
+Source: https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/US_EPA_Regions__DOC___EPA_2023_/FeatureServer/13
 
-All original four attributes plus `Shape`, IDs/strings/nullability/field declarations and106ordered rings/404,974 native NAD83/EPSG:4269 XY coordinates remain. Service display CRS3857 is separate. OID physical width is unspecified; Int64 is proposed staging encoding. GDAL polygon grouping is checked against every ordered ring, without projection/repair. Historical candidates use3857 and truncated field names; source/vintage/rights/ID/type/schema/CRS/geometry/baseline/contract decisions remain external. Release unapproved; monthly refresh STOPPED.
+This dataset now reads the same single-resolution layer as EPA Regions
+(`epa-regions`) and EPA Regions Large Scale. The retired
+`EPA_Locations/MapServer/2` layer is not read. The layer is published by the
+EPA GeoPlatform account `EPA_GEO` (item `21dfeddb55984d9c957ffad98e7da94e`),
+describes 2023 DOC Census-derived boundaries enhanced by EPA, and says the
+feature service and attributes are updated annually by the EPA Office of
+Mission Support.
 
-Managed Python: `PYTHONPATH=src python -m unittest discover -s tests -p test_epa_small_scale.py`. Full real-source opt-in: `EPA_SMALL_SCALE_TEST_CAPTURE_DIR=/path/to/captures`. Materialize `epa_small_scale_source_integrity` with isolated `DAGSTER_HOME`, staging/published directories and optional `capture_directory` run config; register the returned publish partition. Shared Git/CAS provenance and quality/independent-approval gates apply.
+Large and Small Scale therefore produce the same output. They keep separate
+dataset slugs and candidate versions so existing consumers and release records
+stay addressable.
 
-Protected full inputs/replay inventory: `/tmp/hifld-native-reconstruction/79/epa-small-scale-inputs.tar.gz`, SHA256 `73b6a16a8a78074ff0aec0228d30cf83c0b49426c750e4a4f9b3634282a4230a`. This protected directory is acceptance-review storage. Durable pointers/results: issue79 and `/workspace/work/hifld-coordinator/79`; no full captures/logs/reports in Git.
+The adapter preserves all 12 original fields (`OBJECTID`, `EPA_REGION`, the six
+area fields, `Shape__Area`, `Shape__Length`, `RegionString`, `RegionTitle`),
+original OBJECTID values, text widths, Double values, nulls and native
+EPSG:4326 ordered rings. OID physical width is unspecified; Int64 is a proposed
+staging encoding. Native GeoParquet only; other formats need approved
+type/geometry/ID contracts.
 
+Run registered `epa_small_scale_source_integrity` with isolated local staging;
+the monthly schedule is STOPPED. Pass a capture directory of complete
+`.body`/`.receipt.json` files to replay a retained capture. Source, edition,
+rights, baseline, contract and release acceptance remain unapproved.
