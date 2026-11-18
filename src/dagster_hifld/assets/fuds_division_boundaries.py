@@ -38,3 +38,9 @@ fuds_division_draft_schedule = ScheduleDefinition(
     name="fuds_division_draft_refresh_schedule", job=fuds_division_draft_job,
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED)
+
+
+ASSET_CHECKS = [fuds_program_division_boundaries_complete]
+INGEST_ASSETS = [fuds_program_division_boundaries]
+JOBS = [fuds_division_draft_job]
+SCHEDULES = [fuds_division_draft_schedule]

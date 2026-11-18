@@ -15,3 +15,9 @@ def smithsonian_holocene_volcanoes(context,config:SmithsonianHoloceneConfig,stag
 
 holocene_source_integrity_job=define_asset_job('holocene_source_integrity',selection=AssetSelection.assets(smithsonian_holocene_volcanoes))
 holocene_source_integrity_schedule=ScheduleDefinition(name='holocene_source_integrity_monthly',job=holocene_source_integrity_job,cron_schedule='0 9 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [smithsonian_holocene_volcanoes]
+JOBS = [holocene_source_integrity_job]
+SCHEDULES = [holocene_source_integrity_schedule]

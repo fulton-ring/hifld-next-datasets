@@ -82,3 +82,9 @@ census_block_groups_draft_schedule = ScheduleDefinition(
         },
     }}},
 )
+
+
+ASSET_CHECKS = [census_block_groups_source_complete]
+INGEST_ASSETS = [census_bureau_block_groups]
+JOBS = [census_block_groups_draft_job]
+SCHEDULES = [census_block_groups_draft_schedule]

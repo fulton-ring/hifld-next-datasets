@@ -92,3 +92,13 @@ fuds_irm_property_boundary_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+ASSET_CHECKS = [
+    fuds_irm_property_boundary_complete,
+    fuds_irm_property_boundary_geometry_quality,
+    fuds_irm_property_boundary_ingest_approved_baseline_drift,
+]
+INGEST_ASSETS = [fuds_irm_property_boundary_ingest]
+JOBS = [fuds_irm_property_boundary_draft_job]
+SCHEDULES = [fuds_irm_property_boundary_draft_schedule]

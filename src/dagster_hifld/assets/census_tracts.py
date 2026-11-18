@@ -77,3 +77,9 @@ census_tracts_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+ASSET_CHECKS = [census_tracts_source_complete]
+INGEST_ASSETS = [census_bureau_tracts]
+JOBS = [census_tracts_draft_job]
+SCHEDULES = [census_tracts_draft_schedule]

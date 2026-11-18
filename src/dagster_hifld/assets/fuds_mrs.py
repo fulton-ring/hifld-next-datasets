@@ -74,3 +74,12 @@ fuds_mrs_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+ASSET_CHECKS = [
+    usace_fuds_munitions_response_sites_complete,
+    usace_fuds_munitions_response_sites_approved_baseline_drift,
+]
+INGEST_ASSETS = [usace_fuds_munitions_response_sites]
+JOBS = [fuds_mrs_draft_job]
+SCHEDULES = [fuds_mrs_draft_schedule]

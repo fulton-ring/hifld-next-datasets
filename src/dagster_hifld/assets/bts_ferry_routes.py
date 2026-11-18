@@ -21,3 +21,9 @@ def bts_ferry_routes(context,config:BtsFerryRoutesConfig,staging_storage:Staging
 ferry_routes_source_integrity_job=define_asset_job('ferry_routes_source_integrity',selection=AssetSelection.assets(bts_ferry_routes))
 ferry_routes_source_integrity_schedule=ScheduleDefinition(name='ferry_routes_source_integrity_monthly',job=ferry_routes_source_integrity_job,
     cron_schedule='0 11 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [bts_ferry_routes]
+JOBS = [ferry_routes_source_integrity_job]
+SCHEDULES = [ferry_routes_source_integrity_schedule]

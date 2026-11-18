@@ -72,3 +72,12 @@ fuds_district_boundaries_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+ASSET_CHECKS = [
+    usace_fuds_program_district_boundaries_complete,
+    usace_fuds_program_district_boundaries_approved_baseline_drift,
+]
+INGEST_ASSETS = [usace_fuds_program_district_boundaries]
+JOBS = [fuds_district_boundaries_draft_job]
+SCHEDULES = [fuds_district_boundaries_draft_schedule]

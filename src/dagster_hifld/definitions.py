@@ -17,12 +17,6 @@ from dagster import (
 from dagster_hifld.assets.discovery import discovered, unique
 from dagster_hifld.assets import hifld_dataset_assets
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals_draft_refresh_job, bts_ferry_terminals_draft_refresh_schedule
-from dagster_hifld.assets.smithsonian_holocene import holocene_source_integrity_job, holocene_source_integrity_schedule
-from dagster_hifld.assets.bts_ferry_routes import ferry_routes_source_integrity_job, ferry_routes_source_integrity_schedule
-from dagster_hifld.assets.fuds_division_boundaries import (
-    fuds_division_draft_schedule,
-    fuds_program_division_boundaries_complete,
-)
 from dagster_hifld.assets.census_elementary_districts import elsd_source_integrity_job, elsd_source_integrity_schedule
 from dagster_hifld.assets.epa_disaster_debris import (
     epa_disaster_debris_complete,
@@ -31,50 +25,12 @@ from dagster_hifld.assets.epa_disaster_debris import (
     epa_disaster_debris_recovery_data,
 )
 
-from dagster_hifld.assets.census_bureau import (
-    aiannh_source_integrity_refresh_job,
-    aiannh_source_integrity_refresh_schedule,
-)
-
 from dagster_hifld.assets.census_consolidated_cities import (
     concity_source_integrity_job,
     concity_source_integrity_schedule,
 )
 
 
-
-from dagster_hifld.assets.fuds_projects_points import (
-    fuds_projects_points_draft_schedule,
-    usace_fuds_projects_points_complete,
-    usace_fuds_projects_points_approved_baseline_drift,
-)
-from dagster_hifld.assets.fuds_public_properties import (
-    usace_fuds_public_properties_complete,
-    usace_fuds_public_properties_approved_baseline_drift,
-    fuds_public_properties_draft_schedule,
-)
-from dagster_hifld.assets.fuds_district_boundaries import (
-    fuds_district_boundaries_draft_schedule,
-    usace_fuds_program_district_boundaries_complete,
-    usace_fuds_program_district_boundaries_approved_baseline_drift,
-)
-from dagster_hifld.assets.fuds_irm_property_point import (
-    fuds_irm_property_point_complete,
-    fuds_irm_property_point_draft_schedule,
-    fuds_irm_property_point_geometry_quality,
-)
-from dagster_hifld.assets.fuds_irm_property_boundary import (
-    fuds_irm_property_boundary_complete,
-    fuds_irm_property_boundary_ingest_approved_baseline_drift,
-    fuds_irm_property_boundary_draft_schedule,
-    fuds_irm_property_boundary_geometry_quality,
-)
-from dagster_hifld.assets.fuds_property_boundaries import (
-    fuds_property_boundaries_complete,
-    fuds_property_boundaries_ingest_approved_baseline_drift,
-    fuds_property_boundaries_draft_schedule,
-    fuds_property_boundaries_geometry_quality,
-)
 
 from dagster_hifld.assets.noaa import (
     noaa_eez_draft_refresh_job,
@@ -347,20 +303,6 @@ from dagster_hifld.assets.usace_recommended_tracks import (
 )
 
 
-from dagster_hifld.assets.census_primary_roads import (
-    census_primary_roads_source_complete,
-    census_primary_roads_draft_schedule,
-)
-
-from dagster_hifld.assets.census_block_groups import (
-    census_block_groups_source_complete,
-    census_block_groups_draft_schedule,
-)
-from dagster_hifld.assets.census_tracts import (
-    census_tracts_source_complete,
-    census_tracts_draft_job,
-    census_tracts_draft_schedule,
-)
 from dagster_hifld.assets.usace_pontoon_areas import (
     usace_pontoon_areas_complete,
     usace_pontoon_areas_draft_job,
@@ -400,16 +342,6 @@ from dagster_hifld.assets.fws_prohibitions import (
 from dagster_hifld.assets.fws_units import (
     fws_cbrs_units_draft_refresh_job,
     fws_cbrs_units_draft_refresh_schedule,
-)
-from dagster_hifld.assets.census_designated_places import (
-    cdp_source_integrity_job,
-    cdp_source_integrity_schedule,
-)
-
-from dagster_hifld.assets.fuds_mrs import (
-    usace_fuds_munitions_response_sites_complete,
-    usace_fuds_munitions_response_sites_approved_baseline_drift,
-    fuds_mrs_draft_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -824,22 +756,7 @@ defs = Definitions(
     asset_checks=unique(
         [
             *hifld_asset_checks,
-            usace_fuds_program_district_boundaries_complete,
-            usace_fuds_program_district_boundaries_approved_baseline_drift,
             epa_disaster_debris_complete,
-            fuds_irm_property_point_complete,
-            fuds_irm_property_point_geometry_quality,
-            fuds_irm_property_boundary_complete,
-            fuds_irm_property_boundary_ingest_approved_baseline_drift,
-            fuds_irm_property_boundary_geometry_quality,
-            fuds_property_boundaries_complete,
-            fuds_property_boundaries_ingest_approved_baseline_drift,
-            fuds_property_boundaries_geometry_quality,
-            usace_fuds_projects_points_complete,
-            usace_fuds_projects_points_approved_baseline_drift,
-            census_primary_roads_source_complete,
-            census_block_groups_source_complete,
-            census_tracts_source_complete,
             usace_pylon_areas_complete,
             hf_areas_usace_ienc_complete,
             land_region_areas_usace_ienc_complete,
@@ -895,22 +812,14 @@ defs = Definitions(
             usace_data_coverage_areas_complete,
             epa_frs_sic_complete,
             epa_frs_sic_published_membership_compatible,
-            fuds_program_division_boundaries_complete,
-            usace_fuds_munitions_response_sites_complete,
-            usace_fuds_munitions_response_sites_approved_baseline_drift,
-            usace_fuds_public_properties_complete,
-            usace_fuds_public_properties_approved_baseline_drift,
         ],
         discovered("ASSET_CHECKS"),
     ),
     jobs=unique(
         [
             bts_ferry_terminals_draft_refresh_job,
-            holocene_source_integrity_job,
-            ferry_routes_source_integrity_job,
             elsd_source_integrity_job,
             epa_disaster_debris_draft_job,
-            census_tracts_draft_job,
             noaa_eez_draft_refresh_job,
             noaa_territorial_draft_refresh_job,
             noaa_dart_draft_refresh_job,
@@ -956,13 +865,11 @@ defs = Definitions(
             coastlines_usace_ienc_draft_job,
             locks_usace_ienc_draft_job,
             lock_basins_usace_ienc_draft_job,
-            aiannh_source_integrity_refresh_job,
             ibc_boundary_draft_refresh_job,
             fws_cbrs_buffer_draft_refresh_job,
             fws_cbrs_map_panels_draft_refresh_job,
             fws_cbrs_prohibitions_draft_refresh_job,
             fws_cbrs_units_draft_refresh_job,
-            cdp_source_integrity_job,
             concity_source_integrity_job,
             county_subdivisions_draft_refresh_job,
             usace_crane_locations_draft_job,
@@ -975,16 +882,8 @@ defs = Definitions(
     schedules=unique(
         [
             bts_ferry_terminals_draft_refresh_schedule,
-            holocene_source_integrity_schedule,
-            ferry_routes_source_integrity_schedule,
-            fuds_irm_property_point_draft_schedule,
-            fuds_irm_property_boundary_draft_schedule,
-            fuds_property_boundaries_draft_schedule,
             elsd_source_integrity_schedule,
             epa_disaster_debris_draft_schedule,
-            census_primary_roads_draft_schedule,
-            census_block_groups_draft_schedule,
-            census_tracts_draft_schedule,
             usace_pylon_areas_draft_schedule,
             hf_areas_usace_ienc_draft_schedule,
             land_region_areas_usace_ienc_draft_schedule,
@@ -1022,7 +921,6 @@ defs = Definitions(
             usace_hulke_areas_draft_schedule,
             usace_landmark_areas_draft_schedule,
             usace_caution_areas_draft_schedule,
-            fuds_projects_points_draft_schedule,
             usace_pile_locations_draft_schedule,
             usace_daymark_locations_draft_schedule,
             usace_lateral_buoys_draft_schedule,
@@ -1034,23 +932,17 @@ defs = Definitions(
             coastlines_usace_ienc_draft_schedule,
             locks_usace_ienc_draft_schedule,
             lock_basins_usace_ienc_draft_schedule,
-            aiannh_source_integrity_refresh_schedule,
             ibc_boundary_draft_refresh_schedule,
             fws_cbrs_buffer_draft_refresh_schedule,
             fws_cbrs_map_panels_draft_refresh_schedule,
             fws_cbrs_prohibitions_draft_refresh_schedule,
             fws_cbrs_units_draft_refresh_schedule,
-            cdp_source_integrity_schedule,
             concity_source_integrity_schedule,
             county_subdivisions_draft_refresh_schedule,
             usace_crane_locations_draft_schedule,
             usace_floating_docks_draft_schedule,
             usace_data_coverage_areas_draft_schedule,
             epa_frs_sic_draft_schedule,
-            fuds_division_draft_schedule,
-            fuds_district_boundaries_draft_schedule,
-            fuds_mrs_draft_schedule,
-            fuds_public_properties_draft_schedule,
         ],
         discovered("SCHEDULES"),
     ),

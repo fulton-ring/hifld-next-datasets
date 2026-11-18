@@ -12,3 +12,9 @@ def census_designated_places(context,staging_storage:StagingStorageResource):
 
 cdp_source_integrity_job=define_asset_job('cdp_source_integrity',selection=AssetSelection.assets(census_designated_places))
 cdp_source_integrity_schedule=ScheduleDefinition(name='cdp_source_integrity_monthly',job=cdp_source_integrity_job,cron_schedule='0 9 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [census_designated_places]
+JOBS = [cdp_source_integrity_job]
+SCHEDULES = [cdp_source_integrity_schedule]
