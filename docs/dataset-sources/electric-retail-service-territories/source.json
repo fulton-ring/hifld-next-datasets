@@ -19,7 +19,7 @@
     "utility_count": 2909,
     "feature_count": 3101,
     "state_count": 56,
-    "distinct_county_count": 3232,
+    "distinct_county_count": 3231,
     "matched_county_row_count": 11892,
     "skipped_not_applicable_count": 1
   },
@@ -28,7 +28,7 @@
     "normalization": "Unicode compatibility decomposition, ASCII folding, case folding, ampersand to 'and', and removal of non-alphanumeric characters.",
     "output_key": ["utility_number", "state"],
     "dissolve": "Union of current TIGER county-equivalent polygons in native EPSG:4269.",
-    "legacy_county_aliases": {
+    "county_aliases": {
       "CT:Fairfield": ["09190", "09120", "09140"],
       "CT:Hartford": ["09110", "09160", "09140"],
       "CT:Litchfield": ["09160", "09140", "09190"],
@@ -41,10 +41,16 @@
       "AK:Skagway Hoonah Angoon": ["02230", "02105"],
       "AK:Valdez Cordova": ["02063", "02066"],
       "AK:Wrangell Petersburg": ["02275", "02195"],
-      "VA:Bedford City": ["51019"]
+      "VA:Bedford City": ["51019"],
+      "MD:Baltimore": ["24005"],
+      "MO:St Louis": ["29189"],
+      "VA:Fairfax": ["51059"],
+      "VA:Franklin": ["51067"],
+      "VA:Richmond": ["51159"],
+      "VA:Roanoke": ["51161"]
     }
   },
-  "boundary_precision": "County-level approximation. Dissolved current TIGER county equivalents, not utility-owned legal boundaries. Connecticut legacy counties map to every overlapping planning region and are coarser than other states.",
+  "boundary_precision": "County-level approximation. Dissolved current TIGER county equivalents, not utility-owned legal boundaries. Connecticut legacy counties map to every overlapping planning region and are coarser than other states. A bare county name resolves to the county only; an independent city with the same name is included only when EIA lists its separate 'X City' row, and an unlisted name collision fails the join.",
   "output_fields": [
     "utility_number",
     "utility_name",

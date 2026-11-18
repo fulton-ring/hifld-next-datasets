@@ -34,13 +34,20 @@ operate in more than one state have one feature per state.
 
 The source uses legacy county names for Connecticut and Alaska that no longer
 match current TIGER county equivalents. The adapter carries a small explicit
-crosswalk for those names (and Bedford City, Virginia, which merged into Bedford
-County), documented in `source.json`. Connecticut legacy counties map to every
-current planning region they overlap, so those features are coarser than other
-states.
+crosswalk for those names, Bedford City, Virginia (which merged into Bedford
+County), and six county/independent-city name collisions (Baltimore, St Louis,
+Fairfax, Franklin, Richmond and Roanoke), documented in `source.json`.
+Connecticut legacy counties map to every current planning region they overlap,
+so those features are coarser than other states.
+
+A bare county name means the county. Where TIGER also has an independent city
+with the same bare name (for example Fairfax County and Fairfax city), the
+crosswalk resolves the bare EIA row to the county only. The city is included
+only when EIA lists the separate `X City` row. An unlisted name collision fails
+the join instead of attaching both geometries.
 
 Current capture: **11,893 EIA utility-county rows**, **2,909 utilities**,
-**3,101 utility-state features**, **3,232 distinct current counties** and
+**3,101 utility-state features**, **3,231 distinct current counties** and
 **56 states/territories**. One `Not Applicable` county sentinel row is skipped.
 
 The schedule is stopped. Every source, rights, coverage, schema, identifier,

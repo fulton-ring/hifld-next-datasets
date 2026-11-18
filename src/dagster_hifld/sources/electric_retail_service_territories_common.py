@@ -315,14 +315,14 @@ def join_territories(
         geoids = aliases.get(key)
         if geoids is None:
             geoids = lookup.get(key)
+            if geoids and len(geoids) > 1:
+                raise ValueError(
+                    "ambiguous_eia861_county_name:"
+                    + f"{row['state']}:{county}:" + ",".join(sorted(geoids))
+                )
         if not geoids:
             unmatched.append(f"{row['state']}:{county}")
             continue
-        if len(geoids) > 1 and key not in aliases:
-            raise ValueError(
-                "ambiguous_eia861_county_name:"
-                + f"{row['state']}:{county}:" + ",".join(sorted(geoids))
-            )
         missing = geoids - known
         if missing:
             raise ValueError("county_alias_target_missing:" + ",".join(sorted(missing)))
