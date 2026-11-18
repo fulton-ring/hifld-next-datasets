@@ -45,21 +45,23 @@ each coordinate or establish present-day completeness.
 The [ORNL product-family page](https://www.ornl.gov/project/geospatial-data-sets)
 does not establish exact historical release membership, joins, enrichment or
 geometry. Historical DOE/ORNL parity remains **unmeasured**, not disproved.
-The maintainer must explicitly choose a named NCES reporting-institution
-successor versus faithful recovery of the enriched ORNL product before accepting
-a replacement. Keep existing versioned release paths stable; this draft does not
-authorize silent replacement of an ORNL release. The separate
-[campus polygon work (#39)](../colleges-and-universities-campuses/README.md) is not
-reconstructed by these points, buffers or hulls.
+The maintainer selected the named NCES reporting-institution product as the
+successor for this inventory entry (#38) and for the separate campus inventory
+entry (#39, issue #1055). Keep existing versioned release paths stable; this
+draft does not authorize silent replacement of an ORNL release. The
+[campuses dataset](../colleges-and-universities-campuses/README.md) is a derived
+alias of this NCES candidate: it republishes these points under its own slug and
+documents that it has no campus outlines. Buffers, hulls and synthetic boundaries
+are not campus outlines.
 
-Before successor acceptance, compare adjacent official NCES years by UNITID over
+Before release acceptance, compare adjacent official NCES years by UNITID over
 the full population: additions/removals, null/duplicate keys, names/addresses,
 jurisdiction coverage, coordinate displacement, school years and geography codes.
 Absence alone does not establish closure; investigate with matching-year IPEDS
 status/universe definitions. ORNL parity needs the producer's exact edition,
-field dictionary and documented join keys first. Source/product, rights,
-contract/baseline and release acceptance remain pending; no acceptance is granted
-by the source check or this documentation correction.
+field dictionary and documented join keys first. Rights, contract/baseline and
+release acceptance remain pending; no acceptance is granted by the source check,
+the product decision or this documentation correction.
 
 With fresh isolated `DAGSTER_HOME`, `HIFLD_STAGING_DIR` and `HIFLD_DATASETS_DIR`, and cloud bucket variables unset, run `uv run dagster job execute -m dagster_hifld.definitions -a defs -j colleges_source_integrity`. Optionally pass the complete restored capture via the `colleges_source_integrity` job's `capture_directory` run config. The monthly schedule defaults STOPPED. Focused tests: `uv run python -m unittest discover -s tests -p 'test_colleges*.py'`; set `COLLEGES_TEST_CAPTURE_DIR` for complete-real cases.
 
