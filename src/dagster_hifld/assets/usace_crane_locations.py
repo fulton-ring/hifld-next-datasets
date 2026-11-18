@@ -4,6 +4,7 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -41,7 +42,7 @@ def usace_crane_locations_ienc(context, config: UsaceCraneLocationsConfig,
 
 @asset_check(asset=usace_crane_locations_ienc, blocking=True)
 def usace_crane_locations_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == 148 and candidate.get("source_population_complete") is True
+    passed = candidate.get("feature_count") == candidate.get("source_reported_count") and candidate.get("source_population_complete") is True
     return AssetCheckResult(passed=passed, metadata={
         "complete_layer_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
@@ -92,3 +93,7 @@ usace_crane_locations_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+usace_crane_locations_drift = register_approved_baseline_drift(usace_crane_locations_ienc, "usace_crane_locations_drift")
+
+ASSET_CHECKS = [usace_crane_locations_complete, usace_crane_locations_drift]

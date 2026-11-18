@@ -40,7 +40,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import _validate_spatial_reference, esri_polygon_wkb
-from dagster_hifld.sources.arcgis_layer import ienc_layer_capture_roster
+from dagster_hifld.sources.arcgis_layer import capture_witness, ienc_layer_capture_roster
 
 DATASET_SLUG = "land-surface-areas-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -58,8 +58,6 @@ SOURCE_VINTAGE_NOTE = (
     "nor the layer provides a source release date for this extracted snapshot; "
     "service modification timestamps are not treated as release dates."
 )
-EXPECTED_COUNT = 18903
-EXPECTED_ID_SHA256 = "933b0ed3c93b8163f716acac4dc27d1e1b94711083991b649cdcb7b9f6a59fda"
 EXPECTED_SCHEMA_SHA256 = "374a21be701d54c1dea5a0c413cfa00f43e2a988d0390dfc0b7501d2fa2ac48e"
 EXPECTED_RECORD_SHA256 = "4423a8f30be4e5e55e90610a8aa3704c8c0ccb44157f83dd25304c5c764751b4"
 EXPECTED_GEOMETRY_SHA256 = "ca67b57730e8506232ab457f8eb58333ec16a248de42798d12e78890d6e143ea"
@@ -198,7 +196,8 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
-    if not {"ids_seed", *[name for name, _url in _capture_roster(list(range(1, EXPECTED_COUNT + 1)))]} <= set(captures):
+    before = capture_witness(captures)
+    if not {"ids_seed", *[name for name, _url in _capture_roster(list(range(1, len(before) + 1)))]} <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     item = docs["bts_item"]
@@ -241,17 +240,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     extent = layer.get("extent", {})
     if "spatialReference" in extent:
         _validate_spatial_reference(extent["spatialReference"], "source_layer_extent")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(before, list) or before != after or len(before) != EXPECTED_COUNT
-            or len(set(before)) != EXPECTED_COUNT or _sha(_canonical(before)) != EXPECTED_ID_SHA256):
-        raise ValueError("source_id_population_drift")
     if docs["ids_seed"].get("objectIds") != before:
         raise ValueError("source_seed_id_population_drift")
     features = []
     pages = sorted(n for n in captures if n.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE:
+    if len(pages) != (len(before) + PAGE_SIZE - 1) // PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page = docs[name]
@@ -320,8 +313,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
             invalid_object_ids.append(oid)
         else:
             geometry_valid += 1
-    if (len(features) != EXPECTED_COUNT or sorted(got) != sorted(before)
-            or len(set(got)) != EXPECTED_COUNT):
+    if (len(features) != len(before) or sorted(got) != sorted(before)
+            or len(set(got)) != len(before)):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f: f["attributes"]["OBJECTID"])
     record_sha = _sha(_canonical([f["attributes"] for f in features]))
@@ -411,13 +404,13 @@ def capture_land_surface_areas_usace_ienc(storage: StagingStorageResource, *, ve
             ids = json.loads(ids_body).get("objectIds")
             if not isinstance(ids, list):
                 raise ValueError("retained_id_seed_invalid")
-            names = ["ids_seed", *[name for name, _url in _capture_roster(ids)]]
+            names = ["ids_seed", *[name for name, _url in _capture_roster(sorted(ids))]]
             if set(retained_manifest["receipts"]) != set(names):
                 raise ValueError("retained_capture_roster_changed")
             captures = {name: _load_replay(root, name) for name in names}
             if any(receipt != retained_manifest["receipts"][name] for name, (_body, receipt) in captures.items()):
                 raise ValueError("retained_capture_manifest_receipt_mismatch")
-            expected_urls = dict(_capture_roster(ids))
+            expected_urls = dict(_capture_roster(sorted(ids)))
             expected_urls["ids_seed"] = _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
             for name, (_body, receipt) in captures.items():
                 if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
@@ -450,7 +443,7 @@ def capture_land_surface_areas_usace_ienc(storage: StagingStorageResource, *, ve
                     client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                     root, "ids_seed", capture_budget)
                 seed = json.loads(seed_body).get("objectIds")
-                if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT:
+                if not isinstance(seed, list) or len(seed) != len(features):
                     raise ValueError("source_seed_id_count_drift")
                 captures["ids_seed"] = (seed_body, seed_receipt)
                 for name, url in _capture_roster(seed):

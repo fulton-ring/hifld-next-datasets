@@ -14,15 +14,16 @@ import pyarrow.parquet as pq
 import shapely
 import httpx
 
+COUNT = 93
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "0184e995cfc5eadb38542fb58bfc44ca243762b0e7cfd6d53ad5625ae9192c97"
+
 from dagster_hifld.sources.hf_areas_usace_ienc import (
     BTS_ITEM_ID,
     DATASET_SLUG,
-    EXPECTED_COUNT,
     EXPECTED_FIELD_DECLARATIONS,
     EXPECTED_FIELDS,
-    EXPECTED_ID_SHA256,
     EXPECTED_LAYER_EXTENT,
-    EXPECTED_IDS,
     FILE_SLUG,
     LAYER_URL,
     PAGE_SIZE,
@@ -113,14 +114,14 @@ def _docs() -> dict[str, dict]:
         "service_after": copy.deepcopy(service),
         "layer_before": layer,
         "layer_after": copy.deepcopy(layer),
-        "count_before": {"count": EXPECTED_COUNT},
-        "count_after": {"count": EXPECTED_COUNT},
-        "ids_before": {"objectIds": list(EXPECTED_IDS)},
-        "ids_after": {"objectIds": list(EXPECTED_IDS)},
-        "ids_seed": {"objectIds": list(EXPECTED_IDS)},
+        "count_before": {"count": COUNT},
+        "count_after": {"count": COUNT},
+        "ids_before": {"objectIds": list(IDS)},
+        "ids_after": {"objectIds": list(IDS)},
+        "ids_seed": {"objectIds": list(IDS)},
     }
-    features = _features(EXPECTED_IDS)
-    for index, start in enumerate(range(0, EXPECTED_COUNT, PAGE_SIZE)):
+    features = _features(IDS)
+    for index, start in enumerate(range(0, COUNT, PAGE_SIZE)):
         page_features = features[start:start + PAGE_SIZE]
         docs[f"page_{index:03d}"] = {
             "spatialReference": crs,
@@ -141,12 +142,12 @@ def _captures() -> dict[str, tuple[bytes, dict]]:
 class ValidateCompleteCapture(unittest.TestCase):
     def test_complete_capture_passes(self):
         fields, features, audit = _validate(_captures())
-        self.assertEqual(len(features), EXPECTED_COUNT)
-        self.assertEqual(audit["source_feature_count"], EXPECTED_COUNT)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_feature_count"], COUNT)
         self.assertEqual(audit["source_id_min"], 1)
-        self.assertEqual(audit["source_id_max"], EXPECTED_COUNT)
-        self.assertEqual(audit["feature_id_distinct_count"], EXPECTED_COUNT)
-        self.assertEqual(audit["geometry_valid_count"], EXPECTED_COUNT)
+        self.assertEqual(audit["source_id_max"], COUNT)
+        self.assertEqual(audit["feature_id_distinct_count"], COUNT)
+        self.assertEqual(audit["geometry_valid_count"], COUNT)
         self.assertEqual(audit["geometry_empty_count"], 0)
         self.assertEqual(audit["geometry_invalid_count"], 0)
         self.assertEqual(audit["source_wkid"], 4326)
@@ -166,19 +167,10 @@ class ValidateCompleteCapture(unittest.TestCase):
             ],
         )
 
-    def test_expected_population_pins(self):
-        self.assertEqual(EXPECTED_COUNT, 93)
-        self.assertEqual(EXPECTED_IDS[0], 1)
-        self.assertEqual(EXPECTED_IDS[-1], 93)
-        self.assertEqual(len(EXPECTED_IDS), EXPECTED_COUNT)
-        self.assertEqual(
-            EXPECTED_ID_SHA256,
-            "0184e995cfc5eadb38542fb58bfc44ca243762b0e7cfd6d53ad5625ae9192c97",
-        )
-        self.assertTrue(LAYER_URL.endswith("HARBOUR_FACILITY_AREA/MapServer/89"))
+    def test_no_pinned_population(self):
+        self.assertFalse(hasattr(source, "EXPECTED_COUNT"))
+        self.assertFalse(hasattr(source, "EXPECTED_IDS"))
 
-
-class PackagedRuntimeIdentity(unittest.TestCase):
     def test_no_git_packaged_runtime_uses_verified_installed_code_fingerprint(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -306,16 +298,16 @@ class ValidateDriftRejections(unittest.TestCase):
     def test_count_drift(self):
         code = self._mutate(
             "count_after", lambda d: d["count_after"].update(count=92))
-        self.assertEqual(str(code), "source_count_drift")
+        self.assertEqual(str(code), "source_count_or_id_roster_drift")
 
     def test_id_roster_drift(self):
         code = self._mutate(
-            "ids_after", lambda d: d["ids_after"].update(objectIds=list(range(1, EXPECTED_COUNT))))
-        self.assertEqual(str(code), "source_id_population_drift")
+            "ids_after", lambda d: d["ids_after"].update(objectIds=list(range(1, COUNT))))
+        self.assertEqual(str(code), "source_count_or_id_roster_drift")
 
     def test_seed_roster_drift(self):
         code = self._mutate(
-            "ids_seed", lambda d: d["ids_seed"].update(objectIds=[2, *EXPECTED_IDS]))
+            "ids_seed", lambda d: d["ids_seed"].update(objectIds=[2, *IDS]))
         self.assertEqual(str(code), "source_seed_id_population_drift")
 
     def test_page_roster_incomplete(self):
@@ -423,7 +415,7 @@ class ParquetCandidateContract(unittest.TestCase):
         import io
 
         table = pq.read_table(io.BytesIO(parquet))
-        self.assertEqual(table.num_rows, EXPECTED_COUNT)
+        self.assertEqual(table.num_rows, COUNT)
         self.assertEqual(
             [field.name for field in table.schema],
             ["OBJECTID", "Category_of_Harbour_Facility", "Object_Name", "Information", "Scale_Minimum",
@@ -506,7 +498,7 @@ class CachedCatalogSidecarValidation(unittest.TestCase):
             storage = StagingStorageResource(use_local=True, local_dir=str(root), prefix="")
             docs = _docs()
             responses = [docs["ids_seed"]] + [
-                docs[name] for name, _ in source._capture_roster(EXPECTED_IDS)
+                docs[name] for name, _ in source._capture_roster(IDS)
             ]
             response_index = 0
 

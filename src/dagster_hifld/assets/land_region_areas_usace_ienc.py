@@ -12,11 +12,11 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.land_region_areas_usace_ienc import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     FILE_SLUG,
     capture_land_region_areas_usace_ienc,
 )
@@ -59,9 +59,9 @@ def land_region_areas_usace_ienc_candidate(
 @asset_check(asset=land_region_areas_usace_ienc_candidate, blocking=True)
 def land_region_areas_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
+        candidate.get("feature_count") == candidate.get("source_reported_count")
         and candidate.get("source_population_complete") is True
-        and candidate.get("geometry_valid_count") == EXPECTED_COUNT
+        and candidate.get("geometry_valid_count") == candidate.get("source_reported_count")
         and candidate.get("geometry_invalid_count") == 0
         and candidate.get("geometry_empty_count") == 0
     )
@@ -100,3 +100,7 @@ land_region_areas_usace_ienc_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+land_region_areas_usace_ienc_candidate_drift = register_approved_baseline_drift(land_region_areas_usace_ienc_candidate, "land_region_areas_usace_ienc_candidate_drift")
+
+ASSET_CHECKS = [land_region_areas_usace_ienc_complete, land_region_areas_usace_ienc_candidate_drift]

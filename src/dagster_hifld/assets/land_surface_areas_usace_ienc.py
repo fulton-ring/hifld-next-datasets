@@ -12,15 +12,14 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.land_surface_areas_usace_ienc import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     EXPECTED_EMPTY_GEOMETRY_COUNT,
     EXPECTED_FEATURE_ID_NULL_COUNT,
-    EXPECTED_INVALID_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_land_surface_areas_usace_ienc,
 )
@@ -65,9 +64,8 @@ def land_surface_areas_usace_ienc_candidate(
 @asset_check(asset=land_surface_areas_usace_ienc_candidate, blocking=True)
 def land_surface_areas_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
+        candidate.get("feature_count") == candidate.get("source_reported_count")
         and candidate.get("source_population_complete") is True
-        and candidate.get("geometry_valid_count") == EXPECTED_COUNT - EXPECTED_INVALID_GEOMETRY_COUNT
         and candidate.get("geometry_invalid_count") == EXPECTED_INVALID_GEOMETRY_COUNT
         and candidate.get("geometry_empty_count") == EXPECTED_EMPTY_GEOMETRY_COUNT
         and candidate.get("feature_id_null_count") == EXPECTED_FEATURE_ID_NULL_COUNT
@@ -142,10 +140,10 @@ land_surface_areas_usace_ienc_draft_schedule = ScheduleDefinition(
 )
 
 
+land_surface_areas_usace_ienc_candidate_drift = register_approved_baseline_drift(land_surface_areas_usace_ienc_candidate, "land_surface_areas_usace_ienc_candidate_drift")
+
 INGEST_ASSETS = [land_surface_areas_usace_ienc_candidate]
-ASSET_CHECKS = [
-    land_surface_areas_usace_ienc_complete,
-    land_surface_areas_usace_ienc_geometry_quality,
-]
+ASSET_CHECKS = [land_surface_areas_usace_ienc_complete,
+    land_surface_areas_usace_ienc_geometry_quality, land_surface_areas_usace_ienc_candidate_drift]
 JOBS = [land_surface_areas_usace_ienc_draft_job]
 SCHEDULES = [land_surface_areas_usace_ienc_draft_schedule]

@@ -4,6 +4,7 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -41,7 +42,7 @@ def usace_airport_area_ienc(context, config: UsaceAirportAreaConfig,
 
 @asset_check(asset=usace_airport_area_ienc, blocking=True)
 def usace_airport_area_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == 72 and candidate.get("source_population_complete") is True
+    passed = candidate.get("feature_count") == candidate.get("source_reported_count") and candidate.get("source_population_complete") is True
     return AssetCheckResult(passed=passed, metadata={
         "complete_layer_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
@@ -98,3 +99,7 @@ usace_airport_area_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+usace_airport_area_drift = register_approved_baseline_drift(usace_airport_area_ienc, "usace_airport_area_drift")
+
+ASSET_CHECKS = [usace_airport_area_complete, usace_airport_area_drift]

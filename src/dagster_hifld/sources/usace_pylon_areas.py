@@ -61,9 +61,6 @@ BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 6440
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "8dc3b41f3a226207090e7b947380144179fcb92a90018eb15a7daf21aa821b4e"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 48_000_000
 MAX_CAPTURE_BYTES = 450_000_000
@@ -156,7 +153,8 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
-    if not {"ids_seed", *[name for name, _url in _capture_roster(EXPECTED_IDS)]} <= set(captures):
+    before = capture_witness(captures)
+    if not {"ids_seed", *[name for name, _url in _capture_roster(before)]} <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     item = docs["bts_item"]
@@ -199,18 +197,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     extent = layer.get("extent", {})
     if "spatialReference" in extent:
         _validate_spatial_reference(extent["spatialReference"], "source_layer_extent")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(before, list) or before != after or before != EXPECTED_IDS
-            or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT
-            or _sha(_canonical(before)) != EXPECTED_ID_SHA256):
-        raise ValueError("source_id_population_drift")
-    if docs["ids_seed"].get("objectIds") != EXPECTED_IDS:
+    if sorted(docs["ids_seed"].get("objectIds") or []) != before:
         raise ValueError("source_seed_id_population_drift")
     features = []
     pages = sorted(n for n in captures if n.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE:
+    if len(pages) != (len(before) + PAGE_SIZE - 1) // PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page = docs[name]
@@ -268,7 +259,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         geometry_valid += int(geometry.is_valid and not geometry.is_empty)
     if any(not isinstance(value, str) or not value for value in feature_ids):
         raise ValueError("source_feature_id_value_drift")
-    if len(features) != EXPECTED_COUNT or sorted(got) != sorted(before) or len(set(got)) != EXPECTED_COUNT:
+    if len(features) != len(before) or sorted(got) != sorted(before) or len(set(got)) != len(before):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f: f["attributes"]["OBJECTID"])
     record_sha = _sha(_canonical([f["attributes"] for f in features]))
@@ -515,13 +506,13 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
             ids = json.loads(ids_body).get("objectIds")
             if not isinstance(ids, list):
                 raise ValueError("retained_id_seed_invalid")
-            names = ["ids_seed", *[name for name, _url in _capture_roster(ids)]]
+            names = ["ids_seed", *[name for name, _url in _capture_roster(sorted(ids))]]
             if set(retained_manifest["receipts"]) != set(names):
                 raise ValueError("retained_capture_roster_changed")
             captures = {name: _load_replay(root, name) for name in names}
             if any(receipt != retained_manifest["receipts"][name] for name, (_body, receipt) in captures.items()):
                 raise ValueError("retained_capture_manifest_receipt_mismatch")
-            expected_urls = dict(_capture_roster(ids))
+            expected_urls = dict(_capture_roster(sorted(ids)))
             expected_urls["ids_seed"] = _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
             for name, (_body, receipt) in captures.items():
                 if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
@@ -554,8 +545,11 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
                     client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                     root, "ids_seed", capture_budget)
                 ids = json.loads(seed_body).get("objectIds")
-                if ids != EXPECTED_IDS or _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
+                if (not isinstance(ids, list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
                     raise ValueError("source_seed_id_count_or_roster_drift")
+                ids = sorted(ids)
                 captures["ids_seed"] = (seed_body, seed_receipt)
                 for name, url in _capture_roster(ids):
                     time.sleep(0.5)

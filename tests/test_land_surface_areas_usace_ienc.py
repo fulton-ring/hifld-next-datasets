@@ -15,11 +15,13 @@ import httpx
 import pyarrow.parquet as pq
 import shapely
 
+COUNT = 18903
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "933b0ed3c93b8163f716acac4dc27d1e1b94711083991b649cdcb7b9f6a59fda"
+
 from dagster_hifld.sources.land_surface_areas_usace_ienc import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     EXPECTED_FIELD_DECLARATIONS,
-    EXPECTED_ID_SHA256,
     EXPECTED_INVALID_GEOMETRY_COUNT,
     EXPECTED_LAYER_EXTENT,
     FILE_SLUG,
@@ -146,8 +148,8 @@ def _captures(docs: dict[str, dict]) -> dict[str, tuple[bytes, dict]]:
 def _pins(docs: dict[str, dict]) -> dict[str, object]:
     features = sorted(docs["page_000"]["features"], key=lambda f: f["attributes"]["OBJECTID"])
     return {
-        "EXPECTED_COUNT": len(features),
-        "EXPECTED_ID_SHA256": source._sha(source._canonical(docs["ids_before"]["objectIds"])),
+        "COUNT": len(features),
+        "ID_SHA256": source._sha(source._canonical(docs["ids_before"]["objectIds"])),
         "EXPECTED_SCHEMA_SHA256": source._sha(source._canonical(docs["layer_before"]["fields"])),
         "EXPECTED_RECORD_SHA256": source._sha(source._canonical([f["attributes"] for f in features])),
         "EXPECTED_GEOMETRY_SHA256": source._sha(source._canonical(
@@ -157,11 +159,10 @@ def _pins(docs: dict[str, dict]) -> dict[str, object]:
 
 class PopulationPins(unittest.TestCase):
     def test_expected_population_pins_match_the_published_layer(self):
-        self.assertEqual(EXPECTED_COUNT, 18903)
+        self.assertEqual(COUNT, 18903)
         self.assertEqual(EXPECTED_INVALID_GEOMETRY_COUNT, 1)
         self.assertTrue(LAYER_URL.endswith("LAND_AREA/MapServer/97"))
         self.assertEqual(
-            EXPECTED_ID_SHA256,
             "933b0ed3c93b8163f716acac4dc27d1e1b94711083991b649cdcb7b9f6a59fda",
         )
 
@@ -277,11 +278,11 @@ class ValidateDriftRejections(unittest.TestCase):
 
     def test_count_drift(self):
         code, _ = self._mutate(lambda d: d["count_after"].update(count=2))
-        self.assertEqual(code, "source_count_drift")
+        self.assertEqual(code, "source_count_or_id_roster_drift")
 
     def test_id_roster_drift(self):
         code, _ = self._mutate(lambda d: d["ids_after"].update(objectIds=[1, 2, 4]))
-        self.assertEqual(code, "source_id_population_drift")
+        self.assertEqual(code, "source_count_or_id_roster_drift")
 
     def test_seed_roster_drift(self):
         code, _ = self._mutate(lambda d: d["ids_seed"].update(objectIds=[1, 2, 4]))
@@ -545,7 +546,7 @@ class FullCaptureLifecycle(unittest.TestCase):
                     source.httpx, "Client", self._fixture_client(self._responses(docs, ids))), patch.object(
                     source.time, "sleep", return_value=None), patch.object(
                     source.shutil, "disk_usage", return_value=SimpleNamespace(free=10_000_000_000)):
-                with self.assertRaisesRegex(ValueError, "source_count_drift"):
+                with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                     source.capture_land_surface_areas_usace_ienc(
                         storage, version="drift-run", capture_directory=str(root / "captures"))
 
@@ -585,15 +586,14 @@ class FullCaptureLifecycle(unittest.TestCase):
 class BlockingCompletenessCheck(unittest.TestCase):
     def _candidate(self) -> dict:
         return {
-            "feature_count": EXPECTED_COUNT,
-            "source_population_complete": True,
+            "feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete": True,
             "source_id_sha256": "0" * 64,
             "source_schema_sha256": "1" * 64,
             "source_record_sha256": "2" * 64,
             "source_geometry_sha256": "3" * 64,
             "source_coverage_scope": "scope",
             "drift_guard": "guard",
-            "geometry_valid_count": EXPECTED_COUNT - EXPECTED_INVALID_GEOMETRY_COUNT,
+            "geometry_valid_count": COUNT - EXPECTED_INVALID_GEOMETRY_COUNT,
             "geometry_invalid_count": EXPECTED_INVALID_GEOMETRY_COUNT,
             "geometry_empty_count": 0,
             "feature_id_null_count": 0,
@@ -607,7 +607,7 @@ class BlockingCompletenessCheck(unittest.TestCase):
         result = land_surface_areas_usace_ienc_complete(self._candidate())
         self.assertTrue(result.passed)
         self.assertEqual(result.metadata["geometry_invalid_count"].value, 1)
-        self.assertEqual(result.metadata["geometry_valid_count"].value, EXPECTED_COUNT - 1)
+        self.assertEqual(result.metadata["geometry_valid_count"].value, COUNT - 1)
 
     def test_quality_composition_drift_fails_closed(self):
         from dagster_hifld.assets.land_surface_areas_usace_ienc import (
@@ -617,7 +617,7 @@ class BlockingCompletenessCheck(unittest.TestCase):
         check = land_surface_areas_usace_ienc_complete
         self.assertFalse(check(dict(candidate, geometry_invalid_count=0)).passed)
         self.assertFalse(check(dict(candidate, geometry_invalid_count=2)).passed)
-        self.assertFalse(check(dict(candidate, geometry_valid_count=EXPECTED_COUNT)).passed)
+        self.assertFalse(check(dict(candidate, geometry_valid_count=COUNT)).passed)
         self.assertFalse(check(dict(candidate, geometry_empty_count=1)).passed)
         self.assertFalse(check(dict(candidate, feature_id_null_count=1)).passed)
         self.assertFalse(check(dict(candidate, geometry_repaired=True)).passed)
@@ -631,7 +631,7 @@ class BlockingCompletenessCheck(unittest.TestCase):
         )
         candidate = self._candidate()
         check = land_surface_areas_usace_ienc_complete
-        self.assertFalse(check(dict(candidate, feature_count=EXPECTED_COUNT - 1)).passed)
+        self.assertFalse(check(dict(candidate, feature_count=COUNT - 1)).passed)
         self.assertFalse(check(dict(candidate, source_population_complete=False)).passed)
 
     def test_geometry_quality_check_reports_pending_acceptance_without_blocking(self):

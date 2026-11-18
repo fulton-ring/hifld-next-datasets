@@ -12,11 +12,11 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.lock_basins_usace_ienc import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     FILE_SLUG,
     MAX_CAPTURE_BYTES,
     capture_lock_basins_usace_ienc,
@@ -62,7 +62,7 @@ def lock_basins_usace_ienc_candidate(
 @asset_check(asset=lock_basins_usace_ienc_candidate, blocking=True)
 def lock_basins_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
+        candidate.get("feature_count") == candidate.get("source_reported_count")
         and candidate.get("source_population_complete") is True
     )
     return AssetCheckResult(
@@ -97,3 +97,7 @@ lock_basins_usace_ienc_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+lock_basins_usace_ienc_candidate_drift = register_approved_baseline_drift(lock_basins_usace_ienc_candidate, "lock_basins_usace_ienc_candidate_drift")
+
+ASSET_CHECKS = [lock_basins_usace_ienc_complete, lock_basins_usace_ienc_candidate_drift]

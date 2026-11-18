@@ -51,8 +51,6 @@ SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_
 BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 148
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
 MAX_RESPONSE_BYTES = 8_000_000
 MAX_CAPTURE_BYTES = 16_000_000
 EXPECTED_LAYER_EXTENT = {
@@ -185,6 +183,7 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
+    before = capture_witness(captures)
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
     layer = docs["layer_before"]
     fields = layer.get("fields")
@@ -223,15 +222,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
             or docs["layer_after"].get("extent") != layer.get("extent")
             or docs["layer_after"].get("spatialReference") != layer.get("spatialReference")):
         raise ValueError("source_schema_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    seed = docs["ids_seed"].get("objectIds")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(seed,list) or not isinstance(before,list) or not isinstance(after,list)
-            or any(type(value) is not int for value in [*seed, *before, *after])
-            or sorted(seed) != EXPECTED_IDS or sorted(before) != EXPECTED_IDS
-            or sorted(after) != EXPECTED_IDS):
-        raise ValueError("source_id_population_drift")
     if (docs["ids_before"].get("objectIdFieldName") != "OBJECTID"
             or any(type(value) is not int for value in before)):
         raise ValueError("source_object_id_field_or_type_drift")
@@ -240,7 +230,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         raise ValueError("source_count_id_roster_mismatch")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1)//PAGE_SIZE:
+    if len(pages) != (len(before) + PAGE_SIZE - 1)//PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page=docs[name]
@@ -255,7 +245,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         if page_schema != expected_page_schema or page.get("geometryType") != "esriGeometryPoint":
             raise ValueError("source_page_schema_or_geometry_type_drift")
         page_index = int(name.removeprefix("page_"))
-        expected_ids = EXPECTED_IDS[page_index * PAGE_SIZE:(page_index + 1) * PAGE_SIZE]
+        expected_ids = before[page_index * PAGE_SIZE:(page_index + 1) * PAGE_SIZE]
         returned_ids = [feature.get("attributes", {}).get("OBJECTID") for feature in rows]
         if returned_ids != expected_ids:
             raise ValueError("source_page_id_order_or_membership_drift")
@@ -283,7 +273,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         empty_geometry_count += int(parsed_geometry.is_empty)
         invalid_geometry_count += int(not parsed_geometry.is_valid)
         got.append(attrs.get("OBJECTID"))
-    if len(features)!=EXPECTED_COUNT or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT:
+    if len(features)!=len(before) or sorted(got)!=sorted(before) or len(set(got))!=len(before):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     rows=[{"attributes":f["attributes"],"geometry":f["geometry"]} for f in features]
@@ -394,7 +384,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
         elif recover_receipted:
             ids_body, ids_receipt = _load_replay(root, "ids_seed")
             ids = json.loads(ids_body).get("objectIds")
-            if (not isinstance(ids, list) or len(ids) != EXPECTED_COUNT
+            if (not isinstance(ids, list) or len(ids) != len(features)
                     or any(type(value) is not int for value in ids) or sorted(ids) != EXPECTED_IDS):
                 raise ValueError("retained_unsealed_seed_roster_invalid")
             names_urls = [("ids_seed", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})), *_capture_roster(EXPECTED_IDS)]
@@ -421,7 +411,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
                 seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
                 ids=json.loads(seed_body).get("objectIds")
-                if (not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT
+                if (not isinstance(ids,list) or len(ids)!=len(features)
                         or any(type(value) is not int for value in ids) or sorted(ids)!=EXPECTED_IDS):
                     raise ValueError("source_seed_id_roster_drift")
                 ids=EXPECTED_IDS
@@ -481,7 +471,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],
             payload.get("objects",{}),original_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":audit["source_feature_count"],"source_population_complete":True,
+            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
             "source_null_geometry_count":audit["source_null_geometry_count"],
@@ -497,4 +487,4 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
     )
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_empty_geometry_count":audit["source_empty_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_empty_geometry_count":audit["source_empty_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

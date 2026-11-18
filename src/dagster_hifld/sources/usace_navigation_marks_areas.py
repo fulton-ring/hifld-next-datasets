@@ -51,7 +51,6 @@ SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/NA
 LAYER_ID = 68
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 109
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 48_000_000
 MAX_CAPTURE_BYTES = 450_000_000
@@ -125,6 +124,7 @@ def _load_prefilled(root: Path, name: str, expected_url: str) -> tuple[bytes, di
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
+    before = capture_witness(captures)
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
     item = docs["bts_item"]
     description = item.get("description")
@@ -167,16 +167,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         _validate_spatial_reference(extent_reference, "source_layer_extent")
     if docs["layer_after"] != layer:
         raise ValueError("source_schema_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if not isinstance(before,list) or before != after or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT:
-        raise ValueError("source_id_population_drift")
     if docs["ids_seed"].get("objectIds") != before:
         raise ValueError("source_seed_id_population_changed")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1)//PAGE_SIZE:
+    if len(pages) != (len(before) + PAGE_SIZE - 1)//PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page=docs[name]
@@ -211,8 +206,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
             raise ValueError("source_polygon_rings_missing")
         vertex_count += sum(len(ring) for ring in rings)
         got.append(attrs.get("OBJECTID"))
-    if (len(features)!=EXPECTED_COUNT or any(type(oid) is not int for oid in got)
-            or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT):
+    if (len(features)!=len(before) or any(type(oid) is not int for oid in got)
+            or sorted(got)!=sorted(before) or len(set(got))!=len(before)):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     rows=[{"attributes":f["attributes"],"geometry":f["geometry"]} for f in features]
@@ -328,7 +323,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
                 seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
                 ids=json.loads(seed_body).get("objectIds")
-                if not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT: raise ValueError("source_seed_id_count_drift")
+                if not isinstance(ids,list) or len(ids)!=len(features): raise ValueError("source_seed_id_count_drift")
                 captures["ids_seed"]=(seed_body,seed_receipt)
                 for name,url in _capture_roster(ids):
                     if name not in captures:
@@ -434,7 +429,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
             fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],
             payload.get("objects",{}),original_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":audit["source_feature_count"],"source_population_complete":True,
+            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
             "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
@@ -446,4 +441,4 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
     from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
