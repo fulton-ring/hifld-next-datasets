@@ -6,6 +6,7 @@ import io
 import struct
 import zipfile
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -16,6 +17,10 @@ import httpx
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
+from dagster_hifld.source_release import (
+    ReleaseSignal, decide_release, decide_unchanged_poll, load_release_state,
+    probe_transport, record_release_state, release_state_record, unchanged_result,
+)
 from dagster_hifld.sources import census_tiger_common, census_latest
 from dagster_hifld.sources.capture_common import (
     capture_get,
@@ -29,6 +34,11 @@ SOURCE_VINTAGE = "2025"
 SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2025/PRIMARYROADS/tl_2025_us_primaryroads.zip"
 SOURCE_FILE = "tl_2025_us_primaryroads.zip"
 PUBLISHER = "U.S. Census Bureau, Geography Division"
+RELEASE_SELECTION_RULE = (
+    "Latest exact TIGER20YY directory in the producer listing, requiring one "
+    "national PRIMARYROADS ZIP. The edition is the release identity; a changed "
+    "archive under the same edition is a same-release correction."
+)
 EXPECTED_SHA256 = "400453e97b9e6693dfecb7362ce7a6cf260d27050f7d84d2a024ba0710b94c07"
 EXPECTED_BYTES = 38_379_400
 EXPECTED_FEATURE_COUNT = 17_500
@@ -206,6 +216,7 @@ def capture_census_primary_roads(
     staging_storage: StagingStorageResource, *, version: str, capture_directory: str | Path | None = None,
     release: dict | None = None, captured: tuple | None = None,
     discovery_evidence: dict[str, bytes] | None = None,
+    release_state_fingerprint: str | None = None,
 ) -> dict[str, object]:
     """Capture one exact official annual zip and stage it immutably for catalog."""
     body, receipt = captured if captured is not None else _capture(capture_directory, staging_storage, version)
@@ -285,7 +296,7 @@ def capture_census_primary_roads(
             "latest_evidence_input_id": release["listing_url"],
             "maintenance_evidence_input_id": release["annual_listing_url"],
             "selection_rule": release["selection_rule"],
-            "source_state_fingerprint": archive_sha,
+            "source_state_fingerprint": release_state_fingerprint or archive_sha,
         }
         for index, url in enumerate((release["annual_listing_url"], release["listing_url"])):
             evidence_receipt = release["evidence_receipts"][index]
@@ -319,7 +330,15 @@ def capture_census_primary_roads(
         "method", "url", "final_url", "status", "complete_body", "wire_bytes",
         "wire_sha256", "bytes", "sha256", "content_encoding", "content_length",
     )}
-    audit_doc = {"source": {"url": source_url, "vintage": vintage, "archive_sha256": archive_sha, "archive_bytes": archive_bytes}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit}
+    release_fields = {}
+    if release:
+        release_fields = {
+            "release_id": vintage,
+            "release_content_sha256": archive_sha,
+            "release_selection_rule": RELEASE_SELECTION_RULE,
+            "release_state_fingerprint": release_state_fingerprint or archive_sha,
+        }
+    audit_doc = {"source": {"url": source_url, "vintage": vintage, "archive_sha256": archive_sha, "archive_bytes": archive_bytes}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit, **release_fields}
     audit_key = f"{prefix}/metadata/source_audit.json"
     audit_bytes = _canonical(audit_doc) + b"\n"
     write_immutable(staging_storage, audit_key, audit_bytes)
@@ -375,6 +394,7 @@ def capture_census_primary_roads(
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
         "capture_mode": "current_discovery" if release else "historical_pinned_reproduction",
         "written_keys": [*written_keys, ready_key],
+        **release_fields,
     }
 
 
@@ -390,6 +410,31 @@ def capture_latest_census_primary_roads(staging_storage: StagingStorageResource,
         root = Path(tmp)
         try:
             release = census_latest.discover_primary_roads(client, root)
+            prior = load_release_state(staging_storage, DATASET_SLUG, FILE_SLUG)
+            try:
+                probe = probe_transport(client, release['source_url'])
+            except ValueError:
+                # A publisher without HEAD support simply cannot supply a cheap
+                # unchanged proof; capture and compare the archive instead.
+                probe = None
+            poll_signal = ReleaseSignal(
+                release_id=release['edition'], release_date=None,
+                last_edit=probe.last_modified if probe else None,
+                poll_fingerprint=probe.fingerprint() if probe else None,
+                content_sha256=None, selection_rule=RELEASE_SELECTION_RULE,
+                evidence={'edition': release['edition'], 'source_url': release['source_url'],
+                          'listing_sha256': release['listing_sha256'],
+                          'last_modified': probe.last_modified if probe else None,
+                          'etag': probe.etag if probe else None,
+                          'content_length': probe.content_length if probe else None},
+            )
+            poll_decision = decide_unchanged_poll(prior, poll_signal)
+            if poll_decision.action == 'unchanged':
+                return unchanged_result(
+                    prior, dataset_slug=DATASET_SLUG, file_slug=FILE_SLUG,
+                    source_edition=release['edition'], latest_release_discovered=True,
+                    source_cache_reused=True,
+                )
             body, receipt = capture_get(client, release['source_url'], root, 'source', max_bytes=MAX_SOURCE_BYTES)
             if receipt.get('content_encoding') != 'identity' or not body:
                 raise ValueError('current_tiger_archive_encoding_or_empty')
@@ -398,14 +443,34 @@ def capture_latest_census_primary_roads(staging_storage: StagingStorageResource,
             after = census_latest.discover_primary_roads(client, root / 'after')
             if any(release[key] != after[key] for key in ('edition', 'source_url', 'listing_sha256')):
                 raise ValueError('current_tiger_listing_changed_during_capture')
+            signal = replace(poll_signal, content_sha256=_sha(body))
             version = census_latest.release_version(release['edition'], receipt['sha256'], processing_code_identity())
+            same_candidate = prior is not None and version == prior['version']
+            if same_candidate:
+                action, note = 'unchanged', None
+            else:
+                decision = decide_release(prior, signal)
+                action = decision.action if decision.action != 'unchanged' else 'new_release'
+                note = decision.note if action == 'same_release_correction' else (
+                    'Pipeline code identity changed; new immutable candidate for unchanged source content.'
+                    if decision.action == 'unchanged' else None)
             evidence = {f'{name}.{suffix}': (root / f'{name}.{suffix}').read_bytes()
                         for name in ('annual-listing', 'product-listing', 'source')
                         for suffix in ('body', 'wire', 'receipt.json')}
             evidence['release.json'] = _canonical(release) + b'\n'
-            result = capture_census_primary_roads(staging_storage, version=version,
-                                                   release=release, captured=(body, receipt), discovery_evidence=evidence)
-            return result
+            result = capture_census_primary_roads(
+                staging_storage, version=version, release=release, captured=(body, receipt),
+                discovery_evidence=evidence,
+                release_state_fingerprint=signal.content_fingerprint,
+            )
+            record_release_state(staging_storage, release_state_record(
+                signal, dataset_slug=DATASET_SLUG, file_slug=FILE_SLUG, version=version,
+                accepted_at=str(receipt['observed_at']), action=action,
+                candidate_summary=result, note=note,
+            ))
+            return {**result, 'release_action': action, 'release_note': note,
+                    'release_state_fingerprint': signal.state_fingerprint,
+                    'unchanged': same_candidate}
         except Exception as exc:
             # Keep bounded successful and partial inputs, including discovery,
             # outside catalog paths. A failed check is never an unchanged result.
