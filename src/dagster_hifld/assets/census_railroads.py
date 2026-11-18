@@ -1,4 +1,4 @@
-"""Stopped refresh asset for the official 2026 Census TIGER national Rails."""
+"""Stopped refresh asset for the official current Census TIGER national Rails."""
 
 from dagster import (
     AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
@@ -8,8 +8,7 @@ from dagster import (
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.census_railroads import (
-    DATASET_SLUG, EXPECTED_BYTES, EXPECTED_FEATURE_COUNT, EXPECTED_SHA256, FILE_SLUG,
-    candidate_version, capture_census_railroads,
+    DATASET_SLUG, FILE_SLUG, capture_census_railroads,
 )
 
 
@@ -22,16 +21,15 @@ class CensusRailroadsConfig(Config):
     group_name="census_bureau",
     compute_kind="http",
     description=(
-        "Official Census TIGER/Line 2026 national Rails archive. "
+        "Official Census TIGER/Line national Rails archive, resolved at capture time. "
         "Candidate only: the DHS crosswalk row and baseline compatibility are unresolved, "
         "and source, freshness, schema/ID contract, coverage, rights, and release remain pending."
     ),
 )
 def census_bureau_railroads(context, config: CensusRailroadsConfig,
                             staging_storage: StagingStorageResource) -> dict:
-    version = candidate_version()
     result = capture_census_railroads(
-        staging_storage, version=version,
+        staging_storage,
         capture_directory=config.capture_directory or None,
     )
     context.instance.add_dynamic_partitions(
@@ -45,16 +43,17 @@ def census_bureau_railroads(context, config: CensusRailroadsConfig,
 @asset_check(asset=census_bureau_railroads, blocking=True)
 def census_railroads_source_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_FEATURE_COUNT
+        type(candidate.get("feature_count")) is int and candidate["feature_count"] > 0
         and candidate.get("source_population_complete") is True
-        and candidate.get("source_archive_bytes") == EXPECTED_BYTES
-        and candidate.get("source_archive_sha256") == EXPECTED_SHA256
+        and bool(candidate.get("source_vintage"))
+        and isinstance(candidate.get("source_archive_sha256"), str)
     )
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_archive_sha256": candidate.get("source_archive_sha256", "missing"),
+        "source_vintage": candidate.get("source_vintage", "missing"),
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False,

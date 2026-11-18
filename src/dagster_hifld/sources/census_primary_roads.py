@@ -30,31 +30,19 @@ from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _s
 
 DATASET_SLUG = "primary-roads-2"
 FILE_SLUG = DATASET_SLUG
-SOURCE_VINTAGE = "2025"
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2025/PRIMARYROADS/tl_2025_us_primaryroads.zip"
-SOURCE_FILE = "tl_2025_us_primaryroads.zip"
+LAYER = "PRIMARYROADS"
+PRODUCT = "primaryroads"
 PUBLISHER = "U.S. Census Bureau, Geography Division"
 RELEASE_SELECTION_RULE = (
-    "Latest exact TIGER20YY directory in the producer listing, requiring one "
+    "Newest exact TIGER20YY directory in the producer listing, requiring one "
     "national PRIMARYROADS ZIP. The edition is the release identity; a changed "
     "archive under the same edition is a same-release correction."
 )
-EXPECTED_SHA256 = "400453e97b9e6693dfecb7362ce7a6cf260d27050f7d84d2a024ba0710b94c07"
-EXPECTED_BYTES = 38_379_400
-EXPECTED_FEATURE_COUNT = 17_500
+# Broad sanity bounds; the producer publishes roughly 17,000-18,000 primary roads.
+FEATURE_COUNT_RANGE = (1, 100_000)
 EXPECTED_FIELDS = ["LINEARID", "FULLNAME", "RTTYP", "MTFCC"]
 EXPECTED_CRS = "EPSG:4269"
-EXPECTED_BOUNDS = [-158.104182, 17.974171, -65.648659, 61.571228]
 MAX_SOURCE_BYTES = 50_000_000
-
-SOURCE_STEM = Path(SOURCE_FILE).stem
-EXPECTED_MEMBERS = {
-    f"{SOURCE_STEM}.cpg", f"{SOURCE_STEM}.dbf", f"{SOURCE_STEM}.prj",
-    f"{SOURCE_STEM}.shp", f"{SOURCE_STEM}.shp.ea.iso.xml",
-    f"{SOURCE_STEM}.shp.iso.xml", f"{SOURCE_STEM}.shx",
-}
-SHAPEFILE_MEMBER = f"{SOURCE_STEM}.shp"
-
 
 CODE_IDENTITY_SCHEME = census_tiger_common.CODE_IDENTITY_SCHEME
 PROCESSING_SOURCE_ROOT = Path(__file__).resolve().parents[2]
@@ -68,37 +56,35 @@ def processing_code_identity() -> str:
     )
 
 
-def candidate_version() -> str:
-    return census_tiger_common.candidate_version(EXPECTED_SHA256, processing_code_identity())
+def candidate_version(release: census_latest.ShapefileRelease, archive_sha256: str) -> str:
+    return census_latest.release_version(str(release.vintage), archive_sha256, processing_code_identity())
 
 
 def _capture(
     capture_directory: str | Path | None,
     staging_storage: StagingStorageResource,
     version: str,
-) -> tuple[bytes, dict[str, object]]:
-    body, receipt, _wire, _receipt_bytes = census_tiger_common.capture_tiger_zip(
+) -> tuple[bytes, dict[str, object], census_latest.ShapefileRelease]:
+    body, receipt, _wire, _receipt_bytes, release = census_tiger_common.capture_tiger_shapefile(
         capture_directory, staging_storage, version,
-        dataset_slug=DATASET_SLUG, source_url=SOURCE_URL,
+        dataset_slug=DATASET_SLUG, layer=LAYER, product=PRODUCT,
         max_source_bytes=MAX_SOURCE_BYTES,
-        expected_bytes=EXPECTED_BYTES, expected_sha256=EXPECTED_SHA256,
         client_timeout=httpx.Timeout(180.0, connect=20.0),
         capture_tmp_prefix="census-primary-roads-capture-",
         capture_get=capture_get,
     )
-    return body, receipt
+    return body, receipt, release
 
 
-def _inspect_archive(body: bytes, *, edition: str | None = None) -> dict[str, object]:
+def _inspect_archive(body: bytes, release: census_latest.ShapefileRelease) -> dict[str, object]:
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
         if sum(info.file_size for info in archive.infolist()) > 250_000_000:
             raise ValueError("tiger_archive_expansion_budget_exceeded")
-    stem = f"tl_{edition}_us_primaryroads" if edition else SOURCE_STEM
-    members = {name.replace(SOURCE_STEM, stem) for name in EXPECTED_MEMBERS}
+    stem = Path(release.source_file).stem
     frame = census_tiger_common.read_tiger_shapefile(
         body,
-        expected_members=members,
-        shapefile_name=f"{stem}.shp",
+        expected_members=census_tiger_common.tiger_shapefile_members(release.source_file),
+        shapefile_name=census_tiger_common.tiger_shapefile_name(release.source_file),
         extract_tmp_prefix="census-primary-roads-",
         read_file=lambda path: gpd.read_file(path, engine="pyogrio"),
     )
@@ -137,7 +123,8 @@ def _inspect_archive(body: bytes, *, edition: str | None = None) -> dict[str, ob
     fields = list(frame.columns[:-1])
     if fields != EXPECTED_FIELDS or str(frame.crs) != EXPECTED_CRS:
         raise ValueError("tiger_source_schema_or_crs_drift")
-    if (edition is None and len(frame) != EXPECTED_FEATURE_COUNT) or len(frame) == 0 or frame["LINEARID"].isna().any() or frame["LINEARID"].duplicated().any():
+    if not (FEATURE_COUNT_RANGE[0] <= len(frame) <= FEATURE_COUNT_RANGE[1]) \
+            or frame["LINEARID"].isna().any() or frame["LINEARID"].duplicated().any():
         raise ValueError("tiger_source_population_or_id_drift")
     if not frame["LINEARID"].map(lambda value: isinstance(value, str) and value.isascii() and value.isdecimal()).all():
         raise ValueError("tiger_source_id_lexical_physical_type_drift")
@@ -151,7 +138,7 @@ def _inspect_archive(body: bytes, *, edition: str | None = None) -> dict[str, ob
     if set(geometry.geom_type) != {"LineString"}:
         raise ValueError("tiger_source_geometry_type_drift")
     bounds = [float(value) for value in frame.total_bounds]
-    if edition is None and bounds != EXPECTED_BOUNDS:
+    if not (-180 <= bounds[0] <= bounds[2] <= 180 and -90 <= bounds[1] <= bounds[3] <= 90):
         raise ValueError("tiger_source_coverage_extent_drift")
     ids = sorted(frame["LINEARID"].tolist())
     id_digest = _sha(_canonical(ids))
@@ -213,19 +200,26 @@ def _current_native_metadata(body: bytes, stem: str, input_id: str) -> tuple[dic
 
 
 def capture_census_primary_roads(
-    staging_storage: StagingStorageResource, *, version: str, capture_directory: str | Path | None = None,
-    release: dict | None = None, captured: tuple | None = None,
+    staging_storage: StagingStorageResource, *, version: str | None = None,
+    capture_directory: str | Path | None = None,
+    release: census_latest.ShapefileRelease | None = None, captured: tuple | None = None,
     discovery_evidence: dict[str, bytes] | None = None,
     release_state_fingerprint: str | None = None,
 ) -> dict[str, object]:
-    """Capture one exact official annual zip and stage it immutably for catalog."""
-    body, receipt = captured if captured is not None else _capture(capture_directory, staging_storage, version)
-    source_url = release["source_url"] if release else SOURCE_URL
-    source_file = release["source_file"] if release else SOURCE_FILE
-    vintage = release["edition"] if release else SOURCE_VINTAGE
-    archive_sha = _sha(body) if release else EXPECTED_SHA256
-    archive_bytes = len(body) if release else EXPECTED_BYTES
-    audit = _inspect_archive(body, edition=vintage if release else None)
+    """Capture the newest official annual zip and stage it immutably for catalog."""
+    if captured is not None:
+        if release is None:
+            raise ValueError("current_tiger_release_required")
+        body, receipt = captured
+    else:
+        body, receipt, release = _capture(capture_directory, staging_storage, version or "pending")
+    version = version or candidate_version(release, receipt["sha256"])
+    source_url = release.source_url
+    source_file = release.source_file
+    vintage = str(release.vintage)
+    archive_sha = receipt["sha256"]
+    archive_bytes = receipt["bytes"]
+    audit = _inspect_archive(body, release)
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
     archive_key = f"{prefix}/shapefile/{source_file}"
     before = staging_storage.object_snapshot(archive_key)
@@ -265,50 +259,59 @@ def capture_census_primary_roads(
             "release_date_unknown_reason": f"The producer identifies this as the {vintage} TIGER/Line vintage; a precise publication date was not established. The HTTP Last-Modified date is recorded separately and is not treated as the source data release date.",
         }],
         "transformations": ["Preserve the complete source ZIP and all sidecars; catalog the primary roads Shapefile without ID synthesis or attribute mapping."],
-        "lineage": "Official Census Bureau Geography Division TIGER/Line product. The DHS crosswalk row and equivalence to the archived HIFLD publication remain unverified.",
+        "lineage": "Official Census Bureau Geography Division TIGER/Line product, resolved from the producer's current annual listing at capture time. The DHS crosswalk row and equivalence to the archived HIFLD publication remain unverified.",
+        "source_release": release.as_metadata(),
     }
-    documents = {}
-    if release:
-        documents, definitions, abstract = _current_native_metadata(body, Path(source_file).stem, source_url)
-        manifest['documentation'] = [
-            {'path': path, 'input_id': source_url,
-             'purpose': 'schema' if path.endswith('.ea.iso.xml') else 'methodology',
-             'media_type': 'application/xml', 'bytes': len(value), 'sha256': _sha(value)}
-            for path, value in documents.items()]
-        manifest['field_definitions'] = definitions
-        manifest['coverage'] = {
-            'intended_population': 'Census TIGER/Line national Primary Roads classified MTFCC S1100; excludes other road classes.',
-            'served_population': 'All native records in the captured national Primary Roads archive; no source rows intentionally filtered.',
-            'served_feature_count': audit['feature_count'],
-            'observed_mtfcc_values': audit['mtfcc_values'],
-            'coverage_accepted': False,
-        }
-        if abstract:
-            manifest['coverage']['publisher_abstract'] = abstract
-        manifest['source_relationship'] = {
-            'relationship': 'unverified', 'evidence_input_ids': [source_url],
-            'unknown_reason': 'Exact DHS crosswalk row and archived HIFLD feature/schema/coverage equivalence have not been established.'}
-        manifest["inputs"][0]["refresh"] = {
-            "maintenance_status": "maintained", "source_release_id": vintage,
-            "data_period": vintage, "update_cadence": "unknown",
-            "unknown_reasons": {"update_cadence": "Annual edition directories are observed; a producer cadence statement was not captured."},
-            "latest_checked_at": release["latest_checked_at"],
-            "latest_evidence_input_id": release["listing_url"],
-            "maintenance_evidence_input_id": release["annual_listing_url"],
-            "selection_rule": release["selection_rule"],
-            "source_state_fingerprint": release_state_fingerprint or archive_sha,
-        }
-        for index, url in enumerate((release["annual_listing_url"], release["listing_url"])):
-            evidence_receipt = release["evidence_receipts"][index]
-            manifest["inputs"].append({
-                "input_id": url, "producer": PUBLISHER, "host": "www2.census.gov",
-                "role": "producer_publication", "purpose": "methodology",
-                "canonical_url": url, "retrieval_url": url,
-                "retrieved_at": evidence_receipt["observed_at"],
-                "sha256": evidence_receipt["sha256"], "bytes": evidence_receipt["bytes"],
-                "license": "https://www.usa.gov/government-works", "attribution": PUBLISHER,
-                "release_date_unknown_reason": "Live producer directory observation; not a dated data release.",
-            })
+    documents, definitions, abstract = _current_native_metadata(body, Path(source_file).stem, source_url)
+    manifest['documentation'] = [
+        {'path': path, 'input_id': source_url,
+         'purpose': 'schema' if path.endswith('.ea.iso.xml') else 'methodology',
+         'media_type': 'application/xml', 'bytes': len(value), 'sha256': _sha(value)}
+        for path, value in documents.items()]
+    manifest['field_definitions'] = definitions
+    manifest['coverage'] = {
+        'intended_population': 'Census TIGER/Line national Primary Roads classified MTFCC S1100; excludes other road classes.',
+        'served_population': 'All native records in the captured national Primary Roads archive; no source rows intentionally filtered.',
+        'served_feature_count': audit['feature_count'],
+        'observed_mtfcc_values': audit['mtfcc_values'],
+        'coverage_accepted': False,
+    }
+    if abstract:
+        manifest['coverage']['publisher_abstract'] = abstract
+    manifest['source_relationship'] = {
+        'relationship': 'unverified', 'evidence_input_ids': [source_url],
+        'unknown_reason': 'Exact DHS crosswalk row and archived HIFLD feature/schema/coverage equivalence have not been established.'}
+    refresh = {
+        "maintenance_status": "maintained" if discovery_evidence else "unverified",
+        "source_release_id": vintage,
+        "data_period": vintage, "update_cadence": "unknown",
+        "unknown_reasons": {"update_cadence": "Annual edition directories are observed; a producer cadence statement was not captured."},
+        "selection_rule": RELEASE_SELECTION_RULE,
+        "source_state_fingerprint": release_state_fingerprint or archive_sha,
+    }
+    if discovery_evidence:
+        manifest["inputs"].append({
+            "input_id": release.directory_url, "producer": PUBLISHER, "host": "www2.census.gov",
+            "role": "producer_publication", "purpose": "methodology",
+            "canonical_url": release.directory_url, "retrieval_url": release.directory_url,
+            "retrieved_at": release.latest_checked_at,
+            "sha256": release.listing_sha256, "bytes": release.listing_bytes,
+            "license": "https://www.usa.gov/government-works", "attribution": PUBLISHER,
+            "release_date_unknown_reason": "Live producer directory observation; not a dated data release.",
+        })
+        manifest["inputs"].append({
+            "input_id": census_latest.ROOT, "producer": PUBLISHER, "host": "www2.census.gov",
+            "role": "producer_publication", "purpose": "methodology",
+            "canonical_url": census_latest.ROOT, "retrieval_url": census_latest.ROOT,
+            "retrieved_at": release.latest_checked_at,
+            "sha256": release.annual_listing_sha256, "bytes": 0,
+            "license": "https://www.usa.gov/government-works", "attribution": PUBLISHER,
+            "release_date_unknown_reason": "Live producer directory observation; not a dated data release.",
+        })
+        refresh["latest_checked_at"] = release.latest_checked_at
+        refresh["latest_evidence_input_id"] = release.directory_url
+        refresh["maintenance_evidence_input_id"] = census_latest.ROOT
+    manifest["inputs"][0]["refresh"] = refresh
     validate_provenance(manifest)
     manifest_key = f"{prefix}/metadata/source_manifest.json"
     if staging_storage.object_exists(manifest_key):
@@ -318,8 +321,9 @@ def capture_census_primary_roads(
         expected_prior = json.loads(_canonical(manifest))
         if isinstance(prior.get("inputs"), list) and len(prior["inputs"]) == len(manifest["inputs"]):
             expected_prior["inputs"][0]["retrieved_at"] = prior["inputs"][0].get("retrieved_at")
-            if release:
+            if "latest_checked_at" in prior["inputs"][0].get("refresh", {}):
                 expected_prior["inputs"][0]["refresh"]["latest_checked_at"] = prior["inputs"][0]["refresh"]["latest_checked_at"]
+            if discovery_evidence:
                 expected_prior["inputs"][1:] = prior["inputs"][1:]
         if prior != expected_prior:
             raise ValueError("cached_source_manifest_identity_mismatch")
@@ -330,15 +334,13 @@ def capture_census_primary_roads(
         "method", "url", "final_url", "status", "complete_body", "wire_bytes",
         "wire_sha256", "bytes", "sha256", "content_encoding", "content_length",
     )}
-    release_fields = {}
-    if release:
-        release_fields = {
-            "release_id": vintage,
-            "release_content_sha256": archive_sha,
-            "release_selection_rule": RELEASE_SELECTION_RULE,
-            "release_state_fingerprint": release_state_fingerprint or archive_sha,
-        }
-    audit_doc = {"source": {"url": source_url, "vintage": vintage, "archive_sha256": archive_sha, "archive_bytes": archive_bytes}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit, **release_fields}
+    release_fields = {
+        "release_id": vintage,
+        "release_content_sha256": archive_sha,
+        "release_selection_rule": RELEASE_SELECTION_RULE,
+        "release_state_fingerprint": release_state_fingerprint or archive_sha,
+    }
+    audit_doc = {"source": {"url": source_url, "vintage": vintage, "archive_sha256": archive_sha, "archive_bytes": archive_bytes, "source_release": release.as_metadata()}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit, **release_fields}
     audit_key = f"{prefix}/metadata/source_audit.json"
     audit_bytes = _canonical(audit_doc) + b"\n"
     write_immutable(staging_storage, audit_key, audit_bytes)
@@ -352,9 +354,7 @@ def capture_census_primary_roads(
             raise ValueError('current_tiger_native_documentation_readback_mismatch')
         documentation_keys.append(key)
     discovery_keys = []
-    if release:
-        if not discovery_evidence:
-            raise ValueError('current_tiger_discovery_evidence_required')
+    if discovery_evidence:
         evidence_prefix = f'{prefix}/metadata/discovery'
         if not staging_storage.object_exists(evidence_prefix + '/release.json'):
             for name, value in discovery_evidence.items():
@@ -383,8 +383,9 @@ def capture_census_primary_roads(
         "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "source_capture_evidence_sha256": receipt["sha256"], "source_edition": vintage, "latest_release_discovered": release is not None, "source_archive_bytes": archive_bytes,
+        "source_capture_evidence_sha256": receipt["sha256"], "source_edition": vintage, "latest_release_discovered": True, "source_archive_bytes": archive_bytes,
         "source_archive_sha256": archive_sha, "source_cache_reused": reused,
+        "source_vintage": vintage, "source_release": release.as_metadata(),
         "code_commit": code_commit,
         "code_identity_scheme": CODE_IDENTITY_SCHEME, "code_sha256": code_sha256,
         "processing_runtime_versions": processing_code["runtime_versions"],
@@ -392,38 +393,34 @@ def capture_census_primary_roads(
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
-        "capture_mode": "current_discovery" if release else "historical_pinned_reproduction",
+        "capture_mode": "current_discovery",
         "written_keys": [*written_keys, ready_key],
         **release_fields,
     }
 
 
 def capture_latest_census_primary_roads(staging_storage: StagingStorageResource, *, client=None) -> dict:
-    """Discover and capture current producer roads; retain failures in quarantine.
-
-    The historical pinned capture entrypoint remains available for explicitly
-    supplied old receipts. This current path never applies its 2025 count/hash.
-    """
+    """Discover and capture current producer roads; retain failures in quarantine."""
     from_context = client is None
     client = client or httpx.Client(timeout=httpx.Timeout(180.0, connect=20.0), follow_redirects=False)
     with tempfile.TemporaryDirectory(prefix='census-current-roads-') as tmp:
         root = Path(tmp)
         try:
-            release = census_latest.discover_primary_roads(client, root)
+            release = census_latest.discover_shapefile(client, root, LAYER, PRODUCT)
             prior = load_release_state(staging_storage, DATASET_SLUG, FILE_SLUG)
             try:
-                probe = probe_transport(client, release['source_url'])
+                probe = probe_transport(client, release.source_url)
             except ValueError:
                 # A publisher without HEAD support simply cannot supply a cheap
                 # unchanged proof; capture and compare the archive instead.
                 probe = None
             poll_signal = ReleaseSignal(
-                release_id=release['edition'], release_date=None,
+                release_id=str(release.vintage), release_date=None,
                 last_edit=probe.last_modified if probe else None,
                 poll_fingerprint=probe.fingerprint() if probe else None,
                 content_sha256=None, selection_rule=RELEASE_SELECTION_RULE,
-                evidence={'edition': release['edition'], 'source_url': release['source_url'],
-                          'listing_sha256': release['listing_sha256'],
+                evidence={'edition': str(release.vintage), 'source_url': release.source_url,
+                          'listing_sha256': release.listing_sha256,
                           'last_modified': probe.last_modified if probe else None,
                           'etag': probe.etag if probe else None,
                           'content_length': probe.content_length if probe else None},
@@ -432,19 +429,20 @@ def capture_latest_census_primary_roads(staging_storage: StagingStorageResource,
             if poll_decision.action == 'unchanged':
                 return unchanged_result(
                     prior, dataset_slug=DATASET_SLUG, file_slug=FILE_SLUG,
-                    source_edition=release['edition'], latest_release_discovered=True,
+                    source_edition=str(release.vintage), latest_release_discovered=True,
                     source_cache_reused=True,
                 )
-            body, receipt = capture_get(client, release['source_url'], root, 'source', max_bytes=MAX_SOURCE_BYTES)
+            body, receipt = capture_get(client, release.source_url, root, 'source', max_bytes=MAX_SOURCE_BYTES)
             if receipt.get('content_encoding') != 'identity' or not body:
                 raise ValueError('current_tiger_archive_encoding_or_empty')
             # Recheck the selected directory after reading the entire ZIP. A new
             # annual publication or changed listing requires another capture.
-            after = census_latest.discover_primary_roads(client, root / 'after')
-            if any(release[key] != after[key] for key in ('edition', 'source_url', 'listing_sha256')):
+            after = census_latest.discover_shapefile(client, root / 'after', LAYER, PRODUCT)
+            if any(getattr(release, key) != getattr(after, key)
+                   for key in ('vintage', 'source_url', 'listing_sha256')):
                 raise ValueError('current_tiger_listing_changed_during_capture')
             signal = replace(poll_signal, content_sha256=_sha(body))
-            version = census_latest.release_version(release['edition'], receipt['sha256'], processing_code_identity())
+            version = census_latest.release_version(str(release.vintage), receipt['sha256'], processing_code_identity())
             same_candidate = prior is not None and version == prior['version']
             if same_candidate:
                 action, note = 'unchanged', None
@@ -455,9 +453,9 @@ def capture_latest_census_primary_roads(staging_storage: StagingStorageResource,
                     'Pipeline code identity changed; new immutable candidate for unchanged source content.'
                     if decision.action == 'unchanged' else None)
             evidence = {f'{name}.{suffix}': (root / f'{name}.{suffix}').read_bytes()
-                        for name in ('annual-listing', 'product-listing', 'source')
+                        for name in ('annual-listing', f'{LAYER.lower()}-{release.vintage}-listing', 'source')
                         for suffix in ('body', 'wire', 'receipt.json')}
-            evidence['release.json'] = _canonical(release) + b'\n'
+            evidence['release.json'] = _canonical(release.as_metadata()) + b'\n'
             result = capture_census_primary_roads(
                 staging_storage, version=version, release=release, captured=(body, receipt),
                 discovery_evidence=evidence,

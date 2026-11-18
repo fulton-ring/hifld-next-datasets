@@ -1,17 +1,13 @@
-"""Candidate-only acquisition of the official Census TIGER/Line 2026 CBSA file.
+"""Candidate-only acquisition of the official current Census TIGER/Line CBSA file.
 
 Inventory entry ``micropolitan-statistical-areas-3`` ("Micropolitan Statistical
 Areas", agency U.S. Census Bureau). The producer's maintained publication is the
-current TIGER/Line national CBSA file (``tl_2026_us_cbsa.zip`` under
-``TIGER2026/CBSA``); the TIGER/Line page documents the 2026 TIGER/Line
-Shapefiles as released 2026-10-14 (legal boundaries as of January 1, 2026). The
-inventory defines this dataset as the producer's own ``Core_Based_Statistical_Area``
-layer restricted to micropolitan areas, i.e. ``MEMI = "2"``; the same selection
-is applied here to the producer's national file. No projection, ID substitution,
-geometry repair or attribute mapping occurs here. The superseded 2024 ``_a_``
-national geodatabase edition referenced by the inventory is recorded as a
-producer publication that is never fetched; the DataLumos project archive is
-banned identification context only.
+current TIGER/Line national CBSA file, resolved from the producer's annual
+listing at capture time. The inventory defines this dataset as the producer's
+own ``Core_Based_Statistical_Area`` layer restricted to micropolitan areas, i.e.
+``MEMI = "2"``; the same selection is applied here to the producer's national
+file. No projection, ID substitution, geometry repair or attribute mapping
+occurs here. The DataLumos project archive is banned identification context only.
 """
 from __future__ import annotations
 
@@ -33,6 +29,7 @@ import shapely
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
+from dagster_hifld.sources import census_latest, census_tiger_common
 from dagster_hifld.sources.capture_common import (
     capture_get,
     quarantine_incomplete_capture,
@@ -42,25 +39,18 @@ from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _s
 
 DATASET_SLUG = "micropolitan-statistical-areas-3"
 FILE_SLUG = DATASET_SLUG
-SOURCE_VINTAGE = "2026"
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2026/CBSA/tl_2026_us_cbsa.zip"
-SOURCE_FILE = "tl_2026_us_cbsa.zip"
+LAYER = "CBSA"
+PRODUCT = "cbsa"
 PUBLISHER = "U.S. Census Bureau, Geography Division"
-EXPECTED_SHA256 = "b17f81bf843a384bac1f38272a1440c92bcf9262efc79c579c89c64b18ffa604"
-EXPECTED_BYTES = 34_991_980
-EXPECTED_FULL_FEATURE_COUNT = 935
-EXPECTED_METROPOLITAN_COUNT = 393
-EXPECTED_FEATURE_COUNT = 542
+# Broad sanity bounds; the producer publishes roughly 935 CBSAs, about 542 micropolitan.
+FULL_FEATURE_COUNT_RANGE = (1, 20_000)
+MICROPOLITAN_COUNT_RANGE = (1, 20_000)
 EXPECTED_FIELDS = [
     "CSAFP", "CBSAFP", "GEOID", "GEOIDFQ", "NAME", "NAMELSAD", "LSAD",
     "MEMI", "MTFCC", "ALAND", "AWATER", "INTPTLAT", "INTPTLON",
 ]
 INT_FIELDS = ("ALAND", "AWATER")
 EXPECTED_CRS = "EPSG:4269"
-SOURCE_RELEASE_DATE = "2026-10-14"
-EXPECTED_BOUNDS = [-160.600875, 17.862241, -66.166181, 58.971337]
-EXPECTED_ID_SHA256 = "6fec1d2ac539453efc104c7afd0aad03c1ecd122aad5cf131577865b4a074ff0"
-EXPECTED_SCHEMA_SHA256 = "a8269e456530dd9c644a9127094c0b2f3c9e0db4d6859751c969c5efb53a7fa3"
 EXPECTED_GEOID_LENGTH = 5
 EXPECTED_CONSTANT_VALUES = {"MTFCC": {"G3110"}, "LSAD": {"M2"}, "MEMI": {"2"}}
 # Producer-nullable CBSAFP/CSAFP: a micropolitan area belongs to no combined
@@ -69,7 +59,6 @@ NULLABLE_FIELDS = ("CSAFP",)
 EXPECTED_GEOMETRY_TYPES = {"Polygon", "MultiPolygon"}
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 45_000_000
-SOURCE_MEMBER_STEM = "tl_2026_us_cbsa"
 
 
 def _processing_runtime() -> dict[str, str]:
@@ -106,11 +95,8 @@ def processing_code_identity() -> str:
     return digest.hexdigest()
 
 
-def candidate_version() -> str:
-    identity = _canonical({"source_sha256": EXPECTED_SHA256,
-                           "code_identity_scheme": CODE_IDENTITY_SCHEME,
-                           "code_sha256": processing_code_identity()})
-    return "v" + _sha(identity)[:32]
+def candidate_version(release: census_latest.ShapefileRelease, archive_sha256: str) -> str:
+    return census_latest.release_version(str(release.vintage), archive_sha256, processing_code_identity())
 
 
 def _quarantine_attempt(
@@ -134,7 +120,7 @@ def _quarantine_attempt(
     except (OSError, ValueError):
         receipt = {
             "method": "GET",
-            "url": SOURCE_URL,
+            "url": "",
             "final_url": None,
             "status": None,
             "observed_at": None,
@@ -156,56 +142,16 @@ def _capture(
     capture_directory: str | Path | None,
     staging_storage: StagingStorageResource,
     version: str,
-) -> tuple[bytes, dict[str, object]]:
-    temporary = tempfile.TemporaryDirectory(prefix="census-micropolitan-capture-") if capture_directory is None else None
-    root = Path(temporary.name) if temporary is not None else Path(capture_directory)
-    try:
-        if temporary is None:
-            if root.is_symlink() or not root.is_dir():
-                raise ValueError("source_capture_directory_invalid")
-            if {p.name for p in root.iterdir()} != CAPTURE_FILES:
-                raise ValueError("source_capture_roster_mismatch")
-            body_path, wire_path, receipt_path = (root / "source.body", root / "source.wire", root / "source.receipt.json")
-            if any(p.is_symlink() or not p.is_file() for p in (body_path, wire_path, receipt_path)):
-                raise ValueError("source_capture_nonregular_file")
-            body = body_path.read_bytes()
-            wire = wire_path.read_bytes()
-            receipt = json.loads(receipt_path.read_text("utf-8"))
-            if (
-                receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-                or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-                or receipt.get("complete_body") is not True
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt.get("content_encoding") != "identity"
-            ):
-                raise ValueError("source_capture_receipt_identity_mismatch")
-        else:
-            try:
-                with httpx.Client(timeout=httpx.Timeout(180.0, connect=20.0), follow_redirects=False) as client:
-                    body, receipt = capture_get(client, SOURCE_URL, root, "source", max_bytes=MAX_SOURCE_BYTES)
-            except Exception as exc:
-                quarantine = _quarantine_attempt(staging_storage, root, version, type(exc).__name__)
-                raise ValueError(f"official_tiger_source_capture_failed; quarantined_at:{quarantine}") from exc
-
-        if (
-            receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-            or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-            or receipt.get("complete_body") is not True or receipt.get("bytes") != EXPECTED_BYTES
-            or receipt.get("sha256") != EXPECTED_SHA256 or len(body) != EXPECTED_BYTES
-            or receipt.get("content_encoding") != "identity"
-            or receipt.get("wire_bytes") != EXPECTED_BYTES or receipt.get("wire_sha256") != EXPECTED_SHA256
-            or receipt.get("content_length") not in (None, EXPECTED_BYTES)
-            or _sha(body) != EXPECTED_SHA256
-        ):
-            quarantine = _quarantine_attempt(
-                staging_storage, root, version, "official_tiger_archive_identity_or_release_drift",
-            )
-            raise ValueError(f"official_tiger_archive_identity_or_release_drift; quarantined_at:{quarantine}")
-        return body, receipt
-    finally:
-        if temporary is not None:
-            temporary.cleanup()
+) -> tuple[bytes, dict[str, object], census_latest.ShapefileRelease]:
+    body, receipt, _wire, _receipt_bytes, release = census_tiger_common.capture_tiger_shapefile(
+        capture_directory, staging_storage, version,
+        dataset_slug=DATASET_SLUG, layer=LAYER, product=PRODUCT,
+        max_source_bytes=MAX_SOURCE_BYTES,
+        client_timeout=httpx.Timeout(180.0, connect=20.0),
+        capture_tmp_prefix="census-micropolitan-capture-",
+        capture_get=capture_get,
+    )
+    return body, receipt, release
 
 
 def _schema_document(frame: gpd.GeoDataFrame) -> list[dict[str, object]]:
@@ -215,12 +161,9 @@ def _schema_document(frame: gpd.GeoDataFrame) -> list[dict[str, object]]:
     ]
 
 
-def _inspect_archive(body: bytes) -> dict[str, object]:
-    expected_members = {
-        f"{SOURCE_MEMBER_STEM}.cpg", f"{SOURCE_MEMBER_STEM}.dbf", f"{SOURCE_MEMBER_STEM}.prj",
-        f"{SOURCE_MEMBER_STEM}.shp", f"{SOURCE_MEMBER_STEM}.shp.ea.iso.xml",
-        f"{SOURCE_MEMBER_STEM}.shp.iso.xml", f"{SOURCE_MEMBER_STEM}.shx",
-    }
+def _inspect_archive(body: bytes, release: census_latest.ShapefileRelease) -> dict[str, object]:
+    member_stem = Path(release.source_file).stem
+    expected_members = census_tiger_common.tiger_shapefile_members(release.source_file)
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
         names = {Path(info.filename).name for info in archive.infolist() if not info.is_dir()}
         if names != expected_members or len(archive.infolist()) != len(expected_members):
@@ -234,19 +177,20 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
             raise ValueError("tiger_archive_crc_failure:" + bad_member)
         with tempfile.TemporaryDirectory(prefix="census-micropolitan-") as tmp:
             archive.extractall(tmp)
-            path = Path(tmp) / f"{SOURCE_MEMBER_STEM}.shp"
+            path = Path(tmp) / census_tiger_common.tiger_shapefile_name(release.source_file)
             full = gpd.read_file(path, engine="pyogrio")
     fields = list(full.columns[:-1])
     if fields != EXPECTED_FIELDS or str(full.crs) != EXPECTED_CRS:
         raise ValueError("tiger_source_schema_or_crs_drift")
-    if len(full) != EXPECTED_FULL_FEATURE_COUNT:
+    if not (FULL_FEATURE_COUNT_RANGE[0] <= len(full) <= FULL_FEATURE_COUNT_RANGE[1]):
         raise ValueError("tiger_source_population_drift")
     if full["GEOID"].isna().any() or full["GEOID"].duplicated().any() \
             or set(full["GEOID"].str.len()) != {EXPECTED_GEOID_LENGTH}:
         raise ValueError("tiger_source_id_roster_drift")
     counts = full["MEMI"].value_counts().to_dict()
-    if set(counts) != {"1", "2"} or counts.get("2") != EXPECTED_FEATURE_COUNT \
-            or counts.get("1") != EXPECTED_METROPOLITAN_COUNT:
+    if set(counts) != {"1", "2"} or not (
+            MICROPOLITAN_COUNT_RANGE[0] <= counts.get("2", 0) <= MICROPOLITAN_COUNT_RANGE[1]) \
+            or counts.get("1", 0) < 1:
         raise ValueError("tiger_source_memi_split_drift")
     subset = full[full["MEMI"] == "2"].reset_index(drop=True)
     for column, allowed in EXPECTED_CONSTANT_VALUES.items():
@@ -264,19 +208,15 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
         raise ValueError("tiger_source_attribute_physical_type_drift")
     ids = sorted(subset["GEOID"].tolist())
     id_digest = _sha(_canonical(ids))
-    if id_digest != EXPECTED_ID_SHA256:
-        raise ValueError("tiger_source_id_population_digest_drift")
     schema = _schema_document(subset)
     schema_digest = _sha(_canonical(schema))
-    if schema_digest != EXPECTED_SCHEMA_SHA256:
-        raise ValueError("tiger_source_schema_digest_drift")
     geometry = subset.geometry
     if geometry.isna().any() or geometry.is_empty.any() or (~geometry.is_valid).any():
         raise ValueError("tiger_source_geometry_quality_failure")
     if set(geometry.geom_type) != EXPECTED_GEOMETRY_TYPES:
         raise ValueError("tiger_source_geometry_type_drift")
     bounds = [float(value) for value in subset.total_bounds]
-    if bounds != EXPECTED_BOUNDS:
+    if not (-180 <= bounds[0] <= bounds[2] <= 180 and -90 <= bounds[1] <= bounds[3] <= 90):
         raise ValueError("tiger_source_coverage_extent_drift")
     return {
         "feature_count": len(subset), "attribute_fields": EXPECTED_FIELDS, "attribute_types": types,
@@ -292,13 +232,13 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
     }
 
 
-def _stage_subset_shapefile(subset: gpd.GeoDataFrame, target_dir: Path, cpg_body: bytes) -> None:
+def _stage_subset_shapefile(subset: gpd.GeoDataFrame, target_dir: Path, cpg_body: bytes, vintage: int) -> None:
     stem = DATASET_SLUG
     # GDAL defaults DBF_DATE_LAST_UPDATE to the write date; every same-version
     # replay regenerates the sidecars and compares bytes, so an unpinned date
     # would fail immutable_staged_object_changed on any later replay day. Pin
     # the staged DBF to the source release date to keep the output date-stable.
-    subset.to_file(target_dir / f"{stem}.shp", engine="pyogrio", DBF_DATE_LAST_UPDATE=SOURCE_RELEASE_DATE)
+    subset.to_file(target_dir / f"{stem}.shp", engine="pyogrio", DBF_DATE_LAST_UPDATE=f"{vintage}-01-01")
     staged_names = {path.name for path in target_dir.iterdir()}
     required = {f"{stem}.shp", f"{stem}.shx", f"{stem}.dbf"}
     missing = sorted(required - staged_names)
@@ -310,17 +250,20 @@ def _stage_subset_shapefile(subset: gpd.GeoDataFrame, target_dir: Path, cpg_body
 
 
 def capture_census_micropolitan_statistical_areas(
-    staging_storage: StagingStorageResource, *, version: str, capture_directory: str | Path | None = None,
+    staging_storage: StagingStorageResource, *, version: str | None = None,
+    capture_directory: str | Path | None = None,
 ) -> dict[str, object]:
-    """Capture one exact official CBSA zip and stage its micropolitan subset for catalog."""
-    body, receipt = _capture(capture_directory, staging_storage, version)
-    audit = _inspect_archive(body)
+    """Capture the newest official CBSA zip and stage its micropolitan subset for catalog."""
+    body, receipt, release = _capture(capture_directory, staging_storage, version or "pending")
+    version = version or candidate_version(release, receipt["sha256"])
+    member_stem = Path(release.source_file).stem
+    audit = _inspect_archive(body, release)
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
-        cpg_body = archive.read(f"{SOURCE_MEMBER_STEM}.cpg")
+        cpg_body = archive.read(f"{member_stem}.cpg")
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
-    provenance_key = f"{prefix}/provenance/{SOURCE_FILE}"
+    provenance_key = f"{prefix}/provenance/{release.source_file}"
     write_immutable(staging_storage, provenance_key, body)
-    if staging_storage.sha256_key(provenance_key) != EXPECTED_SHA256:
+    if staging_storage.sha256_key(provenance_key) != receipt["sha256"]:
         raise ValueError("staged_tiger_archive_integrity_failure")
     shapefile_dir_key = f"{prefix}/shapefile"
     reused = staging_storage.object_exists(f"{shapefile_dir_key}/{DATASET_SLUG}.shp")
@@ -331,11 +274,11 @@ def capture_census_micropolitan_statistical_areas(
         with zipfile.ZipFile(io.BytesIO(body)) as archive:
             with tempfile.TemporaryDirectory(prefix="census-micropolitan-extract-") as extract_tmp:
                 archive.extractall(extract_tmp)
-                full = gpd.read_file(Path(extract_tmp) / f"{SOURCE_MEMBER_STEM}.shp", engine="pyogrio")
+                full = gpd.read_file(Path(extract_tmp) / census_tiger_common.tiger_shapefile_name(release.source_file), engine="pyogrio")
         subset = full[full["MEMI"] == "2"].reset_index(drop=True)
-        _stage_subset_shapefile(subset, stage_dir, cpg_body)
+        _stage_subset_shapefile(subset, stage_dir, cpg_body, release.vintage)
         staged = gpd.read_file(stage_dir / f"{DATASET_SLUG}.shp", engine="pyogrio")
-        if len(staged) != EXPECTED_FEATURE_COUNT \
+        if len(staged) != len(subset) \
                 or sorted(staged["GEOID"].tolist()) != sorted(subset["GEOID"].tolist()) \
                 or list(staged.columns[:-1]) != EXPECTED_FIELDS:
             raise ValueError("staged_subset_shapefile_identity_failure")
@@ -357,33 +300,33 @@ def capture_census_micropolitan_statistical_areas(
         "code_commit": code_commit,
         "processing_code": processing_code,
         "title": "Micropolitan Statistical Areas",
-        "description": "Micropolitan statistical areas (CBSAs associated with at least one urban cluster of "
-                       "population 10,000 to less than 50,000) as of January 1, 2026, selected from the "
-                       "maintained TIGER/Line CBSA national file by the producer-defined MEMI=2 indicator. "
+        "description": f"Micropolitan statistical areas (CBSAs associated with at least one urban cluster of "
+                       f"population 10,000 to less than 50,000) selected from the maintained {release.vintage} "
+                       f"TIGER/Line CBSA national file by the producer-defined MEMI=2 indicator. "
                        "Candidate only; crosswalk row and historical compatibility remain unresolved.",
         "publisher": PUBLISHER,
         "agency": "U.S. Census Bureau",
-        "source_url": SOURCE_URL,
+        "source_url": release.source_url,
         "license": "U.S. government work; source license and downstream redistribution terms require maintainer review.",
-        "source_modified": SOURCE_RELEASE_DATE,
-        "date_issued": SOURCE_VINTAGE,
+        "source_modified": None,
+        "date_issued": str(release.vintage),
         "inputs": [{
-            "input_id": SOURCE_URL,
+            "input_id": release.source_url,
             "producer": PUBLISHER,
-            "host": urlsplit(SOURCE_URL).hostname,
-            "canonical_url": SOURCE_URL,
+            "host": urlsplit(release.source_url).hostname,
+            "canonical_url": release.source_url,
             "retrieval_url": receipt["final_url"],
             "retrieved_at": observed_at,
-            "sha256": EXPECTED_SHA256,
-            "bytes": EXPECTED_BYTES,
+            "sha256": receipt["sha256"],
+            "bytes": receipt["bytes"],
             "license": "https://www.usa.gov/government-works",
             "attribution": PUBLISHER,
             "role": "producer_publication",
-            "release_date": SOURCE_RELEASE_DATE,
-            "release_date_basis": "census.gov TIGER/Line Shapefiles page: 'All legal boundaries and names are as of January 1, 2026. The 2026 TIGER/Line Shapefiles were released on October 14, 2026.' The HTTP Last-Modified date of the ZIP (2026-10-07) is packaging evidence recorded in the audit and is not the source data release date.",
+            "release_date_unknown_reason": f"The producer identifies this as the {release.vintage} TIGER/Line vintage; a precise publication date was not established. The HTTP Last-Modified date is recorded separately and is not treated as the source data release date.",
         }],
         "transformations": ["Preserve the complete source ZIP and all sidecars; select the producer-defined micropolitan subset MEMI=2 from the Core_Based_Statistical_Area national file without ID synthesis, attribute mapping, reprojection or geometry repair."],
-        "lineage": "Official Census Bureau Geography Division TIGER/Line 2026 national CBSA file (tl_2026_us_cbsa.zip), the producer's currently maintained publication under the project source policy requiring the latest TIGER vintage. The inventory defines this dataset as the producer's Core_Based_Statistical_Area layer where MEMI=2; the same selection is applied to the 2026 national file (935 CBSAs: 393 metropolitan MEMI=1, 542 micropolitan MEMI=2). The retired 2024 national geodatabase edition (tlgdb_2024_a_us_nationgeo.gdb.zip) cited by the inventory is recorded as a producer publication that is never fetched, superseded by the maintained 2026 vintage. The DHS crosswalk row and equivalence to the archived HIFLD publication remain unverified. DataLumos is banned identification context only.",
+        "lineage": "Official Census Bureau Geography Division TIGER/Line national CBSA file, resolved from the producer's current annual listing at capture time. The inventory defines this dataset as the producer's Core_Based_Statistical_Area layer where MEMI=2; the same selection is applied to the resolved national file. The DHS crosswalk row and equivalence to the archived HIFLD publication remain unverified. DataLumos is banned identification context only.",
+        "source_release": release.as_metadata(),
     }
     manifest_key = f"{prefix}/metadata/source_manifest.json"
     if staging_storage.object_exists(manifest_key):
@@ -402,15 +345,16 @@ def capture_census_micropolitan_statistical_areas(
         "method", "url", "final_url", "status", "complete_body", "wire_bytes",
         "wire_sha256", "bytes", "sha256", "content_encoding", "content_length",
     )}
-    audit_doc = {"source": {"url": SOURCE_URL, "vintage": SOURCE_VINTAGE, "release_date": SOURCE_RELEASE_DATE, "archive_sha256": EXPECTED_SHA256, "archive_bytes": EXPECTED_BYTES}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit}
+    audit_doc = {"source": {"url": release.source_url, "vintage": str(release.vintage), "archive_sha256": receipt["sha256"], "archive_bytes": receipt["bytes"], "source_release": release.as_metadata()}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit}
     audit_key = f"{prefix}/metadata/source_audit.json"
     write_immutable(staging_storage, audit_key, _canonical(audit_doc) + b"\n")
     return {
         "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": EXPECTED_BYTES,
-        "source_archive_sha256": EXPECTED_SHA256, "source_cache_reused": reused,
+        "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": receipt["bytes"],
+        "source_archive_sha256": receipt["sha256"], "source_cache_reused": reused,
+        "source_vintage": str(release.vintage), "source_release": release.as_metadata(),
         "code_commit": code_commit,
         "code_identity_scheme": CODE_IDENTITY_SCHEME, "code_sha256": code_sha256,
         "processing_runtime_versions": processing_code["runtime_versions"],
