@@ -34,6 +34,7 @@ import pyarrow.parquet as pq
 import pyproj
 
 from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.source_release import ReleaseSignal
 from dagster_hifld.sources.capture_common import capture_get, write_immutable
 from dagster_hifld.sources.esri_common import arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import (
@@ -565,6 +566,82 @@ class RetainedCaptureViews(Mapping):
 
     def __len__(self) -> int:
         return len(self._names)
+
+
+def poll_layer_release(client: httpx.Client, *, service_url: str, layer_url: str,
+                       capture_root: Path, extra_documents: Sequence[tuple[str, str]] = (),
+                       service_format: str = "pjson", layer_format: str = "pjson",
+                       max_bytes: int = PAGE_MAX_BYTES,
+                       capture: Callable[..., tuple[bytes, dict]] = capture_get) -> dict[str, tuple[bytes, dict]]:
+    """Capture only the cheap release state for one layer, never its pages.
+
+    This is the same service/layer/count/ID discovery the full capture performs,
+    so an unchanged poll can stop before paging or downloading any payload.
+    """
+    urls = list(extra_documents)
+    urls.append(("service_before", service_url + f"?f={service_format}"))
+    urls.append(("layer_before", layer_url + f"?f={layer_format}"))
+    urls.append(("count_before", layer_url + "/query?" + urlencode(
+        {"where": "1=1", "returnCountOnly": "true", "f": "json"})))
+    urls.append(("ids_before", layer_url + "/query?" + urlencode(
+        {"where": "1=1", "returnIdsOnly": "true", "f": "json"})))
+    captures = {}
+    for name, url in urls:
+        captures[name] = capture(client, url, capture_root, name, max_bytes=max_bytes)
+    return captures
+
+
+def layer_release_signal(captures: Mapping[str, tuple[bytes, dict]], *,
+                         selection_rule: str) -> ReleaseSignal:
+    """Build the publisher release signal from discovery documents.
+
+    ArcGIS exposes no edition label, so ``release_id``/``release_date`` stay
+    unknown and a changed layer is treated as a same-release correction. The
+    publisher's ``editingInfo.lastEditDate`` is the primary edit state; count,
+    ID roster and field schema catch changes when it is absent.
+    """
+    try:
+        service = json.loads(captures["service_before"][0])
+        layer = json.loads(captures["layer_before"][0])
+        count_doc = json.loads(captures["count_before"][0])
+        ids_doc = json.loads(captures["ids_before"][0])
+    except (KeyError, ValueError, TypeError) as exc:
+        raise ValueError("source_release_discovery_incomplete") from exc
+    if not isinstance(service, dict) or not isinstance(layer, dict):
+        raise ValueError("source_release_discovery_incomplete")
+    count = count_doc.get("count") if isinstance(count_doc, dict) else None
+    ids = ids_doc.get("objectIds") if isinstance(ids_doc, dict) else None
+    if (type(count) is not int or count < 0 or not isinstance(ids, list)
+            or any(type(value) is not int for value in ids) or len(ids) != count
+            or len(set(ids)) != len(ids)):
+        raise ValueError("source_release_discovery_incomplete")
+    fields = layer.get("fields")
+    if not isinstance(fields, list) or any(not isinstance(field, dict) for field in fields):
+        raise ValueError("source_release_discovery_incomplete")
+    plain_fields = [{key: field[key] for key in ("name", "type", "alias", "length", "nullable", "domain")
+                     if key in field} for field in fields]
+    editing = layer.get("editingInfo") if isinstance(layer.get("editingInfo"), dict) else {}
+    last_edit = editing.get("lastEditDate")
+    if last_edit is None and isinstance(service.get("editingInfo"), dict):
+        last_edit = service["editingInfo"].get("lastEditDate")
+    last_edit = None if last_edit is None else str(last_edit)
+    schema_sha = _sha(_canonical(plain_fields))
+    roster = sorted(ids)
+    poll_fingerprint = _sha(_canonical({
+        "count": count, "ids": roster, "schema_sha256": schema_sha,
+        "last_edit": last_edit,
+        "service_item_id": service.get("serviceItemId"),
+        "layer": {"name": layer.get("name"), "geometryType": layer.get("geometryType"),
+                  "objectIdField": layer.get("objectIdField")},
+    }))
+    observed = captures["layer_before"][1].get("observed_at")
+    return ReleaseSignal(
+        release_id=None, release_date=None, last_edit=last_edit,
+        poll_fingerprint=poll_fingerprint, content_sha256=None,
+        selection_rule=selection_rule,
+        evidence={"count": count, "id_count": len(ids), "schema_sha256": schema_sha,
+                  "last_edit": last_edit, "observed_at": observed},
+    )
 
 
 # Historical private import names: the dataset modules under sources/ still

@@ -1,9 +1,10 @@
 """Stopped refresh asset for the latest published Census TIGER primary roads."""
 from dagster import (
-    AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
-    ScheduleDefinition, asset, asset_check, define_asset_job,
+    AssetCheckResult, AssetKey, Config, DefaultScheduleStatus,
+    ScheduleDefinition, asset, asset_check,
 )
 
+from dagster_hifld.assets.staging_refresh import define_staging_capture_job
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.census_primary_roads import (
@@ -68,9 +69,8 @@ def census_primary_roads_source_complete(candidate: dict) -> AssetCheckResult:
     })
 
 
-census_primary_roads_draft_job = define_asset_job(
-    "census_primary_roads_draft_refresh",
-    selection=AssetSelection.assets(census_bureau_primary_roads),
+census_primary_roads_draft_job = define_staging_capture_job(
+    "census_primary_roads_draft_refresh", census_bureau_primary_roads,
 )
 census_primary_roads_draft_schedule = ScheduleDefinition(
     name="census_primary_roads_draft_refresh_schedule",
