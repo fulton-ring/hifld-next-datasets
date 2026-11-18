@@ -1,4 +1,4 @@
-"""Candidate-only acquisition of official NCES EDGE public-school locations."""
+"""Candidate-only acquisition of the newest published NCES EDGE public schools."""
 from __future__ import annotations
 
 import csv
@@ -32,40 +32,40 @@ from dagster_hifld.sources.capture_common import (
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.nces_edge_common import (
+    LANDING,
+    NcesEdgeReleaseError,
+    dbf_record_count,
+    discover_release,
+    release_from_url,
+    shapefile_index_count,
+    shapefile_record_count,
+)
 
 DATASET_SLUG = "public-schools"
 FILE_SLUG = "public-schools"
+PRODUCT = "PUBLICSCH"
 PUBLISHER = "National Center for Education Statistics (NCES), U.S. Department of Education"
-SOURCE_URL = "https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_PUBLICSCH_2425.zip"
-SOURCE_FILE = "EDGE_GEOCODE_PUBLICSCH_2425.zip"
-SOURCE_VINTAGE = "2024-2025"
-EXPECTED_BYTES = 30_448_565
-EXPECTED_SHA256 = "9dc51ecd5cdf6e38bdb679f7ac95e2bf73ee3fb48718b8612cf830800cffb288"
-EXPECTED_FEATURE_COUNT = 102_178
-EXPECTED_ID_SHA256 = "2fa37754051a457c280f089eba68d6b42b54dd680780e00f6d56bd103e6c02a3"
 EXPECTED_FIELDS = [
     "NCESSCH", "LEAID", "NAME", "OPSTFIPS", "STREET", "CITY", "STATE", "ZIP",
     "STFIP", "CNTY", "NMCNTY", "LOCALE", "LAT", "LON", "CBSA", "NMCBSA",
     "CBSATYPE", "CSA", "NMCSA", "CD", "SLDL", "SLDU", "SCHOOLYEAR",
 ]
 EXPECTED_STRING_FIELDS = [name for name in EXPECTED_FIELDS if name not in {"LAT", "LON"}]
-EXPECTED_BOUNDS = (-174.198594, -14.348924, 145.784430, 71.300337)
 MAX_SOURCE_BYTES = 40_000_000
+MAX_LANDING_BYTES = 2_000_000
 MAX_OUTER_UNCOMPRESSED_BYTES = 120_000_000
 MAX_INNER_UNCOMPRESSED_BYTES = 70_000_000
-CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
-OUTER_MEMBERS = {
-    "Shapefile_SCH.zip", "EDGE_GEOCODE_PUBLICSCH_2425.xlsx",
-    "EDGE_GEOCODE_PUBLICSCH_2425.TXT", "EDGE_GEOCODE_PUBLICSCH_2425.sas7bdat",
-}
-INNER_MEMBERS = {
-    "EDGE_GEOCODE_PUBLICSCH_2425.shx", "EDGE_GEOCODE_PUBLICSCH_2425.cpg",
-    "EDGE_GEOCODE_PUBLICSCH_2425.dbf", "EDGE_GEOCODE_PUBLICSCH_2425.NCESSCH.atx",
-    "EDGE_GEOCODE_PUBLICSCH_2425.prj", "EDGE_GEOCODE_PUBLICSCH_2425.sbn",
-    "EDGE_GEOCODE_PUBLICSCH_2425.sbx", "EDGE_GEOCODE_PUBLICSCH_2425.shp",
-    "EDGE_GEOCODE_PUBLICSCH_2425.shp.xml",
-}
+REPLAY_FILES = {"source.body", "source.wire", "source.receipt.json"}
+
+
+def _members(stem: str) -> tuple[set[str], set[str]]:
+    outer = {"Shapefile_SCH.zip", f"{stem}.xlsx", f"{stem}.TXT", f"{stem}.sas7bdat"}
+    inner = {
+        f"{stem}.shx", f"{stem}.cpg", f"{stem}.dbf", f"{stem}.NCESSCH.atx",
+        f"{stem}.prj", f"{stem}.sbn", f"{stem}.sbx", f"{stem}.shp", f"{stem}.shp.xml",
+    }
+    return outer, inner
 
 
 def _file_descriptor(body: bytes) -> dict[str, object]:
@@ -84,15 +84,14 @@ def _safe_zip_roster(archive: zipfile.ZipFile, expected: set[str], limit: int,
         if (info.is_dir() or path.is_absolute() or ".." in path.parts
                 or path.as_posix() != info.filename or len(path.parts) != 1
                 or info.file_size < 0 or info.file_size > limit):
-            raise ValueError("nces_archive_unsafe_member")
+            raise ValueError("nces_public_schools_archive_unsafe_member")
     if archive.testzip() is not None:
-        raise ValueError("nces_archive_crc_failure")
+        raise ValueError("nces_public_schools_archive_crc_failure")
     return infos
 
 
-def _validate_frame(frame: gpd.GeoDataFrame, *, expected_count: int,
-                    expected_id_sha256: str,
-                    expected_bounds: tuple[float, float, float, float] | None = None) -> dict[str, object]:
+def _validate_frame(frame: gpd.GeoDataFrame, *, schoolyear: str,
+                    expected_count: int) -> dict[str, object]:
     """Fail closed on source population, native types, CRS, IDs or point drift."""
     if not isinstance(frame, gpd.GeoDataFrame) or list(frame.columns) != [*EXPECTED_FIELDS, "geometry"]:
         raise ValueError("nces_public_schools_field_roster_drift")
@@ -110,10 +109,9 @@ def _validate_frame(frame: gpd.GeoDataFrame, *, expected_count: int,
         raise ValueError("nces_public_schools_crs_drift")
     ids = frame["NCESSCH"].tolist()
     if (any(not isinstance(value, str) or len(value) != 12 for value in ids)
-            or len(set(ids)) != expected_count or ids != sorted(ids)
-            or _sha(_canonical(ids)) != expected_id_sha256):
+            or len(set(ids)) != expected_count):
         raise ValueError("nces_public_schools_id_roster_drift")
-    if set(frame["SCHOOLYEAR"].unique()) != {SOURCE_VINTAGE}:
+    if set(frame["SCHOOLYEAR"].unique()) != {schoolyear}:
         raise ValueError("nces_public_schools_vintage_drift")
     geometry = frame.geometry
     if (geometry.isna().any() or geometry.is_empty.any()
@@ -131,9 +129,6 @@ def _validate_frame(frame: gpd.GeoDataFrame, *, expected_count: int,
             or np.any(np.abs(x) > 180) or np.any(np.abs(y) > 90)):
         raise ValueError("nces_public_schools_point_coordinate_drift")
     bounds = tuple(float(value) for value in geometry.total_bounds)
-    if expected_bounds is not None and any(abs(actual - expected) > 1e-6
-                                            for actual, expected in zip(bounds, expected_bounds)):
-        raise ValueError("nces_public_schools_coverage_bounds_drift")
 
     record_hash = hashlib.sha256()
     geometry_hash = hashlib.sha256()
@@ -163,12 +158,13 @@ def _validate_frame(frame: gpd.GeoDataFrame, *, expected_count: int,
     }
 
 
-def _validate_text_table(body: bytes, frame: gpd.GeoDataFrame) -> None:
-    """Cross-check all released text rows and values against the shapefile table."""
+def _validate_text_table(body: bytes, frame: gpd.GeoDataFrame) -> int:
+    """Cross-check every released text row against the shapefile table."""
     try:
         text = body.decode("utf-8")
         rows = csv.reader(io.StringIO(text, newline=""), delimiter="|")
         values = {name: frame[name].tolist() for name in EXPECTED_FIELDS}
+        index = -1
         for index, row in enumerate(rows):
             if index >= len(frame) or len(row) != len(EXPECTED_FIELDS):
                 raise ValueError("nces_public_schools_text_population_drift")
@@ -185,6 +181,7 @@ def _validate_text_table(body: bytes, frame: gpd.GeoDataFrame) -> None:
                     raise ValueError("nces_public_schools_text_attribute_drift:" + name)
         if index + 1 != len(frame):
             raise ValueError("nces_public_schools_text_population_drift")
+        return index + 1
     except UnicodeDecodeError as exc:
         raise ValueError("nces_public_schools_text_encoding_drift") from exc
 
@@ -218,32 +215,35 @@ def _parquet_bytes(frame: gpd.GeoDataFrame) -> bytes:
     return body
 
 
-def _inspect_archive(body: bytes, *, expected_count: int = EXPECTED_FEATURE_COUNT,
-                     expected_id_sha256: str = EXPECTED_ID_SHA256,
-                     expected_bounds: tuple[float, float, float, float] | None = EXPECTED_BOUNDS) -> tuple[gpd.GeoDataFrame, dict[str, object], dict[str, object]]:
-    if len(body) != EXPECTED_BYTES or _sha(body) != EXPECTED_SHA256:
-        raise ValueError("nces_public_schools_archive_identity_or_release_drift")
+def _inspect_archive(body: bytes, release: dict[str, object]) -> tuple[gpd.GeoDataFrame, dict[str, object], dict[str, object]]:
+    stem = str(release["stem"])
+    outer_members, inner_members = _members(stem)
     try:
         outer = zipfile.ZipFile(io.BytesIO(body))
-        outer_infos = _safe_zip_roster(outer, OUTER_MEMBERS, MAX_OUTER_UNCOMPRESSED_BYTES,
+        outer_infos = _safe_zip_roster(outer, outer_members, MAX_OUTER_UNCOMPRESSED_BYTES,
                                        "nces_public_schools_outer_archive_roster_drift")
         inner_body = outer.read("Shapefile_SCH.zip")
-        text_body = outer.read("EDGE_GEOCODE_PUBLICSCH_2425.TXT")
+        text_body = outer.read(f"{stem}.TXT")
         inner = zipfile.ZipFile(io.BytesIO(inner_body))
-        inner_infos = _safe_zip_roster(inner, INNER_MEMBERS, MAX_INNER_UNCOMPRESSED_BYTES,
+        inner_infos = _safe_zip_roster(inner, inner_members, MAX_INNER_UNCOMPRESSED_BYTES,
                                        "nces_public_schools_shapefile_archive_roster_drift")
     except zipfile.BadZipFile as exc:
         raise ValueError("nces_public_schools_archive_invalid") from exc
+    dbf_count = dbf_record_count(inner.read(f"{stem}.dbf"), "nces_public_schools")
+    shx_count = shapefile_index_count(inner.read(f"{stem}.shx"), "nces_public_schools")
+    shp_count = shapefile_record_count(inner.read(f"{stem}.shp"), "nces_public_schools")
+    if not dbf_count == shx_count == shp_count:
+        raise ValueError("nces_public_schools_source_record_count_disagreement")
     with tempfile.TemporaryDirectory(prefix="nces-public-schools-") as temporary:
         root = Path(temporary)
         for info in inner_infos:
             (root / info.filename).write_bytes(inner.read(info.filename))
-        path = root / "EDGE_GEOCODE_PUBLICSCH_2425.shp"
-        frame = gpd.read_file(path, engine="pyogrio")
-    audit = _validate_frame(frame, expected_count=expected_count,
-                            expected_id_sha256=expected_id_sha256,
-                            expected_bounds=expected_bounds)
-    _validate_text_table(text_body, frame)
+        frame = gpd.read_file(root / f"{stem}.shp", engine="pyogrio")
+    audit = _validate_frame(frame, schoolyear=str(release["schoolyear"]),
+                            expected_count=dbf_count)
+    text_count = _validate_text_table(text_body, frame)
+    if text_count != dbf_count:
+        raise ValueError("nces_public_schools_source_record_count_disagreement")
     roster = {
         "outer": {info.filename: {"bytes": info.file_size, "sha256": _sha(outer.read(info.filename))}
                   for info in outer_infos},
@@ -251,17 +251,24 @@ def _inspect_archive(body: bytes, *, expected_count: int = EXPECTED_FEATURE_COUN
                       for info in inner_infos},
     }
     audit.update({
-        "official_filename": SOURCE_FILE,
+        "official_filename": f"{stem}.zip",
         "outer_archive_members": sorted(roster["outer"]),
         "shapefile_archive_members": sorted(roster["shapefile"]),
-        "text_table_row_count": expected_count,
+        "source_counts": {
+            "dbf": dbf_count, "shx": shx_count, "shp": shp_count,
+            "decoded": len(frame), "text": text_count,
+        },
+        "text_table_row_count": text_count,
         "text_table_all_attributes_match_shapefile": True,
+        "schoolyear": release["schoolyear"],
+        "publication_selection": release,
         "source_population_complete": True,
     })
     return frame, audit, roster
 
 
-def _normalize_retained_receipt(receipt: dict[str, object], body: bytes, wire: bytes) -> dict[str, object]:
+def _normalize_retained_receipt(receipt: dict[str, object], body: bytes, wire: bytes,
+                                release: dict[str, object]) -> dict[str, object]:
     """Normalize the prior capture receipt while preserving its original bytes separately."""
     if "body_bytes" in receipt:
         headers = receipt.get("headers")
@@ -280,8 +287,9 @@ def _normalize_retained_receipt(receipt: dict[str, object], body: bytes, wire: b
         }
     else:
         normalized = receipt
-    if (normalized.get("method") != "GET" or normalized.get("url") != SOURCE_URL
-            or normalized.get("final_url") != SOURCE_URL or normalized.get("status") != 200
+    url = release["source_url"]
+    if (normalized.get("method") != "GET" or normalized.get("url") != url
+            or normalized.get("final_url") != url or normalized.get("status") != 200
             or normalized.get("complete_body") is not True
             or normalized.get("bytes") != len(body) or normalized.get("sha256") != _sha(body)
             or normalized.get("wire_bytes") != len(wire) or normalized.get("wire_sha256") != _sha(wire)
@@ -304,39 +312,62 @@ def _quarantine_capture(storage: StagingStorageResource, artifacts: dict[str, by
 
 
 def _capture(capture_directory: str | Path | None,
-             storage: StagingStorageResource) -> tuple[dict[str, bytes], dict[str, object]]:
+             storage: StagingStorageResource) -> tuple[dict[str, bytes], dict[str, object], dict[str, object]]:
     temporary = tempfile.TemporaryDirectory(prefix="nces-public-schools-capture-") if capture_directory is None else None
     root = Path(temporary.name) if temporary is not None else Path(capture_directory)
     try:
         if temporary is None:
-            if root.is_symlink() or not root.is_dir() or {path.name for path in root.iterdir()} != CAPTURE_FILES:
+            if root.is_symlink() or not root.is_dir() or {path.name for path in root.iterdir()} != REPLAY_FILES:
                 raise ValueError("nces_public_schools_capture_roster_mismatch")
-            paths = {name: root / name for name in CAPTURE_FILES}
+            paths = {name: root / name for name in REPLAY_FILES}
             if any(path.is_symlink() or not path.is_file() for path in paths.values()):
                 raise ValueError("nces_public_schools_capture_nonregular_file")
             artifacts = {name: path.read_bytes() for name, path in paths.items()}
             raw_receipt = json.loads(artifacts["source.receipt.json"])
-            receipt = _normalize_retained_receipt(raw_receipt, artifacts["source.body"], artifacts["source.wire"])
+            url = raw_receipt.get("url") or raw_receipt.get("requested_url")
+            try:
+                release = release_from_url(str(url), PRODUCT)
+            except NcesEdgeReleaseError as exc:
+                raise ValueError("nces_public_schools_" + str(exc)) from exc
+            receipt = _normalize_retained_receipt(raw_receipt, artifacts["source.body"], artifacts["source.wire"], release)
         else:
             try:
                 with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(120, connect=15)) as client:
-                    _body, receipt = capture_get(client, SOURCE_URL, root, "source", max_bytes=MAX_SOURCE_BYTES)
+                    landing, _landing_receipt = capture_get(client, LANDING, root, "landing", max_bytes=MAX_LANDING_BYTES)
+                    try:
+                        release = discover_release(landing, PRODUCT)
+                    except NcesEdgeReleaseError as exc:
+                        raise ValueError("nces_public_schools_" + str(exc)) from exc
+                    _body, receipt = capture_get(client, str(release["source_url"]), root, "source", max_bytes=MAX_SOURCE_BYTES)
+                    landing_after, _after_receipt = capture_get(client, LANDING, root, "landing_after", max_bytes=MAX_LANDING_BYTES)
+                    try:
+                        if discover_release(landing_after, PRODUCT) != release:
+                            raise ValueError("nces_public_schools_published_release_changed_during_capture")
+                    except NcesEdgeReleaseError as exc:
+                        raise ValueError("nces_public_schools_" + str(exc)) from exc
+            except ValueError:
+                raise
             except Exception as exc:
                 raise ValueError("nces_public_schools_source_capture_failed") from exc
-            artifacts = {name: (root / name).read_bytes() for name in CAPTURE_FILES}
+            artifacts = {name: (root / name).read_bytes() for name in REPLAY_FILES}
             raw_receipt = json.loads(artifacts["source.receipt.json"])
         body, wire = artifacts["source.body"], artifacts["source.wire"]
-        if (len(body) != EXPECTED_BYTES or _sha(body) != EXPECTED_SHA256
-                or len(wire) != EXPECTED_BYTES or _sha(wire) != EXPECTED_SHA256
-                or receipt.get("content_length") not in (None, EXPECTED_BYTES)):
-            raise ValueError("nces_public_schools_archive_identity_or_release_drift")
-        return artifacts, {**receipt, "raw_receipt_sha256": _sha(artifacts["source.receipt.json"])}
+        if receipt.get("content_encoding") != "identity":
+            raise ValueError("nces_public_schools_source_capture_not_identity")
+        if receipt.get("content_length") not in (None, len(body)):
+            raise ValueError("nces_public_schools_archive_length_drift")
+        for name in ("landing", "landing_after"):
+            if (root / f"{name}.body").is_file():
+                artifacts[f"{name}.body"] = (root / f"{name}.body").read_bytes()
+                artifacts[f"{name}.wire"] = (root / f"{name}.wire").read_bytes()
+                artifacts[f"{name}.receipt.json"] = (root / f"{name}.receipt.json").read_bytes()
+        return artifacts, {**receipt, "raw_receipt_sha256": _sha(artifacts["source.receipt.json"])}, release
     except Exception as exc:
         if (root.is_dir() and not root.is_symlink()
                 and all((root / name).is_file() and not (root / name).is_symlink()
-                        for name in CAPTURE_FILES)):
+                        for name in REPLAY_FILES)):
             try:
-                artifacts = {name: (root / name).read_bytes() for name in CAPTURE_FILES}
+                artifacts = {name: (root / name).read_bytes() for name in REPLAY_FILES}
                 receipt_raw = json.loads(artifacts["source.receipt.json"])
                 _quarantine_capture(storage, artifacts, receipt_raw, type(exc).__name__)
             except Exception:
@@ -369,28 +400,34 @@ def capture_nces_public_schools(
     *,
     capture_directory: str | Path | None = None,
 ) -> dict[str, object]:
-    """Capture or replay one complete official NCES source release into staging."""
-    artifacts, receipt = _capture(capture_directory, staging_storage)
+    """Discover, capture or replay the newest published NCES public-school release."""
+    artifacts, receipt, release = _capture(capture_directory, staging_storage)
     body = artifacts["source.body"]
     try:
-        frame, audit, archive_roster = _inspect_archive(body)
+        frame, audit, archive_roster = _inspect_archive(body, release)
         parquet = _parquet_bytes(frame)
     except Exception as exc:
         _quarantine_capture(staging_storage, artifacts, receipt, type(exc).__name__)
         raise
 
+    schoolyear = str(release["schoolyear"])
+    source_url = str(release["source_url"])
     identity = processing_identity(Path(__file__).parents[3])
     capture_evidence = {
         "schema_version": 1,
         "complete": True,
-        "source_url": SOURCE_URL,
-        "source_vintage": SOURCE_VINTAGE,
+        "source_url": source_url,
+        "source_vintage": schoolyear,
+        "schoolyear": schoolyear,
+        "publication_selection": {
+            "schoolyear": schoolyear, "source_url": source_url, "stem": release["stem"],
+        },
         "observed_at": receipt["observed_at"],
         "receipt": receipt,
         "archive_roster": archive_roster,
         "raw_artifacts": {
             name: {"bytes": len(artifacts[name]), "sha256": _sha(artifacts[name])}
-            for name in sorted(CAPTURE_FILES)
+            for name in sorted(REPLAY_FILES)
         },
     }
     capture_sha = _sha(_canonical(capture_evidence))
@@ -398,9 +435,14 @@ def capture_nces_public_schools(
         "source_capture_sha256": capture_sha,
         "source_archive_sha256": _sha(body),
         "source_archive_bytes": len(body),
-        "source_vintage": SOURCE_VINTAGE,
+        "source_vintage": schoolyear,
+        "schoolyear": schoolyear,
+        "publication_selection": release,
         "distribution_last_modified": receipt.get("last_modified"),
-        "coverage_scope": "The complete NCES EDGE public-school 2024-25 shapefile within the official distribution; exact equivalence to the archived HIFLD 2022-23 layer is unverified.",
+        "coverage_scope": (
+            f"The complete NCES EDGE public-school {schoolyear} shapefile within the official "
+            "distribution; exact equivalence to the archived HIFLD layer is unverified."
+        ),
         "source_release_accepted": False,
         "source_freshness_accepted": False,
         "schema_contract_accepted": False,
@@ -421,31 +463,43 @@ def capture_nces_public_schools(
     }))
     version = "v" + fingerprint[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+    feature_count = audit["source_feature_count"]
+    year_slug = schoolyear.replace("-", "_")
     inputs = [{
-        "input_id": "nces_edge_public_schools_2024_25",
+        "input_id": f"nces_edge_public_schools_{year_slug}",
         "producer": PUBLISHER,
-        "host": urlsplit(SOURCE_URL).hostname,
+        "host": urlsplit(source_url).hostname,
         "role": "producer_publication",
-        "canonical_url": SOURCE_URL,
-        "retrieval_url": SOURCE_URL,
+        "canonical_url": source_url,
+        "retrieval_url": source_url,
         "observed_final_url": receipt["final_url"],
         "retrieved_at": receipt["observed_at"],
         "http_status": receipt["status"],
         "bytes": receipt["bytes"], "sha256": receipt["sha256"],
         "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
-        "license": "NCES states the information in its 2024-25 public-school locations layer is in the public domain.",
+        "license": f"NCES states the information in its {schoolyear} public-school locations layer is in the public domain.",
         "attribution": "National Center for Education Statistics, U.S. Department of Education.",
         "release_date": None,
-        "release_date_unknown_reason": "The 2024-25 label identifies the CCD school-year vintage; the archive Last-Modified header is server file metadata, not a producer release date.",
+        "release_date_unknown_reason": (
+            f"The {schoolyear} label identifies the CCD school-year vintage; the archive "
+            "Last-Modified header is server file metadata, not a producer release date."
+        ),
     }]
     manifest = {
         "schema_version": 1, "approved": False,
-        "title": "Public School Locations (NCES 2024-25)",
-        "description": "Complete 2024-25 NCES EDGE public-school location archive extraction, proposed as a current producer-source candidate for the HIFLD Public Schools inventory. Historical HIFLD equivalence and the published contract remain unapproved.",
+        "title": f"Public School Locations (NCES {schoolyear})",
+        "description": (
+            f"Complete {schoolyear} NCES EDGE public-school location archive extraction, proposed "
+            "as a current producer-source candidate for the HIFLD Public Schools inventory. "
+            "Historical HIFLD equivalence and the published contract remain unapproved."
+        ),
         "publisher": PUBLISHER,
         "agency": "U.S. Department of Education, Institute of Education Sciences, National Center for Education Statistics",
-        "source_url": SOURCE_URL,
-        "license": "Public domain claim stated in the NCES 2024-25 layer description; HIFLD reuse and compatibility decisions remain pending.",
+        "source_url": source_url,
+        "license": (
+            f"Public domain claim stated in the NCES {schoolyear} layer description; HIFLD reuse "
+            "and compatibility decisions remain pending."
+        ),
         "source_modified": receipt.get("last_modified"),
         "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next",
@@ -455,15 +509,23 @@ def capture_nces_public_schools(
         "transformations": [{
             "operation": "NCES shapefile point layer to GeoParquet candidate",
             "parameters": {
-                "source_vintage": SOURCE_VINTAGE,
-                "source_fields": "All 23 shapefile attributes retained in source order and physical types.",
+                "source_vintage": schoolyear,
+                "source_fields": f"All {len(EXPECTED_FIELDS)} shapefile attributes retained in source order and physical types.",
                 "source_id": "NCESSCH retained as 12-character string; no substitute identifiers generated.",
                 "geometry": "All source Point XY coordinates preserved as EPSG:4326 WKB; no reprojection, snapping or repair.",
-                "completeness": "All 102,178 shapefile rows and IDs validated; complete tabular TXT member cross-checked against all 23 shapefile attributes.",
+                "completeness": (
+                    f"All {feature_count:,} shapefile rows and IDs validated; complete tabular TXT "
+                    f"member cross-checked against all {len(EXPECTED_FIELDS)} shapefile attributes."
+                ),
                 "candidate_status": "Unapproved source proposal; no HIFLD historical equivalence is asserted.",
             },
         }],
-        "lineage": "NCES EDGE publishes annual public-school geocodes based on the Common Core of Data. DataLumos metadata for the archived HIFLD Open Public Schools release describes 2022-23 CCD data. This proposed NCES 2024-25 source is newer and shares the NCES producer, but no feature-by-feature historical crosswalk or accepted replacement decision is established.",
+        "lineage": (
+            "NCES EDGE publishes annual public-school geocodes based on the Common Core of Data. "
+            f"This candidate is the newest public-school release named by the official NCES "
+            f"SchoolLocations page at capture time ({schoolyear}). No feature-by-feature historical "
+            "crosswalk or accepted replacement decision is established."
+        ),
         "prebuilt_output_policy": {
             "schema_version": 1,
             "formats": {"geoparquet": {
@@ -488,7 +550,9 @@ def capture_nces_public_schools(
         "metadata/candidate_ready.json": _canonical({
             "approved": False, "version": version,
             "objects": {f"geoparquet/{FILE_SLUG}.parquet": _file_descriptor(parquet)},
-            "feature_count": audit["source_feature_count"],
+            "feature_count": feature_count,
+            "schoolyear": schoolyear,
+            "source_url": source_url,
             "source_population_complete": True,
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
@@ -506,6 +570,11 @@ def capture_nces_public_schools(
         "raw/source.receipt.json": _canonical(receipt) + b"\n",
         "raw/source.original_receipt.json": artifacts["source.receipt.json"],
     }
+    for name in ("landing", "landing_after"):
+        if f"{name}.body" in artifacts:
+            outputs[f"raw/{name}.body"] = artifacts[f"{name}.body"]
+            outputs[f"raw/{name}.wire"] = artifacts[f"{name}.wire"]
+            outputs[f"raw/{name}.receipt.json"] = _canonical(json.loads(artifacts[f"{name}.receipt.json"])) + b"\n"
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     receipts = {"source": receipt}
     if staging_storage.object_snapshot(state_key) is not None:
@@ -519,7 +588,8 @@ def capture_nces_public_schools(
             audit["source_schema_sha256"], original.get("objects", {}), receipts)
         return {
             "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": audit["source_feature_count"], "source_population_complete": True,
+            "feature_count": feature_count, "schoolyear": schoolyear,
+            "source_url": source_url, "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "source_capture_sha256": capture_sha,
@@ -543,7 +613,8 @@ def capture_nces_public_schools(
                                         identity["files"], identity=identity)
     return {
         "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": audit["source_feature_count"], "source_population_complete": True,
+        "feature_count": feature_count, "schoolyear": schoolyear,
+        "source_url": source_url, "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"],
         "source_schema_sha256": audit["source_schema_sha256"],
         "source_capture_sha256": capture_sha,

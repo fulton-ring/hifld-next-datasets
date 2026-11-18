@@ -92,7 +92,7 @@ from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
 from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
 from dagster_hifld.assets.eia_natural_gas_processing_plants import eia_natural_gas_processing_plants_historical
 from dagster_hifld.assets.eia_ethanol_plants import eia_ethanol_plants
-from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_24
+from dagster_hifld.assets.nces_private_schools import nces_private_schools
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
 from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
@@ -242,7 +242,7 @@ hifld_ingest_assets = [
     usace_fuds_program_district_boundaries,
     fuds_property_boundaries_ingest,
     epa_small_scale_regions,
-    nces_private_schools_2023_24,
+    nces_private_schools,
     nces_public_schools,
     coastlines_usace_ienc,
     locks_usace_ienc,
