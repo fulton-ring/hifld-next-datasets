@@ -24,12 +24,13 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.arcgis_layer import offset_layer_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "0b30c57359194330bb89c9b3cf9c0bd5"
@@ -54,23 +55,12 @@ def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
 
 
 def _urls(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [
-        ("epa_item", EPA_ITEM_URL), ("service_before", SERVICE_URL + "?f=pjson"),
-        ("layer_before", LAYER_URL + "?f=pjson"),
-        ("count_before", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnCountOnly":"true", "f":"json"})),
-        ("ids_before", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})),
-    ]
-    for offset in range(0, len(ids), PAGE_SIZE):
-        params = {"where":"1=1", "outFields":"*", "returnGeometry":"true",
-                  "outSR":"4269", "orderByFields":"OBJECTID ASC", "resultOffset":offset,
-                  "resultRecordCount":min(PAGE_SIZE, len(ids) - offset), "f":"json"}
-        urls.append((f"page_{offset // PAGE_SIZE:03d}", LAYER_URL + "/query?" + urlencode(params)))
-    urls.extend([
-        ("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson"),
-        ("count_after", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnCountOnly":"true", "f":"json"})),
-        ("ids_after", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})),
-    ])
-    return urls
+    return offset_layer_capture_roster(
+        len(ids), layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(("epa_item", EPA_ITEM_URL),),
+        page_params={"outSR": "4269"},
+        after_order=("layer_after", "service_after", "count_after", "ids_after"),
+    )
 
 
 def _fields(layer: dict) -> tuple[list[dict], str]:
@@ -256,7 +246,7 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
-    root = Path(capture_directory or "/tmp/hifld-native-reconstruction/74/captures").absolute()
+    root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "74", "captures"))).absolute()
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)

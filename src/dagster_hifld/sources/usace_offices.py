@@ -30,7 +30,6 @@ SLUG = "us-army-corps-of-engineers-usace-offices"
 SERVICE = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/usace_offices/FeatureServer"
 BASE = SERVICE + "/0"
 LANDING = "https://catalog.data.gov/dataset/us-army-corps-of-engineers-usace-offices"
-CAPTURE_ENV = "HIFLD_USACE_OFFICES_CAPTURE_DIR"
 MAX_COUNT = 10000
 MAX_CAPTURE = 8 * 1024 * 1024
 EXPECTED_FIELDS = (
@@ -379,7 +378,7 @@ def _local_staging(storage: StagingStorageResource, capture_dir: str | None) -> 
     if isinstance(storage, PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
         raise USACEOfficesSourceError("isolated_local_staging_required")
     root = Path(storage.local_dir).absolute()
-    configured_capture = capture_dir or os.environ.get(CAPTURE_ENV)
+    configured_capture = capture_dir
     capture = Path(configured_capture).absolute() if configured_capture else root / "captures"
     for path in (root, capture):
         if path == Path(".").absolute():

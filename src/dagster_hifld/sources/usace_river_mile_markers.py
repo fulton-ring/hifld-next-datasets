@@ -15,7 +15,7 @@ import pyarrow.parquet as pq
 import pyproj
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 
 DATASET_SLUG = "river-mile-markers-usace-ienc"
 FILE_SLUG = DATASET_SLUG

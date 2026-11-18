@@ -1,429 +1,372 @@
+from __future__ import annotations
+
+import csv
 import hashlib
+import io
 import json
 import tempfile
 import unittest
-from dataclasses import replace
+import zipfile
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
-from urllib.parse import urlparse, parse_qs
 
 import httpx
 import pyarrow.parquet as pq
+from dagster import DagsterInstance, DefaultScheduleStatus, build_schedule_context, materialize
 
-from dagster_hifld.assets import epa_frs_sic_powerplants as worker
+from dagster_hifld.assets import supported_assets as _supported_assets  # noqa: F401
+from dagster_hifld.assets.catalog import publish_catalog
+from dagster_hifld.assets import epa_frs_sic_powerplants as assets_module
 from dagster_hifld.assets.epa_frs_sic_powerplants import (
-    DATASET_SLUG, FILE_SLUG, PROFILE, _canonical, _reuse, _schema_sha, _sha, _typed_parquet,
+    epa_frs_sic_complete,
+    epa_frs_sic_draft_schedule,
+    epa_frs_sic_powerplants,
+    epa_frs_sic_published_membership_compatible,
 )
-from dagster_hifld.catalog import summarize_staged_catalog
-from dagster_hifld.construction_state import seal_first_construction
-from dagster_hifld.native_verification import normalize_native_input
+from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.source_manifest import load_resolved_source_manifest
-from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, canonical_construction_bundle, processing_identity,
-)
-from dagster_hifld.sources import epa_frs_common as frs_common
-from dagster_hifld.sources.epa_frs_arcgis_table import (
-    ArcGISTableCaptureError, _metadata_contract, capture_table,
-)
+from dagster_hifld.sources import epa_frs_national_archive as archive
+from dagster_hifld.sources import epa_frs_sic_national as source
 
-TINY_ROWS = [
-    {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
-     "PRIMARY_INDICATOR": "PRIMARY"},
-    {"OBJECTID": 2, "REGISTRY_ID": "009876543210", "SIC_CODE": "0041",
-     "PRIMARY_INDICATOR": "SECONDARY"},
-]
+_REAL_HTTP_CLIENT = httpx.Client
 
 
-def _tiny_sic_client() -> httpx.Client:
-    profile = replace(PROFILE, expected_rows=len(TINY_ROWS))
-    fields = [{"name": name, "type": esri_type, "nullable": nullable, "length": length}
-              for name, esri_type, nullable, length in profile.fields]
-    table = {"name": profile.table_name, "geometryType": None, "fields": fields,
-             "relationships": []}
-    service = {"description": "EIA data as of June 2014.",
-               "tables": [{"id": profile.table_id, "name": profile.table_name}]}
-    portal_item = {"id": profile.portal_item_id, "owner": profile.portal_item_owner,
-                   "title": profile.portal_item_title, "type": "Feature Service",
-                   "url": profile.service_url, "modified": 1769190978000}
-
-    class JSONStream(httpx.SyncByteStream):
-        def __init__(self, payload):
-            self.body = json.dumps(payload, separators=(",", ":")).encode()
-
-        def __iter__(self):
-            yield self.body
-
-        def close(self):
-            return None
-
-    def respond(request):
-        parsed = urlparse(str(request.url))
-        query = parse_qs(parsed.query)
-        if "/sharing/rest/content/items/" in parsed.path:
-            payload = portal_item
-        elif parsed.path.rstrip("/").endswith("FeatureServer"):
-            payload = service
-        elif parsed.path.endswith(f"/{profile.table_id}"):
-            payload = table
-        elif query.get("returnCountOnly") == ["true"]:
-            payload = {"count": len(TINY_ROWS)}
-        elif query.get("returnIdsOnly") == ["true"]:
-            payload = {"objectIds": [row["OBJECTID"] for row in TINY_ROWS]}
-        else:
-            payload = {"features": [{"attributes": row} for row in TINY_ROWS]}
-        return httpx.Response(200, stream=JSONStream(payload),
-                              headers={"content-type": "application/json"})
-
-    return httpx.Client(transport=httpx.MockTransport(respond), follow_redirects=False)
+def _program_row(acronym: str, system_id: str, registry_id: str, name: str = "") -> dict[str, str]:
+    row = {name: "" for name in source.PROGRAM_COLUMNS}
+    row.update({"PGM_SYS_ACRNM": acronym, "PGM_SYS_ID": system_id,
+                "REGISTRY_ID": registry_id, "PRIMARY_NAME": name})
+    return row
 
 
-class EPAFRSSICTests(unittest.TestCase):
-    def test_registered_cache_reuse_rejects_tampered_catalog_quality(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            storage = StagingStorageResource(use_local=True, local_dir=str(root), prefix="", backend="local")
-            version = "v-cache-quality-regression"
-            prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-            fields = [
-                {"name": name, "type": esri_type, "nullable": nullable, "length": length}
-                for name, esri_type, nullable, length in PROFILE.fields
-            ]
-            rows = [
-                {"OBJECTID": object_id, "REGISTRY_ID": f"{object_id:012d}",
-                 "SIC_CODE": f"{object_id % 10000:04d}", "PRIMARY_INDICATOR": "PRIMARY"}
-                for object_id in range(1, PROFILE.expected_rows + 1)
-            ]
-            objects: dict[str, dict[str, object]] = {}
+class Fixture:
+    """A miniature EPA combined archive with program and SIC members."""
 
-            def stage(name: str, body: bytes) -> None:
-                storage.write_key(f"{prefix}/{name}", body)
-                objects[name] = {"bytes": len(body), "sha256": _sha(body)}
+    def __init__(self):
+        program_rows = [
+            _program_row("EIA-860", "EIA1", "110000000001", "PLANT\nONE"),
+            _program_row("EIA-860", "EIA2", "110000000001", "PLANT ONE"),
+            _program_row("EIA-860", "EIA3", "110000000002", "PLANT TWO"),
+            _program_row("AIR", "AIR1", "110000000003", "OTHER PLANT"),
+        ]
+        sic_rows = [
+            ("110000000001", "AIR", "A1", "AIR MAJOR", "4911", "PRIMARY",
+             "ELECTRIC SERVICES"),
+            ("110000000001", "NPDES", "N1", "NPDES", "4911", "PRIMARY",
+             "ELECTRIC SERVICES"),
+            ("110000000002", "TRIS", "T1", "TRI", "2869", "SECONDARY",
+             "INDUSTRIAL ORGANIC CHEMICALS"),
+            ("110000000003", "AIR", "A2", "AIR MAJOR", "9999", "PRIMARY",
+             "OTHER"),
+        ]
+        self.program_rows = program_rows
+        self.sic_rows = sic_rows
+        self.output_rows = [
+            ["110000000001", "4911", "PRIMARY"],
+            ["110000000001", "4911", "PRIMARY"],
+            ["110000000002", "2869", "SECONDARY"],
+        ]
+        program_body = self._csv(source.PROGRAM_COLUMNS, program_rows)
+        sic_body = self._csv(source.SIC_COLUMNS, sic_rows)
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zip_archive:
+            zip_archive.writestr(source.PROGRAM_MEMBER_NAME, program_body)
+            zip_archive.writestr(source.SIC_MEMBER_NAME, sic_body)
+        self.zip_bytes = buffer.getvalue()
+        zip_archive = zipfile.ZipFile(io.BytesIO(self.zip_bytes))
+        self.program_info = zip_archive.getinfo(source.PROGRAM_MEMBER_NAME)
+        self.sic_info = zip_archive.getinfo(source.SIC_MEMBER_NAME)
+        self.member_names = frozenset({source.PROGRAM_MEMBER_NAME, source.SIC_MEMBER_NAME})
+        self.page_bytes = (
+            "<html><body><p>EPA State Combined CSV Download Files</p>"
+            "<p>A combined National Zip file of 732 MB is available "
+            f'<a href="{archive.NATIONAL_COMBINED_ZIP_URL}">here.</a></p></body></html>'
+        ).encode("utf-8")
+        self.output_sha = source._sha(source._canonical(sorted(self.output_rows)))
+        self.schema_sha = source._sha(source._canonical(list(source.OUTPUT_COLUMNS)))
 
-            stage("unknown/" + FILE_SLUG + ".parquet", _typed_parquet(rows, tuple(fields)))
-            source_manifest = {
-                "title": "EPA FRS SIC cache regression fixture",
-                "description": "Synthetic nonspatial test fixture.",
-                "source_url": PROFILE.table_url,
-                "source_vintage": PROFILE.source_vintage,
-                "native_geometry": "absent",
-                "refresh_status": "STOPPED",
-            }
-            stage("metadata/source_manifest.json", _canonical(source_manifest))
-            identity = processing_identity(Path(__file__).parents[1])
-            fingerprint = _sha(_canonical(identity))
-            stage("metadata/processing_identity.json", _canonical(identity))
-            stage("metadata/source_ids.json", _canonical(list(range(1, PROFILE.expected_rows + 1))))
-            stage("metadata/published_candidate_ids.json", _canonical(list(range(1, PROFILE.expected_rows + 1))))
-            stage("metadata/source_capture.json", _canonical({"refresh_status": "STOPPED"}))
-            stage("metadata/source_audit.json", _canonical({"drift_reasons": []}))
-            stage("metadata/candidate_ready.json", _canonical({"status": "READY"}))
-
-            receipts = {}
-            for name in ("service", "portal_item", "service_after", "table_before", "count_before",
-                         "ids_before", "table_after", "count_after", "ids_after", "page_000"):
-                body = b"{}"
-                receipt = {"complete_body": True, "status": 200, "bytes": len(body), "sha256": _sha(body),
-                           "wire_bytes": len(body), "wire_sha256": _sha(body)}
-                receipts[name] = receipt
-                stage(f"raw/{name}.body", body)
-                stage(f"raw/{name}.wire", body)
-                stage(f"raw/{name}.receipt.json", _canonical(receipt) + b"\n")
-
-            resolved = load_resolved_source_manifest(storage, DATASET_SLUG, FILE_SLUG, version).metadata
-            summary = summarize_staged_catalog(
-                storage, DATASET_SLUG, FILE_SLUG, version, DATASET_SLUG, source_metadata=resolved
-            )
-            quality_key = f"{prefix}/metadata/quality_manifest.json"
-            storage.write_key(quality_key, _canonical(summary.quality_manifest))
-            storage.write_key(f"{prefix}/metadata/data_dictionary.json", _canonical(summary.data_dictionary))
-
-            payload = {
-                "processing_identity": identity,
-                "source_record_sha256": _sha(_canonical(rows)),
-                "source_schema_sha256": _schema_sha(fields),
-                "capture_receipts": receipts,
-                "objects": objects,
-            }
-            state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-            seal_first_construction(
-                storage, state_key, version, fingerprint,
-                canonical_construction_bundle(version, fingerprint, payload),
-            )
-
-            self.assertTrue(_reuse(storage, version=version, identity=identity,
-                                   fingerprint=fingerprint, offline=True)["offline_replay"])
-            tampered = dict(summary.quality_manifest)
-            tampered["quality_check_passed"] = False
-            storage.write_key(quality_key, _canonical(tampered))
-            with self.assertRaisesRegex(ValueError, "cached_catalog_metadata_mismatch"):
-                _reuse(storage, version=version, identity=identity, fingerprint=fingerprint, offline=True)
-
-    def test_hosted_epa_item_allows_undeclared_join_only_with_exact_item_identity(self):
-        profile = replace(
-            PROFILE, service_url="https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_Wastewater/FeatureServer",
-            table_id=2, table_name="Integrated Compliance Information System (ICIS) Wastewater Treatment Plants SIC Codes",
-            expected_rows=1, relationship_name=None, related_table_id=None,
-            relationship_key=None, relationship_cardinality=None, source_vintage=None,
-            portal_item_id="item-1", portal_item_owner="EPA_GEO", portal_item_title="ICIS WWTP",
-        )
-        fields = [{"name": name, "type": esri_type, "nullable": nullable, "length": length}
-                  for name, esri_type, nullable, length in profile.fields]
-        service = {"description": "EPA maintained ICIS wastewater source.", "tables": [
-            {"id": profile.table_id, "name": profile.table_name}]}
-        table = {"name": profile.table_name, "geometryType": None, "fields": fields,
-                 "relationships": []}
-        row = {"OBJECTID": 9, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
-               "PRIMARY_INDICATOR": "PRIMARY"}
-        portal_item = {"id": "item-1", "owner": "EPA_GEO", "title": "ICIS WWTP",
-                       "type": "Feature Service", "url": profile.service_url, "modified": 123}
-
-        class JSONStream(httpx.SyncByteStream):
-            def __init__(self, payload):
-                self.body = json.dumps(payload, separators=(",", ":")).encode()
-
-            def __iter__(self):
-                yield self.body
-
-            def close(self):
-                return None
-
-        def respond(request):
-            path = urlparse(str(request.url)).path
-            query = parse_qs(urlparse(str(request.url)).query)
-            if "/sharing/rest/content/items/" in path:
-                payload = portal_item
-            elif path.rstrip("/").endswith("FeatureServer"):
-                payload = service
-            elif path.endswith(f"/{profile.table_id}"):
-                payload = table
-            elif query.get("returnCountOnly") == ["true"]:
-                payload = {"count": 1}
-            elif query.get("returnIdsOnly") == ["true"]:
-                payload = {"objectIds": [9]}
+    @staticmethod
+    def _csv(header: tuple[str, ...], rows) -> bytes:
+        buffer = io.StringIO(newline="")
+        writer = csv.writer(buffer, lineterminator="\n")
+        writer.writerow(header)
+        for row in rows:
+            if isinstance(row, dict):
+                writer.writerow([row[name] for name in header])
             else:
-                payload = {"features": [{"attributes": row}]}
-            return httpx.Response(200, stream=JSONStream(payload),
-                                  headers={"content-type": "application/json"})
+                writer.writerow(row)
+        return buffer.getvalue().encode("utf-8")
 
-        with tempfile.TemporaryDirectory() as tmp:
-            client = httpx.Client(transport=httpx.MockTransport(respond))
-            with client:
-                captured, manifest, _ = capture_table(client, profile, Path(tmp))
-        self.assertEqual(captured, [row])
-        self.assertIsNone(manifest["declared_relationship_contract"])
-        self.assertEqual(manifest["relationship"], [])
-        self.assertEqual(manifest["portal_item"]["owner"], "EPA_GEO")
+    @staticmethod
+    def _stream(body: bytes):
+        def generate():
+            for offset in range(0, len(body), 4096):
+                yield body[offset:offset + 4096]
+        return generate()
 
-        for bad_item in ({**portal_item, "owner": "mirror"},
-                         {**portal_item, "url": "https://example.invalid/service"}):
-            def bad_respond(request, item=bad_item):
-                path = urlparse(str(request.url)).path
-                if "/sharing/rest/content/items/" in path:
-                    return httpx.Response(200, stream=JSONStream(item),
-                                          headers={"content-type": "application/json"})
-                return respond(request)
-            with tempfile.TemporaryDirectory() as tmp:
-                client = httpx.Client(transport=httpx.MockTransport(bad_respond))
-                with client, self.assertRaisesRegex(ArcGISTableCaptureError,
-                                                    "source_portal_item_identity_changed"):
-                    capture_table(client, profile, Path(tmp))
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        if str(request.url) == archive.AUTHORITY_PAGE_URL:
+            return httpx.Response(200, content=self._stream(self.page_bytes), request=request,
+                                  headers={"Accept-Ranges": "bytes",
+                                           "Content-Length": str(len(self.page_bytes))})
+        if str(request.url) == archive.NATIONAL_COMBINED_ZIP_URL:
+            start_end = request.headers.get("Range")
+            if not start_end:
+                return httpx.Response(200, content=self._stream(self.zip_bytes), request=request)
+            start, end = (int(part) for part in start_end.removeprefix("bytes=").split("-"))
+            body = self.zip_bytes[start:end + 1]
+            return httpx.Response(
+                206, content=self._stream(body), request=request,
+                headers={
+                    "Accept-Ranges": "bytes",
+                    "Content-Range": f"bytes {start}-{end}/{len(self.zip_bytes)}",
+                    "Content-Length": str(len(body)),
+                    "ETag": '"fixture-etag"',
+                    "Last-Modified": "Wed, 04 Nov 2026 21:06:05 GMT",
+                },
+            )
+        return httpx.Response(404, request=request)
 
-    def test_hosted_item_identity_and_relationship_contracts_are_all_or_none(self):
-        with self.assertRaisesRegex(ValueError, "portal_item_contract_must_be_complete"):
-            replace(PROFILE, portal_item_id=None)
-        with self.assertRaisesRegex(ValueError, "relationship_contract_must_be_complete_or_undeclared"):
-            replace(PROFILE, relationship_name="POWERPLANT_LAYER")
-        with self.assertRaisesRegex(ValueError, "source_identity_contract_required"):
-            replace(PROFILE, source_vintage=None, portal_item_id=None,
-                    portal_item_owner=None, portal_item_title=None)
 
-    def test_complete_source_capture_brackets_exact_ids_and_retains_receipts(self):
-        profile = replace(PROFILE, expected_rows=2)
-        fields = [{"name": name, "type": esri_type, "nullable": nullable, "length": length}
-                  for name, esri_type, nullable, length in profile.fields]
-        table = {"name": profile.table_name, "geometryType": None, "fields": fields,
-                 "relationships": []}
-        service = {"description": "EIA data as of June 2014.",
-                   "tables": [{"id": profile.table_id, "name": profile.table_name}]}
-        portal_item = {
-            "id": profile.portal_item_id, "owner": profile.portal_item_owner,
-            "title": profile.portal_item_title, "type": "Feature Service",
-            "url": profile.service_url, "modified": 1769190978000,
+class EPAFRSEIA860SICTests(unittest.TestCase):
+    def setUp(self):
+        self.disk_guard = patch.object(archive, "_require_disk_space")
+        self.disk_guard.start()
+        self.fixture = Fixture()
+
+    def tearDown(self):
+        self.disk_guard.stop()
+
+    def pins(self, **overrides):
+        values = {
+            "EXPECTED_PROGRAM_ROWS": len(self.fixture.program_rows),
+            "EXPECTED_EIA860_PROGRAM_ROWS": 3,
+            "EXPECTED_EIA860_FACILITIES": 2,
+            "EXPECTED_SIC_ROWS": len(self.fixture.sic_rows),
+            "EXPECTED_MATCHED_SIC_ROWS": 3,
+            "EXPECTED_MATCHED_DISTINCT_TRIPLETS": 2,
+            "EXPECTED_MATCHED_DISTINCT_FACILITIES": 2,
+            "EXPECTED_OUTPUT_ROWS": 3,
+            "EXPECTED_OUTPUT_SHA256": self.fixture.output_sha,
+            "EXPECTED_SCHEMA_SHA256": self.fixture.schema_sha,
+            "ENVIROFACTS_EIA860_FACILITY_COUNT": 3,
+            "PROGRAM_MEMBER_COMPRESSED_BYTES": self.fixture.program_info.compress_size,
+            "PROGRAM_MEMBER_UNCOMPRESSED_BYTES": self.fixture.program_info.file_size,
+            "PROGRAM_MEMBER_CRC32": f"{self.fixture.program_info.CRC & 0xffffffff:08x}",
+            "SIC_MEMBER_COMPRESSED_BYTES": self.fixture.sic_info.compress_size,
+            "SIC_MEMBER_UNCOMPRESSED_BYTES": self.fixture.sic_info.file_size,
+            "SIC_MEMBER_CRC32": f"{self.fixture.sic_info.CRC & 0xffffffff:08x}",
+            "MEMBER_CHUNK_BYTES": 64,
+            "STREAM_WINDOW": 2,
         }
-        rows = [
-            {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
-             "PRIMARY_INDICATOR": "PRIMARY"},
-            {"OBJECTID": 2, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
-             "PRIMARY_INDICATOR": "SECONDARY"},
-        ]
+        values.update(overrides)
+        patchers = [patch.object(source, name, value) for name, value in values.items()]
+        patchers.extend([
+            patch.object(archive, "EXPECTED_ZIP_TOTAL_BYTES", len(self.fixture.zip_bytes)),
+            patch.object(archive, "EXPECTED_ARCHIVE_MEMBER_NAMES", self.fixture.member_names),
+            patch.object(archive, "STREAM_ATTEMPTS", 1),
+            patch.object(assets_module, "EXPECTED_OUTPUT_ROWS", values["EXPECTED_OUTPUT_ROWS"]),
+            patch.object(assets_module, "EXPECTED_OUTPUT_SHA256", values["EXPECTED_OUTPUT_SHA256"]),
+            patch.object(assets_module, "EXPECTED_SCHEMA_SHA256", values["EXPECTED_SCHEMA_SHA256"]),
+            patch.object(assets_module, "EXPECTED_EIA860_PROGRAM_ROWS",
+                         values["EXPECTED_EIA860_PROGRAM_ROWS"]),
+            patch.object(assets_module, "ENVIROFACTS_EIA860_FACILITY_COUNT",
+                         values["ENVIROFACTS_EIA860_FACILITY_COUNT"]),
+        ])
+        return patchers
 
-        class JSONStream(httpx.SyncByteStream):
-            def __init__(self, payload):
-                self.body = json.dumps(payload, separators=(",", ":")).encode()
+    def mock_client(self, fixture=None):
+        transport = httpx.MockTransport((fixture or self.fixture).handler)
+        return lambda **kwargs: _REAL_HTTP_CLIENT(transport=transport)
 
-            def __iter__(self):
-                yield self.body
+    def run_capture(self, storage, version, capture_directory, **pin_overrides):
+        with ExitStack() as stack:
+            for patcher in self.pins(**pin_overrides):
+                stack.enter_context(patcher)
+            stack.enter_context(patch.object(source.httpx, "Client", self.mock_client()))
+            return source.capture_epa_frs_eia860_sic(
+                storage, version=version, capture_directory=capture_directory)
 
-            def close(self):
-                return None
-
-        def respond(request):
-            path = urlparse(str(request.url)).path
-            query = parse_qs(urlparse(str(request.url)).query)
-            if "/sharing/rest/content/items/" in path:
-                payload = portal_item
-            elif path.rstrip("/").endswith("FeatureServer"):
-                payload = service
-            elif path.endswith(f"/{profile.table_id}"):
-                payload = table
-            elif query.get("returnCountOnly") == ["true"]:
-                payload = {"count": 2}
-            elif query.get("returnIdsOnly") == ["true"]:
-                payload = {"objectIds": [1, 2]}
-            else:
-                payload = {"features": [{"attributes": row} for row in rows]}
-            return httpx.Response(200, stream=JSONStream(payload), headers={"content-type": "application/json"})
-
-        with tempfile.TemporaryDirectory() as tmp:
-            client = httpx.Client(transport=httpx.MockTransport(respond), follow_redirects=False)
-            with client:
-                captured, manifest, receipts = capture_table(client, profile, Path(tmp))
-            self.assertEqual(captured, rows)
-            self.assertTrue(manifest["source_ids_equal_before_after"])
-            self.assertEqual(manifest["rows_captured"], 2)
-            self.assertEqual(set(receipts), {"service", "portal_item", "table_before", "count_before",
-                "ids_before", "page_000", "table_after", "service_after", "count_after", "ids_after"})
-            self.assertTrue(all(receipt["complete_body"] for receipt in manifest["response_receipts"].values()))
-
-    def test_exact_nonspatial_schema_and_native_values_survive_parquet(self):
-        fields = [
-            {"name": name, "type": esri_type, "nullable": nullable, "length": length}
-            for name, esri_type, nullable, length in PROFILE.fields
-        ]
-        metadata = {
-            "name": PROFILE.table_name,
-            "geometryType": None,
-            "fields": fields,
-            "relationships": [],
-        }
-        self.assertEqual(len(_metadata_contract(metadata, PROFILE)), 4)
-        changed = {**metadata, "fields": fields + [{"name": "EXTRA", "type": "esriFieldTypeString",
-                                                    "nullable": True, "length": 4}]}
-        with self.assertRaisesRegex(ArcGISTableCaptureError, "source_table_schema_changed"):
-            _metadata_contract(changed, PROFILE)
-
-        rows = [
-            {"OBJECTID": 1, "REGISTRY_ID": "001234567890", "SIC_CODE": "0041",
-             "PRIMARY_INDICATOR": "PRIMARY"},
-            {"OBJECTID": 2, "REGISTRY_ID": None, "SIC_CODE": "OWNE",
-             "PRIMARY_INDICATOR": "UNKNOWN"},
-        ]
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "table.parquet"
-            body = _typed_parquet(rows, tuple(fields))
-            path.write_bytes(body)
-            table = pq.read_table(path)
-            self.assertEqual(table.to_pylist(), rows)
-            self.assertEqual(table.schema.names, list(PROFILE.field_names))
-            self.assertEqual(str(table.schema.field("SIC_CODE").type), "string")
-            self.assertIs(table.schema.field("OBJECTID").nullable, False)
-            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
-                             hashlib.sha256(body).hexdigest())
-            with tempfile.TemporaryDirectory() as evidence_root:
-                receipt = normalize_native_input(
-                    {"schema_version": 1, "format": "parquet", "root": tmp,
-                     "objects": [{"key": "table.parquet", "sha256": hashlib.sha256(body).hexdigest(),
-                                  "bytes": len(body), "rows": len(rows)}]},
-                    {"schema_version": 1, "status": "proposed", "geometry": False, "crs": None,
-                     "id_fields": ["OBJECTID"], "coverage_fields": ["REGISTRY_ID"]},
-                    Path(evidence_root) / "native-evidence",
-                )
-                self.assertEqual(receipt["status"], "complete")
-                self.assertIs(receipt["policy"]["geometry"], False)
-                normalized = [json.loads(line) for line in
-                              (Path(evidence_root) / "native-evidence" / "normalized_records.jsonl").read_text().splitlines()]
-                self.assertTrue(all(row["geometry"] is None for row in normalized))
-
-
-    def _fixture_mode(self):
-        return [
-            patch.object(worker, "PROFILE", replace(PROFILE, expected_rows=len(TINY_ROWS))),
-            patch.object(worker, "EXPECTED_ROWS", len(TINY_ROWS)),
-            patch.object(worker, "EXPECTED_RECORD_SHA256", _sha(_canonical(TINY_ROWS))),
-            patch.object(worker, "EXPECTED_IDS_SHA256",
-                         _sha(_canonical(sorted(row["OBJECTID"] for row in TINY_ROWS)))),
-            patch.object(worker, "EXPECTED_SCHEMA_SHA256",
-                         _schema_sha([{"name": name, "type": esri_type, "nullable": nullable,
-                                       "length": length}
-                                      for name, esri_type, nullable, length in PROFILE.fields])),
-            patch.object(frs_common, "validate_construction_code_identity"),
-        ]
-
-    def test_repeat_live_and_both_offline_modes_reuse_the_portal_item_receipt(self):
+    def test_bounded_stream_join_preserves_native_values_and_unapproved_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
-            contexts = self._fixture_mode()
-            for context in contexts:
-                context.start()
-            try:
-                with _tiny_sic_client() as client:
-                    captured = worker.capture_epa_frs_sic_table(storage, client=client)
-                    repeat = worker.capture_epa_frs_sic_table(storage, client=client)
-                    replayed = worker.capture_epa_frs_sic_table(
-                        storage, offline_replay_version=captured["version"])
-                    retained = worker.capture_epa_frs_sic_table(
-                        storage, offline_capture_version=captured["version"])
-            finally:
-                for context in reversed(contexts):
-                    context.stop()
-            self.assertEqual(captured["row_count"], 2)
-            self.assertFalse(captured["release_accepted"])
-            self.assertEqual(repeat["version"], captured["version"])
-            self.assertTrue(repeat["reused"])
-            self.assertTrue(replayed["reused"])
-            self.assertTrue(replayed["offline_replay"])
-            self.assertEqual(retained["version"], captured["version"])
-            self.assertTrue(retained["reused"])
-            state_key = f"_construction-state/{DATASET_SLUG}/{captured['version']}.json"
-            sealed = json.loads(storage.read_key(state_key))
-            self.assertIn("portal_item", sealed["payload"]["capture_receipts"])
-            self.assertIn("raw/portal_item.body", sealed["payload"]["objects"])
+            captures = Path(tmp) / "captures" / "vfixture"
+            result = self.run_capture(storage, "vfixture", str(captures))
+            self.assertFalse(result["reused"])
+            self.assertEqual(result["row_count"], 3)
+            self.assertEqual(result["eia860_program_rows"], 3)
+            self.assertEqual(result["eia860_facilities"], 2)
+            self.assertEqual(result["envirofacts_eia860_facility_count"], 3)
+            self.assertFalse(result["release_accepted"])
+            self.assertFalse(result["source_release_accepted"])
+            self.assertFalse(result["rights_accepted"])
+            self.assertEqual(result["drift_reasons"], [])
 
-    def test_repeat_live_capture_rejects_a_roster_missing_the_portal_receipt(self):
+            table = pq.read_table(Path(tmp) / result["parquet_key"])
+            self.assertEqual(table.schema.names, list(source.OUTPUT_COLUMNS))
+            self.assertEqual(table.num_rows, 3)
+            self.assertEqual(table["REGISTRY_ID"].to_pylist(),
+                             ["110000000001", "110000000001", "110000000002"])
+            self.assertEqual(table["SIC_CODE"].to_pylist(), ["4911", "4911", "2869"])
+            self.assertEqual(table["PRIMARY_INDICATOR"].to_pylist(),
+                             ["PRIMARY", "PRIMARY", "SECONDARY"])
+            self.assertEqual(table.schema.metadata[b"hifld:geometry"], b"absent")
+
+            prefix = result["candidate_ready"].removesuffix("metadata/candidate_ready.json")
+            audit = json.loads(storage.read_key(f"{prefix}metadata/source_audit.json"))
+            self.assertEqual(audit["program_member"]["rows"], 4)
+            self.assertEqual(audit["program_member"]["eia860_rows"], 3)
+            self.assertEqual(audit["program_member"]["eia860_distinct_registry_id"], 2)
+            self.assertEqual(audit["sic_member"]["rows"], 4)
+            self.assertEqual(audit["sic_member"]["matched_rows"], 3)
+            self.assertEqual(audit["sic_member"]["matched_distinct_triplets"], 2)
+            self.assertEqual(audit["sic_member"]["matched_distinct_registry_id"], 2)
+            self.assertTrue(audit["envirofacts_count_matches_program_rows"])
+            self.assertGreater(len(audit["program_member"]["chunk_receipts"]), 1)
+            self.assertFalse(audit["release_accepted"])
+            for receipt in audit["program_member"]["chunk_receipts"]:
+                self.assertEqual(receipt["status"], 206)
+                self.assertEqual(receipt["zip_total_bytes"], len(self.fixture.zip_bytes))
+
+            manifest = json.loads(storage.read_key(f"{prefix}metadata/source_manifest.json"))
+            input_ids = [item["input_id"] for item in manifest["inputs"]]
+            self.assertIn("authority_page", input_ids)
+            self.assertIn("national_program_file", input_ids)
+            self.assertIn("national_sic_file", input_ids)
+            for item in manifest["inputs"]:
+                self.assertEqual(item["role"], "producer_publication")
+                self.assertEqual(item["release_date"], None)
+            hosts = {item["input_id"]: item["host"] for item in manifest["inputs"]}
+            self.assertEqual(hosts["authority_page"], "www.epa.gov")
+            self.assertEqual(hosts["national_program_file"], "ordsext.epa.gov")
+            self.assertEqual(hosts["national_sic_file"], "ordsext.epa.gov")
+
+            capture_manifest = json.loads((captures / "capture_manifest.json").read_bytes())
+            self.assertTrue(capture_manifest["capture_complete"])
+            self.assertIn("program_member_local_header", capture_manifest["captures"])
+            self.assertIn("sic_member_local_header", capture_manifest["captures"])
+
+    def test_cached_reuse_returns_the_same_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
-            contexts = self._fixture_mode()
-            for context in contexts:
-                context.start()
-            try:
-                with _tiny_sic_client() as client:
-                    captured = worker.capture_epa_frs_sic_table(storage, client=client)
-                version = captured["version"]
-                state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-                payload = json.loads(storage.read_key(state_key))["payload"]
-                self.assertIn("portal_item", payload["capture_receipts"])
-                stripped = {**payload,
-                            "capture_receipts": {name: receipt
-                                                 for name, receipt in payload["capture_receipts"].items()
-                                                 if name != "portal_item"},
-                            "objects": {name: descriptor for name, descriptor in payload["objects"].items()
-                                        if not name.startswith("raw/portal_item.")}}
-                identity = processing_identity(Path(worker.__file__).parents[3])
-                fingerprint = _sha(_canonical(identity))
-                replay_root = Path(tmp) / "replay"
-                replay_root.mkdir()
-                replay_storage = StagingStorageResource(local_dir=str(replay_root),
-                                                        use_local=True, backend="local")
-                frs_common.seal_ready_candidate(replay_storage, state_key, version, fingerprint,
-                                                stripped)
-                with self.assertRaisesRegex(worker.EPAFRSSICError,
-                                            "cached_candidate_roster_invalid"):
-                    worker.capture_epa_frs_sic_table(replay_storage,
-                                                     offline_replay_version=version)
-            finally:
-                for context in reversed(contexts):
-                    context.stop()
+            first = self.run_capture(storage, "vfixture", str(Path(tmp) / "captures" / "first"))
+            second = self.run_capture(storage, "vrefresh", str(Path(tmp) / "captures" / "second"))
+            self.assertFalse(first["reused"])
+            self.assertTrue(second["reused"])
+            self.assertEqual(second["version"], first["version"])
+            self.assertEqual(second["source_record_sha256"], first["source_record_sha256"])
+
+    def test_program_filter_count_drift_quarantines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            with self.assertRaisesRegex(ValueError, "eia860_program_row_count_drift"):
+                self.run_capture(storage, "vfixture", str(Path(tmp) / "captures" / "vfixture"),
+                                 EXPECTED_EIA860_PROGRAM_ROWS=99)
+            quarantined = [key for key in storage.list_prefix(f"_quarantine/{source.DATASET_SLUG}")
+                           if storage.object_exists(key)]
+            self.assertTrue(any(key.endswith("raw/authority_page.body") for key in quarantined))
+            self.assertTrue(any(key.endswith("metadata/failure.json") for key in quarantined))
+
+    def test_output_sha_drift_quarantines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            with self.assertRaisesRegex(ValueError, "complete_source_snapshot_drift"):
+                self.run_capture(storage, "vfixture", str(Path(tmp) / "captures" / "vfixture"),
+                                 EXPECTED_OUTPUT_SHA256="0" * 64)
+            quarantined = [key for key in storage.list_prefix(f"_quarantine/{source.DATASET_SLUG}")
+                           if storage.object_exists(key)]
+            self.assertTrue(any(key.endswith("metadata/failure.json") for key in quarantined))
+
+    def test_schema_drift_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            with self.assertRaisesRegex(ValueError, "sic_csv_schema_changed"):
+                self.run_capture(storage, "vfixture", str(Path(tmp) / "captures" / "vfixture"),
+                                 SIC_COLUMNS=source.SIC_COLUMNS + ("EXTRA",))
+
+    def test_incomplete_stream_is_refused(self):
+        class Broken(Fixture):
+            def handler(self, request):
+                range_header = request.headers.get("Range")
+                if str(request.url) == archive.NATIONAL_COMBINED_ZIP_URL and range_header:
+                    start, end = (int(part) for part in
+                                  range_header.removeprefix("bytes=").split("-"))
+                    if start > 0 and end - start + 1 <= 64:
+                        return httpx.Response(503, content=b"unavailable", request=request)
+                return super().handler(request)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            with ExitStack() as stack:
+                for patcher in self.pins():
+                    stack.enter_context(patcher)
+                stack.enter_context(patch.object(source.httpx, "Client",
+                                                 self.mock_client(Broken())))
+                with self.assertRaisesRegex(ValueError, "stream_range_response_contract_failed"):
+                    source.capture_epa_frs_eia860_sic(
+                        storage, version="vfixture",
+                        capture_directory=str(Path(tmp) / "captures" / "vfixture"))
+
+    def test_dagster_ingest_and_catalog_materialize_with_cached_reuse(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            instance_dir = Path(tmp) / "dagster"
+            instance_dir.mkdir()
+            (instance_dir / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
+            with ExitStack() as stack:
+                for patcher in self.pins():
+                    stack.enter_context(patcher)
+                stack.enter_context(patch.object(source.httpx, "Client", self.mock_client()))
+                with DagsterInstance.from_config(str(instance_dir)) as instance:
+                    run = materialize([epa_frs_sic_powerplants],
+                                      resources={"staging_storage": storage}, instance=instance)
+                    self.assertTrue(run.success)
+                    version = None
+                    for event in run.all_events:
+                        if (event.event_type_value == "ASSET_MATERIALIZATION"
+                                and event.asset_key):
+                            version = event.materialization.metadata["version"].value
+                    self.assertIsNotNone(version)
+                    check_fn = epa_frs_sic_complete.op.compute_fn.decorated_fn
+                    check = check_fn({
+                        "row_count": 3,
+                        "source_record_sha256": self.fixture.output_sha,
+                        "source_schema_sha256": self.fixture.schema_sha,
+                        "native_columns": list(source.OUTPUT_COLUMNS),
+                        "eia860_program_rows": 3,
+                    })
+                    self.assertTrue(check.passed)
+                    partition = build_publish_partition_key(
+                        source.DATASET_SLUG, source.FILE_SLUG, version)
+                    instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [partition])
+                    catalog = materialize([publish_catalog],
+                                          resources={"staging_storage": storage},
+                                          instance=instance, partition_key=partition)
+                    self.assertTrue(catalog.success)
+                    prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{version}"
+                    quality = json.loads(
+                        storage.read_key(f"{prefix}/metadata/quality_manifest.json"))
+                    self.assertEqual(quality["feature_count"], 3)
+                    self.assertEqual(quality["spatial_status"], "non_spatial_source")
+                    audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
+                    self.assertFalse(audit["release_accepted"])
+
+    def test_schedule_stopped_and_checks_report_envirofacts_count(self):
+        self.assertIs(epa_frs_sic_draft_schedule.default_status,
+                      DefaultScheduleStatus.STOPPED)
+        request = epa_frs_sic_draft_schedule.evaluate_tick(
+            build_schedule_context()).run_requests[0]
+        config = request.run_config["ops"][epa_frs_sic_powerplants.op.name]["config"]
+        self.assertEqual(config, {"capture_directory": ""})
+        with ExitStack() as stack:
+            for patcher in self.pins():
+                stack.enter_context(patcher)
+            compatible = epa_frs_sic_published_membership_compatible.op.compute_fn.decorated_fn(
+                {"eia860_program_rows": 3, "drift_reasons": []})
+            self.assertTrue(compatible.passed)
+            incompatible = epa_frs_sic_published_membership_compatible.op.compute_fn.decorated_fn(
+                {"eia860_program_rows": 2, "drift_reasons": ["drift"]})
+            self.assertFalse(incompatible.passed)
 
 
 if __name__ == "__main__":

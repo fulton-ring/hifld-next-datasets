@@ -24,7 +24,7 @@ import pyogrio
 import pyproj
 import shapely
 
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     content_derived_version,
@@ -38,7 +38,7 @@ from dagster_hifld.sources.epa_frs_common import (
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "natural-gas-interstate-and-intrastate-pipelines"

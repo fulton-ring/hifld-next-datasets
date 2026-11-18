@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import math
 import shutil
-import struct
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -18,16 +17,18 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
+
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 from pyproj import CRS
-from shapely.geometry import LinearRing, Polygon, mapping
+from shapely.geometry import mapping
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     processing_identity,
@@ -125,12 +126,11 @@ def _capture_urls(ids: list[int], max_record_count: int) -> list[tuple[str, str]
 
 
 def _esri_polygon(geometry: dict) -> bytes:
-    """Encode ArcGIS Polygon rings as WKB without reprojection or repair."""
+    """Encode native ArcGIS polygon rings through the shared GDAL converter."""
     rings = geometry.get("rings")
     has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
     if not isinstance(rings, list) or not rings or type(has_z) is not bool or type(has_m) is not bool:
         raise ValueError("source_polygon_rings_missing_or_ordinate_flags_invalid")
-    shells, holes = [], []
     dimension = None
     for coords in rings:
         if not isinstance(coords, list) or len(coords) < 4 or coords[0] != coords[-1]:
@@ -145,41 +145,7 @@ def _esri_polygon(geometry: dict) -> bytes:
             dimension = point_dimension
         if dimension != point_dimension or point_dimension != 2 + int(has_z) + int(has_m):
             raise ValueError("source_polygon_ordinate_count_drift")
-        xy = [point[:2] for point in coords]
-        (holes if LinearRing(xy).is_ccw else shells).append([list(point) for point in coords])
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    shell_polygons = [Polygon([p[:2] for p in ring]) for ring in shells]
-    assigned = [[] for _ in shell_polygons]
-    for ring in holes:
-        hole = Polygon([p[:2] for p in ring])
-        owners = [i for i, shell in enumerate(shell_polygons)
-                  if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assigned[owners[0]].append(ring)
-    dimensions = dimension or 2
-    dimension_code = {2: 0, 3: (1000 if has_z else 2000), 4: 3000}.get(dimensions)
-    if dimension_code is None:
-        raise ValueError("source_polygon_dimension_unsupported")
-
-    def polygon(shell, inner):
-        value = bytearray(struct.pack("<BI", 1, dimension_code + 3))
-        value.extend(struct.pack("<I", 1 + len(inner)))
-        for ring in [shell, *inner]:
-            value.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                value.extend(struct.pack("<" + "d" * dimensions, *point))
-        return bytes(value)
-
-    polys = [polygon(shell, assigned[index]) for index, shell in enumerate(shells)]
-    if len(polys) == 1:
-        return polys[0]
-    output = bytearray(struct.pack("<BI", 1, dimension_code + 6))
-    output.extend(struct.pack("<I", len(polys)))
-    for value in polys:
-        output.extend(value)
-    return bytes(output)
+    return esri_polygon_wkb(geometry, allow_zm=True)
 
 
 def _parquet(fields: list[dict], features: list[dict], geometry_types: list[str]) -> bytes:
@@ -474,7 +440,7 @@ def capture_usace_data_coverage_areas(
                 raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
             root = requested / ("attempt-" + uuid4().hex)
         else:
-            root = Path("/tmp/hifld-native-reconstruction/51") / ("attempt-" + uuid4().hex)
+            root = default_capture_dir("hifld-native-reconstruction", "51") / ("attempt-" + uuid4().hex)
         root.mkdir(parents=True, exist_ok=True)
         captures = _live_capture(root, storage)
         replay = False

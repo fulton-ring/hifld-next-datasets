@@ -17,8 +17,9 @@ import pyarrow.parquet as pq
 from dagster_hifld.assets.nhd_waterbody import nhd_waterbody, nhd_waterbody_complete
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import nhd_waterbody as src
+from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
 
 FIXTURE_COUNT = 5
 FIXTURE_OBJECTIDS = (1, 2, 3, 5, 8)
@@ -286,7 +287,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
                      return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                    "files": [], "working_tree_status": "unknown"}),
         patch.object(src, "validate_construction_code_identity"),
-        patch.object(epa_frs_common, "validate_construction_code_identity"),
+        patch.object(capture_common, "validate_construction_code_identity"),
         # CI runners hold far less than the pinned capture floor, so the floor
         # gate is evaluated against a stub that reports exactly the pinned
         # requirement; the refusal itself is exercised by the dedicated floor
@@ -391,19 +392,21 @@ class NhdWaterbodyTests(unittest.TestCase):
             src._parse_page_name("page_123456789_recX")
 
     def test_polygon_wkb_keeps_z_and_ring_semantics(self):
+        def converted(oid):
+            return to_wkb(_fixture_geometry(oid), src.GEOMETRY_TYPE, has_z=True, has_m=False)
+
         geometry = _fixture_geometry(FIXTURE_OBJECTIDS[2])
-        wkb = src._polygon_wkb(geometry)
+        wkb = converted(FIXTURE_OBJECTIDS[2])
         order, kind = struct.unpack_from("<BI", wkb, 0)
-        self.assertEqual((order, kind), (1, 0x80000006))
+        self.assertEqual((order, kind), (1, 1006))
         (parts,) = struct.unpack_from("<I", wkb, 5)
         self.assertEqual(parts, 2)
-        single = src._polygon_wkb(_fixture_geometry(FIXTURE_OBJECTIDS[0]))
-        self.assertEqual(struct.unpack_from("<BI", single, 0), (1, 0x80000003))
+        single = converted(FIXTURE_OBJECTIDS[0])
+        self.assertEqual(struct.unpack_from("<BI", single, 0), (1, 1003))
         # The producer's closed-ring, CW-exterior/CCW-hole semantics are preserved:
         # every ring re-reads as the same vertex sequence with Z.
-        polygon = _fixture_geometry(FIXTURE_OBJECTIDS[3])
-        wkb_with_hole = src._polygon_wkb(polygon)
-        self.assertEqual(struct.unpack_from("<BI", wkb_with_hole, 0), (1, 0x80000003))
+        wkb_with_hole = converted(FIXTURE_OBJECTIDS[3])
+        self.assertEqual(struct.unpack_from("<BI", wkb_with_hole, 0), (1, 1003))
         (rings,) = struct.unpack_from("<I", wkb_with_hole, 5)
         self.assertEqual(rings, 2)
 
@@ -412,8 +415,9 @@ class NhdWaterbodyTests(unittest.TestCase):
         collected: list = []
         geometry = {"hasZ": True, "rings": [_real_spike_exterior(),
                                             [list(vertex) for vertex in REAL_DEGENERATE_SPIKE]]}
-        wkb = src._polygon_wkb(geometry, degenerate_rings=collected)
-        self.assertEqual(collected, [REAL_DEGENERATE_SPIKE])
+        wkb = to_wkb(geometry, src.GEOMETRY_TYPE, has_z=True, has_m=False)
+        collected = zero_area_rings(geometry["rings"])
+        self.assertEqual(collected, [1])
         polygon = from_wkb(wkb)
         self.assertEqual(polygon.geom_type, "Polygon")
         self.assertEqual(len(polygon.interiors), 1)
@@ -427,9 +431,10 @@ class NhdWaterbodyTests(unittest.TestCase):
         from shapely import from_wkb
         collected: list = []
         geometry = {"hasZ": True, "rings": [[list(vertex) for vertex in REAL_DEGENERATE_SPIKE]]}
-        wkb = src._polygon_wkb(geometry, degenerate_rings=collected)
-        self.assertEqual(collected, [REAL_DEGENERATE_SPIKE])
-        self.assertEqual(struct.unpack_from("<BI", wkb, 0), (1, 0x80000003))
+        wkb = to_wkb(geometry, src.GEOMETRY_TYPE, has_z=True, has_m=False)
+        collected = zero_area_rings(geometry["rings"])
+        self.assertEqual(collected, [0])
+        self.assertEqual(struct.unpack_from("<BI", wkb, 0), (1, 1003))
         polygon = from_wkb(wkb)
         self.assertEqual(polygon.geom_type, "Polygon")
         self.assertEqual([tuple(vertex) for vertex in polygon.exterior.coords],
@@ -446,9 +451,10 @@ class NhdWaterbodyTests(unittest.TestCase):
         # producer features serve exactly this shape: a spike no exterior of
         # the feature covers).
         geometry = {"hasZ": True, "rings": [_exterior(50.0), _fixture_degenerate_spike()]}
-        wkb = src._polygon_wkb(geometry, degenerate_rings=collected)
-        self.assertEqual(collected, [_fixture_degenerate_spike()])
-        self.assertEqual(struct.unpack_from("<BI", wkb, 0), (1, 0x80000006))
+        wkb = to_wkb(geometry, src.GEOMETRY_TYPE, has_z=True, has_m=False)
+        collected = zero_area_rings(geometry["rings"])
+        self.assertEqual(collected, [1])
+        self.assertEqual(struct.unpack_from("<BI", wkb, 0), (1, 1006))
         (parts,) = struct.unpack_from("<I", wkb, 5)
         self.assertEqual(parts, 2)
         multipolygon = from_wkb(wkb)

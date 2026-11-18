@@ -10,7 +10,6 @@ from dagster_hifld.assets.discovery import discovered, unique
 from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volcanoes
 from dagster_hifld.assets.ems_stations import usgs_ems_stations
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
-from dagster_hifld.assets.epa_power_generation import epa_frs_eia_860_power_generation_facilities_by_source
 from dagster_hifld.assets.epa_icis_wastewater import epa_icis_wastewater_treatment_plants
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
 from dagster_hifld.assets.fuds_irm_property_boundary import fuds_irm_property_boundary_ingest
@@ -46,13 +45,9 @@ from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
 from dagster_hifld.assets.usace_navigation_lights import usace_navigation_lights_usace_ienc
 from dagster_hifld.assets.usace_notice_marks import usace_notice_marks_usace_ienc
 from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms
-from dagster_hifld.assets.proposed_critical_habitat import proposed_critical_habitat_features
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
 from dagster_hifld.assets.usace_dry_docks import usace_dry_docks_usace_ienc
-from dagster_hifld.assets.quaternary_fault_lines import quaternary_fault_lines_usgs
 from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
-from dagster_hifld.assets.us_county_boundaries import us_county_boundaries_census
-from dagster_hifld.assets.us_state_boundaries import us_state_boundaries_census
 from dagster_hifld.assets.usace_pylon_locations import usace_pylon_locations_usace_ienc
 from dagster_hifld.assets.usace_distance_marks import usace_distance_marks_usace_ienc
 from dagster_hifld.assets.usace_recommended_tracks import usace_recommended_tracks_ienc
@@ -77,9 +72,7 @@ from dagster_hifld.assets.unified_school_districts import census_unified_school_
 from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
 from dagster_hifld.assets.usace_hulke_areas import usace_hulke_areas_usace_ienc
 from dagster_hifld.assets.usace_landmark_areas import usace_landmark_areas_usace_ienc
-from dagster_hifld.assets.puerto_rico_subbarrios import puerto_rico_subbarrios_census
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
-from dagster_hifld.assets.nces_public_schools import nces_public_schools
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.usace_daymark_locations import usace_daymark_locations_usace_ienc
 from dagster_hifld.assets.usace_lateral_buoys import usace_lateral_buoys_usace_ienc
@@ -88,11 +81,7 @@ from dagster_hifld.assets.usace_dynamic_buoys import usace_dynamic_buoys_usace_i
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_areas_usace_ienc
 from dagster_hifld.assets.usace_dumping_ground_areas import usace_dumping_ground_areas_usace_ienc
-from dagster_hifld.assets.plate_boundaries import plate_boundaries_usgs
-from dagster_hifld.assets.ornl_power_plants import eia_power_plants_historical
-from dagster_hifld.assets.eia_natural_gas_processing_plants import eia_natural_gas_processing_plants_historical
-from dagster_hifld.assets.eia_ethanol_plants import eia_ethanol_plants
-from dagster_hifld.assets.nces_private_schools import nces_private_schools_2023_24
+from dagster_hifld.assets.ornl_power_plants import eia_power_plants
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
 from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
@@ -106,7 +95,6 @@ from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
 from dagster_hifld.assets.fws_units import fws_cbrs_units
 from dagster_hifld.assets.generalized_units import fws_generalized_units
 from dagster_hifld.assets.census_designated_places import census_designated_places
-from dagster_hifld.assets.state_capitols import state_capitols_usgs
 from dagster_hifld.assets.colleges_universities import nces_colleges_universities
 from dagster_hifld.assets.combined_statistical_areas import census_combined_statistical_areas
 from dagster_hifld.assets.census_consolidated_cities import census_consolidated_cities
@@ -149,7 +137,6 @@ from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
 from dagster_hifld.assets.national_transit_map_agencies import bts_national_transit_map_agencies
 from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
 
-from dagster_hifld.assets.final_critical_habitat import final_critical_habitat_features
 hifld_ingest_assets = [
     bts_ferry_terminals,
     smithsonian_holocene_volcanoes,
@@ -187,16 +174,12 @@ hifld_ingest_assets = [
     epa_frs_naics_powerplants,
     epa_regions,
     bsee_ocs_platforms,
-    proposed_critical_habitat_features,
     usace_navigation_marks_areas_usace_ienc,
     usace_navigation_lights_usace_ienc,
     usace_notice_marks_usace_ienc,
     usace_berths_areas_usace_ienc,
     usace_dry_docks_usace_ienc,
-    quaternary_fault_lines_usgs,
     usace_pylon_areas_usace_ienc,
-    us_county_boundaries_census,
-    us_state_boundaries_census,
     usace_pylon_locations_usace_ienc,
     usace_distance_marks_usace_ienc,
     usace_recommended_tracks_ienc,
@@ -218,7 +201,6 @@ hifld_ingest_assets = [
     census_secondary_school_districts,
     principal_ports_usace,
     census_unified_school_districts,
-    puerto_rico_subbarrios_census,
     usace_caution_areas_usace_ienc,
     usace_pile_locations_usace_ienc,
     usace_daymark_locations_usace_ienc,
@@ -228,12 +210,7 @@ hifld_ingest_assets = [
     usace_pipeline_areas_usace_ienc,
     usace_data_quality_areas_usace_ienc,
     usace_dumping_ground_areas_usace_ienc,
-    plate_boundaries_usgs,
-    eia_power_plants_historical,
-    eia_natural_gas_processing_plants_historical,
-    eia_ethanol_plants,
-    epa_frs_eia_860_power_generation_facilities_by_source,
-    final_critical_habitat_features,
+    eia_power_plants,
     epa_icis_wastewater_treatment_plants,
     fuds_irm_property_point_ingest,
     fuds_irm_property_boundary_ingest,
@@ -242,8 +219,6 @@ hifld_ingest_assets = [
     usace_fuds_program_district_boundaries,
     fuds_property_boundaries_ingest,
     epa_small_scale_regions,
-    nces_private_schools_2023_24,
-    nces_public_schools,
     coastlines_usace_ienc,
     locks_usace_ienc,
     lock_basins_usace_ienc_candidate,
@@ -256,7 +231,6 @@ hifld_ingest_assets = [
     fws_cbrs_units,
     fws_generalized_units,
     census_designated_places,
-    state_capitols_usgs,
     census_combined_statistical_areas,
     census_consolidated_cities,
     usace_conveyor_areas_usace_ienc,

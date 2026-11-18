@@ -13,7 +13,7 @@ import httpx
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     capture_get,
     quarantine_incomplete_capture,
     write_immutable,

@@ -14,7 +14,6 @@ import os
 import platform
 import shutil
 import stat
-import struct
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -28,7 +27,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import LinearRing, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import (
@@ -39,15 +37,18 @@ from dagster_hifld.construction_state import (
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
-from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.esri_geometry import (
+    _validate_spatial_reference, esri_polygon_wkb as _esri_polygon,
+)
+from dagster_hifld.sources.capture_common import (
     STAGED_RELEASE_DERIVATIVE_NAMES,
     _validate_cached_catalog_sidecars,
     validate_staged_release_derivatives,
 )
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_layer import ienc_layer_capture_roster
 
 DATASET_SLUG = "lock-basins-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -318,69 +319,6 @@ def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: 
     raise last
 
 
-def _esri_polygon(geometry: dict):
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
-    if type(has_z) is not bool or type(has_m) is not bool:
-        raise ValueError("source_ordinate_flags_invalid")
-    shells, holes = [], []
-    dimension = None
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise ValueError("source_polygon_ring_invalid")
-        if coords[0] != coords[-1]:
-            raise ValueError("source_polygon_ring_not_closed")
-        if any(not isinstance(point, list) for point in coords):
-            raise ValueError("source_polygon_coordinate_invalid")
-        dims = {len(point) for point in coords}
-        if len(dims) != 1:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        point_dims = next(iter(dims))
-        if dimension is None:
-            dimension = point_dims
-        if dimension != point_dims:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        expected_dims = 2 + int(has_z) + int(has_m)
-        if point_dims != expected_dims:
-            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        xy = [point[:2] for point in coords]
-        ring = LinearRing(xy)
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon([point[:2] for point in ring])
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(ring)
-    dim_code = {2: 0, 3: (1000 if has_z else 2000), 4: 3000}[dimension]
-
-    def polygon_wkb(shell, hole_rings):
-        out = bytearray(struct.pack("<BI", 1, dim_code + 3))
-        out.extend(struct.pack("<I", 1 + len(hole_rings)))
-        for ring in [shell, *hole_rings]:
-            out.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                out.extend(struct.pack("<" + "d" * dimension, *point))
-        return bytes(out)
-
-    polygons = [polygon_wkb(shell, assignments[i]) for i, shell in enumerate(shells)]
-    if len(polygons) == 1:
-        return polygons[0]
-    multi = bytearray(struct.pack("<BI", 1, dim_code + 6))
-    multi.extend(struct.pack("<I", len(polygons)))
-    for polygon in polygons:
-        multi.extend(polygon)
-    return bytes(multi)
-
-
 def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
     properties = [f for f in fields if f["name"] != "SHAPE"]
     arrays = []
@@ -412,21 +350,14 @@ def _query(params: dict[str, object]) -> str:
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("bts_item", BTS_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
-            ("service_before", SERVICE_URL + "?f=pjson"),
-            ("layer_before", LAYER_URL + "?f=pjson"),
-            ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-            ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds": ",".join(map(str, page_ids)),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
-                 ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                 ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                 ("service_after", SERVICE_URL + "?f=pjson")])
-    return urls
+    return ienc_layer_capture_roster(
+        ids,
+        bts_item_url=BTS_ITEM_URL,
+        service_directory_url=SERVICE_DIRECTORY_URL,
+        service_url=SERVICE_URL,
+        layer_url=LAYER_URL,
+        page_size=PAGE_SIZE,
+    )
 
 
 def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
@@ -809,7 +740,7 @@ def capture_lock_basins_usace_ienc(storage: StagingStorageResource, *, version: 
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = requested / (version + "-" + uuid4().hex)
     else:
-        root = Path("/tmp/hifld-native-reconstruction/147/captures") / (version + "-" + uuid4().hex)
+        root = default_capture_dir("hifld-native-reconstruction", "147", "captures") / (version + "-" + uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)

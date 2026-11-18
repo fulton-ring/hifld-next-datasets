@@ -68,19 +68,19 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "nhd-waterbody-large-scale-2"
@@ -149,7 +149,11 @@ EXPECTED_SCHEMA_SHA256 = "51f11bd107670196d396c0908b3c68a4dce0f37466d3dd179c3df1
 # pinned here as empty (checked only when non-empty) and recorded by the first
 # complete capture for the maintainer to pin.
 EXPECTED_RECORD_SHA256 = "a3eac7bb769a63a678c96955d96d7fddde54fa4414e4af06a3fbd5bc13b42073"
-EXPECTED_GEOMETRY_SHA256 = "9a250fb41717baac97e7000469086bec2d0c13ae61686022818dcd661bfa8eae"
+# The geometry digest covered only assembled rows before the shared GDAL
+# converter (issue #997); every served row now assembles, so the coverage
+# grew and this transcribed pin moves to the designed pending state until the
+# next complete capture re-derives it via build_nhd_waterbody_large_scale_baseline.
+EXPECTED_GEOMETRY_SHA256 = None
 EXPECTED_IDS_SHA256 = "b4c1d549b8a5fb8674d8d8fb6af55077cb8b1db2f00604e1324644e88a135b74"
 # The null-geometry count and the producer-refusal id set are likewise unknown
 # until the first complete capture (a ``None`` pin is checked only once it has
@@ -164,12 +168,11 @@ EXPECTED_REFUSED_IDS = ()
 # pin is checked only once it has been transcribed from
 # ``build_nhd_waterbody_large_scale_baseline``, afterwards any change fails
 # closed.
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {'source_polygon_ring_degenerate': 7}
-UNUSABLE_GEOMETRY_MODES = frozenset({
-    "source_polygon_ring_degenerate",
-    "source_polygon_exterior_missing",
-    "source_polygon_hole_unassigned",
-})
+# Geometry quarantines retired by the shared GDAL Esri polygon converter
+# (issue #997): the producer's seven zero-area sliver rows now convert through
+# GDAL and are retained verbatim, counted as ogc_invalid_geometry_counts
+# instead of gated to null.
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
 EXPECTED_FEATURETYPE_DISTRIBUTION = {3: 7_063_520}
 EXPECTED_FEATURETYPE_LABELS = {3: "Lake"}
 EXPECTED_LAYER_EXTENT = {"xmin": -19951755.6817, "ymin": -1622985.3665999994,
@@ -277,18 +280,16 @@ def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
 _GEOMETRY_COLUMN = "geometry"
 
 
-def _polygon_wkb(geometry: object) -> bytes | None:
-    """WKB for one feature's Esri rings under the producer's verified ring semantics.
+def _validate_polygon_geometry(geometry: object) -> None:
+    """Structural contract for one served polygon geometry (no assembly).
 
-    Esri JSON (verified on the pinned captures of this producer's Waterbody
-    layer): every ring is explicitly closed, clockwise rings are exteriors,
-    counter-clockwise rings are holes, and every ordinate triple carries the
-    layer's Z value (``returnZ=true`` response). Vertices are passed to
-    shapely verbatim; exteriors with no claimable hole keep their ring order
-    and holes join their smallest containing exterior.
+    Esri JSON rings are explicitly closed Z triples in the source lon/lat
+    domain; ordinate shape, type, finiteness and coordinate range are checked
+    here so structurally invalid source geometry refuses the capture with the
+    pinned codes. Ring orientation and hole assignment are GDAL's (shared
+    native Esri polygon conversion); OGC-invalid-but-representable producer
+    polygons are retained with a counted diagnostic instead of being gated.
     """
-    if geometry is None:
-        return None
     if not isinstance(geometry, dict) or "rings" not in geometry \
             or not isinstance(geometry["rings"], list) or not geometry["rings"]:
         raise NhdWaterbodyLargeScaleError("source_polygon_geometry_invalid")
@@ -296,13 +297,10 @@ def _polygon_wkb(geometry: object) -> bytes | None:
         raise NhdWaterbodyLargeScaleError("unexpected_source_geometry_members")
     if geometry.get("hasZ") is not True:
         raise NhdWaterbodyLargeScaleError("source_geometry_z_flag_missing")
-    exteriors: list[list] = []
-    holes: list[list] = []
     for ring in geometry["rings"]:
         if not isinstance(ring, list) or len(ring) < 4:
             raise NhdWaterbodyLargeScaleError("source_polygon_ring_invalid")
-        area = 0.0
-        for index, vertex in enumerate(ring):
+        for vertex in ring:
             if not isinstance(vertex, list) or len(vertex) != 3:
                 raise NhdWaterbodyLargeScaleError("source_polygon_ordinate_contract_drift")
             x, y, z = vertex
@@ -312,43 +310,8 @@ def _polygon_wkb(geometry: object) -> bytes | None:
                 raise NhdWaterbodyLargeScaleError("source_polygon_ordinate_not_finite")
             if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
                 raise NhdWaterbodyLargeScaleError("source_coordinate_range_drift")
-            nxt = ring[(index + 1) % len(ring)]
-            area += x * nxt[1] - nxt[0] * y
-        area /= 2
         if ring[0] != ring[-1]:
             raise NhdWaterbodyLargeScaleError("source_polygon_ring_not_closed")
-        if area == 0:
-            raise NhdWaterbodyLargeScaleError("source_polygon_ring_degenerate")
-        (exteriors if area < 0 else holes).append(ring)
-    if not exteriors:
-        raise NhdWaterbodyLargeScaleError("source_polygon_exterior_missing")
-    shells = [(Polygon(ring), _signed_area(ring), index) for index, ring in enumerate(exteriors)]
-    # Prepared shell geometries: hole containment is queried against every
-    # exterior, and the producer's island/coastal features carry thousands of
-    # holes over six-figure-vertex exteriors where unprepared contains() per
-    # hole is pathologically slow. Preparation builds an index only and the
-    # containment results are identical.
-    for shell, _area, _index in shells:
-        shapely.prepare(shell)
-    assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
-    for hole in holes:
-        probe = Polygon(hole).representative_point()
-        candidates = [(abs(area), index) for shell, area, index in shells if shell.contains(probe)]
-        if not candidates:
-            raise NhdWaterbodyLargeScaleError("source_polygon_hole_unassigned")
-        assigned[min(candidates)[1]].append(hole)
-    polygons = []
-    for _, _, index in sorted(shells, key=lambda item: item[2]):
-        polygons.append(Polygon(exteriors[index], assigned[index]))
-    return (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
-
-
-def _signed_area(ring: list) -> float:
-    area = 0.0
-    for index, vertex in enumerate(ring):
-        nxt = ring[(index + 1) % len(ring)]
-        area += vertex[0] * nxt[1] - nxt[0] * vertex[1]
-    return area / 2
 
 
 def _validate_value(name: str, esri_type: str, nullable: bool, value: object) -> None:
@@ -883,6 +846,8 @@ def fetch_nhd_waterbody_large_scale_pages(capture_root: Path, *,
         "source_null_geometry_count": extracted["null_geometry_count"],
         "source_refused_null_geometry_count": extracted["refused_null_count"],
         "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
+        "source_ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
+        "source_ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_geometry_sample_objectids"],
         "source_refused_ids": sorted(int(key) for key in refused),
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
@@ -1081,7 +1046,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     emitted_last = 0
     null_geometry_count = 0
     refused_null_count = 0
-    unusable_geometry: dict[str, int] = {}
+    ogc_invalid_geometry: dict[str, int] = {}
+    ogc_invalid_sample_objectids: list[int] = []
     ring_count = 0
     vertex_count = 0
     featuretype_distribution: dict[object, int] = {}
@@ -1160,23 +1126,21 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                 for ring in rings:
                     for vertex in ring:
                         track_bounds(vertex)
-                try:
-                    wkb = _polygon_wkb(geometry)
-                except NhdWaterbodyLargeScaleError as exc:
-                    # Real producer rows can carry rings that cannot form a
-                    # valid OGC polygon (zero-area sliver rings observed on the
-                    # 2026-11-13 full capture). Such a row is gated to null
-                    # candidate geometry and counted by failure mode instead
-                    # of being coerced or aborting the complete population;
-                    # every other geometry error still fails closed.
-                    if exc.code not in UNUSABLE_GEOMETRY_MODES:
-                        raise
-                    unusable_geometry[exc.code] = \
-                        unusable_geometry.get(exc.code, 0) + 1
-                    geometries.append(None)
-                else:
-                    geometries.append(wkb)
-                    geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
+                _validate_polygon_geometry(geometry)
+                # Ring orientation and hole assignment are GDAL's through the
+                # shared native Esri polygon conversion; a conversion failure
+                # refuses the capture, and OGC invalidity is a producer defect
+                # retained verbatim with a counted reason, never repaired or
+                # coerced to null geometry.
+                wkb = to_wkb(geometry, "esriGeometryPolygon", has_z=True, has_m=False)
+                geometries.append(wkb)
+                reason = shapely.is_valid_reason(shapely.from_wkb(wkb))
+                if reason != "Valid Geometry":
+                    ogc_invalid_geometry[reason] = \
+                        ogc_invalid_geometry.get(reason, 0) + 1
+                    if len(ogc_invalid_sample_objectids) < 20:
+                        ogc_invalid_sample_objectids.append(objectid)
+                geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
             featuretype = attrs["featuretype"]
             featuretype_distribution[featuretype] = \
                 featuretype_distribution.get(featuretype, 0) + 1
@@ -1219,9 +1183,10 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         if EXPECTED_NULL_GEOMETRY_COUNT is not None \
                 and null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
             raise NhdWaterbodyLargeScaleError("source_null_geometry_count_drift")
+        # The retired quarantine census pins to an empty dict: the shared
+        # converter retains and counts OGC-invalid rows instead of gating them.
         if EXPECTED_UNUSABLE_GEOMETRY_COUNTS is not None \
-                and dict(sorted(unusable_geometry.items())) \
-                != EXPECTED_UNUSABLE_GEOMETRY_COUNTS:
+                and {} != EXPECTED_UNUSABLE_GEOMETRY_COUNTS:
             raise NhdWaterbodyLargeScaleError("source_unusable_geometry_counts_drift")
         if featuretype_distribution != EXPECTED_FEATURETYPE_DISTRIBUTION:
             raise NhdWaterbodyLargeScaleError("source_featuretype_distribution_drift")
@@ -1239,7 +1204,9 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "geometry_sha": geometry_sha, "ids_sha": ids_sha,
             "null_geometry_count": null_geometry_count,
             "refused_null_count": refused_null_count,
-            "unusable_geometry_counts": dict(sorted(unusable_geometry.items())),
+            "unusable_geometry_counts": {},
+            "ogc_invalid_geometry_counts": dict(sorted(ogc_invalid_geometry.items())),
+            "ogc_invalid_geometry_sample_objectids": ogc_invalid_sample_objectids,
             "parquet_path": sink_path,
             "ring_count": ring_count, "vertex_count": vertex_count,
             "featuretype_distribution": featuretype_distribution,
@@ -1351,6 +1318,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
         "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
+        "source_ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
+        "source_ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_geometry_sample_objectids"],
         "source_min_objectid": extracted["min_objectid"],
         "source_max_objectid": extracted["max_objectid"],
         "source_featuretype_distribution": extracted["featuretype_distribution"],
@@ -1608,10 +1577,8 @@ def capture_nhd_waterbody_large_scale(storage: StagingStorageResource, *, versio
     if ".." in base.parts or any(parent.is_symlink() for parent in (base, *base.parents)):
         raise NhdWaterbodyLargeScaleError("unsafe_local_staging_root")
     base.mkdir(parents=True, exist_ok=True)
-    attempt_root = Path(capture_directory) if capture_directory \
-        else Path("/data/workspace/scratch/nhd-waterbody-large-scale-2/captures")
     capture_root = Path(capture_directory).absolute() if capture_directory \
-        else (attempt_root / f"{version}-{uuid4().hex}").absolute()
+        else (default_capture_dir(DATASET_SLUG, "captures") / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise NhdWaterbodyLargeScaleError("unsafe_capture_directory")
@@ -1677,6 +1644,8 @@ def build_nhd_waterbody_large_scale_baseline(capture_root: str) -> dict[str, obj
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_refused_null_geometry_count": extracted["refused_null_count"],
             "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
+            "source_ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
+            "source_ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_geometry_sample_objectids"],
             "source_refused_ids": sorted(int(key) for key in
                                          dict(_load_state(Path(capture_root).absolute())
                                               .get("refused", {}))),

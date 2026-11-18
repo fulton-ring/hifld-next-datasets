@@ -121,7 +121,7 @@ class PrincipalPortsTests(unittest.TestCase):
         outer = _clockwise(0, 0, 10, 10)
         hole = _counterclockwise(2, 2, 3, 3)
         second_shell = _clockwise(20, 20, 30, 30)
-        parsed = from_wkb(source._polygon_wkb({"rings": [outer, hole, second_shell]}))
+        parsed = from_wkb(source._feature_geometry_wkb({"rings": [outer, hole, second_shell]}))
         self.assertEqual(parsed.geom_type, "MultiPolygon")
         self.assertEqual(len(parsed.geoms), 2)
         self.assertEqual(list(parsed.geoms[0].exterior.coords), [tuple(p) for p in outer])
@@ -139,7 +139,7 @@ class PrincipalPortsTests(unittest.TestCase):
         ]
         for geometry, reason in cases:
             with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, reason):
-                source._polygon_wkb(geometry)
+                source._feature_geometry_wkb(geometry)
 
     def test_parquet_preserves_native_field_types_values_and_epsg3857(self):
         captures = _captures()
@@ -150,7 +150,8 @@ class PrincipalPortsTests(unittest.TestCase):
         self.assertEqual(table["PORT"].to_pylist(), [1001.0, 1002.0])
         self.assertEqual(table["OBJECTID"].to_pylist(), [1, 2])
         metadata = json.loads(table.schema.metadata[b"geo"])
-        self.assertEqual(metadata["columns"]["geometry"]["geometry_types"], ["MultiPolygon"])
+        self.assertEqual(metadata["columns"]["geometry"]["geometry_types"],
+                         ["MultiPolygon", "Polygon"])
         self.assertEqual(metadata["columns"]["geometry"]["crs"]["id"], {"authority": "EPSG", "code": 3857})
 
     def test_complete_extract_validates_count_identity_fields_and_port_roster(self):

@@ -29,6 +29,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
+
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 from shapely.geometry import Polygon, mapping, shape
 
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
@@ -36,7 +38,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
-from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import compare_full_rows, sha256_file
 
@@ -240,40 +242,27 @@ def processing_identity() -> dict:
             'verifier_sha256': verifier_implementation_sha256()}
 
 
-def _ring_area(ring: list[list[float]]) -> float:
-    # Translate to the first vertex to avoid cancellation for small rings.
-    x0, y0 = ring[0]
-    return sum((ring[i][0]-x0)*(ring[i+1][1]-y0)-(ring[i+1][0]-x0)*(ring[i][1]-y0)
-               for i in range(len(ring)-1))/2
-
-
 def _esri_polygons(rings) -> dict:
-    """Convert Esri clockwise-shell rings without dissolving or repairing them."""
+    """Convert Esri rings through the shared GDAL converter without repair."""
     if not isinstance(rings, list) or not rings:
         raise CBRSQuarantineError('geometry_layout_drift')
-    shells, holes = [], []
     for ring in rings:
         if (not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]
                 or any(not isinstance(c, list) or len(c) != 2 for c in ring)):
             raise CBRSQuarantineError('geometry_layout_drift')
-        (shells if _ring_area(ring) < 0 else holes).append(ring)
-    if not shells:
-        raise CBRSQuarantineError('esri_shell_missing')
-    assigned: dict[int, list] = {index: [] for index in range(len(shells))}
-    members = [Polygon(ring) for ring in shells]
-    for hole in holes:
-        hole_polygon = Polygon(hole)
-        containers = [(polygon.area, index) for index, polygon in enumerate(members)
-                      if polygon.contains(hole_polygon)]
-        if not containers:
-            raise CBRSQuarantineError('esri_ring_nesting_ambiguous')
-        assigned[min(containers)[1]].append(hole)
-    polygons = [Polygon(shells[index], assigned[index]) for index in range(len(shells))]
-    for polygon in polygons:
-        if polygon.is_empty or not polygon.is_valid:
-            raise CBRSQuarantineError('invalid_native_geometry')
-    converted = polygons[0] if len(polygons) == 1 else shapely.MultiPolygon(polygons)
-    return mapping(converted)
+    try:
+        converted = esri_polygon_wkb({"rings": rings}, allow_zm=False)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "source_polygon_shell_missing":
+            raise CBRSQuarantineError('esri_shell_missing') from exc
+        if code == "source_hole_ownership_ambiguous":
+            raise CBRSQuarantineError('esri_ring_nesting_ambiguous') from exc
+        raise
+    geometry = shapely.from_wkb(converted)
+    if geometry.is_empty or not geometry.is_valid:
+        raise CBRSQuarantineError('invalid_native_geometry')
+    return mapping(geometry)
 
 
 def inspect_source(captures: dict) -> tuple[list[dict], dict]:

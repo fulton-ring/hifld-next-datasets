@@ -41,7 +41,7 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest, prebuil
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
-from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 
 SLUG = 'cbrs-units-2'

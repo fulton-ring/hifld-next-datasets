@@ -1,15 +1,27 @@
 # EPA Regions Large Scale draft
 
-Source: https://geodata.epa.gov/arcgis/rest/services/OEI/EPA_Locations/MapServer/3
-Exact large-scale layer3, minScale5000000/maxScale0; no small-scale/ordinary-region/EEZ substitution.
-Run registered `epa_large_scale_source_integrity` with isolated local staging; monthly schedule is STOPPED.
-`HIFLD_EPA_LARGE_SCALE_CAPTURE_DIR` selects complete original `.body`/`.receipt.json` inputs.
-All four attributes, original OBJECTIDs/EPAREGION, full physical declarations and Shape rings survive.
-Producer source CRS4269 is explicitly requested; display3857 remains separate, with no local projection.
-A derived header-first EsriJSON buffer enables GDAL detection; all original binary64 ordered rings are checked.
-Original raw body/wire, receipts and first-construction witnesses persist; new source content gets a new draft.
-OID physical width is unspecified; int64 staging and GDAL Polygon/MultiPolygon grouping remain proposals.
-2011TIGER/Line lineage and the2012 service title do not establish a current dated release.
-Native GeoParquet only; other formats need approved type/geometry/ID contracts.
-Source/baseline/coverage/rights/CRS/geometry/contract/release acceptance remains blocked.
-Complete captures and execution proofs are protected checksummed external artifacts linked on issue #78.
+Source: https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/US_EPA_Regions__DOC___EPA_2023_/FeatureServer/13
+
+This dataset now reads the same single-resolution layer as EPA Regions
+(`epa-regions`) and EPA Regions Small Scale. The retired
+`EPA_Locations/MapServer/3` layer is not read. The layer is published by the
+EPA GeoPlatform account `EPA_GEO` (item `21dfeddb55984d9c957ffad98e7da94e`),
+describes 2023 DOC Census-derived boundaries enhanced by EPA, and says the
+feature service and attributes are updated annually by the EPA Office of
+Mission Support.
+
+Large and Small Scale therefore produce the same output. They keep separate
+dataset slugs and candidate versions so existing consumers and release records
+stay addressable.
+
+The adapter preserves all 12 original fields (`OBJECTID`, `EPA_REGION`, the six
+area fields, `Shape__Area`, `Shape__Length`, `RegionString`, `RegionTitle`),
+original OBJECTID values, text widths, Double values, nulls and native
+EPSG:4326 ordered rings. OID physical width is unspecified; Int64 is a proposed
+staging encoding. Native GeoParquet only; other formats need approved
+type/geometry/ID contracts.
+
+Run registered `epa_large_scale_source_integrity` with isolated local staging;
+the monthly schedule is STOPPED. Pass a capture directory of complete
+`.body`/`.receipt.json` files to replay a retained capture. Source, edition,
+rights, baseline, contract and release acceptance remain unapproved.

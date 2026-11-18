@@ -4,7 +4,7 @@ Completeness is proven against the producer at capture time: the before and
 after witnesses (count, OBJECTID count/min/max, service and layer documents)
 must agree, and the captured unique OBJECTIDs must equal the producer's count.
 The candidate layout, metadata keys, construction-state seal, cached-candidate
-verification and quarantine are the shared ``epa_frs_common`` contract, so the
+verification and quarantine are the shared ``capture_common`` contract, so the
 shared catalog and publish stages need no NFHL-specific code. The candidate
 version is derived from record, geometry and schema digests plus code
 identity, never from the clock.
@@ -27,7 +27,7 @@ from dagster_hifld.gdal import with_large_geojson_support
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     content_derived_version,
     processing_identity,
@@ -86,8 +86,14 @@ def _check_identity(layer: NfhlLayer, service: dict, layer_doc: dict) -> str:
     if (layer_doc.get("id"), layer_doc.get("name"), layer_doc.get("type")) != (layer.layer_id, layer.name, kind) \
             or layer_doc.get("geometryType") != layer.esri_geometry_type:
         raise ValueError(f"nfhl_layer_identity_drift:{layer.layer_id}")
-    if layer_doc.get("hasZ") is True or layer_doc.get("hasM") is True:
-        raise ValueError("source_z_or_m_geometry_unsupported")
+    declared_zm = (layer_doc.get("hasZ") is True, layer_doc.get("hasM") is True)
+    if any(declared_zm):
+        if layer.source_zm is None:
+            raise ValueError("source_z_or_m_geometry_unsupported")
+        if declared_zm != layer.source_zm:
+            raise ValueError(f"nfhl_layer_zm_declaration_drift:{declared_zm}")
+    elif layer.source_zm is not None:
+        raise ValueError(f"nfhl_layer_zm_declaration_drift:{declared_zm}")
     if type(layer_doc.get("maxRecordCount")) is not int or layer_doc["maxRecordCount"] < 1:
         raise ValueError("source_record_limit_missing")
     fields = layer_doc.get("fields")
@@ -131,7 +137,8 @@ def _capture(cap: LayerCapture, layer: NfhlLayer, evidence: EvidenceDirectory, p
     writer = LayerWriter(parquet_path, layer, layer_doc, oid_field, SOURCE_CRS_WKID)
     try:
         if before["count"]:
-            for page in cap.windows(oid_field, before["min"], before["max"], width, spatial=not layer.is_table):
+            for page in cap.windows(oid_field, before["min"], before["max"], width, spatial=not layer.is_table,
+                                    source_zm=layer.source_zm):
                 writer.add_page(page)
         summary = writer.close()
     except BaseException:
@@ -175,7 +182,7 @@ class _EvidenceBodies(Mapping):
         return len(self.names)
 
 
-def _check_storage(storage: StagingStorageResource) -> Path:
+def check_local_staging(storage: StagingStorageResource) -> Path:
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) \
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
         raise ValueError("explicit_local_staging_resource_required")
@@ -194,7 +201,7 @@ def capture_nfhl_layer(storage: StagingStorageResource, layer: NfhlLayer, *, cap
     ``<capture_directory>/<slug>``; without it, a temporary directory is used.
     """
     settings = settings or DEFAULT_SETTINGS
-    base = _check_storage(storage)
+    base = check_local_staging(storage)
     if shutil.disk_usage(base).free < layer.min_free_bytes:
         raise ValueError("disk_floor_before_acquisition")
     with ExitStack() as stack:
@@ -237,7 +244,7 @@ def capture_nfhl_layer(storage: StagingStorageResource, layer: NfhlLayer, *, cap
                 "capture_directory": str(root) if capture_directory else None}
 
 
-def _stage(storage: StagingStorageResource, key: str, *, body: bytes | None = None,
+def stage_object(storage: StagingStorageResource, key: str, *, body: bytes | None = None,
            path: Path | None = None) -> dict[str, object]:
     if path is not None:
         size, digest = path.stat().st_size, sha256_file(path)
@@ -256,6 +263,11 @@ def _stage(storage: StagingStorageResource, key: str, *, body: bytes | None = No
     return {"bytes": size, "sha256": digest}
 
 
+def _alias_text(aliases: tuple[tuple[str, int], ...]) -> str:
+    names = [f"{inventory_id} with DataLumos project {project}" for inventory_id, project in aliases]
+    return "".join(f", and the HIFLD Open inventory alias {name}" for name in names)
+
+
 def _manifest(layer: NfhlLayer, identity: dict, receipts: dict[str, dict], rel: str,
               parquet: dict[str, object]) -> dict[str, object]:
     url, kind = layer_url(layer), ("table" if layer.is_table else "layer")
@@ -267,6 +279,12 @@ def _manifest(layer: NfhlLayer, identity: dict, receipts: dict[str, dict], rel: 
                 "stays null; geometry GDAL cannot decode (such as string-'NaN' ordinates) is null in the "
                 "candidate with raw evidence intact; empty, invalid and out-of-domain geometry is retained and "
                 "counted in source_audit.json")
+    if layer.source_zm is not None and any(layer.source_zm):
+        geometry += (" The layer document declares Z/M; the capture requests both and validates every served "
+                     "vertex before decoding. Served ordinates are retained in ISO WKB with the declared "
+                     "dimensions (null or string-'NaN' Z/M ordinates map to WKB NaN, the no-value convention), "
+                     "and measured geometry uses GeoParquet 2.0 metadata because GeoParquet 1.1 cannot carry M. "
+                     "A missing declared ordinate or a decoded dimension mismatch fails closed.")
     manifest = {
         "schema_version": 1, "approved": False, "title": layer.title,
         "description": f"FEMA National Flood Hazard Layer (NFHL) MapServer {kind} {layer.layer_id} "
@@ -311,8 +329,9 @@ def _manifest(layer: NfhlLayer, identity: dict, receipts: dict[str, dict], rel: 
                    f"(NFHL)' documents this exact REST URL ({SERVICE_URL}) as the ArcGIS REST service for effective "
                    "NFHL data; its HTML is captured as 'service_doc' evidence. This candidate is exactly "
                    f"{kind} {layer.layer_id} '{layer.name}' of that producer service. The HIFLD Open inventory lists "
-                   f"this dataset as {layer.inventory_id} with DataLumos project {layer.datalumos_project}; that "
-                   "ICPSR archive copy is identification and comparison context only, never a pipeline input.",
+                   f"this dataset as {layer.inventory_id} with DataLumos project {layer.datalumos_project}"
+                   f"{_alias_text(layer.inventory_aliases)}; those "
+                   "ICPSR archive copies are identification and comparison context only, never a pipeline input.",
     }
     if layer.is_table:
         manifest["unsupported_output_formats"] = {
@@ -366,6 +385,10 @@ def _stage_candidate(storage: StagingStorageResource, layer: NfhlLayer, root: Pa
              "source_schema_sha256": schema_sha, "source_crs_epsg": None if layer.is_table else SOURCE_CRS_WKID,
              "geometry_kind": layer.geometry, "geometry": result["geometry"], "object_id_field": result["oid_field"],
              "declared_layer_extent": result["layer_doc"].get("extent"),
+             "source_declared_zm": {"hasZ": result["layer_doc"].get("hasZ") is True,
+                                    "hasM": result["layer_doc"].get("hasM") is True},
+             **({"source_zm_ordinates": result["source_zm_ordinates"]}
+                if "source_zm_ordinates" in result else {}),
              "unique_source_id_count": result["feature_count"], "page_count": result["page_count"],
              "source_fields": result["source_fields"], "official_layer_name": layer.name,
              "layer_id": layer.layer_id, "service_url": SERVICE_URL, "source_release_date": None,
@@ -374,16 +397,16 @@ def _stage_candidate(storage: StagingStorageResource, layer: NfhlLayer, root: Pa
     documents = {name: canonical(document) + b"\n" for name, document in (
         ("metadata/source_manifest.json", manifest), ("metadata/source_audit.json", audit),
         ("metadata/processing_identity.json", identity))}
-    objects = {rel: _stage(storage, f"{prefix}/{rel}", path=parquet_path)}
+    objects = {rel: stage_object(storage, f"{prefix}/{rel}", path=parquet_path)}
     for name, body in documents.items():
-        objects[name] = _stage(storage, f"{prefix}/{name}", body=body)
+        objects[name] = stage_object(storage, f"{prefix}/{name}", body=body)
     for name in accepted:
         for suffix in (".body", ".wire", ".receipt.json"):
-            objects[f"raw/{name}{suffix}"] = _stage(storage, f"{prefix}/raw/{name}{suffix}",
+            objects[f"raw/{name}{suffix}"] = stage_object(storage, f"{prefix}/raw/{name}{suffix}",
                                                     path=root / f"{name}{suffix}")
     ready = {"approved": False, "version": version, "objects": {rel: objects[rel]},
              "source_record_sha256": record_sha, **_READY_FLAGS}
-    objects["metadata/candidate_ready.json"] = _stage(storage, f"{prefix}/metadata/candidate_ready.json",
+    objects["metadata/candidate_ready.json"] = stage_object(storage, f"{prefix}/metadata/candidate_ready.json",
                                                       body=canonical(ready) + b"\n")
     seal_ready_candidate(storage, state_key, version, fingerprint, {
         "processing_identity": identity, "source_record_sha256": record_sha, "source_schema_sha256": schema_sha,

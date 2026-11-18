@@ -17,7 +17,7 @@ from dagster_hifld.assets.submerged_land_act_boundary import (
     submerged_land_act_boundary_draft_schedule,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import submerged_land_act_boundary as sla
 
 
@@ -145,6 +145,10 @@ def fixture_pins():
 
 
 class SubmergedLandActBoundaryTests(unittest.TestCase):
+    def test_default_capture_root_keeps_the_historical_layout(self):
+        self.assertEqual(str(sla.DEFAULT_CAPTURE_ROOT),
+                         str(Path(tempfile.gettempdir()) / "sla-boundary-captures"))
+
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(submerged_land_act_boundary, hifld_ingest_assets)
         self.assertEqual(submerged_land_act_boundary_draft_schedule.default_status,
@@ -317,7 +321,7 @@ class SubmergedLandActBoundaryTests(unittest.TestCase):
                                                    "files": {"x.py": "b" * 64}}), \
                         patch.object(sla, "validate_construction_code_identity",
                                      return_value=None), \
-                        patch.object(epa_frs_common, "validate_construction_code_identity",
+                        patch.object(capture_common, "validate_construction_code_identity",
                                      return_value=None):
                     result = sla.capture_submerged_land_act_boundary(
                         storage, offline_capture_directory=tmp)
@@ -374,7 +378,7 @@ class SubmergedLandActBoundaryTests(unittest.TestCase):
                                          return_value=stable_identity), \
                             patch.object(sla, "validate_construction_code_identity",
                                          return_value=None), \
-                            patch.object(epa_frs_common, "validate_construction_code_identity",
+                            patch.object(capture_common, "validate_construction_code_identity",
                                          return_value=None):
                         with ExitStack() as stack:
                             for extra_patch in extra:
@@ -407,7 +411,7 @@ class SubmergedLandActBoundaryTests(unittest.TestCase):
                         patch.object(sla, "processing_identity", return_value=stable_identity), \
                         patch.object(sla, "validate_construction_code_identity",
                                      return_value=None), \
-                        patch.object(epa_frs_common, "validate_construction_code_identity",
+                        patch.object(capture_common, "validate_construction_code_identity",
                                      return_value=None):
                     result = sla.capture_submerged_land_act_boundary(
                         storage, offline_capture_directory=tmp)

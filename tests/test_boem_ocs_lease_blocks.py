@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import boem_ocs_lease_blocks as blocks
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 
 
 def _body(value):
@@ -143,6 +143,10 @@ def fixture_pins():
 
 
 class BoemOcsLeaseBlocksTests(unittest.TestCase):
+    def test_default_capture_root_keeps_the_historical_layout(self):
+        self.assertEqual(str(blocks.DEFAULT_CAPTURE_ROOT),
+                         str(Path(tempfile.gettempdir()) / "boem-ocs-lease-block-captures"))
+
     def test_native_fields_polygon_nulls_and_audit_counts(self):
         with fixture_pins():
             _, fields, features, audit = blocks._validate(_fixture())
@@ -307,7 +311,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                                                    "files": {"x.py": "b" * 64}}), \
                         patch.object(blocks, "validate_construction_code_identity",
                                      return_value=None), \
-                        patch.object(epa_frs_common, "validate_construction_code_identity",
+                        patch.object(capture_common, "validate_construction_code_identity",
                                      return_value=None):
                     result = blocks.capture_boem_ocs_lease_blocks(
                         storage, offline_capture_directory=tmp)
@@ -367,7 +371,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                                          return_value=stable_identity), \
                             patch.object(blocks, "validate_construction_code_identity",
                                          return_value=None), \
-                            patch.object(epa_frs_common, "validate_construction_code_identity",
+                            patch.object(capture_common, "validate_construction_code_identity",
                                          return_value=None):
                         with ExitStack() as stack:
                             for extra_patch in extra:
@@ -400,7 +404,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                         patch.object(blocks, "processing_identity", return_value=stable_identity), \
                         patch.object(blocks, "validate_construction_code_identity",
                                      return_value=None), \
-                        patch.object(epa_frs_common, "validate_construction_code_identity",
+                        patch.object(capture_common, "validate_construction_code_identity",
                                      return_value=None):
                     result = blocks.capture_boem_ocs_lease_blocks(
                         storage, offline_capture_directory=tmp)

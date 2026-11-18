@@ -94,11 +94,6 @@ from dagster_hifld.assets.bts import (
     amtrak_draft_refresh_schedule,
 )
 
-from dagster_hifld.assets.quaternary_fault_lines import (
-    quaternary_fault_lines_draft_job,
-    quaternary_fault_lines_draft_schedule,
-    quaternary_fault_lines_population_complete,
-)
 
 from dagster_hifld.assets.courthouses_usgs import (
     courthouses_draft_job,
@@ -110,21 +105,6 @@ from dagster_hifld.assets.ornl_power_plants import (
     eia_power_plants_complete,
     eia_power_plants_draft_job,
     eia_power_plants_draft_schedule,
-)
-from dagster_hifld.assets.eia_natural_gas_processing_plants import (
-    eia_natural_gas_processing_plants_complete,
-    eia_natural_gas_processing_plants_draft_job,
-    eia_natural_gas_processing_plants_draft_schedule,
-)
-from dagster_hifld.assets.eia_ethanol_plants import (
-    eia_ethanol_plants_complete,
-    eia_ethanol_plants_draft_job,
-    eia_ethanol_plants_draft_schedule,
-)
-from dagster_hifld.assets.epa_power_generation import (
-    epa_frs_eia_860_power_generation_complete,
-    epa_power_generation_draft_job,
-    epa_power_generation_draft_schedule,
 )
 from dagster_hifld.assets.national_transit_map_agencies import (
     bts_national_transit_map_agencies_candidate_complete,
@@ -216,17 +196,7 @@ from dagster_hifld.assets.bsee_ocs_platforms import (
     bsee_ocs_platforms_draft_schedule,
 )
 
-from dagster_hifld.assets.nces_public_schools import (
-    nces_public_schools_complete,
-    nces_public_schools_draft_job,
-    nces_public_schools_draft_schedule,
-)
 
-from dagster_hifld.assets.proposed_critical_habitat import (
-    proposed_critical_habitat_complete,
-    proposed_critical_habitat_draft_job,
-    proposed_critical_habitat_draft_schedule,
-)
 
 from dagster_hifld.assets.usace_dam_lines import (
     usace_dam_lines_complete,
@@ -288,11 +258,6 @@ from dagster_hifld.assets.building_locations_usace_ienc import (
     building_locations_draft_schedule,
 )
 
-from dagster_hifld.assets.nces_private_schools import (
-    nces_private_schools_complete,
-    nces_private_schools_draft_job,
-    nces_private_schools_draft_schedule,
-)
 
 from dagster_hifld.assets.usace_berths_areas import (
     usace_berths_areas_complete,
@@ -320,17 +285,7 @@ from dagster_hifld.assets.usace_dumping_ground_areas import (
     usace_dumping_ground_areas_draft_schedule,
 )
 
-from dagster_hifld.assets.us_county_boundaries import (
-    us_county_boundaries_draft_job,
-    us_county_boundaries_draft_schedule,
-    us_county_boundaries_source_complete,
-)
 
-from dagster_hifld.assets.us_state_boundaries import (
-    us_state_boundaries_draft_job,
-    us_state_boundaries_draft_schedule,
-    us_state_boundaries_source_complete,
-)
 
 from dagster_hifld.assets.coastlines_usace_ienc import (
     coastlines_usace_ienc_complete,
@@ -472,11 +427,6 @@ from dagster_hifld.assets.usace_notice_marks import (
     usace_notice_marks_draft_schedule,
 )
 
-from dagster_hifld.assets.plate_boundaries import (
-    plate_boundaries_draft_job,
-    plate_boundaries_draft_schedule,
-    plate_boundaries_population_complete,
-)
 
 from dagster_hifld.assets.usace_pylon_locations import (
     pylon_locations_draft_refresh_job,
@@ -509,11 +459,6 @@ from dagster_hifld.assets.unified_school_districts import (
     unified_school_districts_draft_refresh_schedule,
 )
 
-from dagster_hifld.assets.puerto_rico_subbarrios import (
-    puerto_rico_subbarrios_draft_job,
-    puerto_rico_subbarrios_draft_schedule,
-    puerto_rico_subbarrios_source_complete,
-)
 
 from dagster_hifld.assets.census_primary_roads import (
     census_primary_roads_source_complete,
@@ -593,11 +538,6 @@ from dagster_hifld.assets.census_designated_places import (
     cdp_source_integrity_schedule,
 )
 
-from dagster_hifld.assets.state_capitols import (
-    state_capitols_draft_job,
-    state_capitols_draft_schedule,
-    state_capitols_population_complete,
-)
 from dagster_hifld.assets.national_inventory_of_dams import (
     national_inventory_of_dams_draft_job,
     national_inventory_of_dams_draft_schedule,
@@ -616,11 +556,6 @@ from dagster_hifld.assets.epa_icis_wastewater import (
 from dagster_hifld.assets.fuds_mrs import (
     usace_fuds_munitions_response_sites_complete,
     fuds_mrs_draft_schedule,
-)
-from dagster_hifld.assets.final_critical_habitat import (
-    final_critical_habitat_complete,
-    final_critical_habitat_draft_job,
-    final_critical_habitat_draft_schedule,
 )
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -1076,9 +1011,6 @@ defs = Definitions(
             usace_fuds_program_district_boundaries_complete,
             epa_disaster_debris_complete,
             eia_power_plants_complete,
-            eia_ethanol_plants_complete,
-            eia_natural_gas_processing_plants_complete,
-            epa_frs_eia_860_power_generation_complete,
             epa_icis_wastewater_capture_complete,
             fuds_irm_property_point_complete,
             fuds_irm_property_point_geometry_quality,
@@ -1094,7 +1026,6 @@ defs = Definitions(
             census_primary_roads_source_complete,
             census_block_groups_source_complete,
             census_tracts_source_complete,
-            quaternary_fault_lines_population_complete,
             courthouses_population_complete,
             usace_pylon_areas_complete,
             hf_areas_usace_ienc_complete,
@@ -1110,7 +1041,6 @@ defs = Definitions(
             usace_navigation_marks_areas_complete,
             usace_navigation_lights_complete,
             usace_notice_marks_complete,
-            puerto_rico_subbarrios_source_complete,
             principal_ports_source_complete,
             usace_overhead_cables_complete,
             usace_dam_lines_complete,
@@ -1127,14 +1057,10 @@ defs = Definitions(
             usace_caution_areas_complete,
             usace_berths_areas_complete,
             usace_dry_docks_complete,
-            us_county_boundaries_source_complete,
-            us_state_boundaries_source_complete,
             usace_pontoon_areas_complete,
             usace_hulke_areas_complete,
             usace_landmark_areas_complete,
-            plate_boundaries_population_complete,
             bsee_ocs_platforms_complete,
-            proposed_critical_habitat_complete,
             usace_pile_locations_complete,
             fws_cmt_locations_complete,
             usace_daymark_locations_complete,
@@ -1144,15 +1070,12 @@ defs = Definitions(
             usace_pipeline_areas_complete,
             usace_data_quality_areas_complete,
             usace_dumping_ground_areas_complete,
-            nces_private_schools_complete,
-            nces_public_schools_complete,
             coastlines_usace_ienc_complete,
             locks_usace_ienc_complete,
             lock_basins_usace_ienc_complete,
             usace_airport_area_complete,
             usace_airport_area_quality,
             usace_airport_area_release,
-            state_capitols_population_complete,
             national_inventory_of_dams_population_complete,
             national_inventory_of_dams_geometry_quality,
             usace_conveyor_areas_complete,
@@ -1185,7 +1108,6 @@ defs = Definitions(
             usace_fuds_public_properties_complete,
             bts_national_transit_map_agencies_candidate_complete,
             bts_national_transit_map_agencies_release_gate,
-            final_critical_habitat_complete,
         ],
         discovered("ASSET_CHECKS"),
     ),
@@ -1206,7 +1128,6 @@ defs = Definitions(
             tsunami_events_draft_job,
             bts_air_truck_draft_job,
             census_tracts_draft_job,
-            quaternary_fault_lines_draft_job,
             courthouses_draft_job,
             noaa_eez_draft_refresh_job,
             noaa_territorial_draft_refresh_job,
@@ -1245,17 +1166,11 @@ defs = Definitions(
             usace_pontoon_areas_draft_job,
             usace_hulke_areas_draft_job,
             usace_landmark_areas_draft_job,
-            puerto_rico_subbarrios_draft_job,
             usace_caution_areas_draft_job,
-            plate_boundaries_draft_job,
             eia_power_plants_draft_job,
-            eia_ethanol_plants_draft_job,
-            eia_natural_gas_processing_plants_draft_job,
-            epa_power_generation_draft_job,
             epa_icis_wastewater_draft_job,
             epa_frs_naics_draft_job,
             bsee_ocs_platforms_draft_job,
-            proposed_critical_habitat_draft_job,
             usace_pile_locations_draft_job,
             usace_daymark_locations_draft_job,
             usace_lateral_buoys_draft_job,
@@ -1264,10 +1179,6 @@ defs = Definitions(
             usace_pipeline_areas_draft_job,
             usace_data_quality_areas_draft_job,
             usace_dumping_ground_areas_draft_job,
-            nces_private_schools_draft_job,
-            us_county_boundaries_draft_job,
-            us_state_boundaries_draft_job,
-            nces_public_schools_draft_job,
             coastlines_usace_ienc_draft_job,
             locks_usace_ienc_draft_job,
             lock_basins_usace_ienc_draft_job,
@@ -1282,7 +1193,6 @@ defs = Definitions(
             fws_cbrs_units_draft_refresh_job,
             fws_generalized_units_draft_refresh_job,
             cdp_source_integrity_job,
-            state_capitols_draft_job,
             national_inventory_of_dams_draft_job,
             csa_source_integrity_job,
             concity_source_integrity_job,
@@ -1305,7 +1215,6 @@ defs = Definitions(
             fdic_locations_draft_job,
             fema_regions_draft_job,
             bts_national_transit_map_agencies_draft_job,
-            final_critical_habitat_draft_job,
         ],
         discovered("JOBS"),
     ),
@@ -1328,7 +1237,6 @@ defs = Definitions(
             elsd_source_integrity_schedule,
             epa_disaster_debris_draft_schedule,
             colleges_source_integrity_schedule,
-            quaternary_fault_lines_draft_schedule,
             courthouses_draft_schedule,
             census_primary_roads_draft_schedule,
             census_block_groups_draft_schedule,
@@ -1370,24 +1278,16 @@ defs = Definitions(
             principal_ports_draft_schedule,
             usace_berths_areas_draft_schedule,
             usace_dry_docks_draft_schedule,
-            us_county_boundaries_draft_schedule,
-            us_state_boundaries_draft_schedule,
             unified_school_districts_draft_refresh_schedule,
             usace_pontoon_areas_draft_schedule,
             usace_hulke_areas_draft_schedule,
             usace_landmark_areas_draft_schedule,
-            puerto_rico_subbarrios_draft_schedule,
             usace_caution_areas_draft_schedule,
-            plate_boundaries_draft_schedule,
             eia_power_plants_draft_schedule,
-            eia_ethanol_plants_draft_schedule,
-            eia_natural_gas_processing_plants_draft_schedule,
-            epa_power_generation_draft_schedule,
             epa_icis_wastewater_draft_schedule,
             fuds_projects_points_draft_schedule,
             epa_frs_naics_draft_schedule,
             bsee_ocs_platforms_draft_schedule,
-            proposed_critical_habitat_draft_schedule,
             usace_pile_locations_draft_schedule,
             usace_daymark_locations_draft_schedule,
             usace_lateral_buoys_draft_schedule,
@@ -1396,8 +1296,6 @@ defs = Definitions(
             usace_pipeline_areas_draft_schedule,
             usace_data_quality_areas_draft_schedule,
             usace_dumping_ground_areas_draft_schedule,
-            nces_private_schools_draft_schedule,
-            nces_public_schools_draft_schedule,
             coastlines_usace_ienc_draft_schedule,
             locks_usace_ienc_draft_schedule,
             lock_basins_usace_ienc_draft_schedule,
@@ -1412,7 +1310,6 @@ defs = Definitions(
             fws_cbrs_units_draft_refresh_schedule,
             fws_generalized_units_draft_refresh_schedule,
             cdp_source_integrity_schedule,
-            state_capitols_draft_schedule,
             national_inventory_of_dams_draft_schedule,
             csa_source_integrity_schedule,
             concity_source_integrity_schedule,
@@ -1442,7 +1339,6 @@ defs = Definitions(
             fuds_mrs_draft_schedule,
             fuds_public_properties_draft_schedule,
             bts_national_transit_map_agencies_draft_schedule,
-            final_critical_habitat_draft_schedule,
         ],
         discovered("SCHEDULES"),
     ),

@@ -13,11 +13,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
+
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups
 
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 
 DATASET_SLUG = "usace-civil-works-districts"
 FILE_SLUG = DATASET_SLUG
@@ -273,18 +275,12 @@ def _validate_ring(ring: object) -> list[list[float]]:
     return points
 
 
-def _ring_area(ring: list[list[float]]) -> float:
-    # Translate to the first vertex to avoid catastrophic cancellation.
-    x0, y0 = ring[0]
-    return sum((ring[i][0] - x0) * (ring[i + 1][1] - y0)
-               - (ring[i + 1][0] - x0) * (ring[i][1] - y0)
-               for i in range(len(ring) - 1)) / 2
-
-
 def _esri_multipolygon(geometry: object) -> tuple[MultiPolygon, list[list[list[list[float]]]]]:
-    """Convert Esri clockwise-shell rings to a MultiPolygon without dissolving
-    or repairing them, and return the exact source ring lists grouped as
-    [shell, holes...] per polygon member."""
+    """Convert native Esri rings through the shared GDAL converter without repair.
+
+    GDAL owns ring orientation and hole assignment; the grouped source rings
+    are recovered from the decoded geometry so native output stays byte-faithful.
+    """
     if not isinstance(geometry, dict) or set(geometry) - {"rings", "spatialReference"}:
         raise ValueError("source_polygon_geometry_structure_drift")
     if "spatialReference" in geometry:
@@ -292,37 +288,12 @@ def _esri_multipolygon(geometry: object) -> tuple[MultiPolygon, list[list[list[l
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
-    shells: list[tuple[list[list[float]], Polygon]] = []
-    holes: list[list[list[float]]] = []
-    for ring in rings:
-        points = _validate_ring(ring)
-        polygon = Polygon(points)
-        if _ring_area(points) < 0:
-            shells.append((points, polygon))
-        else:
-            holes.append(points)
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    assigned: dict[int, list[list[list[float]]]] = {i: [] for i in range(len(shells))}
-    if holes:
-        if len(shells) == 1:
-            prepared = shells[0][1]
-        else:
-            for _points, polygon in shells:
-                shapely.prepare(polygon)
-        for hole in holes:
-            hole_polygon = Polygon(hole)
-            try:
-                containers = [(shells[i][1].area, i) for i in range(len(shells)) if shells[i][1].contains(hole_polygon)]
-            except Exception as exc:
-                raise ValueError("source_polygon_ring_nesting_ambiguous") from exc
-            if not containers:
-                raise ValueError("source_polygon_ring_nesting_ambiguous")
-            _area, owner = min(containers)
-            assigned[owner].append(hole)
-    members = [Polygon(shell, assigned[i]) for i, (shell, _polygon) in enumerate(shells)]
-    grouped = [[shells[i][0], *assigned[i]] for i in range(len(shells))]
-    return MultiPolygon(members), grouped
+    validated = [_validate_ring(ring) for ring in rings]
+    normalized = {"rings": validated}
+    converted = esri_polygon_geometry(normalized, has_z=False, has_m=False)
+    if converted.geom_type != "MultiPolygon":
+        converted = MultiPolygon([converted])
+    return converted, esri_polygon_ring_groups(normalized, has_z=False, has_m=False)
 
 
 def _arrow_type(field_type: str):

@@ -1,50 +1,57 @@
 # Power Plants (power-plants-1)
 
-## Historical source label (issue #775 research, 2026-11-15)
+## Current source (issue #1051, 2026-11-17)
 
-The pipeline input for this dataset is EIA's own pinned historical GIS
-snapshot <https://www.eia.gov/maps/map_data/PowerPlants_US_EIA.zip> (1,539,615
-bytes, SHA-256
-`b65e4f0f49fdb5b9709549169c4be23fd8ad42512025b5b1df13a94a843aa4d8`, server
-`Last-Modified: 2022-01-31T13:34:47Z`, re-verified 2026-11-15). The embedded
-layer `PowerPlants_US_202108` is the August 2021 plant population (10,847
-points, EPSG:4326, native ID `Plant_Code`). This is a historical source, not a
-maintained feed: EIA stopped refreshing the `map_data` zips around 2020-2022.
+The pipeline reads EIA's monthly EIA-860M generator inventory:
+<https://www.eia.gov/electricity/data/eia860m/>. It selects the newest active
+completed-month workbook link from that page rather than pinning a month. The
+current capture selected the September 2026 workbook
+<https://www.eia.gov/electricity/data/eia860m/xls/september_generator2026.xlsx>
+(server `Last-Modified: 2026-10-23T15:32:18Z`). EIA publishes a new month
+about monthly; the page also lists future months inside HTML comments, which
+the selector ignores.
 
-## Energy Atlas successor research (2026-11-15)
+The adapter retains the `Operating` and `Operating_PR` sheets, including
+Puerto Rico and the source operating, standby and out-of-service statuses. It
+aggregates the retained generator rows by native EIA `Plant ID`:
 
-No confirmed, agency-owned Energy Atlas successor exists for this layer.
+- plant names, states and counties as sorted distinct lists;
+- generator count;
+- total nameplate and net summer capacity, summed from numeric native cells;
+- the technology and energy source code with the largest summed nameplate
+  capacity, ties broken lexicographically;
+- native latitude and longitude only when every retained generator at the plant
+  has the same non-blank numeric pair. Coordinates are never averaged.
 
-- The Energy Atlas Hub site (atlas.eia.gov, EIA ArcGIS Online organization
-  `FGr1D95XCGALKXqM`) publishes 74 items through its content groups
-  ("U.S. Energy Atlas - Content Library (EIA)" and "(Non-EIA)"), all shale
-  plays, PADDs, storage regions, census basemaps and live feeds. This layer is
-  not among them, and EIA's own publishing account (`EIA.gov`) owns 56 hosted
-  feature services, none of them infrastructure plant layers.
-- Hosted services named after the EIA layers exist inside EIA's organization
-  cluster (`services7.arcgis.com/FGr1D95XCGALKXqM/...`), but every metadata
-  and query request returns HTTP 499 `Token Required` (`GWM_0003`): they are
-  not publicly accessible, and the only anonymously visible ArcGIS items
-  pointing at them are third-party proxy registrations owned by non-EIA
-  accounts (WyGISC/University of Wyoming, FEMA Region 9, Boston University).
-  Ownership cannot be verified and no anonymous extraction is possible, so
-  they are excluded by the source policy.
-- The publicly queryable candidate `services2.arcgis.com/FiaPA4ga0iQKduv3/
-  arcgis/rest/services/Power_Plants_in_the_US/FeatureServer` (layer
-  `PowerPlants_US_EIA`, Point, 33 fields, Web Mercator, layer
-  `lastEditDate` 2026-08-05) is hosted in the "Esri U.S. Federal Datasets"
-  portal and its service item is owned by that portal's admin account
-  (`Federal_User_Community`), not by EIA/DOE. An item owned by anyone other
-  than the producing agency is research context only, never a pipeline input.
+The producer datum is not established, so the output is a **nonspatial**
+Parquet table: coordinates stay lexical attributes and no geometry or CRS is
+assigned. The schedule is stopped and every acceptance, rights, coverage,
+schema, identifier and release flag is false. Equivalence to the historical
+HIFLD population and its identifiers is unverified.
 
-The source adapter `src/dagster_hifld/sources/ornl_power_plants.py` therefore
-keeps capturing the pinned zip and fails closed into quarantine on any change.
-All runtime approval flags remain false and the refresh schedule stays
-stopped; currentness and any future successor remain pending the maintainer
-decisions recorded on issue #775.
+The generator-level table is published separately as
+`eia-860m-electricity-inventory/existing-generators`; this dataset does not
+duplicate it.
 
-## Maintained-refresh disposition (2026-11-16)
+Current capture (September 2026): **28,712 generators** and **14,864 plants**,
+including 228 Puerto Rico generator rows. Total native nameplate capacity is
+1,423,491.7 MW. All 14,864 plant coordinate pairs are unanimous in the source.
 
-The public refresh entrypoint now refuses fresh acquisition and retained-capture replay before network or staging side effects. Its pinned historical payload is not a maintained current-source pipeline. Existing published versions remain unchanged and addressable; offline parser fixtures remain useful evidence. A stopped schedule alone was insufficient to prevent a manual historical capture.
+Inputs fetched:
 
-Use separately scoped current [EIA-860](https://www.eia.gov/electricity/data/eia860/) / [EIA-860M](https://www.eia.gov/electricity/data/eia860m/) reference products. Their population, generator/plant grain, coordinate interpretation and native identifiers must be preserved explicitly rather than inferred from this August2021 GIS product.
+| URL | Publisher | Last update |
+| --- | --- | --- |
+| <https://www.eia.gov/electricity/data/eia860m/> | U.S. Energy Information Administration | release page |
+| <https://www.eia.gov/electricity/data/eia860m/xls/september_generator2026.xlsx> | U.S. Energy Information Administration | 2026-10-23 |
+| <https://www.eia.gov/survey/form/eia_860m/instructions.pdf> | U.S. Energy Information Administration | monthly form instructions |
+| <https://www.eia.gov/survey/form/eia_860/instructions.pdf> | U.S. Energy Information Administration | annual form instructions |
+| <https://www.eia.gov/about/copyrights_reuse.php> | U.S. Energy Information Administration | reuse policy |
+
+## Historical source (retired)
+
+The previous pipeline read EIA's frozen `eia.gov/maps/map_data`
+`PowerPlants_US_EIA.zip` (August 2021 data, server `Last-Modified:
+2022-01-31`). EIA no longer updates that zip, so it is no longer fetched and
+the pinned snapshot code is removed. The Energy Atlas replacement layer is
+token-gated; the publicly queryable Esri copy is owned by a non-EIA portal and
+is not a pipeline input.

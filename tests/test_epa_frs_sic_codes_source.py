@@ -20,7 +20,7 @@ from dagster_hifld.assets.epa_frs_sic import (
 )
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.sources import epa_frs_sic as sic
-from dagster_hifld.sources.epa_frs_common import candidate_prefix
+from dagster_hifld.sources.capture_common import candidate_prefix
 
 
 class EpaFrsSicCodesSourceTests(unittest.TestCase):

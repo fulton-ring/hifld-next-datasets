@@ -63,7 +63,6 @@ import hashlib
 import json
 import math
 import shutil
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -74,16 +73,17 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-import shapely
 from shapely.geometry import Polygon
+
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups, ring_is_ccw
 from time import sleep, time_ns
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -91,6 +91,9 @@ from dagster_hifld.sources.epa_frs_common import (
 
 DATASET_SLUG = "usace-civil-works-divisions"
 FILE_SLUG = DATASET_SLUG
+# Retained capture layout: the historical parent keeps its name so existing
+# evidence under it stays addressable across releases.
+DEFAULT_CAPTURE_ROOT = default_capture_dir("usace-civil-works-divisions-captures")
 SERVICE_URL = ("https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/"
                "services/usace_cw_divisions/FeatureServer")
 LAYER_ID = 0
@@ -364,13 +367,6 @@ def _profile_fields(layer: Mapping[str, object]) -> list[dict[str, object]]:
     return simple
 
 
-def _ring_signed_area(ring: list[list[float]]) -> float:
-    x0, y0 = ring[0]
-    return math.fsum((ring[i][0] - x0) * (ring[i + 1][1] - y0)
-                     - (ring[i + 1][0] - x0) * (ring[i][1] - y0)
-                     for i in range(len(ring) - 1)) / 2
-
-
 def _validate_ring_points(ring: object) -> list[list[float]]:
     if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
         raise ValueError("source_polygon_ring_invalid")
@@ -388,11 +384,9 @@ def _validate_ring_points(ring: object) -> list[list[float]]:
 def _ring_geometry(rings: object) -> tuple[object, int, int, int] | None:
     """Build one feature geometry from native Esri rings, or None when empty.
 
-    Rings are interpreted natively (Esri convention: clockwise outer shells,
-    counter-clockwise holes) with no orientation repair; every hole must lie
-    inside exactly one shell and is assigned to the smallest containing shell.
-    Returns (shapely geometry, shell count, hole count, vertex count) or None
-    for the producer's empty/absent rings member.
+    GDAL owns ring orientation and hole assignment; every hole attaches to its
+    immediate enclosing shell. Invalid or zero-area rings fail closed, as does
+    an invalid converted result (never repaired).
     """
     if rings is None:
         return None
@@ -400,36 +394,22 @@ def _ring_geometry(rings: object) -> tuple[object, int, int, int] | None:
         raise ValueError("source_polygon_geometry_invalid")
     if not rings:
         return None
-    shells: list[tuple[list[list[float]], Polygon]] = []
-    holes: list[tuple[list[list[float]], Polygon]] = []
     for ring in rings:
         points = _validate_ring_points(ring)
         polygon = Polygon(points)
         if not polygon.is_valid or polygon.area == 0:
             raise ValueError("source_polygon_ring_invalid_geometry")
-        area = _ring_signed_area(points)
-        if area < 0:
-            shells.append((points, polygon))
-        elif area > 0:
-            holes.append((points, polygon))
-        else:
-            raise ValueError("source_polygon_ring_invalid_geometry")
-    assigned: dict[int, list[list[list[float]]]] = {index: [] for index in range(len(shells))}
-    for ring, polygon in holes:
-        parents = [(shell.area, index) for index, (_points, shell) in enumerate(shells)
-                   if shell.contains(polygon)]
-        if not parents:
+    normalized = {"rings": rings}
+    for group in esri_polygon_ring_groups(normalized, has_z=False, has_m=False):
+        if len(group) == 1 and ring_is_ccw(group[0]):
             raise ValueError("source_polygon_hole_without_containing_shell")
-        assigned[min(parents)[1]].append(ring)
-    parts = [Polygon(shell, assigned[index]) for index, (shell, _points) in enumerate(shells)]
+    geometry = esri_polygon_geometry(normalized, has_z=False, has_m=False)
+    parts = list(geometry.geoms) if geometry.geom_type == "MultiPolygon" else [geometry]
     if any(not part.is_valid for part in parts):
         raise ValueError("source_polygon_invalid_no_repair_permitted")
-    if len(parts) == 1:
-        geometry = parts[0]
-    else:
-        geometry = shapely.geometry.MultiPolygon(parts)
     vertices = sum(len(ring) for ring in rings)
-    return geometry, len(shells), len(holes), vertices
+    holes = sum(len(part.interiors) for part in parts)
+    return geometry, len(parts), holes, vertices
 
 
 def _geometry_rings(geom: object) -> list[list[list[float]]] | None:
@@ -740,7 +720,7 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
     if shutil.disk_usage(base).free < 1_000_000_000:
         raise ValueError("unsafe_or_low_space_staging_root")
     capture_parent = Path(capture_directory).absolute() if capture_directory \
-        else Path(tempfile.gettempdir()) / "usace-civil-works-divisions-captures"
+        else DEFAULT_CAPTURE_ROOT
     capture_root = capture_parent / f"{version}-{uuid4().hex}"
     if ".." in capture_root.parts or any(p.is_symlink() for p in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")

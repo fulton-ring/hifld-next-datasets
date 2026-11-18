@@ -24,8 +24,8 @@ from dagster import (
 
 from dagster_hifld.construction_state import ConstructionStateError, load_first_construction
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     content_derived_version,
     processing_identity,
@@ -230,7 +230,7 @@ def capture_epa_frs_naics_table(
         return _reuse_candidate(staging_storage, version=offline_replay_version, identity=identity,
                                 fingerprint=fingerprint, offline=True)
 
-    capture_base = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/70/captures")
+    capture_base = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "70", "captures")
     capture_root = capture_base / f"refresh-{uuid4().hex}"
     captures: dict[str, tuple[bytes, dict[str, Any]]] = {}
     owned_client = client is None

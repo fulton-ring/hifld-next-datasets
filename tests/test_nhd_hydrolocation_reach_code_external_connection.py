@@ -18,7 +18,7 @@ from dagster_hifld.assets.nhd_hydrolocation_reach_code_external_connection impor
 )
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import nhd_hydrolocation_reach_code_external_connection as src
 
 FIXTURE_COUNT = 7
@@ -208,7 +208,7 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
                      return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                    "files": [], "working_tree_status": "unknown"}),
         patch.object(src, "validate_construction_code_identity"),
-        patch.object(epa_frs_common, "validate_construction_code_identity"),
+        patch.object(capture_common, "validate_construction_code_identity"),
     ]
     for context in contexts:
         context.start()

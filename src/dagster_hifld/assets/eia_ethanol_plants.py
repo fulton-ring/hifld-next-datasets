@@ -41,3 +41,8 @@ eia_ethanol_plants_draft_schedule = ScheduleDefinition(name="eia_ethanol_plants_
                                                        job=eia_ethanol_plants_draft_job,
                                                        cron_schedule="0 8 1 * *",
                                                        default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [eia_ethanol_plants]
+ASSET_CHECKS = [eia_ethanol_plants_complete]
+JOBS = [eia_ethanol_plants_draft_job]
+SCHEDULES = [eia_ethanol_plants_draft_schedule]

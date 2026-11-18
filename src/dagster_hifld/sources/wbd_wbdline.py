@@ -64,7 +64,6 @@ import hashlib
 import json
 import math
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -75,6 +74,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 from shapely import from_wkb
+
+from dagster_hifld.sources.esri_geometry import esri_polyline_wkb
 from shapely.geometry import MultiLineString
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -83,13 +84,13 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
+from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture_identity, _load_capture, _sha,
 )
 
@@ -378,8 +379,7 @@ GATE_MODES = frozenset({
 
 
 def _assemble_geometry(paths: list) -> bytes:
-    """Assemble structurally validated served XY paths verbatim into WKB, or
-    raise a gate code.
+    """Assemble structurally validated served XY paths into WKB, or raise a gate code.
 
     Producer vertex values and path order are retained unchanged (no
     resampling, reordering or projection). A missing or empty path roster
@@ -394,21 +394,10 @@ def _assemble_geometry(paths: list) -> bytes:
     for path in paths:
         if not isinstance(path, list) or len(path) < 2:
             raise _GeometryGate("source_polyline_path_degenerate")
-    if len(paths) == 1:
-        wkb = bytearray(struct.pack("<BI", 1, 2))
-    else:
-        wkb = bytearray(struct.pack("<BI", 1, 5))
-        wkb.extend(struct.pack("<I", len(paths)))
-    for path in paths:
-        if len(paths) > 1:
-            wkb.extend(struct.pack("<BI", 1, 2))
-        wkb.extend(struct.pack("<I", len(path)))
-        for point in path:
-            wkb.extend(struct.pack("<dd", point[0], point[1]))
-    decoded = from_wkb(bytes(wkb))
-    if decoded.is_empty:
+    wkb = esri_polyline_wkb({"paths": paths})
+    if from_wkb(wkb).is_empty:
         raise _GeometryGate("source_polyline_assembly_invalid")
-    return bytes(wkb)
+    return wkb
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
@@ -949,7 +938,7 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
                           or any(requested.glob("*.receipt.json"))):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/383/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "383", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)

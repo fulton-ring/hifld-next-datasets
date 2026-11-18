@@ -15,7 +15,7 @@ from dagster_hifld.assets.electric_retail_service_territories import (
     electric_retail_service_territories_preservation_schedule,
     electric_retail_service_territories_release_pending,
 )
-from dagster_hifld.sources import electric_retail_service_territories as source
+from dagster_hifld.sources import electric_retail_service_territories_common as source
 
 
 class _InterruptedStream(httpx.SyncByteStream):

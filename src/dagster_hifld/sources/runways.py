@@ -61,14 +61,16 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
+
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -243,35 +245,12 @@ def _collect_page(offset: int, count: int, page: object, ids: list[int],
     features.extend(rows)
 
 
-def _ring_area(ring: list[list[float]]) -> float:
-    x0, y0 = ring[0]
-    return math.fsum((ring[i][0] - x0) * (ring[i + 1][1] - y0)
-                     - (ring[i][1] - y0) * (ring[i + 1][0] - x0)
-                     for i in range(len(ring) - 1)) / 2
-
-
 def _esri_polygon_wkb(rings: list) -> bytes:
-    """Encode captured XY rings as a WKB MultiPolygon without repair.
-
-    ArcGIS encodes exterior rings clockwise and interior rings
-    counter-clockwise. Holes are assigned to their smallest containing shell
-    so nested islands stay distinct; a hole without a containing shell, a
-    non-simple ring, or any other structural surprise fails closed.
-    """
-    shells, holes = [], []
-    for ring in rings:
-        polygon = Polygon(ring)
-        (shells if _ring_area(ring) < 0 else holes).append((ring, polygon))
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    assigned: dict[int, list] = {i: [] for i in range(len(shells))}
-    for ring, hole in holes:
-        parents = [(shell.area, i) for i, (_, shell) in enumerate(shells) if shell.contains(hole)]
-        if not parents:
-            raise ValueError("source_polygon_hole_without_containing_shell")
-        assigned[min(parents)[1]].append(ring)
-    return MultiPolygon([Polygon(ring, assigned[index])
-                         for index, (ring, _polygon) in enumerate(shells)]).wkb
+    """Encode captured XY rings as a WKB MultiPolygon through the shared GDAL converter."""
+    geometry = esri_polygon_geometry({"rings": rings}, has_z=False, has_m=False)
+    if geometry.geom_type != "MultiPolygon":
+        geometry = MultiPolygon([geometry])
+    return geometry.wkb
 
 
 def _classify_ring_geometries(features: list[dict[str, object]], attr_names: list[str]):
@@ -635,8 +614,7 @@ def capture_runways(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise ValueError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory else Path(
-        "/tmp/hifld-native-reconstruction/300/captures")
+    attempt_root = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "300", "captures")
     capture_root = (attempt_root / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
