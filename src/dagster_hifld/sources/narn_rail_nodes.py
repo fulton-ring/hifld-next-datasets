@@ -55,6 +55,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -105,13 +106,7 @@ PAGE_PROBE_BASE_DELAY_SECONDS = 5.0
 # pages tiling the sorted OBJECTID roster without gaps or overlaps; every
 # accepted page returned exactly its expected sorted-OBJECTID slice, and the
 # observed point bounds equal the layer's declared extent exactly).
-EXPECTED_COUNT = 250204
-EXPECTED_ID_SHA256 = "989d3b40e354035a87266c26b783353b40200cc18a324ec15690cf76ed7ebcd5"
 EXPECTED_SCHEMA_SHA256 = "ae7b8bf0a22ba6b0f7150fa32a315f677fa651230d38450e37a9ad902df10040"
-EXPECTED_RECORD_SHA256 = "9941fee775121f22c43253b56b168576482720016ccd03e4da901acccda58f40"
-EXPECTED_GEOMETRY_SHA256 = "2fc8b7c39c96eea1da71c8b738b37006735b47759d6871fce76a23afae21596d"
-EXPECTED_OBSERVED_BOUNDS = {"xmin": -156.68972645852205, "ymin": 14.67991800007465,
-                            "xmax": -59.94056699910081, "ymax": 64.92397910374177}
 EXPECTED_LAYER_EXTENT = {"xmin": -156.68972645852205, "ymin": 14.67991800007465,
                          "xmax": -59.94056699910081, "ymax": 64.92397910374177}
 EXPECTED_NULL_GEOMETRY_COUNT = 0
@@ -200,7 +195,7 @@ def _validate_spatial_reference(value: object, label: str) -> None:
             raise ValueError(label + "_crs_drift")
 
 
-def _collect_page(offset: int, count: int, page: object, ids: list[int],
+def _collect_page(offset: int, count: int, total_count: int, page: object, ids: list[int],
                   features: list[dict[str, object]]) -> None:
     if not isinstance(page, dict) or "error" in page:
         raise ValueError("source_page_error")
@@ -212,7 +207,7 @@ def _collect_page(offset: int, count: int, page: object, ids: list[int],
     actual = [row.get("attributes", {}).get("OBJECTID") for row in rows if isinstance(row, dict)]
     if actual != expected or len(rows) != len(expected):
         raise ValueError("source_page_id_slice_incomplete_or_reordered")
-    if page.get("exceededTransferLimit") is True and offset + count >= EXPECTED_COUNT:
+    if page.get("exceededTransferLimit") is True and offset + count >= total_count:
         raise ValueError("source_page_unexpected_exceeded_transfer_limit")
     features.extend(rows)
 
@@ -270,7 +265,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         if offset != position:
             raise ValueError("source_page_tiling_incomplete_or_overlapped")
         position += count
-    if position != EXPECTED_COUNT:
+    source_count = docs["count_before"].get("count")
+    if position != source_count:
         raise ValueError("source_page_tiling_incomplete_or_overlapped")
     if set(captures) != set(docs) | {*page_names}:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
@@ -326,43 +322,27 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
             raise ValueError("source_layer_metadata_changed_during_capture")
     if docs["service_after"] != service:
         raise ValueError("source_service_metadata_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT \
-            or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    if docs["count_before"] != docs["count_after"]:
-        raise ValueError("source_count_changed_during_capture")
-    rosters = [docs[name].get("objectIds") for name in ("ids_seed", "ids_before", "ids_after")]
-    if any(not isinstance(roster, list) or len(roster) != EXPECTED_COUNT
-           or any(type(value) is not int for value in roster) or len(set(roster)) != EXPECTED_COUNT
-           for roster in rosters):
-        raise ValueError("source_id_population_drift")
-    if any(sorted(roster) != sorted(rosters[0]) for roster in rosters[1:]):
-        raise ValueError("source_id_population_drift")
-    ids = sorted(rosters[0])
-    if _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_drift")
     if any(docs[name].get("objectIdFieldName") != "OBJECTID"
            for name in ("ids_seed", "ids_before", "ids_after")):
         raise ValueError("source_id_field_changed")
+    ids = validate_capture_witness(source_count, docs["ids_before"].get("objectIds"),
+                                   docs["count_after"].get("count"), docs["ids_after"].get("objectIds"))
+    seed = docs["ids_seed"].get("objectIds")
+    if not isinstance(seed, list) or sorted(seed) != ids:
+        raise ValueError("source_id_population_drift")
 
     features: list[dict[str, object]] = []
     for (offset, count), name in zip(pages, page_names):
-        _collect_page(offset, count, json.loads(captures[name][0]), ids, features)
+        _collect_page(offset, count, len(ids), json.loads(captures[name][0]), ids, features)
     attr_names = [field["name"] for field in fields]
     geometry_records, null_geometry, invalid_geometry, bounds = _classify_geometries(
         features, attr_names)
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
-    if EXPECTED_OBSERVED_BOUNDS is not None and bounds != EXPECTED_OBSERVED_BOUNDS:
-        raise ValueError("source_observed_coverage_drift")
     if (null_geometry != EXPECTED_NULL_GEOMETRY_COUNT
             or invalid_geometry != EXPECTED_INVALID_GEOMETRY_COUNT):
         raise ValueError("source_geometry_population_drift")
     record_sha = _list_sha(features)
     geometry_sha = _list_sha(geometry_records)
-    if record_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_record_value_drift")
-    if geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_or_coverage_drift")
     franodeids = [row["attributes"].get("FRANODEID") for row in features]
     franodeid_nulls = sum(1 for value in franodeids if value is None)
     franodeid_duplicates = len(franodeids) - len({value for value in franodeids
@@ -545,9 +525,10 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
                 capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
                 attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
             seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or len(seed) != EXPECTED_COUNT
-                    or any(type(value) is not int for value in seed) or len(set(seed)) != EXPECTED_COUNT):
+            if (not isinstance(seed, list) or not seed
+                    or any(type(value) is not int for value in seed) or len(set(seed)) != len(seed)):
                 raise ValueError("source_seed_id_population_drift")
+            seed_count = len(seed)
             captures["ids_seed"] = (seed_body, seed_receipt)
             captured_total = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
             for name, url in _doc_urls():
@@ -562,7 +543,7 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
             layer_doc = json.loads(captures["layer_before"][0])
             if layer_doc.get("maxRecordCount") != 2000 or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
                 raise ValueError("source_record_limit_drift")
-            captures.update(_capture_pages(client, capture_root, EXPECTED_COUNT))
+            captures.update(_capture_pages(client, capture_root, seed_count))
             captured_total += sum(receipt["bytes"] + receipt["wire_bytes"]
                                   for _, receipt in _page_receipts(captures))
             if captured_total > MAX_CAPTURE_TOTAL_BYTES:
@@ -712,7 +693,7 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     (capture_root / "capture_manifest.json").write_bytes(
         _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
-                    "source_feature_count": EXPECTED_COUNT,
+                    "source_feature_count": len(extracted["features"]),
                     "source_record_sha256": audit["source_record_sha256"],
                     "source_geometry_sha256": audit["source_geometry_sha256"],
                     "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}) + b"\n")
@@ -741,7 +722,10 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
                                 audit["source_schema_sha256"], objects,
                                 payload.get("capture_receipts", {}))
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-                "feature_count": EXPECTED_COUNT,
+                "feature_count": len(extracted["features"]),
+                "source_reported_count": len(extracted["ids"]),
+                "source_population_complete": True,
+                "source_id_sha256": audit["source_id_sha256"],
                 "source_null_geometry_count": audit["null_geometry_count"],
                 "source_invalid_geometry_count": audit["invalid_geometry_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
@@ -766,7 +750,11 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
+            "feature_count": len(extracted["features"]),
+            "source_reported_count": len(extracted["ids"]),
+            "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"],
+            "source_null_geometry_count": audit["null_geometry_count"],
             "source_invalid_geometry_count": audit["invalid_geometry_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False,

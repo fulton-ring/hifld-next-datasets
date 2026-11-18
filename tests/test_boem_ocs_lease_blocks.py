@@ -24,7 +24,7 @@ BLOCK_RING = [[-93.109375, 29.61602783203125], [-93.10858154296875, 29.575439453
               [-93.109375, 29.61602783203125]]
 
 
-def _fixture():
+def _fixture(extra: bool = False):
     fields = [
         {"name": "OBJECTID", "type": "esriFieldTypeOID", "nullable": False, "length": 0},
         {"name": "PROT_NUMBER", "type": "esriFieldTypeString", "nullable": True, "length": 7},
@@ -54,6 +54,12 @@ def _fixture():
                     [ -160.5, 61.0]]]},
         {"rings": []},
     ]
+    if extra:
+        ids.append(644434610)
+        attrs_rows.append({"PROT_NUMBER": "NN08-01", "BLOCK_NUMBER": " 7103",
+                           "BLK_FED_APRV_DT": None, "Shape__Area": 0, "Shape__Length": 0})
+        geometries.append({"rings": [[[ -93.0, 29.6], [ -92.9, 29.6], [ -92.9, 29.5],
+                                      [ -93.0, 29.5], [ -93.0, 29.6]]]})
     features = [{"attributes": {"OBJECTID": oid, **attrs}, "geometry": geom}
                 for oid, attrs, geom in zip(ids, attrs_rows, geometries)]
     layer = {"id": blocks.LAYER_ID, "name": blocks.LAYER_NAME,
@@ -101,19 +107,7 @@ def _fixture():
     return captures
 
 
-_UNPINNED = {
-    "EXPECTED_COUNT": None,
-    "EXPECTED_IDS_SHA256": "",
-    "EXPECTED_SCHEMA_SHA256": "",
-    "EXPECTED_RECORD_SHA256": "",
-    "EXPECTED_GEOMETRY_SHA256": "",
-    "EXPECTED_NULL_GEOMETRY_COUNT": None,
-    "EXPECTED_RING_COUNT_DISTRIBUTION": None,
-    "EXPECTED_UNIQUE_PROT_NUMBER_COUNT": None,
-    "EXPECTED_UNIQUE_BLOCK_KEY_COUNT": None,
-    "EXPECTED_DUPLICATE_BLOCK_KEY_COUNT": None,
-    "EXPECTED_OBSERVED_BOUNDS": None,
-}
+_UNPINNED = {"EXPECTED_SCHEMA_SHA256": ""}
 
 
 @contextmanager
@@ -124,19 +118,7 @@ def fixture_pins():
             stack.enter_context(patch.object(blocks, name, value))
         audit = blocks._validate(_fixture())[3]
         stack.close()
-        pins = {
-            "EXPECTED_COUNT": audit["feature_count"],
-            "EXPECTED_IDS_SHA256": audit["source_id_sha256"],
-            "EXPECTED_SCHEMA_SHA256": audit["source_schema_sha256"],
-            "EXPECTED_RECORD_SHA256": audit["source_record_sha256"],
-            "EXPECTED_GEOMETRY_SHA256": audit["source_geometry_sha256"],
-            "EXPECTED_NULL_GEOMETRY_COUNT": audit["null_geometry_count"],
-            "EXPECTED_RING_COUNT_DISTRIBUTION": audit["ring_count_distribution"],
-            "EXPECTED_UNIQUE_PROT_NUMBER_COUNT": audit["unique_prot_number_count"],
-            "EXPECTED_UNIQUE_BLOCK_KEY_COUNT": audit["unique_block_key_count"],
-            "EXPECTED_DUPLICATE_BLOCK_KEY_COUNT": audit["duplicate_block_key_count"],
-            "EXPECTED_OBSERVED_BOUNDS": audit["geometry_bounds"],
-        }
+        pins = {"EXPECTED_SCHEMA_SHA256": audit["source_schema_sha256"]}
         for name, value in pins.items():
             stack.enter_context(patch.object(blocks, name, value))
         yield audit
@@ -267,15 +249,13 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                 blocks._validate(captures)
 
             # Duplicate (PROT_NUMBER, BLOCK_NUMBER) keys are allowed (the
-            # producer publishes split blocks as same-key rows) but are pinned:
-            # with the duplicate gate pinned to 0 the mutated fixture refuses.
+            # producer publishes split blocks as same-key rows) and audited.
             captures = _fixture()
             doc = json.loads(captures["page_000"][0])
             doc["features"][0]["attributes"]["BLOCK_NUMBER"] = "   72"
             captures["page_000"] = (_body(doc), captures["page_000"][1])
-            with patch.object(blocks, "EXPECTED_DUPLICATE_BLOCK_KEY_COUNT", 0):
-                with self.assertRaisesRegex(ValueError, "source_block_key_uniqueness_drift"):
-                    blocks._validate(captures)
+            _, _, _, audit = blocks._validate(captures)
+            self.assertEqual(audit["duplicate_block_key_count"], 1)
 
             captures = _fixture()
             doc = json.loads(captures["page_000"][0])
@@ -299,47 +279,22 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_field_schema_drift"):
                 blocks._validate(captures)
 
-    def test_pinned_baselines_are_enforced_once_set(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            storage = StagingStorageResource(use_local=True, local_dir=tmp)
-            with fixture_pins() as audit:
-                fixture = _fixture()
-                with patch.object(blocks, "_load_offline", return_value=copy.deepcopy(fixture)), \
-                        patch.object(blocks, "_geoparquet", return_value=b"candidate"), \
-                        patch.object(blocks, "processing_identity",
-                                     return_value={"code_commit": "a" * 40,
-                                                   "files": {"x.py": "b" * 64}}), \
-                        patch.object(blocks, "validate_construction_code_identity",
-                                     return_value=None), \
-                        patch.object(capture_common, "validate_construction_code_identity",
-                                     return_value=None):
-                    result = blocks.capture_boem_ocs_lease_blocks(
-                        storage, offline_capture_directory=tmp)
-                    self.assertFalse(result["reused"])
-                    pins = [
-                        ("EXPECTED_IDS_SHA256", audit["source_id_sha256"]),
-                        ("EXPECTED_RECORD_SHA256", audit["source_record_sha256"]),
-                        ("EXPECTED_GEOMETRY_SHA256", audit["source_geometry_sha256"]),
-                        ("EXPECTED_NULL_GEOMETRY_COUNT", audit["null_geometry_count"]),
-                        ("EXPECTED_RING_COUNT_DISTRIBUTION", audit["ring_count_distribution"]),
-                        ("EXPECTED_DUPLICATE_BLOCK_KEY_COUNT",
-                         audit["duplicate_block_key_count"]),
-                        ("EXPECTED_OBSERVED_BOUNDS", audit["geometry_bounds"]),
-                    ]
-                    for name, value in pins:
-                        with self.subTest(pin=name):
-                            with patch.object(blocks, name, value):
-                                again = blocks.capture_boem_ocs_lease_blocks(
-                                    storage, offline_capture_directory=tmp)
-                                self.assertTrue(again["reused"])
-                    # A pinned baseline set to a wrong value refuses the capture.
-                    for name, value in (("EXPECTED_IDS_SHA256", "0" * 64),
-                                        ("EXPECTED_COUNT", audit["feature_count"] + 1)):
-                        with self.subTest(refusal=name):
-                            with patch.object(blocks, name, value):
-                                with self.assertRaisesRegex(ValueError, "source_"):
-                                    blocks.capture_boem_ocs_lease_blocks(
-                                        storage, offline_capture_directory=tmp)
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        from dagster_hifld.assets.boem_ocs_lease_blocks import (
+            boem_ocs_lease_blocks_approved_baseline_drift,
+        )
+        with fixture_pins():
+            _, _, features, audit = blocks._validate(_fixture(extra=True))
+        self.assertEqual(len(features), 5)
+        self.assertTrue(audit["source_population_complete"])
+        drift = boem_ocs_lease_blocks_approved_baseline_drift({
+            "dataset_slug": blocks.DATASET_SLUG, "file_slug": blocks.FILE_SLUG,
+            "feature_count": 5, "source_id_sha256": audit["source_id_sha256"],
+            "release_accepted": False,
+        })
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value,
+                         "skipped_no_approved_baseline")
 
     def test_same_content_reuses_original_receipts_and_changed_content_versions(self):
         fixture = _fixture()
@@ -364,7 +319,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                                        wire_bytes=len(body),
                                        wire_sha256=hashlib.sha256(body).hexdigest())
                         captures["page_000"] = (body, receipt)
-                    extra = ([patch.object(blocks, "EXPECTED_RECORD_SHA256", "")] if mutate else [])
+                    extra = []
                     with patch.object(blocks, "_load_offline", return_value=captures), \
                             patch.object(blocks, "_geoparquet", side_effect=parquet), \
                             patch.object(blocks, "processing_identity",
@@ -504,7 +459,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                 body, _receipt = blocks._acquire_document(client, root, "ids_after", url)
             self.assertEqual(json.loads(body)["objectIds"], None)
             self.assertEqual(len(list(root.glob("ids_after.error-*.body"))), 5)
-            with self.assertRaisesRegex(ValueError, "source_id_population_changed_during_capture"):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                 blocks._validate({"ids_before": (_body({"objectIds": [643213655]}), {}),
                                   "ids_after": (body, {}),
                                   "count_before": (_body({"count": 1}), {}),

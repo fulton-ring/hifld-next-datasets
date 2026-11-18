@@ -3,6 +3,7 @@ from dagster import (AssetCheckResult, AssetKey, AssetSelection, Config,
                      DefaultScheduleStatus, ScheduleDefinition, asset,
                      asset_check, define_asset_job)
 
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -47,12 +48,15 @@ def national_transit_map_stops(context, config: NationalTransitMapStopsConfig,
 
 @asset_check(asset=national_transit_map_stops, blocking=True)
 def national_transit_map_stops_source_complete(candidate: dict) -> AssetCheckResult:
-    count = candidate.get("feature_count")
-    passed = (type(count) is int and count == 673_251
+    count = candidate.get("source_reported_count")
+    passed = (candidate.get("source_population_complete") is True
+              and type(count) is int and count > 0
+              and candidate.get("feature_count") == count
               and candidate.get("source_null_geometry_count") == 0
               and candidate.get("source_invalid_geometry_count") == 0)
     return AssetCheckResult(passed=passed, metadata={
         "complete_observed_source_population": passed,
+        "source_reported_count": count if count is not None else "missing",
         "source_release_accepted": False,
         "freshness_accepted": False,
         "schema_contract_accepted": False,
@@ -62,6 +66,12 @@ def national_transit_map_stops_source_complete(candidate: dict) -> AssetCheckRes
         "mapping_approved": False,
         "release_accepted": False,
     })
+
+
+@asset_check(asset=national_transit_map_stops, blocking=False)
+def national_transit_map_stops_approved_baseline_drift(candidate: dict) -> AssetCheckResult:
+    # No independently approved release is wired for this source.
+    return approved_baseline_drift(candidate)
 
 
 national_transit_map_stops_draft_job = define_asset_job(
@@ -80,6 +90,6 @@ national_transit_map_stops_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [national_transit_map_stops]
-ASSET_CHECKS = [national_transit_map_stops_source_complete]
+ASSET_CHECKS = [national_transit_map_stops_source_complete, national_transit_map_stops_approved_baseline_drift]
 JOBS = [national_transit_map_stops_draft_job]
 SCHEDULES = [national_transit_map_stops_draft_schedule]

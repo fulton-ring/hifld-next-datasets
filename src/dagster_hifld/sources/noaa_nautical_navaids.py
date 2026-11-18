@@ -32,6 +32,7 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.release_approval import validate_release_provenance
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "nautical-navigation-aids-navaid-locations"
@@ -44,8 +45,6 @@ COUNT_URL = LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnCountOnly"
 IDS_URL = LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
 DOWNLOAD_URL = "https://marinecadastre.gov/downloads/data/mc/AtoN.zip"
 INPORT_URL = "https://www.fisheries.noaa.gov/inport/item/56120"
-EXPECTED_COUNT = 51443
-EXPECTED_ARCHIVE_SHA256 = "88969da2b2ad814ddc848f62bdaeb99d78f2a55a0086523d796c4d17c1361ae5"
 PUBLISHED_GCS_VERSION = "v1.0.0"
 PUBLISHED_GCS_FIELDS = [
     ("fid", "INTEGER", "primary-key"), ("geom", "POINT", "geometry"),
@@ -176,14 +175,11 @@ def _capture(client: httpx.Client, url: str, directory: Path, name: str) -> tupl
     return body, receipt
 
 
-def _validate(captures: dict[str, tuple[bytes, dict[str, object]]], gpkg: bytes,
-              *, expected_archive_sha256: str | None = EXPECTED_ARCHIVE_SHA256) -> dict[str, object]:
+def _validate(captures: dict[str, tuple[bytes, dict[str, object]]], gpkg: bytes) -> dict[str, object]:
     expected = {"portal_item", "service_before", "layer_before", "count_before", "ids_before",
                 "official_download", "layer_after", "service_after", "count_after", "ids_after"}
     if set(captures) != expected:
         raise ValueError("noaa_capture_roster_incomplete_or_unexpected")
-    if expected_archive_sha256 is not None and _sha(gpkg) != expected_archive_sha256:
-        raise ValueError("noaa_source_archive_content_drift")
     docs = {name: json.loads(body) for name, (body, _) in captures.items() if name != "official_download"}
     portal = docs["portal_item"]
     if (portal.get("id") != PORTAL_ITEM_ID or portal.get("owner") != "marinecadastre_noaa"
@@ -212,14 +208,11 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]], gpkg: bytes,
         raise ValueError("noaa_service_field_roster_drift")
     if layer.get("geometryType") != "esriGeometryPoint" or layer.get("extent", {}).get("spatialReference", {}).get("latestWkid") != 3857:
         raise ValueError("noaa_service_geometry_or_crs_drift")
-    if (docs["service_after"] != service or docs["layer_after"] != layer
-            or docs["count_before"].get("count") != EXPECTED_COUNT
-            or docs["count_after"].get("count") != EXPECTED_COUNT):
+    if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("noaa_source_changed_or_count_drift_during_capture")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(before, list) or before != after or len(before) != EXPECTED_COUNT
-            or len(set(before)) != EXPECTED_COUNT):
-        raise ValueError("noaa_service_id_bracket_incomplete_or_changed")
+    before = validate_capture_witness(
+        docs["count_before"].get("count"), docs["ids_before"].get("objectIds"),
+        docs["count_after"].get("count"), docs["ids_after"].get("objectIds"))
     if docs["ids_before"].get("exceededTransferLimit") or docs["ids_after"].get("exceededTransferLimit"):
         raise ValueError("noaa_service_id_roster_truncated")
     if not zipfile.is_zipfile(io.BytesIO(gpkg)):
@@ -254,11 +247,12 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]], gpkg: bytes,
     roster = [(r[1], r[2], r[3] or 0) for r in schema]
     if tables != [("AtoN", 4269, "POINT")] or table != [("AtoN",)] or roster != EXPECTED_FIELDS:
         raise ValueError("noaa_native_geopackage_schema_or_crs_drift")
-    if (count != EXPECTED_COUNT or ids != sorted(before) or null_geometry_count
+    if (count != len(before) or ids != sorted(before) or null_geometry_count
             or rtree_count != count or orphan_rtree_ids or missing_rtree_ids
             or None in (min_x, min_y, max_x, max_y)):
         raise ValueError("noaa_native_geopackage_population_or_id_drift")
-    return {"feature_count": count, "source_ids_sha256": _sha(_canonical(ids)),
+    return {"feature_count": count, "source_reported_count": len(before),
+            "source_population_complete": True, "source_ids_sha256": _sha(_canonical(ids)),
             "service_ids_sha256": _sha(_canonical(sorted(before))), "source_fields": [
                 {"name": name, "sqlite_type": typ, "primary_key": bool(pk)} for name, typ, pk in EXPECTED_FIELDS
             ], "native_crs_epsg": 4269, "native_geometry_type": "Point",
@@ -405,6 +399,8 @@ def capture_noaa_nautical_navaids(storage: StagingStorageResource, *, capture_di
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,
                                 record_sha,schema_sha,expected_objects,capture_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["feature_count"],
+                "source_reported_count":audit["source_reported_count"],
+                "source_population_complete":True,"source_id_sha256":audit["source_ids_sha256"],
                 "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
                 "published_baseline_compatible":False,"source_release_accepted":False,
                 "schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
@@ -415,7 +411,10 @@ def capture_noaa_nautical_navaids(storage: StagingStorageResource, *, capture_di
         if prior.get("payload") != payload: raise ValueError("noaa_first_candidate_changed")
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": audit["feature_count"], "candidate_ready": prefix + "/metadata/candidate_ready.json",
+            "feature_count": audit["feature_count"],
+            "source_reported_count": audit["source_reported_count"],
+            "source_population_complete": True, "source_id_sha256": audit["source_ids_sha256"],
+            "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "native_geopackage_sha256": audit["native_geopackage_sha256"],
             "published_baseline_compatible": False, "source_release_accepted": False,
             "schema_contract_accepted": False, "id_contract_accepted": False,
