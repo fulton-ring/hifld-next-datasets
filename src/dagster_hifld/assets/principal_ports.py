@@ -12,6 +12,7 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -53,8 +54,10 @@ def principal_ports_usace(context, config: PrincipalPortsConfig,
 
 @asset_check(asset=principal_ports_usace, blocking=True)
 def principal_ports_source_complete(candidate: dict) -> AssetCheckResult:
+    count = candidate.get("source_reported_count")
     passed = (
-        candidate.get("feature_count") == 150
+        type(count) is int and count > 0
+        and candidate.get("feature_count") == count
         and candidate.get("source_population_complete") is True
     )
     return AssetCheckResult(passed=passed, metadata={
@@ -87,7 +90,9 @@ principal_ports_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+principal_ports_usace_drift = register_approved_baseline_drift(principal_ports_usace, "principal_ports_usace_drift")
+
 INGEST_ASSETS = [principal_ports_usace]
-ASSET_CHECKS = [principal_ports_source_complete]
+ASSET_CHECKS = [principal_ports_source_complete, principal_ports_usace_drift]
 JOBS = [principal_ports_draft_job]
 SCHEDULES = [principal_ports_draft_schedule]
