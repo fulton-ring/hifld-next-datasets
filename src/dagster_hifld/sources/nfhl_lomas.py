@@ -60,6 +60,7 @@ from dagster_hifld.sources.capture_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "nfhl-lomas"
 FILE_SLUG = DATASET_SLUG
@@ -142,14 +143,6 @@ def _stable_layer(doc: object) -> object:
     stable = dict(doc)
     stable.pop("drawingInfo", None)
     return stable
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
