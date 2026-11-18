@@ -44,6 +44,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -71,7 +72,7 @@ USER_AGENT = "hifld-next-datasets/nhd-area-large-scale-2-draft"
 SOURCE_CRS_WKID = 4326
 NATIVE_LAYER_SR = {"wkid": 102100, "latestWkid": 3857}
 POPULATION_WHERE = "featuretype<>3"
-# Initial window size over the pinned OBJECTID roster; oversized or failing
+# Initial window size over the captured OBJECTID roster; oversized or failing
 # windows are bisected down to single OBJECTIDs deterministically (each captured
 # page is named by the roster's first OBJECTID it requests).
 PAGE_IDS = 500
@@ -122,46 +123,23 @@ EXPECTED_ALIAS_SERVICE_LAYERS = [
     (92, "Spatial Metadata - EDH Workunit Area"),
     (94, "Spatial Metadata - Elevation Workunit Area"),
 ]
-EXPECTED_COUNT = 95423
-# Producer-refused records (dated 2026-11-13 evidence): OBJECTIDs the producer's
-# own REST publication persistently refuses to serve geometry for (HTTP 200 Esri
+# Producer-refused records: OBJECTIDs whose geometry the producer's own REST
+# publication persistently refuses to serve (HTTP 200 Esri
 # ``{"error":{"code":500,"message":"Error performing query operation"}}`` on both
 # 3dhp.nationalmap.gov and the same-org alias hydro.nationalmap.gov/3DHP_all,
 # single-id and windowed, while the same record's attributes and layer extent
-# are served normally and the full roster pins it into the population). Their
-# attributes are captured through the producer's working attributes-only channel
-# and staged verbatim with explicitly gated null candidate geometry; the refusal
-# set is pinned and any change fails closed.
-EXPECTED_REFUSED_IDS: frozenset[int] = frozenset({
-    1293173, 2520496, 4245000, 4694427, 7059540, 7059541, 7098625, 7135496, 7157221})
+# are served normally and the full roster includes it). Their attributes are
+# captured through the producer's working attributes-only channel and staged
+# verbatim with explicitly gated null candidate geometry. Which records are
+# refused is read from the capture state, not pinned.
 # Producer-served features whose rings cannot form a valid OGC polygon are
-# gated, never silently coerced (dated 2026-11-13 capture: six rows with
-# zero/signed-zero-area degenerate rings). The row and its raw rings are
-# retained verbatim in the record/geometry digests and bounds; the candidate
-# geometry is explicitly set to null and the failure mode is counted and
-# pinned. Structural modes outside this family still fail closed.
-# Geometry quarantines retired by the shared GDAL Esri polygon converter
-# (issue #997): the producer's six zero-area sliver rows now convert through
-# GDAL and are retained verbatim, counted as ogc_invalid_geometry_counts
-# instead of gated to null.
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
-EXPECTED_NULL_GEOMETRY_COUNT = 9
-# Observed 2026-11-13 complete non-Lake population contract (featuretype<>3),
-# re-derived from the dated full capture (330 pages, 9.0 GB wire+body under the
-# producer's identity encoding, no validation errors): the roster drifted from
-# the 2026-11-12 draft pins and the service refuses geometry for the nine
-# pinned records above, so null_geometry_count equals the refused count and the
-# featuretype distribution counts served geometries only.
-EXPECTED_ID_SHA256 = "da7641ddc6a3bc7849ce36069620de9c1c8b395b9fcb4d0dff4e49b7696942af"
+# retained verbatim and counted as ogc_invalid_geometry_counts by the shared
+# GDAL Esri polygon converter (issue #997); structural failures still fail
+# closed.
 EXPECTED_SCHEMA_SHA256 = "51f11bd107670196d396c0908b3c68a4dce0f37466d3dd179c3df149fd4a04d3"
-EXPECTED_RECORD_SHA256 = "b424080aa54579c8011c24ae2f4e90550394756e9a81230fcfe37ac386b4868d"
-EXPECTED_GEOMETRY_SHA256 = "7ad757e97efb08ffe76c79c3ae529e90bfcb5e9c477e67dd0c72ef5f74944005"
-EXPECTED_FEATURETYPE_DISTRIBUTION = {1: 85215, 2: 9235, 4: 964}
 EXPECTED_FEATURETYPE_LABELS = {1: "River", 2: "Canal", 4: "Ocean or Great Lake"}
 EXPECTED_LAYER_EXTENT = {"xmin": -19951755.6817, "ymin": -1622985.3665999994,
                          "xmax": 20021551.747199997, "ymax": 11575301.958199998}
-EXPECTED_OBSERVED_BOUNDS = {"xmin": -179.22967073889612, "ymin": -14.4246875666806,
-                            "xmax": 179.85665946299667, "ymax": 71.49960643639866}
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -323,11 +301,11 @@ def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path
     that never enters the capture roster. Bisection continues down to
     single-OBJECTID windows: a single id that still answers with the error
     document after the bounded retries is recorded as refused (its attempt
-    evidence stays on disk and its id must match the pinned refused set) instead
+    evidence stays on disk and its id is read from the capture state) instead
     of aborting the whole capture, because the producer is known to persistently
     refuse serving the geometry of specific records (dated evidence on the
-    capture manifest). The pinned before/after rosters plus per-page slice
-    equality make bisection completeness-neutral: it can only change page
+    capture manifest). The before/after count and ID witnesses plus per-page
+    slice equality make bisection completeness-neutral: it can only change page
     boundaries, never population.
     """
     pages: dict[str, tuple[bytes, dict[str, object]]] = {}
@@ -396,8 +374,8 @@ def _validate_polygon_geometry(geometry: object) -> None:
 
     Esri JSON rings are explicitly closed Z triples in the source lon/lat
     domain; ordinate shape, type, finiteness and coordinate range are checked
-    here so structurally invalid source geometry refuses the capture with the
-    pinned codes. Ring orientation and hole assignment are GDAL's (shared
+    here so structurally invalid source geometry refuses the capture with
+    stable codes. Ring orientation and hole assignment are GDAL's (shared
     native Esri polygon conversion); OGC-invalid-but-representable producer
     polygons are retained with a counted diagnostic instead of being gated.
     """
@@ -458,17 +436,25 @@ def _parquet_bytes(fields: list[dict[str, object]], attributes: list[dict[str, o
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    """Validate the complete capture against the pinned producer population contract."""
+    """Validate the complete capture against capture-time completeness witnesses."""
     doc_names = set(captures)
     refused_attr_names = {name for name in doc_names if name.startswith("refused_attrs_")}
     required = {"service_doc", "alias_service", "service_before", "service_after",
                 "layer_before", "layer_after", "count_before", "count_after",
-                "ids_seed", "ids_before", "ids_after",
-                *{f"refused_attrs_{oid:07d}" for oid in EXPECTED_REFUSED_IDS}}
+                "ids_seed", "ids_before", "ids_after"}
     page_names = [name for name in doc_names if name.startswith("page_")]
     if not required <= doc_names or not page_names:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    if refused_attr_names != {f"refused_attrs_{oid:07d}" for oid in EXPECTED_REFUSED_IDS}:
+    refused_oids = []
+    for name in refused_attr_names:
+        try:
+            oid = int(name.removeprefix("refused_attrs_"))
+        except ValueError as exc:
+            raise ValueError("source_refused_ids_drift") from exc
+        if oid <= 0 or name != f"refused_attrs_{oid:07d}":
+            raise ValueError("source_refused_ids_drift")
+        refused_oids.append(oid)
+    if len(set(refused_oids)) != len(refused_oids):
         raise ValueError("source_refused_ids_drift")
     unexpected = doc_names - required - set(page_names) - refused_attr_names
     if unexpected:
@@ -524,22 +510,21 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     for name in ("layer_before", "layer_after"):
         if docs[name] != layer:
             raise ValueError("source_layer_metadata_changed_during_capture")
-    counts = [docs[name].get("count") for name in ("count_before", "count_after")]
-    if any(value != EXPECTED_COUNT for value in counts):
+    count_before = docs["count_before"].get("count")
+    if type(count_before) is not int or count_before <= 0:
         raise ValueError("source_count_drift")
-    if docs["count_before"] != docs["count_after"]:
+    count_after = docs["count_after"].get("count")
+    if count_after != count_before:
         raise ValueError("source_count_changed_during_capture")
-    rosters = [docs[name].get("objectIds") for name in ("ids_before", "ids_seed", "ids_after")]
-    for roster in rosters:
-        if (not isinstance(roster, list) or len(roster) != EXPECTED_COUNT
-                or any(type(value) is not int for value in roster)
-                or len(set(roster)) != EXPECTED_COUNT):
-            raise ValueError("source_id_population_drift")
-    if any(sorted(roster) != sorted(rosters[0]) for roster in rosters[1:]):
+    ids = validate_capture_witness(count_before, docs["ids_before"].get("objectIds"),
+                                   count_after, docs["ids_after"].get("objectIds"))
+    seed = docs["ids_seed"].get("objectIds")
+    if (not isinstance(seed, list) or len(seed) != count_before
+            or any(type(value) is not int or value <= 0 for value in seed)
+            or len(set(seed)) != count_before or sorted(seed) != ids):
         raise ValueError("source_id_population_drift")
-    ids = sorted(rosters[0])
-    if _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_drift")
+    if not set(refused_oids) <= set(ids):
+        raise ValueError("source_refused_ids_drift")
     if any(docs[name].get("objectIdFieldName") != "OBJECTID" for name in ("ids_before", "ids_after", "ids_seed")):
         raise ValueError("source_id_field_changed")
 
@@ -632,10 +617,10 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         geometry_records.extend(page_geometry_records)
     # Producer-refused records: their attributes were captured through the
     # working attributes-only channel and are appended in ascending OBJECTID
-    # order with explicitly gated null candidate geometry (the producer's own
-    # geometry response is the persistent refusal evidence pinned in
-    # EXPECTED_REFUSED_IDS); nothing is substituted or fabricated for them.
-    refused_oids = sorted(EXPECTED_REFUSED_IDS)
+    # order with explicitly gated null candidate geometry. The refused set is
+    # whatever this capture actually recorded, not a pinned roster; nothing is
+    # substituted or fabricated for them.
+    refused_oids.sort()
     for oid in refused_oids:
         attrs_name = f"refused_attrs_{oid:07d}"
         refused_rows = docs[attrs_name].get("features")
@@ -655,25 +640,20 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         id3dhp_seen.add(attrs["id3dhp"])
     if refused_oids:
         geometry_records.extend([oid, None] for oid in refused_oids)
-    if sorted(captured_ids) != ids:
+    if len(captured_ids) != count_before:
         raise ValueError("source_feature_population_incomplete")
-    if distribution != EXPECTED_FEATURETYPE_DISTRIBUTION:
-        raise ValueError("source_featuretype_distribution_drift")
-    if null_geometry != EXPECTED_NULL_GEOMETRY_COUNT:
-        raise ValueError("source_null_geometry_count_drift")
+    validate_capture_witness(count_before, docs["ids_before"].get("objectIds"),
+                             count_after, docs["ids_after"].get("objectIds"),
+                             list(captured_ids))
     bounds = None
     if observed_bounds:
         bounds = {"xmin": min(observed_bounds[0::2]), "ymin": min(observed_bounds[1::2]),
                   "xmax": max(observed_bounds[0::2]), "ymax": max(observed_bounds[1::2])}
-    if bounds != EXPECTED_OBSERVED_BOUNDS:
-        raise ValueError("source_observed_coverage_drift")
     record_sha = _sha(_canonical(attributes))
-    if record_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_record_value_drift")
     # Boundary-independent geometry digest: one canonical stream over the whole
     # record sequence (served pages in ascending roster order, refused records
     # appended in ascending OBJECTID order). Hashing per-page chunks would make
-    # the pin depend on the capture's bisection page boundaries, which are
+    # the digest depend on the capture's bisection page boundaries, which are
     # completeness-neutral and may legitimately differ between captures.
     geometry_hash = hashlib.sha256()
     geometry_hash.update(b"[")
@@ -683,9 +663,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         geometry_hash.update(_canonical(record))
     geometry_hash.update(b"]")
     geometry_sha = geometry_hash.hexdigest()
-    if geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_or_coverage_drift")
-    audit = {"source_feature_count": len(attributes), "source_id_sha256": _sha(_canonical(captured_ids)),
+    audit = {"source_feature_count": len(attributes), "source_reported_count": count_before,
+             "source_id_sha256": _sha(_canonical(captured_ids)),
              "source_record_sha256": record_sha,
              "source_geometry_sha256": geometry_sha,
              "source_schema_sha256": schema_sha,
@@ -703,14 +682,14 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "source_refused_ids": refused_oids,
              "source_refused_count": len(refused_oids),
              "producer_refusal_note":
-                 "Records listed in source_refused_ids are part of the pinned population "
+                 "Records listed in source_refused_ids are part of the captured population "
                  "(they appear in the id roster and count) but the producer's own REST "
                  "publication persistently refuses to serve their geometry (HTTP 200 Esri "
                  "error document code 500 'Error performing query operation' on both "
                  "3dhp.nationalmap.gov and the same-org alias hydro.nationalmap.gov/3DHP_all, "
                  "single-id and windowed, retried with backoff; the producer's actual "
-                 "refusal responses are staged verbatim as hash-pinned raw attempt "
-                 "evidence). Their attributes are served normally through the "
+                 "refusal responses are staged verbatim as raw attempt evidence). "
+                 "Their attributes are served normally through the "
                  "attributes-only channel and are staged verbatim with explicitly gated null "
                  "candidate geometry; publication stays blocked pending the maintainer "
                  "completeness/coverage decision for these records.",
@@ -735,8 +714,8 @@ def _capture_refused_attrs(client: httpx.Client, capture_root: Path, budget: lis
     error document on both of its own hosts, dated on the capture manifest) but
     serves the same records' attributes with ``returnGeometry=false``. Each
     refused id gets one attributes-only capture named ``refused_attrs_<OID>``
-    validated to exactly that record; the refusal itself is pinned in
-    ``EXPECTED_REFUSED_IDS`` and re-verified by every later capture.
+    validated to exactly that record. Completeness is enforced by the before/after
+    count and ID witnesses, so no refused-ID roster is pinned.
     """
     for name in sorted(refused):
         for oid in refused[name]:
@@ -795,9 +774,13 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                 client, _query({"where": POPULATION_WHERE, "returnIdsOnly": "true", "f": "json"}),
                 capture_root, "ids_seed", budget)
             captures["ids_seed"] = (seed_body, seed_receipt)
+            count_before = json.loads(captures["count_before"][0]).get("count")
+            if type(count_before) is not int or count_before <= 0:
+                raise ValueError("source_count_drift")
             seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or len(seed) != EXPECTED_COUNT
-                    or any(type(value) is not int for value in seed) or len(set(seed)) != EXPECTED_COUNT):
+            if (not isinstance(seed, list) or len(seed) != count_before
+                    or any(type(value) is not int or value <= 0 for value in seed)
+                    or len(set(seed)) != count_before):
                 raise ValueError("source_seed_id_population_drift")
             pages, refused = _capture_windows(client, sorted(seed), capture_root, budget)
             captures.update(pages)
@@ -835,7 +818,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
     # receipt retained by the capture flow is staged verbatim into the
     # candidate's raw evidence — never as accepted feature pages — so a sealed
     # candidate that claims a persistent producer refusal also carries the
-    # producer's actual refusal responses, hash-pinned. Attempt receipts are
+    # producer's actual refusal responses. Attempt receipts are
     # listed in the capture manifest but stay out of the bounded
     # source-manifest input roster.
     attempt_evidence: dict[str, bytes] = {}
@@ -926,7 +909,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                        "the maintained successor of the retired NHD high-resolution NHDArea "
                        "layer (HIFLD inventory nhd/area-large-scale-2). Complete source "
                        "attributes and Z-aware EPSG:4326 polygon geometry are represented in "
-                       "the candidate, except the pinned set of producer-refused records "
+                       "the candidate, except the producer-refused records "
                        "(source_refused_ids in the audit): their attributes are captured "
                        "verbatim through the producer's working attributes-only channel and "
                        "their candidate geometry is explicitly gated to null because the "
@@ -942,7 +925,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
         "inputs": [_input_entry(name, receipt) for name, receipt in doc_captures] + [page_entry],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
-                                            "population": POPULATION_WHERE + " over the pinned "
+                                            "population": POPULATION_WHERE + " over the captured "
                                                           "complete OBJECTID roster (legacy "
                                                           "NHDArea water-extent successor scope; "
                                                           "Lake rows belong to the waterbody "
@@ -962,7 +945,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                                                         "(closed rings; clockwise exteriors, "
                                                         "counter-clockwise holes); no vertex "
                                                         "dropped, added or reordered; null source "
-                                                        "geometry retained as null; pinned "
+                                                        "geometry retained as null; "
                                                         "producer-refused records keep their "
                                                         "captured attributes with explicitly "
                                                         "gated null candidate geometry and the "
@@ -970,9 +953,9 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                                                         "are staged verbatim as raw attempt "
                                                         "evidence; producer-served features whose rings "
                                                         "cannot form a valid OGC polygon are "
-                                                        "retained verbatim in the digests with "
-                                                        "explicitly gated null candidate "
-                                                        "geometry and pinned failure modes",
+                                                        "retained verbatim in the digests and "
+                                                        "candidate geometry with counted "
+                                                        "diagnostics",
                                             "candidate_status": "unapproved; publication blocked "
                                                                 "pending succession, freshness, "
                                                                 "schema/ID contract, coverage, "
@@ -1028,7 +1011,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     (capture_root / "capture_manifest.json").write_bytes(
         _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
-                    "source_feature_count": EXPECTED_COUNT,
+                    "source_feature_count": audit["source_reported_count"],
                     "source_record_sha256": audit["source_record_sha256"],
                     "source_geometry_sha256": audit["source_geometry_sha256"],
                     "failed_attempt_count": len(attempt_receipts),
@@ -1061,7 +1044,9 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                                 audit["source_schema_sha256"], objects,
                                 payload.get("capture_receipts", {}))
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-                "feature_count": EXPECTED_COUNT,
+                "feature_count": audit["source_feature_count"],
+                "source_reported_count": audit["source_reported_count"],
+                "source_population_complete": True,
                 "source_null_geometry_count": audit["null_geometry_count"],
                 "source_id_sha256": audit["source_id_sha256"],
                 "source_schema_sha256": audit["source_schema_sha256"],
@@ -1088,7 +1073,9 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_reported_count"],
+            "source_population_complete": True,
             "source_null_geometry_count": audit["null_geometry_count"],
             "source_id_sha256": audit["source_id_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
