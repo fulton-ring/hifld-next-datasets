@@ -65,3 +65,8 @@ quaternary_fault_lines_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [quaternary_fault_lines_usgs]
+ASSET_CHECKS = [quaternary_fault_lines_population_complete]
+JOBS = [quaternary_fault_lines_draft_job]
+SCHEDULES = [quaternary_fault_lines_draft_schedule]

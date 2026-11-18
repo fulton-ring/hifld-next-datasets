@@ -67,3 +67,8 @@ nces_public_schools_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [nces_public_schools]
+ASSET_CHECKS = [nces_public_schools_complete]
+JOBS = [nces_public_schools_draft_job]
+SCHEDULES = [nces_public_schools_draft_schedule]
