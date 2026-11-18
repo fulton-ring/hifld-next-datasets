@@ -23,7 +23,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlsplit
-from uuid import uuid4
 
 import httpx
 import pyarrow as pa
@@ -296,10 +295,6 @@ OUTPUT_FIELDS = (
     *(f"STRUCTURE_{name}" for name in STRUCTURE_FIELDS),
     *(f"LOCATION_{name}" for name in LOCATION_FIELDS),
 )
-
-
-def _null(value: object) -> bool:
-    return value is None or (isinstance(value, str) and value.strip() == "")
 
 
 def _clean(value: object) -> str | None:
