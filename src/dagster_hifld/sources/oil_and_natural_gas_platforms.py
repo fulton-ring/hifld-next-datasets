@@ -710,6 +710,8 @@ def capture_oil_and_natural_gas_platforms(
         "source_population_complete": True, "source_id_roster_complete": True,
         "source_id_sha256": audit["source_id_sha256"],
         "null_geometry_count": audit["null_geometry_count"],
+        "invalid_geometry_count": audit["invalid_geometry_count"],
+        "zero_coordinate_count": audit["zero_coordinate_count"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json",
         "source_evidence_sha256": audit["source_evidence_sha256"],
         **GATES,
