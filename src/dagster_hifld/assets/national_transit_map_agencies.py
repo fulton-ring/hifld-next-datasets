@@ -4,6 +4,7 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -44,9 +45,13 @@ def bts_national_transit_map_agencies(context, config: NationalTransitMapAgencie
 
 @asset_check(asset=bts_national_transit_map_agencies, blocking=True)
 def bts_national_transit_map_agencies_candidate_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == 1239
+    count = candidate.get("source_reported_count")
+    passed = (candidate.get("source_population_complete") is True
+              and type(count) is int and count > 0
+              and candidate.get("feature_count") == count)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "source_release": "2026-09-23",
         "source_release_accepted": False,
         "historical_baseline_acceptance_pending": True,
@@ -56,6 +61,12 @@ def bts_national_transit_map_agencies_candidate_complete(candidate: dict) -> Ass
         "mapping_approved": False,
         "release_accepted": False,
     })
+
+
+@asset_check(asset=bts_national_transit_map_agencies, blocking=False)
+def bts_national_transit_map_agencies_approved_baseline_drift(candidate: dict) -> AssetCheckResult:
+    # No independently approved release is wired for this source.
+    return approved_baseline_drift(candidate)
 
 
 @asset_check(asset=bts_national_transit_map_agencies, blocking=True)
@@ -87,3 +98,5 @@ bts_national_transit_map_agencies_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+ASSET_CHECKS = [bts_national_transit_map_agencies_approved_baseline_drift]

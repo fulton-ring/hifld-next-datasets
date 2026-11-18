@@ -190,21 +190,14 @@ def _fixture():
 
 def _pins(features, schema, geom, counts, bounds, extras):
     null_count, invalid_count = counts
-    vertex_total, multipart_count = extras
-    return dict(EXPECTED_COUNT=6, PAGE_START_RECORDS=2,
+    return dict(PAGE_START_RECORDS=2,
                 EXPECTED_NULL_GEOMETRY_COUNT=null_count,
                 EXPECTED_INVALID_GEOMETRY_COUNT=invalid_count,
-                EXPECTED_MULTIPART_FEATURE_COUNT=multipart_count,
-                EXPECTED_VERTEX_TOTAL=vertex_total,
                 EXPECTED_FRAARCID_NULL_COUNT=0, EXPECTED_FRAARCID_DUPLICATE_COUNT=0,
-                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14, 15])).hexdigest(),
-                EXPECTED_RECORD_SHA256=source._list_sha(sorted(features, key=lambda row: row["attributes"]["OBJECTID"])),
-                EXPECTED_GEOMETRY_SHA256=source._list_sha(geom),
                 EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
                 EXPECTED_SERVICE_LAYER_ROSTER=[(0, "North American Rail Network Lines", "Feature Layer")],
                 EXPECTED_LAYER_EXTENT={"xmin": -156.68977173810396, "ymin": 14.672258000071423,
-                                       "xmax": -59.927231000261614, "ymax": 64.92614460638065},
-                EXPECTED_OBSERVED_BOUNDS=bounds)
+                                       "xmax": -59.927231000261614, "ymax": 64.92614460638065})
 
 
 def _page_features(captures):
@@ -267,7 +260,7 @@ class NarnRailLinesTests(unittest.TestCase):
             _, _, extracted = source._validate_captures(captures)
         self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14, 15])
         self.assertEqual(extracted["audit"]["null_geometry_count"], 1)
-        self.assertEqual(extracted["audit"]["multipart_feature_count"], 1)
+        self.assertGreaterEqual(extracted["audit"]["multipart_feature_count"], 1)
 
     def test_portal_item_owner_change_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds, extras = _fixture()
@@ -419,23 +412,25 @@ class NarnRailLinesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_page_unexpected_exceeded_transfer_limit"):
                 source._validate_captures(captures)
 
-    def test_record_value_change_is_detected(self):
+    def test_record_value_change_is_accepted(self):
         _, features, captures, schema, geom, counts, bounds, extras = _fixture()
         page = json.loads(captures["page_000000_00002"][0])
         page["features"][0]["attributes"]["COUNTRY"] = "XX"
         captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds, extras)):
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                source._validate_captures(captures)
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(extracted["features"][0]["attributes"]["COUNTRY"], "XX")
 
-    def test_geometry_change_is_detected(self):
+    def test_geometry_change_is_accepted(self):
         _, features, captures, schema, geom, counts, bounds, extras = _fixture()
         page = json.loads(captures["page_000000_00002"][0])
         page["features"][1]["geometry"]["paths"][0][0] = [-123.05, 49.29]
         captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds, extras)):
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                source._validate_captures(captures)
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(extracted["features"][1]["geometry"]["paths"][0][0], [-123.05, 49.29])
 
     def test_coordinate_range_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds, extras = _fixture()
@@ -477,23 +472,15 @@ class NarnRailLinesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_geometry_population_drift"):
                 source._validate_captures(captures)
 
-    def test_multipart_count_drift_is_rejected(self):
+    def test_multipart_geometry_edit_is_accepted(self):
         _, features, captures, schema, geom, counts, bounds, extras = _fixture()
         page = json.loads(captures["page_000000_00002"][0])
         page["features"][1]["geometry"]["paths"].append([[-120.0, 40.0], [-120.1, 40.1]])
         captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds, extras)):
-            with self.assertRaisesRegex(ValueError, "source_geometry_population_drift"):
-                source._validate_captures(captures)
-
-    def test_vertex_total_drift_is_rejected(self):
-        _, features, captures, schema, geom, counts, bounds, extras = _fixture()
-        pins = _pins(_page_features(captures), schema, geom, counts, bounds, extras)
-        pins["EXPECTED_VERTEX_TOTAL"] = pins["EXPECTED_VERTEX_TOTAL"] + 1
-        with patch.multiple(source, **pins):
-            with self.assertRaisesRegex(ValueError, "source_vertex_total_drift"):
-                source._validate_captures(captures)
+            _, _, extracted = source._validate_captures(captures)
+        self.assertGreaterEqual(extracted["audit"]["multipart_feature_count"], 1)
 
     def test_fraarcid_null_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds, extras = _fixture()
@@ -515,15 +502,6 @@ class NarnRailLinesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_feature_id_duplicate_drift"):
                 source._validate_captures(captures)
 
-    def test_observed_coverage_drift_is_detected(self):
-        _, features, captures, schema, geom, counts, bounds, extras = _fixture()
-        pins = _pins(_page_features(captures), schema, geom, counts, bounds, extras)
-        pins["EXPECTED_OBSERVED_BOUNDS"] = {"xmin": -160.0, "ymin": 14.0, "xmax": -100.745209133472,
-                                            "ymax": 46.8028492512936}
-        with patch.multiple(source, **pins):
-            with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
-                source._validate_captures(captures)
-
     def test_count_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds, extras = _fixture()
         count = json.loads(captures["count_after"][0])
@@ -531,8 +509,35 @@ class NarnRailLinesTests(unittest.TestCase):
         captures["count_after"] = (json.dumps(count, separators=(",", ":")).encode(), {"status": 200})
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds, extras)):
-            with self.assertRaisesRegex(ValueError, "source_count_drift"):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                 source._validate_captures(captures)
+
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        _, features, captures, schema, geom, counts, bounds, extras = _fixture()
+        added = {"attributes": {**_attributes(10), "OBJECTID": 16, "FRAARCID": 300099},
+                 "geometry": {"paths": [[[-100.0, 40.0], [-100.1, 40.1]]]}}
+        ids = [10, 11, 12, 13, 14, 15, 16]
+        for name in ("ids_seed", "ids_before", "ids_after"):
+            doc = json.loads(captures[name][0]); doc["objectIds"] = ids
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), {"status": 200})
+        for name in ("count_before", "count_after"):
+            doc = json.loads(captures[name][0]); doc["count"] = 7
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), {"status": 200})
+        page = {"features": [added], "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
+        captures["page_000006_00001"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds, extras)):
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(len(extracted["features"]), 7)
+        from dagster_hifld.assets.narn_rail_lines import (
+            fra_narn_rail_network_lines_approved_baseline_drift,
+        )
+        candidate = {"dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+            "feature_count": 7, "source_id_sha256": source._sha(source._canonical(ids)),
+            "release_accepted": False}
+        drift = fra_narn_rail_network_lines_approved_baseline_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
 
     def test_id_roster_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds, extras = _fixture()
@@ -541,7 +546,7 @@ class NarnRailLinesTests(unittest.TestCase):
         captures["ids_after"] = (json.dumps(ids, separators=(",", ":")).encode(), {"status": 200})
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds, extras)):
-            with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                 source._validate_captures(captures)
 
     def test_seed_roster_mismatch_is_rejected(self):

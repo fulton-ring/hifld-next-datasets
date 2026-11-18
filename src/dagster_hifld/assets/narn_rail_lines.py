@@ -12,11 +12,11 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.narn_rail_lines import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     EXPECTED_FRAARCID_DUPLICATE_COUNT,
     EXPECTED_FRAARCID_NULL_COUNT,
     EXPECTED_INVALID_GEOMETRY_COUNT,
@@ -57,7 +57,10 @@ def fra_narn_rail_network_lines(context, config: NarnRailLinesConfig,
 
 @asset_check(asset=fra_narn_rail_network_lines, blocking=True)
 def fra_narn_rail_network_lines_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT
+    count = candidate.get("source_reported_count")
+    passed = (candidate.get("source_population_complete") is True
+              and type(count) is int and count > 0
+              and candidate.get("feature_count") == count
               and candidate.get("candidate_ready") is not None
               and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
               and candidate.get("source_invalid_geometry_count") == EXPECTED_INVALID_GEOMETRY_COUNT)
@@ -65,6 +68,7 @@ def fra_narn_rail_network_lines_complete(candidate: dict) -> AssetCheckResult:
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": count if count is not None else "missing",
             "fraarcid_null_count": EXPECTED_FRAARCID_NULL_COUNT,
             "fraarcid_duplicate_count": EXPECTED_FRAARCID_DUPLICATE_COUNT,
             "source_release_accepted": False,
@@ -76,6 +80,12 @@ def fra_narn_rail_network_lines_complete(candidate: dict) -> AssetCheckResult:
             "release_accepted": False,
         },
     )
+
+
+@asset_check(asset=fra_narn_rail_network_lines, blocking=False)
+def fra_narn_rail_network_lines_approved_baseline_drift(candidate: dict) -> AssetCheckResult:
+    # No independently approved release is wired for this source.
+    return approved_baseline_drift(candidate)
 
 
 narn_rail_lines_draft_job = define_asset_job(
@@ -91,6 +101,6 @@ narn_rail_lines_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [fra_narn_rail_network_lines]
-ASSET_CHECKS = [fra_narn_rail_network_lines_complete]
+ASSET_CHECKS = [fra_narn_rail_network_lines_complete, fra_narn_rail_network_lines_approved_baseline_drift]
 JOBS = [narn_rail_lines_draft_job]
 SCHEDULES = [narn_rail_lines_draft_schedule]

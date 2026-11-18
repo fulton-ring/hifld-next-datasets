@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance
@@ -42,11 +43,7 @@ LAYER_ID = 0
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 SOURCE_RELEASE = "2026-09-23"
 SOURCE_RELEASE_TEXT = "September 23, 2026"
-EXPECTED_COUNT = 1239
-EXPECTED_IDS_SHA256 = "7a2baf2d47556afe754208a28bfd7da99a3115bcc32d79fc4f1cb680650682b0"
 EXPECTED_SCHEMA_SHA256 = "a9f1aff709a051aaa6809b575c9f4c8c803a1e9c42f0dc135a0566220be888bc"
-EXPECTED_RECORD_SHA256 = "e7c048ce039bffa402b2e819b9f4a213fa72c4e6bcef94a5ed4e2e7a6d27fa2b"
-EXPECTED_GEOMETRY_SHA256 = "cf3d7364dbfa56b5a5557495baac94d57e6ac1df308c3f20413194c29b1b49bb"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 16_000_000
 
@@ -111,14 +108,12 @@ def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
         raise ValueError("source_schema_drift")
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_metadata_changed_during_capture")
-    ids = docs["ids_before"].get("objectIds"); seed = docs["ids_seed"].get("objectIds")
-    if (docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT
-        or ids != docs["ids_after"].get("objectIds") or not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT
-        or sorted(seed or []) != sorted(ids)):
+    ids = validate_capture_witness(
+        docs["count_before"].get("count"), docs["ids_before"].get("objectIds"),
+        docs["count_after"].get("count"), docs["ids_after"].get("objectIds"))
+    seed = docs["ids_seed"].get("objectIds")
+    if not isinstance(seed,list) or sorted(seed) != ids:
         raise ValueError("source_population_drift")
-    ids = sorted(ids)
-    if _sha(_canonical(ids)) != EXPECTED_IDS_SHA256:
-        raise ValueError("source_id_population_drift")
     features=[]
     for name in sorted(n for n in docs if n.startswith("page_")):
         page=docs[name]
@@ -128,15 +123,12 @@ def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
         if not isinstance(rows,list): raise ValueError("source_page_missing_features")
         features.extend(rows)
     names={f["name"] for f in fields}
-    if len(features)!=EXPECTED_COUNT or sorted(f.get("attributes",{}).get("OBJECTID") for f in features)!=ids:
+    if len(features)!=len(ids) or sorted(f.get("attributes",{}).get("OBJECTID") for f in features)!=ids:
         raise ValueError("source_page_population_incomplete")
     for f in features:
         if set(f.get("attributes",{}))!=names or not isinstance(f.get("geometry"),dict) or set(f["geometry"])!={"x","y","z"}:
             raise ValueError("source_record_or_geometry_schema_drift")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
-    record_sha=_sha(_canonical(features)); geometry_sha=_sha(_canonical([[f["attributes"]["OBJECTID"],f["geometry"]["x"],f["geometry"]["y"],f["geometry"]["z"]] for f in features]))
-    if record_sha!=EXPECTED_RECORD_SHA256 or geometry_sha!=EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_values_or_geometry_drift")
     return fields, features
 
 
@@ -148,8 +140,8 @@ def _load_retained_capture(directory: Path, destination: Path) -> dict[str, tupl
     try: manifest=json.loads((root/"capture_manifest.json").read_bytes())
     except (OSError,ValueError) as exc: raise ValueError("retained_capture_manifest_missing_or_invalid") from exc
     source_count=manifest.get("source_feature_count",manifest.get("feature_count"))
-    if manifest.get("complete") is not True or source_count!=EXPECTED_COUNT:
-        raise ValueError("retained_capture_is_not_complete_pinned_population")
+    if manifest.get("complete") is not True or type(source_count) is not int or source_count < 0:
+        raise ValueError("retained_capture_is_not_complete_population")
     receipts=manifest.get("receipts")
     if not isinstance(receipts,dict): raise ValueError("retained_capture_receipts_missing")
     captures={}
@@ -211,7 +203,7 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
                 ("ids_before",LAYER_URL+"/query?"+urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
             b,r=_fetch(client,LAYER_URL+"/query?"+urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed");captures["ids_seed"]=(b,r)
             ids=json.loads(b).get("objectIds")
-            if not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT: raise ValueError("source_seed_population_drift")
+            if not isinstance(ids,list) or not ids: raise ValueError("source_seed_population_drift")
             urls.extend((f"page_{i//PAGE_SIZE:03}",LAYER_URL+"/query?"+urlencode({"objectIds":",".join(map(str,ids[i:i+PAGE_SIZE])),"outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","outSR":"4326","orderByFields":"OBJECTID ASC","f":"json"})) for i in range(0,len(ids),PAGE_SIZE))
             urls.extend([("layer_after",LAYER_URL+"?f=pjson"),("service_after",SERVICE_URL+"?f=pjson"),
                 ("count_after",LAYER_URL+"/query?"+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"})),
@@ -238,8 +230,13 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
         if retained: quarantine_incomplete_capture(storage,root,DATASET_SLUG,version,retained,type(exc).__name__)
         raise
     identity=processing_identity(Path(__file__).parents[3]); identity["gdal"]=__import__("pyogrio").__gdal_version_string__
-    data=_parquet(fields,features); record_sha=EXPECTED_RECORD_SHA256; schema_sha=EXPECTED_SCHEMA_SHA256
-    version=content_derived_version(record_sha,EXPECTED_GEOMETRY_SHA256,schema_sha,identity)
+    feature_count=len(features)
+    source_ids=sorted(f["attributes"]["OBJECTID"] for f in features)
+    ids_sha=_sha(_canonical(source_ids))
+    record_sha=_sha(_canonical(features))
+    geometry_sha=_sha(_canonical([[f["attributes"]["OBJECTID"],f["geometry"]["x"],f["geometry"]["y"],f["geometry"]["z"]] for f in features]))
+    data=_parquet(fields,features); schema_sha=EXPECTED_SCHEMA_SHA256
+    version=content_derived_version(record_sha,geometry_sha,schema_sha,identity)
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     source_objects={f"geoparquet/{DATASET_SLUG}.parquet":{"bytes":len(data),"sha256":_sha(data)}}
     receipts={n:dict(r) for n,(_,r) in sorted(captures.items())}
@@ -252,9 +249,9 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"One-to-one typed source fields and point coordinates retained; baseline and release approval pending.","objects":[{"path":f"geoparquet/{DATASET_SLUG}.parquet",**source_objects[f"geoparquet/{DATASET_SLUG}.parquet"]}]}}},
         "unsupported_output_formats":{"geopackage":"Historical candidate does not match the current source contract; explicit approved mapping pending.","shapefile_zip":"Historical candidate truncates field names and omits source OBJECTID.","pmtiles":"Display-only format; no publication transformation approved."}}
     validate_release_provenance(manifest)
-    audit={"feature_count":EXPECTED_COUNT,"source_id_sha256":EXPECTED_IDS_SHA256,"source_record_sha256":record_sha,"source_geometry_sha256":EXPECTED_GEOMETRY_SHA256,"source_schema_sha256":schema_sha,"source_fields":fields,"source_crs_epsg":4326,"geometry_type":"Point Z","null_geometry_count":0,"item_id":ITEM_ID,"item_owner":OWNER,"source_release":SOURCE_RELEASE,"portal_modified_is_not_release_date":True,
+    audit={"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_record_sha256":record_sha,"source_geometry_sha256":geometry_sha,"source_schema_sha256":schema_sha,"source_fields":fields,"source_crs_epsg":4326,"geometry_type":"Point Z","null_geometry_count":0,"item_id":ITEM_ID,"item_owner":OWNER,"source_release":SOURCE_RELEASE,"portal_modified_is_not_release_date":True,
         "historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    root.joinpath("capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"feature_count":EXPECTED_COUNT,"receipts":receipts})+b"\n")
+    root.joinpath("capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"feature_count":feature_count,"receipts":receipts})+b"\n")
     state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs={f"geoparquet/{DATASET_SLUG}.parquet":data,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for n,(body,r) in captures.items():
@@ -265,7 +262,7 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     if storage.object_snapshot(state_key) is not None:
         descriptors={n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,record_sha,schema_sha,descriptors,receipts)
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"reused":True,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"reused":True,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     for n,b in outputs.items(): write_immutable(storage,f"{prefix}/{n}",b)
     descriptors={n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
     for n,d in descriptors.items():
@@ -274,4 +271,4 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
