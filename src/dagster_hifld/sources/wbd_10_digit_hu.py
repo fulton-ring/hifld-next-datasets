@@ -87,6 +87,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.capture_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, validate_capture_request_identity,
@@ -1188,17 +1189,6 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
         raise
 
 
-_IDENTITY_STREAM_BLOCK_BYTES = 8 * 1024 * 1024
-
-
-def _streamed_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(_IDENTITY_STREAM_BLOCK_BYTES), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def _capture_identity(root: Path, names: Iterable[str]) -> dict[str, dict[str, str]]:
     """Candidate identity binds every retained decoded and wire artifact.
 
@@ -1210,8 +1200,8 @@ def _capture_identity(root: Path, names: Iterable[str]) -> dict[str, dict[str, s
     """
     digests = {}
     for name in sorted(names):
-        digests[name] = {"decoded_sha256": _streamed_sha256(root / f"{name}.body"),
-                         "wire_sha256": _streamed_sha256(root / f"{name}.wire")}
+        digests[name] = {"decoded_sha256": sha256_file(root / f"{name}.body"),
+                         "wire_sha256": sha256_file(root / f"{name}.wire")}
     return digests
 
 
@@ -1500,11 +1490,7 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
     parquet_path = derived["parquet_path"]
     parquet_bytes = parquet_path.stat().st_size
-    digest = hashlib.sha256()
-    with open(parquet_path, "rb") as stream:
-        for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-            digest.update(block)
-    parquet_sha = digest.hexdigest()
+    parquet_sha = sha256_file(parquet_path)
     receipts = {name: captures[name] for name in sorted(captures)}
     gate_note = ("no row gates to null geometry: served rings convert through the shared "
                  "GDAL Esri polygon converter, and OGC-invalid converted geometry is "

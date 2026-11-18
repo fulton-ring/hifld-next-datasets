@@ -206,14 +206,6 @@ def _preserved_receipts_for_same_construction(storage, version: str, identity: d
     return payload
 
 
-def _hash_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def _load_retained_input(root: Path) -> tuple[Path, dict, dict, list[int]]:
     """Load only the captured native archive and its original receipt documents."""
     root = Path(root).absolute()
@@ -253,7 +245,7 @@ def _load_retained_input(root: Path) -> tuple[Path, dict, dict, list[int]]:
     export = receipts["filegdb_export"]
     if (export.get("sha256") != audit.get("source_archive_sha256")
             or export.get("bytes") != audit.get("source_archive_bytes")
-            or _hash_file(archive_path) != export["sha256"]
+            or sha256_file(archive_path) != export["sha256"]
             or archive_path.stat().st_size != export["bytes"]):
         raise ValueError("retained_native_archive_digest_drift")
     ids = list(EXPECTED_SOURCE_IDS)
@@ -442,9 +434,9 @@ def capture_usace_waterway_nodes(
             expected_count=EXPECTED_COUNT, expected_ids=source_ids, expected_zm=False, binary_fields=(),
         )
         if offline_replay:
-            current_files = {path.relative_to(prior_gdb_root).as_posix(): _hash_file(path)
+            current_files = {path.relative_to(prior_gdb_root).as_posix(): sha256_file(path)
                              for path in prior_gdb_root.rglob("*") if path.is_file()}
-            replay_files = {path.relative_to(gdb_path).as_posix(): _hash_file(path)
+            replay_files = {path.relative_to(gdb_path).as_posix(): sha256_file(path)
                             for path in gdb_path.rglob("*") if path.is_file()}
             if prior_gdb_root.name != gdb_root or current_files != replay_files:
                 raise ValueError("retained_native_GDB_does_not_match_original_archive")
