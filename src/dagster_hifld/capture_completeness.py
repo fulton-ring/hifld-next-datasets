@@ -3,7 +3,7 @@
 No source, identifier contract, baseline or release is approved by these helpers.
 Callers still validate metadata, page boundaries, schema, geometry and transport.
 """
-from dagster import AssetCheckResult, AssetCheckSeverity
+from dagster import AssetCheckResult, AssetCheckSeverity, asset_check
 
 
 def validate_capture_witness(count_before: int, ids_before: list[int],
@@ -64,3 +64,22 @@ def approved_baseline_drift(candidate: dict, approved_baseline: dict | None = No
             "feature_count_delta": delta, "count_tolerance": count_tolerance,
             "native_id_roster_changed": ids_changed,
         })
+
+
+def register_approved_baseline_drift(asset, name: str):
+    """Register the non-blocking approved-baseline drift WARN check for one asset.
+
+    Completeness is enforced by :func:`validate_capture_witness` at capture
+    time. This check only compares a candidate against an independently
+    approved same-file release when the caller supplies one; with no approved
+    baseline it reports an explicit skip and never turns a code pin or a
+    development capture into a release baseline.
+    """
+    if not isinstance(name, str) or not name or not name.isidentifier():
+        raise ValueError("baseline_drift_check_name_invalid")
+
+    def check(candidate: dict) -> AssetCheckResult:
+        return approved_baseline_drift(candidate)
+
+    check.__name__ = name
+    return asset_check(asset=asset, blocking=False)(check)
