@@ -37,6 +37,7 @@ from dagster_hifld.sources.capture_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
@@ -47,8 +48,6 @@ LAYER_ID = 63
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 AGC_PRODUCT_PAGE = "https://www.agc.army.mil/What-we-do/Inland-Electronic-Navigation-Charts-IENC/Product-Downloads/"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 317
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
 PAGE_MAX_BYTES = 50_000_000
 CAPTURE_MAX_BYTES = 500_000_000
 SOURCE_CRS = CRS.from_epsg(4326)
@@ -227,13 +226,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         raise ValueError("source_coverage_extent_drift")
     _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
     _validate_spatial_reference(layer.get("extent", {}).get("spatialReference"), "source_extent")
-    count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (type(count_before) is not int or count_before != EXPECTED_COUNT
-            or count_after != count_before or not isinstance(before, list) or before != after
-            or len(before) != count_before or len(set(before)) != count_before
-            or sorted(before) != EXPECTED_IDS):
-        raise ValueError("source_count_or_full_id_roster_drift")
+    before = capture_witness(captures)
+    count_before = len(before)
     if docs["ids_before"].get("objectIdFieldName") != "OBJECTID":
         raise ValueError("source_objectid_field_drift")
     page_names = sorted(name for name in captures if name == "features" or name.startswith("page_"))
@@ -325,10 +319,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "source_has_m": bool(layer.get("hasM", False)), "source_vertex_count": vertex_count,
         "geometry_valid_count": valid_count, "geometry_invalid_count": len(features) - valid_count,
         "geometry_types": sorted(geometry_types), "category_counts": dict(sorted(categories.items())),
-        "source_coverage_scope": "Complete observed current official USACE IENC DATA_COVERAGE_AREA layer 63. This layer contains 317 coverage/no-coverage polygons in the inland-chart extent; no claim of equivalence to the archived HIFLD inventory, the full IENC master geodatabase, or nationwide coverage beyond this layer.",
+        "source_coverage_scope": "Complete observed current official USACE IENC DATA_COVERAGE_AREA layer 63, covering the inland-chart extent; no claim of equivalence to the archived HIFLD inventory, the full IENC master geodatabase, or nationwide coverage beyond this layer.",
         "source_release_date": None,
         "source_release_date_unknown_reason": "The layer metadata and feature Source_Date attributes do not declare a dataset release date; they are preserved as source values.",
-        "drift_guard": "Pinned layer/service identity, schema, geometry type, EPSG:4326, page limit, native extent, complete 317-OBJECTID roster, transfer-limit marker, and stable before/after counts and IDs are required. Any change quarantines pending review.",
+        "drift_guard": "Pinned layer/service identity, schema, geometry type, EPSG:4326, page limit and native extent are required; completeness comes from the producer's before/after count and ID roster at capture time. Any incomplete or inconsistent capture quarantines pending review.",
     }
     return layer["fields"], features, audit
 
@@ -552,7 +546,7 @@ def capture_usace_data_coverage_areas(
     ready = {
         "approved": False, "version": version,
         "source_population_complete": True,
-        "source_count": EXPECTED_COUNT, "source_id_sha256": audit["source_id_sha256"],
+        "source_count": audit["source_feature_count"], "source_id_sha256": audit["source_id_sha256"],
         "source_schema_sha256": audit["source_schema_sha256"],
         "source_record_sha256": audit["source_record_sha256"],
         "source_geometry_sha256": audit["source_geometry_sha256"],
@@ -586,7 +580,8 @@ def capture_usace_data_coverage_areas(
         )
         return {
             "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": audit["source_feature_count"], "source_population_complete": True,
+            "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],
+            "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "source_capture_sha256": capture_sha, "source_coverage_scope": audit["source_coverage_scope"],
@@ -604,7 +599,8 @@ def capture_usace_data_coverage_areas(
     )
     return {
         "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": audit["source_feature_count"], "source_population_complete": True,
+        "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],
+        "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"],
         "source_schema_sha256": audit["source_schema_sha256"],
         "source_capture_sha256": capture_sha, "source_coverage_scope": audit["source_coverage_scope"],

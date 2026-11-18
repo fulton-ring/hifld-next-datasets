@@ -17,6 +17,8 @@ from dagster_hifld.construction_state import canonical_construction_bundle, seal
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.capture_common import write_immutable
 
+_COUNT=6859
+
 
 class UsaceWaterwayLinesContractTests(unittest.TestCase):
     def test_filegdb_archive_descriptor_uses_canonical_layout(self):
@@ -107,15 +109,15 @@ class UsaceWaterwayLinesContractTests(unittest.TestCase):
             {"serviceItemId":source.USACE_SERVICE_ITEM_ID,"capabilities":"Query,Extract","supportedExportFormats":"filegdb,geojson"},
             {"id":1,"name":"Waterway_Network","geometryType":"esriGeometryPolyline","hasZ":True,"hasM":True,
              "extent":{**source.OBSERVED_COVERAGE,"spatialReference":{"latestWkid":4269}},"fields":layer_fields},
-            {"count":source.EXPECTED_COUNT},
-            {"objectIds":list(range(1,source.EXPECTED_COUNT+1))},
+            {"count":_COUNT},
+            {"objectIds":list(range(1,_COUNT+1))},
         )
 
     def test_exact_official_items_layer_roster_and_population_pass(self):
         docs=self._metadata()
         fields,ids=source._validate_before(*docs)
         self.assertEqual([x["name"] for x in fields],list(source.EXPECTED_FIELDS))
-        self.assertEqual(len(ids),source.EXPECTED_COUNT)
+        self.assertEqual(len(ids),_COUNT)
 
     def test_missing_blob_or_renamed_id_field_quarantines_source(self):
         docs=list(self._metadata())
@@ -130,20 +132,22 @@ class UsaceWaterwayLinesContractTests(unittest.TestCase):
             source._validate_before(*docs)
 
     def test_incomplete_or_duplicate_ids_block_candidate(self):
-        docs=list(self._metadata()); docs[4]={"count":source.EXPECTED_COUNT-1}
+        docs=list(self._metadata()); docs[4]={"count":_COUNT-1}
         with self.assertRaisesRegex(ValueError,"population_or_ID_drift"):
             source._validate_before(*docs)
         docs=list(self._metadata()); docs[5]["objectIds"][-1]=docs[5]["objectIds"][-2]
         with self.assertRaisesRegex(ValueError,"population_or_ID_drift"):
             source._validate_before(*docs)
 
-    def test_changed_field_type_and_observed_id_roster_block_candidate(self):
+    def test_changed_field_type_blocks_candidate(self):
         docs=list(self._metadata());docs[3]=json.loads(json.dumps(docs[3]));docs[3]["fields"][1]["type"]="esriFieldTypeDouble"
         with self.assertRaisesRegex(ValueError,"field_type_drift"):
             source._validate_before(*docs)
-        docs=list(self._metadata());docs[5]["objectIds"][-1]=7000
-        with self.assertRaisesRegex(ValueError,"observed_ID_roster_drift"):
-            source._validate_before(*docs)
+
+    def test_upstream_population_change_passes_source_witness(self):
+        docs=list(self._metadata());docs[4]={"count":_COUNT+1};docs[5]["objectIds"]=list(range(1,_COUNT+2))
+        fields,ids=source._validate_before(*docs)
+        self.assertEqual(len(ids),_COUNT+1)
 
     def test_unexpected_zm_or_crs_blocks_candidate(self):
         docs=list(self._metadata()); docs[3]=json.loads(json.dumps(docs[3])); docs[3]["hasM"]=False
@@ -154,7 +158,7 @@ class UsaceWaterwayLinesContractTests(unittest.TestCase):
             source._validate_before(*docs)
 
     def test_source_check_passes_only_complete_native_candidate_and_reports_all_decisions_false(self):
-        result=usace_navigable_waterway_network_lines_complete({"candidate_ready":True,"feature_count":source.EXPECTED_COUNT,"native_Z_M_and_BLOB_preserved":True})
+        result=usace_navigable_waterway_network_lines_complete({"candidate_ready":True,"feature_count":_COUNT,"source_reported_count":_COUNT,"native_Z_M_and_BLOB_preserved":True})
         self.assertTrue(result.passed)
         self.assertTrue(all(result.metadata[key].value is False for key in (
             "source_release_accepted","source_freshness_accepted","schema_contract_accepted",

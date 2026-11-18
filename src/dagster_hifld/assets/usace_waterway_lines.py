@@ -1,6 +1,7 @@
 """Explicit approval-gated ingest asset for USACE waterway network lines."""
 from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
-from dagster_hifld.sources.usace_waterway_lines import DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_usace_waterway_lines
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
+from dagster_hifld.sources.usace_waterway_lines import DATASET_SLUG, FILE_SLUG, capture_usace_waterway_lines
 from dagster_hifld.resources import StagingStorageResource
 
 class UsaceWaterwayLinesConfig(Config):
@@ -17,9 +18,12 @@ def usace_navigable_waterway_network_lines(context, config: UsaceWaterwayLinesCo
 
 @asset_check(asset=usace_navigable_waterway_network_lines, blocking=True)
 def usace_navigable_waterway_network_lines_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("candidate_ready") is True and candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("native_Z_M_and_BLOB_preserved") is True
+    passed = (candidate.get("candidate_ready") is True
+              and candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("native_Z_M_and_BLOB_preserved") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": candidate.get("source_reported_count", "missing"),
         "native_filegdb_Z_M_BLOB_preserved": candidate.get("native_Z_M_and_BLOB_preserved", False),
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
@@ -30,7 +34,10 @@ usace_waterway_lines_draft_job = define_asset_job("usace_waterway_lines_draft_re
 usace_waterway_lines_draft_schedule = ScheduleDefinition(name="usace_waterway_lines_draft_refresh_schedule", job=usace_waterway_lines_draft_job,
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York", default_status=DefaultScheduleStatus.STOPPED)
 
+usace_waterway_lines_drift = register_approved_baseline_drift(
+    usace_navigable_waterway_network_lines, "usace_waterway_lines_drift")
+
 INGEST_ASSETS = [usace_navigable_waterway_network_lines]
-ASSET_CHECKS = [usace_navigable_waterway_network_lines_complete]
+ASSET_CHECKS = [usace_navigable_waterway_network_lines_complete, usace_waterway_lines_drift]
 JOBS = [usace_waterway_lines_draft_job]
 SCHEDULES = [usace_waterway_lines_draft_schedule]

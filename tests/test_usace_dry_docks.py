@@ -24,13 +24,13 @@ class UsaceDryDocksTests(unittest.TestCase):
     def test_asset_is_registered_and_schedule_is_stopped(self):
         self.assertIn(usace_dry_docks_usace_ienc, hifld_ingest_assets)
         self.assertEqual(usace_dry_docks_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        result = usace_dry_docks_complete({"feature_count": 2, "source_population_complete": True})
+        result = usace_dry_docks_complete({"feature_count": 2, "source_reported_count": 2, "source_population_complete": True})
         self.assertTrue(result.passed)
         self.assertFalse(result.metadata["release_accepted"].value)
         self.assertFalse(result.metadata["rights_accepted"].value)
         self.assertFalse(result.metadata["baseline_comparison_accepted"].value)
         self.assertFalse(usace_dry_docks_complete({
-            "feature_count": 1, "source_population_complete": True,
+            "feature_count": 1, "source_reported_count": 2, "source_population_complete": True,
         }).passed)
 
     def test_native_polygon_wkb_preserves_ring_and_vertex_order(self):
