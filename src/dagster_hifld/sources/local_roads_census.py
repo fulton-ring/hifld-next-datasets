@@ -41,6 +41,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.arcgis_layer import _arrow_type, _esri_polyline_wkb, _load_capture
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, seal_ready_candidate,
@@ -584,14 +585,6 @@ def _disk_receipts(root: Path) -> dict[str, dict]:
     return receipts
 
 
-def _file_sha256_stream(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(8 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def capture_local_roads_census(storage: StagingStorageResource, *, version: str,
                                capture_directory: str | None = None) -> dict[str, object]:
     """Capture, resume, or replay the complete TIGERweb Local Roads candidate."""
@@ -658,7 +651,7 @@ def capture_local_roads_census(storage: StagingStorageResource, *, version: str,
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
     parquet_bytes = parquet_path.stat().st_size
-    parquet_sha = _file_sha256_stream(parquet_path)
+    parquet_sha = sha256_file(parquet_path)
     inputs = []
     vintage = audit["source_vintage"]
     for name, receipt in sorted(receipts.items()):

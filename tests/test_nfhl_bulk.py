@@ -321,7 +321,7 @@ class StreamTests(unittest.TestCase):
                 b"CITMARKER", b"CITM\x92RKER"))
             receipt = {"complete_body": True, "status": 200,
                        "bytes": zip_path.stat().st_size,
-                       "sha256": source._file_sha256(zip_path),
+                       "sha256": source.sha256_file(zip_path),
                        "item_id": products[0].item_id,
                        "product_file_name": products[0].file_name,
                        "product_update_date": source.update_date_iso(products[0].as_dict())}
@@ -347,7 +347,7 @@ class StreamTests(unittest.TestCase):
             zip_path.write_bytes(_zip_bytes(root, "01005C.zip", {"S_FLD_HAZ_AR": frame}))
             receipt = {"complete_body": True, "status": 200,
                        "bytes": zip_path.stat().st_size,
-                       "sha256": source._file_sha256(zip_path),
+                       "sha256": source.sha256_file(zip_path),
                        "item_id": extra.item_id, "product_file_name": extra.file_name,
                        "product_update_date": source.update_date_iso(extra.as_dict())}
             (capture / f"{extra.item_id}.receipt.json").write_bytes(

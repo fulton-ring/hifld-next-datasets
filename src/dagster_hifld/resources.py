@@ -22,6 +22,8 @@ from dagster import ConfigurableResource
 from google.cloud import storage
 from google.cloud.storage.blob import Blob
 
+from dagster_hifld.validation import sha256_file
+
 logger = logging.getLogger(__name__)
 
 _GCS_DOWNLOAD_TIMEOUT_SECONDS = 60
@@ -352,7 +354,7 @@ class StagingStorageResource(ConfigurableResource):
         elif self._uses_s3():
             with source.open("rb") as body:
                 self._s3().put_object(Bucket=self.bucket, Key=key, Body=body,
-                                      Metadata={"sha256": _file_sha256(source)},
+                                      Metadata={"sha256": sha256_file(source)},
                                       CacheControl="no-cache")
         else:
             import gcsfs
@@ -428,7 +430,7 @@ class StagingStorageResource(ConfigurableResource):
             with tempfile.TemporaryDirectory(prefix="hifld-gcs-sha256-") as temporary:
                 local_path = Path(temporary) / "object"
                 self.download_key_to(key, local_path)
-                return _file_sha256(local_path)
+                return sha256_file(local_path)
         if self.use_local or not self.bucket:
             stream = (Path(self.local_dir).resolve() / key).open("rb")
         else:
@@ -478,7 +480,7 @@ class StagingStorageResource(ConfigurableResource):
                 target_path = Path(temporary) / "target"
                 self.download_key_to(key, source_path)
                 destination.download_key_to(destination_key, target_path)
-                return _file_sha256(source_path) == _file_sha256(target_path)
+                return sha256_file(source_path) == sha256_file(target_path)
 
         source_is_local = self.use_local or not self.bucket
         destination_is_local = destination.use_local or not destination.bucket
@@ -487,7 +489,7 @@ class StagingStorageResource(ConfigurableResource):
             destination_path = Path(destination.local_dir).resolve() / destination_key
             if source_path.stat().st_size != destination_path.stat().st_size:
                 return False
-            return _file_sha256(source_path) == _file_sha256(destination_path)
+            return sha256_file(source_path) == sha256_file(destination_path)
 
         if not source_is_local and not destination_is_local:
             import gcsfs
@@ -1234,14 +1236,6 @@ def _require_string_object_mapping(
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise RuntimeError(f"{context} was not an object.")
     return {key: item for key, item in value.items() if isinstance(key, str)}
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as file_obj:
-        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _file_checksums(path: Path) -> tuple[str, str, str]:

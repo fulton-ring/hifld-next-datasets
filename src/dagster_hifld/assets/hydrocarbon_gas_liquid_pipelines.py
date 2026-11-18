@@ -9,7 +9,7 @@ class HglPipelinesConfig(Config):
     capture_directory: str = ""
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="energy", compute_kind="http",
-       description="Pinned January-2020-vintage EIA HGL pipelines shapefile (133 lines). Historical unapproved candidate; currentness and HIFLD archive equivalence remain unresolved.")
+       description='Parked historical-source adapter: normal acquisition and cache replay refuse before network or storage effects. Existing published versions remain addressable; a maintained source-native successor is required.')
 def eia_hgl_pipelines_historical(context, config: HglPipelinesConfig, staging_storage: StagingStorageResource) -> dict:
     result = capture_hgl_pipelines(staging_storage, version=build_version_id(context), capture_directory=config.capture_directory or None)
     context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])])

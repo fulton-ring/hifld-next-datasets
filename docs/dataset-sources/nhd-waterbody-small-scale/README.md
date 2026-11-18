@@ -1,5 +1,7 @@
 # nhd-waterbody-small-scale — Waterbody - Small Scale (retired USGS NHD medium-resolution layer 10)
 
+> Status: retired by the maintainer on 2026-11-17. No pipeline is implemented or planned; this record is kept as source provenance only.
+
 HIFLD Open inventory entry `nhd/waterbody-small-scale-2` ("Waterbody - Small
 Scale", agency US Geological Survey, issued 2024-03-20; the inventory's
 "modified 2025-07-03" is the rescue-archive edit date, not a data release).
@@ -116,13 +118,13 @@ legacy NHD layer 11 (issue #232). None of those is in scope here.
   source: park or retire"), with its draft PR #806 retained as decision
   evidence.
 
-## Decision required (maintainer)
+## Decision (retired 2026-11-17)
 
-Per the project source policy this dataset needs one of:
+The maintainer retired this dataset on 2026-11-17. The options considered were:
 
 1. **Park or retire** `nhd/waterbody-small-scale-2` (the policy default given
-   the evidence above), or
-2. An explicit maintainer decision to rebuild from the retired-but-published
+   the evidence above) — chosen, or
+2. (Not chosen) An explicit maintainer decision to rebuild from the retired-but-published
    USGS NHD legacy publication (frozen service layer 10, or the equivalent
    final national NHD file geodatabase download) as a static historical
    release — accepting that it can never refresh, and pinning freshness and

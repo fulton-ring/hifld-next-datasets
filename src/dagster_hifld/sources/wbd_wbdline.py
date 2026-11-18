@@ -85,6 +85,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.capture_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -1021,11 +1022,7 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
     parquet_path = derived["parquet_path"]
     parquet_bytes = parquet_path.stat().st_size
-    digest = hashlib.sha256()
-    with open(parquet_path, "rb") as stream:
-        for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-            digest.update(block)
-    parquet_sha = digest.hexdigest()
+    parquet_sha = sha256_file(parquet_path)
     receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
     gate_note = (f"{audit['null_geometry_count']} rows gate to null geometry and are "
                  "counted by failure mode: "

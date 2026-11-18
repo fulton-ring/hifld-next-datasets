@@ -41,3 +41,9 @@ keeps capturing the pinned zip and fails closed into quarantine on any change.
 All runtime approval flags remain false and the refresh schedule stays
 stopped; currentness and any future successor remain pending the maintainer
 decisions recorded on issue #775.
+
+## Maintained-refresh disposition (2026-11-16)
+
+The public refresh entrypoint now refuses fresh acquisition and retained-capture replay before network or staging side effects. Its pinned historical payload is not a maintained current-source pipeline. Existing published versions remain unchanged and addressable; offline parser fixtures remain useful evidence. A stopped schedule alone was insufficient to prevent a manual historical capture.
+
+No complete maintained public native-geometry successor was verified in the audit. Access to an agency service and ongoing maintenance are separate questions. Investigate the producer route and redistribution rights; an old ZIP or republisher is not a maintained fallback.

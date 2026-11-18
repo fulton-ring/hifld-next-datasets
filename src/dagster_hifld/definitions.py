@@ -106,11 +106,6 @@ from dagster_hifld.assets.ornl_power_plants import (
     eia_power_plants_draft_job,
     eia_power_plants_draft_schedule,
 )
-from dagster_hifld.assets.epa_power_generation import (
-    epa_frs_eia_860_power_generation_complete,
-    epa_power_generation_draft_job,
-    epa_power_generation_draft_schedule,
-)
 from dagster_hifld.assets.national_transit_map_agencies import (
     bts_national_transit_map_agencies_candidate_complete,
     bts_national_transit_map_agencies_draft_job,
@@ -1016,7 +1011,6 @@ defs = Definitions(
             usace_fuds_program_district_boundaries_complete,
             epa_disaster_debris_complete,
             eia_power_plants_complete,
-            epa_frs_eia_860_power_generation_complete,
             epa_icis_wastewater_capture_complete,
             fuds_irm_property_point_complete,
             fuds_irm_property_point_geometry_quality,
@@ -1174,7 +1168,6 @@ defs = Definitions(
             usace_landmark_areas_draft_job,
             usace_caution_areas_draft_job,
             eia_power_plants_draft_job,
-            epa_power_generation_draft_job,
             epa_icis_wastewater_draft_job,
             epa_frs_naics_draft_job,
             bsee_ocs_platforms_draft_job,
@@ -1291,7 +1284,6 @@ defs = Definitions(
             usace_landmark_areas_draft_schedule,
             usace_caution_areas_draft_schedule,
             eia_power_plants_draft_schedule,
-            epa_power_generation_draft_schedule,
             epa_icis_wastewater_draft_schedule,
             fuds_projects_points_draft_schedule,
             epa_frs_naics_draft_schedule,
