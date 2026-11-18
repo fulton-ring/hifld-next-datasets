@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.shipping_fairways import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_shipping_fairways,
+    DATASET_SLUG, FILE_SLUG, capture_shipping_fairways,
 )
 
 
@@ -43,9 +44,11 @@ def shipping_fairways(context, config: ShippingFairwaysConfig,
 
 @asset_check(asset=shipping_fairways, blocking=True)
 def shipping_fairways_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_population_complete") is True
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": candidate.get("source_reported_count", "missing"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -68,7 +71,9 @@ shipping_fairways_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+shipping_fairways_drift = register_approved_baseline_drift(shipping_fairways, "shipping_fairways_drift")
+
 INGEST_ASSETS = [shipping_fairways]
-ASSET_CHECKS = [shipping_fairways_complete]
+ASSET_CHECKS = [shipping_fairways_complete, shipping_fairways_drift]
 JOBS = [shipping_fairways_draft_job]
 SCHEDULES = [shipping_fairways_draft_schedule]

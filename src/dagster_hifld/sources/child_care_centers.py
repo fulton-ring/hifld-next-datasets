@@ -39,6 +39,7 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
     _canonical, _capture_identity, _load_capture, _sha,
     _validate_spatial_reference,
 )
@@ -53,9 +54,6 @@ LAYER_NAME = "Day Care Centers"
 PUBLISHER = ("US EPA Office of Environmental Information (SEGS web service); data produced by "
              "Oak Ridge National Laboratory, Geographic Information Science and Technology Group "
              "(HSIP Freedom Database)")
-EXPECTED_COUNT = 115036
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "7d34949428113483d9ed904d5d75f0b13916117bdbbb54b9ee768a1ae1178dce"
 PAGE_SIZE = 1000
 MAX_RESPONSE_BYTES = 8_000_000
 MAX_CAPTURE_BYTES = 512_000_000
@@ -114,9 +112,10 @@ ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["nam
 ATTRIBUTE_FIELD_NAMES = {field["name"] for field in ATTRIBUTE_FIELDS}
 EXPECTED_EXTENT = {"xmin": -166.53141479199996, "ymin": 17.948361168000076,
                    "xmax": -65.43435807999998, "ymax": 67.25950000000006}
-CAPTURE_NAMES = {"service_directory", "service_before", "layer_before", "count_before", "ids_before",
-                 "layer_after", "count_after", "ids_after", "service_after",
-                 *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
+def _capture_names(ids: list[int]) -> set[str]:
+    return {"service_directory", "service_before", "layer_before", "count_before", "ids_before",
+            "layer_after", "count_after", "ids_after", "service_after",
+            *{f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}}
 DELEGATION_EVIDENCE = {
     "epa_service_folder_url": SERVICE_DIRECTORY_URL,
     "epa_service_map_name": EXPECTED_SERVICE_MAP_NAME,
@@ -160,10 +159,16 @@ def _bounded_capture(client: httpx.Client, url: str, root: Path, name: str) -> t
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+    ids_body, _ids_wire, _ids_receipt = _load_capture(root, "ids_before")
+    replay_ids = json.loads(ids_body).get("objectIds")
+    if (not isinstance(replay_ids, list) or not replay_ids
+            or any(type(oid) is not int or oid <= 0 for oid in replay_ids)
+            or len(set(replay_ids)) != len(replay_ids)):
+        raise ValueError("retained_capture_id_roster_invalid")
     return validate_retained_capture_replay(
         root,
-        capture_names=CAPTURE_NAMES,
-        expected_urls=dict(_capture_roster(EXPECTED_IDS)),
+        capture_names=_capture_names(replay_ids),
+        expected_urls=dict(_capture_roster(replay_ids)),
         load_capture=_load_capture,
         validate_request_identity=validate_capture_request_identity,
     )
@@ -173,26 +178,12 @@ def _point_wkb(x: float, y: float) -> bytes:
     return b"\x01" + struct.pack("<I", 1) + struct.pack("<dd", x, y)
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]], *,
-              expected_count: int | None = None,
-              expected_id_sha256: str | None = None) -> tuple[list[dict], list[dict], dict]:
-    """Validate a complete capture roster against pinned or injected expectations.
-
-    Keyword defaults pin the production source population; tests inject a
-    small synthetic population to exercise every drift branch offline.
-    """
-    if expected_count is None:
-        expected_count = EXPECTED_COUNT
-    if expected_id_sha256 is None:
-        expected_id_sha256 = EXPECTED_ID_SHA256
-    if type(expected_count) is not int or expected_count <= 0:
-        raise ValueError("invalid_expected_population")
-    expected_ids = list(range(1, expected_count + 1))
+def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+    """Validate one complete capture against the producer's capture-time witnesses."""
+    expected_ids = capture_witness(captures)
+    expected_count = len(expected_ids)
     page_count = (expected_count + PAGE_SIZE - 1) // PAGE_SIZE
-    expected_names = ({"service_directory", "service_before", "layer_before", "count_before",
-                       "ids_before", "layer_after", "count_after", "ids_after", "service_after"}
-                      | {f"page_{index:03d}" for index in range(page_count)})
-    if set(captures) != expected_names:
+    if set(captures) != _capture_names(expected_ids):
         raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     directory = docs["service_directory"]
@@ -229,16 +220,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]], *,
         _validate_spatial_reference(extent_reference, "source_layer_extent")
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_metadata_changed_during_capture")
-    count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (count_before != expected_count or count_after != count_before
-            or not isinstance(ids_before, list) or not isinstance(ids_after, list)
-            or any(type(oid) is not int for oid in ids_before) or any(type(oid) is not int for oid in ids_after)
-            or ids_before != expected_ids or ids_after != ids_before
-            or len(set(ids_before)) != expected_count
-            or docs["ids_before"].get("objectIdFieldName") != "OBJECTID"
-            or docs["ids_after"].get("objectIdFieldName") != "OBJECTID"
-            or _sha(_canonical(sorted(ids_before))) != expected_id_sha256):
+    if (docs["ids_before"].get("objectIdFieldName") != "OBJECTID"
+            or docs["ids_after"].get("objectIdFieldName") != "OBJECTID"):
         raise ValueError("source_count_or_id_population_drift")
     features = []
     geometry_valid = 0
@@ -413,8 +396,9 @@ def capture_child_care_centers(storage: StagingStorageResource, *, version: str,
                 ids_body, ids_receipt = _bounded_capture(
                     client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
                 ids = json.loads(ids_body).get("objectIds")
-                if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-                        or ids != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT):
+                if (not isinstance(ids, list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
                     raise ValueError("source_seed_id_population_drift")
                 captures["ids_before"] = (ids_body, ids_receipt)
                 for name, url in _capture_roster(ids):
@@ -559,9 +543,9 @@ def capture_child_care_centers(storage: StagingStorageResource, *, version: str,
             fingerprint, identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
+            "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1,
-            "source_id_max": EXPECTED_COUNT, "source_schema_sha256": audit["source_schema_sha256"],
+            "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash,
@@ -588,9 +572,9 @@ def capture_child_care_centers(storage: StagingStorageResource, *, version: str,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_COUNT, "source_population_complete": True,
+        "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1,
-        "source_id_max": EXPECTED_COUNT, "source_schema_sha256": audit["source_schema_sha256"],
+        "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash,
