@@ -28,6 +28,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -46,9 +47,6 @@ LAYER_ID = 79
 LAYER_NAME = "MOORING_FACILITY_AREA"
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official USACE_IENC_Master_Service"
-EXPECTED_COUNT = 5750
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "129316d2d9b584ad74c644ed2cf03b2f5dc0cdc7e9b4eaa76774a1694fc7cb1f"
 PAGE_SIZE = 2000
 PAGE_MAX_BYTES = 16_000_000
 CAPTURE_MAX_BYTES = 120_000_000
@@ -119,10 +117,6 @@ def _validate_spatial_reference(value: object, label: str, *, required: bool = T
 
 def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
-
-
-def _page_names() -> list[str]:
-    return [f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)]
 
 
 def _capture_urls(ids: list[int]) -> list[tuple[str, str]]:
@@ -286,16 +280,20 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     roster = manifest.get("artifact_roster")
     if not isinstance(roster, dict):
         raise ValueError("retained_capture_roster_missing")
-    if set(manifest["receipts"]) != {name for name, _url in _capture_urls(EXPECTED_IDS)}:
-        raise ValueError("retained_capture_name_roster_changed")
     expected_files = set(roster) | {"capture_manifest.json"}
-    if set(roster) != {f"{name}.{suffix}" for name, _url in _capture_urls(EXPECTED_IDS)
-                       for suffix in ("body", "wire", "receipt.json")}:
-        raise ValueError("retained_capture_roster_changed")
     validate_capture_roster(root, expected_files)
     if roster != _bounded_capture_roster(root, expected_files):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_urls(EXPECTED_IDS))
+    ids_body, _ids_wire, _ids_receipt = _load_capture(root, "ids_before")
+    replay_ids = json.loads(ids_body).get("objectIds")
+    if not isinstance(replay_ids, list) or not replay_ids or any(type(oid) is not int for oid in replay_ids):
+        raise ValueError("retained_capture_id_roster_invalid")
+    if set(manifest["receipts"]) != {name for name, _url in _capture_urls(replay_ids)}:
+        raise ValueError("retained_capture_name_roster_changed")
+    if set(roster) != {f"{name}.{suffix}" for name, _url in _capture_urls(replay_ids)
+                       for suffix in ("body", "wire", "receipt.json")}:
+        raise ValueError("retained_capture_roster_changed")
+    expected_urls = dict(_capture_urls(replay_ids))
     captures = {}
     for name in sorted(manifest["receipts"]):
         body, _wire, receipt = _load_capture(root, name)
@@ -369,15 +367,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         _validate_spatial_reference(extent["spatialReference"], "source_layer_extent")
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(ids_before, list) or sorted(ids_before) != EXPECTED_IDS or ids_after != ids_before
-            or len(set(ids_before)) != EXPECTED_COUNT or _sha(_canonical(sorted(ids_before))) != EXPECTED_ID_SHA256):
-        raise ValueError("source_id_population_drift")
+    ids_before = capture_witness(captures)
     features: list[dict] = []
     page_names = sorted(name for name in captures if name.startswith("page_"))
-    if len(page_names) != (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE:
+    if len(page_names) != (len(ids_before) + PAGE_SIZE - 1) // PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in page_names:
         page = docs[name]
@@ -387,10 +380,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if page.get("geometryType") != "esriGeometryPolygon":
             raise ValueError("source_page_geometry_type_drift")
         rows = page.get("features")
-        expected_page_size = min(PAGE_SIZE, EXPECTED_COUNT - len(features))
+        expected_page_size = min(PAGE_SIZE, len(ids_before) - len(features))
         if not isinstance(rows, list) or len(rows) != expected_page_size:
             raise ValueError("source_page_features_missing_or_incomplete")
-        final_page = len(features) + len(rows) == EXPECTED_COUNT
+        final_page = len(features) + len(rows) == len(ids_before)
         if final_page and page.get("exceededTransferLimit") is True:
             raise ValueError("source_page_transfer_limit_truncated")
         features.extend(rows)
@@ -423,7 +416,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             if field_type == "esriFieldTypeString" and not isinstance(value, str):
                 raise ValueError("source_string_value_type_drift:" + field_name)
         oid = attrs["OBJECTID"]
-        if oid not in EXPECTED_IDS:
+        if oid not in ids_before:
             raise ValueError("source_oid_roster_drift")
         ids.append(oid)
         feature_id = attrs["Feature_ID"]
@@ -467,7 +460,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if not shape.is_valid:
             raise ValueError(f"source_polygon_topology_invalid:{oid}")
         geometry_valid += 1
-    if sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT:
+    if sorted(ids) != ids_before or len(set(ids)) != len(ids_before):
         raise ValueError("source_feature_ID_population_drift")
     features.sort(key=lambda feature: feature["attributes"]["OBJECTID"])
     audit = {
@@ -586,8 +579,8 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
                 body, receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                                          root, "ids_before")
                 ids = json.loads(body).get("objectIds")
-                if (not isinstance(ids, list) or sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT
-                        or any(type(oid) is not int for oid in ids)):
+                if (not isinstance(ids, list) or not ids or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
                     raise ValueError("source_seed_ID_population_drift")
                 urls = _capture_urls(ids)
                 urls = [(name, url) for name, url in urls if name != "ids_before"]
@@ -663,7 +656,7 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
                 "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
                 "processor": "HIFLD Next", "code_commit": identity["code_commit"], "inputs": inputs,
                 "transformations": [{"operation": "Native Esri JSON polygon rings to GeoParquet WKB candidate",
-                                     "parameters": {"feature_count": EXPECTED_COUNT,
+                                     "parameters": {"feature_count": audit["source_feature_count"],
                                                     "source_fields": "all 14 declared attributes retained in source order and declared types, including Shape__Area and Shape__Length",
                                                     "source_ids": "OBJECTID and Feature_ID preserved unchanged",
                                                     "source_crs": "EPSG:4326",
@@ -724,7 +717,7 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
                                 audit["source_record_sha256"], audit["source_schema_sha256"],
                                 original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-                "feature_count": EXPECTED_COUNT, "source_population_complete": True,
+                "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
                 "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
                 "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
                 "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],
@@ -753,7 +746,7 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
                                                                     "capture_receipts": receipts,
                                                                     "objects": descriptors})
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
+            "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
             "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],

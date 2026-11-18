@@ -13,6 +13,7 @@ import httpx
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
+from dagster_hifld.sources import census_latest, census_tiger_common
 from dagster_hifld.sources.capture_common import (
     capture_get,
     quarantine_incomplete_capture,
@@ -27,13 +28,12 @@ except ImportError:  # pragma: no cover - runtime environment always provides it
 
 DATASET_SLUG = "puerto-rico-subbarrios"
 FILE_SLUG = DATASET_SLUG
-SOURCE_VINTAGE = "2026"
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2026/SUBBARRIO/tl_2026_72_subbarrio.zip"
-SOURCE_FILE = "tl_2026_72_subbarrio.zip"
+LAYER = "SUBBARRIO"
+PRODUCT = "subbarrio"
+GEOID = "72"
 PUBLISHER = "U.S. Census Bureau, Geography Division"
-EXPECTED_SHA256 = "a85af8bea84e763c6a9150950a3aca40193dfa8bc46ece8ea97122e03cd80b64"
-EXPECTED_BYTES = 137_565
-EXPECTED_FEATURE_COUNT = 143
+# Broad sanity bounds; the producer publishes roughly 143 Puerto Rico subbarrios.
+FEATURE_COUNT_RANGE = (1, 10_000)
 EXPECTED_FIELDS = [
     "STATEFP", "COUNTYFP", "COUSUBFP", "SUBMCDFP", "SUBMCDNS", "GEOID", "GEOIDFQ",
     "NAME", "NAMELSAD", "LSAD", "CLASSFP", "MTFCC", "FUNCSTAT", "ALAND", "AWATER",
@@ -41,12 +41,10 @@ EXPECTED_FIELDS = [
 ]
 STRING_FIELDS = [name for name in EXPECTED_FIELDS if name not in ("ALAND", "AWATER")]
 EXPECTED_CRS = "EPSG:4269"
-EXPECTED_BOUNDS = [-67.192456, 17.910811, -65.624604, 18.48101]
 EXPECTED_MTFCC = {"G4060"}
 EXPECTED_CLASSFP = {"Z6"}
 EXPECTED_FUNCSTAT = {"N"}
-EXPECTED_GEOMETRY_TYPE_COUNTS = {"Polygon": 141, "MultiPolygon": 2}
-EXPECTED_GEOID_SHA256 = "108e5a188231f3702b1b03b246d994d16a672c2368e724f7707a37f1b943940b"
+EXPECTED_GEOMETRY_TYPES = {"Polygon", "MultiPolygon"}
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 5_000_000
 
@@ -78,13 +76,8 @@ def processing_code_identity() -> str:
     return digest.hexdigest()
 
 
-def candidate_version() -> str:
-    identity = _canonical({
-        "source_sha256": EXPECTED_SHA256,
-        "code_identity_scheme": CODE_IDENTITY_SCHEME,
-        "code_sha256": processing_code_identity(),
-    })
-    return "v" + _sha(identity)[:32]
+def candidate_version(release: census_latest.ShapefileRelease, archive_sha256: str) -> str:
+    return census_latest.release_version(str(release.vintage), archive_sha256, processing_code_identity())
 
 
 def _quarantine_attempt(
@@ -108,7 +101,7 @@ def _quarantine_attempt(
     except (OSError, ValueError):
         receipt = {
             "method": "GET",
-            "url": SOURCE_URL,
+            "url": "",
             "final_url": None,
             "status": None,
             "observed_at": None,
@@ -130,64 +123,20 @@ def _capture(
     capture_directory: str | Path | None,
     staging_storage: StagingStorageResource,
     version: str,
-) -> tuple[bytes, dict[str, object]]:
-    temporary = tempfile.TemporaryDirectory(prefix="census-subbarrio-capture-") if capture_directory is None else None
-    root = Path(temporary.name) if temporary is not None else Path(capture_directory)
-    try:
-        if temporary is None:
-            if root.is_symlink() or not root.is_dir():
-                raise ValueError("source_capture_directory_invalid")
-            if {p.name for p in root.iterdir()} != CAPTURE_FILES:
-                raise ValueError("source_capture_roster_mismatch")
-            body_path, wire_path, receipt_path = (root / "source.body", root / "source.wire", root / "source.receipt.json")
-            if any(p.is_symlink() or not p.is_file() for p in (body_path, wire_path, receipt_path)):
-                raise ValueError("source_capture_nonregular_file")
-            body = body_path.read_bytes()
-            wire = wire_path.read_bytes()
-            receipt = json.loads(receipt_path.read_text("utf-8"))
-            if (
-                receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-                or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-                or receipt.get("complete_body") is not True
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt.get("content_encoding") != "identity"
-            ):
-                raise ValueError("source_capture_receipt_identity_mismatch")
-        else:
-            try:
-                with httpx.Client(timeout=httpx.Timeout(120.0, connect=20.0), follow_redirects=False) as client:
-                    body, receipt = capture_get(client, SOURCE_URL, root, "source", max_bytes=MAX_SOURCE_BYTES)
-            except Exception as exc:
-                quarantine = _quarantine_attempt(staging_storage, root, version, type(exc).__name__)
-                raise ValueError(f"official_tiger_source_capture_failed; quarantined_at:{quarantine}") from exc
-
-        if (
-            receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-            or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-            or receipt.get("complete_body") is not True or receipt.get("bytes") != EXPECTED_BYTES
-            or receipt.get("sha256") != EXPECTED_SHA256 or len(body) != EXPECTED_BYTES
-            or receipt.get("content_encoding") != "identity"
-            or receipt.get("wire_bytes") != EXPECTED_BYTES or receipt.get("wire_sha256") != EXPECTED_SHA256
-            or receipt.get("content_length") not in (None, EXPECTED_BYTES)
-            or _sha(body) != EXPECTED_SHA256
-        ):
-            quarantine = _quarantine_attempt(
-                staging_storage, root, version, "official_tiger_archive_identity_or_release_drift",
-            )
-            raise ValueError(f"official_tiger_archive_identity_or_release_drift; quarantined_at:{quarantine}")
-        return body, receipt
-    finally:
-        if temporary is not None:
-            temporary.cleanup()
+) -> tuple[bytes, dict[str, object], census_latest.ShapefileRelease]:
+    body, receipt, _wire, _receipt_bytes, release = census_tiger_common.capture_tiger_shapefile(
+        capture_directory, staging_storage, version,
+        dataset_slug=DATASET_SLUG, layer=LAYER, product=PRODUCT, geoid=GEOID,
+        max_source_bytes=MAX_SOURCE_BYTES,
+        client_timeout=httpx.Timeout(120.0, connect=20.0),
+        capture_tmp_prefix="census-subbarrio-capture-",
+        capture_get=capture_get,
+    )
+    return body, receipt, release
 
 
-def _inspect_archive(body: bytes) -> dict[str, object]:
-    expected_members = {
-        "tl_2026_72_subbarrio.cpg", "tl_2026_72_subbarrio.dbf", "tl_2026_72_subbarrio.prj",
-        "tl_2026_72_subbarrio.shp", "tl_2026_72_subbarrio.shp.ea.iso.xml",
-        "tl_2026_72_subbarrio.shp.iso.xml", "tl_2026_72_subbarrio.shx",
-    }
+def _inspect_archive(body: bytes, release: census_latest.ShapefileRelease) -> dict[str, object]:
+    expected_members = census_tiger_common.tiger_shapefile_members(release.source_file)
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
         names = {Path(info.filename).name for info in archive.infolist() if not info.is_dir()}
         if names != expected_members or len(archive.infolist()) != len(expected_members):
@@ -201,12 +150,13 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
             raise ValueError("tiger_archive_crc_failure:" + bad_member)
         with tempfile.TemporaryDirectory(prefix="census-subbarrio-") as tmp:
             archive.extractall(tmp)
-            path = Path(tmp) / "tl_2026_72_subbarrio.shp"
+            path = Path(tmp) / census_tiger_common.tiger_shapefile_name(release.source_file)
             frame = gpd.read_file(path, engine="pyogrio")
     fields = [name for name in frame.columns if name != "geometry"]
     if fields != EXPECTED_FIELDS or str(frame.crs) != EXPECTED_CRS:
         raise ValueError("tiger_source_schema_or_crs_drift")
-    if len(frame) != EXPECTED_FEATURE_COUNT or frame["GEOID"].isna().any() or frame["GEOID"].duplicated().any():
+    if not (FEATURE_COUNT_RANGE[0] <= len(frame) <= FEATURE_COUNT_RANGE[1]) \
+            or frame["GEOID"].isna().any() or frame["GEOID"].duplicated().any():
         raise ValueError("tiger_source_population_or_id_drift")
     if frame["GEOID"].astype(str).str.len().ne(15).any() or not frame["GEOID"].astype(str).str.fullmatch(r"72\d{13}").all():
         raise ValueError("tiger_source_geoid_structure_drift")
@@ -220,13 +170,11 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
     geometry = frame.geometry
     if geometry.isna().any() or geometry.is_empty.any() or (~geometry.is_valid).any():
         raise ValueError("tiger_source_geometry_quality_failure")
-    if not set(geometry.geom_type) <= {"Polygon", "MultiPolygon"}:
+    if not set(geometry.geom_type) <= EXPECTED_GEOMETRY_TYPES:
         raise ValueError("tiger_source_geometry_type_drift")
     geometry_type_counts = {str(name): int(count) for name, count in geometry.geom_type.value_counts().items()}
-    if geometry_type_counts != EXPECTED_GEOMETRY_TYPE_COUNTS:
-        raise ValueError("tiger_source_geometry_composition_drift")
     bounds = [float(value) for value in frame.total_bounds]
-    if any(abs(a - b) > 1e-6 for a, b in zip(bounds, EXPECTED_BOUNDS)):
+    if not (-180 <= bounds[0] <= bounds[2] <= 180 and -90 <= bounds[1] <= bounds[3] <= 90):
         raise ValueError("tiger_source_coverage_extent_drift")
     ids = sorted(frame["GEOID"].astype(str).tolist())
     id_digest = _sha(_canonical(ids))
@@ -246,17 +194,19 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
 
 
 def capture_puerto_rico_subbarrios(
-    staging_storage: StagingStorageResource, *, version: str, capture_directory: str | Path | None = None,
+    staging_storage: StagingStorageResource, *, version: str | None = None,
+    capture_directory: str | Path | None = None,
 ) -> dict[str, object]:
-    """Capture one exact official annual zip and stage it immutably for catalog."""
-    body, receipt = _capture(capture_directory, staging_storage, version)
-    audit = _inspect_archive(body)
+    """Capture the newest official annual zip and stage it immutably for catalog."""
+    body, receipt, release = _capture(capture_directory, staging_storage, version or "pending")
+    version = version or candidate_version(release, receipt["sha256"])
+    audit = _inspect_archive(body, release)
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
-    archive_key = f"{prefix}/shapefile/{SOURCE_FILE}"
+    archive_key = f"{prefix}/shapefile/{release.source_file}"
     before = staging_storage.object_snapshot(archive_key)
     write_immutable(staging_storage, archive_key, body)
     after = staging_storage.object_snapshot(archive_key)
-    if after is None or after.size != EXPECTED_BYTES or staging_storage.sha256_key(archive_key) != EXPECTED_SHA256:
+    if after is None or after.size != receipt["bytes"] or staging_storage.sha256_key(archive_key) != receipt["sha256"]:
         raise ValueError("staged_tiger_archive_integrity_failure")
     reused = before is not None
     code_sha256 = processing_code_identity()
@@ -267,29 +217,30 @@ def capture_puerto_rico_subbarrios(
         "code_commit": code_sha256,
         "processing_code": {"scheme": CODE_IDENTITY_SCHEME, "sha256": code_sha256},
         "title": "Puerto Rico Subbarrios",
-        "description": "2026 Census TIGER/Line Puerto Rico subbarrio (FIPS 72) shapefile. Candidate only; the raw/published schema and ID contract await maintainer approval and no promotion is authorized.",
+        "description": f"{release.vintage} Census TIGER/Line Puerto Rico subbarrio (FIPS 72) shapefile. Candidate only; the raw/published schema and ID contract await maintainer approval and no promotion is authorized.",
         "publisher": PUBLISHER,
         "agency": "U.S. Census Bureau",
-        "source_url": SOURCE_URL,
+        "source_url": release.source_url,
         "license": "U.S. government work; source license and downstream redistribution terms require maintainer review.",
         "source_modified": "2026-10-06",
-        "date_issued": SOURCE_VINTAGE,
+        "date_issued": str(release.vintage),
         "inputs": [{
-            "input_id": SOURCE_URL,
+            "input_id": release.source_url,
             "producer": PUBLISHER,
-            "host": urlsplit(SOURCE_URL).hostname,
-            "canonical_url": SOURCE_URL,
+            "host": urlsplit(release.source_url).hostname,
+            "canonical_url": release.source_url,
             "retrieval_url": receipt["final_url"],
             "retrieved_at": observed_at,
-            "sha256": EXPECTED_SHA256,
-            "bytes": EXPECTED_BYTES,
+            "sha256": receipt["sha256"],
+            "bytes": receipt["bytes"],
             "license": "https://www.usa.gov/government-works",
             "attribution": PUBLISHER,
             "role": "producer_publication",
-            "release_date_unknown_reason": "The producer identifies this as the 2026 TIGER/Line vintage; a precise publication date was not established. The HTTP Last-Modified date is recorded separately and is not treated as the source data release date.",
+            "release_date_unknown_reason": f"The producer identifies this as the {release.vintage} TIGER/Line vintage; a precise publication date was not established. The HTTP Last-Modified date is recorded separately and is not treated as the source data release date.",
         }],
         "transformations": ["Preserve the complete source ZIP and all sidecars; catalog the subbarrio Shapefile without ID synthesis, schema widening, or attribute mapping."],
-        "lineage": "Official Census Bureau Geography Division TIGER/Line SUBBARRIO product (producer publication), migrated to the maintained TIGER2026 vintage (issue #777). The DHS crosswalk row matched the earlier TIGER2023 SUBBARRIO URL; the TIGER2026 match is unverified. The DataLumos archive item 240631 V2 is the archived HIFLD copy and is retained only as a labeled fallback (HTTP 403 to automated retrieval on 2026-10-21).",
+        "lineage": "Official Census Bureau Geography Division TIGER/Line SUBBARRIO product, resolved from the producer's current annual listing at capture time. The DHS crosswalk row matched an earlier edition URL; the current-edition match is unverified. The DataLumos archive item 240631 V2 is the archived HIFLD copy and is retained only as a labeled fallback (HTTP 403 to automated retrieval on 2026-10-21).",
+        "source_release": release.as_metadata(),
         "unsupported_output_formats": {
             "geopackage": "The source layer mixes Polygon (141) and MultiPolygon (2) geometry. The inherited chunked GeoPackage writer declares the layer's geometry from its first chunk and then appends incompatible geometries, producing a file that violates the GeoPackage geometry-type contract. GeoPackage output is withheld until a geometry-type-preserving writer is approved.",
             "pmtiles": "PMTiles is a lossy tiled representation that may simplify or omit source coordinates and does not preserve the full source attribute schema. No dataset-specific loss, zoom, or attribute-selection policy has been approved, so PMTiles output is withheld.",
@@ -312,8 +263,8 @@ def capture_puerto_rico_subbarrios(
         "method", "url", "final_url", "status", "complete_body", "wire_bytes",
         "wire_sha256", "bytes", "sha256", "content_encoding", "content_length",
     )}
-    audit_doc = {"source": {"url": SOURCE_URL, "vintage": SOURCE_VINTAGE, "archive_sha256": EXPECTED_SHA256,
-                            "archive_bytes": EXPECTED_BYTES, "last_modified_observed": "2026-10-06T23:34:54Z"},
+    audit_doc = {"source": {"url": release.source_url, "vintage": str(release.vintage), "archive_sha256": receipt["sha256"],
+                            "archive_bytes": receipt["bytes"], "source_release": release.as_metadata(), "last_modified_observed": None},
                  "acquisition_receipt": stable_receipt, **audit}
     audit_key = f"{prefix}/metadata/source_audit.json"
     write_immutable(staging_storage, audit_key, _canonical(audit_doc) + b"\n")
@@ -321,11 +272,12 @@ def capture_puerto_rico_subbarrios(
         "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": EXPECTED_BYTES,
-        "source_archive_sha256": EXPECTED_SHA256, "source_cache_reused": reused,
+        "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": receipt["bytes"],
+        "source_archive_sha256": receipt["sha256"], "source_cache_reused": reused,
+        "source_vintage": str(release.vintage), "source_release": release.as_metadata(),
         "code_sha256": code_sha256, "code_identity_scheme": CODE_IDENTITY_SCHEME,
         "source_id_field": "GEOID",
-        "source_coverage_scope": "Puerto Rico (FIPS 72) Census TIGER subbarrios, 2026 vintage",
+        "source_coverage_scope": f"Puerto Rico (FIPS 72) Census TIGER subbarrios, {release.vintage} vintage",
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,

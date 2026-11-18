@@ -1,4 +1,4 @@
-"""Stopped refresh asset for the official Census TIGER/Line 2026 Urban Areas."""
+"""Stopped refresh asset for the official current Census TIGER/Line Urban Areas."""
 from dagster import (
     AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
     ScheduleDefinition, asset, asset_check, define_asset_job,
@@ -7,8 +7,7 @@ from dagster import (
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.urban_areas import (
-    DATASET_SLUG, EXPECTED_BYTES, EXPECTED_FEATURE_COUNT, EXPECTED_SHA256, FILE_SLUG,
-    candidate_version, capture_census_urban_areas,
+    DATASET_SLUG, FILE_SLUG, capture_census_urban_areas,
 )
 
 
@@ -21,9 +20,8 @@ class UrbanAreasConfig(Config):
     group_name="census_bureau",
     compute_kind="http",
     description=(
-        "Official Census TIGER/Line 2026 national Urban Areas archive (the producer's "
-        "maintained UAC20 national file, released 2026-10-14, incorporating the "
-        "producer's corrections to the 2020 base vintage). "
+        "Official Census TIGER/Line national Urban Areas archive, resolved from the "
+        "producer's current annual listing at capture time. "
         "Candidate only: the DHS crosswalk row and "
         "baseline compatibility are unresolved, and source, freshness, schema/ID contract, "
         "coverage, rights and release remain pending."
@@ -31,9 +29,8 @@ class UrbanAreasConfig(Config):
 )
 def census_urban_areas(context, config: UrbanAreasConfig,
                        staging_storage: StagingStorageResource) -> dict:
-    version = candidate_version()
     result = capture_census_urban_areas(
-        staging_storage, version=version,
+        staging_storage,
         capture_directory=config.capture_directory or None,
     )
     context.instance.add_dynamic_partitions(
@@ -47,16 +44,19 @@ def census_urban_areas(context, config: UrbanAreasConfig,
 @asset_check(asset=census_urban_areas, blocking=True)
 def census_urban_areas_source_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_FEATURE_COUNT
+        type(candidate.get("feature_count")) is int and candidate["feature_count"] > 0
         and candidate.get("source_population_complete") is True
-        and candidate.get("source_archive_bytes") == EXPECTED_BYTES
-        and candidate.get("source_archive_sha256") == EXPECTED_SHA256
+        and candidate.get("source_archive_bytes", 0) > 0
+        and isinstance(candidate.get("source_archive_sha256"), str)
+        and len(candidate.get("source_archive_sha256", "")) == 64
+        and bool(candidate.get("source_vintage"))
     )
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_archive_sha256": candidate.get("source_archive_sha256", "missing"),
+        "source_vintage": candidate.get("source_vintage", "missing"),
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False,

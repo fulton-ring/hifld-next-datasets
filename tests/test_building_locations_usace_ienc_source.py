@@ -39,8 +39,7 @@ class BuildingLocationsSourceTests(unittest.TestCase):
 
     def validate(self,docs):
         captures={k:(canonical(v),{}) for k,v in docs.items()}
-        with patch.object(source,"EXPECTED_COUNT",2),patch.object(source,"EXPECTED_ID_SHA256",hashlib.sha256(canonical([1,2])).hexdigest()), \
-             patch.object(source,"BATCH_SIZE",200),patch.object(source,"EXPECTED_EXTENT",{"xmin":-1.0,"ymin":2.0,"xmax":1.0,"ymax":4.0}):
+        with patch.object(source,"BATCH_SIZE",200),patch.object(source,"EXPECTED_EXTENT",{"xmin":-1.0,"ymin":2.0,"xmax":1.0,"ymax":4.0}):
             return source._validate(captures)
 
     def test_native_xy_attributes_and_types_survive_geoparquet(self):
@@ -95,8 +94,9 @@ class BuildingLocationsSourceTests(unittest.TestCase):
             source.capture_building_locations(PublishedStorageResource(use_local=True,local_dir="/tmp/x"),version="v1")
 
     def test_population_check_requires_complete_native_count(self):
-        self.assertTrue(building_locations_population_complete({"source_population_complete":True,"feature_count":892}).passed)
-        self.assertFalse(building_locations_population_complete({"source_population_complete":False,"feature_count":892}).passed)
+        self.assertTrue(building_locations_population_complete({"source_population_complete":True,"feature_count":2,"source_reported_count":2}).passed)
+        self.assertFalse(building_locations_population_complete({"source_population_complete":False,"feature_count":2,"source_reported_count":2}).passed)
+        self.assertFalse(building_locations_population_complete({"source_population_complete":True,"feature_count":2,"source_reported_count":3}).passed)
 
 
 if __name__=="__main__":unittest.main()

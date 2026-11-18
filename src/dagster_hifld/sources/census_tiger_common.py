@@ -34,6 +34,7 @@ import shapely
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources.capture_common import processing_identity, quarantine_incomplete_capture
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -230,6 +231,120 @@ def read_tiger_shapefile(
         with tempfile.TemporaryDirectory(prefix=extract_tmp_prefix) as tmp:
             archive.extractall(tmp)
             return read_file(Path(tmp) / shapefile_name)
+
+
+def shapefile_release_from_receipt(
+    receipt: dict[str, object], *, layer: str, product: str, geoid: str | None = None,
+) -> census_latest.ShapefileRelease:
+    """Reconstruct the discovered TIGER release from a retained receipt URL."""
+    url = receipt.get("url")
+    area = geoid or "us"
+    pattern = (rf"https://www2\.census\.gov/geo/tiger/TIGER(20\d{{2}})/{re.escape(layer)}/"
+               rf"tl_\1_{re.escape(area)}_{re.escape(product)}\.zip")
+    match = re.fullmatch(pattern, url if isinstance(url, str) else "")
+    if match is None:
+        raise ValueError("source_url_not_current_tiger_shapefile")
+    vintage = int(match.group(1))
+    source_file = url.rsplit("/", 1)[-1]
+    return census_latest.ShapefileRelease(
+        vintage=vintage, layer=layer, source_file=source_file, source_url=url,
+        directory_url=url.rsplit("/", 1)[0] + "/", listing_sha256="", listing_bytes=0,
+        latest_checked_at=str(receipt.get("observed_at") or ""), annual_listing_sha256="",
+    )
+
+
+def capture_tiger_shapefile(
+    capture_directory: str | Path | None,
+    staging_storage: StagingStorageResource,
+    version: str,
+    *,
+    dataset_slug: str,
+    layer: str,
+    product: str,
+    geoid: str | None = None,
+    max_source_bytes: int,
+    client_timeout: httpx.Timeout,
+    capture_tmp_prefix: str,
+    capture_get: Callable[..., tuple[bytes, dict[str, object]]],
+) -> tuple[bytes, dict[str, object], bytes, bytes, census_latest.ShapefileRelease]:
+    """Capture the newest published TIGER/Line shapefile or replay a retained one.
+
+    Live capture resolves ``TIGER<year>/<layer>/tl_<year>_<area>_<product>.zip``
+    through the producer index at capture time. A retained capture derives the
+    same release from its receipt URL and stays labeled as replay. No edition,
+    byte size or archive digest is pinned in the adapter.
+    """
+    temporary = tempfile.TemporaryDirectory(prefix=capture_tmp_prefix) if capture_directory is None else None
+    root = Path(temporary.name) if temporary is not None else Path(capture_directory)
+    client = None
+    release = None
+    try:
+        if temporary is None:
+            if root.is_symlink() or not root.is_dir():
+                raise ValueError("source_capture_directory_invalid")
+            if {p.name for p in root.iterdir()} != TIGER_CAPTURE_FILES:
+                raise ValueError("source_capture_roster_mismatch")
+            body_path, wire_path, receipt_path = (root / "source.body", root / "source.wire", root / "source.receipt.json")
+            if any(p.is_symlink() or not p.is_file() for p in (body_path, wire_path, receipt_path)):
+                raise ValueError("source_capture_nonregular_file")
+            body = body_path.read_bytes()
+            wire = wire_path.read_bytes()
+            receipt = json.loads(receipt_path.read_text("utf-8"))
+            release = shapefile_release_from_receipt(receipt, layer=layer, product=product, geoid=geoid)
+            if (
+                receipt.get("method") != "GET" or receipt.get("url") != release.source_url
+                or receipt.get("final_url") != release.source_url or receipt.get("status") != 200
+                or receipt.get("complete_body") is not True
+                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
+                or receipt.get("content_encoding") != "identity"
+            ):
+                raise ValueError("source_capture_receipt_identity_mismatch")
+        else:
+            try:
+                client = httpx.Client(timeout=client_timeout, follow_redirects=False)
+                release = census_latest.discover_shapefile(client, root, layer, product, geoid=geoid)
+                body, receipt = capture_get(client, release.source_url, root, "source", max_bytes=max_source_bytes)
+                wire = (root / "source.wire").read_bytes()
+            except Exception as exc:
+                quarantine = quarantine_tiger_capture_attempt(
+                    staging_storage, root, dataset_slug, release.source_url if release else "",
+                    version, type(exc).__name__,
+                )
+                raise ValueError(f"official_tiger_source_capture_failed; quarantined_at:{quarantine}") from exc
+
+        if (
+            receipt.get("method") != "GET" or receipt.get("url") != release.source_url
+            or receipt.get("final_url") != release.source_url or receipt.get("status") != 200
+            or receipt.get("complete_body") is not True
+            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+            or receipt.get("content_encoding") != "identity"
+            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
+        ):
+            quarantine = quarantine_tiger_capture_attempt(
+                staging_storage, root, dataset_slug, release.source_url, version,
+                "official_tiger_archive_identity_or_release_drift",
+            )
+            raise ValueError(f"official_tiger_archive_identity_or_release_drift; quarantined_at:{quarantine}")
+        return body, receipt, wire, (root / "source.receipt.json").read_bytes(), release
+    finally:
+        if client is not None:
+            client.close()
+        if temporary is not None:
+            temporary.cleanup()
+
+
+def tiger_shapefile_members(source_file: str) -> set[str]:
+    """Return the producer's seven sidecar names for one TIGER shapefile ZIP."""
+    stem = Path(source_file).stem
+    return {
+        f"{stem}.cpg", f"{stem}.dbf", f"{stem}.prj", f"{stem}.shp",
+        f"{stem}.shp.ea.iso.xml", f"{stem}.shp.iso.xml", f"{stem}.shx",
+    }
+
+
+def tiger_shapefile_name(source_file: str) -> str:
+    return Path(source_file).stem + ".shp"
 
 
 MAX_ARCHIVE_BYTES = 128_000_000

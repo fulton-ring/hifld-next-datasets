@@ -18,6 +18,9 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import shipping_fairways as source
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
+_IDS = list(range(144533, 144545)) + list(range(144833, 145167))
+_ID_SHA = __import__("hashlib").sha256(_canonical(_IDS)).hexdigest()
+
 
 class ShippingFairwaysTests(unittest.TestCase):
     def _shell(self, oid):
@@ -39,15 +42,15 @@ class ShippingFairwaysTests(unittest.TestCase):
             "service_directory": {"services": [{"name": "NavigationChartData/MarineTransportation",
                                                 "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": len(_IDS)},
+            "ids_before": {"objectIds": _IDS},
             "service_after": service, "layer_after": layer,
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": len(_IDS)},
+            "ids_after": {"objectIds": _IDS},
         }
-        for page_index in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+        for page_index in range((len(_IDS) + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
             rows = []
-            for oid in source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
+            for oid in _IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
                 attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
                          f"{field['name']}-{oid}" for field in source.ATTRIBUTE_FIELDS}
                 rings = [self._shell(oid)]
@@ -75,15 +78,15 @@ class ShippingFairwaysTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(shipping_fairways, hifld_ingest_assets)
         self.assertEqual(shipping_fairways_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = shipping_fairways_complete({"feature_count": 346, "source_population_complete": True})
+        check = shipping_fairways_complete({"feature_count": 346, "source_reported_count": 346, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = shipping_fairways_complete({"feature_count": 345, "source_population_complete": True})
+        failed = shipping_fairways_complete({"feature_count": 345, "source_reported_count": 346, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_covers_producer_lineage_and_sparse_ids(self):
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
-        self.assertEqual(sorted(urls), sorted(source.CAPTURE_NAMES))
+        urls = dict(source._capture_roster(_IDS))
+        self.assertEqual(sorted(urls), sorted(source._capture_names(_IDS)))
         self.assertEqual(urls["inport_item"], source.INPORT_URL)
         self.assertEqual(urls["service_directory"], source.SERVICE_DIRECTORY_URL)
         pages = [name for name in sorted(urls) if name.startswith("page_")]
@@ -108,25 +111,25 @@ class ShippingFairwaysTests(unittest.TestCase):
         self.assertEqual(len(urls["page_001"].split("objectIds=")[1].split("&")[0].split("%2C")), 100)
         self.assertEqual(len(urls["page_002"].split("objectIds=")[1].split("&")[0].split("%2C")), 100)
         self.assertEqual(len(urls["page_003"].split("objectIds=")[1].split("&")[0].split("%2C")), 46)
-        self.assertEqual(len(source.EXPECTED_IDS), 346)
-        self.assertEqual(len(set(source.EXPECTED_IDS)), 346)
-        self.assertEqual(source.EXPECTED_IDS, sorted(source.EXPECTED_IDS))
-        self.assertEqual(min(source.EXPECTED_IDS), 144533)
-        self.assertEqual(max(source.EXPECTED_IDS), 145166)
-        self.assertNotEqual(source.EXPECTED_IDS, list(range(min(source.EXPECTED_IDS), max(source.EXPECTED_IDS) + 1)))
+        self.assertEqual(len(_IDS), 346)
+        self.assertEqual(len(set(_IDS)), 346)
+        self.assertEqual(_IDS, sorted(_IDS))
+        self.assertEqual(min(_IDS), 144533)
+        self.assertEqual(max(_IDS), 145166)
+        self.assertNotEqual(_IDS, list(range(min(_IDS), max(_IDS) + 1)))
 
     def test_complete_native_population_and_geometry_are_validated(self):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 346)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], _ID_SHA)
         self.assertEqual(audit["source_vertex_count"], 1765)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(audit["geometry_invalid_count"], 0)
         self.assertEqual(audit["geometry_valid_count"], 346)
         self.assertEqual(audit["source_id_min"], 144533)
         self.assertEqual(audit["source_id_max"], 145166)
-        self.assertEqual([row["attributes"]["OBJECTID"] for row in features], source.EXPECTED_IDS)
+        self.assertEqual([row["attributes"]["OBJECTID"] for row in features], _IDS)
         self.assertEqual(features[0]["attributes"]["THEMELAYER"], "THEMELAYER-144533")
         self.assertIn("NOAA OCS ENCDirect", audit["source_coverage_scope"])
         self.assertIn("US Army Corps of Engineers", audit["inventory_agency_column_mismatch"])
@@ -154,14 +157,14 @@ class ShippingFairwaysTests(unittest.TestCase):
 
     def test_population_schema_lineage_and_crs_drift_fail_closed(self):
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_count_or_id_population_drift"),
+            ("population", lambda d: d["ids_after"].update(objectIds=_IDS[:-1]),
+             "source_count_or_id_roster_drift"),
             ("id gap", lambda d: d["ids_before"].update(
-                objectIds=[oid for oid in source.EXPECTED_IDS if oid != 144833]),
-             "source_count_or_id_population_drift"),
+                objectIds=[oid for oid in _IDS if oid != 144833]),
+             "source_count_or_id_roster_drift"),
             ("contiguous substitution", lambda d: d["ids_before"].update(
                 objectIds=list(range(144533, 144533 + 346))),
-             "source_count_or_id_population_drift"),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][1].update(name="renamed"),
              "source_field_schema_drift"),
             ("alias", lambda d: d["layer_before"]["fields"][2].update(alias="OTHER"),

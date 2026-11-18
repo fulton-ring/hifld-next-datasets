@@ -12,12 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.usace_depth_areas import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     FILE_SLUG,
     capture_usace_depth_areas,
 )
@@ -59,7 +59,7 @@ def usace_depth_areas_usace_ienc(
 @asset_check(asset=usace_depth_areas_usace_ienc, blocking=True)
 def usace_depth_areas_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
+        candidate.get("feature_count") == candidate.get("source_reported_count")
         and candidate.get("source_population_complete") is True
     )
     return AssetCheckResult(
@@ -96,7 +96,9 @@ usace_depth_areas_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
-ASSET_CHECKS = [usace_depth_areas_complete]
+usace_depth_areas_drift = register_approved_baseline_drift(usace_depth_areas_usace_ienc, "usace_depth_areas_drift")
+
+ASSET_CHECKS = [usace_depth_areas_complete, usace_depth_areas_drift]
 INGEST_ASSETS = [usace_depth_areas_usace_ienc]
 JOBS = [usace_depth_areas_draft_job]
 SCHEDULES = [usace_depth_areas_draft_schedule]

@@ -8,8 +8,8 @@ from dagster_hifld.assets.staging_refresh import define_staging_capture_job
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.census_primary_roads import (
-    DATASET_SLUG, EXPECTED_BYTES, EXPECTED_FEATURE_COUNT, EXPECTED_SHA256, FILE_SLUG,
-    candidate_version, capture_census_primary_roads, capture_latest_census_primary_roads,
+    DATASET_SLUG, FILE_SLUG, capture_census_primary_roads,
+    capture_latest_census_primary_roads,
 )
 
 
@@ -31,7 +31,7 @@ def census_bureau_primary_roads(context, config: CensusPrimaryRoadsConfig,
                                 staging_storage: StagingStorageResource) -> dict:
     if config.capture_directory:
         result = capture_census_primary_roads(
-            staging_storage, version=candidate_version(), capture_directory=config.capture_directory,
+            staging_storage, capture_directory=config.capture_directory,
         )
     else:
         result = capture_latest_census_primary_roads(staging_storage)
@@ -45,23 +45,20 @@ def census_bureau_primary_roads(context, config: CensusPrimaryRoadsConfig,
 
 @asset_check(asset=census_bureau_primary_roads, blocking=True)
 def census_primary_roads_source_complete(candidate: dict) -> AssetCheckResult:
-    if candidate.get("latest_release_discovered") is True:
-        passed = (candidate.get("source_population_complete") is True
-                  and candidate.get("feature_count", 0) > 0
-                  and candidate.get("source_archive_bytes", 0) > 0
-                  and len(candidate.get("source_archive_sha256", "")) == 64)
-    else:
-        passed = (
-            candidate.get("feature_count") == EXPECTED_FEATURE_COUNT
-            and candidate.get("source_population_complete") is True
-            and candidate.get("source_archive_bytes") == EXPECTED_BYTES
-            and candidate.get("source_archive_sha256") == EXPECTED_SHA256
-        )
+    passed = (
+        candidate.get("source_population_complete") is True
+        and type(candidate.get("feature_count")) is int and candidate["feature_count"] > 0
+        and candidate.get("source_archive_bytes", 0) > 0
+        and isinstance(candidate.get("source_archive_sha256"), str)
+        and len(candidate.get("source_archive_sha256", "")) == 64
+        and bool(candidate.get("source_edition"))
+    )
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_archive_sha256": candidate.get("source_archive_sha256", "missing"),
+        "source_edition": candidate.get("source_edition", "missing"),
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False,

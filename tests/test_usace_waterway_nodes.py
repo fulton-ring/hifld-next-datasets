@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import unittest
 
+FEATURE_COUNT = 6255
+SOURCE_IDS = list(range(1, FEATURE_COUNT + 1))
+
 from dagster_hifld.sources.usace_waterway_nodes import (
     BTS_ITEM_ID,
-    EXPECTED_COUNT,
     EXPECTED_FIELDS,
     EXPECTED_FIELD_TYPES,
     EXPECTED_EXTENT,
-    EXPECTED_SOURCE_IDS,
     LAYER_URL,
     SERVICE_URL,
     USACE_SERVICE_ITEM_ID,
@@ -35,8 +36,8 @@ def _snapshot():
          "extent": {"xmin": EXPECTED_EXTENT[0], "ymin": EXPECTED_EXTENT[1],
                     "xmax": EXPECTED_EXTENT[2], "ymax": EXPECTED_EXTENT[3],
                     "spatialReference": {"latestWkid": 4269}}, "fields": fields},
-        {"count": EXPECTED_COUNT},
-        {"objectIds": list(EXPECTED_SOURCE_IDS)},
+        {"count": FEATURE_COUNT},
+        {"objectIds": list(SOURCE_IDS)},
     )
 
 
@@ -44,7 +45,7 @@ class WaterwayNodeContractTests(unittest.TestCase):
     def test_exact_node_layer_identity_types_and_ids_pass(self):
         fields, ids = _validate_source(*_snapshot())
         self.assertEqual([field["name"] for field in fields], list(EXPECTED_FIELDS))
-        self.assertEqual(ids, list(EXPECTED_SOURCE_IDS))
+        self.assertEqual(ids, list(SOURCE_IDS))
 
     def test_missing_or_renamed_identifier_is_quarantined(self):
         snapshot = list(_snapshot())
@@ -63,8 +64,8 @@ class WaterwayNodeContractTests(unittest.TestCase):
 
     def test_population_or_identifier_drift_is_quarantined(self):
         snapshot = list(_snapshot())
-        snapshot[5] = {"objectIds": list(EXPECTED_SOURCE_IDS[:-1]) + [99999]}
-        with self.assertRaisesRegex(ValueError, "ID_baseline_drift"):
+        snapshot[5] = {"objectIds": list(SOURCE_IDS[:-1])}
+        with self.assertRaisesRegex(ValueError, "population_or_ID_invalid"):
             _validate_source(*snapshot)
 
     def test_geometry_coverage_drift_is_quarantined(self):
@@ -78,7 +79,8 @@ class WaterwayNodeContractTests(unittest.TestCase):
     def test_complete_candidate_passes_research_check_with_acceptance_false(self):
         result = usace_waterway_network_nodes_candidate_complete({
             "candidate_ready": True,
-            "feature_count": EXPECTED_COUNT,
+            "feature_count": FEATURE_COUNT,
+            "source_reported_count": FEATURE_COUNT,
             "native_filegdb_preserved": True,
             "source_release_accepted": False,
             "freshness_accepted": False,
@@ -95,7 +97,8 @@ class WaterwayNodeContractTests(unittest.TestCase):
     def test_incomplete_candidate_fails_research_check(self):
         result = usace_waterway_network_nodes_candidate_complete({
             "candidate_ready": True,
-            "feature_count": EXPECTED_COUNT - 1,
+            "feature_count": FEATURE_COUNT - 1,
+            "source_reported_count": FEATURE_COUNT,
             "native_filegdb_preserved": True,
         })
         self.assertFalse(result.passed)

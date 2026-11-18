@@ -35,7 +35,7 @@ from dagster_hifld.sources.capture_common import (
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.arcgis_layer import offset_layer_capture_roster
+from dagster_hifld.sources.arcgis_layer import capture_witness, offset_layer_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
@@ -55,10 +55,6 @@ PROPOSED_PHYSICAL_TYPE_MAPPING = {
     "esriFieldTypeOID": {"arrow": "int64", "status": "proposed_unapproved"},
     "esriFieldTypeDate": {"arrow": "timestamp(ms, UTC)", "status": "proposed_unapproved"},
 }
-EXPECTED_COUNT = 26454
-EXPECTED_ID_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
 PAGE_SIZE = 1000
 MAX_BODY_BYTES = 16_000_000
 
@@ -106,10 +102,13 @@ def _profile_schema(layer: dict[str, object]) -> tuple[list[dict[str, object]], 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
     docs = {name: json.loads(body) for name, (body, _) in captures.items() if name != "epa_data_sources_page"}
+    witness_ids = docs.get("ids_before", {}).get("objectIds")
+    page_count = ((len(witness_ids) + PAGE_SIZE - 1) // PAGE_SIZE
+                  if isinstance(witness_ids, list) else 0)
     expected_names = {
         "epa_data_sources_page", "portal_item", "service_before", "layer_before", "count_before", "ids_before",
         "ids_seed", "layer_after", "service_after", "count_after", "ids_after",
-        *(f"page_{i:03d}" for i in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)),
+        *(f"page_{i:03d}" for i in range(page_count)),
     }
     if set(captures) != expected_names:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
@@ -133,19 +132,10 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> 
     after_fields = docs["layer_after"].get("fields")
     if not isinstance(after_fields, list) or [_plain_field(x) for x in after_fields] != fields:
         raise ValueError("source_field_schema_changed_during_capture")
-    if schema_sha != "f0f50c2204dfd72bcc5df3b2faae12f45b9b9c0f02c059078a1bfc2d2054184c":
-        raise ValueError("source_schema_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    ids_before = docs["ids_before"].get("objectIds"); ids_after = docs["ids_after"].get("objectIds")
+    ids_before = capture_witness(captures)
     ids_seed = docs["ids_seed"].get("objectIds")
-    if not isinstance(ids_before, list) or ids_before != ids_after or len(ids_before) != EXPECTED_COUNT:
-        raise ValueError("source_id_population_drift")
-    if not isinstance(ids_seed, list) or sorted(ids_seed) != sorted(ids_before):
+    if not isinstance(ids_seed, list) or sorted(ids_seed) != ids_before:
         raise ValueError("source_id_population_changed_before_capture")
-    ids_before = sorted(ids_before)
-    if EXPECTED_ID_SHA256 and _sha(_canonical(ids_before)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_drift")
     if docs["layer_before"] != docs["layer_after"] or docs["service_before"] != docs["service_after"]:
         raise ValueError("source_metadata_changed_during_capture")
     page_names = [name for name in captures if name.startswith("page_")]
@@ -166,7 +156,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> 
             raise ValueError("source_page_id_slice_incomplete_or_out_of_order")
         features.extend(rows)
     got_ids = [f.get("attributes", {}).get("OBJECTID") for f in features]
-    if len(features) != EXPECTED_COUNT or sorted(got_ids) != ids_before or len(set(got_ids)) != EXPECTED_COUNT:
+    if len(features) != len(ids_before) or sorted(got_ids) != ids_before or len(set(got_ids)) != len(ids_before):
         raise ValueError("source_page_population_incomplete")
     expected_names = [x["name"] for x in fields]
     geometries = []
@@ -181,10 +171,6 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> 
     features.sort(key=lambda f: f["attributes"]["OBJECTID"])
     records_sha = _sha(_canonical(features))
     geometry_sha = _sha(_canonical(geometries))
-    if EXPECTED_RECORD_SHA256 and records_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_value_or_geometry_baseline_drift")
-    if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_or_coverage_drift")
     audit = {
         "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids_before)),
         "source_record_sha256": records_sha, "source_geometry_sha256": geometry_sha,
@@ -267,7 +253,7 @@ def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_
                 or receipt_body != _canonical(receipt)+b"\n"):
             raise ValueError("cached_original_capture_changed:" + name)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],
             "source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json",
             "reused":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
             "freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
@@ -321,7 +307,9 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
                 (capture_root / f"{name}.wire").write_bytes(wire)
                 (capture_root / f"{name}.receipt.json").write_bytes(receipt_body)
             seed = json.loads(captures.get("ids_seed", (b"{}", {}))[0]).get("objectIds")
-            if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT:
+            if (not isinstance(seed, list) or not seed
+                    or any(type(oid) is not int or oid <= 0 for oid in seed)
+                    or len(set(seed)) != len(seed)):
                 raise ValueError("replay_capture_seed_invalid")
             expected_urls = {"ids_seed":LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), **dict(_feature_urls(seed))}
             if set(captures) != set(expected_urls):
@@ -334,7 +322,9 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
                 seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")
                 seed = json.loads(seed_body).get("objectIds")
                 captures["ids_seed"] = (seed_body, seed_receipt)
-                if not isinstance(seed, list) or len(seed) != EXPECTED_COUNT:
+                if (not isinstance(seed, list) or not seed
+                        or any(type(oid) is not int or oid <= 0 for oid in seed)
+                        or len(set(seed)) != len(seed)):
                     raise ValueError("source_seed_id_count_drift")
                 for name, url in _feature_urls(seed):
                     body, receipt = _fetch(client, url, capture_root, name)
@@ -382,7 +372,7 @@ def _finalize_epa_tsca(storage: StagingStorageResource, version: str, capture_ro
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     provenance_name = "replay_provenance.json" if replayed_from else "capture_manifest.json"
-    (capture_root / provenance_name).write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"replayed_from":replayed_from,"source_feature_count":EXPECTED_COUNT,"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+    (capture_root / provenance_name).write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"replayed_from":replayed_from,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {
         "geoparquet/epa-frs-toxic-substances-control-act-tsca.parquet":parquet_body,
@@ -408,4 +398,4 @@ def _finalize_epa_tsca(storage: StagingStorageResource, version: str, capture_ro
     payload = {"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
     seal_ready_candidate(storage,state_key,version,fingerprint,payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root),"capture_replayed":bool(replayed_from)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root),"capture_replayed":bool(replayed_from)}

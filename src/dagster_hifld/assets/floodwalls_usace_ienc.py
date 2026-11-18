@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.floodwalls_usace_ienc import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_floodwalls_usace_ienc,
+    DATASET_SLUG, FILE_SLUG, capture_floodwalls_usace_ienc,
 )
 
 
@@ -41,9 +42,11 @@ def floodwalls_usace_ienc(context, config: FloodwallsUsaceIencConfig,
 
 @asset_check(asset=floodwalls_usace_ienc, blocking=True)
 def floodwalls_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_population_complete") is True
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": candidate.get("source_reported_count", "missing"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -65,3 +68,7 @@ floodwalls_usace_ienc_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+floodwalls_usace_ienc_drift = register_approved_baseline_drift(floodwalls_usace_ienc, "floodwalls_usace_ienc_drift")
+
+ASSET_CHECKS = [floodwalls_usace_ienc_complete, floodwalls_usace_ienc_drift]

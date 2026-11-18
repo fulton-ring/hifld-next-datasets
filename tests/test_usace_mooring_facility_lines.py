@@ -21,7 +21,7 @@ class UsaceMooringFacilityLinesTests(unittest.TestCase):
     def test_registered_asset_and_stopped_refresh_gate(self):
         self.assertIn(usace_mooring_facility_lines_usace_ienc,hifld_ingest_assets)
         self.assertEqual(usace_mooring_facility_lines_draft_schedule.default_status,DefaultScheduleStatus.STOPPED)
-        passed=usace_mooring_facility_lines_complete({"feature_count":1,"source_population_complete":True})
+        passed=usace_mooring_facility_lines_complete({"feature_count":1,"source_reported_count":1,"source_population_complete":True})
         self.assertTrue(passed.passed)
         self.assertFalse(passed.metadata["release_accepted"].value)
 
@@ -52,7 +52,7 @@ class UsaceMooringFacilityLinesTests(unittest.TestCase):
                "spatialReference":{"latestWkid":4326},"extent":{**source.EXPECTED_EXTENT,"spatialReference":{"latestWkid":4326}},
                "fields":source.EXPECTED_FIELD_DECLARATIONS}
         attributes=[]
-        for oid in source.EXPECTED_IDS:
+        for oid in [1]:
             values={field["name"]:(oid if field["name"]=="OBJECTID" else
                                     30000 if field["name"]=="Scale_Minimum" else f"{field['name']}-{oid}")
                     for field in source.ATTRIBUTE_FIELDS}
@@ -62,15 +62,15 @@ class UsaceMooringFacilityLinesTests(unittest.TestCase):
             "bts_item":{"id":source.BTS_ITEM_ID,"owner":"USDOT_BTS","type":"PDF","title":"Inland Electronic Navigational Charts",
                          "description":"USACE updates. Feature classes are https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes and USACE_IENC_Master_Service_gdb.zip."},
             "service_directory":{"services":[{"name":"IENC_Feature_Classes/MOORING_FACILITY_LINE","type":"MapServer"}]},
-            "service_before":service,"layer_before":layer,"count_before":{"count":1},"ids_before":{"objectIds":source.EXPECTED_IDS},
+            "service_before":service,"layer_before":layer,"count_before":{"count":1},"ids_before":{"objectIds":[1]},
             "features":features,"layer_after":json.loads(json.dumps(layer)),"count_after":{"count":1},
-            "ids_after":{"objectIds":source.EXPECTED_IDS},
+            "ids_after":{"objectIds":[1]},
         }
 
     def _capture_directory(self, root: Path):
         docs=self._documents()
         receipts={}
-        expected_urls=dict(source._capture_urls(source.EXPECTED_IDS))
+        expected_urls=dict(source._capture_urls([1]))
         for name,doc in docs.items():
             body=_canonical(doc)
             (root/f"{name}.body").write_bytes(body)
@@ -139,7 +139,7 @@ class UsaceMooringFacilityLinesTests(unittest.TestCase):
         fields,features,audit=source._validate(captures)
         self.assertEqual(fields,source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features),1)
-        self.assertEqual(audit["source_id_sha256"],source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"],source._sha(source._canonical([1])))
         self.assertEqual(audit["source_vertex_count"],2)
         self.assertEqual(features[0]["attributes"]["Feature_ID"],"Feature_ID-1")
         self.assertEqual(features[0]["geometry"]["paths"],[[[-86.8338,36.1776],[-86.8337,36.1780]]])
@@ -148,8 +148,8 @@ class UsaceMooringFacilityLinesTests(unittest.TestCase):
         docs=self._documents();docs=json.loads(json.dumps(docs));docs["layer_before"]["fields"][2]["name"]="Changed"
         with self.assertRaisesRegex(ValueError,"source_field_schema_drift"):
             source._validate({n:(_canonical(v),{}) for n,v in docs.items()})
-        docs=self._documents();docs=json.loads(json.dumps(docs));docs["ids_after"]["objectIds"]=[*source.EXPECTED_IDS[:-1]]
-        with self.assertRaisesRegex(ValueError,"source_id_population_drift"):
+        docs=self._documents();docs=json.loads(json.dumps(docs));docs["ids_after"]["objectIds"]=[*[1][:-1]]
+        with self.assertRaisesRegex(ValueError,"source_count_or_id_roster_drift"):
             source._validate({n:(_canonical(v),{}) for n,v in docs.items()})
         docs=self._documents();docs=json.loads(json.dumps(docs));docs["features"]["features"][0]["geometry"]["paths"][0][0].append(20)
         with self.assertRaisesRegex(ValueError,"source_xy_ordinate_contract_drift"):

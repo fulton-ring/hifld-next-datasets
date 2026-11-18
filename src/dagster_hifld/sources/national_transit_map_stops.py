@@ -22,6 +22,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -59,7 +60,6 @@ DESCRIPTION = (
     "available information about the transit service. A data dictionary, or other source of attribute "
     "information, is accessible at https://doi.org/10.21949/1529049"
 )
-EXPECTED_COUNT = 673_251
 PAGE_SIZE = 2_000
 MAX_CAPTURE_BYTES = 2_000_000_000
 MAX_RESPONSE_BYTES = 4_000_000
@@ -425,11 +425,9 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
             count_doc = get(client,"count_before",_metadata_url("count_before"))
             ids_doc = get(client,"ids_before",_metadata_url("ids_before"))
             count, ids = count_doc.get("count"), ids_doc.get("objectIds")
-            if (type(count) is not int or count != EXPECTED_COUNT or not isinstance(ids,list)
-                    or len(ids) != count or any(type(i) is not int for i in ids)
-                    or len(set(ids)) != count or ids_doc.get("objectIdFieldName") != "OBJECTID"):
+            if ids_doc.get("objectIdFieldName") != "OBJECTID":
                 raise ValueError("source_initial_count_or_id_roster_invalid")
-            seed = sorted(ids)
+            seed = validate_capture_witness(count, ids, count, ids)
             if (not isinstance(layer.get("advancedQueryCapabilities"), dict)
                     or layer["advancedQueryCapabilities"].get("supportsPagination") is not True
                     or layer["advancedQueryCapabilities"].get("supportsOrderBy") is not True):
@@ -465,11 +463,9 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
             count_after=get(client,"count_after",_metadata_url("count_after")).get("count")
             ids_after_doc=get(client,"ids_after",_metadata_url("ids_after"))
             ids_after=ids_after_doc.get("objectIds")
-        if (layer_after != layer or service_after != service or count_after != count
-                or ids_after_doc.get("objectIdFieldName") != "OBJECTID" or not isinstance(ids_after,list)
-                or any(type(value) is not int for value in ids_after)
-                or sorted(ids_after) != seed or len(ids_after) != count or len(set(ids_after)) != count):
+        if layer_after != layer or service_after != service or ids_after_doc.get("objectIdFieldName") != "OBJECTID":
             raise ValueError("source_changed_during_capture")
+        validate_capture_witness(count, ids, count_after, ids_after)
         names=[field["name"] for field in fields]
         got=[]
         geometry_repr=[]
@@ -596,6 +592,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
             record_sha,schema_sha,payload.get("objects",{}),payload.get("capture_receipts",{}))
         if set(payload["objects"])!=set(outputs): raise ValueError("cached_candidate_roster_changed")
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version_id,"feature_count":count,
+            "source_reported_count":count,"source_population_complete":True,"source_id_sha256":_sha(_canonical(seed)),
             "source_null_geometry_count":null_geometry_count,"source_invalid_geometry_count":invalid_geometry_count,
             "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
             "source_release_accepted":False,"release_accepted":False,"capture_directory":str(root)}
@@ -611,6 +608,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
         "capture_receipts":{name:receipt for name,(_body,receipt) in captures.items()},"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version_id,"feature_count":count,
+        "source_reported_count":count,"source_population_complete":True,"source_id_sha256":_sha(_canonical(seed)),
         "source_null_geometry_count":null_geometry_count,"source_invalid_geometry_count":invalid_geometry_count,
         "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":False,"capture_directory":str(root),
         "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,

@@ -17,15 +17,18 @@ from dagster_hifld.assets.cable_areas_usace_ienc import (
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
+FIXTURE_IDS = list(range(1, 31))
+FIXTURE_COUNT = len(FIXTURE_IDS)
+
 
 class CableAreasUsaceIencTests(unittest.TestCase):
     def test_registered_asset_and_stopped_refresh_gate(self):
         self.assertIn(cable_areas_usace_ienc, hifld_ingest_assets)
         self.assertEqual(cable_areas_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        passed = cable_areas_usace_ienc_complete({"feature_count": 30, "source_population_complete": True})
+        passed = cable_areas_usace_ienc_complete({"feature_count": 30, "source_reported_count": 30, "source_population_complete": True})
         self.assertTrue(passed.passed)
         self.assertFalse(passed.metadata["release_accepted"].value)
-        rejected = cable_areas_usace_ienc_complete({"feature_count": 29, "source_population_complete": True})
+        rejected = cable_areas_usace_ienc_complete({"feature_count": 29, "source_reported_count": 30, "source_population_complete": True})
         self.assertFalse(rejected.passed)
 
     def test_capture_version_cannot_escape_capture_root(self):
@@ -51,7 +54,7 @@ class CableAreasUsaceIencTests(unittest.TestCase):
 
     def _expected_geometry_stats(self):
         ring_count = vertex_count = hole_count = 0
-        for oid in source.EXPECTED_IDS:
+        for oid in FIXTURE_IDS:
             geometry = self._geometry(oid)
             for ring in geometry["rings"]:
                 ring_count += 1
@@ -67,7 +70,7 @@ class CableAreasUsaceIencTests(unittest.TestCase):
                  "spatialReference": {"latestWkid": 4326}, "extent": {**source.EXPECTED_EXTENT, "spatialReference": {"latestWkid": 4326}},
                  "fields": source.EXPECTED_FIELD_DECLARATIONS}
         features = []
-        for oid in source.EXPECTED_IDS:
+        for oid in FIXTURE_IDS:
             values = {field["name"]: (oid if field["name"] == "OBJECTID" else
                                       60000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}")
                       for field in source.ATTRIBUTE_FIELDS}
@@ -76,16 +79,16 @@ class CableAreasUsaceIencTests(unittest.TestCase):
             "bts_item": {"id": source.BTS_ITEM_ID, "owner": "USDOT_BTS", "type": "PDF", "title": "Inland Electronic Navigational Charts",
                          "description": "USACE updates. Feature classes are https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes and USACE_IENC_Master_Service_gdb.zip."},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/CABLE_AREA", "type": "MapServer"}]},
-            "service_before": service, "layer_before": layer, "count_before": {"count": 30}, "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "service_before": service, "layer_before": layer, "count_before": {"count": 30}, "ids_before": {"objectIds": FIXTURE_IDS},
             "features": {"spatialReference": {"latestWkid": 4326}, "geometryType": "esriGeometryPolygon", "features": features},
             "layer_after": json.loads(json.dumps(layer)), "count_after": {"count": 30},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "ids_after": {"objectIds": FIXTURE_IDS},
         }
 
     def _capture_directory(self, root: Path):
         docs = self._documents()
         receipts = {}
-        expected_urls = dict(source._capture_urls(source.EXPECTED_IDS))
+        expected_urls = dict(source._capture_urls(FIXTURE_IDS))
         for name, doc in docs.items():
             body = _canonical(doc)
             (root / f"{name}.body").write_bytes(body)
@@ -131,7 +134,7 @@ class CableAreasUsaceIencTests(unittest.TestCase):
         fields, features, audit = source._validate(captures)
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 30)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], source._sha(_canonical(FIXTURE_IDS)))
         ring_count, vertex_count, hole_count = self._expected_geometry_stats()
         self.assertEqual(audit["source_ring_count"], ring_count)
         self.assertEqual(audit["source_vertex_count"], vertex_count)
@@ -150,6 +153,29 @@ class CableAreasUsaceIencTests(unittest.TestCase):
         self.assertLessEqual(bounds["xmax"], source.EXPECTED_EXTENT["xmax"])
         self.assertLessEqual(bounds["ymax"], source.EXPECTED_EXTENT["ymax"])
         self.assertIn("not a national cable-area inventory", audit["source_coverage_scope"])
+
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        from dagster_hifld.assets.cable_areas_usace_ienc import cable_areas_usace_ienc_drift
+        docs = self._documents()
+        new_oid = max(FIXTURE_IDS) + 1
+        values = {field["name"]: (new_oid if field["name"] == "OBJECTID" else
+                                  60000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{new_oid}")
+                  for field in source.ATTRIBUTE_FIELDS}
+        docs["features"]["features"].append({"attributes": values, "geometry": self._geometry(new_oid)})
+        for name in ("ids_before", "ids_after"):
+            docs[name]["objectIds"] = [*FIXTURE_IDS, new_oid]
+        for name in ("count_before", "count_after"):
+            docs[name]["count"] = FIXTURE_COUNT + 1
+        _, features, audit = source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
+        self.assertEqual(len(features), FIXTURE_COUNT + 1)
+        self.assertTrue(audit["source_feature_count"] == FIXTURE_COUNT + 1)
+        result = cable_areas_usace_ienc_drift({
+            "dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+            "feature_count": FIXTURE_COUNT + 1, "source_reported_count": FIXTURE_COUNT + 1,
+            "source_population_complete": True, "release_accepted": False,
+        })
+        self.assertFalse(result.passed)
+        self.assertEqual(result.metadata["comparison_status"].value, "skipped_no_approved_baseline")
 
     def test_identity_and_service_metadata_drift_is_rejected(self):
         mutations = [
@@ -174,7 +200,7 @@ class CableAreasUsaceIencTests(unittest.TestCase):
                     "layer geometry type": "source_layer_geometry_crs_or_page_limit_drift",
                     "layer page limit": "source_layer_geometry_crs_or_page_limit_drift",
                     "layer changed during capture": "source_layer_changed_during_capture",
-                    "count drift": "source_count_drift",
+                    "count drift": "source_count_or_id_roster_drift",
                 }[label]
                 with self.assertRaisesRegex(ValueError, expected):
                     source._validate({name: (_canonical(value), {}) for name, value in docs.items()})
@@ -183,8 +209,8 @@ class CableAreasUsaceIencTests(unittest.TestCase):
         docs = self._documents(); docs = json.loads(json.dumps(docs)); docs["layer_before"]["fields"][2]["name"] = "Changed"
         with self.assertRaisesRegex(ValueError, "source_field_schema_drift"):
             source._validate({n: (_canonical(v), {}) for n, v in docs.items()})
-        docs = self._documents(); docs = json.loads(json.dumps(docs)); docs["ids_after"]["objectIds"] = [*source.EXPECTED_IDS[:-1]]
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        docs = self._documents(); docs = json.loads(json.dumps(docs)); docs["ids_after"]["objectIds"] = [*FIXTURE_IDS[:-1]]
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate({n: (_canonical(v), {}) for n, v in docs.items()})
         docs = self._documents(); docs = json.loads(json.dumps(docs))
         docs["features"]["features"][0]["geometry"]["unexpected_ordinate"] = 20

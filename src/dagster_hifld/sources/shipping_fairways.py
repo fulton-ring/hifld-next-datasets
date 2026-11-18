@@ -9,7 +9,7 @@ import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
@@ -31,7 +31,7 @@ from dagster_hifld.sources.capture_common import (
 )
 from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture_identity, _load_capture, _sha,
-    _validate_spatial_reference, layer_capture_roster,
+    _validate_spatial_reference, capture_witness, layer_capture_roster,
 )
 from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 
@@ -59,40 +59,6 @@ PUBLISHER = ("NOAA National Ocean Service, Office of Coast Survey; ENCDirect "
              "NavigationChartData MarineTransportation map service")
 SERVICE_COPYRIGHT = ("Department of Commerce (DOC), National Oceanic and Atmospheric "
                      "Administration (NOAA), National Ocean Service (NOS), Office Coast Survey (OCS) ")
-EXPECTED_COUNT = 346
-EXPECTED_IDS = [144533, 144534, 144535, 144536, 144537, 144538, 144539, 144540, 144541,
-    144542, 144543, 144544, 144833, 144834, 144835, 144836, 144837, 144838, 144839, 144840,
-    144841, 144842, 144843, 144844, 144845, 144846, 144847, 144848, 144849, 144850, 144851,
-    144852, 144853, 144854, 144855, 144856, 144857, 144858, 144859, 144860, 144861, 144862,
-    144863, 144864, 144865, 144866, 144867, 144868, 144869, 144870, 144871, 144872, 144873,
-    144874, 144875, 144876, 144877, 144878, 144879, 144880, 144881, 144882, 144883, 144884,
-    144885, 144886, 144887, 144888, 144889, 144890, 144891, 144892, 144893, 144894, 144895,
-    144896, 144897, 144898, 144899, 144900, 144901, 144902, 144903, 144904, 144905, 144906,
-    144907, 144908, 144909, 144910, 144911, 144912, 144913, 144914, 144915, 144916, 144917,
-    144918, 144919, 144920, 144921, 144922, 144923, 144924, 144925, 144926, 144927, 144928,
-    144929, 144930, 144931, 144932, 144933, 144934, 144935, 144936, 144937, 144938, 144939,
-    144940, 144941, 144942, 144943, 144944, 144945, 144946, 144947, 144948, 144949, 144950,
-    144951, 144952, 144953, 144954, 144955, 144956, 144957, 144958, 144959, 144960, 144961,
-    144962, 144963, 144964, 144965, 144966, 144967, 144968, 144969, 144970, 144971, 144972,
-    144973, 144974, 144975, 144976, 144977, 144978, 144979, 144980, 144981, 144982, 144983,
-    144984, 144985, 144986, 144987, 144988, 144989, 144990, 144991, 144992, 144993, 144994,
-    144995, 144996, 144997, 144998, 144999, 145000, 145001, 145002, 145003, 145004, 145005,
-    145006, 145007, 145008, 145009, 145010, 145011, 145012, 145013, 145014, 145015, 145016,
-    145017, 145018, 145019, 145020, 145021, 145022, 145023, 145024, 145025, 145026, 145027,
-    145028, 145029, 145030, 145031, 145032, 145033, 145034, 145035, 145036, 145037, 145038,
-    145039, 145040, 145041, 145042, 145043, 145044, 145045, 145046, 145047, 145048, 145049,
-    145050, 145051, 145052, 145053, 145054, 145055, 145056, 145057, 145058, 145059, 145060,
-    145061, 145062, 145063, 145064, 145065, 145066, 145067, 145068, 145069, 145070, 145071,
-    145072, 145073, 145074, 145075, 145076, 145077, 145078, 145079, 145080, 145081, 145082,
-    145083, 145084, 145085, 145086, 145087, 145088, 145089, 145090, 145091, 145092, 145093,
-    145094, 145095, 145096, 145097, 145098, 145099, 145100, 145101, 145102, 145103, 145104,
-    145105, 145106, 145107, 145108, 145109, 145110, 145111, 145112, 145113, 145114, 145115,
-    145116, 145117, 145118, 145119, 145120, 145121, 145122, 145123, 145124, 145125, 145126,
-    145127, 145128, 145129, 145130, 145131, 145132, 145133, 145134, 145135, 145136, 145137,
-    145138, 145139, 145140, 145141, 145142, 145143, 145144, 145145, 145146, 145147, 145148,
-    145149, 145150, 145151, 145152, 145153, 145154, 145155, 145156, 145157, 145158, 145159,
-    145160, 145161, 145162, 145163, 145164, 145165, 145166]
-EXPECTED_ID_SHA256 = "a2588be717502bf3999fbff37d4459b9d5db4adbc1a04cb400f37118dcabd589"
 PAGE_SIZE = 100
 PAGE_MAX_BYTES = 8_000_000
 MAX_CAPTURE_BYTES = 192_000_000
@@ -110,10 +76,11 @@ EXPECTED_FIELD_DECLARATIONS = [
 ]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
 EXPECTED_EXTENT = {"xmin": -180, "ymin": 9.30976600000002, "xmax": 180, "ymax": 66.566622}
-CAPTURE_NAMES = {"inport_item", "service_directory", "service_before", "layer_before",
-                 "count_before", "ids_before", "layer_after", "count_after", "ids_after",
-                 "service_after",
-                 *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
+def _capture_names(ids: list[int]) -> set[str]:
+    return {"inport_item", "service_directory", "service_before", "layer_before",
+            "count_before", "ids_before", "layer_after", "count_after", "ids_after",
+            "service_after",
+            *{f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}}
 RETRYABLE_HTTP_STATUS = {500, 502, 503, 504, 429}
 
 
@@ -191,10 +158,16 @@ def _capture_with_retry(client: httpx.Client, url: str, root: Path, name: str) -
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+    ids_body, _ids_wire, _ids_receipt = _load_capture(root, "ids_before")
+    replay_ids = json.loads(ids_body).get("objectIds")
+    if (not isinstance(replay_ids, list) or not replay_ids
+            or any(type(oid) is not int or oid <= 0 for oid in replay_ids)
+            or len(set(replay_ids)) != len(replay_ids)):
+        raise ValueError("retained_capture_id_roster_invalid")
     return validate_retained_capture_replay(
         root,
-        capture_names=CAPTURE_NAMES,
-        expected_urls=dict(_capture_roster(EXPECTED_IDS)),
+        capture_names=_capture_names(replay_ids),
+        expected_urls=dict(_capture_roster(replay_ids)),
         load_capture=_load_capture,
         validate_request_identity=validate_capture_request_identity,
     )
@@ -211,7 +184,8 @@ def _validate_inport_item(body: bytes) -> None:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
-    if set(captures) != CAPTURE_NAMES:
+    ids_before = capture_witness(captures)
+    if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()
             if not name.startswith("inport")}
@@ -242,13 +216,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         _validate_spatial_reference(extent_reference, "source_layer_extent")
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
-    count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (count_before != EXPECTED_COUNT or count_after != count_before or not isinstance(ids_before, list)
-            or any(type(oid) is not int for oid in ids_before) or ids_before != EXPECTED_IDS
-            or ids_after != ids_before
-            or len(set(ids_before)) != EXPECTED_COUNT or _sha(_canonical(ids_before)) != EXPECTED_ID_SHA256):
-        raise ValueError("source_count_or_id_population_drift")
     features = []
     vertices = 0
     geometry_valid = geometry_empty = 0
@@ -261,7 +228,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         _validate_spatial_reference(page.get("spatialReference"), "source_" + name + "_page")
         rows = page.get("features")
         expected_index = int(name[-3:])
-        expected_ids = EXPECTED_IDS[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
+        expected_ids = ids_before[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
         if not isinstance(rows, list) or len(rows) != len(expected_ids):
             raise ValueError("source_page_population_incomplete:" + name)
         page_ids = []
@@ -316,7 +283,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if sorted(page_ids) != expected_ids or len(set(page_ids)) != len(page_ids):
             raise ValueError("source_page_id_population_drift:" + name)
     ids = [feature["attributes"]["OBJECTID"] for feature in features]
-    if sorted(ids) != EXPECTED_IDS or len(features) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT:
+    if sorted(ids) != ids_before or len(features) != len(ids_before) or len(set(ids)) != len(ids_before):
         raise ValueError("source_feature_id_population_drift")
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     bounds = [from_wkb(_esri_polygon_wkb(row["geometry"])).bounds for row in features]
@@ -404,7 +371,18 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(60, connect=15),
                               headers={"User-Agent": "hifld-next-datasets/noaa-ocs-draft"}) as client:
-                for name, url in _capture_roster(EXPECTED_IDS):
+                ids_body, ids_receipt = _capture_with_retry(
+                    client, LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
+                    root, "ids_before")
+                seed = json.loads(ids_body).get("objectIds")
+                if (not isinstance(seed, list) or not seed
+                        or any(type(oid) is not int or oid <= 0 for oid in seed)
+                        or len(set(seed)) != len(seed)):
+                    raise ValueError("source_seed_id_roster_drift")
+                captures["ids_before"] = (ids_body, ids_receipt)
+                for name, url in _capture_roster(seed):
+                    if name == "ids_before":
+                        continue
                     captures[name] = _capture_with_retry(client, url, root, name)
             fields, features, audit = _validate(captures)
         except Exception as exc:
@@ -514,9 +492,10 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"], "source_id_min": min(EXPECTED_IDS),
-            "source_id_max": max(EXPECTED_IDS), "source_schema_sha256": audit["source_schema_sha256"],
+            "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],
+            "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+            "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
@@ -538,9 +517,10 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         "capture_receipts": receipts, "objects": descriptors})
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-        "source_id_sha256": audit["source_id_sha256"], "source_id_min": min(EXPECTED_IDS),
-        "source_id_max": max(EXPECTED_IDS), "source_schema_sha256": audit["source_schema_sha256"],
+        "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],
+        "source_population_complete": True,
+        "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+        "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],

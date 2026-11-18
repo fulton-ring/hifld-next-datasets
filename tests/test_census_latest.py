@@ -15,6 +15,16 @@ from dagster_hifld.sources import census_latest
 
 ROOT = 'https://www2.census.gov/geo/tiger/'
 
+def _shapefile_release(vintage, layer, product):
+    source_file = f'tl_{vintage}_us_{product}.zip'
+    return census_latest.ShapefileRelease(
+        vintage=vintage, layer=layer, source_file=source_file,
+        source_url=f'https://www2.census.gov/geo/tiger/TIGER{vintage}/{layer}/{source_file}',
+        directory_url=f'https://www2.census.gov/geo/tiger/TIGER{vintage}/{layer}/',
+        listing_sha256='0'*64, listing_bytes=1, latest_checked_at='2026-11-16T00:00:00+00:00',
+        annual_listing_sha256='1'*64,
+    )
+
 class CensusLatestTests(unittest.TestCase):
     def resolve(self, root, files):
         def respond(request):
@@ -266,24 +276,23 @@ class CurrentRoadsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'quarantined_at'):
                 self.capture_fixture(storage, body)
 
-    def test_historical_reproduction_manifest_and_cache_do_not_gain_current_metadata(self):
+    def test_retained_replay_keeps_the_receipt_vintage_and_cache(self):
         from dagster_hifld.resources import StagingStorageResource
         from dagster_hifld.sources import census_primary_roads as roads
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); body, _ = self.tiny_archive(root, edition='2025')
             storage = StagingStorageResource(use_local=True, local_dir=str(root/'stage'))
-            receipt = {'url': roads.SOURCE_URL, 'final_url': roads.SOURCE_URL, 'observed_at': '2026-11-16T00:00:00+00:00', 'sha256': hashlib.sha256(body).hexdigest(), 'bytes': len(body)}
-            with patch.object(roads, 'EXPECTED_SHA256', receipt['sha256']), patch.object(roads, 'EXPECTED_BYTES', len(body)), patch.object(roads, 'EXPECTED_FEATURE_COUNT', 1), patch.object(roads, 'EXPECTED_BOUNDS', [0,0,1,1]):
-                first = roads.capture_census_primary_roads(storage, version='vfixture', captured=(body, receipt))
-                encoded = storage.read_key(first['written_keys'][1])
-                second = roads.capture_census_primary_roads(storage, version='vfixture', captured=(body, receipt))
+            release = _shapefile_release(2025, 'PRIMARYROADS', 'primaryroads')
+            receipt = {'url': release.source_url, 'final_url': release.source_url, 'observed_at': '2026-11-16T00:00:00+00:00', 'sha256': hashlib.sha256(body).hexdigest(), 'bytes': len(body)}
+            first = roads.capture_census_primary_roads(storage, version='vfixture', release=release, captured=(body, receipt))
+            encoded = storage.read_key(first['written_keys'][1])
+            second = roads.capture_census_primary_roads(storage, version='vfixture', release=release, captured=(body, receipt))
             manifest = json.loads(encoded)
-            self.assertFalse(first['latest_release_discovered'])
+            self.assertEqual(first['source_vintage'], '2025')
             self.assertTrue(second['source_cache_reused'])
             self.assertEqual(encoded, storage.read_key(first['written_keys'][1]))
-            for key in ('documentation', 'coverage', 'field_definitions', 'source_relationship'):
-                self.assertNotIn(key, manifest)
-            self.assertFalse(any(key.endswith('.xml') for key in storage.list_prefix(roads.DATASET_SLUG)))
+            self.assertIn('documentation', manifest)
+            self.assertEqual(manifest['source_release']['tiger_vintage'], '2025')
 
     def test_current_archive_does_not_enforce_old_count_or_bounds(self):
         import geopandas as gpd
@@ -293,7 +302,7 @@ class CurrentRoadsTests(unittest.TestCase):
         frame = gpd.GeoDataFrame({'LINEARID':['00001'], 'FULLNAME':['Road'], 'RTTYP':['I'], 'MTFCC':['S1100']}, geometry=[LineString([(0,0),(1,1)])], crs='EPSG:4269')
         with tempfile.TemporaryDirectory() as tmp:
             body, _ = self.tiny_archive(Path(tmp))
-            audit = roads._inspect_archive(body, edition='2027')
+            audit = roads._inspect_archive(body, _shapefile_release(2027, 'PRIMARYROADS', 'primaryroads'))
         self.assertEqual(audit['feature_count'], 1)
         self.assertEqual(audit['bounds'], [0,0,1,1])
 
@@ -307,7 +316,7 @@ class CurrentRoadsTests(unittest.TestCase):
             body, _ = self.tiny_archive(Path(tmp))
             with patch.object(roads.census_tiger_common, 'read_tiger_shapefile', return_value=frame):
                 with self.assertRaisesRegex(ValueError, 'physical_type'):
-                    roads._inspect_archive(body, edition='2027')
+                    roads._inspect_archive(body, _shapefile_release(2027, 'PRIMARYROADS', 'primaryroads'))
 
     def test_declared_native_population_rejects_decoder_row_loss(self):
         from dagster_hifld.sources import census_primary_roads as roads
@@ -315,7 +324,7 @@ class CurrentRoadsTests(unittest.TestCase):
             body, frame = self.tiny_archive(Path(tmp), count=2)
             with patch.object(roads.census_tiger_common, 'read_tiger_shapefile', return_value=frame.iloc[:1]):
                 with self.assertRaisesRegex(ValueError, 'native_population'):
-                    roads._inspect_archive(body, edition='2027')
+                    roads._inspect_archive(body, _shapefile_release(2027, 'PRIMARYROADS', 'primaryroads'))
 
     def test_native_headers_reject_deleted_truncated_and_mismatched_records(self):
         from dagster_hifld.sources import census_primary_roads as roads
@@ -336,7 +345,7 @@ class CurrentRoadsTests(unittest.TestCase):
                         changed.writestr(item, value)
                 with self.subTest(defect=defect), patch.object(roads.census_tiger_common, 'read_tiger_shapefile', return_value=frame):
                     with self.assertRaisesRegex(ValueError, 'native_population'):
-                        roads._inspect_archive(sink.getvalue(), edition='2027')
+                        roads._inspect_archive(sink.getvalue(), _shapefile_release(2027, 'PRIMARYROADS', 'primaryroads'))
 
     def test_current_capture_reuses_unchanged_bytes_and_preserves_old_version(self):
         import io

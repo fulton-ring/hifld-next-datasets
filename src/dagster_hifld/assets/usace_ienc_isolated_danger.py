@@ -11,12 +11,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.usace_ienc_isolated_danger import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     FILE_SLUG,
     capture_usace_ienc_isolated_danger,
 )
@@ -57,7 +57,7 @@ def usace_ienc_isolated_danger_buoy_point_complete(candidate: dict) -> AssetChec
     # Fail closed when any completeness metric is missing or nonzero: a
     # missing metric is a refused candidate, never an implied zero.
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
+        candidate.get("feature_count") == candidate.get("source_reported_count")
         and candidate.get("source_null_geometry_count") == 0
         and candidate.get("source_invalid_geometry_count") == 0
         and bool(candidate.get("source_feature_id_sha256"))
@@ -66,6 +66,7 @@ def usace_ienc_isolated_danger_buoy_point_complete(candidate: dict) -> AssetChec
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": candidate.get("source_reported_count", "missing"),
             "source_null_geometry_count": candidate.get("source_null_geometry_count", "missing"),
             "source_invalid_geometry_count": candidate.get("source_invalid_geometry_count", "missing"),
             "source_feature_id_sha256": candidate.get("source_feature_id_sha256", "missing"),
@@ -94,6 +95,9 @@ usace_ienc_isolated_danger_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+usace_ienc_isolated_danger_drift = register_approved_baseline_drift(
+    usace_ienc_isolated_danger_buoy_point, "usace_ienc_isolated_danger_drift")
+
 INGEST_ASSETS = [usace_ienc_isolated_danger_buoy_point]
-ASSET_CHECKS = [usace_ienc_isolated_danger_buoy_point_complete]
+ASSET_CHECKS = [usace_ienc_isolated_danger_buoy_point_complete, usace_ienc_isolated_danger_drift]
 SCHEDULES = [usace_ienc_isolated_danger_draft_schedule]

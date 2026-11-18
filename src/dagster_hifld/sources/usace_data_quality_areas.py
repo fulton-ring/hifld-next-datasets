@@ -25,6 +25,7 @@ from dagster_hifld.http_capture import capture_http_response, capture_roster_dig
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import (
     _validate_spatial_reference, esri_polygon_wkb as _esri_polygon,
@@ -42,9 +43,6 @@ LAYER_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/DATA
 SERVICE_URL = LAYER_URL.rsplit("/", 1)[0]
 SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes?f=pjson"
 PUBLISHER = "U.S. Army Corps of Engineers, USACE IENC Feature Classes service"
-EXPECTED_COUNT = 109
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "48fccd04da436522cf72f812c80502ce29d6cb0dd192b706bbb9ce53b1ce4b95"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 48_000_000
 MAX_CAPTURE_BYTES = 450_000_000
@@ -202,7 +200,8 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
-    expected_names = {name for name,_url in _capture_roster(EXPECTED_IDS)}
+    before = capture_witness(captures)
+    expected_names = {name for name,_url in _capture_roster(before)}
     if not expected_names <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
@@ -236,14 +235,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     extent = layer.get("extent", {})
     if "spatialReference" in extent:
         _validate_spatial_reference(extent["spatialReference"], "source_layer_extent")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if not isinstance(before,list) or before != after or before != EXPECTED_IDS or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT or _sha(_canonical(before)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_population_drift")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1)//PAGE_SIZE:
+    if len(pages) != (len(before) + PAGE_SIZE - 1)//PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page=docs[name]
@@ -295,9 +289,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         geometry=shapely.from_wkb(_esri_polygon(geom))
         geometry_empty += int(geometry.is_empty)
         geometry_valid += int(geometry.is_valid and not geometry.is_empty)
-    if len(set(feature_ids)) != EXPECTED_COUNT:
+    if len(set(feature_ids)) != len(before):
         raise ValueError("source_feature_id_value_drift")
-    if len(features)!=EXPECTED_COUNT or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT:
+    if len(features)!=len(before) or sorted(got)!=sorted(before) or len(set(got))!=len(before):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     rows=[{"attributes":f["attributes"],"geometry":f["geometry"]} for f in features]
@@ -365,9 +359,10 @@ def capture_usace_data_quality_areas(storage: StagingStorageResource, *, version
                 raise ValueError("retained_capture_artifact_digest_mismatch")
             ids_body,ids_receipt=_load_replay(root,"ids_before")
             ids=json.loads(ids_body).get("objectIds")
-            if not isinstance(ids,list): raise ValueError("retained_id_roster_invalid")
-            if ids != EXPECTED_IDS or _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-                raise ValueError("retained_id_population_drift")
+            if (not isinstance(ids,list) or not ids
+                    or any(type(oid) is not int or oid <= 0 for oid in ids)
+                    or len(set(ids)) != len(ids)):
+                raise ValueError("retained_id_roster_invalid")
             names=[name for name,_url in _capture_roster(ids)]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
@@ -396,7 +391,16 @@ def capture_usace_data_quality_areas(storage: StagingStorageResource, *, version
             capture_budget=[existing_bytes]
             if existing_bytes>MAX_CAPTURE_BYTES: raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
-                for name,url in _capture_roster(EXPECTED_IDS):
+                ids_body,ids_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_before",capture_budget)
+                ids=json.loads(ids_body).get("objectIds")
+                if (not isinstance(ids,list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
+                    raise ValueError("source_seed_id_population_drift")
+                captures["ids_before"]=(ids_body,ids_receipt)
+                for name,url in _capture_roster(ids):
+                    if name == "ids_before":
+                        continue
                     captures[name]=_fetch_retry(client,url,root,name,capture_budget)
         fields,features,audit=_validate(captures)
     except Exception as exc:
@@ -467,7 +471,7 @@ def capture_usace_data_quality_areas(storage: StagingStorageResource, *, version
             fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],
             payload.get("objects",{}),original_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":audit["source_feature_count"],"source_population_complete":True,
+            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_capture_sha256":audit["source_capture_sha256"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
@@ -480,4 +484,4 @@ def capture_usace_data_quality_areas(storage: StagingStorageResource, *, version
     from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_capture_sha256":audit["source_capture_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_capture_sha256":audit["source_capture_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

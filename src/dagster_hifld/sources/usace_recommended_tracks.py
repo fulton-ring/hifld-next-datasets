@@ -45,8 +45,6 @@ BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 PRIOR_BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{PRIOR_BTS_ITEM_ID}?f=json"
-EXPECTED_COUNT = 666
-EXPECTED_ID_SHA256 = "400349bf6a0c8f418cb845c1d18a9a50d6d70344d6627e7cc54406575f3b6823"
 PAGE_SIZE = 200
 MAX_CAPTURE_BYTES = 128_000_000
 EXPECTED_EXTENT = {
@@ -161,8 +159,7 @@ def _ids(value: dict, label: str) -> list[int]:
     if not isinstance(ids, list) or any(type(item) is not int for item in ids):
         raise ValueError("source_id_roster_invalid:" + label)
     sorted_ids = sorted(ids)
-    if (len(sorted_ids) != EXPECTED_COUNT or len(set(sorted_ids)) != EXPECTED_COUNT
-            or _sha(_json(sorted_ids).rstrip(b"\n")) != EXPECTED_ID_SHA256):
+    if not sorted_ids or len(set(sorted_ids)) != len(sorted_ids):
         raise ValueError("source_id_population_drift:" + label)
     return sorted_ids
 
@@ -273,7 +270,7 @@ def _capture_manifest(root: Path, *, complete: bool, captures: dict[str, tuple[b
         roster[path.name] = _sha(path.read_bytes())
     value = {"schema_version": 1, "complete": complete,
              "captured_at": datetime.now(timezone.utc).isoformat(),
-             "source_layer": LAYER_URL, "expected_feature_count": EXPECTED_COUNT,
+             "source_layer": LAYER_URL,
              "captured_request_count": len(captures), "receipts": {n: r for n, (_b, r) in sorted(captures.items())},
              "artifact_roster_sha256": _sha(_json(roster))}
     if count is not None:
@@ -354,7 +351,8 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
         ids_before_value = _read_capture(root, "ids_before", _url(LAYER_QUERY_URL, {
             "where": "1=1", "returnIdsOnly": "true", "f": "json"}), captures, budget, client)
         ids_before = _ids(ids_before_value, "before")
-        if count_before.get("count") != EXPECTED_COUNT:
+        if (type(count_before.get("count")) is not int or count_before["count"] < 1
+                or len(ids_before) != count_before["count"]):
             raise ValueError("source_count_drift_before")
         features = []
         for offset in range(0, len(ids_before), PAGE_SIZE):
@@ -389,7 +387,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
                                        captures, budget, client)
         _validate_metadata(metadata_after)
         ids_after = _ids(ids_after_value, "after")
-        if (ids_before != ids_after or count_after.get("count") != EXPECTED_COUNT
+        if (ids_before != ids_after or count_after.get("count") != count_before.get("count")
                 or count_before != count_after or metadata_before != metadata_after
                 or [f["attributes"]["OBJECTID"] for f in features] != ids_before):
             raise ValueError("source_population_or_metadata_changed_during_capture")
@@ -411,6 +409,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     source_record_sha = _sha(_json(row_objects).rstrip(b"\n"))
     source_geometry_sha = _sha(_json([feature["geometry"] for feature in features]).rstrip(b"\n"))
     source_schema_sha = _sha(_json(EXPECTED_DECLARATIONS).rstrip(b"\n"))
+    ids_sha = _sha(_json(ids_before).rstrip(b"\n"))
     receipt_body_hashes = {name: {"body_sha256": receipt["sha256"],
                                   "wire_sha256": receipt["wire_sha256"]}
                            for name, (_body, receipt) in sorted(captures.items())}
@@ -463,8 +462,8 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     audit = {
         "schema_version": 1, "source_layer_url": LAYER_URL, "source_layer_name": "RECOMMENDED_TRACK_LINE",
         "source_layer_id": 46, "service_directory_url": SERVICE_DIRECTORY_URL,
-        "feature_count": len(features), "count_before": EXPECTED_COUNT, "count_after": EXPECTED_COUNT,
-        "objectid_sha256": EXPECTED_ID_SHA256, "objectid_min": min(id_list), "objectid_max": max(id_list),
+        "feature_count": len(features), "count_before": count_before.get("count"), "count_after": count_after.get("count"),
+        "objectid_sha256": ids_sha, "objectid_min": min(id_list), "objectid_max": max(id_list),
         "source_record_sha256": source_record_sha, "source_geometry_sha256": source_geometry_sha,
         "source_schema_sha256": source_schema_sha, "source_capture_sha256": source_capture_sha,
         "source_fields": EXPECTED_DECLARATIONS, "geometry_type": "esriGeometryPolyline",
@@ -488,7 +487,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
         "approved": False, "version": version,
         "objects": {parquet_name: _object_descriptor(parquet)},
         "source_population_complete": True, "source_record_sha256": source_record_sha,
-        "source_id_sha256": EXPECTED_ID_SHA256, "source_schema_sha256": source_schema_sha,
+        "source_id_sha256": ids_sha, "source_schema_sha256": source_schema_sha,
         "source_release_accepted": False, "freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False,
@@ -528,8 +527,8 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
             version, state_fingerprint, identity, source_record_sha, source_schema_sha,
             payload.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-                "feature_count": len(features), "source_population_complete": True,
-                "source_id_sha256": EXPECTED_ID_SHA256, "source_record_sha256": source_record_sha,
+                "feature_count": len(features), "source_reported_count": count_before.get("count"), "source_population_complete": True,
+                "source_id_sha256": ids_sha, "source_record_sha256": source_record_sha,
                 "source_schema_sha256": source_schema_sha, "candidate_ready": prefix + "/metadata/candidate_ready.json",
                 "reused": True, "release_accepted": False, "capture_directory": str(root)}
 
@@ -545,7 +544,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": len(features), "source_population_complete": True,
-            "source_id_sha256": EXPECTED_ID_SHA256, "source_record_sha256": source_record_sha,
+            "feature_count": len(features), "source_reported_count": count_before.get("count"), "source_population_complete": True,
+            "source_id_sha256": ids_sha, "source_record_sha256": source_record_sha,
             "source_schema_sha256": source_schema_sha, "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "reused": False, "release_accepted": False, "capture_directory": str(root)}

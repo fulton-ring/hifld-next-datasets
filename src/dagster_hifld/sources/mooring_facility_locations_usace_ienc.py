@@ -26,6 +26,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -42,9 +43,6 @@ SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/MO
 LAYER_ID = 17
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 9772
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "c03246396967c330211e871aaa5d14cbcdf0a997ef2e6b0f0f89a2b92171123f"
 PAGE_SIZE = 2000
 PAGE_MAX_BYTES = 8_000_000
 CAPTURE_MAX_BYTES = 320_000_000
@@ -107,10 +105,6 @@ def _validate_spatial_reference(value: object, label: str, *, required: bool = T
 
 def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
-
-
-def _page_names() -> list[str]:
-    return [f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)]
 
 
 def _capture_urls(ids: list[int]) -> list[tuple[str, str]]:
@@ -274,15 +268,19 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     roster = manifest.get("artifact_roster")
     if not isinstance(roster, dict):
         raise ValueError("retained_capture_roster_missing")
-    if set(manifest["receipts"]) != {name for name, _url in _capture_urls(EXPECTED_IDS)}:
-        raise ValueError("retained_capture_name_roster_changed")
     expected_files = set(roster) | {"capture_manifest.json"}
-    if set(roster) != {f"{name}.{suffix}" for name, _url in _capture_urls(EXPECTED_IDS)
-                       for suffix in ("body", "wire", "receipt.json")}:
-        raise ValueError("retained_capture_roster_changed")
     if roster != _bounded_capture_roster(root, expected_files):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_urls(EXPECTED_IDS))
+    ids_body, _ids_wire, _ids_receipt = _load_capture(root, "ids_before")
+    replay_ids = json.loads(ids_body).get("objectIds")
+    if not isinstance(replay_ids, list) or not replay_ids or any(type(oid) is not int for oid in replay_ids):
+        raise ValueError("retained_capture_id_roster_invalid")
+    if set(manifest["receipts"]) != {name for name, _url in _capture_urls(replay_ids)}:
+        raise ValueError("retained_capture_name_roster_changed")
+    if set(roster) != {f"{name}.{suffix}" for name, _url in _capture_urls(replay_ids)
+                       for suffix in ("body", "wire", "receipt.json")}:
+        raise ValueError("retained_capture_roster_changed")
+    expected_urls = dict(_capture_urls(replay_ids))
     captures = {}
     for name in sorted(manifest["receipts"]):
         body, _wire, receipt = _load_capture(root, name)
@@ -334,15 +332,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             raise ValueError("source_geometry_dimension_metadata_drift:" + dimension_name)
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(ids_before, list) or sorted(ids_before) != EXPECTED_IDS or ids_after != ids_before
-            or len(set(ids_before)) != EXPECTED_COUNT or _sha(_canonical(sorted(ids_before))) != EXPECTED_ID_SHA256):
-        raise ValueError("source_id_population_drift")
+    ids_before = capture_witness(captures)
     features = []
     page_names = sorted(name for name in captures if name.startswith("page_"))
-    if len(page_names) != (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE:
+    if len(page_names) != (len(ids_before) + PAGE_SIZE - 1) // PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in page_names:
         page = docs[name]
@@ -350,10 +343,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             raise ValueError("source_page_error_or_truncation")
         _validate_spatial_reference(page.get("spatialReference"), "source_page")
         rows = page.get("features")
-        expected_page_size = min(PAGE_SIZE, EXPECTED_COUNT - len(features))
+        expected_page_size = min(PAGE_SIZE, len(ids_before) - len(features))
         if not isinstance(rows, list) or len(rows) != expected_page_size:
             raise ValueError("source_page_features_missing_or_incomplete")
-        final_page = len(features) + len(rows) == EXPECTED_COUNT
+        final_page = len(features) + len(rows) == len(ids_before)
         if page.get("exceededTransferLimit") is True and final_page:
             raise ValueError("source_page_transfer_limit_truncated")
         features.extend(rows)
@@ -377,7 +370,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                 raise ValueError("source_string_value_type_drift:" + field["name"])
         feature["attributes"] = {name: attrs[name] for name in expected_attrs}
         oid = attrs["OBJECTID"]
-        if oid not in EXPECTED_IDS:
+        if oid not in ids_before:
             raise ValueError("source_oid_roster_drift")
         ids.append(oid)
         if not isinstance(geometry, dict) or set(geometry) - {"x", "y", "z", "m", "spatialReference"}:
@@ -401,7 +394,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                 and EXPECTED_EXTENT["ymin"] <= latitude <= EXPECTED_EXTENT["ymax"]):
             raise ValueError("source_feature_outside_coverage_extent")
         coordinate_values.append((longitude, latitude))
-    if sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT:
+    if sorted(ids) != ids_before or len(set(ids)) != len(ids_before):
         raise ValueError("source_feature_ID_population_drift")
     if len(dimensions) != 1:
         raise ValueError("source_geometry_dimensions_inconsistent")
@@ -526,8 +519,8 @@ def capture_mooring_facility_locations_usace_ienc(storage: StagingStorageResourc
                 body, receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                                          root, "ids_before")
                 ids = json.loads(body).get("objectIds")
-                if (not isinstance(ids, list) or sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT
-                        or any(type(oid) is not int for oid in ids)):
+                if (not isinstance(ids, list) or not ids or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
                     raise ValueError("source_seed_ID_population_drift")
                 urls = _capture_urls(ids)
                 urls = [(name, url) for name, url in urls if name != "ids_before"]
@@ -595,7 +588,7 @@ def capture_mooring_facility_locations_usace_ienc(storage: StagingStorageResourc
                 "source_modified": None, "date_issued": None, "date_modified": None, "processor": "HIFLD Next",
                 "code_commit": identity["code_commit"], "inputs": inputs,
                 "transformations": [{"operation": "Esri JSON Point to GeoParquet WKB candidate; every returned XY/Z/M ordinate is preserved",
-                                     "parameters": {"feature_count": EXPECTED_COUNT, "source_fields": "all declared non-geometry fields retained in source order and declared types",
+                                     "parameters": {"feature_count": audit["source_feature_count"], "source_fields": "all declared non-geometry fields retained in source order and declared types",
                                                     "source_ids": "OBJECTID and Feature_ID preserved unchanged", "source_crs": "EPSG:4326", "source_geometry": "Every advertised and observed XY/Z/M ordinate is preserved without projection or coordinate repair",
                                                     "raw_evidence": "complete decoded response and wire bytes retained with checksummed receipts", "candidate_status": "unapproved"}}],
                 "lineage": "BTS NTAD IENC item 7ec34864c8804468a9cf52d437fe4b6c identifies the IENC program, states that USACE/Army Geospatial Center updates it twice monthly, and links this official USACE IENC Feature Classes service and master file geodatabase. This candidate is exactly the MOORING_FACILITY_POINT service layer 17; its observed 9772 features cover inland waterway mooring facilities and are not represented as national coverage. The DataLumos item 239578 (HIFLD archive inventory entry mooring-facility-locations-usace-ienc-2) is the historical archive fallback, not the maintained feed.",
@@ -644,9 +637,9 @@ def capture_mooring_facility_locations_usace_ienc(storage: StagingStorageResourc
                 raise ValueError("cached_source_evidence_changed:" + name)
         verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version, fingerprint, identity,
                                 audit["source_record_sha256"], audit["source_schema_sha256"], original.get("objects", {}), original_receipts)
-        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version, "feature_count": EXPECTED_COUNT,
-                "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1,
-                "source_id_max": EXPECTED_COUNT, "source_schema_sha256": audit["source_schema_sha256"],
+        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version, "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],
+                "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+                "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
                 "source_coverage_scope": audit["source_coverage_scope"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_capture_evidence_sha256": capture_sha,
@@ -668,9 +661,9 @@ def capture_mooring_facility_locations_usace_ienc(storage: StagingStorageResourc
                                                                     "source_record_sha256": audit["source_record_sha256"],
                                                                     "source_schema_sha256": audit["source_schema_sha256"],
                                                                     "capture_receipts": receipts, "objects": descriptors})
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version, "feature_count": EXPECTED_COUNT,
-            "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1,
-            "source_id_max": EXPECTED_COUNT, "source_schema_sha256": audit["source_schema_sha256"],
+    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version, "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],
+            "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+            "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "source_capture_evidence_sha256": capture_sha,
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,

@@ -19,7 +19,7 @@ from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.sources import census_tiger_common
+from dagster_hifld.sources import census_latest, census_tiger_common
 from dagster_hifld.sources.capture_common import (
     capture_get,
     processing_identity,
@@ -34,20 +34,17 @@ except ImportError:  # pragma: no cover - runtime environment always provides it
 
 DATASET_SLUG = "us-state-boundaries-1"
 FILE_SLUG = DATASET_SLUG
-SOURCE_VINTAGE = "2026"
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2026/STATE/tl_2026_us_state.zip"
-SOURCE_FILE = "tl_2026_us_state.zip"
+LAYER = "STATE"
+PRODUCT = "state"
 PUBLISHER = "U.S. Census Bureau, Geography Division"
-EXPECTED_SHA256 = "2e17ea40dff3e00163eec87a26efa0b0ff7e8fe364a191bf1a7754dcb49ea326"
-EXPECTED_BYTES = 9_957_057
-EXPECTED_FEATURE_COUNT = 56
+# Broad sanity bounds; the producer publishes 56 states and equivalents.
+FEATURE_COUNT_RANGE = (1, 200)
 EXPECTED_FIELDS = [
     "REGION", "DIVISION", "STATEFP", "STATENS", "GEOID", "GEOIDFQ", "STUSPS", "NAME",
     "LSAD", "MTFCC", "FUNCSTAT", "ALAND", "AWATER", "INTPTLAT", "INTPTLON",
 ]
 STRING_FIELDS = [name for name in EXPECTED_FIELDS if name not in ("ALAND", "AWATER")]
 EXPECTED_CRS = "EPSG:4269"
-EXPECTED_BOUNDS = [-179.231086, -14.601813, 179.859681, 71.439786]
 EXPECTED_MTFCC = {"G4000"}
 EXPECTED_FUNCSTAT = {"A"}
 EXPECTED_REGION = {"1", "2", "3", "4", "9"}
@@ -59,19 +56,17 @@ EXPECTED_GEOIDS = [
     "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46",
     "47", "48", "49", "50", "51", "53", "54", "55", "56", "60", "66", "69", "72", "78",
 ]
-EXPECTED_GEOID_SHA256 = "da707aa61ecf29520f142ee144ef5e0417b9bc28b290e04eb38fe8036f9bfb15"
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 20_000_000
 
 
-def candidate_version(identity: Mapping[str, object]) -> str:
-    """Bind the candidate key to the exact source and Git or packaged identity."""
+def candidate_version(release: census_latest.ShapefileRelease, archive_sha256: str,
+                      identity: Mapping[str, object]) -> str:
+    """Bind the candidate key to the resolved vintage, archive and code identity."""
     if not isinstance(identity.get("code_commit"), str) or not identity.get("code_identity_scheme"):
         raise ValueError("processing_identity_incomplete")
-    return "v" + _sha(_canonical({
-        "source_archive_sha256": EXPECTED_SHA256,
-        "processing_identity": identity,
-    }))[:32]
+    return census_latest.release_version(str(release.vintage), archive_sha256,
+                                        str(identity["code_commit"]))
 
 
 def _quarantine_attempt(
@@ -79,10 +74,11 @@ def _quarantine_attempt(
     capture_root: Path,
     version: str,
     reason_code: str,
+    source_url: str,
 ) -> str:
     """Retain all response bytes and a receipt before rejecting a bad capture."""
     return census_tiger_common.quarantine_tiger_capture_attempt(
-        storage, capture_root, DATASET_SLUG, SOURCE_URL, version, reason_code,
+        storage, capture_root, DATASET_SLUG, source_url, version, reason_code,
     )
 
 
@@ -90,65 +86,19 @@ def _capture(
     capture_directory: str | Path | None,
     staging_storage: StagingStorageResource,
     version: str,
-) -> tuple[bytes, dict[str, object], bytes, bytes]:
-    temporary = tempfile.TemporaryDirectory(prefix="census-state-capture-") if capture_directory is None else None
-    root = Path(temporary.name) if temporary is not None else Path(capture_directory)
-    try:
-        if temporary is None:
-            if root.is_symlink() or not root.is_dir():
-                raise ValueError("source_capture_directory_invalid")
-            if {p.name for p in root.iterdir()} != CAPTURE_FILES:
-                raise ValueError("source_capture_roster_mismatch")
-            body_path, wire_path, receipt_path = (root / "source.body", root / "source.wire", root / "source.receipt.json")
-            if any(p.is_symlink() or not p.is_file() for p in (body_path, wire_path, receipt_path)):
-                raise ValueError("source_capture_nonregular_file")
-            body = body_path.read_bytes()
-            wire = wire_path.read_bytes()
-            receipt = json.loads(receipt_path.read_text("utf-8"))
-            if (
-                receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-                or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-                or receipt.get("complete_body") is not True
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt.get("content_encoding") != "identity"
-            ):
-                raise ValueError("source_capture_receipt_identity_mismatch")
-        else:
-            try:
-                with httpx.Client(timeout=httpx.Timeout(600.0, connect=30.0), follow_redirects=False) as client:
-                    body, receipt = capture_get(client, SOURCE_URL, root, "source", max_bytes=MAX_SOURCE_BYTES)
-                wire = (root / "source.wire").read_bytes()
-            except Exception as exc:
-                quarantine = _quarantine_attempt(staging_storage, root, version, type(exc).__name__)
-                raise ValueError(f"official_tiger_source_capture_failed; quarantined_at:{quarantine}") from exc
-
-        if (
-            receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-            or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-            or receipt.get("complete_body") is not True or receipt.get("bytes") != EXPECTED_BYTES
-            or receipt.get("sha256") != EXPECTED_SHA256 or len(body) != EXPECTED_BYTES
-            or receipt.get("content_encoding") != "identity"
-            or receipt.get("wire_bytes") != EXPECTED_BYTES or receipt.get("wire_sha256") != EXPECTED_SHA256
-            or receipt.get("content_length") not in (None, EXPECTED_BYTES)
-            or _sha(body) != EXPECTED_SHA256
-        ):
-            quarantine = _quarantine_attempt(
-                staging_storage, root, version, "official_tiger_archive_identity_or_release_drift",
-            )
-            raise ValueError(f"official_tiger_archive_identity_or_release_drift; quarantined_at:{quarantine}")
-        return body, receipt, wire, (root / "source.receipt.json").read_bytes()
-    finally:
-        if temporary is not None:
-            temporary.cleanup()
+) -> tuple[bytes, dict[str, object], bytes, bytes, census_latest.ShapefileRelease]:
+    return census_tiger_common.capture_tiger_shapefile(
+        capture_directory, staging_storage, version,
+        dataset_slug=DATASET_SLUG, layer=LAYER, product=PRODUCT,
+        max_source_bytes=MAX_SOURCE_BYTES,
+        client_timeout=httpx.Timeout(600.0, connect=30.0),
+        capture_tmp_prefix="census-state-capture-",
+        capture_get=capture_get,
+    )
 
 
-def _inspect_archive_data(body: bytes) -> tuple[object, dict[str, object]]:
-    expected_members = {
-        "tl_2026_us_state.cpg", "tl_2026_us_state.dbf", "tl_2026_us_state.prj",
-        "tl_2026_us_state.shp", "tl_2026_us_state.shp.ea.iso.xml",
-        "tl_2026_us_state.shp.iso.xml", "tl_2026_us_state.shx",
-    }
+def _inspect_archive_data(body: bytes, release: census_latest.ShapefileRelease) -> tuple[object, dict[str, object]]:
+    expected_members = census_tiger_common.tiger_shapefile_members(release.source_file)
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
         names = {Path(info.filename).name for info in archive.infolist() if not info.is_dir()}
         if names != expected_members or len(archive.infolist()) != len(expected_members):
@@ -162,12 +112,13 @@ def _inspect_archive_data(body: bytes) -> tuple[object, dict[str, object]]:
             raise ValueError("tiger_archive_crc_failure:" + bad_member)
         with tempfile.TemporaryDirectory(prefix="census-state-") as tmp:
             archive.extractall(tmp)
-            path = Path(tmp) / "tl_2026_us_state.shp"
+            path = Path(tmp) / census_tiger_common.tiger_shapefile_name(release.source_file)
             frame = gpd.read_file(path, engine="pyogrio")
     fields = [name for name in frame.columns if name != "geometry"]
     if fields != EXPECTED_FIELDS or str(frame.crs) != EXPECTED_CRS:
         raise ValueError("tiger_source_schema_or_crs_drift")
-    if len(frame) != EXPECTED_FEATURE_COUNT or frame["GEOID"].isna().any() or frame["GEOID"].duplicated().any():
+    if not (FEATURE_COUNT_RANGE[0] <= len(frame) <= FEATURE_COUNT_RANGE[1]) \
+            or frame["GEOID"].isna().any() or frame["GEOID"].duplicated().any():
         raise ValueError("tiger_source_population_or_id_drift")
     if set(frame["GEOID"].astype(str)) != set(EXPECTED_GEOIDS) or sorted(
         frame["GEOID"].astype(str).tolist()
@@ -195,12 +146,10 @@ def _inspect_archive_data(body: bytes) -> tuple[object, dict[str, object]]:
     if not set(geometry.geom_type) <= {"Polygon", "MultiPolygon"}:
         raise ValueError("tiger_source_geometry_type_drift")
     bounds = [float(value) for value in frame.total_bounds]
-    if any(abs(a - b) > 1e-6 for a, b in zip(bounds, EXPECTED_BOUNDS)):
+    if not (-180 <= bounds[0] <= bounds[2] <= 180 and -90 <= bounds[1] <= bounds[3] <= 90):
         raise ValueError("tiger_source_coverage_extent_drift")
     ids = sorted(frame["GEOID"].astype(str).tolist())
     id_digest = _sha(_canonical(ids))
-    if id_digest != EXPECTED_GEOID_SHA256:
-        raise ValueError("tiger_source_geoid_digest_drift")
     schema = [{"name": name, "type": "string" if name in STRING_FIELDS else "int64",
                "nullable": bool(frame[name].isna().any())} for name in EXPECTED_FIELDS]
     audit = {
@@ -218,9 +167,9 @@ def _inspect_archive_data(body: bytes) -> tuple[object, dict[str, object]]:
     return frame, audit
 
 
-def _inspect_archive(body: bytes) -> dict[str, object]:
-    """Validate a pinned archive and return its source summary."""
-    return _inspect_archive_data(body)[1]
+def _inspect_archive(body: bytes, release: census_latest.ShapefileRelease) -> dict[str, object]:
+    """Validate an archive and return its source summary."""
+    return _inspect_archive_data(body, release)[1]
 
 
 def _geoparquet(frame) -> bytes:
@@ -283,17 +232,18 @@ def _geoparquet(frame) -> bytes:
 
 
 def capture_us_state_boundaries(
-    staging_storage: StagingStorageResource, *, version: str, capture_directory: str | Path | None = None,
+    staging_storage: StagingStorageResource, *, version: str | None = None,
+    capture_directory: str | Path | None = None,
     identity: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Capture one exact official annual zip and stage it immutably for catalog."""
+    """Capture the newest official annual zip and stage it immutably for catalog."""
     identity = identity or processing_identity(Path(__file__).parents[3])
     validate_construction_code_identity(
         Path(__file__).parents[3], identity.get("code_commit"), identity.get("files", {}), identity=identity,
     )
-    if version != candidate_version(identity):
-        raise ValueError("candidate_version_identity_mismatch")
-    body, receipt, wire, receipt_bytes = _capture(capture_directory, staging_storage, version)
+    body, receipt, wire, receipt_bytes, release = _capture(
+        capture_directory, staging_storage, version or "pending")
+    version = version or candidate_version(release, receipt["sha256"], identity)
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
     receipt_raw_key = f"{prefix}/raw/source.receipt.json"
     staged_receipt_snapshot = staging_storage.object_snapshot(receipt_raw_key)
@@ -307,7 +257,7 @@ def capture_us_state_boundaries(
         if fresh_without_time != prior_without_time:
             raise ValueError("staged_capture_receipt_identity_drift")
         receipt, receipt_bytes = prior_receipt, staging_storage.read_key(receipt_raw_key)
-    frame, audit = _inspect_archive_data(body)
+    frame, audit = _inspect_archive_data(body, release)
     parquet = _geoparquet(frame)
     parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
     audit["native_geoparquet_bytes"] = len(parquet)
@@ -323,7 +273,7 @@ def capture_us_state_boundaries(
     write_immutable(staging_storage, wire_key, wire)
     write_immutable(staging_storage, receipt_raw_key, receipt_bytes)
     after = staging_storage.object_snapshot(archive_key)
-    if after is None or after.size != EXPECTED_BYTES or staging_storage.sha256_key(archive_key) != EXPECTED_SHA256:
+    if after is None or after.size != receipt["bytes"] or staging_storage.sha256_key(archive_key) != receipt["sha256"]:
         raise ValueError("staged_tiger_archive_integrity_failure")
     reused = before is not None
     code_commit = identity["code_commit"]
@@ -334,29 +284,30 @@ def capture_us_state_boundaries(
         "code_commit": code_commit,
         "code_identity_scheme": identity["code_identity_scheme"],
         "title": "US State Boundaries",
-        "description": "2026 Census TIGER/Line US state (and state equivalent) shapefile. Candidate only; the raw/published schema and ID contract await maintainer approval and no promotion is authorized.",
+        "description": f"{release.vintage} Census TIGER/Line US state (and state equivalent) shapefile. Candidate only; the raw/published schema and ID contract await maintainer approval and no promotion is authorized.",
         "publisher": PUBLISHER,
         "agency": "U.S. Census Bureau",
-        "source_url": SOURCE_URL,
+        "source_url": release.source_url,
         "license": "U.S. government work; source license and downstream redistribution terms require maintainer review.",
         "source_modified": None,
         "date_issued": None,
         "inputs": [{
-            "input_id": SOURCE_URL,
+            "input_id": release.source_url,
             "producer": PUBLISHER,
-            "host": urlsplit(SOURCE_URL).hostname,
-            "canonical_url": SOURCE_URL,
+            "host": urlsplit(release.source_url).hostname,
+            "canonical_url": release.source_url,
             "retrieval_url": receipt["final_url"],
             "retrieved_at": observed_at,
-            "sha256": EXPECTED_SHA256,
-            "bytes": EXPECTED_BYTES,
+            "sha256": receipt["sha256"],
+            "bytes": receipt["bytes"],
             "license": "https://www.usa.gov/government-works",
             "attribution": PUBLISHER,
             "role": "producer_publication",
-            "release_date_unknown_reason": "The producer identifies this as the 2026 TIGER/Line vintage; the TIGER/Line page records an October 14, 2026 release for the 2026 vintage. The vintage year and page date are not treated as an observed publication date for this exact archive.",
+            "release_date_unknown_reason": f"The producer identifies this as the {release.vintage} TIGER/Line vintage; a precise publication date was not established. The vintage year is not treated as an observed publication date for this exact archive.",
         }],
         "transformations": ["Preserve the complete source ZIP, wire response, and receipt under raw/; export its state features to GeoParquet without ID synthesis, schema widening, attribute mapping, geometry repair, or reprojection."],
-        "lineage": "Official U.S. Census Bureau Geography Division TIGER/Line STATE product (producer publication), pinned to the 2026 vintage. No claim is made that this source replaces or matches a historical HIFLD baseline.",
+        "lineage": "Official U.S. Census Bureau Geography Division TIGER/Line STATE product, resolved from the producer's current annual listing at capture time. No claim is made that this source replaces or matches a historical HIFLD baseline.",
+        "source_release": release.as_metadata(),
         "prebuilt_output_policy": {
             "schema_version": 1,
             "formats": {"geoparquet": {
@@ -388,8 +339,8 @@ def capture_us_state_boundaries(
         "method", "url", "final_url", "status", "complete_body", "wire_bytes",
         "wire_sha256", "bytes", "sha256", "content_encoding", "content_length",
     )}
-    audit_doc = {"source": {"url": SOURCE_URL, "vintage": SOURCE_VINTAGE, "archive_sha256": EXPECTED_SHA256,
-                            "archive_bytes": EXPECTED_BYTES, "last_modified_observed": None},
+    audit_doc = {"source": {"url": release.source_url, "vintage": str(release.vintage), "archive_sha256": receipt["sha256"],
+                            "archive_bytes": receipt["bytes"], "source_release": release.as_metadata(), "last_modified_observed": None},
                  "acquisition_receipt": {**stable_receipt, "observed_at": observed_at},
                  "processing_identity": identity, **audit}
     audit_doc.update({
@@ -416,7 +367,7 @@ def capture_us_state_boundaries(
         "approved": False,
         "version": version,
         "objects": {parquet_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
-        "source_archive_sha256": EXPECTED_SHA256,
+        "source_archive_sha256": receipt["sha256"],
         "source_population_complete": True,
         "source_release_accepted": False,
         "source_freshness_accepted": False,
@@ -442,12 +393,13 @@ def capture_us_state_boundaries(
         "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": EXPECTED_BYTES,
-        "source_archive_sha256": EXPECTED_SHA256, "source_cache_reused": reused,
+        "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": receipt["bytes"],
+        "source_archive_sha256": receipt["sha256"], "source_cache_reused": reused,
+        "source_vintage": str(release.vintage), "source_release": release.as_metadata(),
         "code_commit": code_commit,
         "code_identity_scheme": identity["code_identity_scheme"],
         "source_id_field": "GEOID",
-        "source_coverage_scope": "All US states and state equivalents (DC, Puerto Rico, island areas), 2026 vintage",
+        "source_coverage_scope": f"All US states and state equivalents (DC, Puerto Rico, island areas), {release.vintage} vintage",
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,

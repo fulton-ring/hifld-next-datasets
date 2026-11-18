@@ -15,7 +15,7 @@ from dagster_hifld.sources import usace_data_quality_areas as source
 
 
 def _docs(ids: list[int] | None = None) -> dict[str, dict]:
-    object_ids = ids or source.EXPECTED_IDS
+    object_ids = ids or FIXTURE_IDS
     service = {
         "mapName": "DATA_QUALITY_AREA",
         "copyrightText": "USACE IENC",
@@ -53,8 +53,8 @@ def _docs(ids: list[int] | None = None) -> dict[str, dict]:
         "service_after": copy.deepcopy(service),
         "layer_before": layer,
         "layer_after": copy.deepcopy(layer),
-        "count_before": {"count": source.EXPECTED_COUNT},
-        "count_after": {"count": source.EXPECTED_COUNT},
+        "count_before": {"count": FIXTURE_COUNT},
+        "count_after": {"count": FIXTURE_COUNT},
         "ids_before": {"objectIds": object_ids},
         "ids_after": {"objectIds": object_ids},
         "page_000": {"spatialReference": spatial_reference, "features": features},
@@ -65,23 +65,44 @@ def _captures(docs: dict[str, dict]) -> dict[str, tuple[bytes, dict]]:
     return {name: (json.dumps(doc).encode("utf-8"), {}) for name, doc in docs.items()}
 
 
+
+FIXTURE_IDS = list(range(1, 110))
+FIXTURE_COUNT = len(FIXTURE_IDS)
+
 class UsaceDataQualityAreasSourceTest(unittest.TestCase):
     def test_complete_id_roster_and_polygon_population_are_checked(self) -> None:
         fields, features, audit = source._validate(_captures(_docs()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
-        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(len(features), FIXTURE_COUNT)
+        self.assertEqual(audit["source_id_sha256"], source._sha(source._canonical(FIXTURE_IDS)))
+        self.assertEqual(audit["geometry_valid_count"], FIXTURE_COUNT)
         self.assertEqual(audit["geometry_empty_count"], 0)
-        self.assertEqual(audit["source_vertex_count"], source.EXPECTED_COUNT * 5)
+        self.assertEqual(audit["source_vertex_count"], FIXTURE_COUNT * 5)
         self.assertIsNone(audit["source_has_z"])
         self.assertIsNone(audit["source_has_m"])
         self.assertEqual(audit["observed_coordinate_dimensions"], [2])
 
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self) -> None:
+        from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_areas_drift
+        ids = [*FIXTURE_IDS, 5000]
+        docs = _docs(ids)
+        docs["count_before"]["count"] = len(ids)
+        docs["count_after"]["count"] = len(ids)
+        _, features, audit = source._validate(_captures(docs))
+        self.assertEqual(len(features), len(ids))
+        self.assertEqual(audit["source_feature_count"], len(ids))
+        result = usace_data_quality_areas_drift({
+            "dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+            "feature_count": len(ids), "source_reported_count": len(ids),
+            "source_population_complete": True, "release_accepted": False,
+        })
+        self.assertFalse(result.passed)
+        self.assertEqual(result.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+
     def test_changed_id_roster_fails_closed(self) -> None:
         docs = _docs()
-        docs["ids_after"] = {"objectIds": list(range(1, source.EXPECTED_COUNT)) + [111]}
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        docs["ids_after"] = {"objectIds": list(range(1, FIXTURE_COUNT)) + [111]}
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate(_captures(docs))
 
     def test_layer_and_page_crs_conflicts_fail_closed(self) -> None:

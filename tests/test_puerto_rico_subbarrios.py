@@ -19,14 +19,9 @@ from dagster_hifld.assets.puerto_rico_subbarrios import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest, unsupported_output_reason
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources.puerto_rico_subbarrios import (
     DATASET_SLUG,
-    EXPECTED_BYTES,
-    EXPECTED_FEATURE_COUNT,
-    EXPECTED_GEOMETRY_TYPE_COUNTS,
-    EXPECTED_GEOID_SHA256,
-    EXPECTED_SHA256,
-    SOURCE_URL,
     _capture,
     _inspect_archive,
     candidate_version,
@@ -34,13 +29,30 @@ from dagster_hifld.sources.puerto_rico_subbarrios import (
     processing_code_identity,
 )
 
+FIXTURE_BYTES = 137_565
+FIXTURE_SHA256 = "a85af8bea84e763c6a9150950a3aca40193dfa8bc46ece8ea97122e03cd80b64"
+FIXTURE_FEATURE_COUNT = 143
+FIXTURE_GEOID_SHA256 = "108e5a188231f3702b1b03b246d994d16a672c2368e724f7707a37f1b943940b"
+FIXTURE_GEOMETRY_TYPE_COUNTS = {"Polygon": 141, "MultiPolygon": 2}
 
-def _receipt(body: bytes, wire: bytes) -> dict:
+
+def _release(vintage=2026):
+    source_file = f"tl_{vintage}_72_subbarrio.zip"
+    return census_latest.ShapefileRelease(
+        vintage=vintage, layer="SUBBARRIO", source_file=source_file,
+        source_url=f"https://www2.census.gov/geo/tiger/TIGER{vintage}/SUBBARRIO/{source_file}",
+        directory_url=f"https://www2.census.gov/geo/tiger/TIGER{vintage}/SUBBARRIO/",
+        listing_sha256="0" * 64, listing_bytes=1, latest_checked_at="2026-10-21T00:00:00+00:00",
+        annual_listing_sha256="1" * 64,
+    )
+
+
+def _receipt(body: bytes, wire: bytes, *, wire_sha256: str | None = None) -> dict:
     return {
-        "method": "GET", "url": SOURCE_URL, "final_url": SOURCE_URL,
+        "method": "GET", "url": _release().source_url, "final_url": _release().source_url,
         "status": 200, "complete_body": True, "bytes": len(body),
         "sha256": hashlib.sha256(body).hexdigest(), "content_encoding": "identity",
-        "wire_bytes": len(wire), "wire_sha256": hashlib.sha256(wire).hexdigest(),
+        "wire_bytes": len(wire), "wire_sha256": wire_sha256 or hashlib.sha256(wire).hexdigest(),
         "content_length": len(body), "observed_at": "2026-10-21T00:00:00+00:00",
     }
 
@@ -50,12 +62,12 @@ def _fixture_body() -> bytes | None:
     if fixture_path:
         body = Path(fixture_path).expanduser().read_bytes()
     elif os.environ.get("HIFLD_FETCH_PUERTO_RICO_SUBBARRIOS_FIXTURE") == "1":
-        response = httpx.get(SOURCE_URL, follow_redirects=False, timeout=120.0)
+        response = httpx.get(_release().source_url, follow_redirects=False, timeout=120.0)
         response.raise_for_status()
         body = response.content
     else:
         return None
-    if len(body) != EXPECTED_BYTES or hashlib.sha256(body).hexdigest() != EXPECTED_SHA256:
+    if len(body) != FIXTURE_BYTES or hashlib.sha256(body).hexdigest() != FIXTURE_SHA256:
         raise ValueError("fixture_archive_identity_mismatch")
     return body
 
@@ -89,19 +101,20 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
             checks,
         )
 
-    def test_source_check_requires_pinned_archive_and_complete_population(self):
+    def test_source_check_requires_complete_population_and_resolved_vintage(self):
         candidate = {
-            "feature_count": EXPECTED_FEATURE_COUNT,
+            "feature_count": 143,
             "source_population_complete": True,
-            "source_archive_bytes": EXPECTED_BYTES,
-            "source_archive_sha256": EXPECTED_SHA256,
-            "source_id_sha256": EXPECTED_GEOID_SHA256,
+            "source_archive_bytes": 1000,
+            "source_archive_sha256": "a" * 64,
+            "source_id_sha256": "b" * 64,
+            "source_vintage": "2026",
         }
         self.assertTrue(puerto_rico_subbarrios_source_complete(candidate).passed)
-        candidate["feature_count"] -= 1
+        candidate["feature_count"] = 0
         self.assertFalse(puerto_rico_subbarrios_source_complete(candidate).passed)
-        candidate["feature_count"] = EXPECTED_FEATURE_COUNT
-        candidate["source_id_sha256"] = "0" * 64
+        candidate["feature_count"] = 143
+        candidate["source_vintage"] = None
         self.assertFalse(puerto_rico_subbarrios_source_complete(candidate).passed)
 
     def test_processing_code_identity_does_not_use_git(self):
@@ -109,7 +122,7 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
              patch("subprocess.run", side_effect=FileNotFoundError("git")):
             identity = processing_code_identity()
             self.assertRegex(identity, r"^[0-9a-f]{64}$")
-            self.assertRegex(candidate_version(), r"^v[0-9a-f]{32}$")
+            self.assertRegex(candidate_version(_release(), "c" * 64), r"^v[0-9a-f]{32}$")
 
     def test_processing_code_identity_reads_packaged_layout_without_git(self):
         import shutil
@@ -151,7 +164,7 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
     def test_archive_capture_rejects_changed_bytes(self):
         body = b"not the pinned Census archive"
         wire = b"wire bytes for changed archive"
-        receipt = _receipt(body, wire)
+        receipt = _receipt(body, wire, wire_sha256="0" * 64)
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "staging"))
 
@@ -162,7 +175,8 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
                 (root / "source.receipt.json").write_text(json.dumps(receipt))
                 return body, receipt
 
-            with patch("dagster_hifld.sources.puerto_rico_subbarrios.capture_get", side_effect=changed_capture):
+            with patch.object(census_latest, "discover_shapefile", return_value=_release()), \
+                 patch("dagster_hifld.sources.puerto_rico_subbarrios.capture_get", side_effect=changed_capture):
                 with self.assertRaisesRegex(ValueError, "official_tiger_archive_identity_or_release_drift"):
                     _capture(None, storage, "vtest")
 
@@ -185,7 +199,8 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
                 (root / "source.receipt.json").write_text(json.dumps(_receipt(b"partial", b"partial") | {"complete_body": False}))
                 raise ValueError("incomplete_source_capture:source")
 
-            with patch("dagster_hifld.sources.puerto_rico_subbarrios.capture_get", side_effect=incomplete_capture):
+            with patch.object(census_latest, "discover_shapefile", return_value=_release()), \
+                 patch("dagster_hifld.sources.puerto_rico_subbarrios.capture_get", side_effect=incomplete_capture):
                 with self.assertRaisesRegex(ValueError, "official_tiger_source_capture_failed"):
                     _capture(None, storage, "vtest")
             self.assertTrue(len(storage.list_prefix("_quarantine/" + DATASET_SLUG)) >= 4)
@@ -196,19 +211,19 @@ class PuertoRicoSubbarriosTests(unittest.TestCase):
             self.skipTest("set HIFLD_PUERTO_RICO_SUBBARRIOS_FIXTURE or HIFLD_FETCH_PUERTO_RICO_SUBBARRIOS_FIXTURE=1")
         mutated = io_bytes_with_extra_member(body)
         with self.assertRaisesRegex(ValueError, "tiger_archive_member_roster_drift"):
-            _inspect_archive(mutated)
+            _inspect_archive(mutated, _release())
 
     def test_inspect_archive_on_pinned_fixture(self):
         body = _fixture_body()
         if body is None:
             self.skipTest("set HIFLD_PUERTO_RICO_SUBBARRIOS_FIXTURE or HIFLD_FETCH_PUERTO_RICO_SUBBARRIOS_FIXTURE=1")
-        self.assertEqual(hashlib.sha256(body).hexdigest(), EXPECTED_SHA256)
-        audit = _inspect_archive(body)
-        self.assertEqual(audit["feature_count"], EXPECTED_FEATURE_COUNT)
-        self.assertEqual(audit["source_id_sha256"], EXPECTED_GEOID_SHA256)
+        self.assertEqual(hashlib.sha256(body).hexdigest(), FIXTURE_SHA256)
+        audit = _inspect_archive(body, _release())
+        self.assertEqual(audit["feature_count"], FIXTURE_FEATURE_COUNT)
+        self.assertEqual(audit["source_id_sha256"], FIXTURE_GEOID_SHA256)
         self.assertEqual(audit["source_crs"], "EPSG:4269")
         self.assertEqual(audit["invalid_geometry_count"], 0)
-        self.assertEqual(audit["geometry_type_counts"], EXPECTED_GEOMETRY_TYPE_COUNTS)
+        self.assertEqual(audit["geometry_type_counts"], FIXTURE_GEOMETRY_TYPE_COUNTS)
 
 
 def io_bytes_with_extra_member(body: bytes) -> bytes:

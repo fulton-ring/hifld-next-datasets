@@ -11,14 +11,18 @@ import hashlib
 from pathlib import Path
 
 from dagster_hifld.sources.noaa_nautical_navaids import (
-    COUNT_URL, DOWNLOAD_URL, EXPECTED_COUNT, EXPECTED_FIELDS, INPORT_URL,
+    COUNT_URL, DOWNLOAD_URL, EXPECTED_FIELDS, INPORT_URL,
     CAPTURE_URLS, LAYER_URL, PORTAL_ITEM_ID, SERVICE_URL, _replay_capture_bundle, _validate,
 )
-from dagster_hifld.assets.noaa_nautical_navaids import noaa_nautical_navaids_complete
+from dagster_hifld.assets.noaa_nautical_navaids import (
+    noaa_nautical_navaids_approved_baseline_drift, noaa_nautical_navaids_complete,
+)
+
+FIXTURE_COUNT = 6
 
 
-def _fixture(*, aid_name_type: str = "TEXT(96)"):
-    ids = list(range(1, EXPECTED_COUNT + 1))
+def _fixture(*, aid_name_type: str = "TEXT(96)", count: int = FIXTURE_COUNT):
+    ids = list(range(1, count + 1))
     portal = {"id": PORTAL_ITEM_ID, "owner": "marinecadastre_noaa", "title": "Aids to Navigation",
               "url": SERVICE_URL, "access": "public", "description":
               f"U.S. Coast Guard {DOWNLOAD_URL} {INPORT_URL}"}
@@ -35,9 +39,9 @@ def _fixture(*, aid_name_type: str = "TEXT(96)"):
     ids_doc = {"objectIds": ids, "exceededTransferLimit": False}
     docs = {
         "portal_item": portal, "service_before": service, "layer_before": layer,
-        "count_before": {"count": EXPECTED_COUNT}, "ids_before": ids_doc,
+        "count_before": {"count": count}, "ids_before": ids_doc,
         "official_download": {}, "layer_after": layer, "service_after": service,
-        "count_after": {"count": EXPECTED_COUNT}, "ids_after": ids_doc,
+        "count_after": {"count": count}, "ids_after": ids_doc,
     }
     captures = {name: (json.dumps(doc).encode(), {"status": 200}) for name, doc in docs.items()}
     db = tempfile.NamedTemporaryFile(suffix=".gpkg")
@@ -78,7 +82,8 @@ def _mutate_archive(archive: bytes, statement: str) -> bytes:
 
 class NoaaNauticalNavaidsTests(unittest.TestCase):
     def test_registered_completeness_check_accepts_the_cached_candidate_metadata_shape(self):
-        candidate={"feature_count":EXPECTED_COUNT,"published_baseline_compatible":False,
+        candidate={"feature_count":FIXTURE_COUNT,"source_reported_count":FIXTURE_COUNT,
+                   "source_population_complete":True,"published_baseline_compatible":False,
                    "reused":True,"source_release_accepted":False,"schema_contract_accepted":False,
                    "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,
                    "release_accepted":False}
@@ -105,12 +110,27 @@ class NoaaNauticalNavaidsTests(unittest.TestCase):
 
     def test_complete_official_archive_matches_bracketed_service_population(self):
         captures, archive = _fixture()
-        audit = _validate(captures, archive, expected_archive_sha256=None)
-        self.assertEqual(audit["feature_count"], EXPECTED_COUNT)
+        audit = _validate(captures, archive)
+        self.assertEqual(audit["feature_count"], FIXTURE_COUNT)
         self.assertEqual(audit["source_ids_sha256"], audit["service_ids_sha256"])
         self.assertEqual(audit["native_crs_epsg"], 4269)
         self.assertEqual([f["name"] for f in audit["source_fields"]], [f[0] for f in EXPECTED_FIELDS])
         self.assertFalse(audit["published_candidate_mismatch"]["schema_mapping_approved"])
+
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        captures, archive = _fixture(count=FIXTURE_COUNT + 1)
+        audit = _validate(captures, archive)
+        self.assertEqual(audit["feature_count"], FIXTURE_COUNT + 1)
+        self.assertTrue(audit["source_population_complete"])
+        drift = noaa_nautical_navaids_approved_baseline_drift({
+            "dataset_slug": "nautical-navigation-aids-navaid-locations",
+            "file_slug": "nautical-navigation-aids-navaid-locations",
+            "feature_count": FIXTURE_COUNT + 1,
+            "source_id_sha256": audit["source_ids_sha256"],
+            "release_accepted": False,
+        })
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
 
     def test_missing_or_renamed_service_identifier_is_quarantined(self):
         captures, archive = _fixture()
@@ -118,21 +138,21 @@ class NoaaNauticalNavaidsTests(unittest.TestCase):
             doc = json.loads(captures[name][0]); doc["fields"][0]["name"] = "source_id"
             captures[name] = (json.dumps(doc).encode(), captures[name][1])
         with self.assertRaisesRegex(ValueError, "noaa_service_field_roster_drift"):
-            _validate(captures, archive, expected_archive_sha256=None)
+            _validate(captures, archive)
 
     def test_changed_population_between_id_brackets_is_quarantined(self):
         captures, archive = _fixture()
         doc = json.loads(captures["ids_after"][0]); doc["objectIds"][-1] += 100000
         captures["ids_after"] = (json.dumps(doc).encode(), captures["ids_after"][1])
-        with self.assertRaisesRegex(ValueError, "noaa_service_id_bracket_incomplete_or_changed"):
-            _validate(captures, archive, expected_archive_sha256=None)
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+            _validate(captures, archive)
 
     def test_truncated_id_bracket_is_quarantined(self):
         captures, archive = _fixture()
         doc = json.loads(captures["ids_before"][0]); doc["exceededTransferLimit"] = True
         captures["ids_before"] = (json.dumps(doc).encode(), captures["ids_before"][1])
         with self.assertRaisesRegex(ValueError, "noaa_service_id_roster_truncated"):
-            _validate(captures, archive, expected_archive_sha256=None)
+            _validate(captures, archive)
 
     def test_extra_native_archive_member_is_quarantined(self):
         captures, archive = _fixture()
@@ -141,30 +161,30 @@ class NoaaNauticalNavaidsTests(unittest.TestCase):
         with zipfile.ZipFile(altered, "w") as z:
             z.writestr("AtoN.gpkg", native); z.writestr("unexpected.txt", "extra")
         with self.assertRaisesRegex(ValueError, "noaa_official_archive_roster_drift"):
-            _validate(captures, altered.getvalue(), expected_archive_sha256=None)
+            _validate(captures, altered.getvalue())
 
     def test_native_physical_type_change_is_quarantined(self):
         captures, archive = _fixture(aid_name_type="TEXT(100)")
         with self.assertRaisesRegex(ValueError, "noaa_native_geopackage_schema_or_crs_drift"):
-            _validate(captures, archive, expected_archive_sha256=None)
+            _validate(captures, archive)
 
     def test_native_extra_column_is_quarantined(self):
         captures, archive = _fixture()
         changed = _mutate_archive(archive, 'ALTER TABLE AtoN ADD COLUMN unexpected TEXT')
         with self.assertRaisesRegex(ValueError, "noaa_native_geopackage_schema_or_crs_drift"):
-            _validate(captures, changed, expected_archive_sha256=None)
+            _validate(captures, changed)
 
     def test_native_geometry_crs_drift_is_quarantined(self):
         captures, archive = _fixture()
         changed = _mutate_archive(archive, "UPDATE gpkg_geometry_columns SET srs_id=4326")
         with self.assertRaisesRegex(ValueError, "noaa_native_geopackage_schema_or_crs_drift"):
-            _validate(captures, changed, expected_archive_sha256=None)
+            _validate(captures, changed)
 
     def test_incomplete_native_geometry_index_is_quarantined(self):
         captures, archive = _fixture()
         changed = _mutate_archive(archive, "DELETE FROM rtree_AtoN_spatial WHERE id=1")
         with self.assertRaisesRegex(ValueError, "noaa_native_geopackage_population_or_id_drift"):
-            _validate(captures, changed, expected_archive_sha256=None)
+            _validate(captures, changed)
 
 
 if __name__ == "__main__":

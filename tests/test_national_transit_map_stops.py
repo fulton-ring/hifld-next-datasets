@@ -78,8 +78,7 @@ def _fake_capture_get(observed, bodies):
 
 
 def _capture_patches(expected_count, page_size, fake_capture):
-    return [patch.object(source,"EXPECTED_COUNT",expected_count),
-            patch.object(source,"PAGE_SIZE",page_size),
+    return [patch.object(source,"PAGE_SIZE",page_size),
             patch.object(source,"capture_get",side_effect=fake_capture),
             patch.object(source.httpx,"Client"),
             patch.object(source.shutil,"disk_usage",
@@ -95,6 +94,7 @@ class NationalTransitMapStopsTests(unittest.TestCase):
     def test_exact_native_schema_z_geometry_and_stopped_registration(self):
         self.assertEqual(len(source.FIELD_DECLARATIONS), 20)
         self.assertEqual(source.FIELD_DECLARATIONS[0]["name"], "OBJECTID")
+        self.assertFalse(hasattr(source, "EXPECTED_COUNT"))
         self.assertEqual(national_transit_map_stops_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         self.assertTrue(any(asset.key.path == ["ingest", source.DATASET_SLUG, source.FILE_SLUG]
@@ -160,7 +160,7 @@ class NationalTransitMapStopsTests(unittest.TestCase):
             tmp=Path(tmp)
             storage=StagingStorageResource(local_dir=str(tmp/"staging"),use_local=True,
                                            backend="local",prefix="")
-            with patch.object(source,"EXPECTED_COUNT",2), patch.object(source,"PAGE_SIZE",2), \
+            with patch.object(source,"PAGE_SIZE",2), \
                  patch.object(source,"capture_get",side_effect=fake_capture), \
                  patch.object(source.httpx,"Client"), \
                  patch.object(source.shutil,"disk_usage",return_value=SimpleNamespace(free=1_000_000_000)), \
@@ -191,14 +191,14 @@ class NationalTransitMapStopsTests(unittest.TestCase):
             self.assertFalse(manifest["historical_equivalence_accepted"])
             self.assertFalse(manifest["rights_accepted"])
 
-            # Python considers bool/float numerically equal to the pinned int
+            # Python considers bool/float numerically equal to the int source
             # IDs, and Arrow int64 can coerce 1.0. Reject both before staging.
             valid_bodies=deepcopy(bodies)
             valid_bodies["ids_before"]=deepcopy(bodies["ids_before"])
             valid_bodies["ids_after"]=deepcopy(bodies["ids_after"])
             variants=(
-                ("ids_after", lambda value: value.update(objectIds=[1.0,2]), "source_changed_during_capture"),
-                ("ids_after", lambda value: value.update(objectIds=[True,2]), "source_changed_during_capture"),
+                ("ids_after", lambda value: value.update(objectIds=[1.0,2]), "source_count_or_id_roster_drift"),
+                ("ids_after", lambda value: value.update(objectIds=[True,2]), "source_count_or_id_roster_drift"),
                 ("page_000", lambda value: value["features"][0]["attributes"].update(OBJECTID=1.0), "source_page_id_slice_mismatch"),
                 ("page_000", lambda value: value["features"][0]["attributes"].update(OBJECTID=True), "source_page_id_slice_mismatch"),
             )
@@ -211,7 +211,7 @@ class NationalTransitMapStopsTests(unittest.TestCase):
                     case_root.mkdir()
                     case_storage=StagingStorageResource(local_dir=str(case_root/"staging"),use_local=True,
                                                         backend="local",prefix="")
-                    with patch.object(source,"EXPECTED_COUNT",2), patch.object(source,"PAGE_SIZE",2), \
+                    with patch.object(source,"PAGE_SIZE",2), \
                          patch.object(source,"capture_get",side_effect=fake_capture), \
                          patch.object(source.httpx,"Client"), \
                          patch.object(source.shutil,"disk_usage",return_value=SimpleNamespace(free=1_000_000_000)), \
@@ -253,6 +253,15 @@ class NationalTransitMapStopsTests(unittest.TestCase):
                 for p in patches:
                     p.stop()
             self.assertEqual(result["feature_count"],3)
+            self.assertEqual(result["source_reported_count"],3)
+            self.assertTrue(result["source_population_complete"])
+            from dagster_hifld.assets.national_transit_map_stops import (
+                national_transit_map_stops_approved_baseline_drift,
+            )
+            drift=national_transit_map_stops_approved_baseline_drift(result)
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.metadata["comparison_status"].value,
+                             "skipped_no_approved_baseline")
             self.assertIn("page_000",observed)
             self.assertIn("page_001",observed)
             native=tmp/"staging"/result["candidate_ready"].replace(

@@ -17,13 +17,12 @@ from dagster import (
     schedule,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.usace_recommended_tracks import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_ID_SHA256,
     FILE_SLUG,
     LAYER_URL,
     capture,
@@ -75,14 +74,15 @@ def usace_recommended_tracks_complete(
     except (OSError, ValueError, KeyError) as exc:
         return AssetCheckResult(passed=False, metadata={"reason": "source_evidence_unreadable",
                                                         "error_type": type(exc).__name__})
+    ids_sha = candidate.get("source_id_sha256")
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and candidate.get("source_id_sha256") == EXPECTED_ID_SHA256
-        and audit.get("feature_count") == EXPECTED_COUNT
-        and audit.get("objectid_sha256") == EXPECTED_ID_SHA256
-        and audit.get("count_before") == audit.get("count_after") == EXPECTED_COUNT
+        isinstance(ids_sha, str) and bool(ids_sha)
+        and candidate.get("feature_count") == candidate.get("source_reported_count")
+        and audit.get("feature_count") == candidate.get("feature_count")
+        and audit.get("objectid_sha256") == ids_sha
+        and audit.get("count_before") == audit.get("count_after") == candidate.get("source_reported_count")
         and ready.get("source_population_complete") is True
-        and ready.get("source_id_sha256") == EXPECTED_ID_SHA256
+        and ready.get("source_id_sha256") == ids_sha
         and ready.get("release_accepted") is False
     )
     return AssetCheckResult(passed=passed, metadata={
@@ -91,7 +91,7 @@ def usace_recommended_tracks_complete(
         "source_scope": audit.get("source_scope"),
         "bts_item_succession_accepted": False,
         "release_accepted": False,
-        "reason": "complete_pinned_source_population" if passed else "source_population_gate_failed",
+        "reason": "complete_source_population" if passed else "source_population_gate_failed",
     })
 
 
@@ -121,3 +121,6 @@ def recommended_tracks_draft_schedule(context):
         run_key=f"recommended-tracks-ienc-draft-{day}",
         tags={"hifld/draft": "true", "hifld/promotion_allowed": "false"},
     )
+
+usace_recommended_tracks_drift = register_approved_baseline_drift(
+    usace_recommended_tracks_ienc, "usace_recommended_tracks_drift")

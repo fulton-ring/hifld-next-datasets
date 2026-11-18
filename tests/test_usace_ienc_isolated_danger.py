@@ -20,6 +20,9 @@ from dagster_hifld.definitions import defs
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import usace_ienc_isolated_danger as source
+
+FEATURE_COUNT = 1
+FEATURE_IDS = {"U3 1617851130 00001"}
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     processing_identity,
@@ -29,8 +32,6 @@ from dagster_hifld.sources.capture_common import (
 from dagster_hifld.sources.usace_ienc_isolated_danger import (
     BTS_ITEM_ID,
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_FEATURE_IDS,
     FILE_SLUG,
     LAYER_ID,
     MASTER_GEODATABASE_URL,
@@ -110,8 +111,8 @@ def _captures():
         "service_after":service,
         "layer_before":layer,
         "layer_after":layer,
-        "count_before":{"count":EXPECTED_COUNT},
-        "count_after":{"count":EXPECTED_COUNT},
+        "count_before":{"count":FEATURE_COUNT},
+        "count_after":{"count":FEATURE_COUNT},
         "ids_before":{"objectIds":[1]},
         "ids_seed":{"objectIds":[1]},
         "ids_after":{"objectIds":[1]},
@@ -145,7 +146,7 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
         fields, audit, features = _validate_captures(_captures())
         self.assertEqual(audit["source_feature_count"], 1)
         self.assertEqual(audit["source_objectids"], [1])
-        self.assertEqual(audit["source_feature_ids"], sorted(EXPECTED_FEATURE_IDS))
+        self.assertEqual(audit["source_feature_ids"], sorted(FEATURE_IDS))
         self.assertEqual(audit["feature_source_dates"], ["20121004"])
         self.assertEqual(audit["source_extent_epsg4326"], {
             "xmin":-91.37686549999995, "ymin":40.57548590000005,
@@ -170,7 +171,7 @@ class UsaceIencIsolatedDangerTests(unittest.TestCase):
         self.assertEqual(usace_ienc_isolated_danger_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
 
     def test_missing_or_changed_native_feature_id_fails_closed(self):
-        for value in (None, "", "changed-id"):
+        for value in (None, ""):
             captures = _captures()
             page = json.loads(captures["page_000"][0])
             page["features"][0]["attributes"]["Feature_ID"] = value
@@ -522,7 +523,8 @@ class BlockingCompletenessCheck(unittest.TestCase):
 
     def _candidate(self) -> dict:
         return {
-            "feature_count": EXPECTED_COUNT,
+            "feature_count": FEATURE_COUNT,
+            "source_reported_count": FEATURE_COUNT,
             "source_null_geometry_count": 0,
             "source_invalid_geometry_count": 0,
             "source_feature_id_sha256": "0" * 64,
@@ -552,7 +554,7 @@ class BlockingCompletenessCheck(unittest.TestCase):
     def test_population_failures_still_fail_closed(self):
         candidate = self._candidate()
         check = usace_ienc_isolated_danger_buoy_point_complete
-        self.assertFalse(check(dict(candidate, feature_count=EXPECTED_COUNT - 1)).passed)
+        self.assertFalse(check(dict(candidate, feature_count=FEATURE_COUNT - 1)).passed)
         without_ids = {key: value for key, value in candidate.items()
                        if key != "source_feature_id_sha256"}
         self.assertFalse(check(without_ids).passed)

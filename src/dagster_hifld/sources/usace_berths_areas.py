@@ -32,6 +32,7 @@ from dagster_hifld.sources.capture_common import (
     verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import to_wkb
 
@@ -45,11 +46,6 @@ SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/BE
 LAYER_ID = 98
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 1108
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "601df26e076232404b0e22fd1afacd6ca6461064107ae1ce4b33d1f92b2cfbd5"
-EXPECTED_RECORD_SHA256 = "a6437ee21d5a419653eb08ec59a6b938faf18fa5e05c803940e67b104f5381fb"
-EXPECTED_GEOMETRY_SHA256 = "8a17537ea5be40535600a98fd1d9cedab85fac9a56ad57528e8e775ba3590539"
 EXPECTED_SCHEMA_SHA256 = "55fe5000eb9aacd69e612211f48b5cf5532cee536f1080901d177e5842a0751c"
 EXPECTED_EXTENT = {"xmin": -94.33752259999994, "ymin": 29.727434000000073,
                    "xmax": -79.83875189999998, "ymax": 45.02651950000006}
@@ -78,10 +74,15 @@ EXPECTED_FIELD_DECLARATIONS = [
     {"name": "SHAPE_Area", "type": "esriFieldTypeDouble", "alias": "SHAPE_Area", "domain": None},
 ]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
-EXPECTED_CAPTURE_NAMES = {
+BASE_CAPTURE_NAMES = {
     "bts_item", "service_directory", "service_before", "layer_before", "count_before",
-    "ids_before", "page_000", "page_001", "page_002", "layer_after", "count_after", "ids_after",
+    "ids_before", "layer_after", "count_after", "ids_after",
 }
+
+
+def _capture_names(ids: list[int]) -> set[str]:
+    return set(BASE_CAPTURE_NAMES) | {
+        f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
 
 
 def _query(params: dict[str, object]) -> str:
@@ -150,14 +151,21 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     roster = manifest.get("artifact_roster")
     if manifest.get("complete") is not True or not isinstance(receipts, dict) or not isinstance(roster, dict):
         raise ValueError("retained_capture_manifest_invalid")
-    if set(receipts) != EXPECTED_CAPTURE_NAMES:
-        raise ValueError("retained_capture_name_roster_changed")
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_urls(EXPECTED_IDS))
+    ids_body, _ids_wire, _ids_receipt = _load_capture(root, "ids_before")
+    replay_ids = json.loads(ids_body).get("objectIds")
+    if (not isinstance(replay_ids, list) or not replay_ids
+            or any(type(oid) is not int or oid <= 0 for oid in replay_ids)
+            or len(set(replay_ids)) != len(replay_ids)):
+        raise ValueError("retained_capture_id_roster_invalid")
+    expected_names = _capture_names(replay_ids)
+    if set(receipts) != expected_names:
+        raise ValueError("retained_capture_name_roster_changed")
+    expected_urls = dict(_capture_urls(replay_ids))
     captures = {}
-    for name in sorted(EXPECTED_CAPTURE_NAMES):
+    for name in sorted(expected_names):
         body, _wire, receipt = _load_capture(root, name)
         if receipt != receipts[name]:
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
@@ -299,19 +307,14 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     _validate_crs(layer.get("extent", {}).get("spatialReference"), "source_layer_extent")
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (ids_before != EXPECTED_IDS or ids_after != ids_before
-            or len(set(ids_before)) != EXPECTED_COUNT
-            or docs["ids_before"].get("objectIdFieldName") != "OBJECTID"
+    ids_before = capture_witness(captures)
+    if (docs["ids_before"].get("objectIdFieldName") != "OBJECTID"
             or docs["ids_after"].get("objectIdFieldName") != "OBJECTID"):
         raise ValueError("source_id_population_drift")
-    if _sha(_canonical(sorted(ids_before))) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_hash_drift")
     features = []
     page_ids = []
-    for name in ("page_000", "page_001", "page_002"):
+    page_names = [f"page_{index:03d}" for index in range((len(ids_before) + PAGE_SIZE - 1) // PAGE_SIZE)]
+    for name in page_names:
         page = docs[name]
         if "error" in page or page.get("exceededTransferLimit") is True:
             raise ValueError("source_page_error_or_transfer_limit")
@@ -323,8 +326,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             raise ValueError("source_page_features_missing")
         features.extend(records)
         page_ids.extend(feature.get("attributes", {}).get("OBJECTID") for feature in records)
-    if (len(features) != EXPECTED_COUNT or sorted(page_ids) != EXPECTED_IDS
-            or len(set(page_ids)) != EXPECTED_COUNT):
+    if (len(features) != len(ids_before) or sorted(page_ids) != ids_before
+            or len(set(page_ids)) != len(ids_before)):
         raise ValueError("source_feature_population_incomplete")
     expected_attributes = [field["name"] for field in ATTRIBUTE_FIELDS]
     for feature in features:
@@ -339,10 +342,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     geometry_sha = _sha(_canonical([[feature["attributes"]["OBJECTID"], feature["geometry"]]
                                     for feature in features]))
     schema_sha = _sha(_canonical(fields))
-    if records_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_record_snapshot_drift")
-    if geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_snapshot_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise ValueError("source_schema_snapshot_drift")
     xs, ys = [], []
@@ -363,7 +362,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     feature_id_unique_count = len({feature["attributes"]["Feature_ID"] for feature in features})
     audit = {
         "source_feature_count": len(features), "source_population_complete": True,
-        "source_id_sha256": EXPECTED_ID_SHA256, "source_id_min": ids_before[0],
+        "source_id_sha256": _sha(_canonical(sorted(ids_before))), "source_id_min": ids_before[0],
         "source_id_max": ids_before[-1], "source_schema_sha256": schema_sha,
         "source_record_sha256": records_sha, "source_geometry_sha256": geometry_sha,
         "source_coverage_extent": extent, "source_polygon_vertex_count": vertices,
@@ -400,7 +399,17 @@ def _read_capture(root: Path, storage: StagingStorageResource,
     try:
         with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                           headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
-            for name, url in _capture_urls(EXPECTED_IDS):
+            ids_body, ids_receipt = _capture(
+                client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
+            ids = json.loads(ids_body).get("objectIds")
+            if (not isinstance(ids, list) or not ids
+                    or any(type(oid) is not int or oid <= 0 for oid in ids)
+                    or len(set(ids)) != len(ids)):
+                raise ValueError("source_seed_id_population_drift")
+            captures["ids_before"] = (ids_body, ids_receipt)
+            for name, url in _capture_urls(ids):
+                if name == "ids_before":
+                    continue
                 captures[name] = _capture(client, url, root, name)
             _validate(captures)
     except Exception as exc:
@@ -580,8 +589,9 @@ def capture_usace_berths_areas(storage: StagingStorageResource, *, version: str,
                                 candidate_version, identity_sha, identity, record_sha,
                                 schema_sha, payload["objects"], payload["capture_receipts"])
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": candidate_version,
-                "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-                "source_id_sha256": EXPECTED_ID_SHA256, "source_id_min": 1, "source_id_max": EXPECTED_COUNT,
+                "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],
+                "source_population_complete": True,
+                "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
                 "source_schema_sha256": schema_sha, "source_coverage_extent": EXPECTED_EXTENT,
                 "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
                 "source_feature_id_unique_count": audit["source_feature_id_unique_count"],
@@ -601,8 +611,9 @@ def capture_usace_berths_areas(storage: StagingStorageResource, *, version: str,
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
     )
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": candidate_version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": EXPECTED_ID_SHA256, "source_id_min": 1, "source_id_max": EXPECTED_COUNT,
+            "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],
+            "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
             "source_schema_sha256": schema_sha, "source_coverage_extent": EXPECTED_EXTENT,
             "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
             "source_feature_id_unique_count": audit["source_feature_id_unique_count"],

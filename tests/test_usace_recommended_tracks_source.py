@@ -136,9 +136,7 @@ class RecommendedTracksSourceTests(unittest.TestCase):
             (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
             return body, receipt
         try:
-            with patch.object(source, "EXPECTED_COUNT", fixture.expected_count), \
-                 patch.object(source, "EXPECTED_ID_SHA256", hashlib.sha256(_canonical(fixture.ids)).hexdigest()), \
-                 patch.object(source, "EXPECTED_EXTENT", {k: fixture.extent[k] for k in ("xmin", "ymin", "xmax", "ymax")}), \
+            with patch.object(source, "EXPECTED_EXTENT", {k: fixture.extent[k] for k in ("xmin", "ymin", "xmax", "ymax")}), \
                  patch.object(source, "capture_get", capture_mock):
                 result = source.capture(self.storage, client=client)
         finally:
@@ -164,10 +162,7 @@ class RecommendedTracksSourceTests(unittest.TestCase):
         self.assertEqual(manifest["code_identity_scheme"], "test")
         self.assertIn("succession", manifest["lineage"].lower())
         self.assertFalse(json.loads(self.storage.read_key(prefix + "/metadata/candidate_ready.json"))["release_accepted"])
-        with patch("dagster_hifld.assets.usace_recommended_tracks.EXPECTED_COUNT", 2), \
-             patch("dagster_hifld.assets.usace_recommended_tracks.EXPECTED_ID_SHA256",
-                   hashlib.sha256(_canonical([1, 2])).hexdigest()):
-            self.assertTrue(usace_recommended_tracks_complete(None, result, self.storage).passed)
+        self.assertTrue(usace_recommended_tracks_complete(None, result, self.storage).passed)
         for name, body in fixture.responses.items():
             self.assertTrue(body)
         self.assertTrue(self.storage.list_keys(source.DATASET_SLUG, source.FILE_SLUG, result["version"]))
@@ -217,17 +212,18 @@ class RecommendedTracksSourceTests(unittest.TestCase):
     def test_registered_source_gate_rejects_corrupt_population_audit(self):
         version = "v1.0.0-test"
         prefix = self.storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, version, "")
+        ids_sha = hashlib.sha256(_canonical(list(range(1, 667)))).hexdigest()
         self.storage.write_key(prefix + "metadata/source_audit.json", _canonical({
-            "feature_count": 665, "objectid_sha256": source.EXPECTED_ID_SHA256,
+            "feature_count": 665, "objectid_sha256": ids_sha,
             "count_before": 666, "count_after": 666, "source_scope": "IENC only",
         }))
         self.storage.write_key(prefix + "metadata/candidate_ready.json", _canonical({
-            "source_population_complete": True, "source_id_sha256": source.EXPECTED_ID_SHA256,
+            "source_population_complete": True, "source_id_sha256": ids_sha,
             "release_accepted": False,
         }))
         result = usace_recommended_tracks_complete(None, {
-            "version": version, "feature_count": 666, "source_population_complete": True,
-            "source_id_sha256": source.EXPECTED_ID_SHA256,
+            "version": version, "feature_count": 666, "source_reported_count": 666,
+            "source_population_complete": True, "source_id_sha256": ids_sha,
         }, self.storage)
         self.assertFalse(result.passed)
         self.assertTrue(next(iter(usace_recommended_tracks_complete.check_specs)).blocking)
