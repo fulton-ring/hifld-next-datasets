@@ -199,6 +199,57 @@ class ElectricRetailTerritoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unmatched_eia861_county_names"):
             source.join_territories(rows, frame, _counties())
 
+    def test_join_resolves_county_and_independent_city_name_collisions(self):
+        counties = gpd.GeoDataFrame(
+            {
+                "GEOID": ["51059", "51600", "51036", "51095"],
+                "STATEFP": ["51", "51", "51", "51"],
+                "NAME": ["Fairfax", "Fairfax", "Charles City", "James City"],
+                "NAMELSAD": [
+                    "Fairfax County", "Fairfax city",
+                    "Charles City County", "James City County",
+                ],
+            },
+            geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1), box(2, 0, 3, 1), box(3, 0, 4, 1)],
+            crs="EPSG:4269",
+        )
+        rows = [
+            {"utility_number": "1", "utility_name": "Utility One", "state": "VA", "county": "Fairfax"},
+            {"utility_number": "1", "utility_name": "Utility One", "state": "VA", "county": "Fairfax City"},
+            {"utility_number": "1", "utility_name": "Utility One", "state": "VA", "county": "Charles City"},
+            {"utility_number": "1", "utility_name": "Utility One", "state": "VA", "county": "James City"},
+        ]
+        frame = {"1": {
+            "utility_name": "Utility One", "ownership_type": "Cooperative",
+            "service_territory": "X",
+        }}
+        records, _ = source.join_territories(rows, frame, counties)
+        self.assertEqual(
+            [record["geoids"] for record in records],
+            [("51059",), ("51600",), ("51036",), ("51095",)],
+        )
+
+    def test_join_fails_closed_on_unlisted_county_and_city_name_collision(self):
+        counties = gpd.GeoDataFrame(
+            {
+                "GEOID": ["51998", "51999"],
+                "STATEFP": ["51", "51"],
+                "NAME": ["Example", "Example"],
+                "NAMELSAD": ["Example County", "Example city"],
+            },
+            geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)],
+            crs="EPSG:4269",
+        )
+        rows = [
+            {"utility_number": "1", "utility_name": "Utility One", "state": "VA", "county": "Example"},
+        ]
+        frame = {"1": {
+            "utility_name": "Utility One", "ownership_type": "Cooperative",
+            "service_territory": "X",
+        }}
+        with self.assertRaisesRegex(ValueError, "ambiguous_eia861_county_name"):
+            source.join_territories(rows, frame, counties)
+
     def test_aggregate_dissolves_one_feature_per_utility_state(self):
         rows = source.read_service_territory_workbook(_xlsx({
             "Counties_States": _service_rows(), "Counties_Territories": [SERVICE_HEADERS],

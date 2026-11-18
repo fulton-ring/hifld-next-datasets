@@ -98,6 +98,12 @@ COUNTY_ALIASES = {
     ("AK", "Valdez Cordova"): ("02063", "02066"),
     ("AK", "Wrangell Petersburg"): ("02275", "02195"),
     ("VA", "Bedford City"): ("51019",),
+    ("MD", "Baltimore"): ("24005",),
+    ("MO", "St Louis"): ("29189",),
+    ("VA", "Fairfax"): ("51059",),
+    ("VA", "Franklin"): ("51067",),
+    ("VA", "Richmond"): ("51159",),
+    ("VA", "Roanoke"): ("51161",),
 }
 
 
@@ -273,6 +279,13 @@ def _county_lookup(counties: gpd.GeoDataFrame) -> dict[tuple[str, str], set[str]
     return lookup
 
 
+def _alias_lookup() -> dict[tuple[str, str], set[str]]:
+    return {
+        (STATE_FIPS[state], _normalize_county(name)): set(geoids)
+        for (state, name), geoids in COUNTY_ALIASES.items()
+    }
+
+
 def join_territories(
     territory_rows: list[dict[str, str]],
     frame: dict[str, dict[str, str]],
@@ -280,6 +293,7 @@ def join_territories(
 ) -> tuple[list[dict[str, object]], dict[str, int]]:
     """Join each EIA utility-county row to current TIGER county equivalents."""
     lookup = _county_lookup(counties)
+    aliases = _alias_lookup()
     known = set(counties["GEOID"])
     records = []
     unmatched = []
@@ -297,15 +311,21 @@ def join_territories(
             skipped += 1
             continue
         state_fips = STATE_FIPS[row["state"]]
-        geoids = lookup.get((state_fips, _normalize_county(county)))
-        if not geoids:
-            geoids = set(COUNTY_ALIASES.get((row["state"], county), ()))
-            missing = geoids - known
-            if missing:
-                raise ValueError("county_alias_target_missing:" + ",".join(sorted(missing)))
+        key = (state_fips, _normalize_county(county))
+        geoids = aliases.get(key)
+        if geoids is None:
+            geoids = lookup.get(key)
         if not geoids:
             unmatched.append(f"{row['state']}:{county}")
             continue
+        if len(geoids) > 1 and key not in aliases:
+            raise ValueError(
+                "ambiguous_eia861_county_name:"
+                + f"{row['state']}:{county}:" + ",".join(sorted(geoids))
+            )
+        missing = geoids - known
+        if missing:
+            raise ValueError("county_alias_target_missing:" + ",".join(sorted(missing)))
         records.append({
             **row,
             "ownership_type": frame[utility]["ownership_type"],
