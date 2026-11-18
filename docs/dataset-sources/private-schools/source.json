@@ -53,7 +53,7 @@
     "crs": "EPSG:4269",
     "interpretation": "Distinct official prior-period NCES archive. Counts, field list and CRS differ from the 2023-2024 ZIP; no row-by-row continuity or HIFLD baseline equivalence is asserted."
   },
-  "candidate_status": "Draft changed-successor candidate; not a currentness or HIFLD-equivalence assertion.",
+  "candidate_status": "Latest published private-school release selected by discovery at run time; this file records the 2023-24 observation. Not a currentness or HIFLD-equivalence assertion.",
   "open_decisions": [
     "source-vintage acceptance",
     "HIFLD baseline/population comparison",
@@ -64,5 +64,14 @@
     "release approval"
   ],
   "refresh": "Registered refresh schedule is STOPPED. No publication or source acceptance.",
-  "processing_identity_scheme": "sha256-packaged-dagster-hifld-v1"
+  "processing_identity_scheme": "sha256-packaged-dagster-hifld-v1",
+  "current_selection": {
+    "landing_url": "https://nces.ed.gov/programs/edge/Geographic/SchoolLocations",
+    "rule": "Newest school-year EDGE_GEOCODE_PRIVATESCH_<yy><yy+1>.zip named by an active official anchor; commented future-year links are ignored.",
+    "observed_on": "2026-11-18",
+    "selected_source_url": "https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_PRIVATESCH_2324.zip",
+    "selected_school_year": "2023-2024",
+    "note": "The 2024-25 and 2025-26 private-school links were present only in HTML comments at this observation, so 2023-24 remains the newest published private release."
+  },
+  "completeness": "Runtime completeness uses the publisher-written DBF, SHX and SHP record counts; no row count, ID digest or school year is pinned in code."
 }

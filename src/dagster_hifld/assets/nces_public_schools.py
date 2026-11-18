@@ -8,7 +8,7 @@ from dagster import (
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.nces_public_schools import (
-    DATASET_SLUG, EXPECTED_FEATURE_COUNT, FILE_SLUG, capture_nces_public_schools,
+    DATASET_SLUG, FILE_SLUG, capture_nces_public_schools,
 )
 
 
@@ -21,9 +21,10 @@ class NcesPublicSchoolsConfig(Config):
     group_name="nces",
     compute_kind="http",
     description=(
-        "Official NCES EDGE 2024-25 public-school locations, preserved as a complete "
-        "unapproved producer-source candidate. HIFLD historical equivalence and the "
-        "published source/schema/coverage/rights decisions remain pending."
+        "Newest published NCES EDGE public-school locations, discovered from the official "
+        "SchoolLocations page and preserved as a complete unapproved producer-source "
+        "candidate. HIFLD historical equivalence and the published "
+        "source/schema/coverage/rights decisions remain pending."
     ),
 )
 def nces_public_schools(context, config: NcesPublicSchoolsConfig,
@@ -41,10 +42,14 @@ def nces_public_schools(context, config: NcesPublicSchoolsConfig,
 
 @asset_check(asset=nces_public_schools, blocking=True)
 def nces_public_schools_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_FEATURE_COUNT
-              and candidate.get("source_population_complete") is True)
+    passed = (candidate.get("source_population_complete") is True
+              and bool(candidate.get("schoolyear"))
+              and isinstance(candidate.get("feature_count"), int)
+              and candidate["feature_count"] > 0)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "schoolyear": candidate.get("schoolyear", "missing"),
+        "source_url": candidate.get("source_url", "missing"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_sha256": candidate.get("source_capture_sha256", "missing"),
