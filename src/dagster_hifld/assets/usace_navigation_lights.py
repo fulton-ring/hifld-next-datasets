@@ -12,6 +12,7 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -91,3 +92,8 @@ usace_navigation_lights_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+usace_navigation_lights_usace_ienc_drift = register_approved_baseline_drift(
+    usace_navigation_lights_usace_ienc, "usace_navigation_lights_usace_ienc_drift")
+
+ASSET_CHECKS = [usace_navigation_lights_complete, usace_navigation_lights_usace_ienc_drift]

@@ -4,6 +4,7 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -69,7 +70,10 @@ usace_owned_reservoirs_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+usace_owned_reservoirs_drift = register_approved_baseline_drift(
+    usace_owned_reservoirs, "usace_owned_reservoirs_drift")
+
 INGEST_ASSETS = [usace_owned_reservoirs]
-ASSET_CHECKS = [usace_owned_reservoirs_complete]
+ASSET_CHECKS = [usace_owned_reservoirs_complete, usace_owned_reservoirs_drift]
 JOBS = [usace_owned_reservoirs_draft_job]
 SCHEDULES = [usace_owned_reservoirs_draft_schedule]

@@ -291,14 +291,21 @@ usace_obstruction_areas_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+usace_administrative_areas_usace_ienc_drift = register_approved_baseline_drift(
+    usace_administrative_areas_usace_ienc, "usace_administrative_areas_usace_ienc_drift")
 usace_navigation_marks_areas_drift = register_approved_baseline_drift(usace_navigation_marks_areas_usace_ienc, "usace_navigation_marks_areas_drift")
+usace_nautical_publication_information_areas_usace_ienc_drift = register_approved_baseline_drift(
+    usace_nautical_publication_information_areas_usace_ienc,
+    "usace_nautical_publication_information_areas_usace_ienc_drift")
 
 INGEST_ASSETS = [
     usace_nautical_publication_information_areas_usace_ienc,
     usace_obstruction_areas_usace_ienc_2,
 ]
 ASSET_CHECKS = [
+    usace_administrative_areas_usace_ienc_drift,
     usace_navigation_marks_areas_drift,
+    usace_nautical_publication_information_areas_usace_ienc_drift,
     usace_nautical_publication_information_areas_complete,
     usace_obstruction_areas_complete,
 ]

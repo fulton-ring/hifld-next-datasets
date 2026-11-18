@@ -4,6 +4,7 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -67,7 +68,10 @@ land_region_locations_usace_ienc_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+land_region_locations_usace_ienc_drift = register_approved_baseline_drift(
+    land_region_locations_usace_ienc, "land_region_locations_usace_ienc_drift")
+
 INGEST_ASSETS = [land_region_locations_usace_ienc]
-ASSET_CHECKS = [land_region_locations_usace_ienc_complete]
+ASSET_CHECKS = [land_region_locations_usace_ienc_complete, land_region_locations_usace_ienc_drift]
 JOBS = [land_region_locations_usace_ienc_draft_job]
 SCHEDULES = [land_region_locations_usace_ienc_draft_schedule]

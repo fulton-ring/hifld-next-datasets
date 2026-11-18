@@ -4,6 +4,7 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -66,3 +67,8 @@ usace_obstruction_lines_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+usace_obstruction_lines_usace_ienc_drift = register_approved_baseline_drift(
+    usace_obstruction_lines_usace_ienc, "usace_obstruction_lines_usace_ienc_drift")
+
+ASSET_CHECKS = [usace_obstruction_lines_complete, usace_obstruction_lines_usace_ienc_drift]
