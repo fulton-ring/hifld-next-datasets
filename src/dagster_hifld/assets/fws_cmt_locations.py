@@ -74,7 +74,7 @@ def fws_cmt_locations_drift(candidate: dict) -> AssetCheckResult:
     return approved_baseline_drift(candidate)
 
 
-ASSET_CHECKS = [fws_cmt_locations_drift]
+ASSET_CHECKS = [fws_cmt_locations_complete, fws_cmt_locations_drift]
 
 
 fws_cmt_locations_draft_refresh_job = define_asset_job(
@@ -87,3 +87,7 @@ fws_cmt_locations_draft_refresh_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [fws_cmt_locations]
+JOBS = [fws_cmt_locations_draft_refresh_job]
+SCHEDULES = [fws_cmt_locations_draft_refresh_schedule]

@@ -91,5 +91,6 @@ national_transit_map_routes_draft_schedule = ScheduleDefinition(
 )
 
 ASSET_CHECKS = [national_transit_map_routes_complete]
+INGEST_ASSETS = [national_transit_map_routes]
 JOBS = [national_transit_map_routes_draft_job]
 SCHEDULES = [national_transit_map_routes_draft_schedule]
