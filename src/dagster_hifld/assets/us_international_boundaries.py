@@ -3,13 +3,13 @@ from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultS
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.us_international_boundaries import DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_us_international_boundaries
+from dagster_hifld.sources.us_international_boundaries import DATASET_SLUG, FILE_SLUG, capture_us_international_boundaries
 
 class UsInternationalBoundariesConfig(Config):
     capture_directory: str = ""
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="census_bureau", compute_kind="http",
-       description="Pinned current Census TIGER/Line 2026 national international boundary shapefile (4,255 NAD83 polylines). Unapproved candidate; annual vintage succession, schema/ID contract, rights and release acceptance remain pending.")
+       description="Current Census TIGER/Line national international boundary shapefile, resolved at capture time. Unapproved candidate; annual vintage succession, schema/ID contract, rights and release acceptance remain pending.")
 def census_us_international_boundaries_current(context, config: UsInternationalBoundariesConfig, staging_storage: StagingStorageResource) -> dict:
     result = capture_us_international_boundaries(staging_storage, version=build_version_id(context), capture_directory=config.capture_directory or None)
     context.instance.add_dynamic_partitions(PUBLISH_PARTITION_NAME, [build_publish_partition_key(DATASET_SLUG, FILE_SLUG, result["version"])])
@@ -18,12 +18,13 @@ def census_us_international_boundaries_current(context, config: UsInternationalB
 
 @asset_check(asset=census_us_international_boundaries_current, blocking=True)
 def census_us_international_boundaries_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_population_complete") is True
+    passed = type(candidate.get("feature_count")) is int and candidate["feature_count"] > 0 and candidate.get("source_population_complete") is True and bool(candidate.get("source_vintage"))
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
+        "source_vintage": candidate.get("source_vintage", "missing"),
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "release_accepted": False,
