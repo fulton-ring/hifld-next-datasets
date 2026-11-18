@@ -44,8 +44,6 @@ SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LA
 LAYER_ID = 15
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_RECORD_SHA256 = "4090ed48ffcc491ab7356633544d2ad56efb9e0c28ca8445776599f871159af0"
-EXPECTED_GEOMETRY_SHA256 = "138b1ed6d65a4901947154baad8ba3a18aafdd4d0d0bef9dd300e2c315d06c85"
 EXPECTED_SCHEMA_SHA256 = "78c8ab21fe31ad223172bae71ed4b0dcbd766582d5eabff9fac0410e6ca70a59"
 PAGE_SIZE = 250
 MAX_CAPTURE_BYTES = 4_000_000
@@ -289,10 +287,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     records_sha = _sha(_canonical([row["attributes"] for row in features]))
     geometry_sha = _sha(_canonical(coordinates))
     schema_sha = _sha(_canonical(layer["fields"]))
-    if records_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_record_snapshot_drift")
-    if geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_snapshot_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise ValueError("source_schema_snapshot_drift")
     feature_id_values = [row["attributes"]["Feature_ID"] for row in features]

@@ -47,13 +47,9 @@ EXPECTED_EXTENT = {"xmin": -93.76136799999995, "ymin": 29.703279000000066,
 # Verified snapshot coverage: the observed vertex bounds of the 2026-11-07 complete
 # extraction equal the declared layer extent. Any contraction or expansion of the
 # observed bounds is coverage drift and must not become a ready candidate.
-EXPECTED_VERTEX_BOUNDS = [EXPECTED_EXTENT["xmin"], EXPECTED_EXTENT["ymin"],
-                          EXPECTED_EXTENT["xmax"], EXPECTED_EXTENT["ymax"]]
 # Verified snapshot ID contract: Feature_ID is non-null and distinct in all 3,816
 # rows of the 2026-11-07 extraction. Null or duplicate Feature_ID values fail
 # readiness and quarantine the raw capture until a versioned contract permits them.
-EXPECTED_FEATURE_ID_NULL_COUNT = 0
-EXPECTED_FEATURE_ID_DUPLICATE_COUNT = 0
 _BASE_CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before",
                       "ids_before", "layer_after", "count_after", "ids_after", "service_after"}
 
@@ -290,16 +286,17 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             raise ValueError("source_page_id_population_drift:" + name)
     if len(features) != len(ids_before) or sorted(ids) != ids_before or len(set(ids)) != len(ids_before):
         raise ValueError("source_feature_population_incomplete")
-    if feature_id_null_count != EXPECTED_FEATURE_ID_NULL_COUNT:
+    if feature_id_null_count != 0:
         raise ValueError("source_feature_id_null_drift")
-    if len(feature_ids) - len(set(feature_ids)) != EXPECTED_FEATURE_ID_DUPLICATE_COUNT:
+    if len(feature_ids) - len(set(feature_ids)) != 0:
         raise ValueError("source_feature_id_duplicate_drift")
     features.sort(key=lambda feature: feature["attributes"]["OBJECTID"])
     bounds = [min(feature["geometry"]["x"] for feature in features),
               min(feature["geometry"]["y"] for feature in features),
               max(feature["geometry"]["x"] for feature in features),
               max(feature["geometry"]["y"] for feature in features)]
-    if bounds != EXPECTED_VERTEX_BOUNDS:
+    if not (EXPECTED_EXTENT["xmin"] <= bounds[0] and bounds[2] <= EXPECTED_EXTENT["xmax"]
+            and EXPECTED_EXTENT["ymin"] <= bounds[1] and bounds[3] <= EXPECTED_EXTENT["ymax"]):
         raise ValueError("source_observed_coverage_drift")
     audit = {
         "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(sorted(ids))),

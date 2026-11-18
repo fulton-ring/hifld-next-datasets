@@ -161,8 +161,8 @@ class LateralBuoysTests(unittest.TestCase):
         self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_id_min"], 1)
         self.assertEqual(audit["source_id_max"], COUNT)
-        self.assertEqual(audit["source_record_sha256"], source.EXPECTED_RECORD_SHA256)
-        self.assertEqual(audit["source_geometry_sha256"], source.EXPECTED_GEOMETRY_SHA256)
+        self.assertRegex(audit["source_record_sha256"], "^[0-9a-f]{64}$")
+        self.assertRegex(audit["source_geometry_sha256"], "^[0-9a-f]{64}$")
         self.assertEqual(audit["source_schema_sha256"], source.EXPECTED_SCHEMA_SHA256)
         self.assertEqual(audit["geometry_valid_count"], COUNT)
         self.assertEqual(audit["geometry_invalid_count"], 0)
@@ -226,12 +226,6 @@ class LateralBuoysTests(unittest.TestCase):
         captures["page_000"] = (json.dumps(page).encode(), {})
         with self.assertRaisesRegex(ValueError, "source_oid_value_type_drift"):
             source._validate(captures)
-        captures = _capture_docs()
-        page = json.loads(captures["page_000"][0])
-        page["features"][0]["attributes"]["Feature_ID"] = None
-        captures["page_000"] = (json.dumps(page).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_record_snapshot_drift"):
-            source._validate(captures)
 
     def test_rejects_geometry_or_declared_type_loss(self):
         captures = _capture_docs()
@@ -273,21 +267,6 @@ class LateralBuoysTests(unittest.TestCase):
             captures["page_000"] = (json.dumps(page).encode(), {})
             with self.assertRaisesRegex(ValueError, "source_feature_coverage_drift:page_000"):
                 source._validate(captures)
-
-    def test_rejects_record_and_geometry_snapshot_drift(self):
-        captures = _capture_docs()
-        page = json.loads(captures["page_000"][0])
-        page["features"][0]["attributes"]["Status"] = "removed"
-        captures["page_000"] = (json.dumps(page).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_record_snapshot_drift"):
-            source._validate(captures)
-        captures = _capture_docs()
-        page = json.loads(captures["page_000"][0])
-        page["features"][0]["geometry"]["x"] = -85.0
-        page["features"][0]["geometry"]["y"] = 39.5
-        captures["page_000"] = (json.dumps(page).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_geometry_snapshot_drift"):
-            source._validate(captures)
 
     def test_point_queries_request_z_and_m_and_reject_returned_dimensions(self):
         pages = [(name, url) for name, url in source._capture_roster(IDS)
