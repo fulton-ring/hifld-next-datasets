@@ -1,20 +1,7 @@
 """Candidate-only acquisition of the official Census TIGER/Line 2026 Urban Areas.
 
 Inventory entry ``urban-areas-1`` ("Urban Areas", agency U.S. Census Bureau).
-The producer's maintained publication is the current TIGER/Line UAC20 national
-file (``tl_2026_us_uac20.zip`` under ``TIGER2026/UAC20``); the TIGER/Line page
-documents the 2026 TIGER/Line Shapefiles as released 2026-10-14 (legal
-boundaries as of January 1, 2026). The project source policy requires the
-latest TIGER vintage, so the superseded 2020 vintage base ZIP
-(``tl_2020_us_uac20.zip``, released 2023-01-06) and its correction products
-are recorded here as producer publications only, never fetched. The 2026
-national file incorporates the producer's own corrections relative to the 2020
-base (GEOID20 47778 "Laplace--Lutcher--Gramercy, LA" dropped; UATYP20 removed
-and GEOIDFQ20 added, matching the 2020-corrected field roster; ALAND/AWATER
-and interior points refreshed; names and UACE20 unchanged for every shared
-GEOID), so the prior corrected-vs-base product choice is dissolved by using
-the maintained successor. The DataLumos project archive is banned
-identification context only and is never fetched.
+The producer's maintained publication is the current TIGER/Line UAC20 national shapefile, resolved from the producer's annual listing at capture time. The project source policy requires the latest TIGER vintage, so a superseded edition is never fetched. The DataLumos project archive is banned identification context only and is never fetched.
 """
 from __future__ import annotations
 
@@ -34,6 +21,7 @@ import shapely
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
+from dagster_hifld.sources import census_latest, census_tiger_common
 from dagster_hifld.sources.capture_common import (
     capture_get,
     quarantine_incomplete_capture,
@@ -43,22 +31,17 @@ from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _s
 
 DATASET_SLUG = "urban-areas-1"
 FILE_SLUG = DATASET_SLUG
-SOURCE_VINTAGE = "2026"
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TIGER2026/UAC20/tl_2026_us_uac20.zip"
-SOURCE_FILE = "tl_2026_us_uac20.zip"
+LAYER = "UAC20"
+PRODUCT = "uac20"
 PUBLISHER = "U.S. Census Bureau, Geography Division"
-EXPECTED_SHA256 = "e054bb650a5d839e9051391275883335d4c277a3d32537d3b6e3d6c80a0d8310"
-EXPECTED_BYTES = 74_053_106
-EXPECTED_FEATURE_COUNT = 2_644
+# Broad sanity bounds; the producer publishes roughly 2,600 urban areas.
+FEATURE_COUNT_RANGE = (1, 20_000)
 EXPECTED_FIELDS = [
     "UACE20", "GEOID20", "GEOIDFQ20", "NAME20", "NAMELSAD20", "LSAD20",
     "MTFCC20", "FUNCSTAT20", "ALAND20", "AWATER20", "INTPTLAT20", "INTPTLON20",
 ]
 INT_FIELDS = ("ALAND20", "AWATER20")
 EXPECTED_CRS = "EPSG:4269"
-EXPECTED_BOUNDS = [-170.78931, -14.365419, 145.791574, 64.928893]
-EXPECTED_ID_SHA256 = "070585bfb52feea75c1d2a39d18dc6d2363805004adbbebb813647d35e3ea305"
-EXPECTED_SCHEMA_SHA256 = "b0b6d296d2b92a05b2223c185f68df038323069c81864c8d69dc2a3cc8f7e540"
 EXPECTED_GEOID_LENGTH = 5
 EXPECTED_CONSTANT_VALUES = {"MTFCC20": {"G3500"}, "FUNCSTAT20": {"S"}, "LSAD20": {"67"}}
 EXPECTED_GEOMETRY_TYPES = {"Polygon", "MultiPolygon"}
@@ -100,11 +83,8 @@ def processing_code_identity() -> str:
     return digest.hexdigest()
 
 
-def candidate_version() -> str:
-    identity = _canonical({"source_sha256": EXPECTED_SHA256,
-                           "code_identity_scheme": CODE_IDENTITY_SCHEME,
-                           "code_sha256": processing_code_identity()})
-    return "v" + _sha(identity)[:32]
+def candidate_version(release: census_latest.ShapefileRelease, archive_sha256: str) -> str:
+    return census_latest.release_version(str(release.vintage), archive_sha256, processing_code_identity())
 
 
 def _quarantine_attempt(
@@ -128,7 +108,7 @@ def _quarantine_attempt(
     except (OSError, ValueError):
         receipt = {
             "method": "GET",
-            "url": SOURCE_URL,
+            "url": "",
             "final_url": None,
             "status": None,
             "observed_at": None,
@@ -150,64 +130,20 @@ def _capture(
     capture_directory: str | Path | None,
     staging_storage: StagingStorageResource,
     version: str,
-) -> tuple[bytes, dict[str, object]]:
-    temporary = tempfile.TemporaryDirectory(prefix="census-urban-areas-capture-") if capture_directory is None else None
-    root = Path(temporary.name) if temporary is not None else Path(capture_directory)
-    try:
-        if temporary is None:
-            if root.is_symlink() or not root.is_dir():
-                raise ValueError("source_capture_directory_invalid")
-            if {p.name for p in root.iterdir()} != CAPTURE_FILES:
-                raise ValueError("source_capture_roster_mismatch")
-            body_path, wire_path, receipt_path = (root / "source.body", root / "source.wire", root / "source.receipt.json")
-            if any(p.is_symlink() or not p.is_file() for p in (body_path, wire_path, receipt_path)):
-                raise ValueError("source_capture_nonregular_file")
-            body = body_path.read_bytes()
-            wire = wire_path.read_bytes()
-            receipt = json.loads(receipt_path.read_text("utf-8"))
-            if (
-                receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-                or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-                or receipt.get("complete_body") is not True
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt.get("content_encoding") != "identity"
-            ):
-                raise ValueError("source_capture_receipt_identity_mismatch")
-        else:
-            try:
-                with httpx.Client(timeout=httpx.Timeout(180.0, connect=20.0), follow_redirects=False) as client:
-                    body, receipt = capture_get(client, SOURCE_URL, root, "source", max_bytes=MAX_SOURCE_BYTES)
-            except Exception as exc:
-                quarantine = _quarantine_attempt(staging_storage, root, version, type(exc).__name__)
-                raise ValueError(f"official_tiger_source_capture_failed; quarantined_at:{quarantine}") from exc
-
-        if (
-            receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
-            or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-            or receipt.get("complete_body") is not True or receipt.get("bytes") != EXPECTED_BYTES
-            or receipt.get("sha256") != EXPECTED_SHA256 or len(body) != EXPECTED_BYTES
-            or receipt.get("content_encoding") != "identity"
-            or receipt.get("wire_bytes") != EXPECTED_BYTES or receipt.get("wire_sha256") != EXPECTED_SHA256
-            or receipt.get("content_length") not in (None, EXPECTED_BYTES)
-            or _sha(body) != EXPECTED_SHA256
-        ):
-            quarantine = _quarantine_attempt(
-                staging_storage, root, version, "official_tiger_archive_identity_or_release_drift",
-            )
-            raise ValueError(f"official_tiger_archive_identity_or_release_drift; quarantined_at:{quarantine}")
-        return body, receipt
-    finally:
-        if temporary is not None:
-            temporary.cleanup()
+) -> tuple[bytes, dict[str, object], census_latest.ShapefileRelease]:
+    body, receipt, _wire, _receipt_bytes, release = census_tiger_common.capture_tiger_shapefile(
+        capture_directory, staging_storage, version,
+        dataset_slug=DATASET_SLUG, layer=LAYER, product=PRODUCT,
+        max_source_bytes=MAX_SOURCE_BYTES,
+        client_timeout=httpx.Timeout(180.0, connect=20.0),
+        capture_tmp_prefix="census-urban-areas-capture-",
+        capture_get=capture_get,
+    )
+    return body, receipt, release
 
 
-def _inspect_archive(body: bytes) -> dict[str, object]:
-    expected_members = {
-        "tl_2026_us_uac20.cpg", "tl_2026_us_uac20.dbf", "tl_2026_us_uac20.prj",
-        "tl_2026_us_uac20.shp", "tl_2026_us_uac20.shp.ea.iso.xml",
-        "tl_2026_us_uac20.shp.iso.xml", "tl_2026_us_uac20.shx",
-    }
+def _inspect_archive(body: bytes, release: census_latest.ShapefileRelease) -> dict[str, object]:
+    expected_members = census_tiger_common.tiger_shapefile_members(release.source_file)
     import io
 
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
@@ -223,12 +159,12 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
             raise ValueError("tiger_archive_crc_failure:" + bad_member)
         with tempfile.TemporaryDirectory(prefix="census-urban-areas-") as tmp:
             archive.extractall(tmp)
-            path = Path(tmp) / "tl_2026_us_uac20.shp"
+            path = Path(tmp) / census_tiger_common.tiger_shapefile_name(release.source_file)
             frame = gpd.read_file(path, engine="pyogrio")
     fields = list(frame.columns[:-1])
     if fields != EXPECTED_FIELDS or str(frame.crs) != EXPECTED_CRS:
         raise ValueError("tiger_source_schema_or_crs_drift")
-    if len(frame) != EXPECTED_FEATURE_COUNT:
+    if not (FEATURE_COUNT_RANGE[0] <= len(frame) <= FEATURE_COUNT_RANGE[1]):
         raise ValueError("tiger_source_population_drift")
     if frame["GEOID20"].isna().any() or frame["GEOID20"].duplicated().any() \
             or set(frame["GEOID20"].str.len()) != {EXPECTED_GEOID_LENGTH}:
@@ -248,19 +184,15 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
         raise ValueError("tiger_source_attribute_physical_type_drift")
     ids = sorted(frame["GEOID20"].tolist())
     id_digest = _sha(_canonical(ids))
-    if id_digest != EXPECTED_ID_SHA256:
-        raise ValueError("tiger_source_id_population_digest_drift")
     schema = [{"name": name, "type": "string", "nullable": bool(frame[name].isna().any())} for name in EXPECTED_FIELDS]
     schema_digest = _sha(_canonical(schema))
-    if schema_digest != EXPECTED_SCHEMA_SHA256:
-        raise ValueError("tiger_source_schema_digest_drift")
     geometry = frame.geometry
     if geometry.isna().any() or geometry.is_empty.any() or (~geometry.is_valid).any():
         raise ValueError("tiger_source_geometry_quality_failure")
     if set(geometry.geom_type) != EXPECTED_GEOMETRY_TYPES:
         raise ValueError("tiger_source_geometry_type_drift")
     bounds = [float(value) for value in frame.total_bounds]
-    if bounds != EXPECTED_BOUNDS:
+    if not (-180 <= bounds[0] <= bounds[2] <= 180 and -90 <= bounds[1] <= bounds[3] <= 90):
         raise ValueError("tiger_source_coverage_extent_drift")
     return {
         "feature_count": len(frame), "attribute_fields": EXPECTED_FIELDS, "attribute_types": types,
@@ -274,17 +206,19 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
 
 
 def capture_census_urban_areas(
-    staging_storage: StagingStorageResource, *, version: str, capture_directory: str | Path | None = None,
+    staging_storage: StagingStorageResource, *, version: str | None = None,
+    capture_directory: str | Path | None = None,
 ) -> dict[str, object]:
-    """Capture one exact official urban areas zip and stage it immutably for catalog."""
-    body, receipt = _capture(capture_directory, staging_storage, version)
-    audit = _inspect_archive(body)
+    """Capture the newest official urban areas zip and stage it immutably for catalog."""
+    body, receipt, release = _capture(capture_directory, staging_storage, version or "pending")
+    version = version or candidate_version(release, receipt["sha256"])
+    audit = _inspect_archive(body, release)
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
-    archive_key = f"{prefix}/shapefile/{SOURCE_FILE}"
+    archive_key = f"{prefix}/shapefile/{release.source_file}"
     before = staging_storage.object_snapshot(archive_key)
     write_immutable(staging_storage, archive_key, body)
     after = staging_storage.object_snapshot(archive_key)
-    if after is None or after.size != EXPECTED_BYTES or staging_storage.sha256_key(archive_key) != EXPECTED_SHA256:
+    if after is None or after.size != receipt["bytes"] or staging_storage.sha256_key(archive_key) != receipt["sha256"]:
         raise ValueError("staged_tiger_archive_integrity_failure")
     reused = before is not None
     code_sha256 = processing_code_identity()
@@ -301,30 +235,30 @@ def capture_census_urban_areas(
         "code_commit": code_commit,
         "processing_code": processing_code,
         "title": "Urban Areas",
-        "description": "2020 Census-delineated national urban areas (urbanized areas) as of January 1, 2026, from the maintained TIGER/Line UAC20 national shapefile. Candidate only; crosswalk row and historical compatibility remain unresolved.",
+        "description": f"Census-delineated national urban areas from the maintained {release.vintage} TIGER/Line UAC20 national shapefile. Candidate only; crosswalk row and historical compatibility remain unresolved.",
         "publisher": PUBLISHER,
         "agency": "U.S. Census Bureau",
-        "source_url": SOURCE_URL,
+        "source_url": release.source_url,
         "license": "U.S. government work; source license and downstream redistribution terms require maintainer review.",
         "source_modified": "2026-10-14",
-        "date_issued": SOURCE_VINTAGE,
+        "date_issued": str(release.vintage),
         "inputs": [{
-            "input_id": SOURCE_URL,
+            "input_id": release.source_url,
             "producer": PUBLISHER,
-            "host": urlsplit(SOURCE_URL).hostname,
-            "canonical_url": SOURCE_URL,
+            "host": urlsplit(release.source_url).hostname,
+            "canonical_url": release.source_url,
             "retrieval_url": receipt["final_url"],
             "retrieved_at": observed_at,
-            "sha256": EXPECTED_SHA256,
-            "bytes": EXPECTED_BYTES,
+            "sha256": receipt["sha256"],
+            "bytes": receipt["bytes"],
             "license": "https://www.usa.gov/government-works",
             "attribution": PUBLISHER,
             "role": "producer_publication",
-            "release_date": "2026-10-14",
-            "release_date_basis": "census.gov TIGER/Line Shapefiles page: 'All legal boundaries and names are as of January 1, 2026. The 2026 TIGER/Line Shapefiles were released on October 14, 2026.' The HTTP Last-Modified date of the ZIP (2026-10-07) is packaging evidence recorded in the audit and is not the source data release date.",
+            "release_date_unknown_reason": f"The producer identifies this as the {release.vintage} TIGER/Line vintage; a precise publication date was not established. The HTTP Last-Modified date is recorded separately and is not treated as the source data release date.",
         }],
         "transformations": ["Preserve the complete source ZIP and all sidecars; catalog the urban areas Shapefile without ID synthesis or attribute mapping."],
-        "lineage": "Official Census Bureau Geography Division TIGER/Line 2026 Urban Areas product (UAC20), the producer's currently maintained national publication under the project source policy requiring the latest TIGER vintage. The 2026 file incorporates the producer's own corrections relative to the 2020 base ZIP (tl_2020_us_uac20.zip, released 2023-01-06): GEOID20 47778 (Laplace--Lutcher--Gramercy, LA) dropped, UATYP20 removed and GEOIDFQ20 added (matching the producer's 2020-corrected field roster), and ALAND/AWATER/interior points refreshed; names and UACE20 are unchanged for every shared GEOID, so the earlier corrected-vs-base product choice is dissolved by the successor vintage. The 2020 base and correction ZIPs remain recorded producer publications that are never fetched. The DHS crosswalk row and equivalence to the archived HIFLD publication remain unverified. DataLumos is banned identification context only.",
+        "lineage": "Official Census Bureau Geography Division TIGER/Line Urban Areas product (UAC20), resolved from the producer's current annual listing at capture time. The DHS crosswalk row and equivalence to the archived HIFLD publication remain unverified. DataLumos is banned identification context only.",
+        "source_release": release.as_metadata(),
     }
     manifest_key = f"{prefix}/metadata/source_manifest.json"
     if staging_storage.object_exists(manifest_key):
@@ -343,15 +277,16 @@ def capture_census_urban_areas(
         "method", "url", "final_url", "status", "complete_body", "wire_bytes",
         "wire_sha256", "bytes", "sha256", "content_encoding", "content_length",
     )}
-    audit_doc = {"source": {"url": SOURCE_URL, "vintage": SOURCE_VINTAGE, "release_date": "2026-10-14", "archive_sha256": EXPECTED_SHA256, "archive_bytes": EXPECTED_BYTES}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit}
+    audit_doc = {"source": {"url": release.source_url, "vintage": str(release.vintage), "archive_sha256": receipt["sha256"], "archive_bytes": receipt["bytes"], "source_release": release.as_metadata()}, "processing_code": processing_code, "acquisition_receipt": stable_receipt, **audit}
     audit_key = f"{prefix}/metadata/source_audit.json"
     write_immutable(staging_storage, audit_key, _canonical(audit_doc) + b"\n")
     return {
         "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": EXPECTED_BYTES,
-        "source_archive_sha256": EXPECTED_SHA256, "source_cache_reused": reused,
+        "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": receipt["bytes"],
+        "source_archive_sha256": receipt["sha256"], "source_cache_reused": reused,
+        "source_vintage": str(release.vintage), "source_release": release.as_metadata(),
         "code_commit": code_commit,
         "code_identity_scheme": CODE_IDENTITY_SCHEME, "code_sha256": code_sha256,
         "processing_runtime_versions": processing_code["runtime_versions"],

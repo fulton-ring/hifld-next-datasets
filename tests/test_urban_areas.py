@@ -19,17 +19,11 @@ from dagster_hifld.assets.urban_areas import (
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.provenance import validate_provenance
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources.urban_areas import (
     CODE_IDENTITY_SCHEME,
-    EXPECTED_BOUNDS,
-    EXPECTED_BYTES,
     EXPECTED_CRS,
-    EXPECTED_FEATURE_COUNT,
     EXPECTED_FIELDS,
-    EXPECTED_ID_SHA256,
-    EXPECTED_SCHEMA_SHA256,
-    EXPECTED_SHA256,
-    SOURCE_URL,
     _capture,
     _inspect_archive,
     _sha,
@@ -37,6 +31,17 @@ from dagster_hifld.sources.urban_areas import (
     capture_census_urban_areas,
     processing_code_identity,
 )
+
+
+def _release(vintage=2026):
+    source_file = f"tl_{vintage}_us_uac20.zip"
+    return census_latest.ShapefileRelease(
+        vintage=vintage, layer="UAC20", source_file=source_file,
+        source_url=f"https://www2.census.gov/geo/tiger/TIGER{vintage}/UAC20/{source_file}",
+        directory_url=f"https://www2.census.gov/geo/tiger/TIGER{vintage}/UAC20/",
+        listing_sha256="0" * 64, listing_bytes=1, latest_checked_at="2026-11-14T00:00:00+00:00",
+        annual_listing_sha256="1" * 64,
+    )
 from dagster_hifld.sources import urban_areas as source_module
 from dagster_hifld.resources import StagingStorageResource
 
@@ -53,7 +58,7 @@ class CensusUrbanAreasTests(unittest.TestCase):
              patch("subprocess.run", side_effect=FileNotFoundError("git")):
             identity = processing_code_identity()
             self.assertRegex(identity, r"^[0-9a-f]{64}$")
-            self.assertRegex(candidate_version(), r"^v[0-9a-f]{32}$")
+            self.assertRegex(candidate_version(_release(), "c" * 64), r"^v[0-9a-f]{32}$")
 
     def test_packaged_identity_resolves_from_source_package_without_dot_git(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -65,7 +70,6 @@ class CensusUrbanAreasTests(unittest.TestCase):
                  patch.object(source_module, "PROCESSING_SOURCE_PACKAGE", package):
                 identity = source_module.processing_code_identity()
                 self.assertEqual(identity, processing_code_identity())
-                self.assertEqual(source_module.candidate_version(), candidate_version())
 
     def test_source_asset_is_registered_with_stopped_refresh(self):
         keys = {key for definition in hifld_ingest_assets for key in definition.keys}
@@ -87,27 +91,29 @@ class CensusUrbanAreasTests(unittest.TestCase):
             },
         )
 
-    def test_source_check_requires_pinned_archive_and_complete_population(self):
+    def test_source_check_requires_complete_population_and_resolved_vintage(self):
         candidate = {
-            "feature_count": EXPECTED_FEATURE_COUNT,
+            "feature_count": 2644,
             "source_population_complete": True,
-            "source_archive_bytes": EXPECTED_BYTES,
-            "source_archive_sha256": EXPECTED_SHA256,
-            "source_id_sha256": EXPECTED_ID_SHA256,
-            "source_schema_sha256": EXPECTED_SCHEMA_SHA256,
+            "source_archive_bytes": 1000,
+            "source_archive_sha256": "a" * 64,
+            "source_id_sha256": "b" * 64,
+            "source_schema_sha256": "c" * 64,
+            "source_vintage": "2026",
         }
         self.assertTrue(census_urban_areas_source_complete(candidate).passed)
-        candidate["feature_count"] -= 1
+        candidate["feature_count"] = 0
         self.assertFalse(census_urban_areas_source_complete(candidate).passed)
 
     def test_archive_capture_rejects_changed_url_or_bytes(self):
+        release = _release()
         body = b"not the pinned Census archive"
         wire = b"wire bytes for changed archive"
         receipt = {
-                "method": "GET", "url": SOURCE_URL, "final_url": SOURCE_URL,
+                "method": "GET", "url": release.source_url, "final_url": release.source_url,
                 "status": 200, "complete_body": True, "bytes": len(body),
                 "sha256": hashlib.sha256(body).hexdigest(), "content_encoding": "identity",
-                "wire_bytes": len(wire), "wire_sha256": hashlib.sha256(wire).hexdigest(),
+                "wire_bytes": len(wire), "wire_sha256": "0" * 64,
                 "content_length": len(body), "observed_at": "2026-11-14T00:00:00+00:00",
         }
         with tempfile.TemporaryDirectory() as tmp:
@@ -120,7 +126,8 @@ class CensusUrbanAreasTests(unittest.TestCase):
                 (root / "source.receipt.json").write_text(json.dumps(receipt))
                 return body, receipt
 
-            with patch("dagster_hifld.sources.urban_areas.capture_get", side_effect=changed_capture):
+            with patch.object(census_latest, "discover_shapefile", return_value=release), \
+                 patch("dagster_hifld.sources.urban_areas.capture_get", side_effect=changed_capture):
                 with self.assertRaisesRegex(ValueError, "official_tiger_archive_identity_or_release_drift"):
                     _capture(None, storage, "vtest")
 
@@ -141,21 +148,16 @@ class CensusUrbanAreasTests(unittest.TestCase):
         with zipfile.ZipFile(sink, "w") as archive:
             archive.writestr("unexpected.txt", "not a TIGER archive")
         with self.assertRaisesRegex(ValueError, "tiger_archive_member_roster_drift"):
-            _inspect_archive(sink.getvalue())
+            _inspect_archive(sink.getvalue(), _release())
 
     def test_real_pinned_archive_inspection_succeeds_with_runtime_digest_pins(self):
         path = os.environ.get("URBAN_AREAS_TEST_ARCHIVE")
         if not path:
             self.skipTest("set URBAN_AREAS_TEST_ARCHIVE to a retained official tl_2026_us_uac20.zip")
         body = Path(path).read_bytes()
-        self.assertEqual(len(body), EXPECTED_BYTES)
-        self.assertEqual(_sha(body), EXPECTED_SHA256)
-        audit = _inspect_archive(body)
-        self.assertEqual(audit["feature_count"], EXPECTED_FEATURE_COUNT)
-        self.assertEqual(audit["source_id_sha256"], EXPECTED_ID_SHA256)
-        self.assertEqual(audit["source_schema_sha256"], EXPECTED_SCHEMA_SHA256)
+        audit = _inspect_archive(body, _release())
+        self.assertGreater(audit["feature_count"], 0)
         self.assertEqual(audit["source_crs"], EXPECTED_CRS)
-        self.assertEqual(audit["bounds"], EXPECTED_BOUNDS)
         self.assertEqual(audit["attribute_fields"], EXPECTED_FIELDS)
         self.assertEqual(audit["null_geometry_count"], 0)
         self.assertEqual(audit["empty_geometry_count"], 0)
@@ -167,8 +169,9 @@ class CensusUrbanAreasTests(unittest.TestCase):
             self.skipTest("set URBAN_AREAS_TEST_ARCHIVE to a retained official tl_2026_us_uac20.zip")
         body = Path(path).read_bytes()
         digest = _sha(body)
+        release = _release()
         receipt = {
-            "method": "GET", "url": SOURCE_URL, "final_url": SOURCE_URL,
+            "method": "GET", "url": release.source_url, "final_url": release.source_url,
             "status": 200, "complete_body": True, "bytes": len(body),
             "sha256": digest, "content_encoding": "identity",
             "wire_bytes": len(body), "wire_sha256": digest,
@@ -184,12 +187,11 @@ class CensusUrbanAreasTests(unittest.TestCase):
             candidate = capture_census_urban_areas(
                 storage, version="vreal", capture_directory=str(capture_dir),
             )
-            self.assertEqual(candidate["feature_count"], EXPECTED_FEATURE_COUNT)
+            self.assertGreater(candidate["feature_count"], 0)
             self.assertEqual(candidate["source_population_complete"], True)
-            self.assertEqual(candidate["source_id_sha256"], EXPECTED_ID_SHA256)
-            self.assertEqual(candidate["source_schema_sha256"], EXPECTED_SCHEMA_SHA256)
-            self.assertEqual(candidate["source_archive_sha256"], EXPECTED_SHA256)
-            self.assertEqual(candidate["source_archive_bytes"], EXPECTED_BYTES)
+            self.assertEqual(candidate["source_archive_sha256"], digest)
+            self.assertEqual(candidate["source_archive_bytes"], len(body))
+            self.assertEqual(candidate["source_vintage"], "2026")
             self.assertEqual(candidate["source_capture_evidence_sha256"], digest)
             self.assertEqual(candidate["source_cache_reused"], False)
             for flag in APPROVAL_FLAGS:
@@ -200,17 +202,13 @@ class CensusUrbanAreasTests(unittest.TestCase):
             manifest = json.loads(storage.read_key(manifest_key))
             validate_provenance(manifest)
             self.assertEqual(manifest["title"], "Urban Areas")
-            self.assertEqual(manifest["source_url"], SOURCE_URL)
-            self.assertEqual(manifest["source_modified"], "2026-10-14")
+            self.assertEqual(manifest["source_url"], release.source_url)
             self.assertEqual(manifest["inputs"][0]["role"], "producer_publication")
-            self.assertEqual(manifest["inputs"][0]["release_date"], "2026-10-14")
-            self.assertEqual(manifest["inputs"][0]["sha256"], EXPECTED_SHA256)
+            self.assertEqual(manifest["inputs"][0]["sha256"], digest)
+            self.assertEqual(manifest["source_release"]["tiger_vintage"], "2026")
             audit_doc = json.loads(storage.read_key(audit_key))
             self.assertEqual(audit_doc["source"]["vintage"], "2026")
-            self.assertEqual(audit_doc["source"]["release_date"], "2026-10-14")
-            self.assertEqual(audit_doc["feature_count"], EXPECTED_FEATURE_COUNT)
-            self.assertEqual(audit_doc["source_id_sha256"], EXPECTED_ID_SHA256)
-            self.assertEqual(audit_doc["source_schema_sha256"], EXPECTED_SCHEMA_SHA256)
+            self.assertEqual(audit_doc["feature_count"], candidate["feature_count"])
 
 
 if __name__ == "__main__":

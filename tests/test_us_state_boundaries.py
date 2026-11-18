@@ -20,14 +20,11 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILE_PAIRS
 from dagster_hifld.assets.us_state_boundaries import us_state_boundaries_source_complete
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources.us_state_boundaries import (
     DATASET_SLUG,
-    EXPECTED_BYTES,
-    EXPECTED_FEATURE_COUNT,
     EXPECTED_FIELDS,
-    EXPECTED_GEOID_SHA256,
     EXPECTED_GEOIDS,
-    EXPECTED_SHA256,
     FILE_SLUG,
     STRING_FIELDS,
     _capture,
@@ -36,6 +33,17 @@ from dagster_hifld.sources.us_state_boundaries import (
     _inspect_archive_data,
     candidate_version,
 )
+
+
+def _release(vintage=2026):
+    source_file = f"tl_{vintage}_us_state.zip"
+    return census_latest.ShapefileRelease(
+        vintage=vintage, layer="STATE", source_file=source_file,
+        source_url=f"https://www2.census.gov/geo/tiger/TIGER{vintage}/STATE/{source_file}",
+        directory_url=f"https://www2.census.gov/geo/tiger/TIGER{vintage}/STATE/",
+        listing_sha256="0" * 64, listing_bytes=1, latest_checked_at="2026-11-13T00:00:00+00:00",
+        annual_listing_sha256="1" * 64,
+    )
 
 
 class RegistrationTests(unittest.TestCase):
@@ -114,9 +122,7 @@ class UsStateBoundariesTests(unittest.TestCase):
     def _synthetic_pins(frame):
         ids = sorted(frame["GEOID"].astype(str).tolist())
         return {
-            "EXPECTED_FEATURE_COUNT": len(frame),
             "EXPECTED_GEOIDS": ids,
-            "EXPECTED_GEOID_SHA256": hashlib.sha256(canonical(ids)).hexdigest(),
             "EXPECTED_REGION": set(frame["REGION"].astype(str)),
             "EXPECTED_DIVISION": set(frame["DIVISION"].astype(str)),
             "EXPECTED_LSAD": set(frame["LSAD"].astype(str)),
@@ -133,9 +139,9 @@ class UsStateBoundariesTests(unittest.TestCase):
         with patch("dagster_hifld.sources.us_state_boundaries.gpd") as stub, \
                 patch.dict("dagster_hifld.sources.us_state_boundaries.__dict__", pins):
             stub.read_file.return_value = frame
-            return _inspect_archive(self._archive(members))
+            return _inspect_archive(self._archive(members), _release())
 
-    def test_candidate_version_is_bound_to_packaged_code_identity(self):
+    def test_candidate_version_is_bound_to_resolved_vintage_and_code_identity(self):
         identity = {
             "code_commit": "packaged-sha256:" + "a" * 64,
             "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
@@ -144,17 +150,17 @@ class UsStateBoundariesTests(unittest.TestCase):
             "installed_distributions": [{"name": "dagster", "version": "1.11.0"}],
             "python": "3.12.14", "pyarrow": "23.0.1", "proj": "9.5.1", "geos": "3.13.1",
         }
-        first = candidate_version(identity)
-        self.assertEqual(first, candidate_version(identity))
-        identity = {**identity, "installed_distributions": [{"name": "dagster", "version": "1.11.1"}]}
-        self.assertNotEqual(first, candidate_version(identity))
+        first = candidate_version(_release(), "c" * 64, identity)
+        self.assertEqual(first, candidate_version(_release(), "c" * 64, identity))
+        self.assertNotEqual(first, candidate_version(_release(2027), "c" * 64, identity))
+        self.assertNotEqual(first, candidate_version(_release(), "d" * 64, identity))
 
     def test_state_pair_is_registered_for_derived_downstream_assets(self):
         self.assertIn((DATASET_SLUG, FILE_SLUG), SUPPORTED_DATASET_FILE_PAIRS)
 
     def test_rejects_incomplete_tiger_archive_member_roster(self):
         with self.assertRaisesRegex(ValueError, "tiger_archive_member_roster_drift"):
-            _inspect_archive(self._archive(["tl_2026_us_state.shp"]))
+            _inspect_archive(self._archive(["tl_2026_us_state.shp"]), _release())
 
     def test_rejects_archive_path_traversal_before_extraction(self):
         names = [
@@ -163,7 +169,7 @@ class UsStateBoundariesTests(unittest.TestCase):
             "tl_2026_us_state.shp.iso.xml", "tl_2026_us_state.shx",
         ]
         with self.assertRaisesRegex(ValueError, "tiger_archive_unsafe_member"):
-            _inspect_archive(self._archive(names))
+            _inspect_archive(self._archive(names), _release())
 
     def test_inspect_rejects_missing_renamed_and_unexpected_columns(self):
         frame = self._synthetic_frame({"STUSPS": ["AL", "AK"], "EXTRA": ["x", "y"]})
@@ -183,19 +189,13 @@ class UsStateBoundariesTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "tiger_source_geoid_structure_drift"):
             self._inspect_with_frame(structured, pins)
 
-    def test_inspect_rejects_geoidfq_statens_and_digest_drift(self):
+    def test_inspect_rejects_geoidfq_and_statens_drift(self):
         fq = self._synthetic_frame({"GEOIDFQ": ["0400000US01", "0400000US02X"]})
         with self.assertRaisesRegex(ValueError, "tiger_source_geoidfq_structure_drift"):
             self._inspect_with_frame(fq)
         statens = self._synthetic_frame({"STATENS": ["1700001", "01700002"]})
         with self.assertRaisesRegex(ValueError, "tiger_source_statens_structure_drift"):
             self._inspect_with_frame(statens)
-        pins = self._synthetic_pins(self._synthetic_frame())
-        pins["EXPECTED_GEOID_SHA256"] = "0" * 64
-        pristine = self._synthetic_frame()
-        pins["EXPECTED_BOUNDS"] = [float(value) for value in pristine.total_bounds]
-        with self.assertRaisesRegex(ValueError, "tiger_source_geoid_digest_drift"):
-            self._inspect_with_frame(pristine, pins)
 
     def test_inspect_rejects_type_null_geometry_and_coverage_drift(self):
         typed = self._synthetic_frame({"ALAND": [10.5, 20.5]})
@@ -218,7 +218,7 @@ class UsStateBoundariesTests(unittest.TestCase):
         coverage = self._synthetic_frame()
         coverage.geometry = [
             Polygon([(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)]),
-            Polygon([(2, 0), (3, 0), (3, 1), (2, 1), (2, 0)]),
+            Polygon([(200, 0), (201, 0), (201, 1), (200, 1), (200, 0)]),
         ]
         with self.assertRaisesRegex(ValueError, "tiger_source_coverage_extent_drift"):
             self._inspect_with_frame(coverage)
@@ -226,7 +226,7 @@ class UsStateBoundariesTests(unittest.TestCase):
     def test_capture_failure_quarantines_evidence_and_raises(self):
         with tempfile.TemporaryDirectory(prefix="state-quarantine-") as tmp:
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
-            with patch("dagster_hifld.sources.us_state_boundaries.httpx.Client",
+            with patch("dagster_hifld.sources.census_tiger_common.httpx.Client",
                        side_effect=OSError("network_down")):
                 with self.assertRaisesRegex(ValueError, "official_tiger_source_capture_failed"):
                     _capture(None, storage, "vtest")
@@ -240,19 +240,20 @@ class UsStateBoundariesTests(unittest.TestCase):
 
     def test_complete_source_gate_keeps_release_acceptance_false(self):
         result = us_state_boundaries_source_complete({
-            "feature_count": EXPECTED_FEATURE_COUNT,
+            "feature_count": 56,
             "source_population_complete": True,
-            "source_archive_bytes": EXPECTED_BYTES,
-            "source_archive_sha256": EXPECTED_SHA256,
-            "source_id_sha256": EXPECTED_GEOID_SHA256,
+            "source_archive_bytes": 1000,
+            "source_archive_sha256": "a" * 64,
+            "source_id_sha256": "b" * 64,
+            "source_vintage": "2026",
         })
         self.assertTrue(result.passed)
         self.assertFalse(result.metadata["release_accepted"].value)
         self.assertFalse(result.metadata["rights_accepted"].value)
         failed = us_state_boundaries_source_complete({
-            "feature_count": 55, "source_population_complete": True,
-            "source_archive_bytes": EXPECTED_BYTES, "source_archive_sha256": EXPECTED_SHA256,
-            "source_id_sha256": EXPECTED_GEOID_SHA256,
+            "feature_count": 0, "source_population_complete": True,
+            "source_archive_bytes": 1000, "source_archive_sha256": "a" * 64,
+            "source_id_sha256": "b" * 64, "source_vintage": "2026",
         })
         self.assertFalse(failed.passed)
 
