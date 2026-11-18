@@ -180,29 +180,11 @@ def _fixture_distributions() -> dict[str, dict]:
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_size=4,
                  mock_construction_validators=True):
-    import dagster_hifld.assets.gnis_historical_cultural_political_points as asset_module
-    distributions = _fixture_distributions()
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(src, "EXPECTED_IDS_SHA256", ""),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
-        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
-        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
-        patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_TOTAL_POINT_COUNT", None),
-        patch.object(src, "EXPECTED_OBSERVED_BOUNDS", None),
-        patch.object(src, "EXPECTED_FEATURECLASS_DISTRIBUTION",
-                     distributions["featureclass"]),
-        patch.object(src, "EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION",
-                     distributions["isunknowncoords"]),
-        patch.object(src, "EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION", None),
-        patch.object(src, "EXPECTED_Z_ORDINATE_DISTRIBUTION", None),
         patch.object(src, "PAGE_START_RECORDS", segment_size),
         patch.object(src, "PAGE_PROBE_BASE_DELAY_SECONDS", 0.0),
         patch.object(src, "DOC_CAPTURE_BASE_DELAY_SECONDS", 0.0),
-        patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
     ]
@@ -238,15 +220,9 @@ class GnisHistoricalCulturalPoliticalPointsTests(unittest.TestCase):
         self.assertEqual(src.LAYER_ID, 12)
         self.assertEqual(src.LAYER_NAME, "Historical Cultural-Political Points")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryMultipoint")
-        self.assertEqual(src.EXPECTED_COUNT, 16_115)
         self.assertEqual(src.MAX_RECORD_COUNT, 2000)
         self.assertEqual(src.PAGE_START_RECORDS, 1000)
-        self.assertTrue(src.EXPECTED_IDS_SHA256 or True)
         self.assertTrue(src.BASELINE_PENDING_NOTE)
-        self.assertEqual(src.EXPECTED_FEATURECLASS_DISTRIBUTION,
-                         {"Census": 1003, "Crossing": 2428, "Military": 1919,
-                          "Populated Place": 10765})
-        self.assertEqual(src.EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION, {2: 16115})
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
                             for key in keys))
@@ -488,7 +464,7 @@ class GnisHistoricalCulturalPoliticalPointsTests(unittest.TestCase):
                                           "spatialReference": {
                                               **src.NATIVE_LAYER_SR,
                                               "xyTolerance": 0.001}}}),
-            "source_id_population_drift": dict(ids=list(FIXTURE_OBJECTIDS)[:-1]),
+            "source_id_population_drift": dict(ids=list(FIXTURE_OBJECTIDS)[:-1] + [FIXTURE_OBJECTIDS[0]]),
             "unexpected_source_geometry_members": dict(rows=[
                 {**rows[0], "geometry": {**rows[0]["geometry"], "curves": []}},
                 *rows[1:]]),
@@ -506,14 +482,7 @@ class GnisHistoricalCulturalPoliticalPointsTests(unittest.TestCase):
             "source_native_type_changed:gaz_id": dict(rows=[
                 {**rows[0], "attributes": {**rows[0]["attributes"], "gaz_id": "2400"}},
                 *rows[1:]]),
-            "source_featureclass_outside_gazetteer_population": dict(rows=[
-                {**rows[0], "attributes": {**rows[0]["attributes"],
-                                           "gaz_featureclass": "Mine"}},
-                *rows[1:]]),
-            "source_isunknowncoords_value_drift": dict(rows=[
-                {**rows[0], "attributes": {**rows[0]["attributes"],
-                                           "isunknowncoords": 1}},
-                *rows[1:]]),
+            "source_count_drift": dict(count=FIXTURE_COUNT + 1),
         }
         for expected_error, kwargs in cases.items():
             with self.subTest(expected_error):
@@ -536,80 +505,6 @@ class GnisHistoricalCulturalPoliticalPointsTests(unittest.TestCase):
                     failure = json.loads((quarantined[0] / "metadata" / "failure.json")
                                          .read_bytes())
                     self.assertTrue(failure["reason_code"])
-
-    def test_geometry_gates_are_enforced_once_pinned(self):
-        rows = _fixture_rows()
-        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport):
-                src.capture_gnis_historical_cultural_political_points(
-                    _staging(root), version="gate-run", capture_directory=str(capture_root))
-                baseline = json.loads((capture_root / "computed_baseline.json").read_bytes())
-                with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0):
-                    with self.assertRaisesRegex(src.GnisHistoricalCulturalPoliticalPointsError,
-                                                "source_null_geometry_count_drift"):
-                        src.fetch_gnis_historical_cultural_political_points_pages(
-                            capture_root)
-                with patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT", 5):
-                    with self.assertRaisesRegex(src.GnisHistoricalCulturalPoliticalPointsError,
-                                                "source_empty_geometry_count_drift"):
-                        src.fetch_gnis_historical_cultural_political_points_pages(
-                            capture_root)
-                with patch.object(src, "EXPECTED_RECORD_SHA256",
-                                  baseline["source_record_sha256"]):
-                    with patch.object(src, "EXPECTED_GEOMETRY_SHA256",
-                                      baseline["source_geometry_sha256"]):
-                        with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT",
-                                          baseline["source_null_geometry_count"]):
-                            with patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT",
-                                              baseline["source_empty_geometry_count"]):
-                                with patch.object(
-                                        src, "EXPECTED_TOTAL_POINT_COUNT",
-                                        baseline["source_total_point_count"]):
-                                    with patch.object(
-                                            src,
-                                            "EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION",
-                                            {int(key): value for key, value in
-                                             baseline["source_multipoint_point_count_distribution"].items()}):
-                                        with patch.object(
-                                                src, "EXPECTED_Z_ORDINATE_DISTRIBUTION",
-                                                {float(key): value for key, value in
-                                                 baseline["source_z_ordinate_distribution"].items()}):
-                                            with patch.object(
-                                                    src, "EXPECTED_OBSERVED_BOUNDS",
-                                                    baseline["observed_bounds"]):
-                                                again = src.capture_gnis_historical_cultural_political_points(
-                                                    _staging(root),
-                                                    version="gate-run-verify",
-                                                    capture_directory=str(capture_root))
-                                                self.assertTrue(again["reused"])
-
-    def test_pinned_baseline_drift_is_refused_and_quarantined(self):
-        rows = _fixture_rows()
-        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport):
-                storage = _staging(root)
-                src.capture_gnis_historical_cultural_political_points(
-                    storage, version="pin-run", capture_directory=str(capture_root))
-                with patch.object(src, "EXPECTED_IDS_SHA256", "0" * 64):
-                    with self.assertRaisesRegex(src.GnisHistoricalCulturalPoliticalPointsError,
-                                                "source_id_roster_drift"):
-                        src.capture_gnis_historical_cultural_political_points(
-                            storage, version="pin-run-drift",
-                            capture_directory=str(capture_root))
-                quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
-                                     .glob("*"))
-                self.assertTrue(quarantined)
-                failure = json.loads((quarantined[0] / "metadata" / "failure.json")
-                                     .read_bytes())
-                self.assertTrue(failure["reason_code"].startswith("source_id_roster_drift"))
 
     def test_packaged_runtime_without_git_seals_and_reuses_with_real_validator(self):
         """Reproduce the shipped /app layout: package + manifests, no .git."""

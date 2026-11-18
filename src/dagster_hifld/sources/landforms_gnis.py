@@ -30,17 +30,17 @@ the capture explicitly rather than guessing.
 Geometry is the layer's native Z-aware multipoint: every feature geometry is
 ``{"points": [[x, y, z], ...]}`` in the page CRS (EPSG:3857), usually one
 location per gazetteer point and several points for features with multiple
-recorded locations (exact per-feature point distribution pinned from the
+recorded locations (observed per-feature point distribution from the
 complete capture below; every z ordinate observed 2026-11-13 was 0 and no
 geometry was null). Ordinates are validated numerically and range-checked in
 the Web Mercator domain, then stored verbatim as MultiPoint Z WKB: no
 rounding, reordering, reprojection or repair is applied.
 
-The per-value and per-geometry baseline digests, gate counts and observed
-bounds are computed and reported by
-``build_landforms_gnis_baseline`` from a completed
-capture directory and pinned as constants for later drift refusal; pins left
-empty (or ``None``) are checked only once pinned. Publication stays blocked
+Completeness comes from the producer's own before/after count and
+OBJECTID roster at capture time. The observed per-value histograms and
+bounds are diagnostics reported by
+``build_landforms_gnis_baseline`` from a completed capture directory, not
+release baselines. Publication stays blocked
 pending the succession, freshness, schema/ID contract, rights and release
 decisions; all runtime approval flags are false and the draft refresh schedule
 is stopped.
@@ -52,7 +52,6 @@ import json
 import re
 import shutil
 import struct
-import time
 from array import array
 from collections import deque
 from datetime import datetime, timezone
@@ -72,11 +71,15 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import (
+    capture_witness, capture_with_retry, load_receipt,
+    producer_error_doc, preserve_failed_attempt, read_capture, witness_aside,
+)
 
 DATASET_SLUG = "landforms-1"
 FILE_SLUG = DATASET_SLUG
@@ -144,51 +147,15 @@ EXPECTED_SERVICE_LAYERS = [
     (13, "Historical Hydrographic Points"),
     (14, "Historical Physical Points"),
 ]
-EXPECTED_COUNT = 243_708
 EXPECTED_LAYER_EXTENT = {"xmin": -19978294.2767, "ymin": -1637104.8927999996,
                          "xmax": 20018767.8697, "ymax": 11536087.061499998}
-# The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (captured 2026-11-13 in the
-# task sandbox, capture root /workspace/captures239); unpinned values ("", None)
-# are checked only once pinned. The schema pin is the producer layer document's
 # field projection observed 2026-11-13 (fetched with the same projection the
 # adapter computes at capture time).
-EXPECTED_IDS_SHA256 = "ad0dfdfcff67021ce8b48d4290f744b4c4306bd41e3df7340d5040d1747cc761"
 EXPECTED_SCHEMA_SHA256 = "054726f396a55139d7db341622d192fdac21b854cb011e5569c897838c83d6ac"
-EXPECTED_RECORD_SHA256 = "c0385df77453ea84243ba21ee1d96e04732e0d05999361f5c1d1f0a423dd3e0f"
-EXPECTED_GEOMETRY_SHA256 = "42383da26428e56bcd729785a50608b7e1eea290bfe5d32089ee3b863cbe618f"
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-EXPECTED_TOTAL_POINT_COUNT = 517_348
-# GNIS gazetteer per-feature value histograms observed via grouped counts on
-# 2026-11-13 (sum 243,708); every feature must carry one of these values.
-EXPECTED_FEATURECLASS_DISTRIBUTION = {
-    "Arroyo": 196, "Arch": 715, "Area": 2606, "Basin": 4569, "Beach": 2359,
-    "Bench": 773, "Bend": 3017, "Cape": 15827, "Cliff": 4642, "Crater": 248,
-    "Flat": 10184, "Gap": 9451, "Island": 17619, "Isthmus": 26, "Lava": 176,
-    "Pillar": 2007, "Plain": 617, "Range": 3879, "Ridge": 16470, "Slope": 581,
-    "Summit": 73260, "Valley": 73839, "Woods": 647}
-EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION = {2: 243_708}
-# Points per multipoint pinned from the complete capture.
-EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION = {
-    1: 144847, 2: 83068, 3: 7413, 4: 3268, 5: 895, 6: 613, 7: 401, 8: 356,
-    9: 289, 10: 228, 11: 149, 12: 110, 13: 109, 14: 131, 15: 120, 16: 84,
-    17: 64, 18: 36, 19: 40, 20: 36, 21: 22, 22: 17, 23: 39, 24: 24, 25: 41,
-    26: 21, 27: 12, 28: 20, 29: 27, 30: 14, 31: 5, 32: 13, 33: 9, 34: 21,
-    35: 11, 36: 9, 37: 26, 38: 1, 39: 5, 40: 13, 41: 33, 42: 4, 43: 9, 44: 4,
-    45: 11, 47: 3, 48: 18, 49: 3, 50: 41, 52: 3, 53: 6, 56: 7, 58: 6, 60: 16,
-    61: 13, 62: 302, 65: 96, 67: 1, 68: 10, 70: 6, 71: 11, 72: 11, 81: 1,
-    82: 53, 87: 17, 93: 2, 95: 16, 96: 7, 99: 6, 111: 45, 114: 9, 118: 57,
-    125: 2, 136: 3, 158: 2, 184: 82, 189: 15, 206: 26, 222: 22, 243: 42,
-    267: 30, 277: 13, 415: 1, 451: 24, 796: 12}
-EXPECTED_Z_ORDINATE_DISTRIBUTION = {0: 517_348}
-EXPECTED_OBSERVED_BOUNDS = {"xmin": -19978294.2767, "ymin": -1637104.8927999996,
-                            "xmax": 20018767.8697, "ymax": 11536087.061499998}
 BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests, geometry gate counts and "
-    "observed bounds are pinned from a completed resumable capture directory "
-    "by build_landforms_gnis_baseline; unpinned "
-    "values are checked only once pinned.")
+    "Completeness is enforced from the producer's own before/after count and "
+    "OBJECTID roster at capture time; observed value histograms and bounds are "
+    "diagnostics, not release baselines.")
 CROSSWALK_ROW = "Geographic Names Information System (GNIS) Feature Layers"
 CROSSWALK_OPEN_ID = "5091b822ad3e47f3b6bc5bc275fb3c22"
 CROSSWALK_COPY_SHA256 = ("7f3394fed2712fdcc176b7ce658293fdded656b9b719f0d90154c07dc38"
@@ -291,16 +258,13 @@ def _parse_page_name(name: str) -> tuple[int, int]:
 
 
 def _validate_roster(roster: object, label: str) -> list[int]:
-    if not isinstance(roster, list) or len(roster) != EXPECTED_COUNT \
-            or any(type(value) is not int for value in roster) \
-            or len(set(roster)) != EXPECTED_COUNT:
+    """Require a unique positive-integer native ID roster from one witness."""
+    if not isinstance(roster, list) or not roster \
+            or any(type(value) is not int or value <= 0 for value in roster) \
+            or len(set(roster)) != len(roster):
         raise LandformsGnisError(
             "source_id_population_drift:" + label)
-    ids = sorted(roster)
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(ids)) != EXPECTED_IDS_SHA256:
-        raise LandformsGnisError(
-            "source_id_roster_drift:" + label)
-    return ids
+    return sorted(roster)
 
 
 def _validate_spatial_reference(value: object, label: str) -> None:
@@ -480,46 +444,12 @@ def _validate_feature(feature: object, expected_objectid: int) \
     if objectid != expected_objectid:
         raise LandformsGnisError(
             "source_page_id_slice_incomplete_or_reordered")
-    featureclass = attrs["gaz_featureclass"]
-    if featureclass not in EXPECTED_FEATURECLASS_DISTRIBUTION:
-        raise LandformsGnisError(
-            "source_featureclass_outside_gazetteer_population")
-    if attrs["isunknowncoords"] not in EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION:
-        raise LandformsGnisError(
-            "source_isunknowncoords_value_drift")
     points = None
     if geometry is not None:
         points = _validate_multipoint(geometry)
     for name, esri_type, _length in NATIVE_FIELDS:
         _validate_value(name, esri_type, attrs[name])
     return objectid, geometry, points
-
-
-def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
-    """Parse and structurally validate one retained receipt without page bytes."""
-    try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise LandformsGnisError(
-            "retained_capture_receipt_invalid:" + name) from exc
-    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
-            or receipt.get("url") != receipt.get("final_url")
-            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
-        raise LandformsGnisError(
-            "retained_capture_receipt_invalid:" + name)
-    return receipt
-
-
-def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire)
-            or receipt.get("wire_sha256") != _sha(wire)):
-        raise LandformsGnisError(
-            "retained_capture_receipt_invalid:" + name)
-    return body, receipt
 
 
 def _validate_request_scope(name: str, receipt: Mapping[str, object],
@@ -580,21 +510,6 @@ def _save_state(capture_root: Path, state: Mapping[str, object]) -> None:
     tmp.replace(capture_root / "capture_state.json")
 
 
-def _witness_aside(capture_root: Path, name: str) -> None:
-    """Move a retained refused/torn response aside so the slot can be refetched.
-
-    A complete HTTP 200 error body carries a self-consistent receipt, so
-    without this witness step a resumed capture would replay the same refusal
-    forever; the witnessed evidence stays on disk next to the capture.
-    """
-    from time import time_ns
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = capture_root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
-
-
 def _forget_page_entry(capture_root: Path, state: dict[str, object],
                        accepted: set[object], name: str) -> None:
     """Drop one invalidated page entry from the capture state and persist it.
@@ -629,50 +544,23 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
                                base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(document, dict) and "error" in document
+def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
+    return read_capture(capture_root, name, LandformsGnisError)
 
 
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
+def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
+    return load_receipt(capture_root, name, LandformsGnisError)
 
 
 def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
                         attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
+    return capture_with_retry(client, url, capture_root, name, attempts=attempts,
+                              base_delay=base_delay, max_bytes=MAX_BODY_BYTES)
 
-    Retries cover the producer's transient complete-200 Esri error documents
-    and incomplete transport captures (connection resets, truncation); failed
-    attempts are preserved on disk under ``<name>.attempt-NN`` evidence names
-    and never enter the capture roster. The final attempt's body is always
-    returned as captured, so a persistent producer failure surfaces to the
-    caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name,
-                                        max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
+
+_witness_aside = witness_aside
+_producer_error_doc = producer_error_doc
+_preserve_failed_attempt = preserve_failed_attempt
 
 
 def _plan_page_gaps(capture_root: Path, roster: list[int],
@@ -870,7 +758,7 @@ def fetch_landforms_gnis_pages(
             raise LandformsGnisError(
                 "source_id_population_drift:ids_seed_vs_before")
         count_before = json.loads(_read_capture(capture_root, "count_before")[0])
-        if count_before.get("count") != EXPECTED_COUNT:
+        if count_before.get("count") != len(roster):
             raise LandformsGnisError("source_count_drift")
         _fetch_pages(active, capture_root, roster, state)
         pages = list(state["pages"])
@@ -884,7 +772,7 @@ def fetch_landforms_gnis_pages(
                 raise LandformsGnisError(
                     "source_page_error:" + name)
         count_after = json.loads(_read_capture(capture_root, "count_after")[0])
-        if count_after.get("count") != EXPECTED_COUNT:
+        if count_after.get("count") != len(roster):
             raise LandformsGnisError(
                 "source_metadata_or_count_changed_during_capture")
         after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
@@ -912,7 +800,7 @@ def fetch_landforms_gnis_pages(
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_ids_sha256": extracted["ids_sha"],
         "source_schema_sha256": extracted["schema_sha"],
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": len(roster),
         "source_total_point_count": extracted["total_point_count"],
         "source_max_objectid": extracted["max_objectid"],
         "source_null_geometry_count": extracted["null_geometry_count"],
@@ -1124,39 +1012,32 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise LandformsGnisError("source_schema_drift")
     if EXPECTED_SCHEMA_SHA256 and schema_sha != EXPECTED_SCHEMA_SHA256:
         raise LandformsGnisError("source_schema_baseline_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT:
-        raise LandformsGnisError("source_count_drift")
     seed = _validate_roster(docs["ids_seed"].get("objectIds"), "ids_seed")
     if docs["ids_before"].get("objectIdFieldName") != "OBJECTID":
         raise LandformsGnisError("source_id_field_changed")
     roster = _validate_roster(docs["ids_before"].get("objectIds"), "ids_before")
     if roster != seed:
-        raise LandformsGnisError(
-            "source_id_population_drift:ids_seed_vs_before")
+        raise LandformsGnisError("source_id_population_drift:ids_seed_vs_before")
     after_roster = _validate_roster(json.loads(
         _read_capture(capture_root, "ids_after")[0]).get("objectIds"), "ids_after")
     if after_roster != roster:
-        raise LandformsGnisError(
-            "source_id_population_drift:ids_after")
+        raise LandformsGnisError("source_id_population_drift:ids_after")
     for name in ("layer_after", "service_after", "count_after"):
         body, _receipt = _read_capture(capture_root, name)
         mirror = {"layer_after": "layer_before", "service_after": "service_before",
                   "count_after": "count_before"}[name]
         if json.loads(body) != docs[mirror]:
-            raise LandformsGnisError(
-                "source_metadata_or_count_changed_during_capture")
+            raise LandformsGnisError("source_metadata_or_count_changed_during_capture")
     after_fields = json.loads(_read_capture(capture_root, "layer_after")[0]).get("fields")
     if (not isinstance(after_fields, list)
             or [_plain_field(x) for x in after_fields]
             != docs_fields_plain(docs["layer_before"])):
-        raise LandformsGnisError(
-            "source_field_schema_changed_during_capture")
+        raise LandformsGnisError("source_field_schema_changed_during_capture")
     state = _load_state(capture_root)
     pages = state.get("pages")
     if not isinstance(pages, list) or not pages \
             or any(not isinstance(item, dict) for item in pages):
-        raise LandformsGnisError(
-            "source_capture_roster_incomplete_or_unexpected")
+        raise LandformsGnisError("source_capture_roster_incomplete_or_unexpected")
     cursor = 0
     ordered: list[tuple[str, int, int]] = []
     for entry in sorted(pages, key=lambda item: (item.get("offset", -1),
@@ -1164,14 +1045,12 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         offset, count, name = entry.get("offset"), entry.get("count"), entry.get("name")
         if (type(offset) is not int or type(count) is not int or offset < 0 or count < 1
                 or name != _page_name(offset, count) or offset != cursor
-                or offset + count > EXPECTED_COUNT or entry.get("features") != count):
-            raise LandformsGnisError(
-                "source_capture_roster_incomplete_or_unexpected")
+                or offset + count > len(roster) or entry.get("features") != count):
+            raise LandformsGnisError("source_capture_roster_incomplete_or_unexpected")
         ordered.append((name, offset, count))
         cursor = offset + count
-    if cursor != EXPECTED_COUNT:
-        raise LandformsGnisError(
-            "source_capture_roster_incomplete_or_unexpected")
+    if cursor != len(roster):
+        raise LandformsGnisError("source_capture_roster_incomplete_or_unexpected")
     for name in [*METADATA_NAMES, *AFTER_NAMES, *(item[0] for item in ordered)]:
         _validate_request_scope(name, _load_receipt(capture_root, name), roster)
     stream = _PageStream(capture_root, fields, parquet_sink)
@@ -1182,49 +1061,16 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     except BaseException:
         stream.finish(parquet_ok=False)
         raise
-    if len(stream.ids) != EXPECTED_COUNT or summary["max_objectid"] <= 0:
+    if len(stream.ids) != len(roster) or summary["max_objectid"] <= 0:
         raise LandformsGnisError("source_page_population_incomplete")
-    ids_sha = summary["ids_sha"]
-    if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
-        raise LandformsGnisError("source_id_roster_drift")
-    if summary["featureclass_distribution"] != EXPECTED_FEATURECLASS_DISTRIBUTION:
-        raise LandformsGnisError(
-            "source_featureclass_distribution_drift")
-    if summary["isunknowncoords_distribution"] != EXPECTED_ISUNKNOWNCOORDS_DISTRIBUTION:
-        raise LandformsGnisError(
-            "source_isunknowncoords_distribution_drift")
-    if (EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION is not None
-            and summary["multipoint_point_count_distribution"]
-            != EXPECTED_MULTIPOINT_POINT_COUNT_DISTRIBUTION):
-        raise LandformsGnisError(
-            "source_multipoint_point_count_distribution_drift")
-    if (EXPECTED_TOTAL_POINT_COUNT is not None
-            and summary["total_point_count"] != EXPECTED_TOTAL_POINT_COUNT):
-        raise LandformsGnisError("source_total_point_count_drift")
-    if (EXPECTED_Z_ORDINATE_DISTRIBUTION is not None
-            and summary["z_ordinate_distribution"] != EXPECTED_Z_ORDINATE_DISTRIBUTION):
-        raise LandformsGnisError(
-            "source_z_ordinate_distribution_drift")
-    if EXPECTED_RECORD_SHA256 and summary["record_sha"] != EXPECTED_RECORD_SHA256:
-        raise LandformsGnisError(
-            "source_value_or_geometry_baseline_drift")
-    if EXPECTED_GEOMETRY_SHA256 and summary["geometry_sha"] != EXPECTED_GEOMETRY_SHA256:
-        raise LandformsGnisError(
-            "source_geometry_or_coverage_drift")
-    if (EXPECTED_NULL_GEOMETRY_COUNT is not None
-            and summary["null_geometry_count"] != EXPECTED_NULL_GEOMETRY_COUNT):
-        raise LandformsGnisError(
-            "source_null_geometry_count_drift")
-    if (EXPECTED_EMPTY_GEOMETRY_COUNT is not None
-            and summary["empty_geometry_count"] != EXPECTED_EMPTY_GEOMETRY_COUNT):
-        raise LandformsGnisError(
-            "source_empty_geometry_count_drift")
-    if (EXPECTED_OBSERVED_BOUNDS is not None
-            and summary["observed_bounds"] != EXPECTED_OBSERVED_BOUNDS):
-        raise LandformsGnisError("source_observed_bounds_drift")
+    capture_witness(
+        {name: _read_capture(capture_root, name)
+         for name in ("count_before", "ids_before", "count_after", "ids_after")},
+        captured_ids=list(stream.ids))
     return {"fields": fields, "schema_sha": schema_sha, "pages": len(ordered),
+            "feature_count": len(stream.ids),
             "record_sha": summary["record_sha"], "geometry_sha": summary["geometry_sha"],
-            "ids_sha": ids_sha, "parquet_path": parquet_sink,
+            "ids_sha": summary["ids_sha"], "parquet_path": parquet_sink,
             "null_geometry_count": summary["null_geometry_count"],
             "empty_geometry_count": summary["empty_geometry_count"],
             "total_point_count": summary["total_point_count"],
@@ -1326,10 +1172,14 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
-             "source_schema_sha256": extracted["schema_sha"]},
+             "source_schema_sha256": extracted["schema_sha"],
+             "source_feature_count": extracted["feature_count"],
+             "null_geometry_count": extracted["null_geometry_count"],
+             "source_id_sha256": extracted["ids_sha"]},
             parquet_body)
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
+        "source_feature_count": extracted["feature_count"],
+        "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_schema_sha256": extracted["schema_sha"], "source_crs_epsg": SOURCE_CRS_WKID,
@@ -1343,7 +1193,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "z_ordinate_distribution": extracted["z_ordinate_distribution"],
         "featureclass_distribution": extracted["featureclass_distribution"],
         "isunknowncoords_distribution": extracted["isunknowncoords_distribution"],
-        "unique_source_id_count": EXPECTED_COUNT,
+        "unique_source_id_count": extracted["feature_count"],
         "source_max_objectid": extracted["max_objectid"],
         "observed_bounds": extracted["observed_bounds"],
         "declared_layer_extent_3857": EXPECTED_LAYER_EXTENT,
@@ -1355,8 +1205,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "crosswalk_open_id": CROSSWALK_OPEN_ID,
         "crosswalk_public_copy_sha256": CROSSWALK_COPY_SHA256,
         "baseline_pending_note": BASELINE_PENDING_NOTE,
-        "baseline_pending_complete_capture": bool(
-            not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256),
+        "baseline_pending_complete_capture": True,
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
@@ -1371,13 +1220,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "resumed_pages": resumed_pages,
                        "id_roster_enumeration_note":
                            "returnIdsOnly enumerated the complete OBJECTID roster "
-                           "(243,708 ids spanning 1..243708, unique and contiguous "
-                           "with no gaps, observed 2026-11-13). Pages start at 1000 "
-                           "ids below the producer's 2000-record cap and refused "
-                           "pages are bisected until served; accepted pages must "
-                           "tile the sorted roster exactly and before/after "
-                           "count/roster brackets prove nothing was skipped, "
-                           "duplicated or reordered.",
+                           "at capture time; pages start below the producer's "
+                           "record cap and refused pages are bisected until served; "
+                           "accepted pages must tile the sorted roster exactly and "
+                           "before/after count/roster brackets prove nothing was "
+                           "skipped, duplicated or reordered.",
                        "page_request_provenance":
                            "Manifest entries for accepted pages record the shared "
                            "layer query endpoint with retrieval_query_redacted=true "
@@ -1519,7 +1366,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     validate_construction_code_identity(REPO_ROOT, identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
+            "capture_complete": True,
+            "feature_count": extracted["feature_count"],
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_total_point_count": extracted["total_point_count"],
             "source_featureclass_distribution": extracted["featureclass_distribution"],
@@ -1563,9 +1411,10 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str,
     validate_construction_code_identity(REPO_ROOT, identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
-            "source_id_sha256": audit.get("source_ids_sha256", ""),
+            "capture_complete": True,
+            "feature_count": audit["source_feature_count"],
+            "source_null_geometry_count": audit.get("null_geometry_count"),
+            "source_id_sha256": audit.get("source_id_sha256", ""),
             "source_schema_sha256": audit["source_schema_sha256"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_release_accepted": False, "source_freshness_accepted": False,
@@ -1638,7 +1487,7 @@ def build_landforms_gnis_baseline(
             "source_geometry_sha256": extracted["geometry_sha"],
             "source_ids_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
-            "source_feature_count": EXPECTED_COUNT,
+            "source_feature_count": extracted["feature_count"],
             "source_total_point_count": extracted["total_point_count"],
             "source_max_objectid": extracted["max_objectid"],
             "source_null_geometry_count": extracted["null_geometry_count"],

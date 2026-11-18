@@ -32,3 +32,8 @@ def eia_power_plants_complete(candidate: dict) -> AssetCheckResult:
 eia_power_plants_draft_job = define_asset_job("eia_power_plants_draft_refresh", selection=AssetSelection.assets(eia_power_plants))
 eia_power_plants_draft_schedule = ScheduleDefinition(name="eia_power_plants_draft_refresh_schedule", job=eia_power_plants_draft_job,
     cron_schedule="0 8 1 * *", default_status=DefaultScheduleStatus.STOPPED)
+
+ASSET_CHECKS = [eia_power_plants_complete]
+INGEST_ASSETS = [eia_power_plants]
+JOBS = [eia_power_plants_draft_job]
+SCHEDULES = [eia_power_plants_draft_schedule]

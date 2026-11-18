@@ -10,7 +10,6 @@ from dagster_hifld.assets.discovery import discovered, unique
 from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volcanoes
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
 from dagster_hifld.assets.fuds_irm_property_boundary import fuds_irm_property_boundary_ingest
-from dagster_hifld.assets.national_inventory_of_dams import national_inventory_of_dams_ingest
 from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
 from dagster_hifld.assets.fuds_district_boundaries import usace_fuds_program_district_boundaries
 from dagster_hifld.assets.fuds_public_properties import usace_fuds_public_properties
@@ -26,9 +25,7 @@ from dagster_hifld.assets.census_primary_roads import census_bureau_primary_road
 from dagster_hifld.assets.census_block_groups import census_bureau_block_groups
 from dagster_hifld.assets.census_tracts import census_bureau_tracts
 from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_assets
-from dagster_hifld.assets.bts import bts_amtrak_stations
 from dagster_hifld.assets.national_transit_map_stops import national_transit_map_stops
-from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.fuds_division_boundaries import fuds_program_division_boundaries
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
@@ -55,8 +52,6 @@ from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import shoreli
 from dagster_hifld.assets.shoreline_construction_lines_usace_ienc import shoreline_construction_lines_usace_ienc
 from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
-from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
-from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
 from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
 from dagster_hifld.assets.usace_hulke_areas import usace_hulke_areas_usace_ienc
 from dagster_hifld.assets.usace_landmark_areas import usace_landmark_areas_usace_ienc
@@ -69,24 +64,17 @@ from dagster_hifld.assets.usace_dynamic_buoys import usace_dynamic_buoys_usace_i
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_areas_usace_ienc
 from dagster_hifld.assets.usace_dumping_ground_areas import usace_dumping_ground_areas_usace_ienc
-from dagster_hifld.assets.ornl_power_plants import eia_power_plants
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
 from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
-from dagster_hifld.assets.usace_airport_area import usace_airport_area_ienc
 
 from dagster_hifld.assets.ibc import ibc_canada_us_border
 from dagster_hifld.assets.fws import fws_cbrs_buffer_zone
-from dagster_hifld.assets.fws_cmt_locations import fws_cmt_locations
 from dagster_hifld.assets.fws_map_panels import fws_cbrs_map_panels
 from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
 from dagster_hifld.assets.fws_units import fws_cbrs_units
-from dagster_hifld.assets.generalized_units import fws_generalized_units
 from dagster_hifld.assets.census_designated_places import census_designated_places
-from dagster_hifld.assets.colleges_universities import nces_colleges_universities
-from dagster_hifld.assets.combined_statistical_areas import census_combined_statistical_areas
 from dagster_hifld.assets.census_consolidated_cities import census_consolidated_cities
-from dagster_hifld.assets.usace_conveyor_areas import usace_conveyor_areas_usace_ienc
 from dagster_hifld.assets.census_county_subdivisions import census_county_subdivisions
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 from dagster_hifld.assets.usace_floating_docks import usace_floating_docks_usace_ienc
@@ -101,12 +89,9 @@ from dagster_hifld.assets.land_region_areas_usace_ienc import (
 from dagster_hifld.assets.building_locations_usace_ienc import building_locations_usace_ienc
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
-from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
-from dagster_hifld.assets.national_transit_map_routes import national_transit_map_routes
 
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
-from dagster_hifld.assets.national_transit_map_agencies import bts_national_transit_map_agencies
 from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
 
 hifld_ingest_assets = [
@@ -116,7 +101,6 @@ hifld_ingest_assets = [
     fuds_program_division_boundaries,
     census_elementary_districts,
     noaa_current_dart,
-    nces_colleges_universities,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     census_bureau_primary_roads,
@@ -127,9 +111,7 @@ hifld_ingest_assets = [
     usace_landmark_areas_usace_ienc,
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
-    bts_amtrak_stations,
     national_transit_map_stops,
-    bts_alternative_fueling_stations,
     usace_administrative_areas_usace_ienc,
     usace_navigation_marks_areas_usace_ienc,
     usace_navigation_lights_usace_ienc,
@@ -155,8 +137,6 @@ hifld_ingest_assets = [
     shoreline_construction_lines_usace_ienc,
     small_craft_facility_areas_usace_ienc,
     sloped_ground_lines_usace_ienc,
-    census_secondary_school_districts,
-    census_unified_school_districts,
     usace_caution_areas_usace_ienc,
     usace_pile_locations_usace_ienc,
     usace_daymark_locations_usace_ienc,
@@ -166,28 +146,21 @@ hifld_ingest_assets = [
     usace_pipeline_areas_usace_ienc,
     usace_data_quality_areas_usace_ienc,
     usace_dumping_ground_areas_usace_ienc,
-    eia_power_plants,
     fuds_irm_property_point_ingest,
     fuds_irm_property_boundary_ingest,
-    national_inventory_of_dams_ingest,
     usace_fuds_projects_points,
     usace_fuds_program_district_boundaries,
     fuds_property_boundaries_ingest,
     coastlines_usace_ienc,
     locks_usace_ienc,
     lock_basins_usace_ienc_candidate,
-    usace_airport_area_ienc,
     ibc_canada_us_border,
     fws_cbrs_buffer_zone,
-    fws_cmt_locations,
     fws_cbrs_map_panels,
     fws_cbrs_prohibitions,
     fws_cbrs_units,
-    fws_generalized_units,
     census_designated_places,
-    census_combined_statistical_areas,
     census_consolidated_cities,
-    usace_conveyor_areas_usace_ienc,
     census_county_subdivisions,
     usace_crane_locations_ienc,
     usace_floating_docks_usace_ienc,
@@ -196,13 +169,10 @@ hifld_ingest_assets = [
     land_region_areas_usace_ienc_candidate,
     hf_areas_usace_ienc_candidate,
     usace_data_coverage_areas_usace_ienc,
-    usace_depth_areas_usace_ienc,
     epa_frs_sic_powerplants,
-    national_transit_map_routes,
     building_locations_usace_ienc,
     usace_fuds_munitions_response_sites,
     usace_fuds_public_properties,
-    bts_national_transit_map_agencies,
 ]
 
 hifld_ingest_assets = unique(hifld_ingest_assets, discovered("INGEST_ASSETS"))

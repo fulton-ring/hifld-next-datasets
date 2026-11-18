@@ -29,3 +29,9 @@ def fws_generalized_units_draft_refresh_schedule(context):
     # Monthly integrity/availability poll; producer updates follow enacted/adopted CBRS maps.
     require_local(context.resources.staging_storage)
     return RunRequest(run_config={'ops':{fws_generalized_units.op.name:{'config':{'capture_dir':''}}}})
+
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [fws_generalized_units]
+JOBS = [fws_generalized_units_draft_refresh_job]
+SCHEDULES = [fws_generalized_units_draft_refresh_schedule]

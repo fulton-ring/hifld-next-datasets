@@ -21,8 +21,11 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import (
+    capture_page, capture_witness, offset_layer_capture_roster,
+)
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
@@ -35,7 +38,6 @@ LAYER_NAME = "FUDS Munitions Response Site"
 DATASET_SLUG = "formerly-used-defense-sites-public-mrs"
 FILE_SLUG = DATASET_SLUG
 PUBLISHER = "U.S. Army Corps of Engineers (USACE), Military/FUDS_Data MapServer"
-EXPECTED_COUNT = 1685
 EXPECTED_SCHEMA_SHA256 = "fdfa05fec5e9854080ca4d5f3adab00224a8c61dad140a5efbfe3199e59d2bc2"
 # Declared layer extent (f=pjson, EPSG:4326, probed 2026-11-10). Captured
 # vertices must stay inside it within float-noise tolerance; coverage outside
@@ -137,7 +139,8 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
 
     def get(client, name, url, params=None):
         target = url + ("?" + urlencode(params) if params else "")
-        body, receipt = capture_get(client, target, root, name, max_bytes=MAX_RESPONSE_BYTES)
+        body, receipt = capture_page(client, target, root, name,
+                                      page_max_bytes=MAX_RESPONSE_BYTES)
         doc = json.loads(body)
         if not isinstance(doc, dict) or "error" in doc:
             raise ValueError("source_response_error:" + name)
@@ -172,17 +175,19 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
                 raise ValueError("source_ordered_pagination_not_supported")
             count = get(client, "count_before", LAYER_URL + "/query", {"where": "1=1", "returnCountOnly": "true", "f": "json"}).get("count")
             ids = get(client, "ids_before", LAYER_URL + "/query", {"where": "1=1", "returnIdsOnly": "true", "f": "json"}).get("objectIds")
-            if (type(count) is not int or count != EXPECTED_COUNT or not isinstance(ids, list) or len(ids) != count
-                    or any(type(i) is not int for i in ids) or len(set(ids)) != count):
+            if (type(count) is not int or count < 1 or not isinstance(ids, list) or len(ids) != count
+                    or any(type(i) is not int or i <= 0 for i in ids) or len(set(ids)) != count):
                 raise ValueError("source_initial_id_roster_invalid")
             seed = sorted(ids)
             features = []
             attr_names = [f["name"] for f in fields if f.get("type") != "esriFieldTypeGeometry"]
+            roster = offset_layer_capture_roster(
+                count, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+                page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"})
+            for name, url in roster[4:]:
+                get(client, name, url)
             for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
-                page = get(client, f"page_{page_no:03d}", LAYER_URL + "/query", {
-                    "where": "1=1", "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-                    "outSR": "4326", "orderByFields": "OBJECTID ASC", "resultOffset": offset,
-                    "resultRecordCount": min(PAGE_SIZE, count-offset), "f": "json"})
+                page = json.loads(captures[f"page_{page_no:03d}"][0])
                 rows = page.get("features")
                 expected = min(PAGE_SIZE, count-offset)
                 if not isinstance(rows, list) or len(rows) != expected:
@@ -206,14 +211,15 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
                     raise ValueError("source_page_id_slice_mismatch")
                 feature_srs.update({r["attributes"]["OBJECTID"]: page_sr for r in rows})
                 features.extend(rows)
-            layer_after = get(client, "layer_after", LAYER_URL, {"f": "pjson"})
-            service_after = get(client, "service_after", SERVICE_URL, {"f": "pjson"})
-            count_after = get(client, "count_after", LAYER_URL+"/query", {"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
-            ids_after = get(client, "ids_after", LAYER_URL+"/query", {"where":"1=1","returnIdsOnly":"true","f":"json"}).get("objectIds")
+            layer_after = json.loads(captures["layer_after"][0])
+            service_after = json.loads(captures["service_after"][0])
+            count_after = json.loads(captures["count_after"][0]).get("count")
+            ids_after = json.loads(captures["ids_after"][0]).get("objectIds")
         if layer != layer_after or service != service_after or count_after != count or sorted(ids_after or []) != seed:
             raise ValueError("source_changed_during_capture")
         if sorted(r["attributes"]["OBJECTID"] for r in features) != seed:
             raise ValueError("source_feature_population_incomplete")
+        capture_witness(captures, captured_ids=[r["attributes"]["OBJECTID"] for r in features])
         for row in features:
             geom = row.get("geometry")
             if geom is not None:
@@ -294,7 +300,9 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
             verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,
                 identity,record_sha,schema_sha,payload.get("objects",{}),payload.get("capture_receipts",{}))
             if set(payload.get("objects",{})) != set(outputs): raise ValueError("cached_candidate_roster_changed")
-            return {"version":version,"prefix":prefix,"feature_count":count,"candidate_approved":False,"reused":True}
+            return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"prefix":prefix,
+                    "feature_count":count,"capture_complete":True,"source_id_sha256":record_sha,
+                    "candidate_approved":False,"reused":True}
         for name,body in outputs.items():
             write_immutable(storage,f"{prefix}/{name}",body)
             snap=storage.object_snapshot(f"{prefix}/{name}")
@@ -304,7 +312,9 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
             "source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipts,
             "objects":descriptors})
         validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-        return {"version":version,"prefix":prefix,"feature_count":count,"candidate_approved":False,
+        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"prefix":prefix,
+                "feature_count":count,"capture_complete":True,"source_id_sha256":record_sha,
+                "candidate_approved":False,
                 "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,
                 "id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     except Exception as exc:

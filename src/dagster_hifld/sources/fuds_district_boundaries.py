@@ -19,8 +19,11 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
+from dagster_hifld.sources.arcgis_layer import (
+    capture_page, capture_witness, offset_layer_capture_roster,
+)
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
@@ -33,7 +36,6 @@ LAYER_ID = 9
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "FUDS Program District Boundaries"
 EXPECTED_SCHEMA_SHA256 = "0b76c21c490ad121358884633e644a96775cdee16af97ce5fb29606c8e799b59"
-EXPECTED_COUNT = 13
 PAGE_SIZE = 50
 
 
@@ -106,7 +108,7 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
 
     def get(client: httpx.Client, name: str, url: str, params: dict | None = None) -> dict:
         target = url + ("?" + urlencode(params) if params else "")
-        body, receipt = capture_get(client, target, root, name)
+        body, receipt = capture_page(client, target, root, name)
         doc = json.loads(body)
         if not isinstance(doc, dict) or "error" in doc:
             raise ValueError("source_response_error:" + name)
@@ -132,17 +134,19 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
                         {"where": "1=1", "returnCountOnly": "true", "f": "json"}).get("count")
             ids = get(client, "ids_before", LAYER_URL + "/query",
                       {"where": "1=1", "returnIdsOnly": "true", "f": "json"}).get("objectIds")
-            if type(count) is not int or count != EXPECTED_COUNT or not isinstance(ids, list) or len(ids) != count:
+            if type(count) is not int or count < 1 or not isinstance(ids, list) or len(ids) != count:
                 raise ValueError("source_initial_id_roster_invalid")
-            if any(type(i) is not int for i in ids) or len(set(ids)) != count:
+            if any(type(i) is not int or i <= 0 for i in ids) or len(set(ids)) != count:
                 raise ValueError("source_initial_id_roster_invalid")
             seed = sorted(ids)
             features = []
+            roster = offset_layer_capture_roster(
+                count, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+                page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"})
+            for name, url in roster[4:]:
+                get(client, name, url)
             for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
-                page = get(client, f"page_{page_no:03d}", LAYER_URL + "/query", {
-                    "where": "1=1", "outFields": "*", "returnGeometry": "true", "returnZ": "true",
-                    "returnM": "true", "outSR": "4326", "orderByFields": "OBJECTID ASC",
-                    "resultOffset": offset, "resultRecordCount": min(PAGE_SIZE, count - offset), "f": "json"})
+                page = json.loads(captures[f"page_{page_no:03d}"][0])
                 rows = page.get("features")
                 expected = min(PAGE_SIZE, count - offset)
                 if not isinstance(rows, list) or len(rows) != expected:
@@ -158,14 +162,13 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
                 if [r["attributes"].get("OBJECTID") for r in rows] != seed[offset:offset + expected]:
                     raise ValueError("source_page_id_slice_mismatch")
                 features.extend(rows)
-            layer_after = get(client, "layer_after", LAYER_URL, {"f": "pjson"})
-            service_after = get(client, "service_after", SERVICE_URL, {"f": "pjson"})
-            count_after = get(client, "count_after", LAYER_URL + "/query",
-                              {"where": "1=1", "returnCountOnly": "true", "f": "json"}).get("count")
-            ids_after = get(client, "ids_after", LAYER_URL + "/query",
-                            {"where": "1=1", "returnIdsOnly": "true", "f": "json"}).get("objectIds")
+            layer_after = json.loads(captures["layer_after"][0])
+            service_after = json.loads(captures["service_after"][0])
+            count_after = json.loads(captures["count_after"][0]).get("count")
+            ids_after = json.loads(captures["ids_after"][0]).get("objectIds")
         if layer_after != layer or service_after != service or count_after != count or sorted(ids_after or []) != seed:
             raise ValueError("source_changed_during_capture")
+        capture_witness(captures, captured_ids=[row["attributes"]["OBJECTID"] for row in features])
         for row in features:
             _esri_polygon(row.get("geometry", {}))
         if len(features) != count or sorted(r["attributes"]["OBJECTID"] for r in features) != seed:
@@ -264,7 +267,9 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
         for name, descriptor in old_objects.items():
             if name == native_name and descriptor != expected_objects[name]:
                 raise ValueError("cached_native_candidate_changed")
-        return {"version": version, "prefix": prefix, "feature_count": count,
+        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG,
+                "version": version, "prefix": prefix, "feature_count": count,
+                "capture_complete": True, "source_id_sha256": records_sha,
                 "native_id_column": "OBJECTID", "source_schema_sha256": schema_sha,
                 "candidate_approved": False, "reused": True}
     for name, body in outputs.items():
@@ -275,7 +280,9 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
         "objects": expected_objects,
     })
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
-    return {"version": version, "prefix": prefix, "feature_count": count,
+    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG,
+            "version": version, "prefix": prefix, "feature_count": count,
+            "capture_complete": True, "source_id_sha256": records_sha,
             "native_id_column": "OBJECTID", "source_schema_sha256": schema_sha,
             "candidate_approved": False, "source_release_accepted": False,
             "freshness_accepted": False, "schema_contract_accepted": False,

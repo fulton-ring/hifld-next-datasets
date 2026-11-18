@@ -19,3 +19,8 @@ def census_combined_statistical_areas(context,config:CombinedStatisticalAreasCon
 
 csa_source_integrity_job=define_asset_job('csa_source_integrity',selection=AssetSelection.assets(census_combined_statistical_areas))
 csa_source_integrity_schedule=ScheduleDefinition(name='csa_source_integrity_monthly',job=csa_source_integrity_job,cron_schedule='0 7 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [census_combined_statistical_areas]
+JOBS = [csa_source_integrity_job]
+SCHEDULES = [csa_source_integrity_schedule]
