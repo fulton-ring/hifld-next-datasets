@@ -15,7 +15,7 @@ from dagster_hifld.sources import usace_depth_areas as source
 
 
 def _docs(ids: list[int] | None = None) -> dict[str, dict]:
-    object_ids = ids or source.EXPECTED_IDS
+    object_ids = ids or FIXTURE_IDS
     service = {
         "mapName": "DEPTH_AREA",
         "copyrightText": "USACE IENC",
@@ -59,8 +59,8 @@ def _docs(ids: list[int] | None = None) -> dict[str, dict]:
         "service_after": copy.deepcopy(service),
         "layer_before": layer,
         "layer_after": copy.deepcopy(layer),
-        "count_before": {"count": source.EXPECTED_COUNT},
-        "count_after": {"count": source.EXPECTED_COUNT},
+        "count_before": {"count": FIXTURE_COUNT},
+        "count_after": {"count": FIXTURE_COUNT},
         "ids_before": {"objectIds": object_ids},
         "ids_after": {"objectIds": object_ids},
     }
@@ -79,29 +79,33 @@ def _captures(docs: dict[str, dict]) -> dict[str, tuple[bytes, dict]]:
     return {name: (json.dumps(doc).encode("utf-8"), {}) for name, doc in docs.items()}
 
 
+
+FIXTURE_IDS = list(range(1, 5779))
+FIXTURE_COUNT = len(FIXTURE_IDS)
+
 class UsaceDepthAreasSourceTest(unittest.TestCase):
     def test_later_batches_are_smaller_after_observed_200_id_response_limit(self) -> None:
-        batches = source._page_batches(source.EXPECTED_IDS)
+        batches = source._page_batches(FIXTURE_IDS)
         self.assertEqual([len(batch) for batch in batches[:14]], [200] * 14)
         self.assertEqual([len(batch) for batch in batches[14:]], [50] * 59 + [28])
-        self.assertEqual([oid for batch in batches for oid in batch], source.EXPECTED_IDS)
+        self.assertEqual([oid for batch in batches for oid in batch], FIXTURE_IDS)
 
     def test_complete_id_roster_and_polygon_population_are_checked(self) -> None:
         fields, features, audit = source._validate(_captures(_docs()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
-        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(len(features), FIXTURE_COUNT)
+        self.assertEqual(audit["source_id_sha256"], source._sha(source._canonical(FIXTURE_IDS)))
+        self.assertEqual(audit["geometry_valid_count"], FIXTURE_COUNT)
         self.assertEqual(audit["geometry_empty_count"], 0)
-        self.assertEqual(audit["source_vertex_count"], source.EXPECTED_COUNT * 5)
+        self.assertEqual(audit["source_vertex_count"], FIXTURE_COUNT * 5)
         self.assertIsNone(audit["source_has_z"])
         self.assertIsNone(audit["source_has_m"])
         self.assertEqual(audit["observed_coordinate_dimensions"], [2])
 
     def test_changed_id_roster_fails_closed(self) -> None:
         docs = _docs()
-        docs["ids_after"] = {"objectIds": list(range(1, source.EXPECTED_COUNT)) + [111]}
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        docs["ids_after"] = {"objectIds": list(range(1, FIXTURE_COUNT)) + [111]}
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate(_captures(docs))
 
     def test_layer_and_page_crs_conflicts_fail_closed(self) -> None:
