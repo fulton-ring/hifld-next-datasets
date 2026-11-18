@@ -215,12 +215,6 @@ class StateElectricTerritoryTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'retained_capture_mismatch'):
                     source.capture(url, directory, 'one', replay=True)
 
-    def test_excluded_nbam_entrypoint_refuses_before_side_effects(self):
-        from dagster_hifld.sources.electric_retail_service_territories_common import capture_electric_retail_service_territories
-        with patch.object(httpx.Client, 'send', side_effect=AssertionError('excluded HTTP')):
-            with self.assertRaisesRegex(ValueError, 'excluded_frozen_hifld_copy'):
-                capture_electric_retail_service_territories(None)
-
 
 if __name__ == '__main__':
     unittest.main()

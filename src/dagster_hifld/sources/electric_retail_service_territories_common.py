@@ -1,191 +1,711 @@
-"""Shared electric service territory family core: the frozen 2025 HIFLD retail-territory capture and the capture, schema and staging helpers its sibling state publications reuse."""
+"""Electric retail service territory family core.
+
+Builds a county-level utility service-territory draft from the current EIA-861
+utility-by-county release joined to current Census TIGER/Line county polygons.
+The same module keeps the shared capture, schema and staging helpers the state
+pilot adapters use.
+"""
 from __future__ import annotations
 
 import hashlib
+import io
 import json
-import math
-import shutil
-import uuid
-from datetime import datetime, timezone
+import re
+import tempfile
+import unicodedata
+import zipfile
+from collections import defaultdict
+from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urljoin, urlsplit
+from xml.etree import ElementTree as ET
 
+import geopandas as gpd
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-
-from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
+import shapely
 from shapely.wkb import dumps as to_wkb
 
-from dagster_hifld.http_capture import CaptureProgress, capture_http_response
+from dagster_hifld.output_policy import validate_output_policy
+from dagster_hifld.provenance import validate_provenance
+from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.capture_common import processing_identity, write_immutable
-from dagster_hifld.sources.esri_common import sha as _sha
-
-DATASET_SLUG = "electric-retail-service-territories"
-FILE_SLUG = DATASET_SLUG
-EXPECTED_COUNT = 2931
-EXPECTED_ID_SHA256 = "e1038f98577ee9a103ce0d390e47ddb896ea1f4775ff89f90b6d7d264443e5e4"
-EXPECTED_SCHEMA_SHA256 = "9a6ff3ef2ca1fe63f0dd39df8d69d8ff3568fca08db5be209c99df0d6202f69d"
-PAGE_SIZE = 100
-SOURCE_EDIT_EPOCH_MS = 1755786120272  # 2025-08-21; service snapshot/edit timestamp, not release date.
-FEATURE_LAYER_URL = (
-    "https://services3.arcgis.com/OYP7N6mAJJCyH6hd/arcgis/rest/services/"
-    "Electric_Retail_Service_Territories_HIFLD/FeatureServer/0"
+from dagster_hifld.sources import census_latest, census_tiger_common
+from dagster_hifld.sources.capture_common import (
+    capture_get,
+    content_derived_version,
+    processing_identity,
+    write_immutable,
 )
-FEATURE_SERVICE_URL = FEATURE_LAYER_URL.rsplit("/0", 1)[0]
-ITEM_ID = "597555ce8e4a4892a030784a7c657fdd"
-ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=pjson"
-OWNER_URL = "https://www.arcgis.com/sharing/rest/community/users/NBAM_Org?f=pjson"
-EXPECTED_COPY_NOTICE = "downloaded from Homeland Infrastructure Foundation-Level Data (HIFLD) on 8/21/2025 and will not be updated"
-EXPECTED_COPYRIGHT = "Oak Ridge National Laboratory (ORNL), DOE - Office of Cybersecurity, Energy Security, and Emergency Response (CESER)"
-MAX_RESPONSE_BYTES = 64_000_000
-MAX_CAPTURE_BYTES = 768_000_000
-DISK_FLOOR_BYTES = 300_000_000
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+
+DATASET_SLUG = FILE_SLUG = "electric-retail-service-territories"
+PAGE_URL = "https://www.eia.gov/electricity/data/eia861/"
+REUSE_URL = "https://www.eia.gov/about/copyrights_reuse.php"
+TIGER_ROOT = "https://www2.census.gov/geo/tiger/"
+TIGER_PRODUCT = "COUNTY"
+MAX_PAGE_BYTES = 4_000_000
+MAX_REUSE_BYTES = 2_000_000
+MAX_EIA_ZIP_BYTES = 200_000_000
+MAX_TIGER_ZIP_BYTES = 200_000_000
+MAX_EIA_UNCOMPRESSED_BYTES = 100_000_000
+MIN_COUNTY_COUNT = 3_000
+MAX_COUNTY_COUNT = 4_000
+APPROVALS = {key: False for key in (
+    "source_accepted", "source_freshness_accepted", "schema_contract_accepted",
+    "id_contract_accepted", "coverage_accepted", "rights_accepted",
+    "mapping_approved", "release_accepted", "promotion_allowed",
+)}
+
+_XLSX_NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+_REL_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+_SERVICE_HEADERS = ("Data Year", "Utility Number", "Utility Name", "Short Form", "State", "County")
+_FRAME_HEADERS = (
+    "Data Year", "Utility Number", "Utility Name", "Short Form", "Ownership Code",
+    "Ownership", "Monthly", "Advanced Metering", "Delivery Company", "Demand Response",
+    "Distribution Systems", "Dynamic Pricing", "Energy Efficiency", "Mergers",
+    "Net Metering", "Non Net Metering Distributed", "Operational Data", "Reliablity",
+    "Sales to Ultimate Customers", "Service Territory", "Utility Data",
+)
 _STRING_TYPES = {"esriFieldTypeString", "esriFieldTypeGUID", "esriFieldTypeGlobalID"}
 
+STATE_FIPS = {
+    "AL": "01", "AK": "02", "AZ": "04", "AR": "05", "CA": "06", "CO": "08",
+    "CT": "09", "DE": "10", "DC": "11", "FL": "12", "GA": "13", "HI": "15",
+    "ID": "16", "IL": "17", "IN": "18", "IA": "19", "KS": "20", "KY": "21",
+    "LA": "22", "ME": "23", "MD": "24", "MA": "25", "MI": "26", "MN": "27",
+    "MS": "28", "MO": "29", "MT": "30", "NE": "31", "NV": "32", "NH": "33",
+    "NJ": "34", "NM": "35", "NY": "36", "NC": "37", "ND": "38", "OH": "39",
+    "OK": "40", "OR": "41", "PA": "42", "RI": "44", "SC": "45", "SD": "46",
+    "TN": "47", "TX": "48", "UT": "49", "VT": "50", "VA": "51", "WA": "53",
+    "WV": "54", "WI": "55", "WY": "56", "PR": "72", "VI": "78", "GU": "66",
+    "AS": "60", "MP": "69",
+}
 
-def _canonical(value: object) -> bytes:
-    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                       allow_nan=False) + "\n").encode("utf-8")
+COUNTY_ALIASES = {
+    ("CT", "Fairfield"): ("09190", "09120", "09140"),
+    ("CT", "Hartford"): ("09110", "09160", "09140"),
+    ("CT", "Litchfield"): ("09160", "09140", "09190"),
+    ("CT", "Middlesex"): ("09130",),
+    ("CT", "New Haven"): ("09170", "09140"),
+    ("CT", "New London"): ("09180", "09130", "09150"),
+    ("CT", "Tolland"): ("09110", "09150"),
+    ("CT", "Windham"): ("09150", "09180"),
+    ("AK", "Prince of Wales Ketchikan"): ("02198", "02130"),
+    ("AK", "Skagway Hoonah Angoon"): ("02230", "02105"),
+    ("AK", "Valdez Cordova"): ("02063", "02066"),
+    ("AK", "Wrangell Petersburg"): ("02275", "02195"),
+    ("VA", "Bedford City"): ("51019",),
+}
 
 
-def _safe_local_storage(storage: StagingStorageResource) -> Path:
-    if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
-            or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
-        raise ValueError("explicit_local_staging_resource_required")
-    root = Path(storage.local_dir).absolute()
-    if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
-        raise ValueError("unsafe_local_staging_root")
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+class _Links(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.urls = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self.urls.extend(value for key, value in attrs if key == "href" and value)
 
 
-def _capture_request(client: httpx.Client | None, root: Path, name: str, method: str,
-                     url: str, params: dict[str, object], budget: list[int],
-                     replay: bool, captures: list[dict[str, object]]) -> tuple[dict, bytes, bytes, bytes | None, dict]:
-    """Capture or exactly replay one request, including POST form bytes and partial failures."""
-    body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
-    receipt_path, request_path = root / f"{name}.receipt.json", root / f"{name}.request.body"
-    expected_request = urlencode(params).encode("ascii") if method == "POST" else None
-    expected_url = url + ("?" + urlencode(params) if method == "GET" and params else "")
-    replay_paths = (body_path, wire_path, receipt_path, *((request_path,) if method == "POST" else ()))
-    if replay and all(path.exists() for path in replay_paths):
-        body, wire = body_path.read_bytes(), wire_path.read_bytes()
-        receipt = json.loads(receipt_path.read_bytes())
-        request = request_path.read_bytes() if method == "POST" else None
-        if (receipt.get("method") != method or receipt.get("url") != expected_url
-                or receipt.get("final_url") != expected_url or receipt.get("complete_body") is not True
-                or receipt.get("status") != 200 or receipt.get("sha256") != _sha(body)
-                or receipt.get("bytes") != len(body) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt.get("wire_bytes") != len(wire)
-                or request != expected_request
-                or receipt.get("request_body_sha256") != (_sha(request) if request is not None else None)
-                or receipt.get("request_body_bytes") != (len(request) if request is not None else 0)):
-            raise ValueError("retained_capture_request_or_receipt_mismatch:" + name)
-        budget[0] += len(body) + len(wire)
-        if budget[0] > MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-        value = json.loads(body)
-        if not isinstance(value, dict) or "error" in value:
-            raise ValueError("invalid_arcgis_response:" + name)
-        captures.append({"name": name, "receipt": receipt})
-        return value, body, wire, request, receipt
+def latest_release(html: str) -> tuple[int, str]:
+    """Select the newest active EIA-861 annual ZIP on the producer page."""
+    parser = _Links()
+    parser.feed(html)
+    candidates = []
+    for href in parser.urls:
+        url = urljoin(PAGE_URL, href)
+        match = re.fullmatch(re.escape(PAGE_URL) + r"(?:archive/)?zip/f861(20\d{2})(er)?\.zip", url)
+        if match:
+            candidates.append((int(match[1]), match[2] is not None, url))
+    if not candidates:
+        raise ValueError("no_active_eia861_release")
+    year = max(item[0] for item in candidates)
+    urls = [item[2] for item in candidates if item[0] == year and not item[1]]
+    if len(urls) != 1:
+        raise ValueError("ambiguous_latest_eia861_release")
+    return year, urls[0]
 
-    if any(path.exists() for path in (body_path, wire_path, receipt_path, request_path)):
-        raise ValueError("capture_target_already_exists:" + name)
-    observed = datetime.now(timezone.utc).isoformat()
-    wire_hash, body_hash = hashlib.sha256(), hashlib.sha256()
-    wire_size = body_size = 0
-    body_path.touch(); wire_path.touch()
 
-    def reserve(progress: CaptureProgress) -> None:
-        if budget[0] + progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-        if shutil.disk_usage(root).free < DISK_FLOOR_BYTES:
-            raise ValueError("source_capture_disk_floor")
+def _xlsx_sheets(body: bytes, wanted: set[str]) -> dict[str, list[dict[str, str]]]:
+    """Read bounded cached cell values from an EIA workbook without a spreadsheet engine."""
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
+        members = archive.infolist()
+        if (len(members) > 200 or len({member.filename for member in members}) != len(members)
+                or sum(member.file_size for member in members) > 350_000_000):
+            raise ValueError("xlsx_expansion_limit")
+        strings: list[str] = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            with archive.open("xl/sharedStrings.xml") as stream:
+                for _, element in ET.iterparse(stream, events=("end",)):
+                    if element.tag == "{" + _XLSX_NS["s"] + "}si":
+                        strings.append("".join(element.itertext()))
+                        element.clear()
+        relationships = {
+            item.attrib["Id"]: item.attrib["Target"]
+            for item in ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        }
+        workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+        sheets = workbook.find("s:sheets", _XLSX_NS)
+        result = {}
+        for sheet in sheets:
+            name = sheet.attrib["name"]
+            if name not in wanted:
+                continue
+            target = relationships[sheet.attrib[_REL_NS]]
+            path = target.lstrip("/") if target.startswith("/") else "xl/" + target
+            if path not in archive.namelist():
+                raise ValueError("xlsx_sheet_path_invalid")
+            rows = []
+            with archive.open(path) as stream:
+                for _, element in ET.iterparse(stream, events=("end",)):
+                    if element.tag != "{" + _XLSX_NS["s"] + "}row":
+                        continue
+                    cells = {}
+                    for cell in element:
+                        column = re.fullmatch(r"([A-Z]+)\d+", cell.attrib["r"])[1]
+                        value = cell.find("s:v", _XLSX_NS)
+                        text = value.text if value is not None else None
+                        if cell.find("s:f", _XLSX_NS) is not None and text is None:
+                            raise ValueError("xlsx_uncached_formula_cell")
+                        kind = cell.attrib.get("t")
+                        if kind == "s":
+                            text = strings[int(text)] if text is not None else None
+                        elif kind == "inlineStr":
+                            text = "".join(cell.find("s:is", _XLSX_NS).itertext())
+                        elif kind == "e":
+                            raise ValueError("xlsx_error_cell")
+                        if text is not None:
+                            cells[column] = text
+                    rows.append(cells)
+                    element.clear()
+            result[name] = rows
+    missing = wanted - set(result)
+    if missing:
+        raise ValueError("xlsx_sheet_missing:" + ",".join(sorted(missing)))
+    return result
 
-    def retain(path: Path, data: bytes, kind: str) -> None:
-        nonlocal wire_size, body_size
-        with path.open("ab") as stream:
-            stream.write(data)
-        if kind == "wire":
-            wire_size += len(data); wire_hash.update(data)
-        else:
-            body_size += len(data); body_hash.update(data)
 
-    final_url = None
-    status = None
-    complete = False
-    error_code = "request_error"
-    error_type = None
-    encoding = None
-    content_length = None
-    request_bytes = expected_request or b""
-    if expected_request is not None:
-        request_path.write_bytes(expected_request)
-    try:
-        if client is None:
-            raise ValueError("http_client_missing")
-        with client.stream(method, url, params=params if method == "GET" and params else None,
-                           data=params if method == "POST" else None,
-                           headers={"Accept-Encoding": "identity"}) as response:
-            result = capture_http_response(
-                response, max_wire_bytes=MAX_RESPONSE_BYTES, max_decoded_bytes=MAX_RESPONSE_BYTES,
-                reserve=reserve, retain_wire=lambda data: retain(wire_path, data, "wire"),
-                retain_decoded=lambda data: retain(body_path, data, "body"))
-            final_url, status, complete = str(response.url), result.status_code, result.complete
-            error_code, error_type = result.error_code, result.error_type
-            encoding, content_length = result.content_encoding, result.content_length
-    except Exception as exc:
-        error_type = type(exc).__name__
-    budget[0] += wire_size + body_size
-    receipt = {
-        "method": method, "url": expected_url, "final_url": final_url,
-        "request_body_bytes": len(request_bytes) if method == "POST" else 0,
-        "request_body_sha256": _sha(request_bytes) if method == "POST" else None,
-        "observed_at": observed, "status": status, "complete_body": complete,
-        "wire_bytes": wire_size, "wire_sha256": wire_hash.hexdigest(),
-        "bytes": body_size, "sha256": body_hash.hexdigest(),
-        "content_encoding": encoding, "content_length": content_length,
-        "error_code": error_code, "error_type": error_type,
+def _header(row: dict[str, str], width: int) -> tuple[str, ...]:
+    return tuple(row.get(chr(ord("A") + index), "") for index in range(width))
+
+
+def read_service_territory_workbook(body: bytes, year: int) -> list[dict[str, str]]:
+    """Read the two EIA-861 utility-by-county sheets with native utility numbers."""
+    sheets = _xlsx_sheets(body, {"Counties_States", "Counties_Territories"})
+    rows = []
+    seen = set()
+    for sheet_name in ("Counties_States", "Counties_Territories"):
+        sheet_rows = sheets[sheet_name]
+        if not sheet_rows or _header(sheet_rows[0], 6) != _SERVICE_HEADERS:
+            raise ValueError("eia861_service_schema_drift:" + sheet_name)
+        for cells in sheet_rows[1:]:
+            if not any(cells.values()):
+                continue
+            data_year, utility, name, short_form, state, county = _header(cells, 6)
+            if data_year != str(year):
+                raise ValueError("eia861_service_data_year_drift")
+            if not re.fullmatch(r"\d+", utility):
+                raise ValueError("eia861_service_utility_number_invalid")
+            if not name.strip() or not county.strip():
+                raise ValueError("eia861_service_name_or_county_missing")
+            if state not in STATE_FIPS:
+                raise ValueError("eia861_service_state_invalid:" + state)
+            key = (utility, state, county)
+            if key in seen:
+                raise ValueError("eia861_service_duplicate_row")
+            seen.add(key)
+            rows.append({
+                "data_year": data_year, "utility_number": utility,
+                "utility_name": name, "short_form": short_form,
+                "state": state, "county": county, "source_sheet": sheet_name,
+            })
+    if not rows:
+        raise ValueError("empty_eia861_service_population")
+    return rows
+
+
+def read_frame_workbook(body: bytes, year: int) -> dict[str, dict[str, str]]:
+    """Read utility-level ownership and service-territory participation from the frame."""
+    sheets = _xlsx_sheets(body, {"Frame"})
+    rows = sheets["Frame"]
+    if not rows or _header(rows[0], len(_FRAME_HEADERS)) != _FRAME_HEADERS:
+        raise ValueError("eia861_frame_schema_drift")
+    frame = {}
+    for cells in rows[1:]:
+        if not any(cells.values()):
+            continue
+        data_year = cells.get("A", "")
+        utility = cells.get("B", "")
+        name = cells.get("C", "")
+        ownership = cells.get("F", "")
+        service_territory = cells.get("T", "")
+        if data_year != str(year):
+            raise ValueError("eia861_frame_data_year_drift")
+        if not re.fullmatch(r"\d+", utility):
+            raise ValueError("eia861_frame_utility_number_invalid")
+        if not name.strip() or not ownership.strip():
+            raise ValueError("eia861_frame_name_or_ownership_missing")
+        if utility in frame:
+            raise ValueError("eia861_frame_duplicate_utility")
+        frame[utility] = {
+            "utility_name": name, "ownership_type": ownership,
+            "service_territory": service_territory,
+        }
+    if not frame:
+        raise ValueError("empty_eia861_frame_population")
+    return frame
+
+
+def _normalize_county(value: str) -> str:
+    text = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]", "", text.casefold().replace("&", "and"))
+
+
+def _county_lookup(counties: gpd.GeoDataFrame) -> dict[tuple[str, str], set[str]]:
+    lookup: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for row in counties.itertuples():
+        lookup[(row.STATEFP, _normalize_county(row.NAME))].add(row.GEOID)
+        lookup[(row.STATEFP, _normalize_county(row.NAMELSAD))].add(row.GEOID)
+    return lookup
+
+
+def join_territories(
+    territory_rows: list[dict[str, str]],
+    frame: dict[str, dict[str, str]],
+    counties: gpd.GeoDataFrame,
+) -> tuple[list[dict[str, object]], dict[str, int]]:
+    """Join each EIA utility-county row to current TIGER county equivalents."""
+    lookup = _county_lookup(counties)
+    known = set(counties["GEOID"])
+    records = []
+    unmatched = []
+    skipped = 0
+    for row in territory_rows:
+        utility = row["utility_number"]
+        if utility not in frame:
+            raise ValueError("eia861_service_utility_missing_from_frame:" + utility)
+        if frame[utility]["service_territory"] != "X":
+            raise ValueError("eia861_service_utility_not_flagged_in_frame:" + utility)
+        if frame[utility]["utility_name"] != row["utility_name"]:
+            raise ValueError("eia861_service_utility_name_drift:" + utility)
+        county = row["county"]
+        if county == "Not Applicable":
+            skipped += 1
+            continue
+        state_fips = STATE_FIPS[row["state"]]
+        geoids = lookup.get((state_fips, _normalize_county(county)))
+        if not geoids:
+            geoids = set(COUNTY_ALIASES.get((row["state"], county), ()))
+            missing = geoids - known
+            if missing:
+                raise ValueError("county_alias_target_missing:" + ",".join(sorted(missing)))
+        if not geoids:
+            unmatched.append(f"{row['state']}:{county}")
+            continue
+        records.append({
+            **row,
+            "ownership_type": frame[utility]["ownership_type"],
+            "geoids": tuple(sorted(geoids)),
+        })
+    if unmatched:
+        sample = ", ".join(sorted(set(unmatched))[:20])
+        raise ValueError(f"unmatched_eia861_county_names:{len(unmatched)}:{sample}")
+    if not records:
+        raise ValueError("empty_eia861_county_join")
+    return records, {"skipped_not_applicable": skipped, "matched_county_rows": len(records)}
+
+
+def aggregate_territories(
+    records: list[dict[str, object]],
+    counties: gpd.GeoDataFrame,
+    year: int,
+) -> list[dict[str, object]]:
+    """Dissolve joined counties into one feature per utility-state pair."""
+    by_geoid = counties.set_index("GEOID")
+    groups: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
+    for record in records:
+        groups[(str(record["utility_number"]), str(record["state"]))].append(record)
+    features = []
+    for (utility, state), rows in sorted(groups.items(), key=lambda item: (int(item[0][0]), item[0][1])):
+        geoids = list(dict.fromkeys(geoid for row in rows for geoid in row["geoids"]))
+        geometry = shapely.union_all(by_geoid.loc[geoids].geometry.array)
+        if geometry.is_empty:
+            raise ValueError("empty_dissolved_geometry:" + utility + ":" + state)
+        if not geometry.is_valid:
+            raise ValueError("invalid_dissolved_geometry:" + utility + ":" + state)
+        first = rows[0]
+        features.append({
+            "utility_number": utility,
+            "utility_name": str(first["utility_name"]),
+            "ownership_type": str(first["ownership_type"]),
+            "state": state,
+            "county_count": len(rows),
+            "source_year": year,
+            "geometry": geometry,
+        })
+    return features
+
+
+def _read_counties(body: bytes, edition: str) -> gpd.GeoDataFrame:
+    stem = f"tl_{edition}_us_county"
+    members = {
+        f"{stem}.cpg", f"{stem}.dbf", f"{stem}.prj", f"{stem}.shp",
+        f"{stem}.shp.ea.iso.xml", f"{stem}.shp.iso.xml", f"{stem}.shx",
     }
-    receipt_path.write_bytes(_canonical(receipt))
-    wire, body = wire_path.read_bytes(), body_path.read_bytes()
-    if (len(wire) != wire_size or _sha(wire) != receipt["wire_sha256"]
-            or len(body) != body_size or _sha(body) != receipt["sha256"]):
-        raise ValueError("capture_readback_mismatch:" + name)
-    captures.append({"name": name, "receipt": receipt})
-    if not complete or status != 200 or final_url != expected_url:
-        raise ValueError("incomplete_source_capture:" + name)
-    value = json.loads(body)
-    if not isinstance(value, dict) or "error" in value:
-        raise ValueError("invalid_arcgis_response:" + name)
-    return value, body, wire, expected_request, receipt
+    frame = census_tiger_common.read_tiger_shapefile(
+        body, expected_members=members, shapefile_name=f"{stem}.shp",
+        extract_tmp_prefix="eia861-county-",
+        read_file=lambda path: gpd.read_file(path, engine="pyogrio"),
+    )
+    required = {"GEOID", "STATEFP", "NAME", "NAMELSAD", "geometry"}
+    if not required <= set(frame.columns) or str(frame.crs) != "EPSG:4269":
+        raise ValueError("tiger_county_schema_or_crs_drift")
+    if not MIN_COUNTY_COUNT <= len(frame) <= MAX_COUNTY_COUNT:
+        raise ValueError("tiger_county_population_out_of_range")
+    geoids = frame["GEOID"].astype(str)
+    if (geoids.duplicated().any() or not geoids.str.fullmatch(r"\d{5}").all()
+            or frame["STATEFP"].isna().any() or frame["NAME"].isna().any()):
+        raise ValueError("tiger_county_identity_drift")
+    geometry = frame.geometry
+    if geometry.isna().any() or geometry.is_empty.any() or (~geometry.is_valid).any():
+        raise ValueError("tiger_county_geometry_quality_failure")
+    return frame[["GEOID", "STATEFP", "NAME", "NAMELSAD", "geometry"]].copy()
 
 
-def _validate_crs(value: object, reason: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(reason)
-    codes = [value[k] for k in ("wkid", "latestWkid") if k in value]
-    if not codes or any(type(code) is not int or code not in (102100, 3857) for code in codes):
-        raise ValueError(reason)
+def _geoparquet(features: list[dict[str, object]]) -> bytes:
+    fields = [
+        pa.field("utility_number", pa.string(), nullable=False),
+        pa.field("utility_name", pa.string(), nullable=False),
+        pa.field("ownership_type", pa.string(), nullable=False),
+        pa.field("state", pa.string(), nullable=False),
+        pa.field("county_count", pa.int64(), nullable=False),
+        pa.field("source_year", pa.int64(), nullable=False),
+        pa.field("geometry", pa.binary(), nullable=False),
+    ]
+    geometries = [to_wkb(row["geometry"], byte_order=1, output_dimension=2) for row in features]
+    arrays = [
+        pa.array([row["utility_number"] for row in features], type=pa.string()),
+        pa.array([row["utility_name"] for row in features], type=pa.string()),
+        pa.array([row["ownership_type"] for row in features], type=pa.string()),
+        pa.array([row["state"] for row in features], type=pa.string()),
+        pa.array([row["county_count"] for row in features], type=pa.int64()),
+        pa.array([row["source_year"] for row in features], type=pa.int64()),
+        pa.array(geometries, type=pa.binary()),
+    ]
+    geometry_types = sorted({row["geometry"].geom_type for row in features})
+    metadata = {
+        "version": "1.1.0", "primary_column": "geometry",
+        "columns": {"geometry": {
+            "encoding": "WKB", "geometry_types": geometry_types,
+            "crs": pyproj.CRS.from_epsg(4269).to_json_dict(),
+        }},
+    }
+    table = pa.Table.from_arrays(arrays, schema=pa.schema(fields, metadata={b"geo": _canonical(metadata)}))
+    sink = pa.BufferOutputStream()
+    pq.write_table(table, sink, compression="zstd", version="2.6")
+    output = sink.getvalue().to_pybytes()
+    readback = pq.read_table(pa.BufferReader(output))
+    if readback.num_rows != len(features) or readback.column_names != [field.name for field in fields]:
+        raise ValueError("eia861_output_schema_or_population_readback_drift")
+    if readback["geometry"].to_pylist() != geometries:
+        raise ValueError("eia861_output_geometry_readback_drift")
+    return output
 
 
-def _validate_source_item(item: dict, owner: dict) -> None:
-    if (item.get("id") != ITEM_ID or item.get("owner") != "NBAM_Org"
-            or item.get("title") != "Electric Retail Service Territories"
-            or item.get("type") != "Feature Service" or item.get("access") != "public"
-            or item.get("url") != FEATURE_SERVICE_URL or owner.get("username") != "NBAM_Org"
-            or owner.get("id") != item.get("ownerId")):
-        raise ValueError("source_distribution_item_identity_drift")
-    if EXPECTED_COPY_NOTICE not in item.get("description", ""):
-        raise ValueError("source_frozen_edition_notice_missing")
-    if item.get("licenseInfo") != "None (Public Use). Users are advised to read the data set's metadata thoroughly to understand appropriate use and data limitations.":
-        raise ValueError("source_distribution_rights_notice_drift")
-    if item.get("accessInformation") != EXPECTED_COPYRIGHT:
-        raise ValueError("source_provider_attribution_drift")
+def _stable_receipt(receipt: dict[str, object]) -> dict[str, object]:
+    return {key: receipt.get(key) for key in (
+        "method", "url", "final_url", "status", "complete_body", "wire_bytes",
+        "wire_sha256", "bytes", "sha256", "content_encoding", "content_length",
+    )}
+
+
+def _input(
+    input_id: str, receipt: dict[str, object], *, purpose: str,
+    license: str, release_date: str | None, unknown_reason: str,
+) -> dict[str, object]:
+    url = str(receipt["url"])
+    return {
+        "input_id": input_id,
+        "producer": "U.S. Energy Information Administration" if "eia.gov" in url else "U.S. Census Bureau, Geography Division",
+        "host": urlsplit(url).hostname,
+        "canonical_url": url,
+        "retrieval_url": url,
+        "observed_final_url": receipt.get("final_url"),
+        "retrieved_at": receipt.get("observed_at"),
+        "http_status": receipt.get("status"),
+        "bytes": receipt.get("bytes"),
+        "sha256": receipt.get("sha256"),
+        "wire_bytes": receipt.get("wire_bytes"),
+        "wire_sha256": receipt.get("wire_sha256"),
+        "role": "producer_publication",
+        "purpose": purpose,
+        "release_date": release_date,
+        "release_date_unknown_reason": unknown_reason,
+        "license": license,
+        "attribution": "U.S. Energy Information Administration" if "eia.gov" in url else "U.S. Census Bureau, Geography Division",
+    }
+
+
+def capture_electric_retail_service_territories(
+    storage: StagingStorageResource, *, capture_directory: str | None = None,
+    client: httpx.Client | None = None,
+) -> dict[str, object]:
+    """Capture the current EIA-861 and TIGER county inputs and stage one draft candidate."""
+    if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource):
+        raise ValueError("explicit_staging_resource_required")
+    root = Path(capture_directory).absolute() if capture_directory else Path(
+        tempfile.mkdtemp(prefix="hifld-electric-retail-")
+    )
+    if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError("unsafe_capture_directory")
+    root.mkdir(parents=True, exist_ok=True)
+    owned_client = client is None
+    client = client or httpx.Client(
+        timeout=httpx.Timeout(300.0, connect=30.0), follow_redirects=False,
+        headers={"User-Agent": "hifld-next-datasets/electric-retail-1057"},
+    )
+    try:
+        page_body, page_receipt = capture_get(
+            client, PAGE_URL, root, "eia861_page", max_bytes=MAX_PAGE_BYTES,
+        )
+        year, eia_url = latest_release(page_body.decode("utf-8"))
+        eia_body, eia_receipt = capture_get(
+            client, eia_url, root, "eia861_zip", max_bytes=MAX_EIA_ZIP_BYTES,
+        )
+        _, reuse_receipt = capture_get(
+            client, REUSE_URL, root, "eia_reuse_policy", max_bytes=MAX_REUSE_BYTES,
+        )
+        tiger_release = census_latest.discover_county_boundaries(client, root)
+        tiger_body, tiger_receipt = capture_get(
+            client, tiger_release["source_url"], root, "tiger_county_zip",
+            max_bytes=MAX_TIGER_ZIP_BYTES,
+        )
+        with zipfile.ZipFile(io.BytesIO(eia_body)) as archive:
+            members = archive.infolist()
+            if (len(members) > 200 or len({member.filename for member in members}) != len(members)
+                    or sum(member.file_size for member in members) > MAX_EIA_UNCOMPRESSED_BYTES):
+                raise ValueError("eia861_zip_expansion_limit")
+            service_name = f"Service_Territory_{year}.xlsx"
+            frame_name = f"Frame_{year}.xlsx"
+            names = {member.filename for member in members}
+            if service_name not in names or frame_name not in names:
+                raise ValueError("eia861_workbook_members_missing")
+            service_body = archive.read(service_name)
+            frame_body = archive.read(frame_name)
+        territory_rows = read_service_territory_workbook(service_body, year)
+        frame = read_frame_workbook(frame_body, year)
+        counties = _read_counties(tiger_body, tiger_release["edition"])
+        records, join_audit = join_territories(territory_rows, frame, counties)
+        features = aggregate_territories(records, counties, year)
+        if not features:
+            raise ValueError("empty_electric_retail_population")
+        identity = processing_identity(Path(__file__).parents[3])
+        output = _geoparquet(features)
+        record_sha = _sha(_canonical([
+            {key: value for key, value in row.items() if key != "geometry"} for row in features
+        ]))
+        geometry_hash = hashlib.sha256()
+        for row in features:
+            value = to_wkb(row["geometry"], byte_order=1, output_dimension=2)
+            geometry_hash.update(len(value).to_bytes(8, "little"))
+            geometry_hash.update(value)
+        geometry_sha = geometry_hash.hexdigest()
+        schema_sha = _sha(_canonical({
+            "output_fields": [field.name for field in _geoparquet_schema()],
+            "eia861_data_year": year,
+            "tiger_edition": tiger_release["edition"],
+            "state_fips": STATE_FIPS,
+            "county_aliases": {f"{state}:{name}": list(geoids) for (state, name), geoids in COUNTY_ALIASES.items()},
+        }))
+        version = content_derived_version(record_sha, geometry_sha, schema_sha, identity)
+        prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
+        parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
+        utility_count = len({row["utility_number"] for row in features})
+        county_count = len({geoid for record in records for geoid in record["geoids"]})
+        state_count = len({row["state"] for row in features})
+        coverage = {
+            "population_scope": "All EIA-861 utility-by-county service-territory rows for the selected annual release, excluding only the source 'Not Applicable' county sentinel.",
+            "eia861_data_year": year,
+            "tiger_edition": tiger_release["edition"],
+            "territory_row_count": len(territory_rows),
+            "matched_county_row_count": join_audit["matched_county_rows"],
+            "skipped_not_applicable_count": join_audit["skipped_not_applicable"],
+            "feature_count": len(features),
+            "utility_count": utility_count,
+            "state_count": state_count,
+            "distinct_county_count": county_count,
+            "boundary_precision": "County-level approximation. Utility territories are dissolved current TIGER county equivalents, not utility-owned legal boundaries.",
+            "source_population_complete": True,
+        }
+        inputs = [
+            _input("eia861_page", page_receipt, purpose="methodology",
+                   license=REUSE_URL, release_date=None,
+                   unknown_reason="Producer release page; retrieval time is not a publication date."),
+            _input("eia861_zip", eia_receipt, purpose="data",
+                   license=REUSE_URL, release_date=None,
+                   unknown_reason=f"EIA-861 data year {year}; the producer page and ZIP headers do not establish an exact publication date."),
+            _input("eia_reuse_policy", reuse_receipt, purpose="license",
+                   license=REUSE_URL, release_date=None,
+                   unknown_reason="Producer reuse policy page; revision date is not established by this capture."),
+            _input("tiger_annual_listing", tiger_release["evidence_receipts"][0], purpose="methodology",
+                   license="https://www.usa.gov/government-works", release_date=None,
+                   unknown_reason="Census annual directory listing; retrieval time is not a publication date."),
+            _input("tiger_product_listing", tiger_release["evidence_receipts"][1], purpose="methodology",
+                   license="https://www.usa.gov/government-works", release_date=None,
+                   unknown_reason="Census product directory listing; retrieval time is not a publication date."),
+            _input("tiger_county_zip", tiger_receipt, purpose="data",
+                   license="https://www.usa.gov/government-works", release_date=None,
+                   unknown_reason=f"TIGER/Line {tiger_release['edition']} county archive; the directory listing does not establish an exact archive publication date."),
+        ]
+        manifest = {
+            "schema_version": 1, "approved": False, "processor": "HIFLD Next",
+            "title": "Electric Retail Service Territories (EIA-861 utility-by-county; draft)",
+            "description": "Utility service territories approximated by dissolving current Census TIGER county equivalents for each EIA-861 utility-by-county row. County-level approximation only; no legal boundary or historical HIFLD equivalence is claimed.",
+            "publisher": "U.S. Energy Information Administration",
+            "agency": "U.S. Department of Energy",
+            "source_url": eia_url,
+            "license": REUSE_URL,
+            "date_issued": None, "date_modified": None, "source_modified": None,
+            "source_vintage": f"EIA-861 {year} / TIGER/Line {tiger_release['edition']}",
+            "lineage": [PAGE_URL, eia_url, TIGER_ROOT, tiger_release["listing_url"], tiger_release["source_url"], REUSE_URL],
+            "code_commit": identity["code_commit"],
+            "code_identity_scheme": identity["code_identity_scheme"],
+            "inputs": inputs,
+            "transformations": [
+                {"operation": "Select the newest active EIA-861 annual ZIP and current TIGER/Line county ZIP from producer listings", "parameters": {"eia861_data_year": year, "tiger_edition": tiger_release["edition"], "selection_rule": "largest published year with one exact national ZIP; no older-edition fallback"}},
+                {"operation": "Join each EIA utility-county row to TIGER county equivalents by state FIPS and normalized name", "parameters": {"county_aliases": {f"{state}:{name}": list(geoids) for (state, name), geoids in COUNTY_ALIASES.items()}, "skipped_sentinel": "Not Applicable"}},
+                {"operation": "Dissolve joined county geometries into one feature per utility-state pair", "parameters": {"key": ["utility_number", "state"], "geometry": "shapely.union_all in native EPSG:4269"}},
+            ],
+            "field_definitions": {
+                "utility_number": {"source_fields": ["Utility Number"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA utility number as a string, preserving its lexical value."},
+                "utility_name": {"source_fields": ["Utility Name"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA utility name."},
+                "ownership_type": {"source_fields": ["Ownership"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA frame ownership type."},
+                "state": {"source_fields": ["State"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA state postal code; utilities operating in multiple states have one feature per state."},
+                "county_count": {"source_fields": ["County"], "input_ids": ["eia861_zip"], "basis": "derived", "description": "Number of EIA utility-county rows dissolved into this feature.", "units": "count"},
+                "source_year": {"source_fields": ["Data Year"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA-861 data year."},
+                "geometry": {"source_fields": ["GEOID", "geometry"], "input_ids": ["tiger_county_zip"], "basis": "derived", "description": "Union of current TIGER county equivalents for the utility's EIA county rows; native EPSG:4269. County-level approximation, not a legal boundary."},
+            },
+            "coverage": coverage,
+            "source_relationship": {
+                "relationship": "unverified",
+                "evidence_input_ids": ["eia861_zip", "tiger_county_zip"],
+                "unknown_reason": "This source-native county approximation does not establish equivalence to the historical HIFLD/ORNL utility polygon population or its identifiers.",
+            },
+            "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
+                "reason": "County-dissolved utility-state draft in native EPSG:4269; no legal boundary, historical equivalence or release acceptance is claimed.",
+                "objects": [{"path": parquet_path, "bytes": len(output), "sha256": _sha(output)}],
+            }}},
+            "unsupported_output_formats": {
+                "geopackage": "No approved export-field mapping or downstream schema contract.",
+                "shapefile_zip": "No approved field mapping or encoding contract.",
+                "pmtiles": "No approved display transformation or generalization.",
+            },
+            **APPROVALS,
+        }
+        validate_provenance(manifest)
+        validate_output_policy(manifest)
+        validate_release_provenance(manifest)
+        audit = {
+            "source": {
+                "eia861_page": PAGE_URL, "eia861_zip": eia_url, "eia861_data_year": year,
+                "tiger_edition": tiger_release["edition"], "tiger_county_zip": tiger_release["source_url"],
+            },
+            "acquisition_receipts": {
+                name: {**_stable_receipt(receipt), "observed_at": receipt.get("observed_at")}
+                for name, receipt in (
+                    ("eia861_page", page_receipt), ("eia861_zip", eia_receipt),
+                    ("eia_reuse_policy", reuse_receipt), ("tiger_county_zip", tiger_receipt),
+                    ("tiger_annual_listing", tiger_release["evidence_receipts"][0]),
+                    ("tiger_product_listing", tiger_release["evidence_receipts"][1]),
+                )
+            },
+            "eia861": {
+                "territory_row_count": len(territory_rows), "frame_utility_count": len(frame),
+            },
+            "join": {
+                **join_audit, "distinct_county_count": county_count,
+                "county_aliases": {f"{state}:{name}": list(geoids) for (state, name), geoids in COUNTY_ALIASES.items()},
+            },
+            "output": {
+                "feature_count": len(features), "utility_count": utility_count,
+                "state_count": state_count, "county_row_count": len(territory_rows),
+            },
+            "processing_identity": identity,
+            **APPROVALS,
+        }
+        raw_inputs = {
+            "eia861_page": page_receipt, "eia861_zip": eia_receipt,
+            "eia_reuse_policy": reuse_receipt, "tiger_county_zip": tiger_receipt,
+            "tiger_annual_listing": tiger_release["evidence_receipts"][0],
+            "tiger_product_listing": tiger_release["evidence_receipts"][1],
+        }
+        source_files = {
+            "tiger_annual_listing": "county-annual-listing",
+            "tiger_product_listing": "county-product-listing",
+        }
+        for name, receipt in raw_inputs.items():
+            stem = source_files.get(name, name)
+            body = (root / f"{stem}.body").read_bytes()
+            wire = (root / f"{stem}.wire").read_bytes()
+            write_immutable(storage, f"{prefix}/raw/{name}.body", body)
+            write_immutable(storage, f"{prefix}/raw/{name}.wire", wire)
+            write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
+        ready = {"approved": False, "version": version, "objects": {parquet_path: {"bytes": len(output), "sha256": _sha(output)}}, "source_population_complete": True, **APPROVALS}
+        ready_body = _canonical(ready) + b"\n"
+        for name, body in (
+            (parquet_path, output),
+            ("metadata/source_manifest.json", _canonical(manifest) + b"\n"),
+            ("metadata/source_audit.json", _canonical(audit) + b"\n"),
+            ("metadata/processing_identity.json", _canonical(identity) + b"\n"),
+            ("metadata/candidate_ready.json", ready_body),
+        ):
+            write_immutable(storage, f"{prefix}/{name}", body)
+            if storage.read_key(f"{prefix}/{name}") != body:
+                raise ValueError("candidate_readback_mismatch:" + name)
+        return {
+            "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+            "feature_count": len(features), "utility_count": utility_count,
+            "state_count": state_count, "county_row_count": len(territory_rows),
+            "matched_county_row_count": join_audit["matched_county_rows"],
+            "distinct_county_count": county_count,
+            "skipped_not_applicable_count": join_audit["skipped_not_applicable"],
+            "source_year": year, "tiger_edition": tiger_release["edition"],
+            "source_population_complete": True,
+            "null_geometry_count": 0, "invalid_geometry_count": 0,
+            "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
+            "prebuilt_geoparquet": f"{prefix}/{parquet_path}",
+            "prebuilt_geoparquet_sha256": _sha(output),
+            **APPROVALS,
+        }
+    finally:
+        if owned_client:
+            client.close()
+
+
+def _geoparquet_schema() -> list[pa.Field]:
+    return [
+        pa.field("utility_number", pa.string(), nullable=False),
+        pa.field("utility_name", pa.string(), nullable=False),
+        pa.field("ownership_type", pa.string(), nullable=False),
+        pa.field("state", pa.string(), nullable=False),
+        pa.field("county_count", pa.int64(), nullable=False),
+        pa.field("source_year", pa.int64(), nullable=False),
+        pa.field("geometry", pa.binary(), nullable=False),
+    ]
+
+
+def _arrow_type(kind: str):
+    if kind in _STRING_TYPES:
+        return pa.string()
+    if kind in {"esriFieldTypeOID", "esriFieldTypeInteger", "esriFieldTypeSmallInteger", "esriFieldTypeDate"}:
+        return pa.int64()
+    if kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"}:
+        return pa.float64()
+    raise ValueError("unsupported_esri_field_type:" + kind)
 
 
 def _field_signature(fields: object) -> list[tuple[str, str, int | None]]:
@@ -202,291 +722,12 @@ def _field_signature(fields: object) -> list[tuple[str, str, int | None]]:
     return result
 
 
-def _validate_layer(layer: dict, expected_signature: list[tuple[str, str, int | None]] | None = None) -> list[tuple[str, str, int | None]]:
-    if (layer.get("id") != 0 or layer.get("name") != "Electric_Retail_Service_Territories_HIFLD"
-            or layer.get("geometryType") != "esriGeometryPolygon"
-            or layer.get("objectIdField") != "OBJECTID"
-            or layer.get("dataSourceType") not in (None, "")
-            or layer.get("editingInfo", {}).get("dataLastEditDate") != SOURCE_EDIT_EPOCH_MS
-            or layer.get("hasZ") is not False or layer.get("hasM") is not False):
-        raise ValueError("source_layer_identity_or_edition_drift")
-    if (not isinstance(layer.get("advancedQueryCapabilities"), dict)
-            or layer["advancedQueryCapabilities"].get("supportsPagination") is not True):
-        raise ValueError("source_pagination_contract_drift")
-    _validate_crs(layer.get("spatialReference"), "source_crs_drift")
-    _validate_crs(layer.get("extent", {}).get("spatialReference"), "source_extent_crs_drift")
-    signature = _field_signature(layer.get("fields"))
-    if expected_signature is not None and signature != expected_signature:
-        raise ValueError("source_schema_drift")
-    return signature
-
-
-def _polygon_from_esri(geometry: dict):
-    """Convert Esri rings through the shared GDAL converter without repair."""
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    for ring in rings:
-        if (not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]
-                or any(not isinstance(point, list) or len(point) != 2
-                       or any(type(value) not in (int, float) or not math.isfinite(value) for value in point)
-                       for point in ring)):
-            raise ValueError("source_polygon_ring_invalid")
-    result = esri_polygon_geometry({"rings": rings}, has_z=False, has_m=False)
-    if result.is_empty:
-        raise ValueError("source_polygon_empty")
-    return result
-
-
-def _validate_feature(feature: object, expected_id: int, fields: list[tuple[str, str, int | None]]):
-    if not isinstance(feature, dict):
-        raise ValueError("source_feature_shape_invalid")
-    attrs, geometry = feature.get("attributes"), feature.get("geometry")
-    expected = {name for name, kind, _length in fields if kind != "esriFieldTypeGeometry"}
-    if not isinstance(attrs, dict) or set(attrs) != expected:
-        raise ValueError("source_attribute_roster_drift")
-    if type(attrs.get("OBJECTID")) is not int or attrs["OBJECTID"] != expected_id:
-        raise ValueError("source_feature_id_or_order_drift")
-    for name, kind, _length in fields:
-        value = attrs.get(name)
-        if value is None:
-            continue
-        if kind in _STRING_TYPES and not isinstance(value, str):
-            raise ValueError("source_attribute_type_drift:" + name)
-        if kind in {"esriFieldTypeOID", "esriFieldTypeInteger", "esriFieldTypeSmallInteger", "esriFieldTypeDate"} and type(value) is not int:
-            raise ValueError("source_attribute_type_drift:" + name)
-        if kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"} and type(value) not in (int, float):
-            raise ValueError("source_attribute_type_drift:" + name)
-    if not isinstance(geometry, dict) or any(k in geometry for k in ("z", "m")):
-        raise ValueError("source_polygon_geometry_invalid")
-    _validate_crs(geometry.get("spatialReference", {"wkid": 102100}), "source_geometry_crs_drift")
-    polygon = _polygon_from_esri(geometry)
-    return attrs, polygon
-
-
-def _arrow_type(kind: str):
-    if kind in _STRING_TYPES:
-        return pa.string()
-    if kind in {"esriFieldTypeOID", "esriFieldTypeInteger", "esriFieldTypeSmallInteger", "esriFieldTypeDate"}:
-        return pa.int64()
-    if kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"}:
-        return pa.float64()
-    raise ValueError("unsupported_esri_field_type:" + kind)
-
-
-def _make_geoparquet(features: list[tuple[dict, object]], fields: list[tuple[str, str, int | None]]) -> bytes:
-    arrays = {}
-    for name, kind, _length in fields:
-        if kind == "esriFieldTypeGeometry":
-            continue
-        arrays[name] = pa.array([attrs[name] for attrs, _geometry in features], type=_arrow_type(kind))
-    arrays["geometry"] = pa.array([to_wkb(geometry, byte_order=1, output_dimension=2)
-                                   for _attrs, geometry in features], type=pa.binary())
-    table = pa.table(arrays)
-    metadata = dict(table.schema.metadata or {})
-    geom_types = sorted({geometry.geom_type for _attrs, geometry in features})
-    metadata[b"geo"] = _canonical({
-        "version": "1.1.0", "primary_column": "geometry",
-        "columns": {"geometry": {"encoding": "WKB", "geometry_types": geom_types,
-                                    "crs": pyproj.CRS.from_epsg(3857).to_json_dict()}},
-    }).strip()
-    sink = pa.BufferOutputStream()
-    pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd", version="2.6")
-    return sink.getvalue().to_pybytes()
-
-
-def _persist_attempt(storage: StagingStorageResource, root: Path, dataset_slug: str,
-                     version: str, files: list[dict[str, object]], reason: str | None = None) -> str:
-    attempt = uuid.uuid4().hex
-    base = f"_capture-attempts/{dataset_slug}/{attempt}"
-    for name in sorted({str(item["name"]) for item in files}):
-        for suffix in ("body", "wire", "request.body", "receipt.json"):
-            path = root / f"{name}.{suffix}"
-            if path.is_file():
-                write_immutable(storage, f"{base}/raw/{name}.{suffix}", path.read_bytes())
-    doc = {"dataset_slug": dataset_slug, "candidate_version": version or None,
-           "captured_at": datetime.now(timezone.utc).isoformat(),
-           "request_names": sorted({str(item["name"]) for item in files}),
-           "receipts": {str(item["name"]): item["receipt"] for item in files},
-           "error_code": reason, "approved": False}
-    write_immutable(storage, f"{base}/metadata/capture_attempt.json", _canonical(doc))
-    return base
-
-
-def capture_electric_retail_service_territories(
-    storage: StagingStorageResource, *, capture_directory: str | None = None,
-    client: httpx.Client | None = None,
-) -> dict[str, object]:
-    """Refuse the excluded NBAM mirror before storage or network side effects."""
-    raise ValueError("excluded_frozen_hifld_copy_original_producer_source_required")
-
-    root_storage = _safe_local_storage(storage)
-    if shutil.disk_usage(root_storage).free < DISK_FLOOR_BYTES:
-        raise ValueError("staging_disk_floor_before_acquisition")
-    root = Path(capture_directory).absolute() if capture_directory else Path("/tmp/hifld-63-captures") / uuid.uuid4().hex
+def _safe_local_storage(storage: StagingStorageResource) -> Path:
+    if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
+            or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
+        raise ValueError("explicit_local_staging_resource_required")
+    root = Path(storage.local_dir).absolute()
     if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
-        raise ValueError("unsafe_capture_directory")
-    replay = bool(capture_directory)
-    if replay:
-        if not root.is_dir() or not (root / "layer_before.body").is_file():
-            raise ValueError("replay_capture_directory_missing")
-    else:
-        if root.exists():
-            raise ValueError("capture_target_already_exists")
-        root.mkdir(parents=True)
-    captures: list[dict[str, object]] = []
-    budget = [0]
-    owned_client = client is None
-    client = client or (httpx.Client(timeout=httpx.Timeout(90, connect=15), follow_redirects=False,
-                                     headers={"User-Agent": "hifld-next-datasets/electric-retail-63-preservation"})
-                       if not replay else httpx.Client(timeout=httpx.Timeout(90, connect=15), follow_redirects=False,
-                                                       headers={"User-Agent": "hifld-next-datasets/electric-retail-63-preservation"}))
-    candidate_version = ""
-    try:
-        item, body, wire, request_body, receipt = _capture_request(client, root, "source_item", "GET", ITEM_URL, {}, budget, replay, captures)
-        owner, body, wire, request_body, receipt = _capture_request(client, root, "source_owner", "GET", OWNER_URL, {}, budget, replay, captures)
-        _validate_source_item(item, owner)
-        layer_params = {"f": "pjson"}
-        layer, body, wire, request_body, receipt = _capture_request(client, root, "layer_before", "GET", FEATURE_LAYER_URL, layer_params, budget, replay, captures)
-        fields = _validate_layer(layer)
-        if _sha(_canonical(fields)) != EXPECTED_SCHEMA_SHA256:
-            raise ValueError("source_schema_frozen_edition_drift")
-        count_params = {"where": "1=1", "returnCountOnly": "true", "f": "json"}
-        count_before, body, wire, request_body, receipt = _capture_request(client, root, "count_before", "GET", FEATURE_LAYER_URL + "/query", count_params, budget, replay, captures)
-        id_params = {"where": "1=1", "returnIdsOnly": "true", "f": "json"}
-        ids_before_doc, body, wire, request_body, receipt = _capture_request(client, root, "ids_before", "GET", FEATURE_LAYER_URL + "/query", id_params, budget, replay, captures)
-        ids = ids_before_doc.get("objectIds")
-        if (count_before.get("count") != EXPECTED_COUNT or not isinstance(ids, list)
-                or any(type(value) is not int for value in ids)):
-            raise ValueError("source_population_drift_before")
-        ids = sorted(ids)
-        if len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT:
-            raise ValueError("source_id_roster_invalid")
-        if _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-            raise ValueError("source_id_frozen_edition_drift")
-        processed: list[tuple[dict, object]] = []
-        for offset in range(0, len(ids), PAGE_SIZE):
-            wanted = ids[offset:offset + PAGE_SIZE]
-            name = f"page_{offset:06d}"
-            params = {"objectIds": ",".join(map(str, wanted)), "outFields": "*",
-                      "returnGeometry": "true", "outSR": "102100", "orderByFields": "OBJECTID ASC", "f": "json"}
-            page, body, wire, request_body, receipt = _capture_request(
-                client, root, name, "POST", FEATURE_LAYER_URL + "/query", params, budget, replay, captures)
-            if (page.get("geometryType") != "esriGeometryPolygon"
-                    or page.get("exceededTransferLimit") is True
-                    or not isinstance(page.get("features"), list) or len(page["features"]) != len(wanted)):
-                raise ValueError("source_page_population_drift")
-            _validate_crs(page.get("spatialReference"), "source_page_crs_drift")
-            page_signature = _field_signature(page.get("fields"))
-            if page_signature != fields:
-                raise ValueError("source_page_schema_drift")
-            for feature, object_id in zip(page["features"], wanted, strict=True):
-                processed.append(_validate_feature(feature, object_id, fields))
-        ids_after_doc, body, wire, request_body, receipt = _capture_request(client, root, "ids_after", "GET", FEATURE_LAYER_URL + "/query", id_params, budget, replay, captures)
-        count_after, body, wire, request_body, receipt = _capture_request(client, root, "count_after", "GET", FEATURE_LAYER_URL + "/query", count_params, budget, replay, captures)
-        layer_after, body, wire, request_body, receipt = _capture_request(client, root, "layer_after", "GET", FEATURE_LAYER_URL, layer_params, budget, replay, captures)
-        if (_validate_layer(layer_after, fields) != fields
-                or count_after.get("count") != EXPECTED_COUNT
-                or not isinstance(ids_after_doc.get("objectIds"), list)
-                or any(type(value) is not int for value in ids_after_doc["objectIds"])
-                or sorted(ids_after_doc["objectIds"]) != ids
-                or count_before != count_after
-                or [attrs["OBJECTID"] for attrs, _geometry in processed] != ids):
-            raise ValueError("source_population_or_metadata_changed_during_capture")
-        id_sha = _sha(_canonical(ids))
-        schema_sha = _sha(_canonical(fields))
-        record_sha = _sha(_canonical([attrs for attrs, _geometry in processed]))
-        wkb_values = [to_wkb(geometry, byte_order=1, output_dimension=2) for _attrs, geometry in processed]
-        geometry_hash = hashlib.sha256()
-        for value in wkb_values:
-            geometry_hash.update(len(value).to_bytes(8, "little"))
-            geometry_hash.update(value)
-        geometry_sha = geometry_hash.hexdigest()
-        identity = processing_identity(Path(__file__).parents[3])
-        fingerprint = _sha(_canonical({"record": record_sha, "geometry": geometry_sha,
-                                       "schema": schema_sha, "source_edition": "2025-08-21",
-                                       "processing_identity": identity}))
-        candidate_version = "v" + fingerprint[:32]
-        prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{candidate_version}"
-        output = _make_geoparquet(processed, fields)
-        source_manifest = {
-            "schema_version": 1, "approved": False,
-            "title": "Electric Retail Service Territories — frozen 2025 HIFLD snapshot",
-            "publisher": "NTIA NBAM public ArcGIS distribution copy (ArcGIS owner account NBAM_Org)",
-            "producer_credit": EXPECTED_COPYRIGHT,
-            "source_url": FEATURE_LAYER_URL, "source_item_url": f"https://www.arcgis.com/home/item.html?id={ITEM_ID}",
-            "source_archive_url": "https://www.datalumos.org/datalumos/project/239091/version/V2/view",
-            "source_edition": "HIFLD snapshot downloaded by the public NBAM ArcGIS item on 2025-08-21",
-            "source_modified": None,
-            "source_modified_unknown_reason": "The frozen NBAM item records its download date, not an upstream producer release/effective date.",
-            "source_coverage_scope": "All 2,931 object IDs observed in the frozen public NBAM copy; geographic coverage and equivalence to the HIFLD inventory remain unaccepted.",
-            "source_feature_count": len(processed), "source_id_field": "OBJECTID",
-            "source_id_sha256": id_sha, "source_record_sha256": record_sha,
-            "source_geometry_sha256": geometry_sha, "source_schema_sha256": schema_sha,
-            "source_fields": [{"name": name, "type": kind, "length": length} for name, kind, length in fields],
-            "native_crs": "EPSG:3857", "geometry_type": "Polygon/MultiPolygon",
-            "preservation": "All 36 ArcGIS attribute columns and OBJECTID values are retained with native EPSG:3857 coordinates; no reprojecting, field mapping, geometry repair, filtering, or row ID synthesis.",
-            "rights_notice": item["licenseInfo"], "copyright_notice": item["accessInformation"],
-            "source_acceptance": False, "source_freshness_accepted": False,
-            "schema_contract_accepted": False, "id_contract_accepted": False,
-            "coverage_accepted": False, "rights_accepted": False,
-            "baseline": None, "release_accepted": False, "promotion_allowed": False,
-            "processing_code": identity,
-            "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
-                "reason": "Source-faithful native-coordinate preservation candidate; frozen edition only; release not approved.",
-                "objects": [{"path": "geoparquet/electric-retail-service-territories.parquet",
-                             "sha256": _sha(output), "bytes": len(output)}]}}},
-        }
-        capture_names = [str(item["name"]) for item in captures]
-        for capture_name in capture_names:
-            for suffix in ("body", "wire", "request.body"):
-                raw_path = root / f"{capture_name}.{suffix}"
-                if raw_path.is_file():
-                    write_immutable(storage, f"{prefix}/raw/{capture_name}.{suffix}", raw_path.read_bytes())
-        write_immutable(storage, f"{prefix}/geoparquet/{FILE_SLUG}.parquet", output)
-        write_immutable(storage, f"{prefix}/metadata/source_manifest.json", _canonical(source_manifest))
-        attempt_prefix = _persist_attempt(storage, root, DATASET_SLUG, candidate_version, captures)
-        native_capture = {
-            "candidate_version": candidate_version, "source_edition": "2025-08-21",
-            "source_item_id": ITEM_ID, "source_item_owner": "NBAM_Org",
-            "source_feature_count": len(processed), "count_before": count_before["count"],
-            "count_after": count_after["count"], "source_id_sha256": id_sha,
-            "source_schema_sha256": schema_sha, "source_record_sha256": record_sha,
-            "source_geometry_sha256": geometry_sha, "native_crs": "EPSG:3857",
-            "source_edit_epoch_ms": SOURCE_EDIT_EPOCH_MS,
-            "producer_release_date": None, "source_accepted": False,
-            "rights_accepted": False, "coverage_accepted": False, "release_accepted": False,
-        }
-        write_immutable(storage, f"{prefix}/metadata/native_capture.json", _canonical(native_capture))
-        output_path = f"{prefix}/geoparquet/{FILE_SLUG}.parquet"
-        if storage.read_key(output_path) != output or storage.sha256_key(output_path) != _sha(output):
-            raise ValueError("candidate_output_readback_failed")
-        return {
-            "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": candidate_version,
-            "feature_count": len(processed), "source_population_complete": True,
-            "source_id_sha256": id_sha, "source_schema_sha256": schema_sha,
-            "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
-            "null_geometry_count": 0,
-            "invalid_geometry_count": sum(
-                not geometry.is_valid or geometry.is_empty or geometry.area == 0
-                for _attrs, geometry in processed
-            ),
-            "source_coverage_scope": source_manifest["source_coverage_scope"],
-            "capture_attempt_manifest": attempt_prefix + "/metadata/capture_attempt.json",
-            "native_crs": "EPSG:3857", "source_edition": "2025-08-21",
-            "source_accepted": False, "source_freshness_accepted": False,
-            "schema_contract_accepted": False, "id_contract_accepted": False,
-            "coverage_accepted": False, "rights_accepted": False,
-            "release_accepted": False,
-        }
-    except Exception as exc:
-        if captures:
-            try:
-                _persist_attempt(storage, root, DATASET_SLUG, candidate_version, captures,
-                                 "capture_or_candidate_failure:" + type(exc).__name__)
-            except Exception:
-                pass
-        raise
-    finally:
-        if owned_client and client is not None:
-            client.close()
+        raise ValueError("unsafe_local_staging_root")
+    root.mkdir(parents=True, exist_ok=True)
+    return root
