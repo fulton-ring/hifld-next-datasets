@@ -437,3 +437,7 @@ epa_frs_naics_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
     run_config={"ops": {epa_frs_naics_powerplants.op.name: {"config": {"offline_replay_version": ""}}}},
 )
+ASSET_CHECKS = [epa_frs_naics_complete, epa_frs_naics_published_membership_compatible]
+INGEST_ASSETS = [epa_frs_naics_powerplants]
+JOBS = [epa_frs_naics_draft_job]
+SCHEDULES = [epa_frs_naics_draft_schedule]

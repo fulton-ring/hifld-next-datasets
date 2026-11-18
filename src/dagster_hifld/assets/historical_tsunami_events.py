@@ -12,3 +12,7 @@ def noaa_historical_tsunami_events(context,config:HistoricalTsunamiEventsConfig,
     result=stage_tsunami_events(staging_storage,capture_dir=config.capture_directory or None);context.add_output_metadata(result);return result
 tsunami_events_draft_job=define_asset_job('tsunami_events_draft_refresh',selection=AssetSelection.assets(noaa_historical_tsunami_events))
 tsunami_events_draft_schedule=ScheduleDefinition(name='tsunami_events_draft_weekly',job=tsunami_events_draft_job,cron_schedule='0 6 * * 1',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+ASSET_CHECKS = []
+INGEST_ASSETS = [noaa_historical_tsunami_events]
+JOBS = [tsunami_events_draft_job]
+SCHEDULES = [tsunami_events_draft_schedule]

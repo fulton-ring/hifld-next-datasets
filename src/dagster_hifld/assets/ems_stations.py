@@ -24,3 +24,7 @@ usgs_ems_stations_draft_refresh_job = define_asset_job(
 def usgs_ems_stations_draft_refresh_schedule(context):
     require_local(context.resources.staging_storage)
     return RunRequest(run_config={"ops": {usgs_ems_stations.op.name: {"config": {"capture_dir": ""}}}})
+ASSET_CHECKS = []
+INGEST_ASSETS = [usgs_ems_stations]
+JOBS = [usgs_ems_stations_draft_refresh_job]
+SCHEDULES = [usgs_ems_stations_draft_refresh_schedule]

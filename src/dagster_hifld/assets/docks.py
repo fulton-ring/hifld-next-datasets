@@ -95,9 +95,7 @@ def docks_release_acceptance_pending(candidate: dict) -> AssetCheckResult:
     })
 
 
-ASSET_CHECKS = [docks_approved_baseline_drift]
-
-
+ASSET_CHECKS = [docks_source_population_complete, docks_source_geometry_quality, docks_approved_baseline_drift, docks_release_acceptance_pending]
 docks_draft_job = define_asset_job(
     "docks_usace_bts_draft_refresh",
     selection=(AssetSelection.assets(docks_usace_bts)
@@ -111,3 +109,7 @@ docks_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [docks_usace_bts]
+JOBS = [docks_draft_job]
+SCHEDULES = [docks_draft_schedule]

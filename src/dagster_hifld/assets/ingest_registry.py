@@ -8,8 +8,6 @@ assets are derived automatically from this registry.
 from dagster_hifld.assets.discovery import discovered, unique
 
 from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volcanoes
-from dagster_hifld.assets.ems_stations import usgs_ems_stations
-from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
 from dagster_hifld.assets.fuds_irm_property_boundary import fuds_irm_property_boundary_ingest
 from dagster_hifld.assets.national_inventory_of_dams import national_inventory_of_dams_ingest
@@ -17,7 +15,6 @@ from dagster_hifld.assets.fuds_projects_points import usace_fuds_projects_points
 from dagster_hifld.assets.fuds_district_boundaries import usace_fuds_program_district_boundaries
 from dagster_hifld.assets.fuds_public_properties import usace_fuds_public_properties
 from dagster_hifld.assets.fuds_property_boundaries import fuds_property_boundaries_ingest
-from dagster_hifld.assets.epa_small_scale import epa_small_scale_regions
 from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
 from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
@@ -34,12 +31,9 @@ from dagster_hifld.assets.national_transit_map_stops import national_transit_map
 from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.fuds_division_boundaries import fuds_program_division_boundaries
-from dagster_hifld.assets.epa_frs_naics_powerplants import epa_frs_naics_powerplants
-from dagster_hifld.assets.epa_regions import epa_regions
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
 from dagster_hifld.assets.usace_navigation_lights import usace_navigation_lights_usace_ienc
 from dagster_hifld.assets.usace_notice_marks import usace_notice_marks_usace_ienc
-from dagster_hifld.assets.bsee_ocs_platforms import bsee_ocs_platforms
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
 from dagster_hifld.assets.usace_dry_docks import usace_dry_docks_usace_ienc
 from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
@@ -105,20 +99,12 @@ from dagster_hifld.assets.land_region_areas_usace_ienc import (
     land_region_areas_usace_ienc_candidate,
 )
 from dagster_hifld.assets.building_locations_usace_ienc import building_locations_usace_ienc
-from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
-from dagster_hifld.assets.epa_frs_interest_contact import epa_frs_interest_contact
-from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
-from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
-from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
 from dagster_hifld.assets.national_transit_map_routes import national_transit_map_routes
 
-from dagster_hifld.assets.epa_sems import epa_sems_interests
-from dagster_hifld.assets.national_bridge_inventory import national_bridge_inventory
-from dagster_hifld.assets.historical_tsunami_events import noaa_historical_tsunami_events
 from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
 from dagster_hifld.assets.national_transit_map_agencies import bts_national_transit_map_agencies
 from dagster_hifld.assets.fuds_mrs import usace_fuds_munitions_response_sites
@@ -128,16 +114,9 @@ hifld_ingest_assets = [
     smithsonian_holocene_volcanoes,
     bts_ferry_routes,
     fuds_program_division_boundaries,
-    fema_regional_offices,
-    epa_sems_interests,
-    national_bridge_inventory,
-    epa_regions_with_eez,
-    epa_large_scale_regions,
     census_elementary_districts,
     noaa_current_dart,
     nces_colleges_universities,
-    usgs_ems_stations,
-    noaa_historical_tsunami_events,
     noaa_12nm_territorial_sea,
     census_bureau_aiannh_areas,
     census_bureau_primary_roads,
@@ -152,9 +131,6 @@ hifld_ingest_assets = [
     national_transit_map_stops,
     bts_alternative_fueling_stations,
     usace_administrative_areas_usace_ienc,
-    epa_frs_naics_powerplants,
-    epa_regions,
-    bsee_ocs_platforms,
     usace_navigation_marks_areas_usace_ienc,
     usace_navigation_lights_usace_ienc,
     usace_notice_marks_usace_ienc,
@@ -197,7 +173,6 @@ hifld_ingest_assets = [
     usace_fuds_projects_points,
     usace_fuds_program_district_boundaries,
     fuds_property_boundaries_ingest,
-    epa_small_scale_regions,
     coastlines_usace_ienc,
     locks_usace_ienc,
     lock_basins_usace_ienc_candidate,
@@ -220,12 +195,9 @@ hifld_ingest_assets = [
     harbor_facility_locations_usace_ienc,
     land_region_areas_usace_ienc_candidate,
     hf_areas_usace_ienc_candidate,
-    courthouses_usgs,
     usace_data_coverage_areas_usace_ienc,
-    docks_usace_bts,
     usace_depth_areas_usace_ienc,
     epa_frs_sic_powerplants,
-    epa_frs_interest_contact,
     national_transit_map_routes,
     building_locations_usace_ienc,
     usace_fuds_munitions_response_sites,

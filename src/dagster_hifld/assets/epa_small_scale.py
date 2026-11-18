@@ -14,3 +14,7 @@ def epa_small_scale_regions(context,config:EpaSmallScaleRegionsConfig,staging_st
 
 epa_small_scale_source_integrity_job=define_asset_job('epa_small_scale_source_integrity',selection=AssetSelection.assets(epa_small_scale_regions))
 epa_small_scale_source_integrity_schedule=ScheduleDefinition(name='epa_small_scale_source_integrity_monthly',job=epa_small_scale_source_integrity_job,cron_schedule='0 9 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+ASSET_CHECKS = []
+INGEST_ASSETS = [epa_small_scale_regions]
+JOBS = [epa_small_scale_source_integrity_job]
+SCHEDULES = [epa_small_scale_source_integrity_schedule]

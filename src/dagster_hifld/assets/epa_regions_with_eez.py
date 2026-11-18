@@ -83,3 +83,7 @@ epa_regions_with_eez_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+ASSET_CHECKS = [epa_regions_with_eez_full_quality]
+INGEST_ASSETS = [epa_regions_with_eez]
+JOBS = [epa_regions_with_eez_draft_job]
+SCHEDULES = [epa_regions_with_eez_draft_schedule]

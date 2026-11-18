@@ -44,3 +44,7 @@ bsee_ocs_platforms_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+ASSET_CHECKS = [bsee_ocs_platforms_complete]
+INGEST_ASSETS = [bsee_ocs_platforms]
+JOBS = [bsee_ocs_platforms_draft_job]
+SCHEDULES = [bsee_ocs_platforms_draft_schedule]
