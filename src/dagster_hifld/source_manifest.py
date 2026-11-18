@@ -14,7 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.provenance import REFRESH_METADATA_FIELDS, provenance_projection
 from dagster_hifld.literal_geojson_policy import literal_geojson_spec
 from dagster_hifld.output_policy import SUPPORTED_OUTPUT_EXCLUSIONS, prebuilt_output_spec, validate_output_policy
 from dagster_hifld.resources import StagingStorageResource
@@ -28,6 +28,7 @@ from dagster_hifld.resources import StagingStorageResource
 BOUNDED_SOURCE_MANIFEST_READ_BYTES = 16 * 1024 * 1024
 
 CATALOG_METADATA_FIELDS = (
+    *REFRESH_METADATA_FIELDS,
     "title",
     "description",
     "publisher",
@@ -170,6 +171,21 @@ def _checked_manifest(metadata: dict, keys: list[str]) -> ResolvedSourceManifest
     return ResolvedSourceManifest(metadata, keys)
 
 
+def validate_documentation_objects(storage: StagingStorageResource, version_prefix: str, metadata: dict) -> list[str]:
+    """Preflight every referenced document before any publication effects."""
+    provenance_projection(metadata)
+    keys = []
+    for descriptor in metadata.get("documentation", []):
+        key = f"{version_prefix}/{descriptor['path']}"
+        snapshot = storage.object_snapshot(key)
+        if (snapshot is None or snapshot.size != descriptor["bytes"]
+                or storage.sha256_key(key) != descriptor["sha256"]
+                or storage.object_snapshot(key) != snapshot):
+            raise ValueError("Source documentation differs from captured checksum or length")
+        keys.append(key)
+    return keys
+
+
 def _strict_manifest_pairs(items):
     result = {}
     for key, value in items:
@@ -261,7 +277,7 @@ def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     unsupported_output_reason(manifest, "shapefile_zip")
     literal_geojson_spec(manifest)
     return {
-        key: value for key, value in manifest.items() if key in {"inputs", "transformations"} or value not in (None, "", [], {})
+        key: value for key, value in manifest.items() if key in {"inputs", "transformations", *REFRESH_METADATA_FIELDS} or value not in (None, "", [], {})
     }
 
 
@@ -298,6 +314,27 @@ def _merge_manifest_layers(
                     layer_ids.add(identity)
                     inputs[identity] = item
                 value = list(inputs.values())
+            if field in {"field_definitions", "format_transformations"}:
+                if not isinstance(value, dict):
+                    raise ValueError(f"Invalid source manifest {field}")
+                inherited = merged.get(field, {})
+                if any(name in inherited and inherited[name] != item for name, item in value.items()):
+                    raise ValueError(f"Conflicting source manifest {field}")
+                value = {**inherited, **value}
+            if field == "documentation":
+                if not isinstance(value, list):
+                    raise ValueError("Invalid source manifest documentation")
+                documents = {item["path"]: item for item in merged.get(field, [])}
+                layer_paths = set()
+                for item in value:
+                    if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+                        raise ValueError("Invalid source manifest documentation")
+                    path = item["path"]
+                    if path in layer_paths or (path in documents and documents[path] != item):
+                        raise ValueError("Conflicting source manifest documentation")
+                    documents[path] = item
+                    layer_paths.add(path)
+                value = list(documents.values())
             if field == "unsupported_output_formats":
                 value = {**merged.get(field, {}), **value}
             if field == "prebuilt_output_policy" and field in merged and value != merged[field]:

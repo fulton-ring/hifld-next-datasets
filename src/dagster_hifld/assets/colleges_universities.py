@@ -3,11 +3,10 @@ from dagster import AssetKey, AssetSelection, Config, DefaultScheduleStatus, Sch
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.colleges_universities import SLUG, stage_colleges
 
-
 class CollegesUniversitiesConfig(Config):
     capture_directory: str = ""
 
-@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='department_of_education',compute_kind='http',description='Complete NCES EDGE2025–2026 postsecondary source. Unapproved changed successor to ORNL2020–2021; source IDs/types/native WKB retained.')
+@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='department_of_education',compute_kind='http',description='Discover the latest published NCES EDGE postsecondary school-year file from official SchoolLocations anchors and preserve the complete native reporting-institution population. Unapproved ORNL successor; schedule stopped and release gates closed.')
 def nces_colleges_universities(context,config:CollegesUniversitiesConfig,staging_storage:StagingStorageResource):
     result=stage_colleges(staging_storage,capture_dir=config.capture_directory or None)
     context.add_output_metadata(result)
