@@ -1,9 +1,77 @@
-# Oil and Natural Gas Platforms — reconstruction feasibility
+# Oil and Natural Gas Platforms — BSEE/BOEM draft rebuild
 
 Inventory `oil-and-natural-gas-platforms`, DOE / Oak Ridge National Laboratory
-(ORNL). Research for [#961](https://github.com/fulton-ring/hifld-next-datasets/issues/961)
-and [#255](https://github.com/fulton-ring/hifld-next-datasets/issues/255), checked
-**2026-11-15 UTC**. No runtime, release contract or publication changes.
+(ORNL). The original ORNL layer is only on DHS's restricted GII portal, so it
+cannot be republished. Maintainer decision (2026-11-17, #1054): rebuild from
+BSEE if data quality is comparable. This repository has an unapproved draft
+pipeline built from the producing agencies' current platform tables. Every
+release and acceptance gate remains false.
+
+## Implemented source and contract
+
+The adapter captures the BSEE Platform/Rig and BOEM Pacific Platform landing
+pages, their published field layouts and six original-producer ZIPs:
+
+| Region | Input | Publisher |
+| --- | --- | --- |
+| Gulf | [Platform/Rig](https://www.data.bsee.gov/Main/Platform.aspx): `platmastfixed.zip`, `platstrufixed.zip`, `platlocfixed.zip` | BSEE |
+| Pacific | [Pacific Platform](https://www.data.boem.gov/Main/PacificPlatform.aspx): `platmastpacdelimit.zip`, `platstrupacdelimit.zip`, `platlocpacdelimit.zip` | BOEM |
+
+The pipeline validates each published layout, parses every row, joins master and
+structure attributes by the native complex ID and structure number, and writes
+one Point GeoParquet candidate. Every published master, structure and location
+field is retained with its source name and lexical value (leading zeros and
+native date strings included). One row is one published location row; a
+structure-only row without a location is excluded and counted, and a
+location-only row is retained with null structure attributes. No count, digest or
+edition is pinned. Completeness is the captured row population; drift against an
+approved release is a separate WARN check that reports unavailable until a
+baseline is wired.
+
+Observed complete capture on **2026-11-18 UTC**: Gulf 6,940 masters / 7,092
+structures / 7,306 locations; Pacific 34 / 24 / 24. Composite 7,330 location
+rows. One Gulf location has blank coordinates: the row is retained with null
+geometry and flagged. One Pacific location is `(0,0)`: it is retained and
+flagged. Gulf structures/locations disagree by 8 structure-only and 222
+location-only native pairs; 759 Gulf and 10 Pacific masters have no structure.
+BSEE page update times were 2026-11-02 10:02:22 / 10:12:11 / 10:06:56 (Gulf) and
+2026-11-01 06:32:10 / 06:32:11 / 06:32:09 (Pacific). Parsed row revisions span
+1993-11-09–2026-10-19 (Gulf) and 1999-04-07–2025-02-24 (Pacific).
+
+The BSEE GIS `platform.zip` (Gulf only, five attributes, NAD27, metadata
+publication 2026-03-02) was measured but is not an input. It lacks the
+operational attributes that make the master and structure tables comparable to
+the ORNL layer.
+
+## Comparison with the historical ORNL/HIFLD layer
+
+| Measure | ORNL/HIFLD historical layer | BSEE/BOEM draft | Assessment |
+| --- | --- | --- | --- |
+| Feature count | 7,294 reported points | 7,330 location rows | +36 (+0.5%); comparable |
+| Coverage | Gulf federal waters and U.S. Pacific coast | Gulf federal OCS and Pacific OCS | comparable; Alaska, Atlantic and state waters are outside both described scopes |
+| Attributes | 37 reported columns | 42 master + 23/19 structure + 14 location source fields | key operational attributes have equivalents; several ORNL-only fields do not |
+| IDs | ORNL `PLATFRMID` and `GlobalID` unrecovered | native complex ID + structure number | no ORNL ID parity and no replacement IDs |
+| Geometry | original geometry/CRS unknown | native location longitude/latitude | proposed EPSG:4267; datum acceptance false |
+
+Equivalent concepts include complex ID, operator company number, manned-24-hour
+flag, distance to shore, water depth, rig count, power source, oil/gas/condensate
+and equipment flags, bed count, block, lease, area and district. Not recovered
+and not fabricated: `NAICS_CODE`, `NAICS_DESC`, `OWNER`, `POSREL`, `GlobalID`,
+`VAL_METHOD`, `VAL_DATE` and `PLATFRMID`. `OPERNAME` maps only to the MMS company
+number, not a company-name lookup. `NOSTR` can be derived from the structure
+rows but is not published. `SOURCE`/`SOURCEDATE` are replaced by producer page
+update and row revision evidence, not ORNL lineage.
+
+## Limits
+
+The historical ORNL schema and payload were never accessible, so this is a
+changed-scope product, not a byte-for-byte reconstruction. Coverage is limited
+to the two producer regions. The ASCII location tables do not publish a datum;
+the file's EPSG:4267 is proposed and unaccepted. Coordinates are not repaired,
+reprojected or geocoded. Source release, schema/ID, coverage, datum, rights and
+release acceptance remain false, and the refresh schedule is stopped.
+
+## Feasibility evidence (2026-11-15)
 
 **Public producer constituents are inspectable and recover substantially more
 than coordinates.** BSEE Gulf and BOEM Pacific master tables contain staffing,
@@ -190,7 +258,8 @@ with regional scope, coordinate treatment, source membership and enrichment
 mappings explicitly chosen by a maintainer. It cannot silently replace historical
 `oil-and-natural-gas-platforms` releases. If a pilot is authorized later, reuse
 existing OCS adapters; `boem_ocs_wells.py` concerns wells, not interchangeable
-platform entities. No composite or new runtime is implemented by this research.
+platform entities. The feasibility research did not implement a composite; #1054
+adds the unapproved draft composite described above.
 
 ## Rights, checks and remaining work
 
@@ -206,9 +275,9 @@ provider contacted or credential gate bypassed.
 Verification performed: complete ZIP retrieval, byte counts/SHA-256, ZIP member
 readback, physical DBF descriptors/counts, fixed-width layout parsing, CSV row
 widths, complete-table key/null/date/range checks and the set comparisons above.
-Scratch scripts and payloads remain outside Git. No dataset tests or Dagster
-materializations were run because only this source note changes; no claims of
-runtime execution, source acceptance or parity are made.
+Scratch scripts and payloads remain outside Git. The #1054 draft adds focused
+unit tests and a live capture; the PR records the exact run evidence. No source
+acceptance or parity is claimed.
 
 Research deliverable #961 is reviewable without a human access grant. Remaining
 comparisons require an authoritative ORNL schema/payload and access to the migrated
