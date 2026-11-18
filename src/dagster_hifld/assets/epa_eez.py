@@ -20,3 +20,8 @@ def epa_eez_full_quality(epa_eez:dict):
 
 epa_eez_draft_job=define_asset_job('epa_eez_draft_refresh',selection=AssetSelection.assets(epa_eez))
 epa_eez_draft_schedule=ScheduleDefinition(name='epa_eez_draft_refresh_schedule',job=epa_eez_draft_job,cron_schedule='0 9 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [epa_eez]
+ASSET_CHECKS = [epa_eez_full_quality]
+JOBS = [epa_eez_draft_job]
+SCHEDULES = [epa_eez_draft_schedule]

@@ -86,3 +86,8 @@ principal_ports_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [principal_ports_usace]
+ASSET_CHECKS = [principal_ports_source_complete]
+JOBS = [principal_ports_draft_job]
+SCHEDULES = [principal_ports_draft_schedule]

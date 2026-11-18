@@ -81,3 +81,8 @@ bts_air_truck_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [bts_intermodal_freight_air_to_truck]
+ASSET_CHECKS = [bts_intermodal_freight_air_to_truck_complete]
+JOBS = [bts_air_truck_draft_job]
+SCHEDULES = [bts_air_truck_draft_schedule]

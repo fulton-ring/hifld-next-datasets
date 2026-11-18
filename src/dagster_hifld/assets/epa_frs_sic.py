@@ -87,3 +87,8 @@ epa_frs_sic_codes_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [epa_frs_sic_codes]
+ASSET_CHECKS = [epa_frs_sic_codes_complete, epa_frs_sic_codes_publication_gates_pending]
+JOBS = [epa_frs_sic_codes_draft_job]
+SCHEDULES = [epa_frs_sic_codes_draft_schedule]

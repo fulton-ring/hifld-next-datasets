@@ -10,7 +10,6 @@ from dagster_hifld.assets.discovery import discovered, unique
 from dagster_hifld.assets.smithsonian_holocene import smithsonian_holocene_volcanoes
 from dagster_hifld.assets.ems_stations import usgs_ems_stations
 from dagster_hifld.assets.fema_regional_offices import fema_regional_offices
-from dagster_hifld.assets.epa_icis_wastewater import epa_icis_wastewater_treatment_plants
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_ingest
 from dagster_hifld.assets.fuds_irm_property_boundary import fuds_irm_property_boundary_ingest
 from dagster_hifld.assets.national_inventory_of_dams import national_inventory_of_dams_ingest
@@ -31,13 +30,9 @@ from dagster_hifld.assets.census_block_groups import census_bureau_block_groups
 from dagster_hifld.assets.census_tracts import census_bureau_tracts
 from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_assets
 from dagster_hifld.assets.bts import bts_amtrak_stations
-from dagster_hifld.assets.bts_rail_tofc_cofc import bts_intermodal_freight_rail_tofc_cofc
-from dagster_hifld.assets.bts_marine_roro import bts_intermodal_freight_marine_roll_on_roll_off
 from dagster_hifld.assets.national_transit_map_stops import national_transit_map_stops
 from dagster_hifld.assets.fuel_stations import bts_alternative_fueling_stations
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
-from dagster_hifld.assets.fdic_locations import fdic_locations_official
-from dagster_hifld.assets.fema_regions import fema_regions_official
 from dagster_hifld.assets.fuds_division_boundaries import fuds_program_division_boundaries
 from dagster_hifld.assets.epa_frs_naics_powerplants import epa_frs_naics_powerplants
 from dagster_hifld.assets.epa_regions import epa_regions
@@ -67,7 +62,6 @@ from dagster_hifld.assets.shoreline_construction_lines_usace_ienc import shoreli
 from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
 from dagster_hifld.assets.secondary_school_districts import census_secondary_school_districts
-from dagster_hifld.assets.principal_ports import principal_ports_usace
 from dagster_hifld.assets.unified_school_districts import census_unified_school_districts
 from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
 from dagster_hifld.assets.usace_hulke_areas import usace_hulke_areas_usace_ienc
@@ -113,21 +107,13 @@ from dagster_hifld.assets.land_region_areas_usace_ienc import (
 from dagster_hifld.assets.building_locations_usace_ienc import building_locations_usace_ienc
 from dagster_hifld.assets.courthouses_usgs import courthouses_usgs
 from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
-from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_facilities
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
 from dagster_hifld.assets.epa_frs_interest_contact import epa_frs_interest_contact
-from dagster_hifld.assets.epa_rcra_tsd import epa_rcra_treatment_storage_and_disposal_facilities
 from dagster_hifld.assets.docks import docks_usace_bts
 from dagster_hifld.assets.usace_depth_areas import usace_depth_areas_usace_ienc
-from dagster_hifld.assets.epa_frs_tri import epa_frs_toxic_release_inventory
-from dagster_hifld.assets.epa_frs_sic import epa_frs_sic_codes
-from dagster_hifld.assets.epa_tsca import epa_frs_toxic_substances_control_act_tsca
-from dagster_hifld.assets.epa_frs_interests import epa_frs_interests
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
-from dagster_hifld.assets.epa_eez import epa_eez
 from dagster_hifld.assets.epa_regions_with_eez import epa_regions_with_eez
 from dagster_hifld.assets.epa_large_scale import epa_large_scale_regions
-from dagster_hifld.assets.bts_air_truck import bts_intermodal_freight_air_to_truck
 from dagster_hifld.assets.national_transit_map_routes import national_transit_map_routes
 
 from dagster_hifld.assets.epa_sems import epa_sems_interests
@@ -141,13 +127,10 @@ hifld_ingest_assets = [
     bts_ferry_terminals,
     smithsonian_holocene_volcanoes,
     bts_ferry_routes,
-    fdic_locations_official,
-    fema_regions_official,
     fuds_program_division_boundaries,
     fema_regional_offices,
     epa_sems_interests,
     national_bridge_inventory,
-    epa_eez,
     epa_regions_with_eez,
     epa_large_scale_regions,
     census_elementary_districts,
@@ -166,8 +149,6 @@ hifld_ingest_assets = [
     *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
     bts_amtrak_stations,
-    bts_intermodal_freight_rail_tofc_cofc,
-    bts_intermodal_freight_marine_roll_on_roll_off,
     national_transit_map_stops,
     bts_alternative_fueling_stations,
     usace_administrative_areas_usace_ienc,
@@ -199,7 +180,6 @@ hifld_ingest_assets = [
     small_craft_facility_areas_usace_ienc,
     sloped_ground_lines_usace_ienc,
     census_secondary_school_districts,
-    principal_ports_usace,
     census_unified_school_districts,
     usace_caution_areas_usace_ienc,
     usace_pile_locations_usace_ienc,
@@ -211,7 +191,6 @@ hifld_ingest_assets = [
     usace_data_quality_areas_usace_ienc,
     usace_dumping_ground_areas_usace_ienc,
     eia_power_plants,
-    epa_icis_wastewater_treatment_plants,
     fuds_irm_property_point_ingest,
     fuds_irm_property_boundary_ingest,
     national_inventory_of_dams_ingest,
@@ -245,15 +224,8 @@ hifld_ingest_assets = [
     usace_data_coverage_areas_usace_ienc,
     docks_usace_bts,
     usace_depth_areas_usace_ienc,
-    epa_emergency_response_rmp_facilities,
     epa_frs_sic_powerplants,
     epa_frs_interest_contact,
-    epa_rcra_treatment_storage_and_disposal_facilities,
-    epa_frs_toxic_release_inventory,
-    epa_frs_sic_codes,
-    epa_frs_toxic_substances_control_act_tsca,
-    epa_frs_interests,
-    bts_intermodal_freight_air_to_truck,
     national_transit_map_routes,
     building_locations_usace_ienc,
     usace_fuds_munitions_response_sites,

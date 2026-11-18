@@ -69,3 +69,8 @@ epa_tsca_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [epa_frs_toxic_substances_control_act_tsca]
+ASSET_CHECKS = [epa_frs_tsca_complete]
+JOBS = [epa_tsca_draft_job]
+SCHEDULES = [epa_tsca_draft_schedule]

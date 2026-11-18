@@ -70,3 +70,8 @@ epa_rcra_tsd_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [epa_rcra_treatment_storage_and_disposal_facilities]
+ASSET_CHECKS = [epa_rcra_tsd_complete]
+JOBS = [epa_rcra_tsd_draft_job]
+SCHEDULES = [epa_rcra_tsd_draft_schedule]
