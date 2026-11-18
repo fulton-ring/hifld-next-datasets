@@ -117,6 +117,16 @@ def _native_points(points: list, width: int, m: bool) -> list[list]:
     return native
 
 
+def _path_coordinates(path: list) -> tuple:
+    """Fingerprint an open coordinate sequence in source order.
+
+    Null measures are represented by the WKB NaN measure and compare equal to
+    the source NaN; every other ordinate is compared by exact float value.
+    """
+    return tuple(tuple("null" if type(value) is float and math.isnan(value)
+                       else float(value).hex() for value in point) for point in path)
+
+
 def esri_polyline_wkb(geometry: dict, *, has_z: bool | None = None,
                       has_m: bool | None = None) -> bytes | None:
     """Read native straight Esri polyline paths through GDAL's ESRIJSON driver.
@@ -155,9 +165,9 @@ def esri_polyline_wkb(geometry: dict, *, has_z: bool | None = None,
     if decoded.geom_type not in ("LineString", "MultiLineString") or (decoded.has_z, decoded.has_m) != (z, m):
         raise ValueError("esri_conversion_dimension_or_type_drift")
     parts = decoded.geoms if decoded.geom_type == "MultiLineString" else [decoded]
-    output_paths = [tuple(tuple(point) for point in part.coords) for part in parts]
-    source_paths = [tuple(tuple(point) for point in path) for path in native_paths]
-    if Counter(source_paths) != Counter(output_paths):
+    output_paths = [_path_coordinates(list(part.coords)) for part in parts]
+    source_paths = [_path_coordinates(path) for path in native_paths]
+    if source_paths != output_paths:
         raise ValueError("esri_conversion_coordinates_changed")
     return wkb
 
