@@ -87,3 +87,11 @@ bts_national_transit_map_agencies_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+ASSET_CHECKS = [
+    bts_national_transit_map_agencies_candidate_complete,
+    bts_national_transit_map_agencies_release_gate,
+]
+INGEST_ASSETS = [bts_national_transit_map_agencies]
+JOBS = [bts_national_transit_map_agencies_draft_job]
+SCHEDULES = [bts_national_transit_map_agencies_draft_schedule]

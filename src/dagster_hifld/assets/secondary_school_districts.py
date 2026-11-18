@@ -74,3 +74,9 @@ def secondary_school_districts_draft_refresh_schedule(context):
         run_key=f"secondary-school-districts-draft-{day}",
         tags={"hifld/draft": "true", "hifld/promotion_allowed": "false"},
     )
+
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [census_secondary_school_districts]
+JOBS = [secondary_school_districts_draft_refresh_job]
+SCHEDULES = [secondary_school_districts_draft_refresh_schedule]

@@ -102,4 +102,12 @@ usace_airport_area_draft_schedule = ScheduleDefinition(
 
 usace_airport_area_drift = register_approved_baseline_drift(usace_airport_area_ienc, "usace_airport_area_drift")
 
-ASSET_CHECKS = [usace_airport_area_complete, usace_airport_area_drift]
+ASSET_CHECKS = [
+    usace_airport_area_complete,
+    usace_airport_area_quality,
+    usace_airport_area_release,
+    usace_airport_area_drift,
+]
+INGEST_ASSETS = [usace_airport_area_ienc]
+JOBS = [usace_airport_area_draft_job]
+SCHEDULES = [usace_airport_area_draft_schedule]

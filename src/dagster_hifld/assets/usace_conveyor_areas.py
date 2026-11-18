@@ -99,3 +99,6 @@ usace_conveyor_areas_draft_schedule = ScheduleDefinition(
 usace_conveyor_areas_usace_ienc_drift = register_approved_baseline_drift(usace_conveyor_areas_usace_ienc, "usace_conveyor_areas_usace_ienc_drift")
 
 ASSET_CHECKS = [usace_conveyor_areas_complete, usace_conveyor_areas_usace_ienc_drift]
+INGEST_ASSETS = [usace_conveyor_areas_usace_ienc]
+JOBS = [usace_conveyor_areas_draft_job]
+SCHEDULES = [usace_conveyor_areas_draft_schedule]

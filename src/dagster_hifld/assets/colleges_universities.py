@@ -14,3 +14,8 @@ def nces_colleges_universities(context,config:CollegesUniversitiesConfig,staging
 
 colleges_source_integrity_job=define_asset_job('colleges_source_integrity',selection=AssetSelection.assets(nces_colleges_universities))
 colleges_source_integrity_schedule=ScheduleDefinition(name='colleges_source_integrity_monthly',job=colleges_source_integrity_job,cron_schedule='0 9 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [nces_colleges_universities]
+JOBS = [colleges_source_integrity_job]
+SCHEDULES = [colleges_source_integrity_schedule]
