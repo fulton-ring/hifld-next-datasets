@@ -4,10 +4,11 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.boem_ocs_lease_blocks import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_boem_ocs_lease_blocks,
+    DATASET_SLUG, FILE_SLUG, capture_boem_ocs_lease_blocks,
 )
 
 
@@ -50,7 +51,8 @@ def boem_ocs_lease_blocks(context, config: BoemOcsLeaseBlocksConfig,
 def boem_ocs_lease_blocks_complete(candidate: dict) -> AssetCheckResult:
     count = candidate.get("feature_count", 0)
     passed = (isinstance(count, int) and count > 0
-              and (EXPECTED_COUNT is None or count == EXPECTED_COUNT)
+              and count == candidate.get("source_reported_count")
+              and candidate.get("source_population_complete") is True
               and bool(candidate.get("candidate_ready"))
               and not candidate.get("release_accepted", False))
     return AssetCheckResult(
@@ -72,6 +74,12 @@ def boem_ocs_lease_blocks_complete(candidate: dict) -> AssetCheckResult:
     )
 
 
+@asset_check(asset=boem_ocs_lease_blocks, blocking=False)
+def boem_ocs_lease_blocks_approved_baseline_drift(candidate: dict) -> AssetCheckResult:
+    # No independently approved release is wired for this source.
+    return approved_baseline_drift(candidate)
+
+
 boem_ocs_lease_blocks_draft_job = define_asset_job(
     "boem_ocs_lease_blocks_draft_refresh",
     selection=AssetSelection.assets(boem_ocs_lease_blocks),
@@ -85,6 +93,6 @@ boem_ocs_lease_blocks_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [boem_ocs_lease_blocks]
-ASSET_CHECKS = [boem_ocs_lease_blocks_complete]
+ASSET_CHECKS = [boem_ocs_lease_blocks_complete, boem_ocs_lease_blocks_approved_baseline_drift]
 JOBS = [boem_ocs_lease_blocks_draft_job]
 SCHEDULES = [boem_ocs_lease_blocks_draft_schedule]

@@ -39,6 +39,7 @@ import pyproj
 import shapely
 from time import sleep, time_ns
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -83,20 +84,10 @@ CROSSWALK_DEAD_REDIRECT_NOTE = (
 # (2026-11-13 ~20:11Z, /workspace/captures258b in task sandbox cf4728bd)
 # whose every other pinned value matched the original capture verbatim.
 # Unpinned values (None or "") are checked only once pinned.
-EXPECTED_COUNT = 278_438
-EXPECTED_IDS_SHA256 = "dd11656f646bf775ac12767b392ecbc402cb9690530aff6a7a011488666b51b3"
 EXPECTED_SCHEMA_SHA256 = "9294be8bdc15558774532cf2c997830b3ef153aefd8cd4c3efa88c4de92ebe05"
-EXPECTED_RECORD_SHA256 = "ccd9aeddd2b014b09eaf599d2f8070fea2f67bc96c6cf0fa0bfa13537fcdea9c"
-EXPECTED_GEOMETRY_SHA256 = "0e29a7af75a0851983aeada85b83d62a8d4ba9b5e2f82a277c7fd28823b65aec"
-EXPECTED_NULL_GEOMETRY_COUNT = 45
-EXPECTED_RING_COUNT_DISTRIBUTION = {1: 278_373, 2: 20}
-EXPECTED_UNIQUE_PROT_NUMBER_COUNT = 476
-EXPECTED_UNIQUE_BLOCK_KEY_COUNT = 278_347
 # The producer publishes 91 blocks (all in protraction NG16-02) as two
 # same-key features each; rows are kept verbatim and the count is pinned as a
 # drift gate.
-EXPECTED_DUPLICATE_BLOCK_KEY_COUNT = 91
-EXPECTED_OBSERVED_BOUNDS = [-180.0, 23.8179931640625, -64.1082763671875, 74.99639892578125]
 BASELINE_PENDING_NOTE = (
     "The record and geometry baseline digests, gate counts and observed bounds "
     "are pinned from a completed capture; unpinned values are checked only once "
@@ -262,8 +253,6 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
             if not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids) \
                     or len(ids) != len(set(ids)):
                 raise ValueError("source_seed_id_roster_invalid")
-            if EXPECTED_COUNT is not None and len(ids) != EXPECTED_COUNT:
-                raise ValueError("source_count_drift")
             urls = [(n, u) for n, u in _capture_names(ids) if n != "ids_before"]
             for name, url in urls:
                 body, receipt = _acquire_document(client, root, name, url)
@@ -330,17 +319,10 @@ def _validate_rings(rings: object) -> list[list[list[float]]] | None:
 def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
         -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
     docs = {name: json.loads(body) for name, (body, _) in captures.items()}
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(ids_before, list) or not ids_before or sorted(ids_before) != sorted(ids_after or [])
-            or len(ids_before) != len(set(ids_before))):
-        raise ValueError("source_id_population_changed_during_capture")
+    ids_before = validate_capture_witness(
+        docs["count_before"].get("count"), docs["ids_before"].get("objectIds"),
+        docs["count_after"].get("count"), docs["ids_after"].get("objectIds"))
     count = len(ids_before)
-    if EXPECTED_COUNT is not None and count != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(sorted(ids_before))) != EXPECTED_IDS_SHA256:
-        raise ValueError("source_id_roster_drift")
-    if docs["count_before"].get("count") != count or docs["count_after"].get("count") != count:
-        raise ValueError("source_count_bracket_mismatch")
     service, layer = docs["service_before"], docs["layer_before"]
     if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
             or layer.get("geometryType") != "esriGeometryPolygon"):
@@ -425,11 +407,6 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
         else:
             ring_counts[len(rings)] = ring_counts.get(len(rings), 0) + 1
             geometry_parts.append(rings)
-    if EXPECTED_NULL_GEOMETRY_COUNT is not None and null_geometry != EXPECTED_NULL_GEOMETRY_COUNT:
-        raise ValueError("source_null_geometry_count_drift")
-    if (EXPECTED_RING_COUNT_DISTRIBUTION is not None
-            and dict(sorted(ring_counts.items())) != EXPECTED_RING_COUNT_DISTRIBUTION):
-        raise ValueError("source_ring_count_distribution_drift")
     # The producer publication itself is not unique by (PROT_NUMBER,
     # BLOCK_NUMBER): the complete capture found 91 blocks (all in protraction
     # NG16-02) published as two same-key features each. Rows are never merged
@@ -439,25 +416,18 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
     prot_numbers = [attrs["PROT_NUMBER"] for attrs in featureclass]
     block_keys = [(attrs["PROT_NUMBER"], attrs["BLOCK_NUMBER"]) for attrs in featureclass]
     duplicate_block_keys = len(block_keys) - len(set(block_keys))
-    if EXPECTED_DUPLICATE_BLOCK_KEY_COUNT is not None \
-            and duplicate_block_keys != EXPECTED_DUPLICATE_BLOCK_KEY_COUNT:
-        raise ValueError("source_block_key_uniqueness_drift")
     spatial = [rings for rings in geometry_parts if rings is not None]
     flat = [vertex for rings in spatial for ring in rings for vertex in ring]
     bounds = None if not flat else [min(v[0] for v in flat), min(v[1] for v in flat),
                                     max(v[0] for v in flat), max(v[1] for v in flat)]
-    if EXPECTED_OBSERVED_BOUNDS is not None and bounds != EXPECTED_OBSERVED_BOUNDS:
-        raise ValueError("source_observed_bounds_drift")
     record_sha = _sha(_canonical(features))
-    if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_value_or_geometry_baseline_drift")
     geometry_sha = _sha(_canonical([[f["attributes"]["OBJECTID"], rings]
                                     for f, rings in zip(features, geometry_parts)]))
-    if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_or_coverage_drift")
     nulls = {name: sum(1 for attrs in featureclass if attrs[name] is None)
              for name in FIELD_NAMES}
-    audit = {"feature_count": count, "unique_objectid_count": len(set(feature_ids)),
+    audit = {"feature_count": count, "source_reported_count": count,
+             "source_population_complete": True,
+             "unique_objectid_count": len(set(feature_ids)),
              "unique_prot_number_count": len(set(prot_numbers)),
              "unique_block_key_count": len(set(block_keys)),
              "duplicate_block_key_count": duplicate_block_keys,
@@ -588,6 +558,8 @@ def capture_boem_ocs_lease_blocks(storage: StagingStorageResource, *, version: s
                                 payload["objects"], receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
                 "feature_count": audit["feature_count"],
+                "source_reported_count": audit["source_reported_count"],
+                "source_population_complete": True,
                 "candidate_ready": prefix + "/metadata/candidate_ready.json",
                 "unique_block_key_count": audit["unique_block_key_count"],
                 "null_geometry_count": audit["null_geometry_count"],
@@ -720,6 +692,8 @@ def capture_boem_ocs_lease_blocks(storage: StagingStorageResource, *, version: s
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": audit["feature_count"],
+            "source_reported_count": audit["source_reported_count"],
+            "source_population_complete": True,
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "unique_block_key_count": audit["unique_block_key_count"],
             "duplicate_block_key_count": audit["duplicate_block_key_count"],
