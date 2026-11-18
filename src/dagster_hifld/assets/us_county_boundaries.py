@@ -78,3 +78,8 @@ us_county_boundaries_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [us_county_boundaries_census]
+ASSET_CHECKS = [us_county_boundaries_source_complete]
+JOBS = [us_county_boundaries_draft_job]
+SCHEDULES = [us_county_boundaries_draft_schedule]

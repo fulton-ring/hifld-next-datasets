@@ -53,3 +53,8 @@ plate_boundaries_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [plate_boundaries_usgs]
+ASSET_CHECKS = [plate_boundaries_population_complete]
+JOBS = [plate_boundaries_draft_job]
+SCHEDULES = [plate_boundaries_draft_schedule]

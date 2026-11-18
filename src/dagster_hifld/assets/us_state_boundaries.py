@@ -78,3 +78,8 @@ us_state_boundaries_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [us_state_boundaries_census]
+ASSET_CHECKS = [us_state_boundaries_source_complete]
+JOBS = [us_state_boundaries_draft_job]
+SCHEDULES = [us_state_boundaries_draft_schedule]

@@ -183,6 +183,7 @@ class PublishTests(PublicationMechanicsMixin, unittest.TestCase):
 
     def test_copy_version_files_validates_archive_before_deleting_published_prefix(self):
         staging = Mock()
+        staging.object_exists.return_value = False  # No authored source manifests in this archive fixture.
         staging.list_keys.return_value = [
             "dataset-a/file-a/v1/file_geodatabase/source.gdb/table"
         ]

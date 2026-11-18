@@ -37,7 +37,6 @@ PUBLISHER = "Bureau of Safety and Environmental Enforcement, Office of Technical
 MAPPING_URL = "https://www.data.bsee.gov/Main/Mapping.aspx"
 METADATA_URL = "https://www.data.bsee.gov/Mapping/Files/platform_meta.html"
 SOURCE_URL = "https://www.data.bsee.gov/Mapping/Files/platform.zip"
-EXPECTED_COUNT = 7317
 MAX_BODY_BYTES = 32_000_000
 PHYSICAL_FIELDS = ["STRUCTURE_", "COMPLEX_ID", "STRUCTURE1", "INSTALL_DA", "REMOVAL_DA"]
 
@@ -91,9 +90,12 @@ def _validate_capture(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
     scope_text = "Only platforms in the Gulf of Mexico, Federal Outer Continental Shelf (OCS) waters are included."
     if ("Publication_Date: 20260302" not in metadata or scope_text not in metadata
             or "Maintenance_and_Update_Frequency: Monthly" not in metadata
-            or "Point_and_Vector_Object_Count: 7317" not in metadata
             or "Horizontal_Datum_Name: D North American 1927" not in metadata):
         raise ValueError("official_platform_metadata_contract_drift")
+    count_match = re.search(r"Point_and_Vector_Object_Count:\s*(\d+)", metadata)
+    if count_match is None or int(count_match.group(1)) < 1:
+        raise ValueError("official_platform_metadata_contract_drift")
+    source_count = int(count_match.group(1))
     archive = captures["platform"][0]
     with tempfile.TemporaryDirectory(prefix="bsee-ocs-platform-") as temp:
         root = Path(temp)
@@ -121,13 +123,13 @@ def _validate_capture(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
                   {"name":"STRUCTURE1","type":"C","width":15,"scale":0},
                   {"name":"INSTALL_DA","type":"D","width":8,"scale":0},
                   {"name":"REMOVAL_DA","type":"D","width":8,"scale":0}]
-    if dbf_fields!=expected_dbf or int.from_bytes(dbf[4:8],"little")!=EXPECTED_COUNT:
+    if dbf_fields!=expected_dbf or int.from_bytes(dbf[4:8],"little")!=source_count:
         raise ValueError("source_dbf_physical_schema_drift")
     if list(frame.columns) != [*PHYSICAL_FIELDS, "geometry"]:
         raise ValueError("source_field_roster_drift")
     if list(info.get("ogr_types", [])) != ["OFTInteger", "OFTInteger64", "OFTString", "OFTDate", "OFTDate"]:
         raise ValueError("source_physical_field_type_drift")
-    if len(frame) != EXPECTED_COUNT or frame.crs is None or frame.crs.to_epsg() != 4267:
+    if len(frame) != source_count or frame.crs is None or frame.crs.to_epsg() != 4267:
         raise ValueError("source_count_or_crs_drift")
     if frame.geometry.isna().any() or frame.geometry.is_empty.any() or set(frame.geom_type) != {"Point"}:
         raise ValueError("source_geometry_population_or_type_drift")
@@ -135,7 +137,7 @@ def _validate_capture(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
         raise ValueError("source_invalid_or_nonfinite_geometry")
     if frame["STRUCTURE_"].isna().any() or frame["COMPLEX_ID"].isna().any():
         raise ValueError("source_native_identifier_nulls")
-    if frame[["COMPLEX_ID", "STRUCTURE_"]].drop_duplicates().shape[0] != EXPECTED_COUNT:
+    if frame[["COMPLEX_ID", "STRUCTURE_"]].drop_duplicates().shape[0] != source_count:
         raise ValueError("source_native_identifier_pair_collision")
     fields = [
         {"name":"STRUCTURE_", "source_name":"STRUCTURE_NUMBER", "type":"int32", "driver_type":"OFTInteger", "dbf_type":"N", "dbf_width":5, "dbf_scale":0, "source_type":"Short"},
@@ -148,7 +150,7 @@ def _validate_capture(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
             "source_id_sha256":_sha(_canonical(sorted([[int(a),int(b)] for a,b in zip(frame.COMPLEX_ID,frame.STRUCTURE_)]))),
             "source_schema_sha256":_sha(_canonical(fields)), "source_crs_epsg":4267,
             "geometry_type":"Point", "null_geometry_count":0, "invalid_geometry_count":0,
-            "identifier_pair_unique_count":EXPECTED_COUNT,
+            "identifier_pair_unique_count":source_count, "source_count_witness":source_count, "source_population_complete":True, "source_id_roster_complete":True,
             "source_record_sha256":_sha(_canonical([[int(a),int(b),None if _null(c) else str(c),None if _null(d) else d.date().isoformat(),None if _null(e) else e.date().isoformat(),bytes(g.wkb).hex()] for a,b,c,d,e,g in frame.itertuples(index=False,name=None)])),
             "bounds":list(map(float,frame.total_bounds)), "source_metadata_publication_date":"2026-03-02",
             "source_metadata_period_end":"2026-04-01", "source_modified_is_not_release_date":True}
@@ -228,7 +230,7 @@ def capture_bsee_ocs_platforms(storage: StagingStorageResource, *, version: str,
         manifest={"schema_version":1,"approved":False,"title":"Platforms","description":description,"publisher":PUBLISHER,"agency":"Bureau of Safety and Environmental Enforcement","source_url":SOURCE_URL,"license":"https://www.usa.gov/publicdomain/label/1.0/","source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":MAPPING_URL if n=="mapping_page" else METADATA_URL if n=="platform_metadata" else SOURCE_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"https://www.usa.gov/publicdomain/label/1.0/","attribution":PUBLISHER+"; source use and rights review remain pending.","release_date":None,"release_date_unknown_reason":"BSEE page publication/currentness metadata is not independently accepted as a release contract."} for n,r in receipts.items()],"transformations":[{"operation":"BSEE_native_shapefile_to_GeoParquet_candidate","parameters":{"source_fields":"all five physical Shapefile fields retained with source names, values and types; metadata logical names documented","source_identifiers":"STRUCTURE_ and COMPLEX_ID retained unchanged; their pair is unique in this capture but identifier contract remains pending","geometry":"source NAD27 Point WKB retained without reprojection or coordinate repair","candidate_status":"unapproved; freshness, source contract, rights and release pending"}}],"lineage":"Official BSEE Mapping page advertises Platforms shapefile and describes all database platforms in GOA; official metadata states only Gulf of Mexico federal OCS platforms are included, monthly updates, and GIS coordinates are approximate and not an official record.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native point coordinates and all source Shapefile attributes retained without generalization; approval gates remain pending.","objects":[{"path":f"geoparquet/{DATASET_SLUG}.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No display generalization approved."}}
         validate_release_provenance(manifest); validate_output_policy(manifest)
         audit.update({"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"source_release_accepted":False})
-        ready={"approved":False,"version":version,"objects":{f"geoparquet/{DATASET_SLUG}.parquet":{"bytes":len(parquet),"sha256":_sha(parquet)}},"source_evidence_sha256":audit["source_evidence_sha256"],"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+        ready={"approved":False,"version":version,"objects":{f"geoparquet/{DATASET_SLUG}.parquet":{"bytes":len(parquet),"sha256":_sha(parquet)}},"source_evidence_sha256":audit["source_evidence_sha256"],"source_count_witness":audit["source_count_witness"],"source_population_complete":True,"source_id_roster_complete":True,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
         outputs={f"geoparquet/{DATASET_SLUG}.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n","metadata/candidate_ready.json":_canonical(ready)+b"\n"}
         outputs.update(raw_objects); outputs.update({f"raw/{n}.receipt.json":_canonical(r)+b"\n" for n,r in receipts.items()})
     except Exception as exc:
@@ -249,7 +251,7 @@ def capture_bsee_ocs_platforms(storage: StagingStorageResource, *, version: str,
             raise ValueError("cached_first_candidate_identity_or_source_changed")
         # Preserve the original receipt timestamps on byte-identical replay.
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],payload["objects"],payload["capture_receipts"])
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"source_evidence_sha256":audit["source_evidence_sha256"],"release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False}
+        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_count_witness"],"source_count_witness":audit["source_count_witness"],"source_population_complete":True,"source_id_roster_complete":True,"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"source_evidence_sha256":audit["source_evidence_sha256"],"release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False}
     for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
     descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
     for name,d in descriptors.items():
@@ -260,5 +262,5 @@ def capture_bsee_ocs_platforms(storage: StagingStorageResource, *, version: str,
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
     )
-    (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"feature_count":EXPECTED_COUNT,"source_evidence_sha256":audit["source_evidence_sha256"],"receipts":receipts})+b"\n")
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_evidence_sha256":audit["source_evidence_sha256"],"release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"capture_directory":str(root)}
+    (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"feature_count":audit["source_count_witness"],"source_count_witness":audit["source_count_witness"],"source_population_complete":True,"source_id_roster_complete":True,"source_evidence_sha256":audit["source_evidence_sha256"],"receipts":receipts})+b"\n")
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_count_witness"],"source_count_witness":audit["source_count_witness"],"source_population_complete":True,"source_id_roster_complete":True,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_evidence_sha256":audit["source_evidence_sha256"],"release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"capture_directory":str(root)}
