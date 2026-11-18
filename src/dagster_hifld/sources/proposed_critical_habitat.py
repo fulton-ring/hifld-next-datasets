@@ -37,6 +37,7 @@ from dagster_hifld.sources.capture_common import (
     STAGED_RELEASE_DERIVATIVE_NAMES, candidate_prefix, content_derived_version,
     processing_identity, validate_staged_release_derivatives, write_immutable,
 )
+from dagster_hifld.sources.arcgis_layer import layer_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
@@ -220,19 +221,13 @@ def _schema(layer: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _urls(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("portal_item", f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"),
-            ("service_before", SERVICE_URL + "?f=pjson"), ("layer_before", LAYER_URL + "?f=pjson"),
-            ("count_before", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnCountOnly":"true", "f":"json"})),
-            ("ids_before", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"}))]
-    for page, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        params = {"objectIds": ",".join(map(str, ids[start:start + PAGE_SIZE])), "outFields":"*",
-                  "returnGeometry":"true", "returnTrueCurves":"true", "returnZ":"true", "returnM":"true",
-                  "outSR":"3857", "orderByFields":"OBJECTID ASC", "f":"json"}
-        urls.append((f"page_{page:04d}", LAYER_URL + "/query?" + urlencode(params)))
-    urls += [("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson"),
-             ("count_after", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnCountOnly":"true", "f":"json"})),
-             ("ids_after", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"}))]
-    return urls
+    """Return the ordered layer capture roster for the discovered IDs."""
+    return layer_capture_roster(
+        ids, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(("portal_item", f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"),),
+        page_params={"returnTrueCurves": "true", "returnZ": "true", "returnM": "true", "outSR": "3857"},
+        page_namer=lambda index, page_ids: f"page_{index:04d}",
+        after_order=("layer_after", "service_after", "count_after", "ids_after"))
 
 
 def _esri_type(field: dict[str, Any]) -> pa.DataType:
