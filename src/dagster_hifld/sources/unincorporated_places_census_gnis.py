@@ -80,6 +80,7 @@ from dagster_hifld.sources.capture_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "unincorporated-places-census-1"
 FILE_SLUG = DATASET_SLUG
