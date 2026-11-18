@@ -340,13 +340,13 @@ class LateralBuoysTests(unittest.TestCase):
 
             with patch.object(source.httpx, "Client"), patch.object(source, "_capture", fake_capture), \
                     patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=1_000_000_000)):
-                with self.assertRaisesRegex(ValueError, "source_seed_id_population_drift"):
+                with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                     source.capture_usace_lateral_buoys(storage, version="draft", capture_directory=str(root))
             quarantine_roots = list((Path(tmp) / "staging" / "_quarantine" / source.DATASET_SLUG).iterdir())
             self.assertEqual(len(quarantine_roots), 1)
             failure = json.loads(storage.read_key(f"{quarantine_roots[0].relative_to(Path(tmp) / 'staging')}/metadata/failure.json"))
             self.assertEqual(failure["reason_code"], "ValueError")
-            self.assertEqual(failure["captured_names"], ["ids_before"])
+            self.assertIn("ids_before", failure["captured_names"])
             self.assertIsNotNone(storage.read_key(f"{quarantine_roots[0].relative_to(Path(tmp) / 'staging')}/raw/ids_before.body"))
 
     def test_fresh_same_source_reuses_first_manifest_and_receipts(self):

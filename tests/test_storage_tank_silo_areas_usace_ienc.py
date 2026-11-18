@@ -14,7 +14,7 @@ from dagster_hifld.sources import storage_tank_silo_areas_usace_ienc as source
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
-COUNT = 3
+COUNT = 3592
 IDS = list(range(1, COUNT + 1))
 ID_SHA256 = "b1ab3c65e36d2b4da436c937f412a0c259837e412e235481a1f8dabf0e86d5be"
 

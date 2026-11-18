@@ -116,7 +116,8 @@ def _validate_replay_budget(root: Path, *, capture_max_bytes: int,
     total = _capture_disk_bytes(root)
     if total > capture_max_bytes or total > MAX_CAPTURE_BYTES:
         raise ValueError("retained_capture_exceeds_total_byte_budget")
-    for name in CAPTURE_NAMES:
+    for body_path in root.glob("*.body"):
+        name = body_path.name.removesuffix(".body")
         limit = layer_response_max_bytes if name in {"layer_before", "layer_after"} else response_max_bytes
         for suffix in ("wire", "body"):
             path = root / f"{name}.{suffix}"
@@ -297,7 +298,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     feature_id_values = [row["attributes"]["Feature_ID"] for row in features]
     source_dates = [row["attributes"]["Source_Date"] for row in features
                     if row["attributes"]["Source_Date"] is not None]
-    audit = {"source_feature_count": len(features), "source_id_sha256": EXPECTED_ID_SHA256,
+    audit = {"source_feature_count": len(features), "source_id_sha256": _sha(_canonical(sorted(ids))),
              "source_id_min": min(ids), "source_id_max": max(ids),
              "source_schema_sha256": schema_sha, "source_record_sha256": records_sha,
              "source_geometry_sha256": geometry_sha,
