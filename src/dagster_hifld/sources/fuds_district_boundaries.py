@@ -10,14 +10,16 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
 
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
+
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -57,35 +59,19 @@ def _arrow_type(field: dict) -> pa.DataType:
     }[field["type"]]
 
 
-def _ring_area(ring: list[list[float]]) -> float:
-    x0, y0 = ring[0]
-    return math.fsum((ring[i][0] - x0) * (ring[i + 1][1] - y0)
-                     - (ring[i][1] - y0) * (ring[i + 1][0] - x0)
-                     for i in range(len(ring) - 1)) / 2
-
-
 def _esri_polygon(geometry: dict) -> MultiPolygon:
+    """Convert Esri rings through the shared GDAL converter without repair."""
     rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise ValueError("source_polygon_rings_missing")
-    shells, holes = [], []
     for ring in rings:
         if (not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]
                 or any(not isinstance(p, list) or len(p) != 2 or
                        any(type(v) not in (int, float) or not math.isfinite(v) for v in p)
                        for p in ring)):
             raise ValueError("source_polygon_ring_or_dimensions_invalid")
-        polygon = Polygon(ring)
-        (shells if _ring_area(ring) < 0 else holes).append((ring, polygon))
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    assigned: dict[int, list] = {i: [] for i in range(len(shells))}
-    for ring, hole in holes:
-        parents = [(shell.area, i) for i, (_, shell) in enumerate(shells) if shell.contains(hole)]
-        if not parents:
-            raise ValueError("source_polygon_hole_without_containing_shell")
-        assigned[min(parents)[1]].append(ring)
-    return MultiPolygon([Polygon(shell, assigned[i]) for i, (shell, _) in enumerate(shells)])
+    polygon = esri_polygon_geometry({"rings": rings}, has_z=False, has_m=False)
+    return polygon if polygon.geom_type == "MultiPolygon" else MultiPolygon([polygon])
 
 
 def _native_parquet(fields: list[dict], source_fields: list[dict], features: list[dict]) -> bytes:
@@ -114,7 +100,7 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
     if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
         raise ValueError("explicit_local_staging_resource_required")
-    root = Path(capture_directory or "/tmp/hifld-native-reconstruction/94/captures") / version
+    root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "94", "captures"))) / version
     root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict]] = {}
 

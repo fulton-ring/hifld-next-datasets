@@ -1,11 +1,15 @@
 """Explicit unapproved ingest asset for the FHWA National Tunnel Inventory."""
-from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
+from dagster import (
+    AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
+    ScheduleDefinition, asset, asset_check, define_asset_job,
+)
 
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.fhwa_tunnel_inventory import (
-    DATASET_SLUG, FILE_SLUG, EXPECTED_COUNT, capture_fhwa_tunnel_inventory,
+    DATASET_SLUG, FILE_SLUG, capture_fhwa_tunnel_inventory,
 )
 
 
@@ -18,8 +22,8 @@ class FhwaTunnelInventoryConfig(Config):
     group_name="fhwa",
     compute_kind="http",
     description=(
-        "Exact FHWA National Tunnel Inventory point layer distributed by BTS NTAD. "
-        "Draft only: source publication and compilation dates conflict; release remains blocked."
+        "Newest FHWA National Tunnel Inventory annual XML release. "
+        "Draft only: source, schema, ID, rights, mapping and release acceptance remain pending."
     ),
 )
 def fhwa_national_tunnel_inventory(context, config: FhwaTunnelInventoryConfig,
@@ -37,22 +41,33 @@ def fhwa_national_tunnel_inventory(context, config: FhwaTunnelInventoryConfig,
 
 
 @asset_check(asset=fhwa_national_tunnel_inventory, blocking=True)
-def fhwa_national_tunnel_inventory_release_gate(candidate: dict) -> AssetCheckResult:
-    return AssetCheckResult(
-        passed=False,
-        metadata={
-            "complete_source_population": candidate.get("feature_count", 0) == EXPECTED_COUNT,
-            "source_release_accepted": False,
-            "source_edition_accepted": False,
-            "schema_contract_accepted": False,
-            "id_contract_accepted": False,
-            "rights_accepted": False,
-            "mapping_approved": False,
-            "quality_check_passed": False,
-            "release_accepted": False,
-        },
-        description="Blocked pending FHWA confirmation of source edition chronology and explicit release approvals.",
-    )
+def fhwa_national_tunnel_inventory_complete(candidate: dict) -> AssetCheckResult:
+    count = candidate.get("feature_count")
+    passed = (type(count) is int and count > 0
+              and candidate.get("source_population_complete") is True)
+    return AssetCheckResult(passed=passed, metadata={
+        "complete_source_population": count if count is not None else "missing",
+        "source_population_complete": candidate.get("source_population_complete", False),
+        "source_id_sha256": candidate.get("source_id_sha256", "missing"),
+        "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
+        "source_release_year": candidate.get("source_release_year", "missing"),
+        "source_data_url": candidate.get("source_data_url", "missing"),
+        "source_release_accepted": False,
+        "source_edition_accepted": False,
+        "schema_contract_accepted": False,
+        "id_contract_accepted": False,
+        "rights_accepted": False,
+        "mapping_approved": False,
+        "quality_check_passed": False,
+        "release_accepted": False,
+    })
+
+
+@asset_check(asset=fhwa_national_tunnel_inventory, blocking=False)
+def fhwa_national_tunnel_inventory_drift(candidate: dict) -> AssetCheckResult:
+    # No independently approved release is wired for this source. Development
+    # captures and removed code pins must never masquerade as approved baselines.
+    return approved_baseline_drift(candidate)
 
 
 fhwa_tunnel_inventory_draft_job = define_asset_job(
@@ -68,6 +83,6 @@ fhwa_tunnel_inventory_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [fhwa_national_tunnel_inventory]
-ASSET_CHECKS = [fhwa_national_tunnel_inventory_release_gate]
+ASSET_CHECKS = [fhwa_national_tunnel_inventory_complete, fhwa_national_tunnel_inventory_drift]
 JOBS = [fhwa_tunnel_inventory_draft_job]
 SCHEDULES = [fhwa_tunnel_inventory_draft_schedule]

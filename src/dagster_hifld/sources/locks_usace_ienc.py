@@ -36,8 +36,8 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     processing_identity as packaged_processing_identity,
     seal_ready_candidate,
@@ -64,7 +64,7 @@ MIN_FREE_BYTES = 400_000_000
 MAX_POLL_COUNT = 10
 POLL_INTERVAL_SECONDS = 3
 MAX_POLL_ELAPSED_SECONDS = 45
-CAPTURE_ROOT = Path("/tmp/hifld-native-reconstruction/151/captures")
+CAPTURE_ROOT = default_capture_dir("hifld-native-reconstruction", "151", "captures")
 LICENSE_TEXT = (
     "USACE ArcGIS item says publicly available without use restrictions; it also "
     "notes national-scale use and possible unsuitability for local-scale mapping. "
@@ -837,7 +837,7 @@ def _load_native_table(captures: dict[str,tuple[bytes,dict]], schema: dict, ids:
     archive=captures["archive"][0]
     gdb_root,zip_audit=_safe_gdb_archive(archive)
     # The original ZIP is preserved unchanged; /vsizip reads it in place.
-    temp_dir=Path("/tmp/hifld-native-reconstruction/151/vsizip")
+    temp_dir=default_capture_dir("hifld-native-reconstruction", "151", "vsizip")
     if temp_dir.is_symlink() or ".." in temp_dir.parts or any(parent.is_symlink() for parent in temp_dir.parents):
         raise LocksQuarantineError("unsafe_native_archive_cache_root")
     temp_dir.mkdir(parents=True,exist_ok=True)

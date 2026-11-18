@@ -21,11 +21,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import capture_get, processing_identity, write_immutable
+from dagster_hifld.sources.capture_common import capture_get, processing_identity, write_immutable
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "courthouses-3"
@@ -33,7 +34,6 @@ PUBLISHER = "U.S. Geological Survey, National Structures Dataset"
 SERVICE_URL = "https://carto.nationalmap.gov/arcgis/rest/services/structures/MapServer"
 LAYER_ID = 40
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-EXPECTED_COUNT = 3713
 BATCH_SIZE = 500
 MAX_RESPONSE_BYTES = 16_000_000
 MAX_CAPTURE_BYTES = 256_000_000
@@ -225,20 +225,17 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, list[dic
     ids_before = docs["ids_before"].get("objectIds")
     ids_after = docs["ids_after"].get("objectIds")
     count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    if (not isinstance(ids_before, list) or any(type(i) is not int for i in ids_before)
-            or len(ids_before) != EXPECTED_COUNT or len(set(ids_before)) != EXPECTED_COUNT
-            or not isinstance(ids_after, list) or sorted(ids_before) != sorted(ids_after)
-            or count_before != EXPECTED_COUNT or count_after != EXPECTED_COUNT):
-        raise ValueError("courthouses_population_changed_or_incomplete")
-    ids_before = sorted(ids_before)
-    expected_page_names = {f"page_{start:05d}" for start in range(0, EXPECTED_COUNT, BATCH_SIZE)}
+    ordered_ids = validate_capture_witness(count_before, ids_before, count_after, ids_after)
+    if not ordered_ids:
+        raise ValueError("courthouses_empty_population_requires_review")
+    expected_page_names = {f"page_{start:05d}" for start in range(0, count_before, BATCH_SIZE)}
     if {name for name in docs if name.startswith("page_")} != expected_page_names:
         raise ValueError("courthouses_page_receipt_roster_drift")
     if "dimensions_probe" not in docs:
         raise ValueError("courthouses_dimensions_probe_missing")
     for name, (_body, receipt) in captures.items():
-        _validate_request_scope(name, receipt, ids_before)
-    _validate_dimensions_probe(docs["dimensions_probe"], ids_before[0])
+        _validate_request_scope(name, receipt, ordered_ids)
+    _validate_dimensions_probe(docs["dimensions_probe"], ordered_ids[0])
     features = []
     seen = set()
     names = [f["name"] for f in fields]
@@ -249,7 +246,7 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, list[dic
         _validate_page_metadata(page, name)
         rows = page.get("features")
         start = int(name.rsplit("_", 1)[1])
-        expected = ids_before[start:start + BATCH_SIZE]
+        expected = ordered_ids[start:start + BATCH_SIZE]
         if not isinstance(rows, list) or len(rows) != len(expected) or docs[name].get("exceededTransferLimit"):
             raise ValueError("courthouses_page_population_incomplete:" + name)
         for feature in rows:
@@ -286,10 +283,13 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, list[dic
                 bounds[0] = min(bounds[0], geometry["x"]); bounds[1] = min(bounds[1], geometry["y"])
                 bounds[2] = max(bounds[2], geometry["x"]); bounds[3] = max(bounds[3], geometry["y"])
             features.append(feature)
-    if seen != set(ids_before) or len(features) != EXPECTED_COUNT:
+    validate_capture_witness(count_before, ids_before, count_after, ids_after,
+                             [feature["attributes"]["OBJECTID"] for feature in features])
+    if seen != set(ordered_ids) or len(features) != count_before:
         raise ValueError("courthouses_feature_roster_mismatch")
     audit = {
-        "feature_count": len(features), "missing_geometry_objectids": missing_geometry,
+        "feature_count": len(features), "source_reported_count": count_before,
+        "missing_geometry_objectids": missing_geometry,
         "id_sha256": _sha(_canonical(sorted(seen))), "schema_sha256": _sha(_canonical(fields)),
         "record_sha256": _sha(_canonical([f["attributes"] for f in features])),
         "geometry_sha256": _sha(_canonical([f.get("geometry") for f in features])),
@@ -327,7 +327,7 @@ def _parquet(features: list[dict], fields: list[dict]) -> bytes:
     pq.write_table(table, sink, compression="zstd", use_dictionary=False)
     body = sink.getvalue()
     readback = pq.read_table(pa.BufferReader(body))
-    if readback.num_rows != EXPECTED_COUNT or readback.schema.names != EXPECTED_FIELD_NAMES + ["geometry"]:
+    if readback.num_rows != len(features) or readback.schema.names != EXPECTED_FIELD_NAMES + ["geometry"]:
         raise ValueError("courthouses_parquet_readback_schema_drift")
     if readback.column("OBJECTID").to_pylist() != [f["attributes"]["OBJECTID"] for f in features]:
         raise ValueError("courthouses_parquet_oid_parity_failure")
@@ -386,11 +386,11 @@ def capture_courthouses(storage: StagingStorageResource, *, version: str,
                 for name, url in requests:
                     captures[name] = _capture(client, url, root, name, retained)
                     retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
+                count = json.loads(captures["count_before"][0]).get("count")
                 ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids, list) or any(type(value) is not int for value in ids)
-                        or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT):
-                    raise ValueError("courthouses_initial_id_population_drift")
-                ids = sorted(ids)
+                ids = validate_capture_witness(count, ids, count, ids)
+                if not ids:
+                    raise ValueError("courthouses_empty_population_requires_review")
                 probe_url = _query({"objectIds": str(ids[0]), "outFields": "OBJECTID", "returnGeometry": "true",
                                     "returnZ": "true", "returnM": "true", "f": "json"})
                 captures["dimensions_probe"] = _capture(client, probe_url, root, "dimensions_probe", retained)
@@ -442,7 +442,7 @@ def capture_courthouses(storage: StagingStorageResource, *, version: str,
             "geometry":"Native EPSG:3857 points preserved; no reprojection, geocoding, repair, or row dropping.",
             "source_population":"Exact OBJECTID roster and count captured before and after all pages; complete current layer only.",
             "historical_comparison":"DataLumos HIFLD OPEN 2024 archive retrieval returned HTTP 403; no equivalence asserted."}}],
-        "lineage":{"layer_id":LAYER_ID,"layer_name":"Courthouses","native_crs":"EPSG:3857","feature_count":EXPECTED_COUNT,
+        "lineage":{"layer_id":LAYER_ID,"layer_name":"Courthouses","native_crs":"EPSG:3857","feature_count":len(features),
             "source_id_sha256":audit["id_sha256"],"source_schema_sha256":audit["schema_sha256"],"source_record_sha256":audit["record_sha256"],
             "source_geometry_sha256":audit["geometry_sha256"],"service_refresh_observed":service_info.get("copyrightText"),"release_date":None,
             "hifld_2024_equivalence":"unverified","observed_archive_scope":"USGS and DHS HIFLD OPEN Courthouses, DataLumos V1 (2024 data period); archive access returned 403",
@@ -465,6 +465,7 @@ def capture_courthouses(storage: StagingStorageResource, *, version: str,
         "coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     write_immutable(storage,f"{prefix}/metadata/candidate_ready.json",_canonical(ready)+b"\n")
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(features),
+        "source_reported_count":audit["source_reported_count"],
         "source_population_complete":True,"source_id_sha256":audit["id_sha256"],"source_schema_sha256":audit["schema_sha256"],
         "source_record_sha256":audit["record_sha256"],"source_geometry_sha256":audit["geometry_sha256"],
         "candidate_ready":f"{prefix}/metadata/candidate_ready.json","capture_directory":str(root),"reused":replay,

@@ -57,14 +57,13 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-import struct
 from array import array
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Mapping
 from urllib.parse import urlencode, urlsplit
 
-from shapely import from_wkb as _shapely_from_wkb
+from shapely import from_wkb as _shapely_from_wkb, is_valid_reason as _shapely_is_valid_reason
 from uuid import uuid4
 
 import httpx
@@ -72,14 +71,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_geometry import to_wkb
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -146,20 +145,19 @@ EXPECTED_NULL_GEOMETRY_COUNT = 6
 # gated, never silently coerced. The first complete capture of the maintained
 # view failed closed on these counts and they are now pinned as observed; any
 # change fails the next capture and is quarantined.
-UNUSABLE_GEOMETRY_MODES = frozenset({
-    "source_polygon_ring_degenerate", "source_polygon_exterior_missing",
-    "source_polygon_hole_unassigned",
-})
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {
-    "source_polygon_exterior_missing": 12,
-    "source_polygon_hole_unassigned": 66,
-    "source_polygon_ring_degenerate": 792,
-}
-# Producer-served polygons that form valid rings but fail OGC validity
-# (self-intersections and similar defects) are retained verbatim in the
-# candidate, never repaired; the count is pinned from the first complete
-# capture of the maintained view and any change fails the next capture.
-EXPECTED_INVALID_GEOMETRY_COUNT = 1948
+# Geometry quarantines retired by the shared GDAL Esri polygon converter
+# (issue #997): the producer's 870 rows whose rings the retired hand-written
+# assembler could not form into an OGC polygon (792 zero-area sliver rows,
+# 66 rows with a hole inside no exterior, 12 rows with no clockwise ring) now
+# convert through GDAL and are retained verbatim, counted as
+# ogc_invalid_geometry_counts instead of gated to null.
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {}
+# Producer-served polygons that fail OGC validity are retained verbatim in
+# the candidate, never repaired. The retired assembler counted only rows that
+# survived its own gating; the shared converter counts every converted row, so
+# this pin moves to the designed pending state until the next complete capture
+# re-derives it.
+EXPECTED_INVALID_GEOMETRY_COUNT: int | None = None
 EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0672, "ymin": -1733741.441300001,
                          "xmax": 20037507.067199998, "ymax": 12930675.6069}
 BASELINE_PENDING_NOTE = (
@@ -279,34 +277,25 @@ _WKB_MULTIPOLYGON = 6
 _GEOMETRY_COLUMN = "geometry"
 
 
-def _polygon_wkb(geometry: object) -> tuple[bytes | None, str | None]:
-    """WKB for one feature's Esri rings under the producer's verified ring semantics.
+def _validate_polygon_geometry(geometry: object, rings: list) -> None:
+    """Structural contract for one served polygon geometry (no assembly).
 
-    Esri JSON (verified on the 2026-11-13 probes: 4,098 rings over 3,200
-    features of the superseded service, and on the 2026-11-14 probes of this
-    view): the layer has no Z or M, every vertex carries exactly two
-    ordinates, every ring is explicitly closed, clockwise rings are exteriors
-    and counter-clockwise rings are holes. Vertices are passed to shapely
-    verbatim; exteriors with no claimable hole keep their ring order and holes
-    join their smallest containing exterior. Nothing is projected, quantized,
-    dropped or repaired. Returns the WKB plus the unusable-geometry failure
-    mode when the producer served rings that cannot form a valid OGC polygon
-    (gated to null candidate geometry, never coerced).
+    Esri JSON (verified on the 2026-11-13 probes of the superseded service and
+    on the 2026-11-14 probes of this view): the layer has no Z or M, every
+    vertex carries exactly two finite ordinates in the source lon/lat domain
+    and every ring is explicitly closed. Structurally invalid geometry refuses
+    the capture with the pinned codes. Ring orientation and hole assignment
+    are GDAL's (shared native Esri polygon conversion); OGC-invalid-but-
+    representable producer polygons are retained with a counted diagnostic.
     """
-    if geometry is None:
-        return None, None
     if not isinstance(geometry, dict) or set(geometry) - {"rings"}:
         raise PadUsProtectionError("unexpected_source_geometry_members")
-    rings = geometry.get("rings")
     if not isinstance(rings, list) or not rings:
         raise PadUsProtectionError("source_polygon_rings_missing")
-    exteriors: list[list] = []
-    holes: list[list] = []
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4:
             raise PadUsProtectionError("source_polygon_ring_invalid")
-        area = 0.0
-        for index, vertex in enumerate(ring):
+        for vertex in ring:
             if not isinstance(vertex, list) or len(vertex) != 2:
                 raise PadUsProtectionError("source_polygon_ordinate_contract_drift")
             x, y = vertex
@@ -316,42 +305,8 @@ def _polygon_wkb(geometry: object) -> tuple[bytes | None, str | None]:
                 raise PadUsProtectionError("source_polygon_ordinate_not_finite")
             if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
                 raise PadUsProtectionError("source_coordinate_range_drift")
-            nxt = ring[(index + 1) % len(ring)]
-            area += x * nxt[1] - nxt[0] * y
-        area /= 2
         if ring[0] != ring[-1]:
             raise PadUsProtectionError("source_polygon_ring_not_closed")
-        if area == 0:
-            return None, "source_polygon_ring_degenerate"
-        (exteriors if area < 0 else holes).append(ring)
-    if not exteriors:
-        return None, "source_polygon_exterior_missing"
-    shells = [(Polygon(ring), _signed_area(ring), index) for index, ring in enumerate(exteriors)]
-    # Prepared shell geometries: hole containment is queried against every
-    # exterior, and large combined features can carry many holes; preparation
-    # builds an index only and the containment results are identical.
-    for shell, _area, _index in shells:
-        shapely.prepare(shell)
-    assigned: dict[int, list] = {index: [] for index in range(len(exteriors))}
-    for hole in holes:
-        probe = Polygon(hole).representative_point()
-        candidates = [(abs(area), index) for shell, area, index in shells if shell.contains(probe)]
-        if not candidates:
-            return None, "source_polygon_hole_unassigned"
-        assigned[min(candidates)[1]].append(hole)
-    polygons = []
-    for _, _, index in sorted(shells, key=lambda item: item[2]):
-        polygons.append(Polygon(exteriors[index], assigned[index]))
-    wkb = (MultiPolygon(polygons) if len(polygons) > 1 else polygons[0]).wkb
-    return wkb, None
-
-
-def _signed_area(ring: list) -> float:
-    area = 0.0
-    for index, vertex in enumerate(ring):
-        nxt = ring[(index + 1) % len(ring)]
-        area += vertex[0] * nxt[1] - nxt[0] * vertex[1]
-    return area / 2
 
 
 def _validate_value(name: str, esri_type: str, nullable: bool, value: object) -> None:
@@ -680,7 +635,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     invalid_geometry_count = 0
     ring_count = 0
     vertex_count = 0
-    unusable_geometry: dict[str, int] = {}
+    ogc_invalid_geometry: dict[str, int] = {}
+    ogc_invalid_sample_objectids: list[int] = []
     featclass_distribution: dict[object, int] = {}
     bounds_extrema: list[float] | None = None
     page_bodies = [name for name in _expected_capture_names(EXPECTED_COUNT)
@@ -738,26 +694,22 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                                 bounds_extrema[2] = x
                             if y > bounds_extrema[3]:
                                 bounds_extrema[3] = y
-                    wkb, unusable_mode = _polygon_wkb(geometry)
-                    if unusable_mode is not None:
-                        # The producer served rings that cannot form a valid OGC
-                        # polygon: the row and its raw rings stay in the
-                        # record/geometry digests and bounds verbatim, the
-                        # candidate geometry is explicitly gated to null, and
-                        # the failure mode is counted against the pinned
-                        # family (never silently coerced).
-                        null_geometry_count += 1
-                        geometries.append(None)
-                        unusable_geometry[unusable_mode] = \
-                            unusable_geometry.get(unusable_mode, 0) + 1
-                    else:
-                        geometries.append(wkb)
-                        # OGC self-intersection and similar defects are
-                        # producer facts of the faithful capture: retained
-                        # verbatim in digests and geometry, counted against
-                        # the pinned contract, never repaired or coerced.
-                        if not _shapely_from_wkb(wkb).is_valid:
-                            invalid_geometry_count += 1
+                    _validate_polygon_geometry(geometry, rings)
+                    # Ring orientation and hole assignment are GDAL's through
+                    # the shared native Esri polygon conversion; a conversion
+                    # failure refuses the capture. OGC self-intersection and
+                    # similar defects are producer facts of the faithful
+                    # capture: retained verbatim in digests and geometry,
+                    # counted by reason, never repaired or coerced.
+                    wkb = to_wkb(geometry, GEOMETRY_TYPE, has_z=False, has_m=False)
+                    geometries.append(wkb)
+                    reason = _shapely_is_valid_reason(_shapely_from_wkb(wkb))
+                    if reason != "Valid Geometry":
+                        ogc_invalid_geometry[reason] = \
+                            ogc_invalid_geometry.get(reason, 0) + 1
+                        if len(ogc_invalid_sample_objectids) < 20:
+                            ogc_invalid_sample_objectids.append(objectid)
+                        invalid_geometry_count += 1
                     geometry_hash.update(_canonical([objectid, rings]) + b"\x00")
                 featclass = attrs["FeatClass"]
                 featclass_distribution[featclass] = \
@@ -781,11 +733,10 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             raise PadUsProtectionError("source_geometry_or_coverage_drift")
         if ids_sha != EXPECTED_IDS_SHA256 or list(ids) != roster_before:
             raise PadUsProtectionError("source_id_roster_drift")
-        if null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT + sum(unusable_geometry.values()):
+        if null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
             raise PadUsProtectionError("source_null_geometry_count_drift")
-        if unusable_geometry != EXPECTED_UNUSABLE_GEOMETRY_COUNTS:
-            raise PadUsProtectionError("source_unusable_geometry_count_drift")
-        if invalid_geometry_count != EXPECTED_INVALID_GEOMETRY_COUNT:
+        if EXPECTED_INVALID_GEOMETRY_COUNT is not None \
+                and invalid_geometry_count != EXPECTED_INVALID_GEOMETRY_COUNT:
             raise PadUsProtectionError("source_invalid_geometry_count_drift")
         if tmp_path is not None:
             tmp_path.replace(sink_path)
@@ -806,7 +757,9 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "null_geometry_count": null_geometry_count, "parquet_path": sink_path,
             "invalid_geometry_count": invalid_geometry_count,
             "ring_count": ring_count, "vertex_count": vertex_count,
-            "unusable_geometry": unusable_geometry,
+            "unusable_geometry": {},
+            "ogc_invalid_geometry": ogc_invalid_geometry,
+            "ogc_invalid_sample_objectids": ogc_invalid_sample_objectids,
             "featclass_distribution": featclass_distribution, "observed_bounds": bounds,
             "max_objectid": last_objectid}
 
@@ -965,7 +918,9 @@ def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, clie
         "source_feature_count": EXPECTED_COUNT,
         "source_max_objectid": extracted["max_objectid"],
         "source_null_geometry_count": extracted["null_geometry_count"],
-        "source_unusable_geometry_counts": dict(sorted(extracted["unusable_geometry"].items())),
+        "source_unusable_geometry_counts": {},
+        "source_ogc_invalid_geometry_counts": dict(sorted(extracted["ogc_invalid_geometry"].items())),
+        "source_ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_sample_objectids"],
         "source_invalid_geometry_count": extracted["invalid_geometry_count"],
         "resumed_pages": len(pages),
         "first_captured_at": first_captured_at, "last_captured_at": last_captured_at,
@@ -1010,7 +965,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "source_vertex_count": extracted["vertex_count"],
         "source_max_objectid": extracted["max_objectid"],
         "source_featclass_distribution": extracted["featclass_distribution"],
-        "unusable_geometry_feature_counts": dict(sorted(extracted["unusable_geometry"].items())),
+        "unusable_geometry_feature_counts": {},
+        "ogc_invalid_geometry_counts": dict(sorted(extracted["ogc_invalid_geometry"].items())),
+        "ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_sample_objectids"],
         "observed_bounds": extracted["observed_bounds"],
         "declared_layer_extent_3857": EXPECTED_LAYER_EXTENT,
         "source_fields": extracted["fields"],
@@ -1300,10 +1257,8 @@ def capture_pad_us_protection_mechanism_category(storage: StagingStorageResource
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise PadUsProtectionError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory \
-        else Path("/data/workspace/scratch/pad-us-protection-mechanism-category/captures")
     capture_root = Path(capture_directory).absolute() if capture_directory \
-        else (attempt_root / f"{version}-{uuid4().hex}").absolute()
+        else (default_capture_dir(DATASET_SLUG, "captures") / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise PadUsProtectionError("unsafe_capture_directory")

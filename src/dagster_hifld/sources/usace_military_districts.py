@@ -20,16 +20,16 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_retained
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
-from dagster_hifld.sources.levee_areas_usace_ienc import _esri_polygon_wkb
-from dagster_hifld.sources.usace_obstruction_lines import (
+from dagster_hifld.sources.arcgis_layer import esri_polygon_wkb as _esri_polygon_wkb
+from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture_identity, _load_capture, _sha,
-    _validate_spatial_reference,
+    _validate_spatial_reference, layer_capture_roster,
 )
 
 DATASET_SLUG = "usace-military-districts"
@@ -135,20 +135,11 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[byt
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("catalog_item", CATALOG_ITEM_URL),
-            ("service_before", SERVICE_URL + "?f=pjson"), ("layer_before", LAYER_URL + "?f=pjson"),
-            ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-            ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds": ",".join(map(str, page_ids)),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
-                 ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                 ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                 ("service_after", SERVICE_URL + "?f=pjson")])
-    return urls
+    return layer_capture_roster(
+        ids, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(("catalog_item", CATALOG_ITEM_URL),),
+        page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"},
+    )
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
@@ -434,7 +425,7 @@ def capture_usace_military_districts(storage: StagingStorageResource, *, version
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/353/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "353", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)

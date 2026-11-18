@@ -14,15 +14,15 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity, write_immutable
+from dagster_hifld.sources.capture_common import processing_identity, write_immutable
 from dagster_hifld.sources.esri_common import sha as _sha
 
 DATASET_SLUG = "docks-usace-bts"
 FILE_SLUG = DATASET_SLUG
 LAYER_URL = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/Docks/FeatureServer/0"
-EXPECTED_COUNT = 20563
 PAGE_SIZE = 2000
 MAX_BYTES = 384_000_000
 _STRINGS = {"esriFieldTypeString", "esriFieldTypeGUID", "esriFieldTypeGlobalID"}
@@ -274,12 +274,10 @@ def capture(staging, version, client=None, replay_version=None):
                                 {"f":"json", "where":"1=1", "returnCountOnly":"true"}, budget, replay_prefix).get("count")
         before_result = _request(client, staging, version, "ids_before", LAYER_URL + "/query",
                                  {"f":"json", "where":"1=1", "returnIdsOnly":"true"}, budget, replay_prefix)
-        ids = before_result.get("objectIds")
-        if before_count != EXPECTED_COUNT or not isinstance(ids, list) or len(ids) != EXPECTED_COUNT or any(type(i) is not int for i in ids):
-            raise ValueError("source_population_drift")
-        ids = sorted(ids)
-        if len(set(ids)) != len(ids):
-            raise ValueError("source_duplicate_objectid")
+        before_ids = before_result.get("objectIds")
+        ids = validate_capture_witness(before_count, before_ids, before_count, before_ids)
+        if not ids:
+            raise ValueError("source_empty_population_requires_review")
         features, pages = [], []
         for start in range(0, len(ids), PAGE_SIZE):
             wanted = ids[start:start + PAGE_SIZE]
@@ -316,8 +314,8 @@ def capture(staging, version, client=None, replay_version=None):
         after_result = _request(client, staging, version, "ids_after", LAYER_URL + "/query",
                                 {"f":"json", "where":"1=1", "returnIdsOnly":"true"}, budget, replay_prefix)
         after_ids = after_result.get("objectIds")
-        if after_count != before_count or not isinstance(after_ids, list) or sorted(after_ids) != ids:
-            raise ValueError("source_population_changed_during_capture")
+        validate_capture_witness(before_count, before_ids, after_count, after_ids,
+                                 [feature.get("attributes", {}).get("OBJECTID") for feature in features])
         source_capture_started_at = (
             json.loads(staging.read_key(f"{replay_prefix}/raw/layer.receipt.json")).get("observed_at")
             if replay_prefix else json.loads(staging.read_key(
@@ -359,7 +357,7 @@ def capture(staging, version, client=None, replay_version=None):
             "code_identity_scheme":identity.get("code_identity_scheme"),"processing_code":identity,
             "inputs":inputs,
             "transformations":[{"operation":"Esri FeatureServer complete ID roster to typed GeoJSON and native GeoParquet candidate","parameters":{"source_fields":"all 47 declared nongeometry fields retained in source order and source values","geometry":"point XY retained in EPSG:4269; WKB encoded without reprojection","source_population":"all exact ObjectIDs returned by before/after roster snapshots","acceptance":"draft only; historical HIFLD equivalence not asserted"}}],
-            "source_coverage_scope":"All 20,563 feature IDs observed in the Navigation Facilities (Dock) ArcGIS layer at capture time; geographic and historical HIFLD scope equivalence unapproved.",
+            "source_coverage_scope":f"All {len(features)} feature IDs returned by the Navigation Facilities (Dock) ArcGIS layer before and after capture; geographic and historical HIFLD scope equivalence unapproved.",
             "release_date":None,"release_date_unknown_reason":"Captured service metadata provides an edit timestamp but no producer publication/effective release date.",
             "source_acceptance":False,"rights_accepted":False,"coverage_accepted":False,"baseline":None,
             "native_crs":"EPSG:4269 (NAD83)","source_id_field":"OBJECTID","source_id_sha256":ids_sha,
@@ -381,7 +379,8 @@ def capture(staging, version, client=None, replay_version=None):
             "code_identity":identity,
             "historical_hifld_equivalence_accepted":False,"rights_accepted":False,"source_accepted":False,"release_accepted":False}))
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(features),
-            "source_population_complete":True,"source_id_sha256":ids_sha,"source_schema_sha256":schema_sha,
+            "source_reported_count":before_count,"source_population_complete":True,
+            "source_id_sha256":ids_sha,"source_schema_sha256":schema_sha,
             "source_record_sha256":source_record_sha,"native_parquet_sha256":_sha(parquet),
             "null_geometry_count":sum(feature.get("geometry") is None for feature in features),
             "invalid_coordinate_count":invalid_coordinate_count,

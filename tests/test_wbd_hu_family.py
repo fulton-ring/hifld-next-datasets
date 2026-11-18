@@ -23,8 +23,10 @@ import pyarrow.parquet as pq
 from dagster_hifld.sources import wbd_2_digit_hu as two
 from dagster_hifld.sources import wbd_12_digit_hu as twelve
 from dagster_hifld.sources import wbd_hu8_subbasin as hu8
+from shapely import from_wkb
+from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources import wbd_hu_family as family
-from dagster_hifld.sources.usace_obstruction_lines import _canonical
+from dagster_hifld.sources.arcgis_layer import _canonical
 from tests.test_wbd_2_digit_hu import (
     _documents as _two_documents,
     _seal_manifest as _seal_two_manifest,
@@ -68,15 +70,12 @@ class WbdHuFamilyParityTests(unittest.TestCase):
         return temporary.name
 
     def test_shared_primitives_are_one_implementation(self):
-        self.assertIs(two._assemble_geometry, twelve._assemble_geometry)
-        self.assertIs(two._assemble_geometry, family.assemble_geometry)
-        self.assertIs(two._signed_area, twelve._signed_area)
-        self.assertIs(two._GeometryGate, twelve._GeometryGate)
-        self.assertIs(two.GATE_MODES, family.BASE_GATE_MODES)
+        # Ring orientation and hole assignment are GDAL's through the shared
+        # native Esri polygon conversion (issue #997); the only remaining gate
+        # mode is the producer-refused attributes-only window.
         self.assertEqual(
-            twelve.GATE_MODES,
-            family.BASE_GATE_MODES | {family.REFUSED_GEOMETRY_GATE_MODE})
-        self.assertIn("source_polygon_hole_unassigned", two.GATE_MODES)
+            twelve.GATE_MODES, frozenset({family.REFUSED_GEOMETRY_GATE_MODE}))
+        self.assertEqual(two.GATE_MODES, frozenset())
         self.assertIs(two._EPSG3857_PROJJSON, twelve._EPSG3857_PROJJSON)
         self.assertIs(two.DIGEST_SEPARATOR, twelve.DIGEST_SEPARATOR)
         self.assertIs(two.METADATA_NAMES, twelve.METADATA_NAMES)
@@ -91,7 +90,8 @@ class WbdHuFamilyParityTests(unittest.TestCase):
                 [155.0, 155.0]]
         outside = [[-50.0, -50.0], [-50.0, -40.0], [-40.0, -40.0], [-40.0, -50.0],
                    [-50.0, -50.0]]
-        wkb = two._assemble_geometry([big, small, hole, outside])
+        wkb = to_wkb({"rings": [big, small, hole, outside]}, "esriGeometryPolygon",
+                     has_z=False, has_m=False)
         self.assertEqual(wkb[:5], b"\x01\x06\x00\x00\x00")
         decoded = from_wkb(wkb)
         self.assertEqual(len(decoded.geoms), 3)
@@ -127,14 +127,17 @@ class WbdHuFamilyParityTests(unittest.TestCase):
                 self.assertEqual(schema.field("geometry").type, pa.binary())
                 self.assertIn(b"geo", schema.metadata)
                 self.assertEqual(schema.field("objectid").type, pa.int64())
-                with self.assertRaisesRegex(family.GeometryGate, "source_polygon_ring_degenerate"):
-                    module._assemble_geometry([[[1.0, 2.0]] * 4])
-                with self.assertRaisesRegex(family.GeometryGate, "source_polygon_exterior_missing"):
-                    module._assemble_geometry([])
-                with self.assertRaisesRegex(family.GeometryGate,
-                                            "source_polygon_ring_self_intersecting"):
-                    module._assemble_geometry([[[0.0, 0.0], [2.0, 0.0], [0.0, 2.0],
-                                                [3.0, 2.0], [0.0, 0.0]]])
+                # GDAL retains zero-area and self-intersecting rings verbatim
+                # as OGC-invalid geometry and assembles an empty ring list as
+                # an error (issue #997 shared converter).
+                self.assertFalse(from_wkb(to_wkb({"rings": [[[1.0, 2.0]] * 4]},
+                                                 "esriGeometryPolygon",
+                                                 has_z=False, has_m=False)).is_valid)
+                with self.assertRaisesRegex(ValueError, "invalid_esri_polygon_rings"):
+                    to_wkb({"rings": []}, "esriGeometryPolygon", has_z=False, has_m=False)
+                self.assertFalse(from_wkb(to_wkb(
+                    {"rings": [[[0.0, 0.0], [2.0, 0.0], [0.0, 2.0], [3.0, 2.0], [0.0, 0.0]]]},
+                    "esriGeometryPolygon", has_z=False, has_m=False)).is_valid)
                 with self.assertRaisesRegex(ValueError, "source_page_0000_page_crs_drift"):
                     documents = (_two_documents() if module is two else _twelve_documents())
                     documents["page_0000"]["spatialReference"] = {"wkid": 4326}

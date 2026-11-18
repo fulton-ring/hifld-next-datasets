@@ -19,7 +19,7 @@ from dagster_hifld.assets.epa_frs_naics_powerplants import (
     _typed_parquet,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.native_verification import normalize_native_input
 
 TINY_ROWS = [
@@ -167,7 +167,7 @@ class EPAFRSNAICSCaptureLifecycleTests(unittest.TestCase):
             patch.object(worker, "EXPECTED_SOURCE_RECORDS_SHA256", pins["records"]),
             patch.object(worker, "EXPECTED_SOURCE_IDS_SHA256", pins["ids"]),
             patch.object(worker, "EXPECTED_SOURCE_SCHEMA_SHA256", pins["schema"]),
-            patch.object(epa_frs_common, "validate_construction_code_identity"),
+            patch.object(capture_common, "validate_construction_code_identity"),
         ]
 
     def test_repeat_live_and_both_offline_modes_reuse_the_portal_item_receipt(self):
@@ -222,13 +222,13 @@ class EPAFRSNAICSCaptureLifecycleTests(unittest.TestCase):
                                                  if name != "portal_item"},
                             "objects": {name: descriptor for name, descriptor in payload["objects"].items()
                                         if not name.startswith("raw/portal_item.")}}
-                identity = epa_frs_common.processing_identity(Path(worker.__file__).parents[3])
+                identity = capture_common.processing_identity(Path(worker.__file__).parents[3])
                 fingerprint = hashlib.sha256(_canonical(identity)).hexdigest()
                 replay_root = Path(tmp) / "replay"
                 replay_root.mkdir()
                 replay_storage = StagingStorageResource(local_dir=str(replay_root),
                                                         use_local=True, backend="local")
-                epa_frs_common.seal_ready_candidate(replay_storage, state_key, version, fingerprint,
+                capture_common.seal_ready_candidate(replay_storage, state_key, version, fingerprint,
                                                     stripped)
                 with self.assertRaisesRegex(worker.EPAFRSNAICSError,
                                             "cached_candidate_roster_invalid"):

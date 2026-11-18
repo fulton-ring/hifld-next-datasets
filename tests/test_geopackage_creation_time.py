@@ -87,7 +87,6 @@ CASES = (
         "multi",
         "2024-01-01T00:00:00.000Z",
     ),
-    ("epa_regions", "write_gpkg", "geometry", "multi", "2000-01-01T00:00:00.000Z"),
     (
         "historical_tsunami_events",
         "write_gpkg",
@@ -121,13 +120,6 @@ FIONA_CASES = (
     ),
     (
         "current_dart",
-        "write_canonical_geopackage",
-        True,
-        "point",
-        "2000-01-01T00:00:00.000Z",
-    ),
-    (
-        "ferry_terminals",
         "write_canonical_geopackage",
         True,
         "point",

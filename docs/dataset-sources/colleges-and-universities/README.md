@@ -104,7 +104,7 @@ field dictionary and documented join keys first. Source/product, rights,
 contract/baseline and release acceptance remain pending; no acceptance is granted
 by the source check or this documentation correction.
 
-With fresh isolated `DAGSTER_HOME`, `HIFLD_STAGING_DIR` and `HIFLD_DATASETS_DIR`, and cloud bucket variables unset, run `uv run dagster job execute -m dagster_hifld.definitions -a defs -j colleges_source_integrity`. Optionally set `HIFLD_COLLEGES_CAPTURE_DIR` to the complete restored capture. The monthly schedule defaults STOPPED. Focused tests: `uv run python -m unittest discover -s tests -p 'test_colleges*.py'`; set `COLLEGES_TEST_CAPTURE_DIR` for complete-real cases.
+With fresh isolated `DAGSTER_HOME`, `HIFLD_STAGING_DIR` and `HIFLD_DATASETS_DIR`, and cloud bucket variables unset, run `uv run dagster job execute -m dagster_hifld.definitions -a defs -j colleges_source_integrity`. Optionally pass the complete restored capture via the `colleges_source_integrity` job's `capture_directory` run config. The monthly schedule defaults STOPPED. Focused tests: `uv run python -m unittest discover -s tests -p 'test_colleges*.py'`; set `COLLEGES_TEST_CAPTURE_DIR` for complete-real cases.
 
 Checksummed artifacts under the coordinator's `/workspace/work/hifld-coordinator/38/cleanup/` preserve full inputs, baselines, reports, replay scripts, native outputs and construction contexts:
 

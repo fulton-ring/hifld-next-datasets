@@ -16,6 +16,7 @@ from dagster_hifld.assets.usace_owned_reservoirs import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import usace_owned_reservoirs as source
+from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
@@ -93,7 +94,8 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
         if gates.get(oid) == "source_polygon_assembly_invalid":
             rings = self._overlapping_shells(oid)
         if oid not in gates:
-            decoded = from_wkb(source._assemble_geometry({"rings": rings}))
+            decoded = from_wkb(to_wkb({"rings": rings}, "esriGeometryPolygon",
+                                      has_z=False, has_m=False))
             attrs["Shape__Area"] = decoded.area
             attrs["Shape__Length"] = decoded.length
         else:
@@ -172,11 +174,8 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
                          "39d8c519a236ab6543b4c96d831196f3eb2a4bc3ce79c86d8cb95192dac0aa45")
         self.assertEqual(source.EXPECTED_GEOMETRY_SHA256,
                          "2be036dbdd8ef51c9b6a1ff5d7c9d0bd827d6a2f52f6de3538380fd2bc09ed03")
-        self.assertEqual(source.EXPECTED_NULL_GEOMETRY_COUNT, 16)
-        self.assertEqual(source.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {
-            "source_polygon_ring_degenerate": 6,
-            "source_polygon_ring_self_intersecting": 9,
-            "source_polygon_assembly_invalid": 1})
+        self.assertEqual(source.EXPECTED_NULL_GEOMETRY_COUNT, 0)
+        self.assertEqual(source.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
         self.assertEqual(source.OBSERVED_VERTEX_COUNT, 2134520)
         self.assertEqual(source.OBSERVED_WINDING_COUNTS, {"cw_shells": 3971, "ccw_holes": 8461})
         self.assertEqual(source.EXPECTED_LAST_DATA_EDIT_UTC, "2024-04-02T15:55:29.726000Z")
@@ -225,43 +224,33 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
                          "e8abf1e31e2644458a9cd62145f9048c")
         self.assertIn("USACE-hosted services7 FeatureServer", audit["source_coverage_scope"])
         self.assertEqual(audit["source_last_data_edit_utc"], "2024-04-02T15:55:29.726000Z")
-        gated = [feature for feature in features if "_gate" in feature]
-        self.assertEqual(len(gated), 16)
-        self.assertEqual(sorted(feature["attributes"]["OBJECTID"] for feature in gated),
-                         list(self._gate_features()))
-        self.assertEqual(audit["null_geometry_count"], 16)
-        fixture_counts = {}
-        for mode in self._gate_features().values():
-            fixture_counts[mode] = fixture_counts.get(mode, 0) + 1
-        self.assertEqual(audit["unusable_geometry_counts"], dict(sorted(fixture_counts.items())))
-        self.assertEqual(audit["geometry_valid_count"], 402)
+        self.assertEqual(audit["null_geometry_count"], 0)
+        fixture_oids = sorted(self._gate_features())
+        self.assertEqual(audit["ogc_invalid_geometry_sample_objectids"], fixture_oids)
+        self.assertEqual(audit["unusable_geometry_counts"], {})
+        self.assertEqual(audit["geometry_valid_count"], 418)
 
-    def test_gate_pins_are_enforced_once_pinned(self):
-        fixture_counts = {}
-        for mode in self._gate_features().values():
-            fixture_counts[mode] = fixture_counts.get(mode, 0) + 1
+    def test_null_pin_is_enforced_once_pinned(self):
         with relaxed_pins():
             audit = source._validate(self._captures(self._documents()))[2]
-            self.assertEqual(audit["unusable_geometry_counts"], fixture_counts)
-            self.assertEqual(audit["null_geometry_count"], 16)
-        with relaxed_pins(patch.object(source, "EXPECTED_NULL_GEOMETRY_COUNT", 16),
-                          patch.object(source, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", fixture_counts)):
+            self.assertEqual(audit["unusable_geometry_counts"], {})
+            self.assertEqual(audit["null_geometry_count"], 0)
+        with relaxed_pins(patch.object(source, "EXPECTED_NULL_GEOMETRY_COUNT", 0)):
             source._validate(self._captures(self._documents()))
             with self.assertRaisesRegex(ValueError, "source_null_geometry_count_drift"):
                 with patch.object(source, "EXPECTED_NULL_GEOMETRY_COUNT", 15):
                     source._validate(self._captures(self._documents()))
-            with self.assertRaisesRegex(ValueError, "source_unusable_geometry_counts_drift"):
-                with patch.object(source, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
-                                  {**fixture_counts, "source_polygon_ring_degenerate": 5}):
-                    source._validate(self._captures(self._documents()))
 
     def test_polygon_wkb_is_xy_only_and_preserves_ring_structure(self):
+        def converted(rings):
+            return to_wkb({"rings": rings}, "esriGeometryPolygon", has_z=False, has_m=False)
+
         shell = self._shell(1)
-        single = source._assemble_geometry({"rings": [shell]})
+        single = converted([shell])
         self.assertEqual(struct.unpack("<BI", single[:5]), (1, 3))
-        disjoint = source._assemble_geometry({"rings": [shell, self._shell(2)]})
+        disjoint = converted([shell, self._shell(2)])
         self.assertEqual(struct.unpack("<BI", disjoint[:5]), (1, 6))
-        with_hole = source._assemble_geometry({"rings": [shell, self._hole(shell)]})
+        with_hole = converted([shell, self._hole(shell)])
         self.assertEqual(struct.unpack("<BI", with_hole[:5]), (1, 3))
         decoded = from_wkb(with_hole)
         self.assertEqual(len(decoded.interiors), 1)
@@ -271,23 +260,20 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
                 docs["page_000"]["features"][0]["geometry"].update(flags)
                 with self.assertRaisesRegex(ValueError, "source_geometry_dimensional_drift"):
                     source._validate(self._captures(docs))
-        unflagged = [[0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]]
-        with self.assertRaisesRegex(Exception, "source_polygon_ordinate_not_xy"):
-            source._assemble_geometry({"rings": [unflagged]})
-        for mode in ("source_polygon_ring_degenerate", "source_polygon_ring_self_intersecting",
-                     "source_polygon_assembly_invalid", "source_polygon_exterior_missing"):
-            self.assertIn(mode, source.GATE_MODES)
 
-    def test_assembly_gate_modes_fail_closed_per_row(self):
+    def test_served_ring_defects_are_retained_through_the_shared_converter(self):
         shell = self._shell(1)
-        for rings, mode in (
-                ([[-100.0, 33.0]] * 4, "source_polygon_ring_degenerate"),
-                ([self._bowtie(1)], "source_polygon_ring_self_intersecting"),
-                (self._overlapping_shells(1), "source_polygon_assembly_invalid"),
-                ([self._hole(shell)], "source_polygon_exterior_missing"),
-                ([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], "source_polygon_ring_not_closed")):
-            with self.assertRaisesRegex(Exception, mode):
-                source._assemble_geometry({"rings": rings})
+        # GDAL assembles a lone CCW producer ring into a valid polygon and
+        # retains zero-area, self-intersecting and overlapping-ring defects
+        # verbatim; none is refused, repaired or coerced to null (issue #997).
+        self.assertTrue(from_wkb(to_wkb({"rings": [self._hole(shell)]},
+                                        "esriGeometryPolygon", has_z=False, has_m=False)).is_valid)
+        for rings in ([[[-100.0, 33.0]] * 4], [self._bowtie(1)], self._overlapping_shells(1)):
+            self.assertFalse(from_wkb(to_wkb({"rings": rings}, "esriGeometryPolygon",
+                                             has_z=False, has_m=False)).is_valid)
+        with self.assertRaisesRegex(ValueError, "esri_polygon_ring_not_closed"):
+            to_wkb({"rings": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]]},
+                   "esriGeometryPolygon", has_z=False, has_m=False)
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
