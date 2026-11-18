@@ -80,24 +80,28 @@ class NBIParseTests(unittest.TestCase):
         self.assertEqual(release['states']['MA']['url'],'https://www.fhwa.dot.gov/bridge/nbi/2026/JSON/MA26.json')
         self.assertEqual(release['link_corrections']['Massachusetts'],{'page_token':'MS','used_token':'MA'})
     def test_parse_preserves_native_types_and_nested_arrays(self):
-        table,ids,stats=f.parse_state_file(state_body(record()),'DC',1,SCHEMA)
-        self.assertEqual(table.num_rows,1);self.assertEqual(table.num_columns,9)
+        table,ids,stats=f.parse_state_file(state_body(record()),'DC',SCHEMA)
+        self.assertEqual(table.num_rows,1);self.assertEqual(table.num_columns,10)
         self.assertEqual(table['BL01'].to_pylist(),[11]);self.assertEqual(table['BID01'].to_pylist(),['0001'])
-        self.assertEqual(table['BG01'].to_pylist(),[1383.0])
+        self.assertEqual(table['BG01'].to_pylist(),[1383.0]);self.assertEqual(table['DATA_YEAR'].to_pylist(),[None])
         self.assertEqual(table['Features'].to_pylist(),['[{"BF01":"H01","BF03":"Chain Bridge Road","BH08":3.0,"Routes":[{"BF01":"H01","BRT01":"R01","BRT02":"0"}]}]'])
         self.assertEqual(table['geometry'].to_pylist(),[struct.pack('<BIdd',1,1,-77.116972,38.929444)])
-        self.assertEqual(ids,[(11,'0001')]);self.assertEqual(stats['nested_counts'],{'Features':1})
+        self.assertEqual(ids,[(11,'0001')]);self.assertEqual(stats['nested_counts'],{'Features':1});self.assertEqual(stats['producer_extra_counts'],{'DATA_YEAR':0})
+    def test_known_producer_extra_data_year_is_preserved_as_served(self):
+        table,ids,stats=f.parse_state_file(state_body(record(),{**record(number='0002'),'DATA_YEAR':'8/4/2026'}),'CT',SCHEMA)
+        self.assertEqual(table['DATA_YEAR'].to_pylist(),[None,'8/4/2026'])
+        self.assertEqual(stats['producer_extra_counts'],{'DATA_YEAR':1})
     def test_geometry_categories_and_out_of_envelope_values(self):
         body=state_body(record(lat=None,lon=None),record(number='0002',lat=None),record(number='0003',lat=0.0,lon=0.0),record(number='0004',lat=95.0,lon=200.0))
-        table,ids,stats=f.parse_state_file(body,'DC',4,SCHEMA)
+        table,ids,stats=f.parse_state_file(body,'DC',SCHEMA)
         self.assertEqual(table['geometry'].to_pylist()[:3],[None,None,struct.pack('<BIdd',1,1,0.0,0.0)])
         self.assertEqual((stats['blank'],stats['partial'],stats['zero'],stats['out_of_envelope']),(1,1,1,1))
     def test_top_level_type_and_required_fields_fail_closed(self):
-        with self.assertRaisesRegex(ValueError,'snbi_field_type_drift'):f.parse_state_file(state_body(record(number=1)),'DC',1,SCHEMA)
+        with self.assertRaisesRegex(ValueError,'snbi_field_type_drift'):f.parse_state_file(state_body(record(number=1)),'DC',SCHEMA)
         bad=record();del bad['BID01']
-        with self.assertRaisesRegex(ValueError,'state_record_required_field_missing'):f.parse_state_file(state_body(bad),'DC',1,SCHEMA)
+        with self.assertRaisesRegex(ValueError,'state_record_required_field_missing'):f.parse_state_file(state_body(bad),'DC',SCHEMA)
         bad=record();bad['RENAMED']='x'
-        with self.assertRaisesRegex(ValueError,'state_record_unknown_field'):f.parse_state_file(state_body(bad),'DC',1,SCHEMA)
+        with self.assertRaisesRegex(ValueError,'state_record_unknown_field'):f.parse_state_file(state_body(bad),'DC',SCHEMA)
 
 
 class NBIContractTests(unittest.TestCase):
@@ -109,15 +113,19 @@ class NBIContractTests(unittest.TestCase):
         self.assertEqual(table.num_rows,4);self.assertEqual(audit['count'],4);self.assertEqual(audit['release_year'],2026)
         self.assertEqual(audit['state_rows'],{'DC':1,'TX':2,'MA':1});self.assertEqual(audit['composite_ID_duplicate_count'],0)
         self.assertEqual(audit['field_count'],8);self.assertEqual(audit['release_page_total'],4)
+        self.assertEqual(audit['release_page_count_drift'],{});self.assertEqual(audit['release_page_total_drift'],0)
+        self.assertEqual(audit['producer_extra_field_counts'],{'DATA_YEAR':0})
     def test_duplicate_composite_ids_are_counted_not_merged(self):
         tx=[record(state=48,number='0002'),record(state=48,number='0002')]
         table,audit=f.inspect_captures(Contract(tx_records=tx).captures())
         self.assertEqual(table.num_rows,4);self.assertEqual(audit['composite_ID_duplicate_count'],1)
         self.assertEqual(audit['composite_ID_duplicate_keys'],[[48,'0002']])
-    def test_state_count_and_roster_drift(self):
+    def test_release_page_counts_are_advisory_and_recorded(self):
         captures=self.contract.captures();bad=dict(captures);body=state_body(record(),record(number='0002'))
         bad['state_DC']=(body,receipt(captures['state_DC'][1]['url'],body))
-        with self.assertRaisesRegex(ValueError,'state_file_count_drift'):f.inspect_captures(bad)
+        table,audit=f.inspect_captures(bad)
+        self.assertEqual(table.num_rows,5);self.assertEqual(audit['count'],5)
+        self.assertEqual(audit['release_page_count_drift'],{'DC':1});self.assertEqual(audit['release_page_total_drift'],1)
         bad=dict(captures);del bad['state_TX']
         with self.assertRaisesRegex(ValueError,'capture_roster_drift'):f.inspect_captures(bad)
     def test_receipt_strictness_and_first_party_provenance(self):

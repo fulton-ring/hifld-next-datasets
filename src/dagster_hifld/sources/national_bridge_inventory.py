@@ -78,6 +78,10 @@ CODING_GUIDE_ITEMS={
 'BRT02':('5D/5E','Route Number / Directional Suffix'),'BRT04':('5B','Route Signing Prefix'),'BRT05':('5C','Designated Level of Service'),
 'BW01':('27','Year Built'),'BW02':('106','Year Reconstructed'),
 }
+# The 2026-09-03 CT and MI re-uploads serve an undeclared top-level DATA_YEAR
+# stamp (for example '8/4/2026') on every record. It is a producer extra, not a
+# schema v04 property; keep it as a string column rather than dropping it.
+PRODUCER_EXTRA_FIELDS={'DATA_YEAR':{'description':'Producer data year stamp served in the 2026-09-03 CT and MI re-uploads','type':'string'}}
 RELEASE_LINK=re.compile(r'nbi_data_(\d{4})\.cfm',re.I)
 SCHEMA_LINK=re.compile(r'SNBI\.Schema\.v[0-9.]+\.json',re.I)
 
@@ -245,7 +249,7 @@ def original_context(storage,version,fingerprint,captures,identity,manifest,*,cr
     a,_=inspect_captures(original);b,_=inspect_captures(captures)
     if not a.equals(b,check_metadata=True):raise NBIQuarantineError('original_source_population_drift')
     old=payload['manifest'];obj=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
-    expected=manifest_for(original,identity,{k:obj[k]for k in('bytes','sha256')})
+    expected=manifest_for(original,identity,{k:obj[k]for k in('bytes','sha256')},count=a.num_rows)
     if encode({k:v for k,v in old.items()if k!='code_commit'})!=encode({k:v for k,v in expected.items()if k!='code_commit'}):raise NBIQuarantineError('original_manifest_context_drift')
     validate_release_provenance(old);validate_output_policy(old);validate_construction_code_identity(Path(__file__).parents[3],old['code_commit'],identity['files']);return original,old
 
@@ -374,6 +378,9 @@ def build_schema(schema):
             metadata['coding_guide_item'],metadata['coding_guide_name']=CODING_GUIDE_ITEMS[tag]
         if tag in nested:metadata['snbi_relationship']='nested_array_json'
         fields.append(pa.field(tag,arrow_type(spec,tag),nullable=True,metadata={key:encode(value)for key,value in metadata.items()}))
+    for tag,spec in PRODUCER_EXTRA_FIELDS.items():
+        metadata={'snbi_tag':tag,'snbi_description':spec.get('description',''),'snbi_type':spec.get('type',''),'snbi_relationship':'producer_extra_top_level'}
+        fields.append(pa.field(tag,arrow_type(spec,tag),nullable=True,metadata={key:encode(value)for key,value in metadata.items()}))
     fields.append(pa.field('geometry',pa.binary(),nullable=True,metadata={b'original_crs':b'EPSG:4326',b'original_geometry_type':b'SNBI B.L.05/B.L.06 point'}))
     return pa.schema(fields)
 
@@ -416,17 +423,16 @@ def geometry_for(record,token):
     out_of_envelope=not(-90<=latitude<=90 and -180<=longitude<=180)
     return struct.pack('<BIdd',1,1,longitude,latitude),'present',zero,out_of_envelope
 
-def parse_state_file(body,token,expected_count,schema):
+def parse_state_file(body,token,schema):
     try:records=json.loads(body)
     except ValueError as exc:raise NBIQuarantineError('state_file_not_json:'+token)from exc
     if type(records)is not list:raise NBIQuarantineError('state_file_not_array:'+token)
-    if len(records)!=expected_count:raise NBIQuarantineError('state_file_count_drift:'+token)
     item,scalar,nested=schema_parts(schema);properties=item['properties'];required=set(item.get('required')or[])
-    columns={tag:[]for tag in scalar};nested_columns={tag:[]for tag in nested};ids=[];geometry=[]
-    zero=blank=partial=out_of_envelope=non_ascii=0
+    columns={tag:[]for tag in scalar};nested_columns={tag:[]for tag in nested};extra_columns={tag:[]for tag in PRODUCER_EXTRA_FIELDS}
+    ids=[];geometry=[];zero=blank=partial=out_of_envelope=non_ascii=0
     for record in records:
         if type(record)is not dict:raise NBIQuarantineError('state_record_not_object:'+token)
-        unknown=set(record)-set(properties)
+        unknown=set(record)-set(properties)-set(PRODUCER_EXTRA_FIELDS)
         if unknown:raise NBIQuarantineError('state_record_unknown_field:'+token+':'+sorted(unknown)[0])
         missing=required-set(record)
         if missing:raise NBIQuarantineError('state_record_required_field_missing:'+token+':'+sorted(missing)[0])
@@ -438,6 +444,9 @@ def parse_state_file(body,token,expected_count,schema):
         for tag,spec in nested.items():
             value=record.get(tag);validate_nested(tag,value,spec,token)
             nested_columns[tag].append(None if value is None else json.dumps(value,separators=(',',':'),ensure_ascii=False,allow_nan=False))
+        for tag,spec in PRODUCER_EXTRA_FIELDS.items():
+            value=record.get(tag);validate_value(tag,value,spec,token)
+            extra_columns[tag].append(value)
         ids.append((record['BL01'],record['BID01']))
         point,category,was_zero,was_out=geometry_for(record,token)
         if point is None:
@@ -449,10 +458,12 @@ def parse_state_file(body,token,expected_count,schema):
         geometry.append(point)
     arrays=[pa.array(columns[tag],type=arrow_type(scalar[tag],tag))for tag in scalar]
     arrays.extend(pa.array(nested_columns[tag],type=pa.string())for tag in nested)
+    arrays.extend(pa.array(extra_columns[tag],type=arrow_type(PRODUCER_EXTRA_FIELDS[tag],tag))for tag in PRODUCER_EXTRA_FIELDS)
     arrays.append(pa.array(geometry,type=pa.binary()))
     table=pa.Table.from_arrays(arrays,schema=build_schema(schema))
     stats={'rows':len(records),'zero':zero,'blank':blank,'partial':partial,'out_of_envelope':out_of_envelope,'non_ascii':non_ascii,
-        'nested_counts':{tag:sum(0 if record.get(tag)is None else len(record[tag])for record in records)for tag in nested}}
+        'nested_counts':{tag:sum(0 if record.get(tag)is None else len(record[tag])for record in records)for tag in nested},
+        'producer_extra_counts':{tag:sum(1 for record in records if tag in record)for tag in PRODUCER_EXTRA_FIELDS}}
     return table,ids,stats
 
 def inspect_captures(captures):
@@ -460,13 +471,15 @@ def inspect_captures(captures):
     if set(captures)!=set(urls):raise NBIQuarantineError('capture_roster_drift')
     for name in sorted(captures):validate_receipt(name,*captures[name],urls)
     tables=[];roster=[];per_state={};duplicates=Counter();nested_totals={tag:0 for tag in schema_parts(schema)[2]}
+    extra_totals={tag:0 for tag in PRODUCER_EXTRA_FIELDS}
     for token,state in release['states'].items():
-        table,ids,stats=parse_state_file(captures['state_'+token][0],token,state['count'],schema)
+        table,ids,stats=parse_state_file(captures['state_'+token][0],token,schema)
         tables.append(table);roster.extend(ids);duplicates.update(ids);per_state[token]=stats
         for tag,count in stats['nested_counts'].items():nested_totals[tag]+=count
+        for tag,count in stats['producer_extra_counts'].items():extra_totals[tag]+=count
     if sum(state['count']for state in release['states'].values())!=release['total']:raise NBIQuarantineError('producer_release_total_drift')
     table=pa.concat_tables(tables)
-    if table.num_rows!=release['total']:raise NBIQuarantineError('complete_count_drift_requires_review')
+    page_count_drift={token:per_state[token]['rows']-state['count']for token,state in release['states'].items()if per_state[token]['rows']!=state['count']}
     extra=sum(value-1 for value in duplicates.values()if value>1)
     duplicate_keys=sorted(key for key,value in duplicates.items()if value>1)
     roster_sha=digest(('\n'.join(sorted(f'{state}|{number}'for state,number in duplicates))+'\n').encode())
@@ -477,17 +490,21 @@ def inspect_captures(captures):
     for token in release['states']:
         modified=captures['state_'+token][1].get('server_last_modified')
         if modified:release_dates[token]=parsedate_to_datetime(modified).date().isoformat()
-    audit={'count':table.num_rows,'field_count':len(schema['items']['properties']),'state_rows':{token:stats['rows']for token,stats in per_state.items()},
+    audit={'count':table.num_rows,'field_count':len(schema['items']['properties']),'column_count':table.num_columns,'producer_extra_fields':sorted(PRODUCER_EXTRA_FIELDS),'state_rows':{token:stats['rows']for token,stats in per_state.items()},
         'release_year':release['year'],'release_url':release['url'],'release_page_total':release['total'],
+        'release_page_state_counts':{token:state['count']for token,state in release['states'].items()},
+        'release_page_count_drift':page_count_drift,'release_page_total_drift':table.num_rows-release['total'],
         'snbi_schema_digest':digest(captures['schema'][0]),'snbi_schema_title':schema.get('title'),
         'composite_ID_sha256':roster_sha,'composite_ID_duplicate_count':extra,'composite_ID_duplicate_keys':[list(key)for key in duplicate_keys],
-        'nested_item_counts':nested_totals,'zero_coordinate_count':zero,'blank_coordinate_count':blank,'partial_coordinate_count':partial,
+        'nested_item_counts':nested_totals,'producer_extra_field_counts':extra_totals,
+        'zero_coordinate_count':zero,'blank_coordinate_count':blank,'partial_coordinate_count':partial,
         'out_of_envelope_coordinate_count':out_of_envelope,'non_ascii_character_count':non_ascii,
         'state_file_last_modified':release_dates,'release_date':max(release_dates.values())if release_dates else None,
         'crs':'EPSG:4326 (WGS 84) decimal degrees from SNBI B.L.05/B.L.06 and the producer GeoJSON spatial reference',
         'coordinate_basis':'Points are derived only from SNBI B.L.05/B.L.06 decimal-degree values. Missing or partially missing coordinates yield null geometry; zero and out-of-envelope values are preserved with counts, not repaired.',
-        'release_basis':'The FHWA NBI data index lists the newest nbi_data_YYYY.cfm release; that release page supplies the per-state JSON links and counts. 2025 was the final Coding Guide ASCII year and 2026 is the first SNBI-format release.',
-        'schema_basis':'One row per bridge from the producer SNBI JSON. All top-level SNBI fields keep their data tag, native JSON type and value; nested SNBI arrays are retained as JSON text. The official SNBI Data Crosswalk maps clean 1995 Coding Guide items to SNBI tags; SNBI fields without a clean Coding Guide equivalent keep their SNBI tag rather than inventing a value. The 2026 files differ from the published schema inside nested arrays (for example Routes.BF01 is present but not declared, and Elements.BE02 is declared required but often absent); nested values are preserved verbatim as served and are not fabricated or dropped.',
+        'release_basis':'The FHWA NBI data index lists the newest nbi_data_YYYY.cfm release; that release page supplies the per-state JSON links. Its per-state counts and total are advisory cross-checks: the producer files are authoritative, and every page-count difference is recorded in release_page_state_counts and release_page_count_drift. 2025 was the final Coding Guide ASCII year and 2026 is the first SNBI-format release.',
+        'schema_basis':'One row per bridge from the producer SNBI JSON. All top-level SNBI fields keep their data tag, native JSON type and value; nested SNBI arrays are retained as JSON text. The official SNBI Data Crosswalk maps clean 1995 Coding Guide items to SNBI tags; SNBI fields without a clean Coding Guide equivalent keep their SNBI tag rather than inventing a value. The 2026 files differ from the published schema inside nested arrays (for example Routes.BF01 is present but not declared, and Elements.BE02 is declared required but often absent); nested values are preserved verbatim as served and are not fabricated or dropped. The 2026-09-03 CT and MI re-uploads also serve an undeclared top-level DATA_YEAR stamp, kept as a producer-extra string column rather than dropped.',
+        'coding_guide_basis':'CODING_GUIDE_ITEMS documents all 71 clean 1995 Coding Guide transitions from the official crosswalk, including tags that appear only inside nested SNBI arrays. Only top-level SNBI tags receive coding_guide_item and coding_guide_name column metadata; nested-tag entries document the relationship and are not emitted as columns.',
         'archive_relationship':'The archived HIFLD inventory (DataLumos 239684) is research context only and is not fetched. This draft reconstructs from the FHWA producer publication.',
         'temporary_objectID_warning':'none: the SNBI JSON has no producer row identifier; the composite (BL01, BID01) pair is a proposed join key with duplicates counted, not merged or approved as unique.',
         'approved':False}
@@ -568,15 +585,16 @@ def acquire(storage,capture_dir=None):
         where=quarantine(storage,captures,str(exc));raise NBIQuarantineError('source_acquisition_failed:'+str(exc)+';retained:'+where)from exc
 
 
-def manifest_for(captures,identity,output_pin):
+def manifest_for(captures,identity,output_pin,*,count=None):
     urls,release,schema=context_from_captures(captures)
+    if count is None:count=sum(len(json.loads(body))for name,(body,_)in captures.items()if name.startswith('state_'))
     manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).parents[3],text=True).strip(),
         'title':f'National Bridge Inventory (NBI) — FHWA {release["year"]} SNBI reconstruction draft','publisher':PRODUCER,'agency':'Federal Highway Administration','source_url':release['url'],'license':LICENSE,
         'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(name,*captures[name],urls)for name in sorted(captures)],
         'transformations':[{'operation':'complete_snbi_json_reconstruction','parameters':{
-            'grain':f'All {release["total"]} bridge records of the official FHWA {release["year"]} SNBI release ({len(release["states"])} state and territory JSON files). No filtering, deduplication, reordering or repair.',
-            'source_ids':'Every SNBI top-level field keeps its producer data tag, JSON type and value. Nested SNBI arrays (Features, Routes, Elements, Inspections, PostingEvaluations, PostingStatuses, SpanSets, SubstructureSets, Works) are retained as JSON text. The composite (BL01, BID01) pair is proposed as the join key; duplicates are counted in the audit, not silently merged.',
-            'types':'Native JSON integers, numbers and strings are stored without coercion or trimming. The SNBI schema digest and title are recorded. The official SNBI Data Crosswalk maps clean 1995 Coding Guide items to SNBI tags; SNBI fields with no clean Coding Guide equivalent keep their SNBI tag rather than inventing a value.',
+            'grain':f'All {count} bridge records of the official FHWA {release["year"]} SNBI release ({len(release["states"])} state and territory JSON files). No filtering, deduplication, reordering or repair.',
+            'source_ids':'Every SNBI top-level field keeps its producer data tag, JSON type and value. Nested SNBI arrays (Features, Routes, Elements, Inspections, PostingEvaluations, PostingStatuses, SpanSets, SubstructureSets, Works) are retained as JSON text. The undeclared top-level DATA_YEAR stamp served in the 2026-09-03 CT and MI re-uploads is kept as a producer-extra string column. The composite (BL01, BID01) pair is proposed as the join key; duplicates are counted in the audit, not silently merged.',
+            'types':'Native JSON integers, numbers and strings are stored without coercion or trimming. The SNBI schema digest and title are recorded. The official SNBI Data Crosswalk maps clean 1995 Coding Guide items to SNBI tags; SNBI fields with no clean Coding Guide equivalent keep their SNBI tag rather than inventing a value. Release-page counts are advisory and their differences from the producer files are recorded in the audit.',
             'geometry':'Points are derived only from SNBI B.L.05/B.L.06 decimal degrees as EPSG:4326. Missing or partially missing coordinates yield null geometry; zero and out-of-envelope source values are preserved and counted.',
             'relationship':'2025 was the final Coding Guide ASCII year; 2026 is the first SNBI-format release. The archived HIFLD copy (DataLumos 239684) is research context only and is not an input. Source, schema/ID contract, coordinate basis, rights and publication acceptance remain pending human decisions.'}}],
         'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve every top-level SNBI field at its native type plus nested SNBI arrays as JSON text and the B.L.05/B.L.06 point geometry; no generic conversion or schema mapping approved.','objects':[{'path':'geoparquet/'+SLUG+'.parquet',**output_pin}]}}},
@@ -595,7 +613,7 @@ def stage_national_bridge_inventory(storage,*,capture_dir=None):
         build=base/'_building'/SLUG;build.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='candidate-',dir=build)as temporary:
             temp=Path(temporary);(temp/'geoparquet').mkdir();path=temp/'geoparquet'/f'{SLUG}.parquet';pq.write_table(parquet_table(table),path,compression='zstd');validate_output(temp,table)
-            manifest=manifest_for(captures,identity,{'bytes':path.stat().st_size,'sha256':sha256_file(path)})
+            manifest=manifest_for(captures,identity,{'bytes':path.stat().st_size,'sha256':sha256_file(path)},count=table.num_rows)
             if root.exists()or state_present(storage,version):
                 try:
                     captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest)

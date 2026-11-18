@@ -4,7 +4,9 @@ Producer publication: https://www.fhwa.dot.gov/bridge/nbi/nbi_data.cfm lists the
 `nbi_data_YYYY.cfm` release. The pipeline discovers that year from the index, reads the
 release page's per-state JSON links and counts, and fetches every state and territory file.
 2025 was the final Coding Guide ASCII year; 2026 is the first SNBI-format release.
-The 2026 page was updated 2026-10-07 and lists 53 state/territory files totaling 624,939 bridges.
+The 2026 page was updated 2026-10-07 and lists 53 state/territory files. Its per-state counts and
+total (624,939) are advisory: the producer files are authoritative and contain 624,996 records, and
+every page-count difference is recorded in the source audit rather than rejected.
 The 2026 page's Massachusetts link points at `MS26.json`; the pipeline uses the state name to
 request `MA26.json` (5,333 records, state code 25) and records the producer link correction.
 The producer's SNBI submittal schema is https://www.fhwa.dot.gov/bridge/snbi/schema.cfm
@@ -15,10 +17,14 @@ The asset's `capture_directory` run config selects complete original `.body`/`.r
 The output is one row per bridge. Every top-level SNBI field keeps its data tag, native JSON type and value.
 Nested SNBI arrays (Features/Routes, Elements, Inspections, PostingEvaluations, PostingStatuses,
 SpanSets, SubstructureSets, Works) are retained as JSON text rather than flattened or dropped.
-Clean 1995 Coding Guide transitions from the crosswalk are recorded in each column's metadata.
-SNBI fields with no clean Coding Guide equivalent keep their SNBI tag; no Coding Guide value is invented.
+Clean 1995 Coding Guide transitions from the crosswalk are recorded in each top-level column's metadata;
+the crosswalk also documents transitions for tags that appear only inside nested arrays, which are
+kept in the mapping but not emitted as columns. SNBI fields with no clean Coding Guide equivalent keep
+their SNBI tag; no Coding Guide value is invented.
 The 2026 files differ from the published schema inside nested arrays: Routes.BF01 is served but not
 declared, and Elements.BE02 is declared required but often absent. Nested values are preserved as served.
+The 2026-09-03 CT and MI re-uploads also serve an undeclared top-level `DATA_YEAR` stamp; it is kept
+as a producer-extra string column rather than dropped.
 Points derive only from SNBI B.L.05/B.L.06 decimal degrees (EPSG:4326); blank or partial coordinates
 yield null geometry, while zero and out-of-envelope values are preserved and counted.
 No producer row ID exists; the composite (BL01, BID01) pair is a proposed join key with duplicates
