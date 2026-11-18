@@ -13,6 +13,13 @@ from dagster_hifld.assets.bridge_areas_usace_ienc import (
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import bridge_areas_usace_ienc as source
+
+COUNT = 3703
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "b71d4b43921e629bf2c37684496b5cbbdd874666942f07d837f1b600e93d88ba"
+PAGE_SIZE = source.PAGE_SIZE
+PAGE_COUNT = (COUNT + PAGE_SIZE - 1) // PAGE_SIZE
+PAGE_NAMES = [f"page_{index:03d}" for index in range(PAGE_COUNT)]
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
@@ -33,10 +40,10 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
                  "extent": {**source.EXPECTED_EXTENT, "spatialReference": {"wkid": 4326}},
                  "fields": source.EXPECTED_FIELD_DECLARATIONS}
         pages = {}
-        last_oid = source.EXPECTED_IDS[-1]
-        for index, name in enumerate(source.PAGE_NAMES):
+        last_oid = IDS[-1]
+        for index, name in enumerate(PAGE_NAMES):
             rows = []
-            for oid in source.EXPECTED_IDS[index * source.PAGE_SIZE:(index + 1) * source.PAGE_SIZE]:
+            for oid in IDS[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]:
                 attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
                          ("2026%04d" % oid if field["name"] == "Source_Date" else
                           (90000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}"))
@@ -62,13 +69,13 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
                                         "and USACE_IENC_Master_Service_gdb.zip."},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/BRIDGE_AREA", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
             **pages,
             "layer_after": json.loads(json.dumps(layer)),
             "service_after": json.loads(json.dumps(service)),
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
         }
 
     def _captures(self, docs):
@@ -79,38 +86,38 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
         self.assertEqual(bridge_areas_usace_ienc_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         check = bridge_areas_usace_ienc_complete({
-            "feature_count": source.EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": "abc", "geometry_valid_count": source.EXPECTED_COUNT,
+            "feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete": True,
+            "source_id_sha256": "abc", "geometry_valid_count": COUNT,
             "geometry_invalid_count": 0, "geometry_empty_count": 0})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         failed = bridge_areas_usace_ienc_complete({
-            "feature_count": source.EXPECTED_COUNT - 1, "source_population_complete": True,
-            "source_id_sha256": "abc", "geometry_valid_count": source.EXPECTED_COUNT,
+            "feature_count": COUNT - 1, "source_reported_count": COUNT, "source_population_complete": True,
+            "source_id_sha256": "abc", "geometry_valid_count": COUNT,
             "geometry_invalid_count": 0, "geometry_empty_count": 0})
         self.assertFalse(failed.passed)
         geometry_failed = bridge_areas_usace_ienc_complete({
-            "feature_count": source.EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": "abc", "geometry_valid_count": source.EXPECTED_COUNT - 1,
+            "feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete": True,
+            "source_id_sha256": "abc", "geometry_valid_count": COUNT - 1,
             "geometry_invalid_count": 1, "geometry_empty_count": 0})
         self.assertFalse(geometry_failed.passed)
         missing = bridge_areas_usace_ienc_complete({
-            "feature_count": source.EXPECTED_COUNT, "source_population_complete": True})
+            "feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertFalse(missing.passed)
 
     def test_capture_roster_covers_bts_service_layer_page_windows_and_exact_ids(self):
-        urls = dict(source._capture_urls(source.EXPECTED_IDS))
-        self.assertEqual(sorted(urls), sorted(source.EXPECTED_CAPTURE_NAMES))
-        self.assertEqual(len(source.PAGE_NAMES), source.PAGE_COUNT)
-        self.assertEqual(source.PAGE_SIZE * source.PAGE_COUNT, 3800)
+        urls = dict(source._capture_urls(IDS))
+        self.assertEqual(sorted(urls), sorted(source._capture_names(IDS)))
+        self.assertEqual(len(PAGE_NAMES), PAGE_COUNT)
+        self.assertEqual(PAGE_SIZE * PAGE_COUNT, 3800)
         self.assertEqual(urls["layer_before"],
                          "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/BRIDGE_AREA"
                          "/MapServer/92?f=pjson")
         self.assertIn("objectIds=1%2C2%2C3%2C4%2C5", urls["page_000"])
-        self.assertIn("objectIds=3601%2C3602", urls[source.PAGE_NAMES[-1]])
-        self.assertIn("1999%2C2000&outFields", urls[source.PAGE_NAMES[9]])
-        self.assertIn("objectIds=2001%2C2002", urls[source.PAGE_NAMES[10]])
-        self.assertNotIn("3704", urls[source.PAGE_NAMES[-1]])
+        self.assertIn("objectIds=3601%2C3602", urls[PAGE_NAMES[-1]])
+        self.assertIn("1999%2C2000&outFields", urls[PAGE_NAMES[9]])
+        self.assertIn("objectIds=2001%2C2002", urls[PAGE_NAMES[10]])
+        self.assertNotIn("3704", urls[PAGE_NAMES[-1]])
         self.assertIn("outSR=4326", urls["page_000"])
         self.assertIn("returnZ=true", urls["page_000"])
         self.assertIn("returnM=true", urls["page_000"])
@@ -121,14 +128,14 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
     def test_complete_native_population_and_geometry_are_validated(self):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
-        self.assertEqual(audit["source_vertex_count"], source.EXPECTED_COUNT * 5 + 5)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
+        self.assertEqual(audit["source_vertex_count"], COUNT * 5 + 5)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(audit["geometry_invalid_count"], 0)
-        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["geometry_valid_count"], COUNT)
         self.assertEqual(audit["geometry_empty_count"], 0)
-        self.assertEqual(audit["feature_id_distinct_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["feature_id_distinct_count"], COUNT)
         self.assertEqual(audit["feature_id_duplicate_values"], {})
         self.assertEqual(audit["feature_id_null_count"], 0)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "Feature_ID-1")
@@ -166,14 +173,14 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
         first = docs["page_000"]["features"][0]["attributes"]["Feature_ID"]
         docs["page_000"]["features"][1]["attributes"]["Feature_ID"] = first
         _fields, features, audit = source._validate(self._captures(docs))
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["feature_id_distinct_count"], source.EXPECTED_COUNT - 1)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["feature_id_distinct_count"], COUNT - 1)
         self.assertEqual(audit["feature_id_duplicate_values"], {first: 2})
         self.assertEqual(audit["feature_id_null_count"], 0)
 
     def test_population_schema_transfer_limit_and_geometry_drift_fail_closed(self):
         def far_hole(docs):
-            docs[source.PAGE_NAMES[0]]["features"][0]["geometry"]["rings"].append(
+            docs[PAGE_NAMES[0]]["features"][0]["geometry"]["rings"].append(
                 [[source.EXPECTED_EXTENT["xmax"] - 0.01, source.EXPECTED_EXTENT["ymin"] + 0.01],
                  [source.EXPECTED_EXTENT["xmax"] - 0.01, source.EXPECTED_EXTENT["ymin"] + 0.02],
                  [source.EXPECTED_EXTENT["xmax"] - 0.02, source.EXPECTED_EXTENT["ymin"] + 0.02],
@@ -181,30 +188,30 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
                  [source.EXPECTED_EXTENT["xmax"] - 0.01, source.EXPECTED_EXTENT["ymin"] + 0.01]])
 
         def reversed_shell(docs):
-            docs[source.PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0] = \
-                list(reversed(docs[source.PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0]))
+            docs[PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0] = \
+                list(reversed(docs[PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0]))
 
         def duplicate_oid(docs):
-            attrs = docs[source.PAGE_NAMES[0]]["features"][0]["attributes"]
-            docs[source.PAGE_NAMES[0]]["features"][1]["attributes"].update(OBJECTID=attrs["OBJECTID"])
+            attrs = docs[PAGE_NAMES[0]]["features"][0]["attributes"]
+            docs[PAGE_NAMES[0]]["features"][1]["attributes"].update(OBJECTID=attrs["OBJECTID"])
 
         def move_point(docs, point):
-            docs[source.PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0][1] = point
+            docs[PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0][1] = point
 
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_count_or_id_population_drift"),
-            ("count", lambda d: d["count_after"].update(count=source.EXPECTED_COUNT - 1),
-             "source_count_or_id_population_drift"),
+            ("population", lambda d: d["ids_after"].update(objectIds=IDS[:-1]),
+             "source_count_or_id_roster_drift"),
+            ("count", lambda d: d["count_after"].update(count=COUNT - 1),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("page field schema",
-             lambda d: d[source.PAGE_NAMES[3]]["fields"][2].update(name="renamed"),
+             lambda d: d[PAGE_NAMES[3]]["fields"][2].update(name="renamed"),
              "source_page_field_schema_drift"),
-            ("page window", lambda d: d[source.PAGE_NAMES[5]]["features"].pop(),
+            ("page window", lambda d: d[PAGE_NAMES[5]]["features"].pop(),
              "source_feature_population_incomplete"),
             ("page window order",
-             lambda d: d[source.PAGE_NAMES[2]]["features"].insert(0, d[source.PAGE_NAMES[2]]["features"].pop()),
+             lambda d: d[PAGE_NAMES[2]]["features"].insert(0, d[PAGE_NAMES[2]]["features"].pop()),
              "source_feature_population_incomplete"),
             ("service identity", lambda d: d["service_before"].update(mapName="DRIFTED"),
              "official_bridge_area_service_drift"),
@@ -221,42 +228,42 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
              "source_layer_identity_extent_or_limit_drift"),
             ("layer dimensional", lambda d: d["layer_before"].update(hasZ=True),
              "source_layer_dimensional_drift"),
-            ("page dimensional", lambda d: d[source.PAGE_NAMES[0]].update(hasZ=True),
+            ("page dimensional", lambda d: d[PAGE_NAMES[0]].update(hasZ=True),
              "source_page_dimensional_drift"),
             ("geometry dimensional",
-             lambda d: d[source.PAGE_NAMES[0]]["features"][0]["geometry"].update(hasZ=True),
+             lambda d: d[PAGE_NAMES[0]]["features"][0]["geometry"].update(hasZ=True),
              "source_geometry_dimensional_drift"),
             ("transfer",
-             lambda d: d[source.PAGE_NAMES[7]].update(exceededTransferLimit=True),
+             lambda d: d[PAGE_NAMES[7]].update(exceededTransferLimit=True),
              "source_feature_query_error_or_truncation"),
-            ("page error", lambda d: d[source.PAGE_NAMES[9]].update(error={"message": "boom"}),
+            ("page error", lambda d: d[PAGE_NAMES[9]].update(error={"message": "boom"}),
              "source_feature_query_error_or_truncation"),
-            ("page CRS", lambda d: d[source.PAGE_NAMES[0]].update(spatialReference={"wkid": 3857}),
+            ("page CRS", lambda d: d[PAGE_NAMES[0]].update(spatialReference={"wkid": 3857}),
              "crs_drift"),
             ("feature CRS",
-             lambda d: d[source.PAGE_NAMES[0]]["features"][0]["geometry"].update(
+             lambda d: d[PAGE_NAMES[0]]["features"][0]["geometry"].update(
                  spatialReference={"wkid": 3857}), "crs_drift"),
             ("page geometry type",
-             lambda d: d[source.PAGE_NAMES[0]].update(geometryType="esriGeometryPoint"),
+             lambda d: d[PAGE_NAMES[0]].update(geometryType="esriGeometryPoint"),
              "source_page_geometry_type_drift"),
             ("extra attribute",
-             lambda d: d[source.PAGE_NAMES[0]]["features"][0]["attributes"].update(Extra="x"),
+             lambda d: d[PAGE_NAMES[0]]["features"][0]["attributes"].update(Extra="x"),
              "source_attribute_roster_or_order_drift"),
             ("integer type",
-             lambda d: d[source.PAGE_NAMES[0]]["features"][0]["attributes"].update(Scale_Minimum="90000"),
+             lambda d: d[PAGE_NAMES[0]]["features"][0]["attributes"].update(Scale_Minimum="90000"),
              "source_integer_value_type_drift"),
             ("string type",
-             lambda d: d[source.PAGE_NAMES[0]]["features"][0]["attributes"].update(Feature_ID=17),
+             lambda d: d[PAGE_NAMES[0]]["features"][0]["attributes"].update(Feature_ID=17),
              "source_string_value_type_drift"),
             ("oid roster",
-             lambda d: d[source.PAGE_NAMES[0]]["features"][0]["attributes"].update(OBJECTID=99),
+             lambda d: d[PAGE_NAMES[0]]["features"][0]["attributes"].update(OBJECTID=99),
              "source_feature_population_incomplete"),
             ("duplicate oid", duplicate_oid, "source_feature_population_incomplete"),
             ("open ring",
-             lambda d: d[source.PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0].pop(),
+             lambda d: d[PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0].pop(),
              "source_polygon_ring_not_closed"),
             ("extra ordinate",
-             lambda d: d[source.PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0][1].append(20),
+             lambda d: d[PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0][1].append(20),
              "source_xy_ordinate_contract_drift"),
             ("non-finite ordinate", lambda d: move_point(d, ["west", 37.3]),
              "source_xy_ordinate_contract_drift"),
@@ -283,9 +290,9 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
         if mutate is not None:
             mutate(documents)
         root.mkdir(parents=True)
-        roster_urls = dict(source._capture_urls(source.EXPECTED_IDS))
+        roster_urls = dict(source._capture_urls(IDS))
         receipts = {}
-        for name in sorted(source.EXPECTED_CAPTURE_NAMES):
+        for name in sorted(source._capture_names(IDS)):
             body = _canonical(documents[name])
             receipt = {"method": "GET", "url": roster_urls[name], "final_url": roster_urls[name],
                        "observed_at": "2026-11-15T00:00:00+00:00", "status": 200, "complete_body": True,
@@ -298,19 +305,19 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
             (root / f"{name}.wire").write_bytes(body)
             (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
         manifest = {"complete": True, "captured_at": "2026-11-15T00:00:00+00:00",
-                    "source_feature_count": source.EXPECTED_COUNT, "receipts": receipts,
+                    "source_feature_count": COUNT, "receipts": receipts,
                     "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}
         (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         return root
 
     def test_drifted_replay_seals_no_ready_candidate(self):
         def move_vertex_outside(docs):
-            docs[source.PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0][1] = [0.0, 0.0]
+            docs[PAGE_NAMES[0]]["features"][0]["geometry"]["rings"][0][1] = [0.0, 0.0]
         cases = [
             ("outside coverage", move_vertex_outside, "source_vertex_outside_declared_extent"),
             ("renamed field", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
-            ("page window", lambda d: d[source.PAGE_NAMES[4]]["features"].pop(),
+            ("page window", lambda d: d[PAGE_NAMES[4]]["features"].pop(),
              "source_feature_population_incomplete"),
         ]
         for label, mutate, expected in cases:
@@ -331,9 +338,9 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
                 first = source.capture_bridge_areas_usace_ienc(storage, version="regression",
                                                                capture_directory=str(root))
             self.assertFalse(first["reused"])
-            self.assertEqual(first["feature_count"], source.EXPECTED_COUNT)
-            self.assertEqual(first["source_vertex_count"], source.EXPECTED_COUNT * 5 + 5)
-            self.assertEqual(first["geometry_valid_count"], source.EXPECTED_COUNT)
+            self.assertEqual(first["feature_count"], COUNT)
+            self.assertEqual(first["source_vertex_count"], COUNT * 5 + 5)
+            self.assertEqual(first["geometry_valid_count"], COUNT)
             self.assertEqual(first["geometry_invalid_count"], 0)
             self.assertEqual(first["geometry_empty_count"], 0)
             self.assertTrue(first["source_population_complete"])
@@ -345,11 +352,11 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
             staged = set(storage.list_prefix(prefix))
             self.assertIn(f"{prefix}/geoparquet/{source.FILE_SLUG}.parquet", staged)
             self.assertIn(f"{prefix}/raw/page_000.body", staged)
-            self.assertIn(f"{prefix}/raw/{source.PAGE_NAMES[-1]}.body", staged)
+            self.assertIn(f"{prefix}/raw/{PAGE_NAMES[-1]}.body", staged)
             self.assertIn(f"{prefix}/raw/bts_item.receipt.json", staged)
             self.assertIn(f"{prefix}/metadata/candidate_ready.json", staged)
             audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
-            self.assertEqual(audit["feature_id_distinct_count"], source.EXPECTED_COUNT)
+            self.assertEqual(audit["feature_id_distinct_count"], COUNT)
             self.assertEqual(audit["source_date_span"],
                              {"min": "20260001", "max": "20263703"})
             self.assertEqual(audit["source_date_span"]["max"], "20263703")
@@ -371,7 +378,7 @@ class BridgeAreasUsaceIencTests(unittest.TestCase):
 
 
 def last_oid():
-    return source.EXPECTED_IDS[-1]
+    return IDS[-1]
 
 
 if __name__ == "__main__":

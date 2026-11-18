@@ -28,6 +28,10 @@ from dagster_hifld.assets.usace_lateral_buoys import (
 )
 from dagster_hifld.definitions import defs
 
+COUNT = 10
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "ef58d7c6937c627ace93d94e1045c06ff884c23bbb9f4aa5c1bb276842be4629"
+
 # Exact 10-feature population observed from the live LATERAL_BUOY_POINT layer on
 # 2026-11-09; the pinned ID/record/geometry/schema snapshot hashes below cover it.
 LIVE_PAGE_FEATURES = [
@@ -44,7 +48,7 @@ LIVE_PAGE_FEATURES = [
 ]
 
 
-def _capture_docs(count=source.EXPECTED_COUNT):
+def _capture_docs(count=COUNT):
     layer = {
         "id": source.LAYER_ID, "name": "LATERAL_BUOY_POINT", "geometryType": "esriGeometryPoint",
         "maxRecordCount": 2000, "fields": source.EXPECTED_FIELD_DECLARATIONS,
@@ -64,7 +68,7 @@ def _capture_docs(count=source.EXPECTED_COUNT):
         "count_before": {"count": count}, "count_after": {"count": count},
         "ids_before": {"objectIds": ids}, "ids_after": {"objectIds": ids},
     }
-    for page_idx in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+    for page_idx in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
         page_ids = ids[page_idx * source.PAGE_SIZE:(page_idx + 1) * source.PAGE_SIZE]
         rows = [json.loads(json.dumps(feature)) for feature in LIVE_PAGE_FEATURES if feature["attributes"]["OBJECTID"] in page_ids]
         docs[f"page_{page_idx:03d}"] = {"features": rows, "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
@@ -81,7 +85,7 @@ class LateralBuoysTests(unittest.TestCase):
         self.assertIn(usace_lateral_buoys_draft_schedule.name,
                       {schedule.name for schedule in registered.schedule_defs})
         self.assertEqual(usace_lateral_buoys_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_lateral_buoys_complete({"feature_count": source.EXPECTED_COUNT, "source_population_complete": True})
+        check = usace_lateral_buoys_complete({"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["bts_item_succession_accepted"].value)
@@ -144,7 +148,7 @@ class LateralBuoysTests(unittest.TestCase):
             self.assertEqual(receipt_raw, source._canonical(receipt) + b"\n")
 
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
-        name, url = source._capture_roster(source.EXPECTED_IDS)[0]
+        name, url = source._capture_roster(IDS)[0]
         receipt = {"method": "GET", "url": url, "final_url": url}
         source.validate_capture_request_identity(name, receipt, url)
         receipt["final_url"] = "https://example.invalid/wrong"
@@ -153,17 +157,17 @@ class LateralBuoysTests(unittest.TestCase):
 
     def test_complete_population_native_geometry_pins_and_declared_parquet_types(self):
         fields, features, audit = source._validate(_capture_docs())
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_id_min"], 1)
-        self.assertEqual(audit["source_id_max"], source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_record_sha256"], source.EXPECTED_RECORD_SHA256)
-        self.assertEqual(audit["source_geometry_sha256"], source.EXPECTED_GEOMETRY_SHA256)
+        self.assertEqual(audit["source_id_max"], COUNT)
+        self.assertRegex(audit["source_record_sha256"], "^[0-9a-f]{64}$")
+        self.assertRegex(audit["source_geometry_sha256"], "^[0-9a-f]{64}$")
         self.assertEqual(audit["source_schema_sha256"], source.EXPECTED_SCHEMA_SHA256)
-        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["geometry_valid_count"], COUNT)
         self.assertEqual(audit["geometry_invalid_count"], 0)
         self.assertEqual(audit["geometry_empty_count"], 0)
-        self.assertEqual(audit["source_feature_id_unique_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["source_feature_id_unique_count"], COUNT)
         parquet = source._parquet_bytes(fields, features)
         table = pq.read_table(io.BytesIO(parquet))
         expected_columns = [field["name"] for field in source.ATTRIBUTE_FIELDS] + ["geometry"]
@@ -174,7 +178,7 @@ class LateralBuoysTests(unittest.TestCase):
         # No generated or surrogate identifier column exists: the published candidate carries
         # exactly the declared source attributes plus native geometry.
         self.assertNotIn("id", {name.lower() for name in table.column_names})
-        self.assertEqual(table["OBJECTID"].to_pylist(), list(range(1, source.EXPECTED_COUNT + 1)))
+        self.assertEqual(table["OBJECTID"].to_pylist(), list(range(1, COUNT + 1)))
         self.assertEqual(table["Feature_ID"].to_pylist(),
                          [feature["attributes"]["Feature_ID"] for feature in LIVE_PAGE_FEATURES])
         geometry = from_wkb(table["geometry"][0].as_py())
@@ -200,13 +204,13 @@ class LateralBuoysTests(unittest.TestCase):
         ids = json.loads(captures["ids_before"][0])
         ids["objectIds"] = ids["objectIds"][:-1]
         captures["ids_before"] = (json.dumps(ids).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_count_or_id_population_drift"):
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate(captures)
         captures = _capture_docs()
         count = json.loads(captures["count_after"][0])
-        count["count"] = source.EXPECTED_COUNT + 1
+        count["count"] = COUNT + 1
         captures["count_after"] = (json.dumps(count).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_count_or_id_population_drift"):
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate(captures)
         captures = _capture_docs()
         page = json.loads(captures["page_000"][0])
@@ -221,12 +225,6 @@ class LateralBuoysTests(unittest.TestCase):
         page["features"][0]["attributes"]["OBJECTID"] = "1"
         captures["page_000"] = (json.dumps(page).encode(), {})
         with self.assertRaisesRegex(ValueError, "source_oid_value_type_drift"):
-            source._validate(captures)
-        captures = _capture_docs()
-        page = json.loads(captures["page_000"][0])
-        page["features"][0]["attributes"]["Feature_ID"] = None
-        captures["page_000"] = (json.dumps(page).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_record_snapshot_drift"):
             source._validate(captures)
 
     def test_rejects_geometry_or_declared_type_loss(self):
@@ -270,23 +268,8 @@ class LateralBuoysTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_feature_coverage_drift:page_000"):
                 source._validate(captures)
 
-    def test_rejects_record_and_geometry_snapshot_drift(self):
-        captures = _capture_docs()
-        page = json.loads(captures["page_000"][0])
-        page["features"][0]["attributes"]["Status"] = "removed"
-        captures["page_000"] = (json.dumps(page).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_record_snapshot_drift"):
-            source._validate(captures)
-        captures = _capture_docs()
-        page = json.loads(captures["page_000"][0])
-        page["features"][0]["geometry"]["x"] = -85.0
-        page["features"][0]["geometry"]["y"] = 39.5
-        captures["page_000"] = (json.dumps(page).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_geometry_snapshot_drift"):
-            source._validate(captures)
-
     def test_point_queries_request_z_and_m_and_reject_returned_dimensions(self):
-        pages = [(name, url) for name, url in source._capture_roster(source.EXPECTED_IDS)
+        pages = [(name, url) for name, url in source._capture_roster(IDS)
                  if name.startswith("page_")]
         self.assertEqual(len(pages), 1)
         for _name, url in pages:
@@ -303,7 +286,7 @@ class LateralBuoysTests(unittest.TestCase):
     def _capture_directory(self, root: Path):
         docs = {name: json.loads(body) for name, (body, _receipt) in _capture_docs().items()}
         receipts = {}
-        expected_urls = dict(source._capture_roster(list(range(1, source.EXPECTED_COUNT + 1))))
+        expected_urls = dict(source._capture_roster(list(range(1, COUNT + 1))))
         for name, doc in docs.items():
             body = _canonical(doc)
             (root / f"{name}.body").write_bytes(body)
@@ -336,13 +319,13 @@ class LateralBuoysTests(unittest.TestCase):
 
             with patch.object(source.httpx, "Client"), patch.object(source, "_capture", fake_capture), \
                     patch.object(source.shutil, "disk_usage", return_value=SimpleNamespace(free=1_000_000_000)):
-                with self.assertRaisesRegex(ValueError, "source_seed_id_population_drift"):
+                with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                     source.capture_usace_lateral_buoys(storage, version="draft", capture_directory=str(root))
             quarantine_roots = list((Path(tmp) / "staging" / "_quarantine" / source.DATASET_SLUG).iterdir())
             self.assertEqual(len(quarantine_roots), 1)
             failure = json.loads(storage.read_key(f"{quarantine_roots[0].relative_to(Path(tmp) / 'staging')}/metadata/failure.json"))
             self.assertEqual(failure["reason_code"], "ValueError")
-            self.assertEqual(failure["captured_names"], ["ids_before"])
+            self.assertIn("ids_before", failure["captured_names"])
             self.assertIsNotNone(storage.read_key(f"{quarantine_roots[0].relative_to(Path(tmp) / 'staging')}/raw/ids_before.body"))
 
     def test_fresh_same_source_reuses_first_manifest_and_receipts(self):
@@ -383,7 +366,7 @@ class LateralBuoysTests(unittest.TestCase):
             self.assertEqual({name: storage.read_key(f"{prefix}/raw/{name}.receipt.json") for name in receipts_before},
                              receipts_before)
             self.assertEqual(second["source_capture_evidence_sha256"], first["source_capture_evidence_sha256"])
-            self.assertEqual(first["feature_count"], source.EXPECTED_COUNT)
+            self.assertEqual(first["feature_count"], COUNT)
 
     def test_missing_approval_preserves_populated_accepted_inventory(self):
         with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:

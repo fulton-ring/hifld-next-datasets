@@ -15,6 +15,10 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import terminal_points_usace_ienc as source
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
+COUNT = 16
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "c8aa3562cf53e860d2bff96611bbd511190e1ba0d75e502cbab10a106f04248e"
+
 
 class TerminalPointsUsaceIencTests(unittest.TestCase):
     def _documents(self):
@@ -30,15 +34,15 @@ class TerminalPointsUsaceIencTests(unittest.TestCase):
                           "description": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes USACE_IENC_Master_Service_gdb.zip"},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/TERMINAL_POINT", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
             "service_after": json.loads(json.dumps(service)), "layer_after": json.loads(json.dumps(layer)),
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
         }
-        for page_index in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+        for page_index in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
             rows = []
-            for oid in source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
+            for oid in IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
                 attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
                          (18750 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}")
                          for field in source.ATTRIBUTE_FIELDS}
@@ -54,14 +58,14 @@ class TerminalPointsUsaceIencTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(terminal_points_usace_ienc, hifld_ingest_assets)
         self.assertEqual(terminal_points_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = terminal_points_usace_ienc_complete({"feature_count": 16, "source_population_complete": True})
+        check = terminal_points_usace_ienc_complete({"feature_count": 16, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = terminal_points_usace_ienc_complete({"feature_count": 15, "source_population_complete": True})
+        failed = terminal_points_usace_ienc_complete({"feature_count": 15, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_pages_cover_source_ids_without_overlapping(self):
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(IDS))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")],
                          [f"page_{index:03d}" for index in range(1)])
         self.assertIn("objectIds=1%2C2%2C3", urls["page_000"])
@@ -75,7 +79,7 @@ class TerminalPointsUsaceIencTests(unittest.TestCase):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 16)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 16)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "Feature_ID-1")
@@ -95,8 +99,8 @@ class TerminalPointsUsaceIencTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_count_or_id_population_drift"),
+            ("population", lambda d: d["ids_after"].update(objectIds=IDS[:-1]),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][3].update(name="renamed"),
              "source_field_schema_drift"),
             ("transfer", lambda d: d["page_000"].update(exceededTransferLimit=True),
@@ -155,9 +159,9 @@ class TerminalPointsUsaceIencTests(unittest.TestCase):
         if mutate is not None:
             mutate(documents)
         root.mkdir(parents=True)
-        roster_urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        roster_urls = dict(source._capture_roster(IDS))
         receipts = {}
-        for name in sorted(source.CAPTURE_NAMES):
+        for name in sorted(source._capture_names(IDS)):
             body = _canonical(documents[name])
             receipt = {"method": "GET", "url": roster_urls[name], "final_url": roster_urls[name],
                        "observed_at": "2026-11-14T00:00:00+00:00", "status": 200, "complete_body": True,
@@ -170,7 +174,7 @@ class TerminalPointsUsaceIencTests(unittest.TestCase):
             (root / f"{name}.wire").write_bytes(body)
             (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
         manifest = {"complete": True, "captured_at": "2026-11-14T00:00:00+00:00",
-                    "source_feature_count": source.EXPECTED_COUNT, "receipts": receipts,
+                    "source_feature_count": COUNT, "receipts": receipts,
                     "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}
         (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         return root
@@ -199,7 +203,7 @@ class TerminalPointsUsaceIencTests(unittest.TestCase):
             first = source.capture_terminal_points_usace_ienc(storage, version="regression",
                                                               capture_directory=str(root))
             self.assertFalse(first["reused"])
-            self.assertEqual(first["feature_count"], source.EXPECTED_COUNT)
+            self.assertEqual(first["feature_count"], COUNT)
             self.assertEqual(first["source_vertex_count"], 16)
             self.assertTrue(first["source_population_complete"])
             self.assertFalse(first["release_accepted"])

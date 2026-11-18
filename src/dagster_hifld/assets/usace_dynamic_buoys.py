@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.usace_dynamic_buoys import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_usace_dynamic_buoys,
+    DATASET_SLUG, FILE_SLUG, capture_usace_dynamic_buoys,
 )
 
 
@@ -41,7 +42,8 @@ def usace_dynamic_buoys_usace_ienc(context, config: UsaceDynamicBuoysConfig,
 
 @asset_check(asset=usace_dynamic_buoys_usace_ienc, blocking=True)
 def usace_dynamic_buoys_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_population_complete") is True
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
@@ -67,3 +69,8 @@ usace_dynamic_buoys_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+usace_dynamic_buoys_usace_ienc_drift = register_approved_baseline_drift(
+    usace_dynamic_buoys_usace_ienc, "usace_dynamic_buoys_usace_ienc_drift")
+
+ASSET_CHECKS = [usace_dynamic_buoys_complete, usace_dynamic_buoys_usace_ienc_drift]

@@ -16,6 +16,9 @@ from dagster_hifld.assets.principal_ports import (
 )
 from dagster_hifld.sources import principal_ports as source
 
+COUNT = 150
+IDS = list(range(1, COUNT + 1))
+
 
 def _clockwise(x0, y0, x1, y1):
     return [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]]
@@ -27,7 +30,7 @@ def _counterclockwise(x0, y0, x1, y1):
 
 def _captures():
     extent = source.EXPECTED_EXTENT
-    ids = list(source.EXPECTED_IDS)
+    ids = list(IDS)
     fields = source.EXPECTED_FIELD_DECLARATIONS
     attributes = []
     geometry = {"rings": [_clockwise(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"])]}
@@ -109,7 +112,7 @@ class PrincipalPortsTests(unittest.TestCase):
         self.assertIn(principal_ports_usace, hifld_ingest_assets)
         self.assertEqual(principal_ports_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
         result = principal_ports_source_complete({
-            "feature_count": 150,
+            "feature_count": 150, "source_reported_count": COUNT,
             "source_population_complete": True,
             "source_invalid_geometry_count_without_repair": 8,
         })
@@ -167,8 +170,8 @@ class PrincipalPortsTests(unittest.TestCase):
     def test_schema_count_id_and_transfer_limit_drift_are_rejected(self):
         mutations = [
             ("field type", lambda c: _mutate_json(c, "layer_before", lambda d: d["fields"][2].update(type="esriFieldTypeString")), "source_field_schema_drift"),
-            ("count", lambda c: _mutate_json(c, "count_after", lambda d: d.update(count=149)), "source_count_drift"),
-            ("ID roster", lambda c: _mutate_json(c, "ids_after", lambda d: d["objectIds"].pop()), "source_objectid_population_drift"),
+            ("count", lambda c: _mutate_json(c, "count_after", lambda d: d.update(count=149)), "source_count_or_id_roster_drift"),
+            ("ID roster", lambda c: _mutate_json(c, "ids_after", lambda d: d["objectIds"].pop()), "source_count_or_id_roster_drift"),
             ("transfer limit", lambda c: _mutate_json(c, "page_000", lambda d: d.update(exceededTransferLimit=True)), "source_page_error_or_transfer_limit"),
         ]
         for name, mutate, reason in mutations:

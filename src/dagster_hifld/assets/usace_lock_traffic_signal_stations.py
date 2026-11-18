@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.usace_lock_traffic_signal_stations import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_usace_lock_traffic_signal_stations,
+    DATASET_SLUG, FILE_SLUG, capture_usace_lock_traffic_signal_stations,
 )
 
 
@@ -45,7 +46,7 @@ def usace_lock_traffic_signal_stations_usace_ienc(
 
 @asset_check(asset=usace_lock_traffic_signal_stations_usace_ienc, blocking=True)
 def usace_lock_traffic_signal_stations_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
               and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
@@ -72,7 +73,10 @@ usace_lock_traffic_signal_stations_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+usace_lock_traffic_signal_stations_usace_ienc_drift = register_approved_baseline_drift(
+    usace_lock_traffic_signal_stations_usace_ienc, "usace_lock_traffic_signal_stations_usace_ienc_drift")
+
 INGEST_ASSETS = [usace_lock_traffic_signal_stations_usace_ienc]
-ASSET_CHECKS = [usace_lock_traffic_signal_stations_complete]
+ASSET_CHECKS = [usace_lock_traffic_signal_stations_complete, usace_lock_traffic_signal_stations_usace_ienc_drift]
 JOBS = [usace_lock_traffic_signal_stations_draft_job]
 SCHEDULES = [usace_lock_traffic_signal_stations_draft_schedule]

@@ -6,6 +6,10 @@ from dagster import DefaultScheduleStatus
 from shapely import from_wkb
 
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
+
+COUNT = 269
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "82ca28bcb00ccbaae803c77bc62b5f38284b059735f9ff201ff6793f6b7bab5e"
 from dagster_hifld.assets.usace_conveyor_areas import (
     usace_conveyor_areas_complete,
     usace_conveyor_areas_draft_schedule,
@@ -19,7 +23,7 @@ def _document(value):
 
 
 def _synthetic_capture():
-    ids = source.EXPECTED_IDS
+    ids = IDS
     fields = source.EXPECTED_FIELD_DECLARATIONS
     extent = {**source.EXPECTED_LAYER_EXTENT, "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
     sr = {"wkid": 4326, "latestWkid": 4326}
@@ -59,24 +63,24 @@ class ConveyorAreasTests(unittest.TestCase):
         self.assertIn(usace_conveyor_areas_usace_ienc, hifld_ingest_assets)
         self.assertEqual(usace_conveyor_areas_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
         self.assertTrue(usace_conveyor_areas_complete({
-            "feature_count": source.EXPECTED_COUNT, "source_population_complete": True
+            "feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete": True
         }).passed)
         self.assertFalse(usace_conveyor_areas_complete({
-            "feature_count": source.EXPECTED_COUNT - 1, "source_population_complete": True
+            "feature_count": COUNT - 1, "source_reported_count": COUNT, "source_population_complete": True
         }).passed)
 
     def test_native_capture_contract_preserves_every_declared_attribute_and_polygon(self):
         fields, features, audit = source._validate(_synthetic_capture())
         self.assertEqual(len(fields), 13)
         self.assertEqual(len(features), 269)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual([f["name"] for f in fields], [x["name"] for x in source.EXPECTED_FIELD_DECLARATIONS])
         parquet_bytes = source._parquet_bytes(fields, features, 4326)
         table = pq.read_table(__import__("io").BytesIO(parquet_bytes))
         self.assertEqual(table.schema.names, [x["name"] for x in fields if x["name"] != "SHAPE"] + ["geometry"])
         self.assertEqual(table.column("Scale_Minimum").type, __import__("pyarrow").int32())
-        self.assertEqual(table.column("OBJECTID").to_pylist(), source.EXPECTED_IDS)
-        self.assertEqual(table.column("Feature_ID").to_pylist(), [f"conveyor-{i}" for i in source.EXPECTED_IDS])
+        self.assertEqual(table.column("OBJECTID").to_pylist(), IDS)
+        self.assertEqual(table.column("Feature_ID").to_pylist(), [f"conveyor-{i}" for i in IDS])
         source_wkb = source._esri_polygon(features[123]["geometry"])
         self.assertEqual(table.column("geometry")[123].as_py(), source_wkb)
         self.assertEqual(from_wkb(source_wkb).geom_type, "Polygon")
@@ -87,7 +91,7 @@ class ConveyorAreasTests(unittest.TestCase):
         ids_doc = json.loads(ids_changed["ids_after"][0])
         ids_doc["objectIds"][-1] = 270
         ids_changed["ids_after"] = _document(ids_doc)
-        cases.append((ids_changed, "source_id_population_drift"))
+        cases.append((ids_changed, "source_count_or_id_roster_drift"))
 
         crs_changed = _synthetic_capture()
         layer = json.loads(crs_changed["layer_before"][0])

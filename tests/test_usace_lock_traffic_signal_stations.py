@@ -15,8 +15,14 @@ from dagster_hifld.assets.usace_lock_traffic_signal_stations import (
 )
 from dagster_hifld.sources import usace_lock_traffic_signal_stations as source
 
+LAYER_TOTAL_COUNT = 298
+BRIDGE_IDS = {170, 171, 172, 173, 174, 175, 176, 205, 206}
+COUNT = 289
+IDS = [oid for oid in range(1, LAYER_TOTAL_COUNT + 1) if oid not in BRIDGE_IDS]
+ID_SHA256 = "7e82888225c844c6b829e851b9b2a4ab5f2b43d7d65264c523a1fbe2b9bbf0cf"
 
-def _capture_docs(count=source.EXPECTED_COUNT):
+
+def _capture_docs(count=COUNT):
     layer = {
         "id": source.LAYER_ID, "name": source.LAYER_NAME, "geometryType": "esriGeometryPoint",
         "maxRecordCount": 2000, "fields": source.EXPECTED_FIELD_DECLARATIONS,
@@ -26,7 +32,7 @@ def _capture_docs(count=source.EXPECTED_COUNT):
     service = {"mapName": source.LAYER_NAME, "copyrightText": "USACE IENC",
                "layers": [{"id": source.LAYER_ID, "name": source.LAYER_NAME,
                            "geometryType": "esriGeometryPoint"}]}
-    ids = list(source.EXPECTED_IDS)
+    ids = list(IDS)
     docs = {
         "bts_item": {"id": source.BTS_ITEM_ID, "owner": "USDOT_BTS", "type": "PDF", "access": "public",
                      "title": "Inland Electronic Navigational Charts",
@@ -35,12 +41,12 @@ def _capture_docs(count=source.EXPECTED_COUNT):
                                             "type": "MapServer"}]},
         "service_before": service, "service_after": service,
         "layer_before": layer, "layer_after": layer,
-        "layer_count_before": {"count": source.EXPECTED_LAYER_TOTAL_COUNT},
-        "layer_count_after": {"count": source.EXPECTED_LAYER_TOTAL_COUNT},
+        "layer_count_before": {"count": LAYER_TOTAL_COUNT},
+        "layer_count_after": {"count": LAYER_TOTAL_COUNT},
         "count_before": {"count": count}, "count_after": {"count": count},
         "ids_before": {"objectIds": ids}, "ids_after": {"objectIds": ids},
     }
-    for page_idx in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+    for page_idx in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
         page_ids = ids[page_idx * source.PAGE_SIZE:(page_idx + 1) * source.PAGE_SIZE]
         rows = []
         for oid in page_ids:
@@ -62,22 +68,24 @@ class LockTrafficSignalStationsTests(unittest.TestCase):
         self.assertEqual(usace_lock_traffic_signal_stations_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         check = usace_lock_traffic_signal_stations_complete(
-            {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True})
+            {"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["bts_item_succession_accepted"].value)
 
-    def test_subset_roster_pins_lock_category_excluding_bridge_passage(self):
-        self.assertEqual(source.EXPECTED_COUNT, 289)
+    def test_subset_roster_filters_lock_category_excluding_bridge_passage(self):
+        for name in ("EXPECTED_COUNT", "EXPECTED_IDS", "EXPECTED_ID_SHA256",
+                     "EXPECTED_LAYER_TOTAL_COUNT"):
+            self.assertFalse(hasattr(source, name), name)
         self.assertEqual(len(source.BRIDGE_PASSAGE_OBJECT_IDS), 9)
-        self.assertNotIn(170, source.EXPECTED_IDS)
-        self.assertNotIn(205, source.EXPECTED_IDS)
-        self.assertIn(169, source.EXPECTED_IDS)
-        self.assertIn(207, source.EXPECTED_IDS)
+        self.assertNotIn(170, IDS)
+        self.assertNotIn(205, IDS)
+        self.assertIn(169, IDS)
+        self.assertIn(207, IDS)
         self.assertEqual("Category_of_Traffic_Signal_Station='Lock'", source._lock_filter())
 
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
-        name, url = source._capture_roster(source.EXPECTED_IDS)[0]
+        name, url = source._capture_roster(IDS)[0]
         receipt = {"method": "GET", "url": url, "final_url": url}
         source.validate_capture_request_identity(name, receipt, url)
         receipt["final_url"] = "https://example.invalid/wrong"
@@ -86,9 +94,9 @@ class LockTrafficSignalStationsTests(unittest.TestCase):
 
     def test_complete_population_native_geometry_and_declared_parquet_types(self):
         fields, features, audit = source._validate(_capture_docs())
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
-        self.assertEqual(audit["source_layer_total_count"], source.EXPECTED_LAYER_TOTAL_COUNT)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
+        self.assertEqual(audit["source_layer_total_count"], LAYER_TOTAL_COUNT)
         self.assertEqual(sorted(audit["source_excluded_object_ids"]),
                          sorted(source.BRIDGE_PASSAGE_OBJECT_IDS))
         parquet = source._parquet_bytes(fields, features)
@@ -100,7 +108,7 @@ class LockTrafficSignalStationsTests(unittest.TestCase):
         self.assertEqual(geometry.geom_type, "Point")
         self.assertEqual(geometry.x, features[0]["geometry"]["x"])
         self.assertEqual(geometry.y, features[0]["geometry"]["y"])
-        self.assertEqual(table.num_rows, source.EXPECTED_COUNT)
+        self.assertEqual(table.num_rows, COUNT)
 
     def test_rejects_bridge_passage_rows_and_non_lock_category_drift(self):
         captures = _capture_docs()
@@ -125,15 +133,15 @@ class LockTrafficSignalStationsTests(unittest.TestCase):
             source._validate(captures)
         captures = _capture_docs()
         count = json.loads(captures["count_after"][0])
-        count["count"] = source.EXPECTED_COUNT + 1
+        count["count"] = COUNT + 1
         captures["count_after"] = (json.dumps(count).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_count_or_id_population_drift"):
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate(captures)
         captures = _capture_docs()
         layer_count = json.loads(captures["layer_count_after"][0])
-        layer_count["count"] = source.EXPECTED_LAYER_TOTAL_COUNT + 5
+        layer_count["count"] = LAYER_TOTAL_COUNT + 5
         captures["layer_count_after"] = (json.dumps(layer_count).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_count_or_id_population_drift"):
+        with self.assertRaisesRegex(ValueError, "source_layer_count_changed_during_capture"):
             source._validate(captures)
 
     def test_rejects_geometry_or_declared_type_loss(self):

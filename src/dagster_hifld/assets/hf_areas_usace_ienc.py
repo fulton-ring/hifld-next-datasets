@@ -12,11 +12,11 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.hf_areas_usace_ienc import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     FILE_SLUG,
     capture_hf_areas_usace_ienc,
 )
@@ -58,7 +58,7 @@ def hf_areas_usace_ienc_candidate(
 @asset_check(asset=hf_areas_usace_ienc_candidate, blocking=True)
 def hf_areas_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
+        candidate.get("feature_count") == candidate.get("source_reported_count")
         and candidate.get("source_population_complete") is True
     )
     return AssetCheckResult(
@@ -93,3 +93,7 @@ hf_areas_usace_ienc_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+hf_areas_usace_ienc_candidate_drift = register_approved_baseline_drift(hf_areas_usace_ienc_candidate, "hf_areas_usace_ienc_candidate_drift")
+
+ASSET_CHECKS = [hf_areas_usace_ienc_complete, hf_areas_usace_ienc_candidate_drift]

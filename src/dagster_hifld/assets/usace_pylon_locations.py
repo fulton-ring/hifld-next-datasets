@@ -5,6 +5,7 @@ from dagster import (
     asset, define_asset_job, schedule,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -66,3 +67,8 @@ def pylon_locations_draft_refresh_schedule(context):
         return SkipReason("Draft refresh requires an explicit scheduled day")
     day = context.scheduled_execution_time.date().isoformat()
     return RunRequest(run_key=f"pylon-locations-ienc-draft-{day}", tags={"hifld/draft": "true", "hifld/promotion_allowed": "false"})
+
+usace_pylon_locations_usace_ienc_drift = register_approved_baseline_drift(
+    usace_pylon_locations_usace_ienc, "usace_pylon_locations_usace_ienc_drift")
+
+ASSET_CHECKS = [usace_pylon_locations_usace_ienc_drift]

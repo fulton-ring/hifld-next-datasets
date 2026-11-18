@@ -36,7 +36,7 @@ class UsaceNoticeMarksTests(unittest.TestCase):
 
     def test_small_complete_population_and_drift_failures(self):
         fields, captures = self._captures()
-        with patch.object(marks, "EXPECTED_COUNT", 2), patch.object(marks, "PAGE_SIZE", 1):
+        with patch.object(marks, "PAGE_SIZE", 1):
             parsed, features, audit = marks.validate_notice_snapshot(captures)
             self.assertEqual(parsed, fields)
             self.assertEqual(len(features), 2)
@@ -45,7 +45,7 @@ class UsaceNoticeMarksTests(unittest.TestCase):
 
             bad = dict(captures)
             bad["count_after"] = (b'{"count":3}', {})
-            with self.assertRaisesRegex(ValueError, "source_count_drift"):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                 marks.validate_notice_snapshot(bad)
 
             bad = dict(captures)
@@ -57,7 +57,7 @@ class UsaceNoticeMarksTests(unittest.TestCase):
 
             bad = dict(captures)
             bad["ids_after"] = (b'{"objectIds":[101,206]}', {})
-            with self.assertRaisesRegex(ValueError, "source_id_population_changed_or_invalid"):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                 marks.validate_notice_snapshot(bad)
 
             bad = dict(captures)
@@ -88,7 +88,7 @@ class UsaceNoticeMarksTests(unittest.TestCase):
             bad["page_000"] = (json.dumps({"spatialReference":{"latestWkid":4326},
                 "features":[{"attributes":base["attributes"],"geometry":geometry}]}).encode(), {})
             return bad
-        with patch.object(marks, "EXPECTED_COUNT", 2), patch.object(marks, "PAGE_SIZE", 1):
+        with patch.object(marks, "PAGE_SIZE", 1):
             parsed, features, audit = marks.validate_notice_snapshot(captures)
             self.assertEqual(audit["source_coverage_extent"], marks.EXPECTED_EXTENT)
             self.assertEqual(audit["source_extent_tolerance_degrees"], marks.EXTENT_TOLERANCE_DEGREES)
@@ -167,7 +167,7 @@ class UsaceNoticeMarksTests(unittest.TestCase):
             (capture_root / "capture_manifest.json").write_bytes(marks._canonical({
                 "complete":True,"receipts":receipts,"artifact_roster":roster})+b"\n")
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
-            with patch.object(marks, "EXPECTED_COUNT", 2), patch.object(marks, "PAGE_SIZE", 1), \
+            with patch.object(marks, "PAGE_SIZE", 1), \
                  patch.object(marks, "_fetch_retry", side_effect=AssertionError("replay must be offline")):
                 first = marks.capture_usace_notice_marks(storage, version="vfixture", capture_directory=str(capture_root))
                 # A later retrieval receipt can have a new observation time while
@@ -187,7 +187,7 @@ class UsaceNoticeMarksTests(unittest.TestCase):
             roster["unexpected.body"] = {"bytes":0,"sha256":marks._sha(b"")}
             (capture_root / "capture_manifest.json").write_bytes(marks._canonical({
                 "complete":True,"receipts":receipts,"artifact_roster":roster})+b"\n")
-            with patch.object(marks, "EXPECTED_COUNT", 2), patch.object(marks, "PAGE_SIZE", 1):
+            with patch.object(marks, "PAGE_SIZE", 1):
                 with self.assertRaisesRegex(ValueError, "retained_capture_roster_digest_mismatch|capture_roster_mismatch"):
                     marks.capture_usace_notice_marks(storage, version="vfixture", capture_directory=str(capture_root))
 
@@ -222,7 +222,7 @@ class UsaceNoticeMarksTests(unittest.TestCase):
             first_capture, second_capture = root / "first", root / "second"
             write_capture(first_capture, reformat_page=False)
             write_capture(second_capture, reformat_page=True)
-            with patch.object(marks, "EXPECTED_COUNT", 2), patch.object(marks, "PAGE_SIZE", 1), \
+            with patch.object(marks, "PAGE_SIZE", 1), \
                  patch.object(marks, "_fetch_retry", side_effect=AssertionError("replay must be offline")):
                 first = marks.capture_usace_notice_marks(storage, version="vraw-a", capture_directory=str(first_capture))
                 second = marks.capture_usace_notice_marks(storage, version="vraw-b", capture_directory=str(second_capture))
@@ -255,7 +255,7 @@ class UsaceNoticeMarksTests(unittest.TestCase):
             (root / "layer_before.body").write_bytes(body)
             (root / "layer_before.wire").write_bytes(body)
             storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "staging"))
-            marks._record_incomplete(root, storage, "vfailed", {"layer_before":(body,{})}, ValueError("source_count_drift"))
+            marks._record_incomplete(root, storage, "vfailed", {"layer_before":(body,{})}, ValueError("source_count_or_id_roster_drift"))
             manifest = json.loads((root / "capture_manifest.json").read_bytes())
             self.assertFalse(manifest["complete"])
             self.assertEqual(manifest["error_code"], "ValueError")

@@ -15,6 +15,10 @@ from dagster_hifld.assets.usace_military_districts import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import usace_military_districts as source
+
+COUNT = 27
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "803f9a69da5c27cc979dd7bfdc7a1ce4ed1f830e5137202020c6237ee8e175c2"
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
@@ -60,18 +64,18 @@ class UsaceMilitaryDistrictsTests(unittest.TestCase):
                              "extent": [[source.EXPECTED_EXTENT["xmin"], source.EXPECTED_EXTENT["ymin"]],
                                         [source.EXPECTED_EXTENT["xmax"], source.EXPECTED_EXTENT["ymax"]]]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
             "service_after": json.loads(json.dumps(service)), "layer_after": json.loads(json.dumps(layer)),
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
         }
         page_fields = [{key: value for key, value in field.items()
                         if key not in ("nullable", "editable")}
                        for field in source.EXPECTED_FIELD_DECLARATIONS]
-        for page_index in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+        for page_index in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
             rows = []
-            for oid in source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
+            for oid in IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
                 rings = [self._shell(oid)]
                 if oid in (6, 16, 17, 27):
                     rings.append(self._hole(rings[0]))
@@ -107,14 +111,14 @@ class UsaceMilitaryDistrictsTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(usace_military_districts, hifld_ingest_assets)
         self.assertEqual(usace_military_districts_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_military_districts_complete({"feature_count": 27, "source_population_complete": True})
+        check = usace_military_districts_complete({"feature_count": 27, "source_reported_count": 27, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = usace_military_districts_complete({"feature_count": 26, "source_population_complete": True})
+        failed = usace_military_districts_complete({"feature_count": 26, "source_reported_count": 27, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_pages_cover_source_ids_without_overlapping(self):
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(IDS))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")], ["page_000"])
         self.assertIn("objectIds=1%2C2%2C3", urls["page_000"])
         self.assertIn("%2C25%2C26%2C27&", urls["page_000"])
@@ -132,7 +136,7 @@ class UsaceMilitaryDistrictsTests(unittest.TestCase):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 27)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 155)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(audit["geometry_invalid_count"], 0)
@@ -159,10 +163,10 @@ class UsaceMilitaryDistrictsTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population after", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_id_population_drift:after"),
+            ("population after", lambda d: d["ids_after"].update(objectIds=IDS[:-1]),
+             "source_count_or_id_roster_drift"),
             ("count before", lambda d: d["count_before"].update(count=26),
-             "source_count_population_drift:before"),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("transfer", lambda d: d["page_000"].update(exceededTransferLimit=True),

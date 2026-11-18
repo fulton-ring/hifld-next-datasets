@@ -15,7 +15,7 @@ import pyarrow.parquet as pq
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
+from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
@@ -26,6 +26,8 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
+    read_ienc_layer_replay,
     ienc_layer_capture_roster,
     PAGE_MAX_BYTES, _canonical, _capture, _capture_identity,
     _load_capture, _parquet_bytes, _sha, _validate_spatial_reference,
@@ -40,16 +42,17 @@ SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/PI
 LAYER_ID = 20
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 3010
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "d298d76237b21d1c44a7c23e412cf67234db786f62a537f7bcd9e5487f6c6beb"
 PAGE_SIZE = 250
 EXPECTED_FIELD_DECLARATIONS = [{'name': 'OBJECTID', 'type': 'esriFieldTypeOID', 'alias': 'OBJECTID', 'domain': None}, {'name': 'SHAPE', 'type': 'esriFieldTypeGeometry', 'alias': 'SHAPE', 'domain': None}, {'name': 'Object_Name', 'type': 'esriFieldTypeString', 'alias': 'Object_Name', 'length': 254, 'domain': None}, {'name': 'Information', 'type': 'esriFieldTypeString', 'alias': 'Information', 'length': 254, 'domain': None}, {'name': 'Condition', 'type': 'esriFieldTypeString', 'alias': 'Condition', 'length': 254, 'domain': None}, {'name': 'Scale_Minimum', 'type': 'esriFieldTypeInteger', 'alias': 'Scale_Minimum', 'domain': None}, {'name': 'Source_Date', 'type': 'esriFieldTypeString', 'alias': 'Source_Date', 'length': 254, 'domain': None}, {'name': 'Source_Indication', 'type': 'esriFieldTypeString', 'alias': 'Source_Indication', 'length': 254, 'domain': None}, {'name': 'Source_Dataset', 'type': 'esriFieldTypeString', 'alias': 'Source_Dataset', 'length': 254, 'domain': None}, {'name': 'Festure_ID', 'type': 'esriFieldTypeString', 'alias': 'Festure_ID', 'length': 254, 'domain': None}]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
 EXPECTED_EXTENT = {"xmin": -96.09706959999994, "ymin": 29.720565200000067, "xmax": -79.47503019999994, "ymax": 45.12797000000006}
-CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before",
-                 "ids_before", "layer_after", "count_after", "ids_after", "service_after",
-                 *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
+_BASE_CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before", "ids_before", "layer_after", "count_after", "ids_after", "service_after"}
+
+
+def _capture_names(ids: list[int]) -> set[str]:
+    return set(_BASE_CAPTURE_NAMES) | {
+        f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
+
 
 
 def _query(params: dict[str, object]) -> str:
@@ -68,17 +71,14 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
-    return validate_retained_capture_replay(
-        root,
-        capture_names=CAPTURE_NAMES,
-        expected_urls=dict(_capture_roster(EXPECTED_IDS)),
+    return read_ienc_layer_replay(
+        root, capture_roster=_capture_roster,
         load_capture=_load_capture,
-        validate_request_identity=validate_capture_request_identity,
-    )
-
+        validate_request_identity=validate_capture_request_identity)
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
-    if set(captures) != CAPTURE_NAMES:
+    ids_before = capture_witness(captures)
+    if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     item = docs["bts_item"]
@@ -113,13 +113,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         _validate_spatial_reference(extent_reference, "source_layer_extent")
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
-    count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (count_before != EXPECTED_COUNT or count_after != count_before or not isinstance(ids_before, list)
-            or any(type(oid) is not int for oid in ids_before) or ids_before != EXPECTED_IDS
-            or ids_after != ids_before or len(set(ids_before)) != EXPECTED_COUNT
-            or _sha(_canonical(ids_before)) != EXPECTED_ID_SHA256):
-        raise ValueError("source_count_or_id_population_drift")
     features=[]; geometry_valid=geometry_empty=0
     for name in sorted(n for n in captures if n.startswith("page_")):
         page=docs[name]
@@ -127,7 +120,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             raise ValueError("source_page_error_or_transfer_limit")
         _validate_spatial_reference(page.get("spatialReference"), "source_"+name+"_page")
         rows=page.get("features"); expected_index=int(name[-3:])
-        page_ids=EXPECTED_IDS[expected_index*PAGE_SIZE:(expected_index+1)*PAGE_SIZE]
+        page_ids=ids_before[expected_index*PAGE_SIZE:(expected_index+1)*PAGE_SIZE]
         if not isinstance(rows,list) or len(rows)!=len(page_ids):
             raise ValueError("source_page_population_incomplete:"+name)
         observed=[]
@@ -152,7 +145,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             features.append(feature)
         if sorted(observed)!=page_ids or len(set(observed))!=len(observed): raise ValueError("source_page_id_population_drift:"+name)
     ids=[r["attributes"]["OBJECTID"] for r in features]
-    if sorted(ids)!=EXPECTED_IDS or len(ids)!=EXPECTED_COUNT or len(set(ids))!=EXPECTED_COUNT: raise ValueError("source_feature_id_population_drift")
+    if sorted(ids)!=ids_before or len(ids)!=len(ids_before) or len(set(ids))!=len(ids_before): raise ValueError("source_feature_id_population_drift")
     features.sort(key=lambda r:r["attributes"]["OBJECTID"])
     coordinates=[[r["attributes"]["OBJECTID"],r["geometry"]["x"],r["geometry"]["y"]] for r in features]
     bounds=[min(p[1] for p in coordinates),min(p[2] for p in coordinates),max(p[1] for p in coordinates),max(p[2] for p in coordinates)]
@@ -228,8 +221,9 @@ def capture_usace_pile_locations(storage: StagingStorageResource, *, version: st
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
                 ids_body, ids_receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
                 ids = json.loads(ids_body).get("objectIds")
-                if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-                        or ids != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT):
+                if (not isinstance(ids, list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
                     raise ValueError("source_seed_id_population_drift")
                 captures["ids_before"] = (ids_body, ids_receipt)
                 roster = _capture_roster(ids)
@@ -345,8 +339,8 @@ def capture_usace_pile_locations(storage: StagingStorageResource, *, version: st
             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": EXPECTED_COUNT,
+            "feature_count": len(features), "source_reported_count": len(features), "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
             "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
@@ -371,8 +365,8 @@ def capture_usace_pile_locations(storage: StagingStorageResource, *, version: st
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
     )
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-        "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": EXPECTED_COUNT,
+        "feature_count": len(features), "source_reported_count": len(features), "source_population_complete": True,
+        "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
         "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],

@@ -36,7 +36,7 @@ import pyarrow.parquet as pq
 import pyproj
 
 from dagster_hifld.capture_completeness import validate_capture_witness
-from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.http_capture import capture_http_response, validate_retained_capture_replay
 from dagster_hifld.source_release import ReleaseSignal
 from dagster_hifld.sources.capture_common import capture_get, write_immutable
 from dagster_hifld.sources.esri_common import arrow_type, canonical as _canonical, sha as _sha
@@ -237,6 +237,34 @@ def capture_layer_roster(client: httpx.Client, root: Path,
     captures = {name: fetch(client, url, root, name) for name, url in roster}
     capture_witness(captures, captured_ids=captured_ids)
     return captures
+
+
+def retained_capture_ids(root: Path) -> list[int]:
+    """Read the native ID roster retained in a capture's ``ids_before`` body."""
+    path = root / "ids_before.body"
+    if path.is_symlink():
+        raise ValueError("retained_capture_ids_symlink_rejected")
+    try:
+        ids = json.loads(path.read_bytes()).get("objectIds")
+    except (OSError, ValueError) as exc:
+        raise ValueError("retained_capture_ids_invalid") from exc
+    if (not isinstance(ids, list) or not ids
+            or any(type(oid) is not int or oid <= 0 for oid in ids)
+            or len(set(ids)) != len(ids)):
+        raise ValueError("retained_capture_ids_invalid")
+    return sorted(ids)
+
+
+def read_ienc_layer_replay(root: Path, *, capture_roster: Callable[[list[int]], Iterable[tuple[str, str]]],
+                           load_capture: Callable[[Path, str], tuple[bytes, bytes, dict]],
+                           validate_request_identity: Callable[[str, Mapping[str, object], str], None],
+                           ) -> dict[str, tuple[bytes, dict]]:
+    """Replay a retained IENC capture with page names derived from its source IDs."""
+    ids = retained_capture_ids(root)
+    urls = dict(capture_roster(ids))
+    return validate_retained_capture_replay(
+        root, capture_names=set(urls), expected_urls=urls,
+        load_capture=load_capture, validate_request_identity=validate_request_identity)
 
 
 def load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:

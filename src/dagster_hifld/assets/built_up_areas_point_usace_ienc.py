@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.built_up_areas_point_usace_ienc import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_built_up_areas_point_usace_ienc,
+    DATASET_SLUG, FILE_SLUG, capture_built_up_areas_point_usace_ienc,
 )
 
 
@@ -41,7 +42,10 @@ def built_up_areas_point_usace_ienc(context, config: BuiltUpAreasPointUsaceIencC
 
 @asset_check(asset=built_up_areas_point_usace_ienc, blocking=True)
 def built_up_areas_point_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_population_complete") is True
+    count = candidate.get("source_reported_count")
+    passed = (type(count) is int and count > 0
+              and candidate.get("feature_count") == count
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
@@ -66,7 +70,10 @@ built_up_areas_point_usace_ienc_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+built_up_areas_point_usace_ienc_drift = register_approved_baseline_drift(
+    built_up_areas_point_usace_ienc, "built_up_areas_point_usace_ienc_drift")
+
 INGEST_ASSETS = [built_up_areas_point_usace_ienc]
-ASSET_CHECKS = [built_up_areas_point_usace_ienc_complete]
+ASSET_CHECKS = [built_up_areas_point_usace_ienc_complete, built_up_areas_point_usace_ienc_drift]
 JOBS = [built_up_areas_point_usace_ienc_draft_job]
 SCHEDULES = [built_up_areas_point_usace_ienc_draft_schedule]

@@ -9,22 +9,25 @@ from dagster_hifld.assets.usace import (
 )
 from dagster_hifld.definitions import defs
 from dagster_hifld.sources.usace_nautical_publication_information_areas import (
-    CURRENT_BTS_ITEM_ID, DATASET_SLUG, EXPECTED_COUNT, EXPECTED_FIELD_DECLARATIONS,
+    CURRENT_BTS_ITEM_ID, DATASET_SLUG, EXPECTED_FIELD_DECLARATIONS,
     EXPECTED_FIELDS, LAYER_URL, _validate,
 )
+
+
+COUNT = 109
 
 
 class UsaceNauticalPublicationInformationAreasTests(unittest.TestCase):
     def test_official_layer_profile_and_complete_fixture(self):
         self.assertEqual(DATASET_SLUG, "nautical-publication-information-areas-usace-ienc")
         self.assertTrue(LAYER_URL.endswith("/NAUTICAL_PUBLICATION_INFORMATION_AREA/MapServer/67"))
-        self.assertEqual(EXPECTED_COUNT, 109)
+        self.assertEqual(COUNT, 109)
         parsed_fields, parsed_features, audit = self._validate_complete_fixture()
         self.assertEqual(parsed_fields, EXPECTED_FIELD_DECLARATIONS)
-        self.assertEqual(len(parsed_features), EXPECTED_COUNT)
-        self.assertEqual(audit["source_feature_count"], EXPECTED_COUNT)
+        self.assertEqual(len(parsed_features), COUNT)
+        self.assertEqual(audit["source_feature_count"], COUNT)
         self.assertEqual(audit["source_id_min"], 1)
-        self.assertEqual(audit["source_id_max"], EXPECTED_COUNT)
+        self.assertEqual(audit["source_id_max"], COUNT)
         self.assertIn("BTS item delegation", audit["drift_guard"])
         self.assertIn("no national coverage claim", audit["source_coverage_scope"])
 
@@ -54,7 +57,7 @@ class UsaceNauticalPublicationInformationAreasTests(unittest.TestCase):
         )
 
     def _build_captures(self, bts_item_overrides=None, bts_pdf=b"%PDF-1.7\nretained PDF bytes"):
-        ids = list(range(1, EXPECTED_COUNT + 1))
+        ids = list(range(1, COUNT + 1))
         fields = EXPECTED_FIELD_DECLARATIONS
         layer = {
             "name": "NAUTICAL_PUBLICATION_INFORMATION_AREA", "id": 67,
@@ -72,8 +75,8 @@ class UsaceNauticalPublicationInformationAreasTests(unittest.TestCase):
             "bts_item": bts_item,
             "layer_before": layer,
             "layer_after": {"fields": fields, "geometryType": "esriGeometryPolygon"},
-            "count_before": {"count": EXPECTED_COUNT},
-            "count_after": {"count": EXPECTED_COUNT},
+            "count_before": {"count": COUNT},
+            "count_after": {"count": COUNT},
             "ids_before": {"objectIds": ids},
             "ids_after": {"objectIds": ids},
         }

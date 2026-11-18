@@ -21,6 +21,7 @@ from dagster_hifld.sources.esri_common import (
     arrow_type as _arrow_type, canonical as _canonical, sha as _sha,
 )
 from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
     fetch_capture_retry, load_replay as _load_replay, write_outputs as _write_outputs,
 )
 
@@ -47,7 +48,6 @@ DATASET_SLUG = "notice-marks-usace-ienc"
 FILE_SLUG = DATASET_SLUG
 LAYER_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/NOTICE_MARK_POINT/MapServer/18"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 266
 PAGE_SIZE = 250
 # Byte budgets previously inherited from usace_administrative_areas.
 MAX_BODY_BYTES = 48_000_000
@@ -72,8 +72,9 @@ EXTENT_TOLERANCE_DEGREES = 1e-6
 def validate_notice_snapshot(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     """Validate exact layer, schema, count, IDs and all page geometries."""
     docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    ids = capture_witness(captures)
     expected = {"layer_before", "count_before", "ids_seed", "ids_before", "layer_after", "count_after", "ids_after"}
-    expected |= {f"page_{i:03d}" for i in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}
+    expected |= {f"page_{i:03d}" for i in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
     if set(docs) != expected:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
     layer = docs["layer_before"]
@@ -93,15 +94,10 @@ def validate_notice_snapshot(captures: Mapping[str, tuple[bytes, dict]]) -> tupl
         raise ValueError("source_layer_coverage_extent_drift")
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_metadata_changed_during_capture")
-    if any(docs[name].get("count") != EXPECTED_COUNT for name in ("count_before", "count_after")):
-        raise ValueError("source_count_drift")
-    ids = docs["ids_before"].get("objectIds")
-    if (not isinstance(ids, list) or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
-            or ids != docs["ids_after"].get("objectIds") or ids != docs["ids_seed"].get("objectIds")):
+    if ids != sorted(docs["ids_seed"].get("objectIds") or []):
         raise ValueError("source_id_population_changed_or_invalid")
-    ids = sorted(ids)
     features = []
-    for i in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE):
+    for i in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE):
         page = docs[f"page_{i:03d}"]
         if "error" in page or page.get("exceededTransferLimit") is True:
             raise ValueError("source_page_error_or_truncated")
@@ -128,7 +124,7 @@ def validate_notice_snapshot(captures: Mapping[str, tuple[bytes, dict]]) -> tupl
             raise ValueError("source_feature_outside_coverage_extent")
         got_ids.append(attrs.get("OBJECTID"))
         geom_audit.append([attrs["OBJECTID"], geom])
-    if len(features) != EXPECTED_COUNT or sorted(got_ids) != ids or len(set(got_ids)) != EXPECTED_COUNT:
+    if len(features) != len(ids) or sorted(got_ids) != ids or len(set(got_ids)) != len(ids):
         raise ValueError("source_feature_population_incomplete")
     observed_extent = {"xmin": min(f["geometry"]["x"] for f in features),
                        "ymin": min(f["geometry"]["y"] for f in features),
@@ -274,7 +270,9 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
             try:
                 seed, receipt = _fetch_retry(client, _query({"where":"1=1", "returnIdsOnly":"true", "f":"json"}), root, "ids_seed", budget)
                 ids = json.loads(seed).get("objectIds")
-                if not isinstance(ids, list) or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT:
+                if (not isinstance(ids, list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
                     raise ValueError("source_seed_id_population_drift")
                 captures["ids_seed"] = (seed, receipt)
                 for name, url in _urls(ids):
@@ -318,7 +316,7 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
         "unsupported_output_formats":{"geopackage":"Independent source, compatibility and rights review pending.","pmtiles":"No display transformation approved."}}
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
-    ready = {"approved":False,"version":version,"feature_count":len(features),"source_population_complete":True,
+    ready = {"approved":False,"version":version,"feature_count":len(features),"source_reported_count":len(features),"source_population_complete":True,
              "source_record_sha256":audit["source_record_sha256"],"source_id_sha256":audit["source_id_sha256"],
              "source_schema_sha256":audit["source_schema_sha256"],"source_release_accepted":False,
              "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
@@ -350,7 +348,7 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,
             identity,audit["source_record_sha256"],audit["source_schema_sha256"],payload["objects"],original_receipts)
         validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(features),
+        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(features),"source_reported_count":len(features),
                 "source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],
                 "source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
                 "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],
@@ -364,7 +362,7 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
         "capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"receipts":{n:r for n,(_b,r) in captures.items()},"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(features),
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(features),"source_reported_count":len(features),
             "source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],
             "source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],

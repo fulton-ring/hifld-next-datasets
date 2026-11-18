@@ -18,12 +18,17 @@ from dagster_hifld.sources import usace_lateral_beacons as source
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.usace_lateral_beacons import (
+
     usace_lateral_beacons_complete, usace_lateral_beacons_draft_job,
     usace_lateral_beacons_draft_schedule, usace_lateral_beacons_usace_ienc,
 )
 
+COUNT = 3406
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "30067c082afc872c1ae68246473e100f79bb371df8b8344574bad84508b8be34"
 
-def _capture_docs(count=source.EXPECTED_COUNT):
+
+def _capture_docs(count=COUNT):
     layer = {
         "id": source.LAYER_ID, "name": "LATERAL_BEACON_POINT", "geometryType": "esriGeometryPoint",
         "maxRecordCount": 2000, "fields": source.EXPECTED_FIELD_DECLARATIONS,
@@ -43,7 +48,7 @@ def _capture_docs(count=source.EXPECTED_COUNT):
         "count_before": {"count": count}, "count_after": {"count": count},
         "ids_before": {"objectIds": ids}, "ids_after": {"objectIds": ids},
     }
-    for page_idx in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+    for page_idx in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
         page_ids = ids[page_idx * source.PAGE_SIZE:(page_idx + 1) * source.PAGE_SIZE]
         rows = []
         for oid in page_ids:
@@ -73,7 +78,7 @@ class LateralBeaconsTests(unittest.TestCase):
         self.assertIn(usace_lateral_beacons_draft_schedule.name,
                       {schedule.name for schedule in registered.schedule_defs})
         self.assertEqual(usace_lateral_beacons_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check=usace_lateral_beacons_complete({"feature_count":source.EXPECTED_COUNT,"source_population_complete":True})
+        check=usace_lateral_beacons_complete({"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete":True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["bts_item_succession_accepted"].value)
@@ -162,7 +167,7 @@ class LateralBeaconsTests(unittest.TestCase):
             self.assertEqual(receipt_raw, source._canonical(receipt) + b"\n")
 
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
-        name,url=source._capture_roster(source.EXPECTED_IDS)[0]
+        name,url=source._capture_roster(IDS)[0]
         receipt={"method":"GET","url":url,"final_url":url}
         source.validate_capture_request_identity(name,receipt,url)
         receipt["final_url"]="https://example.invalid/wrong"
@@ -171,9 +176,9 @@ class LateralBeaconsTests(unittest.TestCase):
 
     def test_complete_population_native_geometry_and_declared_parquet_types(self):
         fields, features, audit = source._validate(_capture_docs())
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
-        self.assertEqual(audit["source_population_complete"] if "source_population_complete" in audit else len(features), source.EXPECTED_COUNT)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
+        self.assertEqual(audit["source_population_complete"] if "source_population_complete" in audit else len(features), COUNT)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "lateral-beacon-1")
         self.assertEqual(list(features[0]["attributes"]), [field["name"] for field in source.ATTRIBUTE_FIELDS])
         parquet = source._parquet_bytes(fields, features)
@@ -237,7 +242,7 @@ class LateralBeaconsTests(unittest.TestCase):
         page["features"][0]["geometry"] = {"x": source.EXPECTED_EXTENT["xmin"], "y": source.EXPECTED_EXTENT["ymax"]}
         captures["page_000"] = (json.dumps(page).encode(), {})
         fields, features, audit = source._validate(captures)
-        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["geometry_valid_count"], COUNT)
         self.assertEqual(audit["geometry_invalid_count"], 0)
         self.assertEqual(audit["geometry_empty_count"], 0)
         xmin, ymin, xmax, ymax = source.EXPECTED_EXTENT["xmin"], source.EXPECTED_EXTENT["ymin"], source.EXPECTED_EXTENT["xmax"], source.EXPECTED_EXTENT["ymax"]
@@ -245,7 +250,7 @@ class LateralBeaconsTests(unittest.TestCase):
         self.assertTrue(ymin <= audit["geometry_bounds"][1] and audit["geometry_bounds"][3] <= ymax)
 
     def test_point_queries_request_z_and_m_and_reject_returned_dimensions(self):
-        pages = [(name, url) for name, url in source._capture_roster(source.EXPECTED_IDS)
+        pages = [(name, url) for name, url in source._capture_roster(IDS)
                  if name.startswith("page_")]
         self.assertEqual(len(pages), 4)
         for _name, url in pages:

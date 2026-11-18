@@ -19,13 +19,15 @@ from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
+
+COUNT = 51
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "c331e85759e39947a7591a5b52bab252382637ab99ac844cee79867609389c68"
 from dagster_hifld.sources.usace_floating_docks import (
     BTS_ITEM_ID,
     DATASET_SLUG,
-    EXPECTED_COUNT,
     EXPECTED_FIELD_DECLARATIONS,
     EXPECTED_FIELDS,
-    EXPECTED_ID_SHA256,
     EXPECTED_LAYER_EXTENT,
     FILE_SLUG,
     PAGE_SIZE,
@@ -38,7 +40,7 @@ from dagster_hifld.sources.usace_floating_docks import (
 
 
 def _docs(ids: list[int] | None = None) -> dict[str, dict]:
-    object_ids = ids or list(range(1, EXPECTED_COUNT + 1))
+    object_ids = ids or list(range(1, COUNT + 1))
     fields = EXPECTED_FIELD_DECLARATIONS
     item = {
         "id": BTS_ITEM_ID,
@@ -89,8 +91,8 @@ def _docs(ids: list[int] | None = None) -> dict[str, dict]:
         "service_after": service,
         "layer_before": layer,
         "layer_after": layer,
-        "count_before": {"count": EXPECTED_COUNT},
-        "count_after": {"count": EXPECTED_COUNT},
+        "count_before": {"count": COUNT},
+        "count_after": {"count": COUNT},
         "ids_seed": {"objectIds": object_ids},
         "ids_before": {"objectIds": object_ids},
         "ids_after": {"objectIds": object_ids},
@@ -119,16 +121,16 @@ class UsaceFloatingDocksSourceTest(unittest.TestCase):
     def test_complete_id_roster_and_geometry_are_checked(self) -> None:
         fields, features, audit = _validate(_captures(_docs()))
         self.assertEqual(fields, EXPECTED_FIELD_DECLARATIONS)
-        self.assertEqual(len(features), EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], EXPECTED_ID_SHA256)
-        self.assertEqual(audit["geometry_valid_count"], EXPECTED_COUNT)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
+        self.assertEqual(audit["geometry_valid_count"], COUNT)
         self.assertEqual(audit["geometry_empty_count"], 0)
-        self.assertEqual(audit["source_vertex_count"], EXPECTED_COUNT * 5)
+        self.assertEqual(audit["source_vertex_count"], COUNT * 5)
 
     def test_changed_ids_fail_closed(self) -> None:
         docs = _docs()
-        docs["ids_after"] = {"objectIds": list(range(1, EXPECTED_COUNT)) + [113]}
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        docs["ids_after"] = {"objectIds": list(range(1, COUNT)) + [113]}
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             _validate(_captures(docs))
 
     def test_type_loss_fails_closed(self) -> None:
@@ -328,7 +330,7 @@ class UsaceFloatingDocksCacheIntegrityTest(unittest.TestCase):
         second = self._stage()
         self.assertIs(second["reused"], True)
         self.assertEqual(second["version"], first["version"])
-        self.assertEqual(second["feature_count"], EXPECTED_COUNT)
+        self.assertEqual(second["feature_count"], COUNT)
 
     def test_reuse_after_registered_catalog_recomputes_evidence(self) -> None:
         first = self._stage()

@@ -16,6 +16,10 @@ from dagster_hifld.assets.usace_owned_reservoirs import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import usace_owned_reservoirs as source
+
+COUNT = 418
+IDS = [objectid for objectid in range(1, 420) if objectid != 10]
+ID_SHA256 = "9da9b23698cc6db17475b2218ddef9da4fbb3aff0daa9fa1e6007644fe5c362f"
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
@@ -24,9 +28,6 @@ from dagster_hifld.sources.esri_common import canonical as _canonical
 def relaxed_pins(*extra):
     with contextlib.ExitStack() as stack:
         for item in (
-            patch.object(source, "EXPECTED_RECORD_SHA256", ""),
-            patch.object(source, "EXPECTED_GEOMETRY_SHA256", ""),
-            patch.object(source, "EXPECTED_NULL_GEOMETRY_COUNT", None),
             patch.object(source, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", None),
             *extra,
         ):
@@ -131,18 +132,18 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
                              "extent": [[source.EXPECTED_EXTENT["xmin"], source.EXPECTED_EXTENT["ymin"]],
                                         [source.EXPECTED_EXTENT["xmax"], source.EXPECTED_EXTENT["ymax"]]]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
             "service_after": json.loads(json.dumps(service)), "layer_after": json.loads(json.dumps(layer)),
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
         }
         page_fields = [{key: value for key, value in field.items()
                         if key not in ("nullable", "editable")}
                        for field in source.EXPECTED_FIELD_DECLARATIONS]
-        features_by_oid = {oid: self._feature(oid) for oid in source.EXPECTED_IDS}
-        for page_index in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
-            page_ids = source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]
+        features_by_oid = {oid: self._feature(oid) for oid in IDS}
+        for page_index in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+            page_ids = IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]
             docs[f"page_{page_index:03d}"] = {"objectIdFieldName": "OBJECTID",
                                               "geometryType": "esriGeometryPolygon",
                                               "geometryProperties": dict(source.EXPECTED_GEOMETRY_PROPERTIES),
@@ -163,18 +164,14 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
                          "arcgis/rest/services/usace_rez/FeatureServer/0")
         self.assertEqual(source.LANDING_URL, "https://geospatial-usace.opendata.arcgis.com/"
                          "datasets/03e322d7e89b48a9b48e9c3f4bcaf29e_0/about")
-        self.assertEqual(source.EXPECTED_COUNT, 418)
-        self.assertNotIn(10, source.EXPECTED_IDS)
-        self.assertEqual(len(source.EXPECTED_IDS), 418)
-        self.assertEqual(source.EXPECTED_ID_SHA256,
-                         "9da9b23698cc6db17475b2218ddef9da4fbb3aff0daa9fa1e6007644fe5c362f")
+        for name in (
+            "EXPECTED_COUNT", "EXPECTED_IDS", "EXPECTED_ID_SHA256",
+            "EXPECTED_RECORD_SHA256", "EXPECTED_GEOMETRY_SHA256",
+            "EXPECTED_NULL_GEOMETRY_COUNT",
+        ):
+            self.assertFalse(hasattr(source, name), name)
         self.assertEqual(source.EXPECTED_SCHEMA_SHA256,
                          "319daded87c7314f171a5229ff3fb163ddd17832f3bd96ac83fec3d9d9b57569")
-        self.assertEqual(source.EXPECTED_RECORD_SHA256,
-                         "39d8c519a236ab6543b4c96d831196f3eb2a4bc3ce79c86d8cb95192dac0aa45")
-        self.assertEqual(source.EXPECTED_GEOMETRY_SHA256,
-                         "2be036dbdd8ef51c9b6a1ff5d7c9d0bd827d6a2f52f6de3538380fd2bc09ed03")
-        self.assertEqual(source.EXPECTED_NULL_GEOMETRY_COUNT, 0)
         self.assertEqual(source.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
         self.assertEqual(source.OBSERVED_VERTEX_COUNT, 2134520)
         self.assertEqual(source.OBSERVED_WINDING_COUNTS, {"cw_shells": 3971, "ccw_holes": 8461})
@@ -182,19 +179,19 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
         self.assertEqual(source.EXPECTED_EDITING_INFO["dataLastEditDate"], 1712070929726)
         self.assertEqual(source._sha(_canonical(source.EXPECTED_FIELD_DECLARATIONS)),
                          source.EXPECTED_SCHEMA_SHA256)
-        self.assertEqual(source._sha(_canonical(source.EXPECTED_IDS)), source.EXPECTED_ID_SHA256)
+        self.assertEqual(source._sha(_canonical(IDS)), ID_SHA256)
 
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(usace_owned_reservoirs, hifld_ingest_assets)
         self.assertEqual(usace_owned_reservoirs_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_owned_reservoirs_complete({"feature_count": 418, "source_population_complete": True})
+        check = usace_owned_reservoirs_complete({"feature_count": 418, "source_reported_count": 418, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = usace_owned_reservoirs_complete({"feature_count": 417, "source_population_complete": True})
+        failed = usace_owned_reservoirs_complete({"feature_count": 417, "source_reported_count": 418, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_pages_cover_source_ids_without_overlapping(self):
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(IDS))
         page_names = [name for name in sorted(urls) if name.startswith("page_")]
         self.assertEqual(page_names, ["page_000", "page_001", "page_002", "page_003", "page_004"])
         covered = []
@@ -206,7 +203,7 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
             self.assertIn("orderByFields=OBJECTID+ASC", query)
             payload = query.split("objectIds=")[1].split("&")[0]
             covered.extend(int(value) for value in payload.replace("%2C", ",").split(","))
-        self.assertEqual(sorted(covered), source.EXPECTED_IDS)
+        self.assertEqual(sorted(covered), IDS)
         self.assertEqual(len(covered), len(set(covered)))
         self.assertEqual(source.CATALOG_ITEM_URL, "https://www.arcgis.com/sharing/rest/content/items/"
                          "03e322d7e89b48a9b48e9c3f4bcaf29e?f=json")
@@ -217,7 +214,7 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 418)
         self.assertNotIn(10, [feature["attributes"]["OBJECTID"] for feature in features])
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(audit["dhs_crosswalk_row"]["status"], "Deprecate")
         self.assertEqual(audit["dhs_crosswalk_row"]["old_hosting_item_id"],
@@ -229,17 +226,6 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
         self.assertEqual(audit["ogc_invalid_geometry_sample_objectids"], fixture_oids)
         self.assertEqual(audit["unusable_geometry_counts"], {})
         self.assertEqual(audit["geometry_valid_count"], 418)
-
-    def test_null_pin_is_enforced_once_pinned(self):
-        with relaxed_pins():
-            audit = source._validate(self._captures(self._documents()))[2]
-            self.assertEqual(audit["unusable_geometry_counts"], {})
-            self.assertEqual(audit["null_geometry_count"], 0)
-        with relaxed_pins(patch.object(source, "EXPECTED_NULL_GEOMETRY_COUNT", 0)):
-            source._validate(self._captures(self._documents()))
-            with self.assertRaisesRegex(ValueError, "source_null_geometry_count_drift"):
-                with patch.object(source, "EXPECTED_NULL_GEOMETRY_COUNT", 15):
-                    source._validate(self._captures(self._documents()))
 
     def test_polygon_wkb_is_xy_only_and_preserves_ring_structure(self):
         def converted(rings):
@@ -277,10 +263,10 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population after", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_id_population_drift:after"),
+            ("population after", lambda d: d["ids_after"].update(objectIds=IDS[:-1]),
+             "source_count_or_id_roster_drift"),
             ("count before", lambda d: d["count_before"].update(count=417),
-             "source_count_population_drift:before"),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("transfer", lambda d: d["page_000"].update(exceededTransferLimit=True),
@@ -351,25 +337,6 @@ class UsaceOwnedReservoirsTests(unittest.TestCase):
                 with relaxed_pins():
                     with self.assertRaisesRegex(ValueError, expected):
                         source._validate(self._captures(docs))
-
-    def test_pinned_baseline_drift_is_refused(self):
-        with relaxed_pins():
-            audit = source._validate(self._captures(self._documents()))[2]
-        with relaxed_pins(patch.object(source, "EXPECTED_RECORD_SHA256", audit["source_record_sha256"]),
-                          patch.object(source, "EXPECTED_GEOMETRY_SHA256", audit["source_geometry_sha256"]),
-                          patch.object(source, "EXPECTED_NULL_GEOMETRY_COUNT", audit["null_geometry_count"]),
-                          patch.object(source, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
-                                       audit["unusable_geometry_counts"])):
-            source._validate(self._captures(self._documents()))
-            docs = self._documents()
-            docs["page_000"]["features"][0]["attributes"]["NAME"] = "Renamed Reservoir"
-            with self.assertRaisesRegex(ValueError, "source_record_baseline_drift"):
-                source._validate(self._captures(docs))
-            docs = self._documents()
-            ring = docs["page_000"]["features"][0]["geometry"]["rings"][0]
-            ring.insert(2, [ring[1][0] + (ring[2][0] - ring[1][0]) / 2, ring[1][1]])
-            with self.assertRaisesRegex(ValueError, "source_geometry_baseline_drift"):
-                source._validate(self._captures(docs))
 
     def test_capture_version_cannot_escape_capture_root(self):
         with tempfile.TemporaryDirectory() as tmp:

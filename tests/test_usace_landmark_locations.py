@@ -16,12 +16,17 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.assets.usace_landmark_locations import (
+
     usace_landmark_locations_complete, usace_landmark_locations_draft_job,
     usace_landmark_locations_draft_schedule, usace_landmark_locations_usace_ienc,
 )
 
+COUNT = 552
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "4f5bb2354d67d0e7e045fe3df10257189f9b526b0826b261f926bff54f1e4851"
 
-def _capture_docs(count=source.EXPECTED_COUNT):
+
+def _capture_docs(count=COUNT):
     layer = {
         "id": source.LAYER_ID, "name": "LANDMARK_POINT", "geometryType": "esriGeometryPoint",
         "maxRecordCount": 2000, "fields": source.EXPECTED_FIELD_DECLARATIONS,
@@ -40,7 +45,7 @@ def _capture_docs(count=source.EXPECTED_COUNT):
         "count_before": {"count": count}, "count_after": {"count": count},
         "ids_before": {"objectIds": ids}, "ids_after": {"objectIds": ids},
     }
-    for page_idx in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+    for page_idx in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
         page_ids = ids[page_idx * source.PAGE_SIZE:(page_idx + 1) * source.PAGE_SIZE]
         rows = []
         for oid in page_ids:
@@ -53,7 +58,7 @@ def _capture_docs(count=source.EXPECTED_COUNT):
                 "Feature_ID": f"landmark-{oid}"})
             span_x = source.EXPECTED_EXTENT["xmax"] - source.EXPECTED_EXTENT["xmin"]
             span_y = source.EXPECTED_EXTENT["ymax"] - source.EXPECTED_EXTENT["ymin"]
-            step = source.EXPECTED_COUNT - 1
+            step = COUNT - 1
             rows.append({"attributes": attrs,
                 "geometry": {"x": source.EXPECTED_EXTENT["xmin"] + span_x * (oid - 1) / step,
                              "y": source.EXPECTED_EXTENT["ymin"] + span_y * (oid - 1) / step,
@@ -74,13 +79,13 @@ class LandmarkLocationsTests(unittest.TestCase):
         self.assertIn(usace_landmark_locations_draft_schedule.name,
                       {schedule.name for schedule in registered.schedule_defs})
         self.assertEqual(usace_landmark_locations_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check=usace_landmark_locations_complete({"feature_count":source.EXPECTED_COUNT,"source_population_complete":True})
+        check=usace_landmark_locations_complete({"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete":True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["bts_item_succession_accepted"].value)
 
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
-        name,url=source._capture_roster(source.EXPECTED_IDS)[0]
+        name,url=source._capture_roster(IDS)[0]
         receipt={"method":"GET","url":url,"final_url":url}
         source.validate_capture_request_identity(name,receipt,url)
         receipt["final_url"]="https://example.invalid/wrong"
@@ -89,9 +94,9 @@ class LandmarkLocationsTests(unittest.TestCase):
 
     def test_complete_population_native_geometry_and_declared_parquet_types(self):
         fields, features, audit = source._validate(_capture_docs())
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
-        self.assertEqual(audit["source_population_complete"] if "source_population_complete" in audit else len(features), source.EXPECTED_COUNT)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
+        self.assertEqual(audit["source_population_complete"] if "source_population_complete" in audit else len(features), COUNT)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "landmark-1")
         parquet = source._parquet_bytes(fields, features)
         table = pq.read_table(__import__("io").BytesIO(parquet))
@@ -142,7 +147,7 @@ class LandmarkLocationsTests(unittest.TestCase):
             source._validate(captures)
 
     def test_point_queries_request_z_and_m_and_reject_returned_dimensions(self):
-        pages = [(name, url) for name, url in source._capture_roster(source.EXPECTED_IDS)
+        pages = [(name, url) for name, url in source._capture_roster(IDS)
                  if name.startswith("page_")]
         self.assertEqual(len(pages), 1)
         for _name, url in pages:
@@ -159,7 +164,7 @@ class LandmarkLocationsTests(unittest.TestCase):
     def test_observed_population_and_bounds_contracts_are_audited(self):
         _fields, _features, audit = source._validate(_capture_docs())
         self.assertEqual(audit["source_feature_id_null_count"], 0)
-        self.assertEqual(audit["source_feature_id_distinct_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["source_feature_id_distinct_count"], COUNT)
         self.assertEqual(audit["source_extent_tolerance_degrees"], source.EXTENT_TOLERANCE)
         self.assertEqual(audit["geometry_bounds"], [source.EXPECTED_EXTENT[key]
                                                      for key in ("xmin", "ymin", "xmax", "ymax")])
@@ -192,7 +197,7 @@ class LandmarkLocationsTests(unittest.TestCase):
         docs = {name: json.loads(body) for name, (body, _receipt) in _capture_docs().items()}
         docs["page_000"]["features"][0]["attributes"]["Feature_ID"] = None
         bodies = {url: json.dumps(docs[name]).encode()
-                  for name, url in source._capture_roster(source.EXPECTED_IDS)}
+                  for name, url in source._capture_roster(IDS)}
         page_body = json.dumps(docs["page_000"]).encode()
 
         def handler(request):
@@ -220,7 +225,7 @@ class LandmarkLocationsTests(unittest.TestCase):
             self.assertTrue((raw / "page_000.receipt.json").is_file())
             failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
             self.assertEqual(failure["reason_code"], "ValueError")
-            self.assertEqual(failure["captured_names"], sorted(source.CAPTURE_NAMES))
+            self.assertEqual(failure["captured_names"], sorted(source._capture_names(IDS)))
             self.assertFalse((Path(tmp) / source.DATASET_SLUG).exists())
 
 

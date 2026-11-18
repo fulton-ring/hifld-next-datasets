@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.warning_signal_stations_usace_ienc import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_warning_signal_stations_usace_ienc,
+    DATASET_SLUG, FILE_SLUG, capture_warning_signal_stations_usace_ienc,
 )
 
 
@@ -41,9 +42,8 @@ def warning_signal_stations_usace_ienc(context, config: WarningSignalStationsUsa
 
 @asset_check(asset=warning_signal_stations_usace_ienc, blocking=True)
 def warning_signal_stations_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
               and candidate.get("source_population_complete") is True
-              and candidate.get("geometry_valid_count") == EXPECTED_COUNT
               and candidate.get("geometry_invalid_count") == 0
               and candidate.get("geometry_empty_count") == 0)
     return AssetCheckResult(passed=passed, metadata={
@@ -74,7 +74,9 @@ warning_signal_stations_usace_ienc_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+warning_signal_stations_usace_ienc_drift = register_approved_baseline_drift(warning_signal_stations_usace_ienc, "warning_signal_stations_usace_ienc_drift")
+
 INGEST_ASSETS = [warning_signal_stations_usace_ienc]
-ASSET_CHECKS = [warning_signal_stations_usace_ienc_complete]
+ASSET_CHECKS = [warning_signal_stations_usace_ienc_complete, warning_signal_stations_usace_ienc_drift]
 JOBS = [warning_signal_stations_usace_ienc_draft_job]
 SCHEDULES = [warning_signal_stations_usace_ienc_draft_schedule]

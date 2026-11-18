@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.usace_owned_reservoirs import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_usace_owned_reservoirs,
+    DATASET_SLUG, FILE_SLUG, capture_usace_owned_reservoirs,
 )
 
 
@@ -42,7 +43,8 @@ def usace_owned_reservoirs(context, config: UsaceOwnedReservoirsConfig,
 
 @asset_check(asset=usace_owned_reservoirs, blocking=True)
 def usace_owned_reservoirs_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_population_complete") is True
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
@@ -68,7 +70,10 @@ usace_owned_reservoirs_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+usace_owned_reservoirs_drift = register_approved_baseline_drift(
+    usace_owned_reservoirs, "usace_owned_reservoirs_drift")
+
 INGEST_ASSETS = [usace_owned_reservoirs]
-ASSET_CHECKS = [usace_owned_reservoirs_complete]
+ASSET_CHECKS = [usace_owned_reservoirs_complete, usace_owned_reservoirs_drift]
 JOBS = [usace_owned_reservoirs_draft_job]
 SCHEDULES = [usace_owned_reservoirs_draft_schedule]

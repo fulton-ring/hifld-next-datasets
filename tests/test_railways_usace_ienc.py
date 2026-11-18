@@ -15,6 +15,10 @@ from dagster_hifld.sources import railways_usace_ienc as source
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
+COUNT = 10572
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "f9d1f8bfeef8d8a3cf9461ec7b08c3ea3a58c4cf9911d1d25f616c1764e60760"
+
 
 class RailwaysUsaceIencTests(unittest.TestCase):
     def _documents(self):
@@ -30,15 +34,15 @@ class RailwaysUsaceIencTests(unittest.TestCase):
                           "description": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes USACE_IENC_Master_Service_gdb.zip"},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/RAILROAD_LINE", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
             "service_after": json.loads(json.dumps(service)), "layer_after": json.loads(json.dumps(layer)),
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
         }
-        for page_index in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+        for page_index in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
             rows = []
-            for oid in source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
+            for oid in IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
                 attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
                          (15000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}")
                          for field in source.ATTRIBUTE_FIELDS}
@@ -53,14 +57,14 @@ class RailwaysUsaceIencTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(railways_usace_ienc, hifld_ingest_assets)
         self.assertEqual(railways_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = railways_usace_ienc_complete({"feature_count": 10572, "source_population_complete": True})
+        check = railways_usace_ienc_complete({"feature_count": 10572, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = railways_usace_ienc_complete({"feature_count": 10571, "source_population_complete": True})
+        failed = railways_usace_ienc_complete({"feature_count": 10571, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_pages_cover_source_ids_without_overlapping(self):
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(IDS))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")],
                          [f"page_{index:03d}" for index in range(43)])
         self.assertIn("objectIds=1%2C2%2C3", urls["page_000"])
@@ -75,7 +79,7 @@ class RailwaysUsaceIencTests(unittest.TestCase):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 10572)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 21144)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(audit["geometry_invalid_count"], 0)
@@ -84,8 +88,8 @@ class RailwaysUsaceIencTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_count_or_id_population_drift"),
+            ("population", lambda d: d["ids_after"].update(objectIds=IDS[:-1]),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("transfer", lambda d: d["page_001"].update(exceededTransferLimit=True),
@@ -133,9 +137,9 @@ class RailwaysUsaceIencTests(unittest.TestCase):
         if mutate is not None:
             mutate(documents)
         root.mkdir(parents=True)
-        roster_urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        roster_urls = dict(source._capture_roster(IDS))
         receipts = {}
-        for name in sorted(source.CAPTURE_NAMES):
+        for name in sorted(source._capture_names(IDS)):
             body = _canonical(documents[name])
             receipt = {"method": "GET", "url": roster_urls[name], "final_url": roster_urls[name],
                        "observed_at": "2026-11-11T00:00:00+00:00", "status": 200, "complete_body": True,
@@ -148,7 +152,7 @@ class RailwaysUsaceIencTests(unittest.TestCase):
             (root / f"{name}.wire").write_bytes(body)
             (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
         manifest = {"complete": True, "captured_at": "2026-11-11T00:00:00+00:00",
-                    "source_feature_count": source.EXPECTED_COUNT, "receipts": receipts,
+                    "source_feature_count": COUNT, "receipts": receipts,
                     "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}
         (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         return root
@@ -178,7 +182,7 @@ class RailwaysUsaceIencTests(unittest.TestCase):
             first = source.capture_railways_usace_ienc(storage, version="regression",
                                                        capture_directory=str(root))
             self.assertFalse(first["reused"])
-            self.assertEqual(first["feature_count"], source.EXPECTED_COUNT)
+            self.assertEqual(first["feature_count"], COUNT)
             self.assertTrue(first["source_population_complete"])
             self.assertFalse(first["release_accepted"])
             ready = json.loads(storage.read_key(first["candidate_ready"]))
@@ -190,7 +194,7 @@ class RailwaysUsaceIencTests(unittest.TestCase):
             self.assertIn(f"{prefix}/raw/page_000.body", staged)
             self.assertIn(f"{prefix}/metadata/candidate_ready.json", staged)
             audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
-            self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+            self.assertEqual(audit["geometry_valid_count"], COUNT)
             self.assertEqual(audit["geometry_invalid_count"], 0)
             second = source.capture_railways_usace_ienc(storage, version="regression",
                                                         capture_directory=str(root))

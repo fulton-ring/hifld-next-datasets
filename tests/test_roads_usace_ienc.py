@@ -16,17 +16,20 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 # The live layer has 106747 contiguous OBJECTIDs; tests exercise the identical
-# logic against a small patched roster for speed.
-PATCH = dict(EXPECTED_COUNT=6, EXPECTED_IDS=[1, 2, 3, 4, 5, 6], PAGE_SIZE=2,
-             EXPECTED_ID_SHA256=hashlib.sha256(_canonical([1, 2, 3, 4, 5, 6])).hexdigest())
+# logic against a small local roster for speed.
+SMALL_COUNT = 6
+SMALL_IDS = [1, 2, 3, 4, 5, 6]
+SMALL_PAGE_SIZE = 2
+SMALL_ID_SHA256 = hashlib.sha256(_canonical(SMALL_IDS)).hexdigest()
+LIVE_COUNT = 106747
+LIVE_IDS = list(range(1, LIVE_COUNT + 1))
 
 
 class RoadsUsaceIencTests(unittest.TestCase):
     def setUp(self):
-        self._patches = [patch.object(source, name, value) for name, value in PATCH.items()]
-        for item in self._patches:
-            item.start()
-            self.addCleanup(item.stop)
+        self._page_size = patch.object(source, "PAGE_SIZE", SMALL_PAGE_SIZE)
+        self._page_size.start()
+        self.addCleanup(self._page_size.stop)
 
     def _documents(self):
         service = {"mapName": "ROADWAY_LINE", "copyrightText": "USACE IENC",
@@ -41,15 +44,15 @@ class RoadsUsaceIencTests(unittest.TestCase):
                           "description": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes USACE_IENC_Master_Service_gdb.zip"},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/ROADWAY_LINE", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": SMALL_COUNT},
+            "ids_before": {"objectIds": SMALL_IDS},
             "service_after": json.loads(json.dumps(service)), "layer_after": json.loads(json.dumps(layer)),
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": SMALL_COUNT},
+            "ids_after": {"objectIds": SMALL_IDS},
         }
-        for page_index in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+        for page_index in range((SMALL_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
             rows = []
-            for oid in source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
+            for oid in SMALL_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
                 attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
                          (15000 if field["name"] == "Scale_Minimum" else
                           ("" if field["name"] == "Object_Name" else f"{field['name']}-{oid}"))
@@ -65,14 +68,14 @@ class RoadsUsaceIencTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(roads_usace_ienc, hifld_ingest_assets)
         self.assertEqual(roads_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = roads_usace_ienc_complete({"feature_count": 106747, "source_population_complete": True})
+        check = roads_usace_ienc_complete({"feature_count": 106747, "source_reported_count": 106747, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = roads_usace_ienc_complete({"feature_count": 106746, "source_population_complete": True})
+        failed = roads_usace_ienc_complete({"feature_count": 106746, "source_reported_count": 106747, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_pages_cover_source_ids_without_overlapping(self):
-        with patch.object(source, "EXPECTED_COUNT", 7), patch.object(source, "PAGE_SIZE", 3):
+        with patch.object(source, "PAGE_SIZE", 3):
             urls = dict(source._capture_roster(list(range(1, 8))))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")],
                          [f"page_{index:03d}" for index in range(3)])
@@ -87,7 +90,7 @@ class RoadsUsaceIencTests(unittest.TestCase):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 6)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], SMALL_ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 12)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(audit["geometry_invalid_count"], 0)
@@ -111,8 +114,8 @@ class RoadsUsaceIencTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_count_or_id_population_drift"),
+            ("population", lambda d: d["ids_after"].update(objectIds=SMALL_IDS[:-1]),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("transfer", lambda d: d["page_001"].update(exceededTransferLimit=True),
@@ -171,9 +174,9 @@ class RoadsUsaceIencTests(unittest.TestCase):
         if mutate is not None:
             mutate(documents)
         root.mkdir(parents=True)
-        roster_urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        roster_urls = dict(source._capture_roster(SMALL_IDS))
         receipts = {}
-        for name in sorted(source._capture_names()):
+        for name in sorted(source._capture_names(SMALL_IDS)):
             body = _canonical(documents[name])
             receipt = {"method": "GET", "url": roster_urls[name], "final_url": roster_urls[name],
                        "observed_at": "2026-11-13T00:00:00+00:00", "status": 200, "complete_body": True,
@@ -186,7 +189,7 @@ class RoadsUsaceIencTests(unittest.TestCase):
             (root / f"{name}.wire").write_bytes(body)
             (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
         manifest = {"complete": True, "captured_at": "2026-11-13T00:00:00+00:00",
-                    "source_feature_count": source.EXPECTED_COUNT, "receipts": receipts,
+                    "source_feature_count": SMALL_COUNT, "receipts": receipts,
                     "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}
         (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         return root
@@ -300,20 +303,18 @@ class RoadsUsaceTransientRetryTests(unittest.TestCase):
 
 class RoadsUsaceLiveRosterTests(unittest.TestCase):
     def test_live_page_roster_covers_106747_ids_in_427_pages(self):
-        self.assertEqual(source.EXPECTED_COUNT, 106747)
-        self.assertEqual(source.EXPECTED_IDS, list(range(1, 106748)))
-        names = source._capture_names()
+        names = source._capture_names(LIVE_IDS)
         self.assertEqual(len([name for name in names if name.startswith("page_")]), 427)
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(LIVE_IDS))
         self.assertIn("objectIds=1%2C2%2C3", urls["page_000"])
         self.assertIn("objectIds=106501", urls["page_426"])
         self.assertNotIn("objectIds=106748", urls["page_426"])
         self.assertEqual(len(urls["page_000"].split("objectIds=")[1].split("&")[0].split("%2C")), 250)
         self.assertEqual(len(urls["page_426"].split("objectIds=")[1].split("&")[0].split("%2C")), 247)
-        self.assertEqual(source._sha(_canonical(source.EXPECTED_IDS)), source.EXPECTED_ID_SHA256)
+        self.assertEqual(source._sha(_canonical(LIVE_IDS)), "f7d6a5b235ab36d8e554bbbe253e7152bcf86c462aaac74cb46a48c7dfdfd160")
 
     def test_page_urls_stay_under_the_gateway_request_line_limit(self):
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(LIVE_IDS))
         longest = max(len(url) for name, url in urls.items() if name.startswith("page_"))
         self.assertLess(longest, 8000)
 
