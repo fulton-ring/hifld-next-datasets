@@ -106,6 +106,22 @@ class LateralBeaconsTests(unittest.TestCase):
                 source._validate_replay_budget(root, capture_max_bytes=4,
                     response_max_bytes=4, layer_response_max_bytes=4)
 
+    def test_replay_budget_refuses_oversized_per_response_body(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "page_000.body").write_bytes(b"12345")
+            with self.assertRaisesRegex(
+                    ValueError, "retained_capture_exceeds_response_byte_budget:page_000"):
+                source._validate_replay_budget(root, capture_max_bytes=100,
+                    response_max_bytes=4, layer_response_max_bytes=100)
+            (root / "layer_before.body").write_bytes(b"12345")
+            with self.assertRaisesRegex(
+                    ValueError, "retained_capture_exceeds_response_byte_budget:layer_before"):
+                source._validate_replay_budget(root, capture_max_bytes=100,
+                    response_max_bytes=100, layer_response_max_bytes=4)
+            source._validate_replay_budget(root, capture_max_bytes=100,
+                response_max_bytes=100, layer_response_max_bytes=100)
+
     def test_capacity_reserves_capture_and_staging_filesystems_independently(self):
         with tempfile.TemporaryDirectory() as temp:
             staging = Path(temp) / "staging"
