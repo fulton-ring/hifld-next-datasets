@@ -43,9 +43,11 @@ def _listing(client: httpx.Client, url: str, root: Path, name: str):
     return body, receipt
 
 
-def discover_primary_roads(client: httpx.Client, capture_root: Path) -> dict:
-    """Select the largest exact published annual directory and its single ZIP."""
-    root_body, root_receipt = _listing(client, ROOT, capture_root, 'annual-listing')
+def _discover_annual_zip(
+    client: httpx.Client, capture_root: Path, *, product: str,
+    filename_template: str, annual_name: str, product_name: str,
+) -> dict:
+    root_body, root_receipt = _listing(client, ROOT, capture_root, annual_name)
     years = [match.group(1) for link in _links(root_body)
              if (match := re.fullmatch(r'TIGER(20\d{2})/', link))]
     if not years:
@@ -53,17 +55,35 @@ def discover_primary_roads(client: httpx.Client, capture_root: Path) -> dict:
     if len(years) != len(set(years)):
         raise ValueError('annual_editions_ambiguous')
     edition = max(years)
-    directory = ROOT + f'TIGER{edition}/PRIMARYROADS/'
-    body, receipt = _listing(client, directory, capture_root, 'product-listing')
-    filename = f'tl_{edition}_us_primaryroads.zip'
+    directory = ROOT + f'TIGER{edition}/{product}/'
+    body, receipt = _listing(client, directory, capture_root, product_name)
+    filename = filename_template.format(edition=edition)
     if _links(body).count(filename) != 1:
         raise ValueError('published_archive_missing_or_ambiguous')
     return {'edition': edition, 'source_url': directory + filename,
             'source_file': filename, 'latest_checked_at': receipt['observed_at'],
             'listing_sha256': sha(body), 'annual_listing_sha256': sha(root_body),
             'listing_url': directory, 'annual_listing_url': ROOT,
-            'selection_rule': 'Largest exact TIGER20YY directory in producer listing; require one exact national PRIMARYROADS ZIP; no older-edition fallback.',
+            'selection_rule': f'Largest exact TIGER20YY directory in producer listing; require one exact national {product} ZIP; no older-edition fallback.',
             'evidence_receipts': [root_receipt, receipt]}
+
+
+def discover_primary_roads(client: httpx.Client, capture_root: Path) -> dict:
+    """Select the largest exact published annual directory and its single ZIP."""
+    return _discover_annual_zip(
+        client, capture_root, product='PRIMARYROADS',
+        filename_template='tl_{edition}_us_primaryroads.zip',
+        annual_name='annual-listing', product_name='product-listing',
+    )
+
+
+def discover_county_boundaries(client: httpx.Client, capture_root: Path) -> dict:
+    """Select the largest exact published TIGER county directory and its single ZIP."""
+    return _discover_annual_zip(
+        client, capture_root, product='COUNTY',
+        filename_template='tl_{edition}_us_county.zip',
+        annual_name='county-annual-listing', product_name='county-product-listing',
+    )
 
 
 def release_version(edition: str, archive_sha256: str, code_sha256: str) -> str:
