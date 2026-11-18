@@ -14,3 +14,7 @@ def epa_regions(context,config:EpaRegionsConfig,staging_storage:StagingStorageRe
 
 epa_regions_draft_job=define_asset_job('epa_regions_source_integrity',selection=AssetSelection.assets(epa_regions))
 epa_regions_draft_schedule=ScheduleDefinition(name='epa_regions_source_integrity_monthly',job=epa_regions_draft_job,cron_schedule='0 10 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+ASSET_CHECKS = []
+INGEST_ASSETS = [epa_regions]
+JOBS = [epa_regions_draft_job]
+SCHEDULES = [epa_regions_draft_schedule]

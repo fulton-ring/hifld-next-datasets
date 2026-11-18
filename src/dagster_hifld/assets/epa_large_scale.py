@@ -14,3 +14,7 @@ def epa_large_scale_regions(context,config:EpaLargeScaleRegionsConfig,staging_st
 
 epa_large_scale_source_integrity_job=define_asset_job('epa_large_scale_source_integrity',selection=AssetSelection.assets(epa_large_scale_regions))
 epa_large_scale_source_integrity_schedule=ScheduleDefinition(name='epa_large_scale_source_integrity_monthly',job=epa_large_scale_source_integrity_job,cron_schedule='0 8 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+ASSET_CHECKS = []
+INGEST_ASSETS = [epa_large_scale_regions]
+JOBS = [epa_large_scale_source_integrity_job]
+SCHEDULES = [epa_large_scale_source_integrity_schedule]

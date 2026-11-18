@@ -15,3 +15,7 @@ def fema_regional_offices(context,config:FemaRegionalOfficesConfig,staging_stora
 
 fema_offices_draft_job=define_asset_job('fema_regional_offices_draft_refresh',selection=AssetSelection.assets(fema_regional_offices))
 fema_offices_draft_schedule=ScheduleDefinition(name='fema_regional_offices_draft_weekly',job=fema_offices_draft_job,cron_schedule='0 6 * * 1',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+ASSET_CHECKS = []
+INGEST_ASSETS = [fema_regional_offices]
+JOBS = [fema_offices_draft_job]
+SCHEDULES = [fema_offices_draft_schedule]

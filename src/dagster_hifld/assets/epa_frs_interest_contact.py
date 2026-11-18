@@ -677,3 +677,7 @@ epa_frs_interest_contact_draft_schedule = ScheduleDefinition(
     job=epa_frs_interest_contact_draft_job,
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED)
+ASSET_CHECKS = [epa_frs_interest_contact_complete]
+INGEST_ASSETS = [epa_frs_interest_contact]
+JOBS = [epa_frs_interest_contact_draft_job]
+SCHEDULES = [epa_frs_interest_contact_draft_schedule]

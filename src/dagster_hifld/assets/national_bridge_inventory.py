@@ -15,3 +15,7 @@ def national_bridge_inventory(context,config:NationalBridgeInventoryConfig,stagi
 
 nbi_source_integrity_job=define_asset_job('nbi_source_integrity',selection=AssetSelection.assets(national_bridge_inventory))
 nbi_source_integrity_schedule=ScheduleDefinition(name='nbi_source_integrity_quarterly',job=nbi_source_integrity_job,cron_schedule='0 8 15 1,4,7,10 *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+ASSET_CHECKS = []
+INGEST_ASSETS = [national_bridge_inventory]
+JOBS = [nbi_source_integrity_job]
+SCHEDULES = [nbi_source_integrity_schedule]

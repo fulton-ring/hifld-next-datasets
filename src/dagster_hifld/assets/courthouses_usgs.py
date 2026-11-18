@@ -62,9 +62,7 @@ def courthouses_approved_baseline_drift(candidate: dict) -> AssetCheckResult:
     return approved_baseline_drift(candidate)
 
 
-ASSET_CHECKS = [courthouses_approved_baseline_drift]
-
-
+ASSET_CHECKS = [courthouses_population_complete, courthouses_approved_baseline_drift]
 courthouses_draft_job = define_asset_job(
     "courthouses_draft_refresh", selection=AssetSelection.assets(courthouses_usgs),
 )
@@ -75,3 +73,7 @@ courthouses_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [courthouses_usgs]
+JOBS = [courthouses_draft_job]
+SCHEDULES = [courthouses_draft_schedule]

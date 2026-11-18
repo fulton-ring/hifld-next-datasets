@@ -15,3 +15,7 @@ def epa_sems_interests(context,config:EpaSemsConfig,staging_storage:StagingStora
 
 epa_sems_source_integrity_job=define_asset_job('epa_sems_source_integrity',selection=AssetSelection.assets(epa_sems_interests))
 epa_sems_source_integrity_schedule=ScheduleDefinition(name='epa_sems_source_integrity_monthly',job=epa_sems_source_integrity_job,cron_schedule='0 8 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+ASSET_CHECKS = []
+INGEST_ASSETS = [epa_sems_interests]
+JOBS = [epa_sems_source_integrity_job]
+SCHEDULES = [epa_sems_source_integrity_schedule]
