@@ -16,6 +16,7 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import census_designated_places as cdp
 from dagster_hifld.sources import census_latest
 from dagster_hifld.sources import county_subdivisions as county
+from dagster_hifld.sources import incorporated_places as places
 
 
 ROOT = census_latest.ROOT
@@ -24,20 +25,22 @@ FILENAME = 'tlgdb_2026_us_substategeo.gdb.zip'
 URL = DIRECTORY + FILENAME
 ANNUAL = b'<a href="TGRGDB26/">26</a>'
 LISTING = ('<a href="' + FILENAME + '">archive</a>').encode()
+MODULES = (cdp, county, places)
 
 
 def native_archive(root):
     gdb = root / FILENAME[:-4]
     geometry = shapely.to_wkb(shapely.MultiPolygon([
         shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 0)])]))
-    for module in (cdp, county):
+    for module in MODULES:
         rows = []
         for i in (1, 2):
-            geoid = f'01000{i:02d}' if module is cdp else f'010019000{i}'
+            geoid = f'010019000{i}' if module is county else f'01000{i:02d}'
             rows.append(dict(zip(module.FIELDS[1:], [
                 f'{i:08d}', geoid,
-                ('1600000US' if module is cdp else '0600000US') + geoid,
-                'Synthetic fixture', 'U1' if module is cdp else 'Z5', 'S',
+                ('0600000US' if module is county else '1600000US') + geoid,
+                'Synthetic fixture', {cdp: 'U1', county: 'Z5', places: 'C1'}[module],
+                'A' if module is places else 'S',
                 1., 0., '+00.0', '-000.0', geometry])))
         table = pa.Table.from_pylist(rows, schema=pa.schema(zip(module.FIELDS[1:], module.TYPES[1:])))
         pyogrio.write_arrow(table, gdb, layer=module.LAYER, driver='OpenFileGDB',
@@ -51,7 +54,8 @@ def native_archive(root):
 
 
 def stage(module, storage, **kwargs):
-    function = module.stage_cdp_candidate if module is cdp else module.stage_county_subdivisions_candidate
+    function = {cdp: cdp.stage_cdp_candidate, county: county.stage_county_subdivisions_candidate,
+                places: places.stage_incorporated_places_candidate}[module]
     return function(storage, **kwargs)
 
 
@@ -63,7 +67,7 @@ def snapshot(root):
 class SubstateConstructionTests(unittest.TestCase):
     def test_discovery_acquisition_construction_replay_and_live_cache(self):
         client_type = httpx.Client
-        for module in (cdp, county):
+        for module in MODULES:
             with self.subTest(module=module.SLUG), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 body = native_archive(root)
@@ -78,9 +82,13 @@ class SubstateConstructionTests(unittest.TestCase):
                     first = stage(module, storage)
                     target = Path(storage.local_dir) / module.SLUG / module.SLUG / first['version']
                     before = snapshot(target)
+                    construction_root = Path(storage.local_dir) / (
+                        '_construction-state' if module is county else '_source-provenance')
+                    construction = snapshot(construction_root)
                     receipt_path = target / 'raw/retrieval.json'
                     receipt = json.loads(receipt_path.read_bytes())
                     release = census_latest.geodatabase_release_from_receipt(receipt, 'substategeo')
+                    self.assertEqual(receipt['source_release'], release.as_receipt_evidence())
                     self.assertEqual(release.listing_sha256, module.digest(LISTING))
                     self.assertEqual(release.annual_listing_sha256, module.digest(ANNUAL))
                     self.assertEqual(release.listing_bytes, len(LISTING))
@@ -92,6 +100,8 @@ class SubstateConstructionTests(unittest.TestCase):
                     self.assertEqual(first['version'], refresh['version'])
                     self.assertTrue(refresh['reused'])
                     self.assertEqual(snapshot(target), before)
+                    self.assertEqual(snapshot(construction_root), construction)
+                    self.assertFalse((Path(storage.local_dir) / '_quarantine').exists())
                     archive = Path(storage.local_dir) / module.RAW_KEY_PREFIX / receipt['sha256'] / 'original.gdb.zip'
                     with patch.object(module.httpx, 'Client', side_effect=AssertionError('replay fetched HTTP')):
                         replay = stage(module, storage, archive_path=archive, receipt_path=receipt_path)
@@ -100,9 +110,11 @@ class SubstateConstructionTests(unittest.TestCase):
                     self.assertEqual(first['version'], refresh['version'])
                     self.assertTrue(refresh['reused'])
                     self.assertEqual(snapshot(target), before)
+                    self.assertEqual(snapshot(construction_root), construction)
+                    self.assertFalse((Path(storage.local_dir) / '_quarantine').exists())
 
     def test_runtime_change_preserves_previous_candidate_and_construction(self):
-        for module in (cdp, county):
+        for module in MODULES:
             with self.subTest(module=module.SLUG), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 raw = root / 'original.zip'
@@ -119,7 +131,7 @@ class SubstateConstructionTests(unittest.TestCase):
                     old = Path(storage.local_dir) / module.SLUG / module.SLUG / first['version']
                     before = snapshot(old)
                     construction_root = Path(storage.local_dir) / (
-                        '_source-provenance' if module is cdp else '_construction-state')
+                        '_construction-state' if module is county else '_source-provenance')
                     construction = snapshot(construction_root)
                     with patch.object(module.pyogrio, '__gdal_version_string__', 'different-build'):
                         changed = module.processing_identity()

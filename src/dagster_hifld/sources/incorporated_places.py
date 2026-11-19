@@ -30,6 +30,7 @@ import pyarrow.parquet as pq
 import pyogrio
 import pyproj
 import shapely
+from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
@@ -134,6 +135,7 @@ def acquire(storage,archive_path=None,receipt_path=None):
                     httpx.Client(follow_redirects=False,timeout=180,headers={'Accept-Encoding':'identity'}) as client:
                 release=census_latest.discover_geodatabase(client,Path(discovery_root),GEODATABASE_PRODUCT)
                 receipt['url']=release.source_url
+                receipt['source_release']=release.as_receipt_evidence()
                 with client.stream('GET',release.source_url) as response,partial.open('xb') as output:
                     receipt.update(status=response.status_code,final_url=str(response.url),content_length=response.headers.get('content-length'),content_encoding=response.headers.get('content-encoding'),requested_accept_encoding='identity')
                     size=0
@@ -223,7 +225,8 @@ def expected_parquet(table):
     return table.replace_schema_metadata({b'geo':encode(geo)})
 
 def write_gpkg(table,path):
-    pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
+    with with_geopackage_creation_time('2024-01-01T00:00:00.000Z'):
+        pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
     with sqlite3.connect(path) as db:db.execute("UPDATE gpkg_contents SET last_change='2024-01-01T00:00:00.000Z'")
 
 def record_hash(table):
@@ -282,6 +285,7 @@ def construction_bundle(storage,version,path,receipt,identity,manifest,raw_key,*
     return original,actual
 
 def source_payloads(receipt,identity,audit,manifest,table,raw_key,archive_sha,archive_bytes):
+    audit={**audit,'source_release':manifest['source_release']}
     proof={'status':'pass','method':'all_original_rows_attributes_types_and_native_WKB_exact_equality; full_deterministic_GPKG_container_and_exact_Arrow_metadata',
         'rows':table.num_rows,'records_sha256':record_hash(table),'crs':'EPSG:4269','approved':False}
     return {'raw/source_capture.json':encode({'key':raw_key,'sha256':archive_sha,'bytes':archive_bytes,'complete_original_members':len(audit['members']),'source_release':audit['source_release']}),
@@ -320,7 +324,7 @@ def stage_incorporated_places_candidate(storage,*,archive_path=None,receipt_path
     local_only(storage);path,receipt,release=acquire(storage,archive_path,receipt_path)
     archive_sha=str(receipt['sha256']);archive_bytes=int(receipt['bytes']);raw_key=RAW_KEY_PREFIX+'/'+archive_sha+'/original.gdb.zip'
     table,audit=inspect_archive(path,release);identity=processing_identity();fingerprint=digest(encode(identity))
-    version=census_latest.release_version(str(release.vintage),archive_sha,identity['code_commit']);prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir)
+    version=census_latest.release_version(str(release.vintage),archive_sha,fingerprint);prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir)
     # Construction stays private and is validated before the first immutable
     # provenance binding is created. Existing/missing bindings are never rebuilt.
     with candidate_lock(base,prefix) as target:
