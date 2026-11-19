@@ -126,6 +126,36 @@ class TigerGeodatabaseDiscoveryTests(unittest.TestCase):
 
 
 class RetainedGeodatabaseReleaseTests(unittest.TestCase):
+    def test_discovered_release_receipt_roundtrip_preserves_all_evidence(self):
+        directory = ROOT + 'TGRGDB26/'
+        url = directory + 'tlgdb_2026_us_substategeo.gdb.zip'
+        bodies = {ROOT: b'<a href="TGRGDB26/">26</a>',
+                  directory: b'<a href="tlgdb_2026_us_substategeo.gdb.zip">us</a>'}
+        def respond(request):
+            return httpx.Response(200, stream=httpx.ByteStream(bodies[str(request.url)]))
+        with tempfile.TemporaryDirectory() as tmp, httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            release = census_latest.discover_geodatabase(client, Path(tmp), 'substategeo')
+        receipt = {'url': url, 'source_release': release.as_receipt_evidence()}
+        self.assertEqual(census_latest.geodatabase_release_from_receipt(receipt, 'substategeo'), release)
+        self.assertEqual(release.listing_sha256, hashlib.sha256(bodies[directory]).hexdigest())
+        variants = {
+            'vintage': [2025, '2026'], 'product': ['addr'],
+            'source_url': [url.replace('2026', '2025')],
+            'directory_url': [ROOT + 'TGRGDB25/'], 'source_file': ['other.zip'],
+            'listing_sha256': ['', '0' * 64, 'placeholder'],
+            'annual_listing_sha256': ['', '0' * 64],
+            'listing_bytes': [0, -1, True, census_latest.MAX_LISTING_BYTES + 1],
+            'latest_checked_at': ['', None, '2026-11-19T12:00:00'],
+        }
+        for name, values in variants.items():
+            for value in values:
+                with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, 'geodatabase_release_evidence'):
+                    census_latest.geodatabase_release_from_receipt(
+                        {**receipt, 'source_release': {**receipt['source_release'], name: value}}, 'substategeo')
+        for evidence in (None, {}, {**receipt['source_release'], 'unknown': True}):
+            with self.subTest(evidence=evidence), self.assertRaisesRegex(ValueError, 'geodatabase_release_evidence'):
+                census_latest.geodatabase_release_from_receipt({**receipt, 'source_release': evidence}, 'substategeo')
+
     def test_url_and_receipt_rebuild_the_resolved_release(self):
         url = 'https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_addr.gdb.zip'
         release = census_latest.geodatabase_release_from_url(url, 'addr')

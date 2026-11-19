@@ -134,6 +134,7 @@ def acquire(storage,archive_path=None,receipt_path=None):
                     httpx.Client(follow_redirects=False,timeout=180,headers={'Accept-Encoding':'identity'}) as client:
                 release=census_latest.discover_geodatabase(client,Path(discovery_root),GEODATABASE_PRODUCT)
                 receipt['url']=release.source_url
+                receipt['source_release']=release.as_receipt_evidence()
                 with client.stream('GET',release.source_url) as response,partial.open('xb') as output:
                     receipt.update(status=response.status_code,final_url=str(response.url),content_length=response.headers.get('content-length'),content_encoding=response.headers.get('content-encoding'),requested_accept_encoding='identity')
                     size=0
@@ -321,7 +322,7 @@ def stage_cdp_candidate(storage,*,archive_path=None,receipt_path=None):
     local_only(storage);path,receipt,release=acquire(storage,archive_path,receipt_path)
     archive_sha=str(receipt['sha256']);archive_bytes=int(receipt['bytes']);raw_key=RAW_KEY_PREFIX+'/'+archive_sha+'/original.gdb.zip'
     table,audit=inspect_archive(path,release);identity=processing_identity();fingerprint=digest(encode(identity))
-    version=census_latest.release_version(str(release.vintage),archive_sha,identity['code_commit']);prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir)
+    version=census_latest.release_version(str(release.vintage),archive_sha,fingerprint);prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir)
     # Construction stays private and is validated before the first immutable
     # provenance binding is created. Existing/missing bindings are never rebuilt.
     with candidate_lock(base,prefix) as target:

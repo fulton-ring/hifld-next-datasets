@@ -154,6 +154,7 @@ def acquire(storage,archive_path=None,receipt_path=None):
                     httpx.Client(follow_redirects=False,timeout=180,headers={'Accept-Encoding':'identity'}) as client:
                 release=census_latest.discover_geodatabase(client,Path(discovery_root),GEODATABASE_PRODUCT)
                 receipt['url']=release.source_url
+                receipt['source_release']=release.as_receipt_evidence()
                 with client.stream('GET',release.source_url) as response,partial.open('xb') as output:
                     receipt.update(status=response.status_code,final_url=str(response.url),content_length=response.headers.get('content-length'),content_encoding=response.headers.get('content-encoding'),requested_accept_encoding='identity')
                     size=0
@@ -377,7 +378,7 @@ def reconcile_cache(storage,target,version,path,audit,identity,pin,release,origi
     verify_outputs(target,path,audit,release)
 
 def stage_county_subdivisions_candidate(storage,*,archive_path=None,receipt_path=None):
-    root=local_only(storage);path,receipt,release,pointer=acquire(storage,archive_path,receipt_path);audit=source_audit(path,release);identity=processing_identity();fp=digest(encode(identity));version=census_latest.release_version(str(release.vintage),str(receipt['sha256']),identity['code_commit']);prefix=f'{SLUG}/{SLUG}/{version}';key=f'_construction-state/{SLUG}/{version}.json';incident=f'_construction-incidents/{SLUG}/{version}.json'
+    root=local_only(storage);path,receipt,release,pointer=acquire(storage,archive_path,receipt_path);audit=source_audit(path,release);identity=processing_identity();fp=digest(encode(identity));version=census_latest.release_version(str(release.vintage),str(receipt['sha256']),fp);prefix=f'{SLUG}/{SLUG}/{version}';key=f'_construction-state/{SLUG}/{version}.json';incident=f'_construction-incidents/{SLUG}/{version}.json'
     with candidate_lock(root,prefix) as target:
         if target.exists():
             try:
