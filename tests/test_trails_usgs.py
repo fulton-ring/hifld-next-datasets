@@ -501,6 +501,53 @@ class TrailsRetryReplayTests(unittest.TestCase):
         manifest = {"complete": True, "artifact_names": [name], "receipts": {name: receipt}}
         (root / "capture_manifest.json").write_bytes(json.dumps(manifest, sort_keys=True).encode() + b"\n")
 
+    def test_load_preflights_combined_file_sizes_before_any_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            self._synthetic_capture(root)
+            (root / "refused").mkdir()
+            self._write_refused(root / "refused", "probe", b"partial")
+            total = sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+            with patch.object(trails_usgs, "MAX_CAPTURE_BYTES", total - 1), \
+                    patch.object(pathlib.Path, "read_bytes", side_effect=AssertionError("read before preflight")):
+                with self.assertRaisesRegex(ValueError, "trails_capture_budget_exceeded"):
+                    _load(root)
+
+    def test_load_preflights_nonregular_accepted_files_before_any_read(self):
+        import os
+
+        for name in ("capture_manifest.json", "probe.body", "probe.wire", "probe.receipt.json",
+                     "refused/probe.error-42.body", "refused/probe.error-42.wire", "refused/probe.error-42.receipt.json"):
+            for kind in ("directory", "fifo"):
+                with self.subTest(name=name, kind=kind), tempfile.TemporaryDirectory() as tmp:
+                    root = pathlib.Path(tmp)
+                    self._synthetic_capture(root)
+                    if name.startswith("refused/"):
+                        (root / "refused").mkdir()
+                        self._write_refused(root / "refused", "probe", b"partial")
+                    path = root / name
+                    path.unlink()
+                    path.mkdir() if kind == "directory" else os.mkfifo(path)
+                    with patch.object(pathlib.Path, "read_bytes", side_effect=AssertionError("read before preflight")):
+                        with self.assertRaisesRegex(ValueError, "trails_capture_roster_invalid|trails_refused_evidence_invalid"):
+                            _load(root)
+
+    def test_refused_receipt_must_describe_a_failure_of_the_accepted_request(self):
+        changes = ({"url": LAYER_URL + "/query?f=json"}, {"method": "POST"},
+                   {"status": 200, "complete_body": True, "error_code": None})
+        for change in changes:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                root = pathlib.Path(tmp)
+                self._synthetic_capture(root)
+                (root / "refused").mkdir()
+                self._write_refused(root / "refused", "probe", b"partial")
+                path = root / "refused/probe.error-42.receipt.json"
+                receipt = json.loads(path.read_bytes())
+                receipt.update(change)
+                path.write_bytes(json.dumps(receipt).encode())
+                with self.assertRaisesRegex(ValueError, "trails_refused_evidence_invalid"):
+                    _load(root)
+
     def test_dropped_transport_then_successful_retry_replays(self):
         # Observed on the live capture: the producer dropped the first page's
         # transport; the retry succeeded. The completed capture must remain
@@ -574,8 +621,9 @@ class TrailsRetryReplayTests(unittest.TestCase):
         self._replay_manifest(root, "probe", receipt)
         return receipt
 
-    def _refused_receipt(self, body=b'{"x": 1}', wire=b"refused-wire", status=None):
-        return {"method": "GET", "url": LAYER_URL + "?f=pjson", "status": status,
+    def _refused_receipt(self, body=b'{"x": 1}', wire=b"refused-wire", status=200):
+        return {"method": "GET", "url": LAYER_URL + "?f=pjson", "final_url": LAYER_URL + "?f=pjson",
+                "status": status, "complete_body": False, "error_code": "read_error",
                 "bytes": len(body), "sha256": trails_usgs._sha(body),
                 "wire_bytes": len(wire), "wire_sha256": trails_usgs._sha(wire)}
 

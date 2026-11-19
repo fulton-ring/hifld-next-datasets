@@ -12,6 +12,7 @@ import json
 import math
 import re
 import shutil
+import stat
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
@@ -160,46 +161,49 @@ def _capture_into(captures: dict, client: httpx.Client, url: str, root: Path, na
     return refused + receipt["bytes"] + receipt["wire_bytes"]
 
 
-def _validate_refused_evidence(directory: Path, artifact_names: set[str]) -> int:
-    """Validate retained refused-attempt evidence; return its byte total.
-
-    Every refused triple must name an artifact that the completed manifest
-    eventually captured, carry exactly one body/wire/receipt with matching
-    hash-pinned receipt, and be a regular non-symlink file.
-    """
-    total = 0
+def _validate_refused_evidence(directory: Path, accepted: dict[str, tuple[bytes, dict]]) -> dict:
+    """Bind each refused triple to a failed attempt of its accepted GET."""
     groups: dict[tuple[str, str], dict[str, Path]] = {}
     for entry in directory.iterdir():
-        if entry.is_symlink() or not entry.is_file():
-            raise ValueError("trails_refused_evidence_invalid")
         match = _REFUSED_ENTRY.fullmatch(entry.name)
-        if not match or match.group("name") not in artifact_names:
+        if not match or match.group("name") not in accepted:
             raise ValueError("trails_refused_evidence_invalid")
-        total += entry.stat().st_size
-        if total > MAX_CAPTURE_BYTES:
-            raise ValueError("trails_capture_budget_exceeded")
         slot = groups.setdefault((match.group("name"), match.group("stamp")), {})
-        if match.group("suffix") in slot:
-            raise ValueError("trails_refused_evidence_invalid")
         slot[match.group("suffix")] = entry
     if not groups:
         raise ValueError("trails_refused_evidence_invalid")
-    for (_name, _stamp), slot in groups.items():
+    roster = {}
+    for (name, _stamp), slot in groups.items():
         if set(slot) != {"body", "wire", "receipt.json"}:
             raise ValueError("trails_refused_evidence_invalid")
-        body = slot["body"].read_bytes()
-        wire = slot["wire"].read_bytes()
+        files = {suffix: path.read_bytes() for suffix, path in slot.items()}
+        body, wire = files["body"], files["wire"]
         try:
-            receipt = json.loads(slot["receipt.json"].read_bytes())
-        except (OSError, ValueError) as exc:
+            receipt = json.loads(files["receipt.json"])
+        except ValueError as exc:
             raise ValueError("trails_refused_evidence_invalid") from exc
-        if (not isinstance(receipt, dict)
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+        if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
+                or receipt.get("url") != accepted[name][1]["url"]
+                or type(receipt.get("bytes")) is not int or receipt["bytes"] != len(body)
+                or receipt.get("sha256") != _sha(body)
+                or type(receipt.get("wire_bytes")) is not int or receipt["wire_bytes"] != len(wire)
+                or receipt.get("wire_sha256") != _sha(wire)):
             raise ValueError("trails_refused_evidence_invalid")
-        if len(body) > MAX_RESPONSE_BYTES:
-            raise ValueError("trails_response_budget_exceeded")
-    return total
+        status, complete = receipt.get("status"), receipt.get("complete_body")
+        if status is None:
+            failed = (complete is False and receipt.get("final_url") is None
+                      and receipt.get("error_code") == "request_error" and not body and not wire)
+        else:
+            failed = (type(status) is int and 100 <= status <= 599
+                      and receipt.get("final_url") == receipt["url"]
+                      and ((complete is True and status != 200)
+                           or (complete is False and isinstance(receipt.get("error_code"), str)
+                               and bool(receipt["error_code"]))))
+        if not failed:
+            raise ValueError("trails_refused_evidence_invalid")
+        roster.update({slot[suffix].name: {"bytes": len(payload), "sha256": _sha(payload)}
+                       for suffix, payload in files.items()})
+    return roster
 
 
 def _artifact_rosters(root: Path) -> dict:
@@ -209,54 +213,64 @@ def _artifact_rosters(root: Path) -> dict:
 
 
 def _load(root: Path) -> dict[str, tuple[bytes, dict]]:
-    if any(path.is_symlink() for path in (root, *root.parents, root / "capture_manifest.json")):
+    """Replay bounded captures, including original pre-roster manifests.
+
+    Legacy manifests retain receipt/hash and wire-decoding checks; only newer
+    manifests carry separate accepted/refused artifact-roster digests.
+    """
+    if any(path.is_symlink() for path in (root, *root.parents)) or not root.is_dir():
         raise ValueError("trails_capture_roster_invalid")
-    if (root / "capture_manifest.json").stat().st_size > MAX_RESPONSE_BYTES:
+    files = []
+    actual = set()
+    refused_dir = root / _REFUSED_DIR
+    for entry in root.iterdir():
+        actual.add(entry.name)
+        if entry.name == _REFUSED_DIR:
+            if entry.is_symlink() or not entry.is_dir() or not any(entry.iterdir()):
+                raise ValueError("trails_capture_roster_invalid")
+            for refused in entry.iterdir():
+                if not stat.S_ISREG(refused.lstat().st_mode):
+                    raise ValueError("trails_refused_evidence_invalid")
+                files.append(refused)
+        else:
+            if not stat.S_ISREG(entry.lstat().st_mode):
+                raise ValueError("trails_capture_roster_invalid")
+            files.append(entry)
+    sizes = {path: path.stat().st_size for path in files}
+    if sum(sizes.values()) > MAX_CAPTURE_BYTES:
+        raise ValueError("trails_capture_budget_exceeded")
+    if any(size > MAX_RESPONSE_BYTES for path, size in sizes.items()
+           if path.parent == root or not path.name.endswith(".wire")):
         raise ValueError("trails_response_budget_exceeded")
     manifest = json.loads((root / "capture_manifest.json").read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("artifact_names"), list):
+    if (manifest.get("complete") is not True or not isinstance(manifest.get("artifact_names"), list)
+            or not isinstance(manifest.get("receipts"), dict)):
         raise ValueError("trails_capture_manifest_invalid")
-    actual = {p.name for p in root.iterdir()}
-    expected = {"capture_manifest.json"}
-    for name in manifest["artifact_names"]:
-        if not isinstance(name, str) or Path(name).name != name or name in {".", ".."}:
-            raise ValueError("trails_capture_roster_invalid")
-        expected.update({f"{name}.body", f"{name}.receipt.json", f"{name}.wire"})
-    refused_dir = root / _REFUSED_DIR
+    names = manifest["artifact_names"]
+    if (any(not isinstance(name, str) or Path(name).name != name or name in {".", ".."} for name in names)
+            or len(set(names)) != len(names) or set(manifest["receipts"]) != set(names)):
+        raise ValueError("trails_capture_roster_invalid")
+    expected = {"capture_manifest.json"} | {
+        f"{name}.{suffix}" for name in names for suffix in ("body", "wire", "receipt.json")}
     has_refused = _REFUSED_DIR in actual
     if has_refused:
-        if refused_dir.is_symlink() or not refused_dir.is_dir() or not any(refused_dir.iterdir()):
-            raise ValueError("trails_capture_roster_invalid")
         expected.add(_REFUSED_DIR)
-    if actual != expected or any((root / name).is_symlink() for name in actual):
+    if actual != expected:
         raise ValueError("trails_capture_roster_invalid")
-    refused_bytes = (_validate_refused_evidence(refused_dir, set(manifest["artifact_names"]))
-                     if has_refused else 0)
-    result = {}
-    for name in manifest["artifact_names"]:
-        if any((root / f"{name}.{suffix}").stat().st_size > MAX_RESPONSE_BYTES
-               for suffix in ("body", "wire", "receipt.json")):
-            raise ValueError("trails_response_budget_exceeded")
-        body = (root / f"{name}.body").read_bytes()
-        wire = (root / f"{name}.wire").read_bytes()
-        receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
-        if (receipt != manifest["receipts"].get(name) or receipt.get("status") != 200
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+    result, roster = {}, {}
+    for name in names:
+        body, receipt = load_replay(root, name)
+        if receipt != manifest["receipts"][name]:
             raise ValueError("trails_capture_receipt_mismatch:" + name)
-        if len(body) > MAX_RESPONSE_BYTES:
-            raise ValueError("trails_response_budget_exceeded")
-        load_replay(root, name)
         result[name] = (body, receipt)
-    if (sum(len(body) + int(receipt.get("wire_bytes", 0)) for body, receipt in result.values())
-            + refused_bytes > MAX_CAPTURE_BYTES):
-        raise ValueError("trails_capture_budget_exceeded")
-    if "artifact_roster" in manifest and any(manifest.get(name) != roster
-            for name, roster in _artifact_rosters(root).items()):
+        receipt_body = (root / f"{name}.receipt.json").read_bytes()
+        roster.update({f"{name}.body": {"bytes": len(body), "sha256": _sha(body)},
+                       f"{name}.wire": {"bytes": receipt["wire_bytes"], "sha256": receipt["wire_sha256"]},
+                       f"{name}.receipt.json": {"bytes": len(receipt_body), "sha256": _sha(receipt_body)}})
+    refused_roster = _validate_refused_evidence(refused_dir, result) if has_refused else {}
+    if "artifact_roster" in manifest and (manifest["artifact_roster"] != roster
+            or manifest.get("refused_roster") != refused_roster):
         raise ValueError("trails_capture_artifact_roster_mismatch")
-    if "artifact_roster" in manifest and _artifact_rosters(root) != {
-            key: manifest.get(key) for key in ("artifact_roster", "refused_roster")}:
-        raise ValueError("trails_capture_artifact_digest_mismatch")
     return result
 
 
