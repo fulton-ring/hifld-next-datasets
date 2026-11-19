@@ -12,6 +12,7 @@ import json
 import math
 import re
 import shutil
+import stat
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,10 +26,17 @@ import pyarrow.parquet as pq
 from pyproj import CRS
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.capture_completeness import validate_capture_witness
+from dagster_hifld.http_capture import capture_roster_digests
+from dagster_hifld.sources.arcgis_layer import _validate_offset_replay_refusal, load_replay, write_outputs
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.capture_common import capture_get, processing_identity, write_immutable
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
+    capture_get, processing_identity, candidate_prefix,
+    content_derived_version, seal_ready_candidate, verify_cached_candidate,
+)
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "trails-2"
@@ -36,8 +44,6 @@ PUBLISHER = "U.S. Geological Survey, The National Map Transportation"
 SERVICE_URL = "https://carto.nationalmap.gov/arcgis/rest/services/transportation/MapServer"
 LAYER_ID = 37
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-EXPECTED_COUNT = 594_699
-EXPECTED_ID_SHA256 = "2c5741d681157504d96f800a2af85b803ce76ad04d6b436fe29ad95230875810"
 BATCH_SIZE = 2000
 MAX_RESPONSE_BYTES = 64_000_000
 MAX_CAPTURE_BYTES = 8_000_000_000
@@ -155,79 +161,103 @@ def _capture_into(captures: dict, client: httpx.Client, url: str, root: Path, na
     return refused + receipt["bytes"] + receipt["wire_bytes"]
 
 
-def _validate_refused_evidence(directory: Path, artifact_names: set[str]) -> int:
-    """Validate retained refused-attempt evidence; return its byte total.
-
-    Every refused triple must name an artifact that the completed manifest
-    eventually captured, carry exactly one body/wire/receipt with matching
-    hash-pinned receipt, and be a regular non-symlink file.
-    """
-    total = 0
+def _validate_refused_evidence(directory: Path, accepted: dict[str, tuple[bytes, dict]]) -> dict:
+    """Bind each refused triple to a failed attempt of its accepted GET."""
     groups: dict[tuple[str, str], dict[str, Path]] = {}
     for entry in directory.iterdir():
-        if entry.is_symlink() or not entry.is_file():
-            raise ValueError("trails_refused_evidence_invalid")
         match = _REFUSED_ENTRY.fullmatch(entry.name)
-        if not match or match.group("name") not in artifact_names:
+        if not match or match.group("name") not in accepted:
             raise ValueError("trails_refused_evidence_invalid")
-        total += entry.stat().st_size
         slot = groups.setdefault((match.group("name"), match.group("stamp")), {})
-        if match.group("suffix") in slot:
-            raise ValueError("trails_refused_evidence_invalid")
         slot[match.group("suffix")] = entry
     if not groups:
         raise ValueError("trails_refused_evidence_invalid")
-    for (_name, _stamp), slot in groups.items():
+    roster = {}
+    for (name, stamp), slot in groups.items():
         if set(slot) != {"body", "wire", "receipt.json"}:
             raise ValueError("trails_refused_evidence_invalid")
-        body = slot["body"].read_bytes()
-        wire = slot["wire"].read_bytes()
+        receipt_body = slot["receipt.json"].read_bytes()
         try:
-            receipt = json.loads(slot["receipt.json"].read_bytes())
-        except (OSError, ValueError) as exc:
+            receipt = json.loads(receipt_body)
+            if (not isinstance(receipt, dict) or type(receipt.get("bytes")) is not int
+                    or type(receipt.get("wire_bytes")) is not int
+                    or (receipt.get("complete_body") is True and receipt.get("status") == 200)):
+                raise ValueError("trails_refused_evidence_invalid")
+            _validate_offset_replay_refusal(directory, f"{name}.error-{stamp}",
+                accepted[name][1]["url"], max_capture_bytes=MAX_RESPONSE_BYTES)
+        except ValueError as exc:
             raise ValueError("trails_refused_evidence_invalid") from exc
-        if (not isinstance(receipt, dict)
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-            raise ValueError("trails_refused_evidence_invalid")
-        if len(body) > MAX_RESPONSE_BYTES:
-            raise ValueError("trails_response_budget_exceeded")
-    return total
+        roster.update({slot["body"].name: {"bytes": receipt["bytes"], "sha256": receipt["sha256"]},
+                       slot["wire"].name: {"bytes": receipt["wire_bytes"], "sha256": receipt["wire_sha256"]},
+                       slot["receipt.json"].name: {"bytes": len(receipt_body), "sha256": _sha(receipt_body)}})
+    return roster
+
+
+def _artifact_rosters(root: Path) -> dict:
+    refused = root / _REFUSED_DIR
+    return {"artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json", _REFUSED_DIR}),
+            "refused_roster": capture_roster_digests(refused) if refused.is_dir() else {}}
 
 
 def _load(root: Path) -> dict[str, tuple[bytes, dict]]:
-    manifest = json.loads((root / "capture_manifest.json").read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("artifact_names"), list):
-        raise ValueError("trails_capture_manifest_invalid")
-    actual = {p.name for p in root.iterdir()}
-    expected = {"capture_manifest.json"}
-    for name in manifest["artifact_names"]:
-        expected.update({f"{name}.body", f"{name}.receipt.json", f"{name}.wire"})
+    """Replay bounded captures, including original pre-roster manifests.
+
+    Legacy manifests retain receipt/hash and wire-decoding checks; only newer
+    manifests carry separate accepted/refused artifact-roster digests.
+    """
+    if any(path.is_symlink() for path in (root, *root.parents)) or not root.is_dir():
+        raise ValueError("trails_capture_roster_invalid")
+    files = []
+    actual = set()
     refused_dir = root / _REFUSED_DIR
+    for entry in root.iterdir():
+        actual.add(entry.name)
+        if entry.name == _REFUSED_DIR:
+            if entry.is_symlink() or not entry.is_dir() or not any(entry.iterdir()):
+                raise ValueError("trails_capture_roster_invalid")
+            for refused in entry.iterdir():
+                if not stat.S_ISREG(refused.lstat().st_mode):
+                    raise ValueError("trails_refused_evidence_invalid")
+                files.append(refused)
+        else:
+            if not stat.S_ISREG(entry.lstat().st_mode):
+                raise ValueError("trails_capture_roster_invalid")
+            files.append(entry)
+    sizes = {path: path.stat().st_size for path in files}
+    if sum(sizes.values()) > MAX_CAPTURE_BYTES:
+        raise ValueError("trails_capture_budget_exceeded")
+    if any(size > MAX_RESPONSE_BYTES for path, size in sizes.items()
+           if path.parent == root or not path.name.endswith(".wire")):
+        raise ValueError("trails_response_budget_exceeded")
+    manifest = json.loads((root / "capture_manifest.json").read_bytes())
+    if (manifest.get("complete") is not True or not isinstance(manifest.get("artifact_names"), list)
+            or not isinstance(manifest.get("receipts"), dict)):
+        raise ValueError("trails_capture_manifest_invalid")
+    names = manifest["artifact_names"]
+    if (any(not isinstance(name, str) or Path(name).name != name or name in {".", ".."} for name in names)
+            or len(set(names)) != len(names) or set(manifest["receipts"]) != set(names)):
+        raise ValueError("trails_capture_roster_invalid")
+    expected = {"capture_manifest.json"} | {
+        f"{name}.{suffix}" for name in names for suffix in ("body", "wire", "receipt.json")}
     has_refused = _REFUSED_DIR in actual
     if has_refused:
-        if refused_dir.is_symlink() or not refused_dir.is_dir() or not any(refused_dir.iterdir()):
-            raise ValueError("trails_capture_roster_invalid")
         expected.add(_REFUSED_DIR)
-    if actual != expected or any((root / name).is_symlink() for name in actual):
+    if actual != expected:
         raise ValueError("trails_capture_roster_invalid")
-    refused_bytes = (_validate_refused_evidence(refused_dir, set(manifest["artifact_names"]))
-                     if has_refused else 0)
-    result = {}
-    for name in manifest["artifact_names"]:
-        body = (root / f"{name}.body").read_bytes()
-        wire = (root / f"{name}.wire").read_bytes()
-        receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
-        if (receipt != manifest["receipts"].get(name) or receipt.get("status") != 200
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+    result, roster = {}, {}
+    for name in names:
+        body, receipt = load_replay(root, name)
+        if receipt != manifest["receipts"][name]:
             raise ValueError("trails_capture_receipt_mismatch:" + name)
-        if len(body) > MAX_RESPONSE_BYTES:
-            raise ValueError("trails_response_budget_exceeded")
         result[name] = (body, receipt)
-    if (sum(len(body) + int(receipt.get("wire_bytes", 0)) for body, receipt in result.values())
-            + refused_bytes > MAX_CAPTURE_BYTES):
-        raise ValueError("trails_capture_budget_exceeded")
+        receipt_body = (root / f"{name}.receipt.json").read_bytes()
+        roster.update({f"{name}.body": {"bytes": len(body), "sha256": _sha(body)},
+                       f"{name}.wire": {"bytes": receipt["wire_bytes"], "sha256": receipt["wire_sha256"]},
+                       f"{name}.receipt.json": {"bytes": len(receipt_body), "sha256": _sha(receipt_body)}})
+    refused_roster = _validate_refused_evidence(refused_dir, result) if has_refused else {}
+    if "artifact_roster" in manifest and (manifest["artifact_roster"] != roster
+            or manifest.get("refused_roster") != refused_roster):
+        raise ValueError("trails_capture_artifact_roster_mismatch")
     return result
 
 
@@ -337,6 +367,8 @@ def _fields(layer: dict) -> list[dict]:
 def _validate_request_scope(name: str, receipt: dict, ids: list[int]) -> None:
     request_url = receipt.get("url")
     final_url = receipt.get("final_url", request_url)
+    if final_url != request_url:
+        raise ValueError("trails_capture_request_scope_drift:" + name)
     for url in (request_url, final_url):
         if not isinstance(url, str):
             raise ValueError("trails_capture_url_missing:" + name)
@@ -393,16 +425,13 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
     ids_before = docs["ids_before"].get("objectIds")
     ids_after = docs["ids_after"].get("objectIds")
     count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    if (not isinstance(ids_before, list) or any(type(i) is not int for i in ids_before)
-            or len(ids_before) != EXPECTED_COUNT or len(set(ids_before)) != EXPECTED_COUNT
-            or not isinstance(ids_after, list) or sorted(ids_before) != sorted(ids_after)
-            or count_before != EXPECTED_COUNT or count_after != EXPECTED_COUNT
-            or _sha(_canonical(sorted(ids_before))) != EXPECTED_ID_SHA256
-            or _sha(_canonical(sorted(ids_after))) != EXPECTED_ID_SHA256):
-        raise ValueError("trails_population_changed_or_incomplete")
-    ids_before = sorted(ids_before)
-    expected_page_names = {f"page_{start:05d}" for start in range(0, EXPECTED_COUNT, BATCH_SIZE)}
-    if {name for name in docs if name.startswith("page_")} != expected_page_names:
+    ids_before = validate_capture_witness(count_before, ids_before, count_after, ids_after)
+    if not ids_before:
+        raise ValueError("trails_dimensions_probe_without_ids")
+    expected_page_names = {f"page_{start:05d}" for start in range(0, len(ids_before), BATCH_SIZE)}
+    expected_names = expected_page_names | {"service_before", "service_after", "layer_before", "layer_after",
+        "count_before", "count_after", "ids_before", "ids_after", "dimensions_probe"}
+    if set(docs) != expected_names:
         raise ValueError("trails_page_receipt_roster_drift")
     if "dimensions_probe" not in docs:
         raise ValueError("trails_dimensions_probe_missing")
@@ -475,7 +504,7 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
                         bounds[2] = max(bounds[2], point[0]); bounds[3] = max(bounds[3], point[1])
             feature["geometry"] = geometry
             geometry_sha.update(_canonical(geometry) + b"\n")
-    if seen != set(ids_before) or len(seen) != EXPECTED_COUNT:
+    if seen != set(ids_before) or len(seen) != len(ids_before):
         raise ValueError("trails_feature_roster_mismatch")
     audit = {
         "feature_count": len(seen), "missing_geometry_objectids": missing_geometry,
@@ -607,7 +636,7 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
         root = requested
         captures = _load(root)
     else:
-        root = ((requested / version) if requested else Path("/tmp/hifld-trails-capture")) / uuid4().hex
+        root = ((requested / version) if requested else default_capture_dir("trails")) / uuid4().hex
         if any(p.is_symlink() for p in (root, *root.parents)):
             raise ValueError("trails_unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
@@ -622,11 +651,10 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
                 for name, url in requests:
                     retained += _capture_into(captures, client, url, root, name, retained)
                 ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids, list) or any(type(value) is not int for value in ids)
-                        or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
-                        or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256):
-                    raise ValueError("trails_initial_id_population_drift")
-                ids = sorted(ids)
+                ids = validate_capture_witness(json.loads(captures["count_before"][0]).get("count"), ids,
+                    json.loads(captures["count_before"][0]).get("count"), ids)
+                if not ids:
+                    raise ValueError("trails_dimensions_probe_without_ids")
                 probe_url = _query({"objectIds": str(ids[0]), "outFields": "OBJECTID", "returnGeometry": "true",
                                     "returnZ": "true", "returnM": "true", "f": "json"})
                 retained += _capture_into(captures, client, probe_url, root, "dimensions_probe", retained)
@@ -641,9 +669,12 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
                     ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
                     ("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson")]:
                     retained += _capture_into(captures, client, url, root, name, retained)
+            layer, audit = _population(captures)
             manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                        **_artifact_rosters(root),
                         "artifact_names": sorted(captures), "receipts": {n:r for n,(_b,r) in sorted(captures.items())}}
             (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
+            _load(root)
         except Exception as exc:
             receipts = {}
             for p in root.glob("*.receipt.json"):
@@ -660,13 +691,30 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
                 "captured_at":datetime.now(timezone.utc).isoformat().replace("+00:00","Z"),"artifact_names":sorted(receipts),
                 "receipts":receipts,"refused_receipts":refused})+b"\n")
             raise
-    layer, audit = _population(captures)
+    if replay:
+        layer, audit = _population(captures)
     fields = _fields(layer)
     service_info = json.loads(captures["service_before"][0])
-    parquet = _parquet_pages(root, fields, audit["feature_count"])
     identity = _processing_identity()
-    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
+    version = content_derived_version(audit["record_sha256"], audit["geometry_sha256"], audit["schema_sha256"], identity)
+    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
+    result = {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["feature_count"],
+        "source_population_complete":True,"source_id_sha256":audit["id_sha256"],"source_schema_sha256":audit["schema_sha256"],
+        "source_record_sha256":audit["record_sha256"],"source_geometry_sha256":audit["geometry_sha256"],
+        "candidate_ready":f"{prefix}/metadata/candidate_ready.json","capture_directory":str(root),"reused":False,
+        "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,
+        "id_contract_accepted":False,"baseline_accepted":False,"coverage_accepted":False,"rights_accepted":False,
+        "mapping_approved":False,"release_accepted":False}
+    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+    fingerprint = _sha(_canonical(identity))
+    if storage.object_snapshot(state_key) is not None:
+        payload = json.loads(load_first_construction(storage, state_key, version, fingerprint))["payload"]
+        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
+            fingerprint, identity, audit["record_sha256"], audit["schema_sha256"],
+            payload["objects"], payload["capture_receipts"])
+        return {**result, "reused": True}
+    parquet = _parquet_pages(root, fields, audit["feature_count"])
     inputs = [{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,
         "role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":receipt["url"],
         "retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],
@@ -682,8 +730,8 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
         "transformations":[{"operation":"Native ArcGIS polyline feature capture to typed GeoParquet WKB","parameters":{
             "attributes":"All 39 declared layer attributes retained verbatim, including the served virtual shape_Length and the producer's 'sourcedatadecscription' spelling. Source ESRI declarations are recorded verbatim in source_audit; output Arrow types use the explicit esri_to_arrow_type_mapping below. No schema conversion contract is approved.",
             "geometry":"Native EPSG:3857 polylines preserved; no reprojection, geocoding, repair, or row dropping. The layer declares hasM: true and serves [x, y, m] vertices; served m ordinates are retained verbatim, not repaired: a feature whose served m ordinates are all null is emitted as 2D WKB MultiLineString, while a feature with any served m ordinate is emitted as WKB MultiLineString M with the served values verbatim (a served null inside such a feature encodes as NaN, the WKB null-m convention). Any served z ordinate, non-finite ordinate, or unexpected geometry member fails closed.",
-            "source_population":"Exact objectid roster and count captured before and after all pages, with the pinned sorted-roster digest; complete current layer only."}}],
-        "lineage":{"layer_id":LAYER_ID,"layer_name":"Trails","native_crs":"EPSG:3857","feature_count":EXPECTED_COUNT,
+            "source_population":"Exact objectid roster and count captured before and after all pages; complete current layer only."}}],
+        "lineage":{"layer_id":LAYER_ID,"layer_name":"Trails","native_crs":"EPSG:3857","feature_count":audit["feature_count"],
             "source_id_sha256":audit["id_sha256"],"source_schema_sha256":audit["schema_sha256"],"source_record_sha256":audit["record_sha256"],
             "source_geometry_sha256":audit["geometry_sha256"],"service_refresh_observed":service_info.get("copyrightText"),"release_date":None,
             "hifld_2024_equivalence":"unverified","observed_archive_scope":"HIFLD Trails inventory entry trails-2 and DataLumos project 240112 copy retained as identification context only; never fetched"},
@@ -695,23 +743,25 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
     validate_output_policy(manifest); provenance_projection(manifest)
     outputs = {parquet_path:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
                "metadata/source_audit.json":_canonical(audit)+b"\n"}
-    for name,(body,receipt) in captures.items():
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (root/f"{name}.wire").read_bytes()
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt)+b"\n"
-    for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
     ready = {"approved":False,"version":version,"objects":{parquet_path:{"bytes":len(parquet),"sha256":_sha(parquet)}},
         "source_population_complete":True,"source_id_sha256":audit["id_sha256"],"source_record_sha256":audit["record_sha256"],
         "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
         "coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    write_immutable(storage,f"{prefix}/metadata/candidate_ready.json",_canonical(ready)+b"\n")
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["feature_count"],
-        "source_population_complete":True,"source_id_sha256":audit["id_sha256"],"source_schema_sha256":audit["schema_sha256"],
-        "source_record_sha256":audit["record_sha256"],"source_geometry_sha256":audit["geometry_sha256"],
-        "candidate_ready":f"{prefix}/metadata/candidate_ready.json","capture_directory":str(root),"reused":replay,
-        "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,
-        "id_contract_accepted":False,"baseline_accepted":False,"coverage_accepted":False,"rights_accepted":False,
-        "mapping_approved":False,"release_accepted":False}
+    descriptors = write_outputs(storage, prefix, outputs)
+    for name, (body, receipt) in captures.items():
+        descriptors.update(write_outputs(storage, prefix, {
+            f"raw/{name}.body": body, f"raw/{name}.wire": (root / f"{name}.wire").read_bytes(),
+            f"raw/{name}.receipt.json": _canonical(receipt) + b"\n"}))
+    refused_dir = root / _REFUSED_DIR
+    if refused_dir.is_dir():
+        for path in sorted(refused_dir.iterdir()):
+            descriptors.update(write_outputs(storage, prefix, {f"evidence/refused/{path.name}": path.read_bytes()}))
+    descriptors.update(write_outputs(storage, prefix, {"metadata/candidate_ready.json": _canonical(ready)+b"\n"}))
+    seal_ready_candidate(storage, state_key, version, fingerprint, {
+        "processing_identity": identity, "source_record_sha256": audit["record_sha256"],
+        "source_schema_sha256": audit["schema_sha256"], "objects": descriptors,
+        "capture_receipts": {name: receipt for name, (_body, receipt) in captures.items()}})
+    return result
 
 
 def _ids_view(captures: dict[str, tuple[bytes, dict]]) -> list[int]:

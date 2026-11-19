@@ -1,4 +1,5 @@
 import copy
+import gzip
 import io
 import json
 import math
@@ -12,13 +13,16 @@ from urllib.parse import urlencode
 
 import httpx
 import pyarrow.parquet as pq
+import gzip
+
+_REAL_HTTPX_CLIENT = httpx.Client
 
 from dagster_hifld.sources import trails_usgs
+
+_REAL_HTTPX_CLIENT = httpx.Client
 from dagster_hifld.sources.trails_usgs import (
     BATCH_SIZE,
-    EXPECTED_COUNT,
     EXPECTED_FIELD_NAMES,
-    EXPECTED_ID_SHA256,
     LAYER_URL,
     _capture_into,
     _fields,
@@ -69,7 +73,205 @@ def _feature(row_number, path):
     return {"attributes": attrs, "geometry": {"hasM": True, "paths": path}}
 
 
+def _captures(ids):
+    docs = {"service_before": {}, "service_after": {}, "layer_before": _layer_metadata(),
+            "layer_after": _layer_metadata(), "count_before": {"count": len(ids)},
+            "count_after": {"count": len(ids)}, "ids_before": {"objectIds": ids}, "ids_after": {"objectIds": ids}}
+    urls = {}
+    for name in docs:
+        if name.startswith("service_"):
+            urls[name] = trails_usgs.SERVICE_URL + "?f=pjson"
+        elif name.startswith("layer_"):
+            urls[name] = LAYER_URL + "?f=pjson"
+        else:
+            urls[name] = trails_usgs._query({"where": "1=1",
+                "returnCountOnly" if name.startswith("count_") else "returnIdsOnly": "true", "f": "json"})
+    metadata = {"geometryType": "esriGeometryPolyline", "spatialReference": {"wkid": 3857}}
+    path = [[[1.0, 2.0, 7.25], [3.0, 4.0, None]]]
+    docs["dimensions_probe"] = {**metadata, "features": [_feature(ids[0] - 1, path)]}
+    urls["dimensions_probe"] = trails_usgs._query({"objectIds": str(ids[0]), "outFields": "OBJECTID",
+        "returnGeometry": "true", "returnZ": "true", "returnM": "true", "f": "json"})
+    for start in range(0, len(ids), trails_usgs.BATCH_SIZE):
+        name = f"page_{start:05d}"
+        docs[name] = {**metadata, "features": [_feature(oid - 1, path) for oid in ids[start:start + trails_usgs.BATCH_SIZE]]}
+        urls[name] = trails_usgs._query({"where": "1=1", "outFields": "*", "returnGeometry": "true",
+            "returnZ": "true", "returnM": "true", "orderByFields": "objectid ASC", "resultOffset": start,
+            "resultRecordCount": trails_usgs.BATCH_SIZE, "f": "json"})
+    result = {}
+    for name, doc in docs.items():
+        body = json.dumps(doc).encode()
+        result[name] = (body, {"method": "GET", "url": urls[name], "final_url": urls[name], "status": 200,
+            "complete_body": True, "observed_at": "2026-11-19T00:00:00Z", "bytes": len(body),
+            "sha256": trails_usgs._sha(body), "wire_bytes": len(body), "wire_sha256": trails_usgs._sha(body)})
+    return result
+
+
+def _client_factory(captures, encoding="identity", refuse_first_page=False):
+    bodies = {receipt["url"]: body for body, receipt in captures.values()}
+    refused = []
+
+    def handler(request):
+        if refuse_first_page and "resultOffset=0" in str(request.url) and not refused:
+            refused.append(str(request.url))
+            return httpx.Response(503, stream=httpx.ByteStream(b"unavailable"))
+        body = bodies[str(request.url)]
+        if encoding == "gzip":
+            body = gzip.compress(body)
+        return httpx.Response(200, headers={"Content-Encoding": encoding, "Content-Length": str(len(body))},
+                              stream=httpx.ByteStream(body))
+
+    return lambda *args, **kwargs: _REAL_HTTPX_CLIENT(transport=httpx.MockTransport(handler))
+
+
+def _client_factory(captures, encoding="identity", refuse_first_page=False):
+    bodies = {receipt["url"]: body for body, receipt in captures.values()}
+    refused = False
+
+    def handler(request):
+        nonlocal refused
+        if refuse_first_page and not refused and "resultOffset=0" in str(request.url):
+            refused = True
+            return httpx.Response(503, stream=httpx.ByteStream(b"temporarily unavailable"))
+        body = bodies[str(request.url)]
+        if encoding == "gzip":
+            body = gzip.compress(body)
+        return httpx.Response(200, headers={"Content-Encoding": encoding, "Content-Length": str(len(body))},
+                              stream=httpx.ByteStream(body))
+
+    return lambda *args, **kwargs: _REAL_HTTPX_CLIENT(transport=httpx.MockTransport(handler))
+
+
 class TrailsUSGSTests(unittest.TestCase):
+    def test_changed_population_matches_capture_time_witnesses(self):
+        with patch.object(trails_usgs, "BATCH_SIZE", 2):
+            _, audit = trails_usgs._population(_captures([1, 3, 9]))
+        self.assertEqual(audit["feature_count"], 3)
+
+    def test_changed_publications_seal_new_versions_without_rewriting_prior_objects(self):
+        from dagster_hifld.resources import StagingStorageResource
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(trails_usgs, "BATCH_SIZE", 2):
+            storage = StagingStorageResource(use_local=True, local_dir=tmp + "/stage", prefix="")
+            originals, versions = {}, []
+            for ids in ([2, 8], [1, 3, 9, 12, 20]):
+                with patch.object(trails_usgs.httpx, "Client", side_effect=_client_factory(_captures(ids))):
+                    result = trails_usgs.capture_trails(storage, version="dynamic", capture_directory=tmp + "/captures")
+                self.assertEqual(result["feature_count"], len(ids))
+                self.assertNotIn(result["version"], versions)
+                versions.append(result["version"])
+                for key, snapshot in originals.items():
+                    self.assertEqual((storage.read_key(key), storage.object_snapshot(key)), snapshot)
+                originals = {key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}
+
+    def test_baseline_warn_is_not_completeness_or_approval(self):
+        from dagster import AssetCheckSeverity
+        from dagster_hifld.capture_completeness import approved_baseline_drift
+        from dagster_hifld.assets.trails_usgs import trails_population_complete, trails_baseline_drift
+
+        candidate = {"dataset_slug": "trails-2", "file_slug": "trails-2", "feature_count": 3,
+                     "source_id_sha256": "new", "source_population_complete": True}
+        self.assertTrue(trails_population_complete(candidate).passed)
+        self.assertFalse(trails_population_complete({**candidate, "source_population_complete": False}).passed)
+        skipped = trails_baseline_drift(candidate)
+        self.assertEqual(skipped.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(skipped.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+        reference = {**candidate, "version": "approved-fixture", "release_accepted": True,
+                     "feature_count": 2, "source_id_sha256": "old"}
+        compared = approved_baseline_drift(candidate, reference)
+        self.assertFalse(compared.passed)
+        self.assertEqual(compared.metadata["feature_count_delta"].value, 1)
+
+    def test_population_brackets_and_dynamic_pages_fail_closed(self):
+        with patch.object(trails_usgs, "BATCH_SIZE", 2):
+            for target, change, error in (
+                ("count_after", {"count": 4}, "source_count_or_id_roster_drift"),
+                ("ids_after", {"objectIds": [1, 3, 10]}, "source_count_or_id_roster_drift"),
+                ("service_after", {"changed": True}, "trails_service_changed_during_capture"),
+                ("layer_after", {"hasM": False}, "trails_layer_changed_during_capture"),
+                ("page_00002", {"features": []}, "trails_page_population_incomplete"),
+            ):
+                with self.subTest(target=target):
+                    captures = _captures([1, 3, 9])
+                    body = json.loads(captures[target][0])
+                    body.update(change)
+                    captures[target] = (json.dumps(body).encode(), captures[target][1])
+                    with self.assertRaisesRegex(ValueError, error):
+                        trails_usgs._population(captures)
+
+    def test_real_sealing_replay_and_refresh_preserve_m_and_refused_evidence(self):
+        from dagster_hifld.resources import StagingStorageResource
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(trails_usgs, "BATCH_SIZE", 2):
+            storage = StagingStorageResource(use_local=True, local_dir=tmp + "/stage", prefix="")
+            captures = _captures([1, 3, 9])
+            real_write_outputs = trails_usgs.write_outputs
+
+            def write_group(storage, prefix, outputs):
+                if any(name.startswith("evidence/") for name in outputs):
+                    self.assertEqual(len(outputs), 1)
+                if any(name.startswith("raw/") for name in outputs):
+                    self.assertLessEqual(len(outputs), 3)
+                return real_write_outputs(storage, prefix, outputs)
+
+            with patch.object(trails_usgs.httpx, "Client", side_effect=_client_factory(captures, refuse_first_page=True)), \
+                    patch.object(trails_usgs, "write_outputs", side_effect=write_group):
+                first = trails_usgs.capture_trails(storage, version="first", capture_directory=tmp + "/captures")
+            self.assertFalse(first["reused"])
+            self.assertEqual(first["feature_count"], 3)
+            root = pathlib.Path(first["capture_directory"])
+            originals = {key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}
+            self.assertEqual(sum("/evidence/refused/" in key for key in originals), 3)
+            parquet_key = first["candidate_ready"].replace("metadata/candidate_ready.json", "geoparquet/trails-2.parquet")
+            table = pq.read_table(io.BytesIO(storage.read_key(parquet_key)))
+            self.assertEqual(table.column("objectid").to_pylist(), [1, 3, 9])
+            self.assertEqual(table.column("geometry")[0].as_py(), _wkb_polyline([[[1.0, 2.0, 7.25], [3.0, 4.0, None]]]))
+            manifest_bytes = (root / "capture_manifest.json").read_bytes()
+            with patch.object(trails_usgs.httpx, "Client", side_effect=AssertionError("HTTP forbidden")), \
+                    patch.object(trails_usgs, "_parquet_pages", side_effect=AssertionError("cache rebuilt Parquet")), \
+                    patch.object(trails_usgs, "write_outputs", side_effect=AssertionError("cache staged new outputs")):
+                replay = trails_usgs.capture_trails(storage, version="replay", capture_directory=str(root))
+            self.assertTrue(replay["reused"])
+            with patch.object(trails_usgs.httpx, "Client", side_effect=_client_factory(captures)), \
+                    patch.object(trails_usgs, "_parquet_pages", side_effect=AssertionError("cache rebuilt Parquet")), \
+                    patch.object(trails_usgs, "write_outputs", side_effect=AssertionError("cache staged new outputs")):
+                refresh = trails_usgs.capture_trails(storage, version="refresh", capture_directory=tmp + "/captures")
+            self.assertTrue(refresh["reused"])
+            self.assertEqual(refresh["version"], first["version"])
+            self.assertEqual((root / "capture_manifest.json").read_bytes(), manifest_bytes)
+            self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}, originals)
+            storage.write_key(parquet_key, b"corrupt parquet")
+            tampered = {key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}
+            with patch.object(trails_usgs.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                with self.assertRaisesRegex(ValueError, "cached_candidate_object_integrity_failed"):
+                    trails_usgs.capture_trails(storage, version="corrupt", capture_directory=str(root))
+            self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}, tampered)
+
+    def test_forged_decoded_identity_and_gzip_pages_fail_without_mutation(self):
+        from dagster_hifld.resources import StagingStorageResource
+
+        for encoding in ("identity", "gzip"):
+            with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as tmp, patch.object(trails_usgs, "BATCH_SIZE", 2):
+                storage = StagingStorageResource(use_local=True, local_dir=tmp + "/stage", prefix="")
+                with patch.object(trails_usgs.httpx, "Client", side_effect=_client_factory(_captures([1, 3, 9]), encoding)):
+                    first = trails_usgs.capture_trails(storage, version="wire", capture_directory=tmp + "/captures")
+                root = pathlib.Path(first["capture_directory"])
+                originals = {key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}
+                with patch.object(trails_usgs.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                    self.assertTrue(trails_usgs.capture_trails(storage, version="honest", capture_directory=str(root))["reused"])
+                body = (root / "page_00000.body").read_bytes().replace(b"name-0", b"name-X")
+                (root / "page_00000.body").write_bytes(body)
+                receipt = json.loads((root / "page_00000.receipt.json").read_bytes())
+                receipt.update(bytes=len(body), sha256=trails_usgs._sha(body))
+                (root / "page_00000.receipt.json").write_bytes(json.dumps(receipt).encode())
+                manifest = json.loads((root / "capture_manifest.json").read_bytes())
+                manifest["receipts"]["page_00000"] = receipt
+                manifest.update(trails_usgs._artifact_rosters(root))
+                (root / "capture_manifest.json").write_bytes(json.dumps(manifest).encode())
+                with patch.object(trails_usgs.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                    with self.assertRaisesRegex(ValueError, "retained_capture_wire_body_mismatch"):
+                        trails_usgs.capture_trails(storage, version="forged", capture_directory=str(root))
+                self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}, originals)
+
     def test_trails_layer_keeps_all_native_attributes_and_excludes_geometry_members(self):
         fields = _fields(_layer_metadata())
         self.assertEqual([field["name"] for field in fields], EXPECTED_FIELD_NAMES + ["shape_Length"])
@@ -198,10 +400,8 @@ class TrailsUSGSTests(unittest.TestCase):
         # (2026-11-14); the page contract must not reintroduce it.
         self.assertNotIn("objectIds", url)
 
-    def test_pinned_roster_constants_are_self_consistent(self):
-        self.assertEqual(EXPECTED_COUNT % BATCH_SIZE, EXPECTED_COUNT % BATCH_SIZE)
-        self.assertGreater(EXPECTED_COUNT, BATCH_SIZE)
-        self.assertEqual(len(EXPECTED_ID_SHA256), 64)
+    def test_batch_size_is_within_publisher_page_limit(self):
+        self.assertEqual(BATCH_SIZE, 2000)
 
     def test_wkb_retains_populated_m_ordinates_verbatim(self):
         served = [[[1.5, -2.5, 7.25], [3.0, 4.0, 9.5]]]
@@ -315,6 +515,86 @@ class TrailsRetryReplayTests(unittest.TestCase):
         manifest = {"complete": True, "artifact_names": [name], "receipts": {name: receipt}}
         (root / "capture_manifest.json").write_bytes(json.dumps(manifest, sort_keys=True).encode() + b"\n")
 
+    def test_load_preflights_combined_file_sizes_before_any_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            self._synthetic_capture(root)
+            (root / "refused").mkdir()
+            self._write_refused(root / "refused", "probe", b"partial")
+            total = sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+            with patch.object(trails_usgs, "MAX_CAPTURE_BYTES", total - 1), \
+                    patch.object(pathlib.Path, "read_bytes", side_effect=AssertionError("read before preflight")):
+                with self.assertRaisesRegex(ValueError, "trails_capture_budget_exceeded"):
+                    _load(root)
+
+    def test_load_preflights_nonregular_accepted_files_before_any_read(self):
+        import os
+
+        for name in ("capture_manifest.json", "probe.body", "probe.wire", "probe.receipt.json",
+                     "refused/probe.error-42.body", "refused/probe.error-42.wire", "refused/probe.error-42.receipt.json"):
+            for kind in ("directory", "fifo"):
+                with self.subTest(name=name, kind=kind), tempfile.TemporaryDirectory() as tmp:
+                    root = pathlib.Path(tmp)
+                    self._synthetic_capture(root)
+                    if name.startswith("refused/"):
+                        (root / "refused").mkdir()
+                        self._write_refused(root / "refused", "probe", b"partial")
+                    path = root / name
+                    path.unlink()
+                    path.mkdir() if kind == "directory" else os.mkfifo(path)
+                    with patch.object(pathlib.Path, "read_bytes", side_effect=AssertionError("read before preflight")):
+                        with self.assertRaisesRegex(ValueError, "trails_capture_roster_invalid|trails_refused_evidence_invalid"):
+                            _load(root)
+
+    def test_refused_receipt_must_describe_a_failure_of_the_accepted_request(self):
+        changes = ({"url": LAYER_URL + "/query?f=json"}, {"method": "POST"},
+                   {"status": 200, "complete_body": True, "error_code": None})
+        for change in changes:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                root = pathlib.Path(tmp)
+                self._synthetic_capture(root)
+                (root / "refused").mkdir()
+                self._write_refused(root / "refused", "probe", b"partial")
+                path = root / "refused/probe.error-42.receipt.json"
+                receipt = json.loads(path.read_bytes())
+                receipt.update(change)
+                path.write_bytes(json.dumps(receipt).encode())
+                with self.assertRaisesRegex(ValueError, "trails_refused_evidence_invalid"):
+                    _load(root)
+
+    def test_failed_identity_and_gzip_wire_rejects_forged_decoded_bodies(self):
+        for encoding in ("identity", "gzip"):
+            for status in (200, 503):
+                with self.subTest(encoding=encoding, status=status), tempfile.TemporaryDirectory() as tmp:
+                    root = pathlib.Path(tmp)
+                    calls = []
+                    accepted_body = b'{"features": []}'
+
+                    def handler(request):
+                        calls.append(str(request.url))
+                        body = b'{"error":"retry"}' if len(calls) == 1 else accepted_body
+                        coding = encoding if len(calls) == 1 else "identity"
+                        wire = gzip.compress(body) if coding == "gzip" else body
+                        return httpx.Response(status if len(calls) == 1 else 200,
+                            headers={"Content-Encoding": coding,
+                                     "Content-Length": str(len(wire) + (1 if len(calls) == 1 and status == 200 else 0))},
+                            stream=httpx.ByteStream(wire))
+
+                    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+                        body, receipt, _ = trails_usgs._capture(client, LAYER_URL + "?f=pjson", root, "probe", 0)
+                    self._replay_manifest(root, "probe", receipt)
+                    self.assertEqual(_load(root), {"probe": (body, receipt)})
+                    receipt_path = next((root / "refused").glob("*.receipt.json"))
+                    body_path = receipt_path.with_name(receipt_path.name.removesuffix(".receipt.json") + ".body")
+                    forged = body_path.read_bytes().replace(b"retry", b"forged")
+                    body_path.write_bytes(forged)
+                    failed_receipt = json.loads(receipt_path.read_bytes())
+                    failed_receipt.update(bytes=len(forged), sha256=trails_usgs._sha(forged))
+                    receipt_path.write_bytes(json.dumps(failed_receipt).encode())
+                    with self.assertRaisesRegex(ValueError, "trails_refused_evidence_invalid"):
+                        _load(root)
+                    self.assertEqual((root / "probe.body").read_bytes(), body)
+
     def test_dropped_transport_then_successful_retry_replays(self):
         # Observed on the live capture: the producer dropped the first page's
         # transport; the retry succeeded. The completed capture must remain
@@ -378,18 +658,20 @@ class TrailsRetryReplayTests(unittest.TestCase):
             self.assertEqual(_load(root), {"probe": (retained_body, receipt)})
 
     def _synthetic_capture(self, root):
-        body, wire = b'{"features": []}', b"raw-wire"
+        body = wire = b'{"features": []}'
         receipt = {"method": "GET", "url": LAYER_URL + "?f=pjson", "status": 200,
                    "bytes": len(body), "sha256": trails_usgs._sha(body),
-                   "wire_bytes": len(wire), "wire_sha256": trails_usgs._sha(wire)}
+                   "wire_bytes": len(wire), "wire_sha256": trails_usgs._sha(wire), "complete_body": True}
         (root / "probe.body").write_bytes(body)
         (root / "probe.wire").write_bytes(wire)
         (root / "probe.receipt.json").write_bytes(json.dumps(receipt).encode() + b"\n")
         self._replay_manifest(root, "probe", receipt)
         return receipt
 
-    def _refused_receipt(self, body=b'{"x": 1}', wire=b"refused-wire", status=None):
-        return {"method": "GET", "url": LAYER_URL + "?f=pjson", "status": status,
+    def _refused_receipt(self, body=b'{"x": 1}', wire=b"refused-wire", status=200):
+        return {"method": "GET", "url": LAYER_URL + "?f=pjson", "final_url": LAYER_URL + "?f=pjson",
+                "status": status, "complete_body": False, "error_code": "content_length_mismatch",
+                "content_encoding": "identity", "content_length": len(wire) + 1, "error_type": None,
                 "bytes": len(body), "sha256": trails_usgs._sha(body),
                 "wire_bytes": len(wire), "wire_sha256": trails_usgs._sha(wire)}
 
@@ -411,7 +693,7 @@ class TrailsRetryReplayTests(unittest.TestCase):
             receipt = self._synthetic_capture(root)
             refused = root / "refused"
             refused.mkdir()
-            body, wire = b'{"x": 1}', b"refused-wire"
+            body = wire = b'{"x": 1}'
             (refused / "probe.error-42.body").write_bytes(body)
             (refused / "probe.error-42.wire").write_bytes(wire)
             (refused / "probe.error-42.receipt.json").write_bytes(
@@ -443,7 +725,7 @@ class TrailsRetryReplayTests(unittest.TestCase):
 
     def _write_refused(self, refused, name, body, *, stamp=42, include=("body", "wire", "receipt.json"),
                        corrupt_body=False):
-        wire = b"refused-wire"
+        wire = body
         if "body" in include:
             (refused / f"{name}.error-{stamp}.body").write_bytes(body + (b"corrupted" if corrupt_body else b""))
         if "wire" in include:
