@@ -71,4 +71,7 @@ usace_overhead_pipeline_lines_draft_schedule = ScheduleDefinition(
 usace_overhead_pipeline_lines_usace_ienc_drift = register_approved_baseline_drift(
     usace_overhead_pipeline_lines_usace_ienc, "usace_overhead_pipeline_lines_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_overhead_pipeline_lines_usace_ienc]
 ASSET_CHECKS = [usace_overhead_pipeline_lines_complete, usace_overhead_pipeline_lines_usace_ienc_drift]
+JOBS = [usace_overhead_pipeline_lines_draft_job]
+SCHEDULES = [usace_overhead_pipeline_lines_draft_schedule]
