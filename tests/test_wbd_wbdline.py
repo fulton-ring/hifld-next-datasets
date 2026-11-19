@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import gzip
 import json
 import struct
 import tempfile
+import tracemalloc
 import unittest
+import httpx
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,6 +20,7 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.wbd_wbdline import (
     wbd_wbdline, wbd_wbdline_complete, wbd_wbdline_draft_schedule,
+    wbd_wbdline_drift,
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wbd_wbdline as source
@@ -47,13 +51,7 @@ def patches(module, **values):
 @contextlib.contextmanager
 def relaxed_pins(**extra):
     scale = {
-        "EXPECTED_COUNT": _TEST_COUNT, "PAGE_SIZE": _TEST_PAGE_SIZE,
-        "PAGE_COUNT": _TEST_PAGE_COUNT,
-        "EXPECTED_ID_MIN": min(_TEST_ROSTER), "EXPECTED_ID_MAX": max(_TEST_ROSTER),
-        "EXPECTED_ID_SHA256": "", "EXPECTED_SCHEMA_SHA256": "",
-        "EXPECTED_RECORD_SHA256": "", "EXPECTED_GEOMETRY_SHA256": "",
-        "EXPECTED_NULL_GEOMETRY_COUNT": None,
-        "EXPECTED_UNUSABLE_GEOMETRY_COUNTS": None,
+        "PAGE_SIZE": _TEST_PAGE_SIZE, "EXPECTED_SCHEMA_SHA256": "",
     }
     scale.update(extra)
     with patches(source, **scale):
@@ -118,7 +116,9 @@ def _attributes(oid: int) -> dict:
     return attrs
 
 
-def _documents() -> dict:
+def _documents(roster=None) -> dict:
+    roster = _TEST_ROSTER if roster is None else roster
+    page_count = (len(roster) + _TEST_PAGE_SIZE - 1) // _TEST_PAGE_SIZE
     service = {"currentVersion": 11.3, "mapName": source.MAP_NAME,
                "copyrightText": source.EXPECTED_COPYRIGHT_TEXT,
                "capabilities": "Map,Query,Data", "maxRecordCount": 2000,
@@ -145,18 +145,18 @@ def _documents() -> dict:
              "sourceSpatialReference": dict(_SR), "spatialReference": None,
              "fields": json.loads(json.dumps(source.EXPECTED_LAYER_FIELDS))}
     features = {}
-    for oid in _TEST_ROSTER:
+    for oid in roster:
         geometry = {"paths": _feature_paths(oid)}
         ids = _feature_ids(oid)
         if ids is not None:
             geometry["ids"] = ids
         features[oid] = {"attributes": _attributes(oid), "geometry": geometry}
     pages = {}
-    for index in range(_TEST_PAGE_COUNT):
-        page_ids = _TEST_ROSTER[index * _TEST_PAGE_SIZE:(index + 1) * _TEST_PAGE_SIZE]
+    for index in range(page_count):
+        page_ids = roster[index * _TEST_PAGE_SIZE:(index + 1) * _TEST_PAGE_SIZE]
         pages[f"page_{index:04d}"] = {
             "displayFieldName": "TNMID",
-            "exceededTransferLimit": index < _TEST_PAGE_COUNT - 1,
+            "exceededTransferLimit": index < page_count - 1,
             "features": [features[oid] for oid in page_ids],
             "fieldAliases": {field["name"]: field["alias"]
                              for field in source.EXPECTED_PAGE_FIELD_DECLARATIONS},
@@ -167,12 +167,12 @@ def _documents() -> dict:
     return {
         "service_doc": _SERVICE_DOC,
         "service_before": service, "layer_before": layer,
-        "count_before": {"count": _TEST_COUNT},
-        "ids_before": {"objectIdFieldName": source.OID_FIELD_NAME, "objectIds": list(_TEST_ROSTER)},
+        "count_before": {"count": len(roster)},
+        "ids_before": {"objectIdFieldName": source.OID_FIELD_NAME, "objectIds": list(roster)},
         "service_after": json.loads(json.dumps(service)),
         "layer_after": json.loads(json.dumps(layer)),
-        "count_after": {"count": _TEST_COUNT},
-        "ids_after": {"objectIdFieldName": source.OID_FIELD_NAME, "objectIds": list(_TEST_ROSTER)},
+        "count_after": {"count": len(roster)},
+        "ids_after": {"objectIdFieldName": source.OID_FIELD_NAME, "objectIds": list(roster)},
         **pages,
     }
 
@@ -200,7 +200,7 @@ def _write_capture_root(root: Path, documents: dict) -> Path:
     expected_urls = dict(source._capture_roster(roster))
     for name, document in documents.items():
         body = _encode(document)
-        wire = b"wire:" + body[:32]
+        wire = body
         url = _receipt_url(name, roster, expected_urls)
         receipt = {"method": "GET", "url": url, "final_url": url,
                    "observed_at": "2026-11-14T12:00:00.000000Z", "status": 200,
@@ -236,6 +236,253 @@ def _seal_manifest(root: Path, documents: dict, *, page_parts: dict | None = Non
 
 
 class WbdWbdlineTests(unittest.TestCase):
+    def _network_capture(self, storage, root, documents, extra=None, encoding="identity"):
+        roster = documents["ids_before"]["objectIds"]
+        responses = {}
+        metadata_urls = {
+            "service_doc": source.SERVICE_DOC_URL,
+            "service_before": source.SERVICE_URL + "?f=pjson",
+            "service_after": source.SERVICE_URL + "?f=pjson",
+            "layer_before": source.LAYER_URL + "?f=pjson",
+            "layer_after": source.LAYER_URL + "?f=pjson",
+            "count_before": source._count_url(), "count_after": source._count_url(),
+            "ids_before": source._ids_url(), "ids_after": source._ids_url()}
+        for name, url in metadata_urls.items():
+            if name in documents:
+                responses.setdefault(str(httpx.URL(url)), []).append(documents[name])
+        for index in range((len(roster) + _TEST_PAGE_SIZE - 1) // _TEST_PAGE_SIZE):
+            name = f"page_{index:04d}"
+            url = source._window_url(roster, index, "")
+            if str(httpx.URL(url)) not in responses:
+                responses[str(httpx.URL(url))] = [documents[name]]
+        for url, document in (extra or {}).items():
+            responses[str(httpx.URL(url))] = [document]
+        client = httpx.Client
+        def respond(request):
+            body = _encode(responses[str(request.url)].pop(0))
+            wire = gzip.compress(body, mtime=0) if encoding == "gzip" else body
+            return httpx.Response(200, headers={"Content-Encoding": encoding,
+                "Content-Length": str(len(wire))}, stream=httpx.ByteStream(wire))
+        with patch.object(source.httpx, "Client", side_effect=lambda **kwargs: client(
+                **kwargs, transport=httpx.MockTransport(respond))):
+            return source.capture_wbd_wbdline(storage, version="observed", capture_directory=str(root))
+
+    def test_real_maintained_population_constructs_and_replays(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+        with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE, DISK_FLOOR_BYTES=1):
+            result = self._network_capture(storage, root / "captures", _documents())
+            self.assertEqual(result["feature_count"], _TEST_COUNT)
+            self.assertEqual(result["source_reported_count"], _TEST_COUNT)
+            with patch.object(source.httpx, "Client", side_effect=AssertionError("network on replay")):
+                replay = source.capture_wbd_wbdline(storage, version="replay",
+                    capture_directory=result["capture_directory"])
+            self.assertTrue(replay["reused"])
+            self.assertEqual(replay["version"], result["version"])
+
+    def test_real_added_removed_populations_preserve_native_values_and_original_candidates(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+        versions = set()
+        with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE, DISK_FLOOR_BYTES=1):
+            for index, roster in enumerate((_TEST_ROSTER[:3], _TEST_ROSTER,
+                    sorted([*_TEST_ROSTER, 700_009, 800_010, 900_011, 1_000_012]))):
+                with self.subTest(roster=roster):
+                    result = self._network_capture(storage, root / f"capture-{index}", _documents(roster))
+                    self.assertEqual(result["feature_count"], len(roster))
+                    self.assertEqual(result["source_reported_count"], len(roster))
+                    self.assertEqual(result["source_id_sha256"], _digest(_canonical(roster)))
+                    self.assertEqual((result["source_id_min"], result["source_id_max"]),
+                                     (min(roster), max(roster)))
+                    self.assertTrue(wbd_wbdline_complete(result).passed)
+                    prefix = Path(storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / result["version"]
+                    manifest = json.loads((prefix / "metadata/source_manifest.json").read_bytes())
+                    description = manifest["transformations"][0]["parameters"]["source_ids"]
+                    self.assertIn(f"{len(roster)} unique ascending native ids from {min(roster)} to {max(roster)}", description)
+                    self.assertNotIn("395,291", description)
+                    self.assertNotIn("409,308", description)
+                    parquet = pq.read_table(prefix / "geoparquet" / (source.FILE_SLUG + ".parquet"))
+                    self.assertEqual(parquet["objectid"].to_pylist(), list(roster))
+                    self.assertEqual(parquet.column_names, [*source.FIELD_NAMES, "geometry"])
+                    for name, value in _attributes(roster[0]).items():
+                        self.assertEqual(parquet[name][0].as_py(), value)
+                    self.assertEqual(parquet["geometry"][0].as_py(), source._assemble_geometry(_feature_paths(roster[0])))
+                    self.assertEqual(json.loads(parquet.schema.metadata[b"geo"])["columns"]["geometry"]["crs"]["id"]["code"], 3857)
+                    self.assertFalse(result["release_accepted"])
+                    original = {p.relative_to(prefix): p.read_bytes() for p in prefix.rglob("*") if p.is_file()}
+                    refresh = self._network_capture(storage, root / f"refresh-{index}", _documents(roster))
+                    self.assertTrue(refresh["reused"])
+                    self.assertEqual(refresh["version"], result["version"])
+                    self.assertEqual(original, {p.relative_to(prefix): p.read_bytes()
+                        for p in prefix.rglob("*") if p.is_file()})
+                    versions.add(result["version"])
+            self.assertEqual(len(versions), 3)
+            drift = wbd_wbdline_drift(result)
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.severity.value, "WARN")
+            self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+            changed = _documents(roster)
+            changed["page_0000"]["features"][0]["attributes"]["linesource"] = "Maintained publisher edit"
+            edited = self._network_capture(storage, root / "changed", changed)
+            self.assertFalse(edited["reused"])
+            self.assertNotEqual(edited["version"], result["version"])
+            self.assertEqual(original, {p.relative_to(prefix): p.read_bytes()
+                for p in prefix.rglob("*") if p.is_file()})
+
+    def test_real_identity_gzip_replay_rejects_forged_decoded_pages_without_changing_originals(self):
+        for encoding in ("identity", "gzip"):
+            with self.subTest(encoding=encoding):
+                temporary = tempfile.TemporaryDirectory()
+                self.addCleanup(temporary.cleanup)
+                root = Path(temporary.name)
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+                with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE, DISK_FLOOR_BYTES=1):
+                    result = self._network_capture(storage, root / "captures", _documents(), encoding=encoding)
+                    capture = Path(result["capture_directory"])
+                    def inventory():
+                        stage = Path(storage.local_dir)
+                        return {p.relative_to(stage): p.read_bytes()
+                            for directory in (stage / source.DATASET_SLUG, stage / "_construction-state")
+                            for p in directory.rglob("*") if p.is_file()}
+                    with patch.object(source.httpx, "Client", side_effect=AssertionError("network on replay")):
+                        replay = source.capture_wbd_wbdline(storage, version="replay", capture_directory=str(capture))
+                    self.assertTrue(replay["reused"])
+                    original = inventory()
+                    name = "page_0000"
+                    body_path = capture / f"{name}.body"
+                    document = json.loads(body_path.read_bytes())
+                    document["features"][0]["attributes"]["linesource"] = "Forged decoded string"
+                    body = _encode(document)
+                    body_path.write_bytes(body)
+                    receipt_path = capture / f"{name}.receipt.json"
+                    receipt = json.loads(receipt_path.read_bytes())
+                    receipt.update(bytes=len(body), sha256=_digest(body))
+                    receipt_path.write_bytes(_canonical(receipt))
+                    manifest_path = capture / "capture_manifest.json"
+                    manifest = json.loads(manifest_path.read_bytes())
+                    manifest["receipts"][name] = receipt
+                    manifest["artifact_roster"] = source.capture_roster_digests(capture, exclude={"capture_manifest.json"})
+                    manifest_path.write_bytes(_canonical(manifest))
+                    with patch.object(source.httpx, "Client", side_effect=AssertionError("network on replay")):
+                        with self.assertRaisesRegex(ValueError, "retained_capture_wire_body_mismatch"):
+                            source.capture_wbd_wbdline(storage, version="forged", capture_directory=str(capture))
+                    self.assertEqual(inventory(), original)
+
+    def test_replay_retains_receipts_not_population_bodies(self):
+        def peak(page_count):
+            roster = list(range(11, 11 + page_count * _TEST_PAGE_SIZE))
+            documents = _documents(roster)
+            for name in documents:
+                if name.startswith("page_"):
+                    documents[name] = _encode(documents[name]) + b" " * 1_000_000
+            root = self._capture_root(documents)
+            _seal_manifest(root, documents)
+            with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE):
+                tracemalloc.start()
+                try:
+                    captures, _parts = source._read_replay(root)
+                    _current, maximum = tracemalloc.get_traced_memory()
+                finally:
+                    tracemalloc.stop()
+            self.assertTrue(all(isinstance(receipt, dict) for receipt in captures.values()))
+            return maximum
+        small, large = peak(4), peak(8)
+        self.assertLess(large, small * 1.4, (small, large))
+
+    def test_replay_requires_exact_actual_refusal_ancestors_for_split_parts(self):
+        for case in ("valid", "missing_root", "missing_parent", "extra", "duplicate", "forged", "wrong_url"):
+            with self.subTest(case=case):
+                documents = _documents()
+                page = documents.pop("page_0000")
+                for suffix, features in (("aa", page["features"][:1]),
+                                         ("ab", page["features"][1:2]), ("b", page["features"][2:])):
+                    documents["page_0000" + suffix] = dict(page, features=features)
+                refusal = {"error": {"code": 500, "message": "Error performing query operation"}}
+                refusals = ["page_0000_refusal", "page_0000a_refusal"]
+                if case == "missing_root":
+                    refusals.remove("page_0000_refusal")
+                elif case == "missing_parent":
+                    refusals.remove("page_0000a_refusal")
+                elif case == "extra":
+                    refusals.append("page_0000b_refusal")
+                elif case == "duplicate":
+                    refusals.append("page_0000a_refusal")
+                documents.update((name, refusal) for name in refusals)
+                if case == "forged":
+                    documents["page_0000a_refusal"] = page
+                root = self._capture_root(documents)
+                if case == "wrong_url":
+                    path = root / "page_0000a_refusal.receipt.json"
+                    receipt = json.loads(path.read_bytes())
+                    with relaxed_pins():
+                        receipt["url"] = receipt["final_url"] = source._window_url(_TEST_ROSTER, 0, "b")
+                    path.write_bytes(_canonical(receipt))
+                parts = {"page_0000": ["page_0000aa", "page_0000ab", "page_0000b"]}
+                _seal_manifest(root, documents, page_parts=parts, page_refusals=refusals)
+                with relaxed_pins():
+                    if case == "valid":
+                        _receipts, replay_parts = source._read_replay(root)
+                        audit, _derived = source._validate_stream(root, parquet_sink=None, page_parts=replay_parts)
+                        self.assertEqual(audit["source_feature_count"], len(_TEST_ROSTER))
+                    else:
+                        with self.assertRaisesRegex(ValueError, "refusal|request_identity"):
+                            source._read_replay(root)
+
+    def test_replay_preflights_flat_paths_and_all_budgets_before_reading(self):
+        for case in ("manifest", "body", "wire", "receipt", "service_doc", "aggregate", "directory", "symlink"):
+            with self.subTest(case=case):
+                documents = _documents()
+                root = self._capture_root(documents)
+                _seal_manifest(root, documents)
+                if case in ("manifest", "body", "wire", "receipt"):
+                    filename = {"manifest": "capture_manifest.json", "body": "page_0000.body",
+                                "wire": "page_0000.wire", "receipt": "page_0000.receipt.json"}[case]
+                    with (root / filename).open("r+b") as artifact:
+                        artifact.truncate(65537 if case == "receipt" else 1_000_001)
+                elif case == "directory":
+                    (root / "nested").mkdir()
+                elif case == "symlink":
+                    (root / "linked.body").symlink_to(root / "page_0000.body")
+                budget = sum(path.stat().st_size for path in root.iterdir() if path.is_file())
+                with relaxed_pins(PAGE_MAX_BYTES=1_000_000,
+                        DOC_MAX_BYTES=8 if case == "service_doc" else 4_000_000,
+                        CAPTURE_MAX_BYTES=budget - 1 if case == "aggregate" else 10_000_000), \
+                        patch.object(Path, "read_bytes", side_effect=AssertionError("read before replay preflight")):
+                    with self.assertRaisesRegex(ValueError, "size_limit|budget|nonregular"):
+                        source._read_replay(root)
+
+    def test_real_recursive_bisection_preserves_refusals_and_single_feature_floor(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+        documents = _documents()
+        page = documents["page_0000"]
+        refusal = {"error": {"code": 500, "message": "Error performing query operation"}}
+        documents["page_0000"] = refusal
+        with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE, DISK_FLOOR_BYTES=1):
+            extra = {source._window_url(_TEST_ROSTER, 0, "a"): refusal}
+            for suffix, features in (("aa", page["features"][:1]),
+                                     ("ab", page["features"][1:2]), ("b", page["features"][2:])):
+                extra[source._window_url(_TEST_ROSTER, 0, suffix)] = dict(page, features=features)
+            result = self._network_capture(storage, root / "captures", documents, extra)
+            manifest = json.loads((Path(result["capture_directory"]) / "capture_manifest.json").read_bytes())
+            self.assertEqual(manifest["page_parts"]["page_0000"],
+                ["page_0000aa", "page_0000ab", "page_0000b"])
+            self.assertEqual(manifest["page_refusals"], ["page_0000_refusal", "page_0000a_refusal"])
+            with patch.object(source.httpx, "Client", side_effect=AssertionError("network on replay")):
+                replay = source.capture_wbd_wbdline(storage, version="replay",
+                    capture_directory=result["capture_directory"])
+            self.assertTrue(replay["reused"])
+            extra[source._window_url(_TEST_ROSTER, 0, "aa")] = refusal
+            with self.assertRaisesRegex(ValueError, "source_page_window_refused_single_feature"):
+                self._network_capture(storage, root / "refused", documents, extra)
+            self.assertTrue(any((Path(storage.local_dir) / "_quarantine").rglob("failure.json")))
+
     def _capture_root(self, documents: dict) -> Path:
         temporary = tempfile.TemporaryDirectory(prefix="wbd-wbdline-capture-")
         self.addCleanup(temporary.cleanup)
@@ -249,11 +496,10 @@ class WbdWbdlineTests(unittest.TestCase):
         self.assertEqual(source.LAYER_URL, source.SERVICE_URL + "/0")
         self.assertEqual(source.LAYER_NAME, "WBDLine")
         self.assertEqual(source.MAP_NAME, "wbd")
-        self.assertEqual(source.EXPECTED_COUNT, 395291)
+        self.assertNotIn("EXPECTED_COUNT", vars(source))
         self.assertEqual(source.PAGE_SIZE, 1000)
         self.assertEqual(source.DECLARED_MAX_RECORD_COUNT, 2000)
-        self.assertEqual((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE,
-                         source.PAGE_COUNT)
+        self.assertNotIn("PAGE_COUNT", vars(source))
         self.assertEqual(source.SERVICE_DOC_URL,
                          "https://www.usgs.gov/national-hydrography/access-national-hydrography-products")
         self.assertEqual(source.EXPECTED_COPYRIGHT_TEXT,
@@ -283,11 +529,11 @@ class WbdWbdlineTests(unittest.TestCase):
         self.assertIn(wbd_wbdline, hifld_ingest_assets)
         self.assertEqual(wbd_wbdline_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
-        check = wbd_wbdline_complete({"feature_count": source.EXPECTED_COUNT,
+        check = wbd_wbdline_complete({"feature_count": 9, "source_reported_count": 9,
                                       "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = wbd_wbdline_complete({"feature_count": source.EXPECTED_COUNT - 1,
+        failed = wbd_wbdline_complete({"feature_count": 8, "source_reported_count": 9,
                                        "source_population_complete": True})
         self.assertFalse(failed.passed)
 
@@ -344,37 +590,30 @@ class WbdWbdlineTests(unittest.TestCase):
         root = self._capture_root(documents)
         with relaxed_pins():
             audit, _derived = source._validate_stream(root, parquet_sink=None)
-        gate_counts = audit["unusable_geometry_counts"]
-        roster_digest = _digest(_canonical(list(_TEST_ROSTER)))
-        with relaxed_pins(EXPECTED_ID_SHA256=roster_digest,
-                          EXPECTED_RECORD_SHA256=audit["source_record_sha256"],
-                          EXPECTED_GEOMETRY_SHA256=audit["source_geometry_sha256"],
-                          EXPECTED_NULL_GEOMETRY_COUNT=audit["null_geometry_count"],
-                          EXPECTED_UNUSABLE_GEOMETRY_COUNTS=gate_counts):
+        with relaxed_pins(EXPECTED_SCHEMA_SHA256=audit["source_schema_sha256"]):
             source._validate_stream(root, parquet_sink=None)
-            with self.assertRaisesRegex(ValueError, "source_id_roster_baseline_drift"):
-                with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(
-                        list(reversed(_TEST_ROSTER))))):
-                    source._validate_stream(root, parquet_sink=None)
-            mutated = json.loads(json.dumps(documents))
-            mutated["page_0000"]["features"][0]["attributes"]["tnmid"] = "{RENAMED-GUID}"
-            with self.assertRaisesRegex(ValueError, "source_record_baseline_drift"):
-                source._validate_stream(self._capture_root(mutated), parquet_sink=None)
-            mutated = json.loads(json.dumps(documents))
-            path = mutated["page_0000"]["features"][0]["geometry"]["paths"][0]
-            path.insert(2, [path[1][0] + (path[2][0] - path[1][0]) / 2,
-                            path[1][1] + (path[2][1] - path[1][1]) / 2])
-            with self.assertRaisesRegex(ValueError, "source_geometry_baseline_drift"):
-                source._validate_stream(self._capture_root(mutated), parquet_sink=None)
-            with self.assertRaisesRegex(ValueError, "source_null_geometry_count_drift"):
-                with relaxed_pins(EXPECTED_NULL_GEOMETRY_COUNT=1,
-                                  EXPECTED_UNUSABLE_GEOMETRY_COUNTS=gate_counts):
-                    source._validate_stream(root, parquet_sink=None)
-            with self.assertRaisesRegex(ValueError, "source_unusable_geometry_counts_drift"):
-                with relaxed_pins(EXPECTED_NULL_GEOMETRY_COUNT=audit["null_geometry_count"],
-                                  EXPECTED_UNUSABLE_GEOMETRY_COUNTS={
-                                      **gate_counts, "source_polyline_path_degenerate": 2}):
-                    source._validate_stream(root, parquet_sink=None)
+        with relaxed_pins(EXPECTED_SCHEMA_SHA256="f" * 64):
+            with self.assertRaisesRegex(ValueError, "source_schema_baseline_drift"):
+                source._validate_stream(root, parquet_sink=None)
+        mutated = json.loads(json.dumps(documents))
+        mutated["page_0000"]["features"][0]["attributes"]["tnmid"] = "{RENAMED-GUID}"
+        with relaxed_pins():
+            edited, _derived = source._validate_stream(self._capture_root(mutated), parquet_sink=None)
+        self.assertNotEqual(edited["source_record_sha256"], audit["source_record_sha256"])
+        self.assertEqual(edited["source_geometry_sha256"], audit["source_geometry_sha256"])
+        path = mutated["page_0000"]["features"][0]["geometry"]["paths"][0]
+        path.insert(2, [path[1][0] + (path[2][0] - path[1][0]) / 2,
+                        path[1][1] + (path[2][1] - path[1][1]) / 2])
+        with relaxed_pins():
+            edited, _derived = source._validate_stream(self._capture_root(mutated), parquet_sink=None)
+        self.assertNotEqual(edited["source_geometry_sha256"], audit["source_geometry_sha256"])
+        self.assertEqual(edited["null_geometry_count"], audit["null_geometry_count"])
+        self.assertEqual(edited["unusable_geometry_counts"], audit["unusable_geometry_counts"])
+        for name in ("count_before", "count_after"):
+            torn = json.loads(json.dumps(documents))
+            torn[name]["count"] -= 1
+            with relaxed_pins(), self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+                source._validate_stream(self._capture_root(torn), parquet_sink=None)
 
     def test_gated_polyline_coordinate_drift_is_refused_by_the_geometry_pin(self):
         documents = _documents()
@@ -395,13 +634,7 @@ class WbdWbdlineTests(unittest.TestCase):
                          audit["unusable_geometry_counts"])
         self.assertEqual(drifted["null_geometry_count"], audit["null_geometry_count"])
         self.assertNotEqual(drifted["source_geometry_sha256"], audit["source_geometry_sha256"])
-        with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(list(_TEST_ROSTER))),
-                          EXPECTED_RECORD_SHA256=audit["source_record_sha256"],
-                          EXPECTED_GEOMETRY_SHA256=audit["source_geometry_sha256"],
-                          EXPECTED_NULL_GEOMETRY_COUNT=audit["null_geometry_count"],
-                          EXPECTED_UNUSABLE_GEOMETRY_COUNTS=audit["unusable_geometry_counts"]):
-            with self.assertRaisesRegex(ValueError, "source_geometry_baseline_drift"):
-                source._validate_stream(self._capture_root(mutated), parquet_sink=None)
+        self.assertEqual(drifted["source_reported_count"], len(_TEST_ROSTER))
 
     def test_refused_window_recursive_bisection_streams_and_replays_to_the_same_population(self):
         documents = _documents()
@@ -440,7 +673,7 @@ class WbdWbdlineTests(unittest.TestCase):
         self.assertEqual(audit["page_parts"], dict(sorted(page_parts.items())))
         _seal_manifest(root, documents, page_parts=page_parts,
                        page_refusals=["page_0000_refusal", "page_0000a_refusal"])
-        with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)), DISK_FLOOR_BYTES=1):
+        with relaxed_pins(DISK_FLOOR_BYTES=1):
             captures, replay_parts = source._read_replay(root)
             self.assertEqual(replay_parts, page_parts)
             self.assertEqual(set(captures), set(documents))
@@ -450,12 +683,11 @@ class WbdWbdlineTests(unittest.TestCase):
         mutated = json.loads(json.dumps({name: value for name, value in documents.items()
                                          if not isinstance(value, bytes)}))
         mutated["page_0000aa"]["features"][0]["attributes"]["tnmid"] = "{RENAMED-GUID}"
-        with relaxed_pins(EXPECTED_RECORD_SHA256=expected_record.hexdigest(),
-                          EXPECTED_GEOMETRY_SHA256=expected_geometry.hexdigest(),
-                          EXPECTED_ID_SHA256=_digest(_canonical(roster))):
-            with self.assertRaisesRegex(ValueError, "source_record_baseline_drift"):
-                source._validate_stream(self._capture_root(mutated), parquet_sink=None,
-                                        page_parts=page_parts)
+        with relaxed_pins():
+            edited, _derived = source._validate_stream(self._capture_root(mutated),
+                parquet_sink=None, page_parts=page_parts)
+        self.assertNotEqual(edited["source_record_sha256"], expected_record.hexdigest())
+        self.assertEqual(edited["source_geometry_sha256"], expected_geometry.hexdigest())
 
     def test_recursive_window_derivation_and_fail_closed_single_refusal(self):
         roster = list(_TEST_ROSTER)
@@ -473,12 +705,12 @@ class WbdWbdlineTests(unittest.TestCase):
 
         def refusing_capture_get(client, url, root, name, max_bytes=0):
             (root / f"{name}.body").write_bytes(refusal)
-            (root / f"{name}.wire").write_bytes(b"wire:" + refusal[:16])
+            (root / f"{name}.wire").write_bytes(refusal)
             receipt = {"method": "GET", "url": url, "final_url": url,
                        "observed_at": "2026-11-15T12:00:00.000000Z", "status": 200,
                        "complete_body": True, "bytes": len(refusal),
                        "sha256": _digest(refusal), "wire_bytes": 21,
-                       "wire_sha256": _digest(b"wire:" + refusal[:16]),
+                       "wire_sha256": _digest(refusal),
                        "content_encoding": None, "content_length": None,
                        "error_code": None, "error_type": None}
             (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
@@ -518,8 +750,7 @@ class WbdWbdlineTests(unittest.TestCase):
         with relaxed_pins():
             root = _write_capture_root(Path(temporary.name) / "captures", documents)
         _seal_manifest(root, documents)
-        with relaxed_pins(EXPECTED_ID_SHA256=_digest(_canonical(roster)),
-                          DISK_FLOOR_BYTES=1):
+        with relaxed_pins(DISK_FLOOR_BYTES=1):
             captures, replay_parts = source._read_replay(root)
             self.assertEqual(set(captures), set(documents))
             self.assertEqual(replay_parts, {})
@@ -602,9 +833,9 @@ class WbdWbdlineTests(unittest.TestCase):
             ("layer versioned", lambda d: d["layer_before"].update(isDataVersioned=True),
              "source_layer_identity_or_extent_drift"),
             ("count before", lambda d: d["count_before"].update(count=_TEST_COUNT - 1),
-             "source_count_population_drift:before"),
+             "source_count_or_id_roster_drift"),
             ("ids before", lambda d: d["ids_before"].update(objectIds=_TEST_ROSTER[:-1]),
-             "source_id_population_drift:before"),
+             "source_id_roster_changed_during_capture"),
             ("ids changed mid capture", lambda d: d["ids_after"].update(objectIds=[11, 12, 999, 100_003, 200_004, 300_005, 400_006, 500_007, 600_008]),
              "source_id_roster_changed_during_capture"),
             ("service identity", lambda d: d["service_before"].update(copyrightText="changed"),

@@ -39,26 +39,11 @@ from dagster_hifld.assets.noaa_current_dart import (
     noaa_dart_draft_refresh_schedule,
 )
 
-from dagster_hifld.assets.hf_areas_usace_ienc import (
-    hf_areas_usace_ienc_draft_schedule,
-    hf_areas_usace_ienc_complete,
-    hf_areas_usace_ienc_draft_job,
-)
-from dagster_hifld.assets.land_region_areas_usace_ienc import (
-    land_region_areas_usace_ienc_draft_schedule,
-    land_region_areas_usace_ienc_complete,
-    land_region_areas_usace_ienc_draft_job,
-)
 
 
 
 
 
-from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import (
-    small_craft_facility_areas_usace_ienc_complete,
-    small_craft_facility_areas_usace_ienc_draft_job,
-    small_craft_facility_areas_usace_ienc_draft_schedule,
-)
 from dagster_hifld.assets.building_locations_usace_ienc import (
     building_locations_population_complete,
     building_locations_draft_schedule,
@@ -78,25 +63,8 @@ from dagster_hifld.assets.usace_dry_docks import (
 
 
 
-from dagster_hifld.assets.coastlines_usace_ienc import (
-    coastlines_usace_ienc_complete,
-    coastlines_usace_ienc_draft_job,
-    coastlines_usace_ienc_draft_schedule,
-    coastlines_usace_ienc_drift,
-)
 
-from dagster_hifld.assets.locks_usace_ienc import (
-    locks_usace_ienc_complete,
-    locks_usace_ienc_draft_job,
-    locks_usace_ienc_draft_schedule,
-    locks_usace_ienc_drift,
-)
 
-from dagster_hifld.assets.lock_basins_usace_ienc import (
-    lock_basins_usace_ienc_complete,
-    lock_basins_usace_ienc_draft_job,
-    lock_basins_usace_ienc_draft_schedule,
-)
 
 
 from dagster_hifld.assets.usace_obstruction_lines import (
@@ -113,17 +81,7 @@ from dagster_hifld.assets.usace_mooring_facility_lines import (
     usace_mooring_facility_lines_drift,
 )
 
-from dagster_hifld.assets.floodwalls_usace_ienc import (
-    floodwalls_usace_ienc_complete,
-    floodwalls_usace_ienc_draft_job,
-    floodwalls_usace_ienc_draft_schedule,
-)
 
-from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
-    harbor_facility_locations_usace_ienc_complete,
-    harbor_facility_locations_usace_ienc_draft_job,
-    harbor_facility_locations_usace_ienc_draft_schedule,
-)
 
 
 
@@ -589,28 +547,18 @@ defs = Definitions(
         [
             *hifld_asset_checks,
             epa_disaster_debris_complete,
-            hf_areas_usace_ienc_complete,
-            land_region_areas_usace_ienc_complete,
             usace_recommended_tracks_complete,
             usace_recommended_tracks_drift,
             usace_obstruction_lines_complete,
             usace_mooring_facility_lines_complete,
             usace_mooring_facility_lines_drift,
-            floodwalls_usace_ienc_complete,
-            harbor_facility_locations_usace_ienc_complete,
             usace_administrative_areas_complete,
             usace_navigation_marks_areas_complete,
             usace_navigation_lights_complete,
             building_locations_population_complete,
-            small_craft_facility_areas_usace_ienc_complete,
             usace_berths_areas_complete,
             usace_dry_docks_complete,
-            coastlines_usace_ienc_complete,
-            coastlines_usace_ienc_drift,
             usace_distance_marks_drift,
-            locks_usace_ienc_complete,
-            locks_usace_ienc_drift,
-            lock_basins_usace_ienc_complete,
             usace_crane_locations_complete,
             usace_crane_locations_quality,
             usace_crane_locations_release,
@@ -628,21 +576,13 @@ defs = Definitions(
             noaa_eez_draft_refresh_job,
             noaa_territorial_draft_refresh_job,
             noaa_dart_draft_refresh_job,
-            hf_areas_usace_ienc_draft_job,
-            land_region_areas_usace_ienc_draft_job,
             distance_marks_draft_refresh_job,
             recommended_tracks_draft_job,
-            small_craft_facility_areas_usace_ienc_draft_job,
             usace_obstruction_lines_draft_job,
             usace_mooring_facility_lines_draft_job,
-            floodwalls_usace_ienc_draft_job,
-            harbor_facility_locations_usace_ienc_draft_job,
             usace_administrative_areas_draft_job,
             usace_navigation_marks_areas_draft_job,
             usace_navigation_lights_draft_job,
-            coastlines_usace_ienc_draft_job,
-            locks_usace_ienc_draft_job,
-            lock_basins_usace_ienc_draft_job,
             ibc_boundary_draft_refresh_job,
             usace_crane_locations_draft_job,
             usace_floating_docks_draft_job,
@@ -655,27 +595,19 @@ defs = Definitions(
             bts_ferry_terminals_draft_refresh_schedule,
             elsd_source_integrity_schedule,
             epa_disaster_debris_draft_schedule,
-            hf_areas_usace_ienc_draft_schedule,
-            land_region_areas_usace_ienc_draft_schedule,
             noaa_eez_draft_weekly_schedule,
             noaa_territorial_draft_weekly_schedule,
             noaa_dart_draft_refresh_schedule,
             distance_marks_draft_refresh_schedule,
             recommended_tracks_draft_schedule,
             building_locations_draft_schedule,
-            small_craft_facility_areas_usace_ienc_draft_schedule,
             usace_obstruction_lines_draft_schedule,
             usace_mooring_facility_lines_draft_schedule,
-            floodwalls_usace_ienc_draft_schedule,
-            harbor_facility_locations_usace_ienc_draft_schedule,
             usace_administrative_areas_draft_schedule,
             usace_navigation_marks_areas_draft_schedule,
             usace_navigation_lights_draft_schedule,
             usace_berths_areas_draft_schedule,
             usace_dry_docks_draft_schedule,
-            coastlines_usace_ienc_draft_schedule,
-            locks_usace_ienc_draft_schedule,
-            lock_basins_usace_ienc_draft_schedule,
             ibc_boundary_draft_refresh_schedule,
             usace_crane_locations_draft_schedule,
             usace_floating_docks_draft_schedule,

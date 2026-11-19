@@ -96,4 +96,7 @@ hf_areas_usace_ienc_draft_schedule = ScheduleDefinition(
 
 hf_areas_usace_ienc_candidate_drift = register_approved_baseline_drift(hf_areas_usace_ienc_candidate, "hf_areas_usace_ienc_candidate_drift")
 
+INGEST_ASSETS = [hf_areas_usace_ienc_candidate]
 ASSET_CHECKS = [hf_areas_usace_ienc_complete, hf_areas_usace_ienc_candidate_drift]
+JOBS = [hf_areas_usace_ienc_draft_job]
+SCHEDULES = [hf_areas_usace_ienc_draft_schedule]

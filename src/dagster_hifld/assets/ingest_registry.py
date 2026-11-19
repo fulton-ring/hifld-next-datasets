@@ -22,22 +22,10 @@ from dagster_hifld.assets.usace_distance_marks import usace_distance_marks_usace
 from dagster_hifld.assets.usace_recommended_tracks import usace_recommended_tracks_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
 from dagster_hifld.assets.usace_mooring_facility_lines import usace_mooring_facility_lines_usace_ienc
-from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
-from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
-from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
-from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
 
 from dagster_hifld.assets.ibc import ibc_canada_us_border
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 from dagster_hifld.assets.usace_floating_docks import usace_floating_docks_usace_ienc
-from dagster_hifld.assets.floodwalls_usace_ienc import floodwalls_usace_ienc
-from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
-    harbor_facility_locations_usace_ienc,
-)
-from dagster_hifld.assets.hf_areas_usace_ienc import hf_areas_usace_ienc_candidate
-from dagster_hifld.assets.land_region_areas_usace_ienc import (
-    land_region_areas_usace_ienc_candidate,
-)
 from dagster_hifld.assets.building_locations_usace_ienc import building_locations_usace_ienc
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
@@ -60,17 +48,9 @@ hifld_ingest_assets = [
     usace_recommended_tracks_ienc,
     usace_obstruction_lines_usace_ienc,
     usace_mooring_facility_lines_usace_ienc,
-    small_craft_facility_areas_usace_ienc,
-    coastlines_usace_ienc,
-    locks_usace_ienc,
-    lock_basins_usace_ienc_candidate,
     ibc_canada_us_border,
     usace_crane_locations_ienc,
     usace_floating_docks_usace_ienc,
-    floodwalls_usace_ienc,
-    harbor_facility_locations_usace_ienc,
-    land_region_areas_usace_ienc_candidate,
-    hf_areas_usace_ienc_candidate,
     epa_frs_sic_powerplants,
     building_locations_usace_ienc,
 ]
