@@ -1,56 +1,10 @@
-"""Streaming, approval-gated capture of the PAD-US Protection Mechanism Category layer.
+"""Capture the maintained USGS PAD-US Protection Mechanism Category view.
 
-The HIFLD Open inventory entry ``pad-us-protection-mechanism-category``
-("PAD-US Protection Mechanism Category", agency and publisher US Geological
-Survey, USGS Gap Analysis Project) is the producer's combined
-fee/designation/easement/marine/proclamation protection-mechanism view. USGS's
-own PAD-US Web Services page links the feature-layer view (ArcGIS item
-``80c7a138989c4cf8937c4502371d6e99``, owned by a usgs.gov account in USGS's
-ArcGIS Online organization ``v01gqwM5QqNysAAi``); that item's service URL is
-the maintained combined view
-``services.arcgis.com`` ``Protection_Mechanism_Category_PADUS/FeatureServer/0``
-(layer ``PADUS4_1ProtMechCat``), whose ``/0/sources`` document identifies the
-underlying source layer ``ProtMechCat_A/FeatureServer/0`` (hosted service item
-``126eef9409ce48b0a9e55c2fe8fd77b8``; both the item document and the source
-service answer anonymous requests with permission errors, so the relationship
-is pinned from the anonymously readable sources document). That explicitly
-USGS-linked publication is captured here; the DataLumos project 240685 archive
-copy is identification context only and is never fetched.
-
-Version relationship (observed 2026-11-14, documented, unaccepted): the view
-service's layer copyright cites the current PAD-US 4.1 release ("2025,
-Protected Areas Database of the United States (PAD-US) 4.1", DOI
-10.5066/P96WBCHS — the same release DOI as the PAD-US 4.1 Full Inventory
-Database, ScienceBase item ``652d4fc5d34e44db0e2ee45e``), the layer is named
-``PADUS4_1ProtMechCat``, and the service data was last edited 2025-06-04
-(``editingInfo.dataLastEditDate``; schema last edit 2026-04-22). The view is
-therefore the producer's 4.1-labeled combined view. The previously captured
-combined service ``Protection_Mechanism_Category/FeatureServer`` (hosted item
-``22670023fd124c799d5ddd08297dde85``, 441,609 features, layer self-labeled
-"PAD-US v3.0", data last edited 2024-03-20) is superseded by this USGS-linked
-view and stays research context only; it is never fetched by the pipeline.
-
-The layer held 656,986 features on 2026-11-14 with a contiguous sorted OBJECTID
-roster 1..656,986 (``returnIdsOnly`` works for this producer), so completeness
-is established by the pinned count, the pinned ID-roster digest (captured
-before and after the walk), the strict ascending OBJECTID keyset walk, the
-page-count ceiling, per-page ``exceededTransferLimit`` consistency and the
-empty tail-page witness. The per-value and per-geometry baseline digests are
-pinned from the first complete capture of this view (sealed 2026-11-14);
-``build_pad_us_protection_mechanism_category_baseline`` recomputes them for
-verification, and later captures are refused and quarantined on drift.
-
-Scale note (observed on the superseded service 2026-11-13, carried forward as
-the working transfer model): the population's geometry weight is heavily
-skewed — the first ~1,000 features alone transferred ~82 MB of gzip wire
-(~251 s) while most later pages ran ~0.3-0.8 MB per 1,000 features — so the
-module requests gzip content coding and retains both the gzip wire and the
-decoded identity body per page. The capture state file makes every session
-resumable; the disk floor below refuses to start where the complete capture
-cannot fit. Retaining the raw pages inside the sealed candidate follows the
-repository's established fidelity contract. Publication stays blocked pending
-the schema/ID contract, rights and release decisions; all runtime approval
-flags are false and the draft refresh schedule is stopped.
+Resumable gzip keyset pages retain native values, EPSG:4326 page geometry,
+and source EPSG:3857 layer metadata. Stable source count/ID witnesses and
+exact page coverage establish completeness; source-null and OGC-invalid
+geometry remain observed diagnostics, never repaired. Construction and
+retained replay preserve immutable originals. All approvals remain false.
 """
 from __future__ import annotations
 
@@ -72,16 +26,18 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import load_replay
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
-    write_immutable,
+    validate_capture_request_identity, write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
@@ -131,40 +87,14 @@ EXPECTED_COPYRIGHT_TEXT = ("U.S. Geological Survey (USGS) Gap Analysis Project (
 # pinned as the observed identity statement, not as a content description.
 EXPECTED_SERVICE_DESCRIPTION = ""
 EXPECTED_SERVICE_LAYERS = [(0, LAYER_NAME)]
-EXPECTED_COUNT = 656_986
 EXPECTED_MAX_RECORD_COUNT = 2000
 EXPECTED_SCHEMA_SHA256 = "020f3a55a746d9280b8750d6401a8fdd6c1579ffb6a0c8d325dd854ff4762f4a"
-EXPECTED_IDS_SHA256 = "136194b0dfac75e6d781c82e4d3d2a2a0e39074059326628c9182730bd312c7b"
-# Pinned from the first complete capture of the maintained USGS-linked view
-# (657 keyset pages, 656,986 features, sealed 2026-11-14; count, ID roster and
-# schema digests verified unchanged before and after the walk).
-EXPECTED_RECORD_SHA256 = "9e9581c01249866a808d340892e89b6562f0dc063241cb66d038bdf2dd17c6a3"
-EXPECTED_GEOMETRY_SHA256 = "81d48e7d8e2f52f5f72034a8519944174c8af824416900fd6d46b3307ad84d61"
-EXPECTED_NULL_GEOMETRY_COUNT = 6
-# Producer-served features whose rings cannot form a valid OGC polygon are
-# gated, never silently coerced. The first complete capture of the maintained
-# view failed closed on these counts and they are now pinned as observed; any
-# change fails the next capture and is quarantined.
-# Geometry quarantines retired by the shared GDAL Esri polygon converter
-# (issue #997): the producer's 870 rows whose rings the retired hand-written
-# assembler could not form into an OGC polygon (792 zero-area sliver rows,
-# 66 rows with a hole inside no exterior, 12 rows with no clockwise ring) now
-# convert through GDAL and are retained verbatim, counted as
-# ogc_invalid_geometry_counts instead of gated to null.
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {}
-# Producer-served polygons that fail OGC validity are retained verbatim in
-# the candidate, never repaired. The retired assembler counted only rows that
-# survived its own gating; the shared converter counts every converted row, so
-# this pin moves to the designed pending state until the next complete capture
-# re-derives it.
-EXPECTED_INVALID_GEOMETRY_COUNT: int | None = None
 EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0672, "ymin": -1733741.441300001,
                          "xmax": 20037507.067199998, "ymax": 12930675.6069}
 BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests are pinned from the first "
-    "complete capture of the maintained USGS-linked view (656,986 features, "
-    "657 retained keyset pages sealed 2026-11-14); later captures are gated "
-    "against them and quarantined on drift.")
+    "Completeness uses capture-time source count/ID witnesses and exact page coverage. "
+    "No independently approved release baseline is wired; drift comparison is skipped, "
+    "not approved.")
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),
@@ -254,6 +184,18 @@ def _page_url(last_objectid: int) -> str:
 
 def _ids_url() -> str:
     return _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
+
+
+def _metadata_urls() -> dict[str, str]:
+    return {"service_doc": SERVICE_DOC_URL,
+            "view_item": SHARING_ITEM_URL.format(item=VIEW_ITEM_ID),
+            "layer_sources": LAYER_URL + "/sources?f=pjson",
+            "service_before": SERVICE_URL + "?f=pjson",
+            "layer_before": LAYER_URL + "?f=pjson",
+            "count_before": _count_url(), "ids_before": _ids_url(),
+            "service_after": SERVICE_URL + "?f=pjson",
+            "layer_after": LAYER_URL + "?f=pjson",
+            "count_after": _count_url(), "ids_after": _ids_url()}
 
 
 def _expected_capture_names(count: int) -> list[str]:
@@ -371,13 +313,11 @@ def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise PadUsProtectionError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
+    _load_receipt(capture_root, name)
+    try:
+        return load_replay(capture_root, name)
+    except ValueError as exc:
+        raise PadUsProtectionError(str(exc)) from exc
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
@@ -440,10 +380,10 @@ def _reject_error_response(capture_root: Path, name: str, body: bytes) -> None:
         raise PadUsProtectionError("source_page_error")
 
 
-def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
+def _load_receipt_map(capture_root: Path, count: int) -> dict[str, dict[str, object]]:
     """Load every expected receipt without holding any page body in memory."""
     return {name: _load_receipt(capture_root, name)
-            for name in _expected_capture_names(EXPECTED_COUNT)}
+            for name in _expected_capture_names(count)}
 
 
 class _RetainedCaptureViews(Mapping):
@@ -558,12 +498,10 @@ def _validate_layer_document(layer: object) -> tuple[list[dict[str, object]], st
 
 
 def _validate_ids_roster(roster: object, label: str) -> list[int]:
-    if (not isinstance(roster, list) or len(roster) != EXPECTED_COUNT
-            or any(type(value) is not int for value in roster)
-            or len(set(roster)) != EXPECTED_COUNT):
+    if (not isinstance(roster, list) or not roster
+            or any(type(value) is not int or value <= 0 for value in roster)
+            or len(set(roster)) != len(roster)):
         raise PadUsProtectionError("source_id_population_drift:" + label)
-    if _sha(_canonical(sorted(roster))) != EXPECTED_IDS_SHA256:
-        raise PadUsProtectionError("source_id_roster_drift:" + label)
     return sorted(roster)
 
 
@@ -589,8 +527,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise PadUsProtectionError("source_schema_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise PadUsProtectionError("source_schema_baseline_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT:
-        raise PadUsProtectionError("source_count_drift")
+    count = docs["count_before"].get("count")
     roster_before = _validate_ids_roster(docs["ids_before"].get("objectIds"), "ids_before")
     for name in ("layer_after", "service_after", "count_after", "ids_after"):
         body, _receipt = _read_capture(capture_root, name)
@@ -598,8 +535,13 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                   "count_after": "count_before", "ids_after": "ids_before"}[name]
         if json.loads(body) != docs[mirror]:
             raise PadUsProtectionError("source_metadata_or_count_changed_during_capture")
-    _validate_ids_roster(json.loads(_read_capture(capture_root, "ids_after")[0]).get("objectIds"),
-                         "ids_after")
+    roster_after = _validate_ids_roster(
+        json.loads(_read_capture(capture_root, "ids_after")[0]).get("objectIds"), "ids_after")
+    validate_capture_witness(count, roster_before,
+                             json.loads(_read_capture(capture_root, "count_after")[0]).get("count"),
+                             roster_after)
+    for name, url in _metadata_urls().items():
+        validate_capture_request_identity(name, _load_receipt(capture_root, name), url)
     after_fields = json.loads(_read_capture(capture_root, "layer_after")[0]).get("fields")
     if not isinstance(after_fields, list) or [_plain_field(x) for x in after_fields] != fields:
         raise PadUsProtectionError("source_field_schema_changed_during_capture")
@@ -639,11 +581,16 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     ogc_invalid_sample_objectids: list[int] = []
     featclass_distribution: dict[object, int] = {}
     bounds_extrema: list[float] | None = None
-    page_bodies = [name for name in _expected_capture_names(EXPECTED_COUNT)
+    page_bodies = [name for name in _expected_capture_names(count)
                    if name.startswith("page_") and name != "page_tail"]
     try:
-        for page_name in page_bodies:
-            page = json.loads(_read_capture(capture_root, page_name)[0])
+        if any(not (capture_root / f"{name}.{suffix}").is_file()
+               for name in page_bodies for suffix in ("body", "wire", "receipt.json")):
+            raise PadUsProtectionError("source_page_population_incomplete")
+        for index, page_name in enumerate(page_bodies):
+            body, receipt = _read_capture(capture_root, page_name)
+            validate_capture_request_identity(page_name, receipt, _page_url(last_objectid))
+            page = json.loads(body)
             if not isinstance(page, dict) or "error" in page:
                 raise PadUsProtectionError("source_page_error:" + page_name)
             reference = page.get("spatialReference")
@@ -665,6 +612,9 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                 raise PadUsProtectionError("source_page_row_count_incomplete:" + page_name)
             if len(features) < PAGE_SIZE and page.get("exceededTransferLimit") is True:
                 raise PadUsProtectionError("source_page_transfer_truncated:" + page_name)
+            expected_ids = roster_before[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
+            if len(features) != len(expected_ids):
+                raise PadUsProtectionError("source_page_row_count_incomplete:" + page_name)
             columns: dict[str, list[object]] = {name: [] for name in expected_names}
             geometries: list[bytes | None] = []
             for feature in features:
@@ -716,6 +666,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                     featclass_distribution.get(featclass, 0) + 1
                 for name in expected_names:
                     columns[name].append(attrs[name])
+            if columns["OBJECTID"] != expected_ids:
+                raise PadUsProtectionError("source_id_roster_drift")
             if writer is not None:
                 batch = pa.Table.from_pydict({**columns, _GEOMETRY_COLUMN: geometries},
                                              schema=schema)
@@ -723,21 +675,13 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         if writer is not None:
             writer.close()
             writer = None
-        if len(ids) != EXPECTED_COUNT or last_objectid == 0:
+        if len(ids) != count or last_objectid == 0:
             raise PadUsProtectionError("source_page_population_incomplete")
+        validate_capture_witness(count, roster_before, count, roster_after, list(ids))
+        validate_capture_request_identity("page_tail", _load_receipt(capture_root, "page_tail"),
+                                         _page_url(last_objectid))
         ids_sha = _sha(_canonical(list(ids)))
         record_sha, geometry_sha = record_hash.hexdigest(), geometry_hash.hexdigest()
-        if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-            raise PadUsProtectionError("source_value_or_geometry_baseline_drift")
-        if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-            raise PadUsProtectionError("source_geometry_or_coverage_drift")
-        if ids_sha != EXPECTED_IDS_SHA256 or list(ids) != roster_before:
-            raise PadUsProtectionError("source_id_roster_drift")
-        if null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
-            raise PadUsProtectionError("source_null_geometry_count_drift")
-        if EXPECTED_INVALID_GEOMETRY_COUNT is not None \
-                and invalid_geometry_count != EXPECTED_INVALID_GEOMETRY_COUNT:
-            raise PadUsProtectionError("source_invalid_geometry_count_drift")
         if tmp_path is not None:
             tmp_path.replace(sink_path)
     finally:
@@ -752,7 +696,9 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     if bounds_extrema is not None:
         bounds = {"xmin": bounds_extrema[0], "ymin": bounds_extrema[1],
                   "xmax": bounds_extrema[2], "ymax": bounds_extrema[3]}
-    return {"fields": fields, "schema_sha": schema_sha, "record_sha": record_sha,
+    return {"feature_count": count, "source_reported_count": count,
+            "source_population_complete": True,
+            "fields": fields, "schema_sha": schema_sha, "record_sha": record_sha,
             "geometry_sha": geometry_sha, "ids_sha": ids_sha,
             "null_geometry_count": null_geometry_count, "parquet_path": sink_path,
             "invalid_geometry_count": invalid_geometry_count,
@@ -817,21 +763,18 @@ def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, clie
     try:
         retained: dict[str, tuple[bytes, dict[str, object]]] = {}
         for name in METADATA_NAMES:
-            url = {"service_doc": SERVICE_DOC_URL,
-                   "view_item": SHARING_ITEM_URL.format(item=VIEW_ITEM_ID),
-                   "layer_sources": LAYER_URL + "/sources?f=pjson",
-                   "service_before": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url(),
-                   "ids_before": _ids_url()}[name]
+            url = _metadata_urls()[name]
             active_client = docs_active if name == "service_doc" else active
             retained[name] = _retained_or_fetch(active_client, capture_root, name, url)
             if name != "service_doc":
                 _reject_error_response(capture_root, name, retained[name][0])
         count_before = json.loads(retained["count_before"][0]).get("count")
-        if count_before != EXPECTED_COUNT:
-            raise PadUsProtectionError("source_count_drift")
-        _validate_ids_roster(json.loads(retained["ids_before"][0]).get("objectIds"), "ids_before")
+        roster_before = _validate_ids_roster(
+            json.loads(retained["ids_before"][0]).get("objectIds"), "ids_before")
+        try:
+            validate_capture_witness(count_before, roster_before, count_before, roster_before)
+        except ValueError as exc:
+            raise PadUsProtectionError(str(exc)) from exc
         last_objectid = pages[-1]["last_objectid"] if pages else 0
         while not (capture_root / "page_tail.body").exists():
             name = f"page_{len(pages):06d}"
@@ -862,8 +805,8 @@ def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, clie
                           "exceeded_transfer_limit": more, "captured_at": receipt["observed_at"],
                           "body_sha256": _sha(body)})
             _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
-            if len(pages) > (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE:
-                raise PadUsProtectionError("source_page_count_exceeds_pinned_population")
+            if len(pages) > (count_before + PAGE_SIZE - 1) // PAGE_SIZE:
+                raise PadUsProtectionError("source_page_count_exceeds_reported_population")
             if len(features) < PAGE_SIZE or more is False:
                 tail_body, tail_receipt = _retained_or_fetch(active, capture_root, "page_tail",
                                                              _page_url(last_objectid))
@@ -915,7 +858,7 @@ def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, clie
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_ids_sha256": extracted["ids_sha"],
         "source_schema_sha256": extracted["schema_sha"],
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": extracted["feature_count"],
         "source_max_objectid": extracted["max_objectid"],
         "source_null_geometry_count": extracted["null_geometry_count"],
         "source_unusable_geometry_counts": {},
@@ -949,17 +892,20 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
              "source_ids_sha256": extracted["ids_sha"],
-             "source_schema_sha256": extracted["schema_sha"]},
+             "source_schema_sha256": extracted["schema_sha"],
+             "feature_count": extracted["feature_count"],
+             "source_reported_count": extracted["source_reported_count"],
+             "null_geometry_count": extracted["null_geometry_count"]},
             parquet_descriptor)
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
+        "source_feature_count": extracted["feature_count"], "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_schema_sha256": extracted["schema_sha"], "source_crs_epsg": SOURCE_CRS_WKID,
         "source_layer_native_sr": NATIVE_LAYER_SR,
         "geometry_type": "Polygon / MultiPolygon",
         "null_geometry_count": extracted["null_geometry_count"],
-        "unique_source_id_count": EXPECTED_COUNT,
+        "unique_source_id_count": extracted["feature_count"],
         "producer_invalid_geometry_count": extracted["invalid_geometry_count"],
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
@@ -983,8 +929,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                               "USGS GAP's PAD-US publications and the exact crosswalk row "
                               "text was not re-verified in this session.",
         "baseline_pending_note": BASELINE_PENDING_NOTE,
-        "baseline_pending_complete_capture": bool(
-            not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256),
+        "baseline_pending_complete_capture": True,
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
@@ -994,15 +939,14 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             "(editingInfo.dataLastEditDate; schema last edit 2026-04-22). The exact "
             "source release date is an unaccepted maintainer freshness decision.",
         "pagination": {"mode": "objectid_keyset_asc", "page_size": PAGE_SIZE,
-                       "pages": (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE,
+                       "pages": (extracted["feature_count"] + PAGE_SIZE - 1) // PAGE_SIZE,
                        "tail_witness_page": True, "resumable": True,
                        "resumed_pages": resumed_pages,
                        "id_roster_enumeration_note":
-                           "returnIdsOnly works for this producer (656,986 contiguous ids "
-                           "1..656,986 observed 2026-11-14); completeness uses the pinned "
-                           "count, the pinned sorted-roster digest captured before and after "
-                           "the walk, the strict ascending OBJECTID walk, the page-count "
-                           "ceiling and the empty tail-page witness.",
+                           "Completeness uses stable before/after source count and unique ID "
+                           "witnesses, exact sorted-roster page coverage, the strict "
+                           "ascending OBJECTID walk, a source-derived page ceiling and "
+                           "an empty tail-page witness.",
                        "content_coding": ACCEPT_ENCODING,
                        "gzip_note": "The producer answers gzip when requested (observed "
                                     "2026-11-13); each receipt retains the gzip wire and the "
@@ -1013,7 +957,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "mapping_approved": False, "release_accepted": False,
     }
     source_objects = {parquet_name: parquet_descriptor}
-    receipts = _load_receipt_map(capture_root)
+    receipts = _load_receipt_map(capture_root, extracted["feature_count"])
     _unknown_release_reason = (
         "The service publishes no per-snapshot release date; its layer copyrightText "
         "records the PAD-US 4.1 data release (2025, DOI 10.5066/P96WBCHS) and its data "
@@ -1105,11 +1049,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                                         "(closed rings; clockwise exteriors, "
                                                         "counter-clockwise holes, 2-ordinate "
                                                         "vertices); null source geometry retained "
-                                                        "as null; producer-served features whose "
-                                                        "rings cannot form a valid OGC polygon are "
-                                                        "retained verbatim in the digests with "
-                                                        "explicitly gated null candidate geometry "
-                                                        "and pinned failure modes",
+                                                        "as null; GDAL converts served rings "
+                                                        "without repair, and OGC-invalid geometry "
+                                                        "remains in the candidate with observed "
+                                                        "diagnostics rather than null coercion",
                                             "candidate_status": "unapproved; publication blocked "
                                                                 "pending succession, freshness, "
                                                                 "schema/ID contract, coverage, "
@@ -1193,7 +1136,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
+            "feature_count": extracted["feature_count"],
+            "source_reported_count": extracted["source_reported_count"],
+            "source_population_complete": True,
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_id_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
@@ -1227,12 +1172,10 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            # Every producer null geometry is an unusable-ring gate, so the
-            # null-geometry contract is the pinned true nulls plus the
-            # unusable-gated ones (read live so fixture overrides hold).
-            "source_null_geometry_count": (EXPECTED_NULL_GEOMETRY_COUNT
-                                           + sum(EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values())),
+            "feature_count": audit["feature_count"],
+            "source_reported_count": audit["source_reported_count"],
+            "source_population_complete": True,
+            "source_null_geometry_count": audit["null_geometry_count"],
             "source_id_sha256": audit["source_ids_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
@@ -1291,11 +1234,11 @@ def capture_pad_us_protection_mechanism_category(storage: StagingStorageResource
 
 
 def build_pad_us_protection_mechanism_category_baseline(capture_root: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
+    """Recompute observed content diagnostics from a completed capture."""
     extracted = _stream_validate(Path(capture_root).absolute(), parquet_sink=None)
     return {"source_record_sha256": extracted["record_sha"],
             "source_geometry_sha256": extracted["geometry_sha"],
             "source_ids_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
-            "source_feature_count": EXPECTED_COUNT,
+            "source_feature_count": extracted["feature_count"],
             "source_max_objectid": extracted["max_objectid"]}
