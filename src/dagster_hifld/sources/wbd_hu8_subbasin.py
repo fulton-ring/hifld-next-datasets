@@ -22,14 +22,14 @@ service is the fresher maintained publication and the staged snapshot is
 comparison context only. The DataLumos project 240701 archive copy is
 identification context only and is never fetched.
 
-The capture pages the complete enumerated OBJECTID roster (1..2456 observed
-2026-11-14) in resultOffset/resultRecordCount segments, because this MapServer
+The capture pages the complete enumerated native OBJECTID roster
+in resultOffset/resultRecordCount segments, because this MapServer
 layer refuses geometry queries carrying the ``objectIds`` parameter with a
 complete HTTP 200 Esri error envelope (verified 2026-11-14) and serves only
 about 25-40 geometry-bearing features per request. Segments tile the roster
 exactly, and the request order brackets the whole extraction window: the
 service/layer/count/roster documents are captured before the first segment,
-the independent attributes-only second extraction (two 2000-record pages)
+the independent attributes-only second extraction (up to 2000 records per page)
 follows the segments, and the closing brackets are captured (refreshed on a
 resumed capture that filled segment gaps) after everything else, so producer
 changes during extraction fail the capture closed and nothing is skipped,
@@ -755,7 +755,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     roster = _roster(json.loads(_read_capture(capture_root, "ids_before")[0]), "ids_before")
     population_count = len(roster)
     docs = {name: json.loads(_read_capture(capture_root, name)[0])
-            for name in _doc_names(population_count)}
+            for name, _url in (*_before_doc_urls(), *_after_doc_urls())}
     _validate_service(docs["service_before"], "service_before")
     fields, schema_sha = _validate_layer(docs["layer_before"])
     count_before = docs["count_before"].get("count")

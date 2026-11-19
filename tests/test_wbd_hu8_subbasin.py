@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import tempfile
+import tracemalloc
 import unittest
 from urllib.parse import parse_qs
 from contextlib import contextmanager
@@ -37,7 +38,7 @@ FAKE_IDENTITY = {"code_identity_scheme": "test-scheme", "working_tree_status": "
 
 def _shell(oid):
     x0 = 0.1 + (oid % 4) * 0.5
-    y0 = 40.0 + (oid // 4) * 0.5
+    y0 = 40.0 + ((oid // 4) % 80) * 0.5
     return [[x0, y0], [x0, y0 + 0.1], [x0 + 0.1, y0 + 0.1], [x0 + 0.1, y0], [x0, y0]]
 
 
@@ -475,6 +476,28 @@ class WbdHu8SubbasinTests(unittest.TestCase):
                 with self._patched():
                     with self.assertRaises(ValueError):
                         source._stream_validate(altered, parquet_sink=None)
+
+    def test_attrs_validation_memory_is_bounded_by_one_retained_page(self):
+        def peak(count):
+            root = Path(self._tmpdir().name) / "captures"
+            def pad(name, _visit, document):
+                if name.startswith("attrs_"):
+                    document["padding"] = "p" * 1_000_000
+            transport, _calls = self._transport(list(range(1, count + 1)), pad)
+            with self._patched(), patch.object(source, "_default_client",
+                    side_effect=lambda: httpx.Client(transport=transport)):
+                source.fetch_wbd_hu8_subbasin_pages(root)
+                tracemalloc.start()
+                try:
+                    extracted = source._stream_validate(root, parquet_sink=None)
+                    _current, maximum = tracemalloc.get_traced_memory()
+                finally:
+                    tracemalloc.stop()
+                self.assertEqual(extracted["feature_count"], count)
+                return maximum
+        small = peak(40)
+        large = peak(80)
+        self.assertLess(large, small * 1.4, (small, large))
 
     def _patched(self, *extra):
         return _patch_all(*_PATCHES, *extra)
