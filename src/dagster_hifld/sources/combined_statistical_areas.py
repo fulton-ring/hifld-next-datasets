@@ -172,6 +172,7 @@ def acquire(storage,archive_path=None,receipt_path=None,release=None):
                     httpx.Client(follow_redirects=False,timeout=180,headers={'Accept-Encoding':'identity'}) as client:
                 release = release or census_latest.discover_geodatabase(client, Path(discovery_root), GEODATABASE_PRODUCT)
                 receipt.update(url=release.source_url)
+                receipt['source_release']=release.as_receipt_evidence()
                 with client.stream('GET',release.source_url) as response:
                     receipt.update(status=response.status_code,final_url=str(response.url),
                         content_length=response.headers.get('content-length'),
@@ -357,7 +358,7 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
         immutable(storage,capture,body)
         immutable(storage,capture+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt))
         fingerprint=digest(encode(identity))
-        version=census_latest.release_version(str(release.vintage),archive_sha,identity['code_commit'])
+        version=census_latest.release_version(str(release.vintage),archive_sha,fingerprint)
         prefix=f'{SLUG}/{SLUG}/{version}'
         base=Path(storage.local_dir);root=base/prefix
         # Decode the exact immutable retained original; no external-path substitution.
@@ -380,7 +381,11 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
                     raise CSAQuarantineError('immutable_candidate_bytes_changed:'+name)
             cached_manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
             validate_release_provenance(cached_manifest)
-            if cached_manifest.get('approved') is not False or cached_manifest.get('processing_fingerprint')!=fingerprint or cached_manifest['inputs'][0]['sha256']!=archive_sha or cached_manifest['inputs'][0]['bytes']!=len(body) or len(cached_manifest['inputs'])!=1 or cached_manifest['inputs'][0]['retrieval_url']!=release.source_url or cached_manifest['inputs'][0].get('observed_final_url')!=release.source_url or cached_manifest.get('source_release')!=release.as_metadata() or encode(strict_json((root/'metadata/processing_identity.json').read_bytes()))!=encode(identity):
+            original_receipt=strict_json((root/'raw/retrieval.json').read_bytes())
+            original_release=census_latest.geodatabase_release_from_receipt(original_receipt,GEODATABASE_PRODUCT)
+            expected_manifest=manifest_for(body,original_receipt,identity,original_release)
+            if (original_release.source_url!=release.source_url or cached_manifest!=expected_manifest
+                    or encode(strict_json((root/'metadata/processing_identity.json').read_bytes()))!=encode(identity)):
                 raise CSAQuarantineError('cached_provenance_or_processing_identity_changed')
             reconcile_cached_native_outputs(root,table)
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True}
