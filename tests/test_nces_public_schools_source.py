@@ -157,7 +157,10 @@ class NcesPublicSchoolsSourceTest(unittest.TestCase):
                 replay_root.mkdir()
                 for name in source.REPLAY_FILES:
                     (replay_root / name).write_bytes(storage.read_key(prefix + "raw/" + name))
-                replay = source.capture_nces_public_schools(storage, capture_directory=replay_root)
+                with patch.object(httpx.Client, "send", side_effect=AssertionError(
+                        "retained replay must not attempt HTTP")) as send:
+                    replay = source.capture_nces_public_schools(storage, capture_directory=replay_root)
+                send.assert_not_called()
                 self.assertTrue(replay["reused"])
                 self.assertEqual(replay["version"], candidate["version"])
                 self.assertEqual(replay["source_reported_count"], len(written))
