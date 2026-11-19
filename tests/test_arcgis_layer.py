@@ -1,4 +1,6 @@
 import json
+import gzip
+import zlib
 import struct
 import tempfile
 import unittest
@@ -11,6 +13,55 @@ from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _s
 
 
 class ArcgisLayerTests(unittest.TestCase):
+    def _encoded_replay(self, root, body, wire, encoding=None, length=None):
+        self._retained(root, body)
+        (root / 'page.wire').write_bytes(wire)
+        path = root / 'page.receipt.json'
+        receipt = json.loads(path.read_bytes())
+        receipt.update(wire_bytes=len(wire), wire_sha256=_sha(wire))
+        if encoding is not None:
+            receipt['content_encoding'] = encoding
+        if length is not None:
+            receipt['content_length'] = length
+        path.write_bytes(_canonical(receipt))
+        return receipt
+
+    def test_replay_refuses_self_repinned_invalid_gzip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._encoded_replay(root, b'{}', b'not-gzip', 'gzip')
+            with self.assertRaisesRegex(ValueError, 'retained_capture_wire_body_mismatch:page'):
+                common.load_replay(root, 'page')
+
+    def test_replay_decodes_supported_encodings_and_legacy_identity(self):
+        body = b'{"features": []}'
+        for encoding, wire in ((None, body), ('identity', body),
+                               ('gzip', gzip.compress(body)), ('deflate', zlib.compress(body))):
+            with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                receipt = self._encoded_replay(root, body, wire, encoding, len(wire))
+                self.assertEqual(common.load_replay(root, 'page'), (body, receipt))
+
+    def test_replay_refuses_encoded_wire_not_matching_body_or_transport(self):
+        body = b'{"features": []}'
+        encoded = gzip.compress(body)
+        bad_crc = encoded[:-8] + bytes([encoded[-8] ^ 1]) + encoded[-7:]
+        for wire, encoding, length in (
+                (gzip.compress(b'{"features": 1}'), 'gzip', None),
+                (gzip.compress(body * 1000), 'gzip', None),
+                (encoded[:-1], 'gzip', None),
+                (bad_crc, 'gzip', None),
+                (encoded + b'extra', 'gzip', None),
+                (encoded, 'gzip', len(encoded) - 1),
+                (zlib.compress(body)[:-1], 'deflate', None),
+                (b'not-the-body', 'identity', None),
+                (encoded, 'br', None)):
+            with self.subTest(encoding=encoding, length=length, wire=wire[:20]), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                self._encoded_replay(root, body, wire, encoding, length)
+                with self.assertRaisesRegex(ValueError, 'retained_capture_wire_body_mismatch:page'):
+                    common.load_replay(root, 'page')
+
     def _retained(self, root: Path, body: bytes = b"{}"):
         (root / "page.body").write_bytes(body)
         (root / "page.wire").write_bytes(body)

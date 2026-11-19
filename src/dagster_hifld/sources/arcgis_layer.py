@@ -307,6 +307,17 @@ def load_replay(root: Path, name: str) -> tuple[bytes, dict]:
             or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
             or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
         raise ValueError("retained_capture_receipt_invalid:" + name)
+    headers = {"Content-Encoding": receipt.get("content_encoding") or "identity"}
+    if receipt.get("content_length") is not None:
+        headers["Content-Length"] = str(receipt["content_length"])
+    response = httpx.Response(200, headers=headers, stream=httpx.ByteStream(wire))
+    result = capture_http_response(response, max_wire_bytes=len(wire), max_decoded_bytes=len(body),
+        reserve=lambda _progress: None, retain_wire=lambda _chunk: None,
+        retain_decoded=lambda _chunk: None)
+    response.close()
+    if (not result.complete or result.decoded_bytes_retained != len(body)
+            or result.decoded_sha256 != _sha(body)):
+        raise ValueError("retained_capture_wire_body_mismatch:" + name)
     return body, receipt
 
 
