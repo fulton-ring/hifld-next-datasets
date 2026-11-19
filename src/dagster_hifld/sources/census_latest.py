@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -137,6 +138,9 @@ class GeodatabaseRelease(TigerRelease):
 
     product: str
 
+    def as_receipt_evidence(self) -> dict:
+        return asdict(self)
+
 
 @dataclass(frozen=True)
 class ShapefileRelease(TigerRelease):
@@ -201,9 +205,30 @@ def geodatabase_release_from_url(url: str, product: str) -> GeodatabaseRelease:
 
 
 def geodatabase_release_from_receipt(receipt: dict, product: str) -> GeodatabaseRelease:
-    """Rebuild the release identity recorded by one retained capture receipt."""
+    """Restore discovery evidence, or URL-only identity for legacy receipts."""
     url = receipt.get('url')
-    return geodatabase_release_from_url(url if isinstance(url, str) else '', product)
+    release = geodatabase_release_from_url(url if isinstance(url, str) else '', product)
+    if 'source_release' not in receipt:
+        return release
+    evidence = receipt['source_release']
+    if not isinstance(evidence, dict) or set(evidence) != set(asdict(release)):
+        raise ValueError('geodatabase_release_evidence_invalid')
+    for name in ('vintage', 'product', 'source_file', 'source_url', 'directory_url'):
+        if type(evidence[name]) is not type(getattr(release, name)) or evidence[name] != getattr(release, name):
+            raise ValueError('geodatabase_release_evidence_identity_mismatch')
+    for name in ('listing_sha256', 'annual_listing_sha256'):
+        if (not isinstance(evidence[name], str) or not re.fullmatch(r'[0-9a-f]{64}', evidence[name])
+                or evidence[name] == '0' * 64):
+            raise ValueError('geodatabase_release_evidence_invalid')
+    if type(evidence['listing_bytes']) is not int or not 0 < evidence['listing_bytes'] <= MAX_LISTING_BYTES:
+        raise ValueError('geodatabase_release_evidence_invalid')
+    try:
+        checked_at = datetime.fromisoformat(evidence['latest_checked_at'])
+        if checked_at.utcoffset() is None:
+            raise ValueError('missing timezone')
+    except (TypeError, ValueError) as exc:
+        raise ValueError('geodatabase_release_evidence_invalid') from exc
+    return GeodatabaseRelease(**evidence)
 
 
 def discover_shapefile(

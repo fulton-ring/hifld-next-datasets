@@ -1,10 +1,10 @@
-"""Explicit stopped exact2024 CDP reconstruction; no production activation."""
+"""Explicit stopped current-edition CDP reconstruction; no production activation."""
 import os
 from dagster import AssetKey, AssetSelection, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.census_designated_places import SLUG, stage_cdp_candidate
 
-@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='census_bureau',compute_kind='http',description='Complete original Census2024 FileGDB CDPs; all original IDs/native geometry retained, unapproved draft.')
+@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='census_bureau',compute_kind='http',description='Complete original FileGDB Census_Designated_Place layer from the newest published national substate GDB (edition resolved at capture time); all original IDs/native geometry retained, unapproved draft.')
 def census_designated_places(context,staging_storage:StagingStorageResource):
     result=stage_cdp_candidate(staging_storage,archive_path=os.environ.get('HIFLD_CDP_ARCHIVE'),receipt_path=os.environ.get('HIFLD_CDP_RECEIPT'))
     context.add_output_metadata(result)
