@@ -5,10 +5,11 @@ from dagster import (
 )
 
 from dagster_hifld.download import build_version_id
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.epa_frs_interests import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_epa_frs_interests,
+    DATASET_SLUG, FILE_SLUG, capture_epa_frs_interests,
 )
 
 
@@ -41,11 +42,15 @@ def epa_frs_interests(context, config: EpaFrsInterestsConfig, staging_storage: S
 
 @asset_check(asset=epa_frs_interests, blocking=True)
 def epa_frs_interests_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_null_geometry_count") == 0
+    count = candidate.get('source_reported_count')
+    passed = (type(count) is int and count > 0 and candidate.get('source_population_complete') is True
+              and candidate.get('feature_count') == count and candidate.get('source_null_geometry_count') == 0
+              and candidate.get('source_invalid_geometry_count') == 0)
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": count if count is not None else 'missing',
             "source_release_accepted": False,
             "source_freshness_accepted": False,
             "schema_contract_accepted": False,
@@ -55,6 +60,10 @@ def epa_frs_interests_complete(candidate: dict) -> AssetCheckResult:
             "release_accepted": False,
         },
     )
+
+
+epa_frs_interests_approved_baseline_drift = register_approved_baseline_drift(
+    epa_frs_interests, 'epa_frs_interests_approved_baseline_drift')
 
 
 epa_frs_interests_draft_job = define_asset_job(
@@ -70,6 +79,6 @@ epa_frs_interests_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [epa_frs_interests]
-ASSET_CHECKS = [epa_frs_interests_complete]
+ASSET_CHECKS = [epa_frs_interests_complete, epa_frs_interests_approved_baseline_drift]
 JOBS = [epa_frs_interests_draft_job]
 SCHEDULES = [epa_frs_interests_draft_schedule]

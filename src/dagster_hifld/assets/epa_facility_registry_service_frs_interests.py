@@ -3,7 +3,7 @@
 Reconstructs the ``epa-facility-registry-service-frs-interests`` HIFLD Open
 inventory entry (issue #390), which is a duplicate catalog row of the same
 EPA Facility Registry Service full interest universe published by the EPA_GEO
-hosted FRS_INTERESTS FeatureServer. The capture machinery, source pins and
+hosted FRS_INTERESTS FeatureServer. The capture machinery, native source contract and
 approval gates are shared with the ``frs-interests`` entry; only the staged
 dataset identity differs. Candidate only; no publication is authorized.
 """
@@ -13,10 +13,11 @@ from dagster import (
 )
 
 from dagster_hifld.download import build_version_id
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.epa_frs_interests import (
-    EPA_ITEM_DATASET_SLUG, EXPECTED_COUNT, capture_epa_frs_interests,
+    EPA_ITEM_DATASET_SLUG, capture_epa_frs_interests,
 )
 
 DATASET_SLUG = EPA_ITEM_DATASET_SLUG
@@ -58,11 +59,15 @@ def epa_facility_registry_service_frs_interests(
 
 @asset_check(asset=epa_facility_registry_service_frs_interests, blocking=True)
 def epa_facility_registry_service_frs_interests_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_null_geometry_count") == 0
+    count = candidate.get('source_reported_count')
+    passed = (type(count) is int and count > 0 and candidate.get('source_population_complete') is True
+              and candidate.get('feature_count') == count and candidate.get('source_null_geometry_count') == 0
+              and candidate.get('source_invalid_geometry_count') == 0)
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": count if count is not None else 'missing',
             "source_release_accepted": False,
             "source_freshness_accepted": False,
             "schema_contract_accepted": False,
@@ -72,6 +77,10 @@ def epa_facility_registry_service_frs_interests_complete(candidate: dict) -> Ass
             "release_accepted": False,
         },
     )
+
+
+epa_facility_registry_service_frs_interests_approved_baseline_drift = register_approved_baseline_drift(
+    epa_facility_registry_service_frs_interests, 'epa_facility_registry_service_frs_interests_approved_baseline_drift')
 
 
 epa_facility_registry_service_frs_interests_draft_job = define_asset_job(
@@ -87,6 +96,7 @@ epa_facility_registry_service_frs_interests_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [epa_facility_registry_service_frs_interests]
-ASSET_CHECKS = [epa_facility_registry_service_frs_interests_complete]
+ASSET_CHECKS = [epa_facility_registry_service_frs_interests_complete,
+                epa_facility_registry_service_frs_interests_approved_baseline_drift]
 JOBS = [epa_facility_registry_service_frs_interests_draft_job]
 SCHEDULES = [epa_facility_registry_service_frs_interests_draft_schedule]
