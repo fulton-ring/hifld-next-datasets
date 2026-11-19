@@ -29,7 +29,7 @@ from dagster_hifld.sources.capture_common import (
 from dagster_hifld.sources.arcgis_layer import esri_polygon_wkb as _esri_polygon_wkb
 from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture_identity, _load_capture, _sha,
-    _validate_spatial_reference, layer_capture_roster,
+    _validate_spatial_reference, capture_witness, layer_capture_roster, retained_capture_ids,
 )
 
 DATASET_SLUG = "us-district-court-jurisdictions"
@@ -69,45 +69,10 @@ SERVICE_DESCRIPTION = "USDistricts_Project"
 SERVICE_CAPABILITIES = "Query,Extract"
 LAYER_COPYRIGHT = ""
 LAYER_DISPLAY_FIELD = "NAME"
-EXPECTED_COUNT = 95
-EXPECTED_IDS = list(range(1, 96))
-EXPECTED_ID_SHA256 = "04fd325cb6bf5cbb4e33c02b3f5297be13f8acc9a4ab0508290b482ba51bc14f"
-# The 94 federal judicial districts carry distinct names plus one unassigned
-# placeholder row; the rosters below are pinned exactly as observed on
-# 2026-11-14, including the producer's own 'Lousiana' spelling in DistName.
-EXPECTED_DISTRICT_NAME_SHA256 = "7885e39b6cdbb79dc3855aa423f09595b294f032a4a0b81532fbf118d47a979c"
-EXPECTED_ABBREVIATION_SHA256 = "2479cb3b285c82b4547d0978fa30b70137ebe719406c82cea38c3edd1359d965"
-EXPECTED_DISTRICT_SHORT_NAME_SHA256 = "0440d2bac3749e65800c9010fab76d15ae06f56fc91dce6e7adb5c912e4d1b58"
-EXPECTED_STATE_SHA256 = "ee748039f2994f2041127fc63433e1eee180ab45ca8adb91f77f24ded1f8e8e1"
-EXPECTED_CIRCUIT_SHA256 = "be999d46bf5474b6c379f76c9d29f68460427789613e19f87d56c2579fb603a4"
-EXPECTED_CIRCUIT_ROSTER = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "DC", "XX"]
-# The roster closes with an intentionally unassigned placeholder row: OBJECTID
-# 95 carries NAME/ABV/DistName 'XXX', Circuit 'XX' and no geometry at all in
-# the source response, plus null State/sqmi/shape measures. The placeholder is
-# preserved as a null-geometry record and never replaced with substitute
-# geometry or values.
-EXPECTED_NULL_GEOMETRY_IDS = [95]
-EXPECTED_NULL_ATTRIBUTE_IDS = {"NAME": [], "ABV": [], "DistName": [], "State": [95],
-                               "Circuit": [], "Shape_Leng": [94, 95], "sqmi": [95],
-                               "Shape__Area": [95], "Shape__Length": [95]}
-# Three producer-published polygons are invalid under OGC (ring
-# self-intersection in District of Oregon, Western District of Washington and
-# Eastern District of Virginia). The capture is faithful: invalid source
-# geometry is retained unchanged, never repaired or dropped, and its roster is
-# pinned so any change is drift.
-EXPECTED_GEOMETRY_INVALID_IDS = [24, 86, 92]
-EXPECTED_RECORD_SHA256 = "7ecef55b16f611c7c6bbda6732b8bba6c24b9e79d38f45f976b4482863c2b76b"
-EXPECTED_GEOMETRY_SHA256 = "d71a2a2e91ec5d41fc87128c6b833a3a8aecd278ccc37ad02a1adde861fd2386"
 PAGE_SIZE = 2000
-PAGE_COUNT = (len(EXPECTED_IDS) + PAGE_SIZE - 1) // PAGE_SIZE
 EXPECTED_EXTENT = {"xmin": -178.22526585499998, "ymin": 13.235007063000069,
                    "xmax": 145.8180773050001, "ymax": 71.38310212600004}
 EXPECTED_EXTENT_TOLERANCE = 1e-9
-EXPECTED_EDITING_INFO = {"lastEditDate": 1776352570444,
-                         "schemaLastEditDate": 1776352570444,
-                         "dataLastEditDate": 1774371266262}
-EXPECTED_LAST_DATA_EDIT_UTC = "2026-03-24T16:54:26.262000Z"
-EXPECTED_LAST_EDIT_UTC = "2026-04-16T15:16:10.444000Z"
 EXPECTED_GEOMETRY_PROPERTIES = {"shapeAreaFieldName": "Shape__Area",
                                 "shapeLengthFieldName": "Shape__Length",
                                 "units": "esriDecimalDegrees"}
@@ -149,9 +114,6 @@ EXPECTED_FIELD_DECLARATIONS = [
 ]
 ATTRIBUTE_FIELDS = EXPECTED_FIELD_DECLARATIONS
 PAGE_FIELD_KEYS = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
-CAPTURE_NAMES = {"catalog_item", "service_before", "layer_before", "count_before",
-                 "ids_before", *{f"page_{index:03d}" for index in range(PAGE_COUNT)},
-                 "layer_after", "count_after", "ids_after", "service_after"}
 SHAPE_PARITY_TOLERANCE = 1e-9
 
 
@@ -181,10 +143,11 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+    urls = dict(_capture_roster(retained_capture_ids(root)))
     return validate_retained_capture_replay(
         root,
-        capture_names=CAPTURE_NAMES,
-        expected_urls=dict(_capture_roster(EXPECTED_IDS)),
+        capture_names=set(urls),
+        expected_urls=urls,
         load_capture=_load_capture,
         validate_request_identity=validate_capture_request_identity,
     )
@@ -257,11 +220,15 @@ def _validate_layer(layer: dict) -> None:
             or layer.get("isDataVersioned") is not False
             or layer.get("copyrightText") != LAYER_COPYRIGHT
             or layer.get("serviceItemId") != CATALOG_ITEM_ID
-            or layer.get("editingInfo") != EXPECTED_EDITING_INFO
             or layer.get("geometryProperties") != EXPECTED_GEOMETRY_PROPERTIES
             or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT
             or layer.get("advancedQueryCapabilities", {}).get("supportsPagination") is not True):
         raise ValueError("source_layer_identity_extent_or_freshness_drift")
+    editing = layer.get("editingInfo")
+    if (not isinstance(editing, dict)
+            or any(type(editing.get(key)) is not int or editing[key] < 0
+                   for key in ("lastEditDate", "schemaLastEditDate", "dataLastEditDate"))):
+        raise ValueError("source_layer_editing_info_invalid")
     _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
     extent_reference = layer.get("extent", {}).get("spatialReference")
     if extent_reference is not None:
@@ -269,7 +236,10 @@ def _validate_layer(layer: dict) -> None:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
-    if set(captures) != CAPTURE_NAMES:
+    expected_roster = capture_witness(captures)
+    if not expected_roster:
+        raise ValueError("source_population_empty")
+    if set(captures) != set(dict(_capture_roster(expected_roster))):
         raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     _validate_catalog_item(docs["catalog_item"])
@@ -279,19 +249,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     _validate_layer(layer)
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
-    count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    for label, count in (("before", count_before), ("after", count_after)):
-        if type(count) is not int or count != EXPECTED_COUNT:
-            raise ValueError("source_count_population_drift:" + label)
-    for label, ids in (("before", ids_before), ("after", ids_after)):
-        if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-                or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
-                or sorted(ids) != EXPECTED_IDS
-                or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256):
-            raise ValueError("source_id_population_drift:" + label)
-    if sorted(ids_after) != sorted(ids_before):
-        raise ValueError("source_id_roster_changed_during_capture")
     features = []
     vertices = 0
     geometry_valid = geometry_empty = 0
@@ -313,8 +270,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if page.get("geometryProperties") != EXPECTED_GEOMETRY_PROPERTIES:
             raise ValueError("source_page_geometry_properties_drift")
         _validate_page_fields(page.get("fields"), layer["fields"])
-        expected_index = int(name[-3:])
-        expected_ids = EXPECTED_IDS[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
+        expected_index = int(name.removeprefix("page_"))
+        expected_ids = expected_roster[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
         rows = page.get("features")
         if not isinstance(rows, list) or len(rows) != len(expected_ids):
             raise ValueError("source_page_population_incomplete:" + name)
@@ -388,49 +345,18 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if sorted(page_ids) != expected_ids or len(set(page_ids)) != len(page_ids):
             raise ValueError("source_page_id_population_drift:" + name)
     ids = [feature["attributes"]["OBJECTID"] for feature in features]
-    if sorted(ids) != EXPECTED_IDS or len(features) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT:
-        raise ValueError("source_feature_id_population_drift")
-    names = [feature["attributes"]["NAME"] for feature in features]
-    abbreviations = [feature["attributes"]["ABV"] for feature in features]
-    short_names = [feature["attributes"]["DistName"] for feature in features]
-    states = [feature["attributes"]["State"] for feature in features if feature["attributes"]["State"] is not None]
-    circuits = [feature["attributes"]["Circuit"] for feature in features]
-    if (len(set(names)) != EXPECTED_COUNT
-            or _sha(_canonical(sorted(names))) != EXPECTED_DISTRICT_NAME_SHA256):
-        raise ValueError("source_district_name_roster_drift")
-    if (len(set(abbreviations)) != EXPECTED_COUNT
-            or _sha(_canonical(sorted(abbreviations))) != EXPECTED_ABBREVIATION_SHA256):
-        raise ValueError("source_abbreviation_roster_drift")
-    if (len(set(short_names)) != EXPECTED_COUNT
-            or _sha(_canonical(sorted(short_names))) != EXPECTED_DISTRICT_SHORT_NAME_SHA256):
-        raise ValueError("source_district_short_name_roster_drift")
-    if _sha(_canonical(sorted(set(states)))) != EXPECTED_STATE_SHA256:
-        raise ValueError("source_state_roster_drift")
-    if (len(set(circuits)) != len(EXPECTED_CIRCUIT_ROSTER)
-            or _sha(_canonical(sorted(set(circuits)))) != EXPECTED_CIRCUIT_SHA256
-            or sorted(set(circuits)) != EXPECTED_CIRCUIT_ROSTER):
-        raise ValueError("source_circuit_roster_drift")
-    for field, expected_null_ids in EXPECTED_NULL_ATTRIBUTE_IDS.items():
-        observed = sorted(feature["attributes"]["OBJECTID"] for feature in features
-                          if feature["attributes"][field] is None)
-        if observed != expected_null_ids:
-            raise ValueError(f"source_null_attribute_roster_drift:{field}")
-    if sorted(null_geometry_ids) != EXPECTED_NULL_GEOMETRY_IDS:
-        raise ValueError("source_null_geometry_roster_drift")
-    if sorted(invalid_geometry_ids) != EXPECTED_GEOMETRY_INVALID_IDS:
-        raise ValueError("source_geometry_invalid_roster_drift")
+    capture_witness(captures, captured_ids=ids)
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     record_sha = _sha(_canonical(
         [[row["attributes"]["OBJECTID"], row["attributes"]] for row in features]))
     geometry_sha = _sha(_canonical(
         [[row["attributes"]["OBJECTID"], row.get("geometry")] for row in features]))
     bounds = [from_wkb(_esri_polygon_wkb(row["geometry"])).bounds for row in features
-              if row["attributes"]["OBJECTID"] not in EXPECTED_NULL_GEOMETRY_IDS]
+              if row.get("geometry") is not None]
     audit = {
         "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(sorted(ids))),
         "source_id_min": min(ids), "source_id_max": max(ids),
-        "source_id_note": ("The layer holds 95 features with OBJECTID 1..95; the roster is "
-                           "pinned and preserved; no substitute IDs are generated."),
+        "source_id_note": "Publisher OBJECTIDs are retained unchanged; completeness uses capture-time witnesses.",
         "source_schema_sha256": _sha(_canonical(layer["fields"])),
         "source_record_sha256": record_sha,
         "source_geometry_sha256": geometry_sha,
@@ -439,22 +365,17 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "geometry_empty_count": geometry_empty,
         "geometry_null_count": len(null_geometry_ids),
         "geometry_null_ids": sorted(null_geometry_ids),
-        "geometry_null_note": ("The final roster row (OBJECTID 95, NAME/ABV/DistName 'XXX', "
-                               "Circuit 'XX') publishes no geometry at all in the source "
-                               "response; it is retained as a null-geometry record and never "
-                               "given substitute geometry."),
+        "geometry_null_note": "Producer-null geometries are retained without substitute geometry.",
         "geometry_invalid_count": len(invalid_geometry_ids),
         "geometry_invalid_ids": sorted(invalid_geometry_ids),
-        "geometry_invalid_note": ("Three producer-published polygons (District of Oregon "
-                                  "OBJECTID 24, Western District of Washington OBJECTID 86, "
-                                  "Eastern District of Virginia OBJECTID 92) are invalid under "
-                                  "OGC (ring self-intersection); they are retained exactly as "
-                                  "published and never repaired."),
+        "geometry_invalid_note": "Producer-invalid geometries are retained as served, never repaired.",
         "geometry_bounds": [min(b[0] for b in bounds), min(b[1] for b in bounds),
-                            max(b[2] for b in bounds), max(b[3] for b in bounds)],
+                            max(b[2] for b in bounds), max(b[3] for b in bounds)] if bounds else None,
         "source_extent": layer["extent"],
-        "source_last_data_edit_utc": EXPECTED_LAST_DATA_EDIT_UTC,
-        "source_last_edit_utc": EXPECTED_LAST_EDIT_UTC,
+        "source_last_data_edit_utc": datetime.fromtimestamp(
+            layer["editingInfo"]["dataLastEditDate"] / 1000, timezone.utc).isoformat().replace("+00:00", "Z"),
+        "source_last_edit_utc": datetime.fromtimestamp(
+            layer["editingInfo"]["lastEditDate"] / 1000, timezone.utc).isoformat().replace("+00:00", "Z"),
         "source_coverage_scope": ("Complete observed 'TMB U.S. Courts Districts Final' layer 5 "
                                   "from the Administrative Office of the U.S. Courts (Judicial "
                                   "Branch, urlKey AOUSC) ArcGIS Online organization's hosted "
@@ -483,20 +404,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                                   "organization's hosted districts service, verified live on "
                                   "2026-11-14 (owner Courts_GIS_AOUSC in org LJKafwRzLHEkKeOL)."),
                               "evidence_url": "https://atcoordinates.info/wp-content/uploads/2025/08/hifld_open_crosswalk_geoplatform.xlsx"},
-        "drift_guard": ("Current AOUSC catalog item identity (id, owner, owning organization, "
-                        "title, access, accessInformation, description, license, snippet, tags, "
-                        "category, CRS and extent), service identity roster, exact field "
-                        "declarations/types/nullability, editingInfo freshness pins, layer "
-                        "display/type fields, copyright, geometry properties, explicit EPSG:4326 "
-                        "layer/page SRs, XY-only dimensional flags, count and before/after ID "
-                        "roster, distinct NAME/ABV/DistName/State/Circuit rosters, per-field "
-                        "null rosters (State and shape measures null only on the 'XXX' "
-                        "placeholder and Shape_Leng also null on Eastern Washington), the pinned "
-                        "null-geometry 'XXX' row, the pinned invalid-geometry roster (producer "
-                        "ring self-intersections in Oregon, Western Washington and Eastern "
-                        "Virginia retained, never repaired), per-page IDs/attributes/transfer "
-                        "limits, ring closure/winding/hole ownership, declared-extent containment "
-                        "and Shape__Area/Shape__Length parity are checked."),
+        "drift_guard": ("Publisher identity, schema, CRS, XY dimensions, exact capture-time "
+                        "count/ID witnesses and per-page coverage, transport integrity, ring "
+                        "structure, declared coverage and shape-measure parity are checked. "
+                        "Null and invalid geometries are retained and counted, not baseline-pinned."),
     }
     return layer["fields"], features, audit
 
@@ -574,12 +485,8 @@ def capture_us_district_court_jurisdictions(storage: StagingStorageResource, *, 
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/us-district-court-jurisdictions-draft"}) as client:
                 ids_body, ids_receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
-                ids = json.loads(ids_body).get("objectIds")
-                if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-                        or len(ids) != EXPECTED_COUNT or sorted(ids) != EXPECTED_IDS
-                        or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256):
-                    raise ValueError("source_seed_id_population_drift")
                 captures["ids_before"] = (ids_body, ids_receipt)
+                ids = retained_capture_ids(root)
                 roster = _capture_roster(sorted(ids))
                 for name, url in roster:
                     if name == "ids_before":
@@ -607,9 +514,6 @@ def capture_us_district_court_jurisdictions(storage: StagingStorageResource, *, 
         captures = _read_replay(root)
 
     fields, features, audit = _validate(captures)
-    if (audit["source_record_sha256"] != EXPECTED_RECORD_SHA256
-            or audit["source_geometry_sha256"] != EXPECTED_GEOMETRY_SHA256):
-        raise ValueError("source_record_or_geometry_digest_drift")
     identity = processing_identity(Path(__file__).parents[3])
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
@@ -635,7 +539,7 @@ def capture_us_district_court_jurisdictions(storage: StagingStorageResource, *, 
         "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
         "release_date": None,
         "release_date_unknown_reason": ("The service editingInfo.dataLastEditDate ("
-                                        + EXPECTED_LAST_DATA_EDIT_UTC + ") is a service edit timestamp, "
+                                        + audit["source_last_data_edit_utc"] + ") is a service edit timestamp, "
                                         "not a producer release date; the item publishes no release-date field."),
         "license": ("The AOUSC item publishes no licenseInfo text; judicial branch work product of "
                     "the Administrative Office of the U.S. Courts. Formal rights acceptance remains pending."),
@@ -669,7 +573,7 @@ def capture_us_district_court_jurisdictions(storage: StagingStorageResource, *, 
                         "successor. Unapproved faithful candidate; source acceptance, baseline, schema/ID "
                         "contract, coverage, rights and release decisions remain pending."),
         "publisher": PUBLISHER, "agency": "Administrative Office of the U.S. Courts", "source_url": LAYER_URL,
-        "license": None, "source_modified": EXPECTED_LAST_DATA_EDIT_UTC, "date_issued": None, "date_modified": None,
+        "license": None, "source_modified": audit["source_last_data_edit_utc"], "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
         "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
         "transformations": [{"operation": "Esri XY Polygon to GeoParquet WKB candidate", "parameters": {
@@ -751,8 +655,9 @@ def capture_us_district_court_jurisdictions(storage: StagingStorageResource, *, 
 def _candidate_result(audit: dict, prefix: str, version: str, capture_hash: str, *,
                       reused: bool, root: Path) -> dict[str, object]:
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": 95,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": reused,
