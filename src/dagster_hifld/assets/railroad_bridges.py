@@ -12,12 +12,13 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.railroad_bridges import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
+    EXPECTED_INVALID_GEOMETRY_COUNT,
     EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_railroad_bridges,
@@ -33,13 +34,13 @@ class RailroadBridgesConfig(Config):
     group_name="bts",
     compute_kind="http",
     description=(
-        "Federal Railroad Administration (FRA) Railroad Bridges (69,510 source "
-        "features observed 2026-11-13) from the FRA-delegated BTS NTAD "
-        "FeatureServer publication named by FRA's own GIS page and the DHS HIFLD "
-        "Open crosswalk for the inventory entry railroad-bridges. Unapproved "
-        "faithful candidate; record/geometry baselines are pinned from the "
-        "complete dated 2026-11-13 capture. Freshness, schema/ID contract, "
-        "rights and release decisions remain pending."
+        "Federal Railroad Administration (FRA) Railroad Bridges from the "
+        "FRA-delegated BTS NTAD FeatureServer publication named by FRA's own GIS "
+        "page and the DHS HIFLD Open crosswalk for the inventory entry "
+        "railroad-bridges. Unapproved faithful candidate; population completeness "
+        "is enforced at capture time by the source's own count and ID witnesses. "
+        "Freshness, schema/ID contract, rights and release decisions remain "
+        "pending."
     ),
 )
 def railroad_bridges(
@@ -62,17 +63,21 @@ def railroad_bridges(
 
 @asset_check(asset=railroad_bridges, blocking=True)
 def railroad_bridges_complete(candidate: dict) -> AssetCheckResult:
+    count = candidate.get("source_reported_count")
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and (EXPECTED_NULL_GEOMETRY_COUNT is None
-             or candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT)
+        candidate.get("source_population_complete") is True
+        and type(count) is int and count > 0
+        and candidate.get("feature_count") == count
+        and candidate.get("candidate_ready") is not None
+        and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
+        and candidate.get("source_invalid_geometry_count") == EXPECTED_INVALID_GEOMETRY_COUNT
     )
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": count if count is not None else "missing",
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
-            "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_release_accepted": False,
             "source_freshness_accepted": False,
             "succession_accepted": False,
@@ -84,6 +89,10 @@ def railroad_bridges_complete(candidate: dict) -> AssetCheckResult:
             "release_accepted": False,
         },
     )
+
+
+railroad_bridges_approved_baseline_drift = register_approved_baseline_drift(
+    railroad_bridges, "railroad_bridges_approved_baseline_drift")
 
 
 railroad_bridges_draft_job = define_asset_job(
@@ -99,6 +108,6 @@ railroad_bridges_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [railroad_bridges]
-ASSET_CHECKS = [railroad_bridges_complete]
+ASSET_CHECKS = [railroad_bridges_complete, railroad_bridges_approved_baseline_drift]
 JOBS = [railroad_bridges_draft_job]
 SCHEDULES = [railroad_bridges_draft_schedule]
