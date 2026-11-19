@@ -256,7 +256,8 @@ class NarnRailNodesTests(unittest.TestCase):
                 removed = source.capture_narn_rail_nodes(storage, version='removed', capture_directory=str(root / 'removed'))
             self.assertEqual(removed['feature_count'], 5)
             self.assertNotEqual(removed['version'], first['version'])
-            for mode in ('missing_wire', 'missing_refusal', 'wire', 'forged_gzip', 'url', 'manifest', 'extra', 'budget'):
+            for mode in ('missing_wire', 'missing_refusal', 'wire', 'forged_gzip', 'url', 'manifest',
+                         'extra', 'budget', 'symlink_root', 'symlink_manifest', 'symlink_artifact'):
                 directory = root / ('bad-' + mode)
                 shutil.copytree(first['capture_directory'], directory)
                 page = 'page_000002_00002'
@@ -287,11 +288,20 @@ class NarnRailNodesTests(unittest.TestCase):
                     manifest_path.write_bytes(b'{}')
                 elif mode == 'extra':
                     (directory / 'unrostered.body').write_bytes(b'{}')
+                elif mode.startswith('symlink_'):
+                    path = directory if mode == 'symlink_root' else (
+                        manifest_path if mode == 'symlink_manifest' else directory / f'{page}.body')
+                    target = root / ('target-' + mode)
+                    path.rename(target)
+                    path.symlink_to(target, target_is_directory=mode == 'symlink_root')
                 else:
                     with (directory / f'{page}.wire').open('wb') as stream:
                         stream.truncate(source.MAX_CAPTURE_BYTES + 1)
+                expected_error = {'forged_gzip': 'retained_capture_wire_body_mismatch',
+                                  'url': 'retained_capture_request_mismatch',
+                                  'budget': 'source_capture_exceeds_scratch_budget'}.get(mode, '.')
                 with self.subTest(replay=mode), patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected network')):
-                    with self.assertRaises((ValueError, OSError)):
+                    with self.assertRaisesRegex((ValueError, OSError), expected_error):
                         source.capture_narn_rail_nodes(storage, version='refused',
                             capture_directory=str(root / 'refused'), offline_capture_directory=str(directory))
             staged = Path(storage.local_dir) / prefix
