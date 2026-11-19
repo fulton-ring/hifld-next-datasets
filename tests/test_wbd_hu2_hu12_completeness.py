@@ -14,7 +14,7 @@ from dagster import AssetCheckSeverity, DagsterInstance, materialize
 from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import capture_common, wbd_hu_family as family
+from dagster_hifld.sources import wbd_hu_family as family
 from dagster_hifld.sources import wbd_2_digit_hu as two
 from dagster_hifld.sources import wbd_12_digit_hu as twelve
 from dagster_hifld.assets import wbd_2_digit_hu as two_assets
@@ -82,9 +82,7 @@ class WbdHu2Hu12CompletenessTests(unittest.TestCase):
                         run_config={"ops": {asset.op.name: {"config": {
                             "capture_directory": str(capture_directory)}}}})
 
-                with patch.object(family.httpx, "Client", side_effect=client), \
-                        patch.object(family, "validate_construction_code_identity"), \
-                        patch.object(capture_common, "validate_construction_code_identity"):
+                with patch.object(family.httpx, "Client", side_effect=client):
                     fresh = run(Path(tmp) / "capture")
                     self.assertTrue(fresh.success)
                     candidate = fresh.output_for_node(asset.op.name)
