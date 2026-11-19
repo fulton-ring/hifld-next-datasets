@@ -2,17 +2,21 @@
 from __future__ import annotations
 
 import hashlib
+import gzip
 import io
 import json
 import sqlite3
 import struct
 import unittest
 import zipfile
+import httpx
 from unittest.mock import patch
 
 import pyarrow.parquet as pq
 
 from dagster_hifld.sources import gnis_antarctica as source
+
+_REAL_HTTPX_CLIENT = httpx.Client
 
 OBSERVED_AT = "2026-11-09T00:00:00+00:00"
 PUBDATE = "20261102"
@@ -245,56 +249,158 @@ def _schema_sha(gpkg_body):
         connection.close()
 
 
-def _pins(names_rows=NAMES_ROWS, allnames_rows=ALLNAMES_ROWS, gpkg_body=None,
-          pubdate=PUBDATE):
+def _client_factory(captures, encoding="identity"):
+    bodies = {source.CAPTURE_URLS[name]: body for name, (body, _) in captures.items()}
+
+    def handler(request):
+        body = bodies[str(request.url)]
+        if encoding == "gzip":
+            body = gzip.compress(body)
+        return httpx.Response(200, headers={"Content-Encoding": encoding, "Content-Length": str(len(body))},
+                              stream=httpx.ByteStream(body))
+
+    return lambda *args, **kwargs: _REAL_HTTPX_CLIENT(transport=httpx.MockTransport(handler))
+
+
+def _pins(names_rows=NAMES_ROWS, allnames_rows=ALLNAMES_ROWS, gpkg_body=None):
     gpkg_body = gpkg_body if gpkg_body is not None else _build_gpkg(names_rows, allnames_rows)
-    records, geometry_records, bounds = [], [], None
-    null_counts = dict.fromkeys(source.DATA_COLUMNS, 0)
-    seen = set()
-    for values, (lat, lon) in zip(sorted(names_rows, key=lambda row: row[0]), NAMES_COORDS):
-        blob = _gpkg_blob(lon, lat)
-        wkb = blob[8:].hex()
-        records.append([list(values), wkb])
-        geometry_records.append([values[0], wkb])
-        seen.add(values[0])
-        for index, column in enumerate(source.DATA_COLUMNS):
-            if values[index] is None:
-                null_counts[column] += 1
-        x, y = lon, lat
-        bounds = [x, y, x, y] if bounds is None else [
-            min(bounds[0], x), min(bounds[1], y), max(bounds[2], x), max(bounds[3], y)]
-    allnames_records = sorted([list(row) for row in allnames_rows],
-                              key=lambda row: (row[0], source._canonical(row[1:]).decode()))
-    allnames_nulls = dict.fromkeys(source.ALLNAMES_COLUMNS, 0)
-    for row in allnames_rows:
-        for index, column in enumerate(source.ALLNAMES_COLUMNS):
-            if row[index] is None:
-                allnames_nulls[column] += 1
-    fixture_keys = sorted([S3_PREFIX] + [S3_PREFIX + name for name in (
-        "Gazetteer_Antarctica_GDB.jpg", "Gazetteer_Antarctica_GDB.xml",
-        "Gazetteer_Antarctica_GDB.zip", "Gazetteer_Antarctica_GPKG.jpg",
-        "Gazetteer_Antarctica_GPKG.xml", "Gazetteer_Antarctica_GPKG.zip",
-        "Gazetteer_Antarctica_Text.jpg", "Gazetteer_Antarctica_Text.xml",
-        "Gazetteer_Antarctica_Text.zip")])
-    return dict(
-        EXPECTED_PUBDATE=pubdate,
-        EXPECTED_S3_KEYS=tuple(fixture_keys),
-        EXPECTED_COUNT=len(names_rows),
-        EXPECTED_ALLNAMES_COUNT=len(allnames_rows),
-        EXPECTED_ID_SHA256=source._sha(source._canonical(sorted(seen))),
-        EXPECTED_ALLNAMES_ID_SHA256=source._sha(source._canonical(sorted(
-            row[0] for row in allnames_rows))),
-        EXPECTED_RECORD_SHA256=source._list_sha(records),
-        EXPECTED_ALLNAMES_RECORD_SHA256=source._list_sha(allnames_records),
-        EXPECTED_GEOMETRY_SHA256=source._list_sha(geometry_records),
-        EXPECTED_SCHEMA_SHA256=_schema_sha(gpkg_body),
-        EXPECTED_OBSERVED_BOUNDS=bounds,
-        EXPECTED_NULL_COUNTS=null_counts,
-        EXPECTED_ALLNAMES_NULL_COUNTS=allnames_nulls,
-    )
+    return {"EXPECTED_SCHEMA_SHA256": _schema_sha(gpkg_body)}
 
 
 class GnisAntarcticaSourceTests(unittest.TestCase):
+    def test_changed_population_is_complete_when_both_producer_formats_agree(self):
+        names = NAMES_ROWS[:2]
+        variants = ALLNAMES_ROWS[:3]
+        gpkg = _build_gpkg(names, variants)
+        with patch.object(source, "EXPECTED_SCHEMA_SHA256", _schema_sha(gpkg)):
+            extracted = source._validate_captures(_build_captures(gpkg, names_rows=names, allnames_rows=variants))
+        self.assertEqual(extracted["audit"]["source_feature_count"], 2)
+        self.assertEqual(extracted["audit"]["source_allnames_count"], 3)
+
+    def test_additions_new_edition_and_variant_multiplicity_are_observed(self):
+        added = list(NAMES_ROWS[-1])
+        added[0], added[3], added[12], added[13] = 2814093, "Delta Glacier", -75.0, 67.0
+        names = NAMES_ROWS + [tuple(added)]
+        variant = list(ALLNAMES_ROWS[-1])
+        variant[0], variant[1] = added[0], added[3]
+        extra = list(ALLNAMES_ROWS[1])
+        extra[1] = "Extra variant"
+        variants = ALLNAMES_ROWS + [tuple(variant), tuple(extra)]
+        gpkg = _build_gpkg(names, variants, coords=[(row[12], row[13]) for row in names])
+        with patch.multiple(source, **_pins()):
+            extracted = source._validate_captures(_build_captures(gpkg, names_rows=names,
+                allnames_rows=variants, pubdate="20260901"))
+        self.assertEqual(extracted["audit"]["source_feature_count"], 4)
+        self.assertEqual(extracted["audit"]["source_allnames_count"], 6)
+        self.assertEqual(extracted["audit"]["source_release_date"], "2026-09-01")
+        self.assertEqual(extracted["audit"]["source_id_sha256"], source._sha(_canonical([row[0] for row in names])))
+        self.assertEqual(extracted["audit"]["observed_bounds"], [66.5, -75.0, 67.0, -74.5])
+
+    def test_unequal_producer_edition_dates_are_rejected(self):
+        gpkg = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
+        captures = _build_captures(gpkg, gpkg_members={
+            "Gazetteer_Antarctica_GPKG.gpkg": gpkg,
+            "Gazetteer_Antarctica_GPKG.jpg": b"jpg-bytes",
+            "Gazetteer_Antarctica_GPKG.xml": _fgdc_xml("GeoPackage", "20260901")})
+        with patch.multiple(source, **_pins()):
+            with self.assertRaisesRegex(ValueError, "gpkg_publication_date_drift"):
+                source._validate_captures(captures)
+
+    def test_changed_publication_seals_a_new_candidate_without_rewriting_the_first(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp, patch.multiple(source, **_pins()):
+            storage = source.StagingStorageResource(use_local=True, local_dir=tmp + "/stage", prefix="")
+            previous, versions = {}, []
+            for names, variants in ((NAMES_ROWS, ALLNAMES_ROWS), (NAMES_ROWS[:2], ALLNAMES_ROWS[:3])):
+                gpkg = _build_gpkg(names, variants)
+                captures = _build_captures(gpkg, names_rows=names, allnames_rows=variants)
+                with patch.object(source.httpx, "Client", side_effect=_client_factory(captures)):
+                    candidate = source.capture_gnis_antarctica(storage, version="changed", capture_directory=tmp + "/captures")
+                self.assertEqual(candidate["feature_count"], len(names))
+                self.assertEqual(candidate["variant_name_count"], len(variants))
+                self.assertTrue(candidate["source_population_complete"])
+                self.assertNotIn(candidate["version"], versions)
+                versions.append(candidate["version"])
+                for key, snapshot in previous.items():
+                    self.assertEqual((storage.read_key(key), storage.object_snapshot(key)), snapshot)
+                previous = {key: (storage.read_key(key), storage.object_snapshot(key))
+                            for key in storage.list_prefix("")}
+
+    def test_retained_identity_and_gzip_bytes_bind_to_decoded_publication(self):
+        import tempfile
+        from pathlib import Path
+
+        gpkg = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
+        captures = _build_captures(gpkg)
+        for encoding in ("identity", "gzip"):
+            with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as tmp, \
+                    patch.multiple(source, **_pins()):
+                storage = source.StagingStorageResource(use_local=True, local_dir=tmp + "/stage", prefix="")
+                with patch.object(source.httpx, "Client", side_effect=_client_factory(captures, encoding)):
+                    candidate = source.capture_gnis_antarctica(storage, version="wire", capture_directory=tmp + "/captures")
+                root = Path(candidate["capture_directory"])
+                originals = {key: (storage.read_key(key), storage.object_snapshot(key))
+                             for key in storage.list_prefix("")}
+                with patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                    replay = source.capture_gnis_antarctica(storage, version="replay", capture_directory=str(root))
+                self.assertEqual(replay["version"], candidate["version"])
+                body = (root / "gpkg_zip.body").read_bytes() + b" "
+                (root / "gpkg_zip.body").write_bytes(body)
+                receipt = json.loads((root / "gpkg_zip.receipt.json").read_bytes())
+                receipt.update(bytes=len(body), sha256=hashlib.sha256(body).hexdigest())
+                (root / "gpkg_zip.receipt.json").write_bytes(_canonical(receipt))
+                manifest = json.loads((root / "capture_manifest.json").read_bytes())
+                manifest["receipts"]["gpkg_zip"] = receipt
+                manifest["artifact_roster"] = source.capture_roster_digests(root, exclude={"capture_manifest.json"})
+                (root / "capture_manifest.json").write_bytes(_canonical(manifest))
+                with patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                    with self.assertRaisesRegex(ValueError, "retained_capture_wire_body_mismatch"):
+                        source.capture_gnis_antarctica(storage, version="forged", capture_directory=str(root))
+                self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key))
+                                  for key in storage.list_prefix("")}, originals)
+
+    def test_retained_roster_request_and_cached_parquet_integrity(self):
+        import tempfile
+        from pathlib import Path
+
+        gpkg = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
+        captures = _build_captures(gpkg)
+        with tempfile.TemporaryDirectory() as tmp, patch.multiple(source, **_pins()):
+            storage = source.StagingStorageResource(use_local=True, local_dir=tmp + "/stage", prefix="")
+            with patch.object(source.httpx, "Client", side_effect=_client_factory(captures)):
+                candidate = source.capture_gnis_antarctica(storage, version="custody", capture_directory=tmp + "/captures")
+            root = Path(candidate["capture_directory"])
+            (root / "extra.body").write_bytes(b"unbound")
+            with self.assertRaisesRegex(ValueError, "capture_roster_mismatch"):
+                source._read_replay(root)
+            (root / "extra.body").unlink()
+            receipt_path, manifest_path = root / "gpkg_zip.receipt.json", root / "capture_manifest.json"
+            original_receipt, original_manifest = receipt_path.read_bytes(), manifest_path.read_bytes()
+            receipt = json.loads(original_receipt)
+            receipt.update(url=source.TEXT_URL, final_url=source.TEXT_URL)
+            receipt_path.write_bytes(_canonical(receipt))
+            manifest = json.loads(original_manifest)
+            manifest["receipts"]["gpkg_zip"] = receipt
+            manifest["artifact_roster"] = source.capture_roster_digests(root, exclude={"capture_manifest.json"})
+            manifest_path.write_bytes(_canonical(manifest))
+            with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
+                source._read_replay(root)
+            receipt_path.write_bytes(original_receipt)
+            manifest_path.write_bytes(original_manifest)
+            with patch.object(source, "MAX_CAPTURE_BYTES", 1):
+                with self.assertRaisesRegex(ValueError, "retained_capture_budget_invalid"):
+                    source._read_replay(root)
+            parquet = candidate["candidate_ready"].replace("metadata/candidate_ready.json", "geoparquet/antarctica.parquet")
+            storage.write_key(parquet, b"corrupt parquet")
+            originals = {key: (storage.read_key(key), storage.object_snapshot(key))
+                         for key in storage.list_prefix("")}
+            with patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                with self.assertRaisesRegex(ValueError, "cached_candidate_object_integrity_failed"):
+                    source.capture_gnis_antarctica(storage, version="corrupt", capture_directory=str(root))
+            self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key))
+                              for key in storage.list_prefix("")}, originals)
+
     def test_streamed_list_sha_matches_canonical_digest(self):
         items = [[1, "a"], [2, "b"], [3, None]]
         self.assertEqual(source._list_sha(items), source._sha(_canonical(items)))
@@ -308,29 +414,12 @@ class GnisAntarcticaSourceTests(unittest.TestCase):
         captures = _build_captures(gpkg_body)
         bodies = {name: body for name, (body, _) in captures.items()}
 
-        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
-            body = bodies[name]
-            receipt = _receipt(name, body)
-            (Path(capture_root) / f"{name}.body").write_bytes(body)
-            (Path(capture_root) / f"{name}.wire").write_bytes(body)
-            (Path(capture_root) / f"{name}.receipt.json").write_bytes(
-                source._canonical(receipt) + b"\n")
-            return body, receipt
-
-        class EmptyClient:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return False
-
         with tempfile.TemporaryDirectory(prefix="gnis-antarctica-e2e-") as temporary:
             root = Path(temporary)
             storage = source.StagingStorageResource(use_local=True,
                                                    local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins()), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.httpx, "Client", side_effect=lambda *a, **k: EmptyClient()):
+                 patch.object(source.httpx, "Client", side_effect=_client_factory(captures)):
                 candidate = source.capture_gnis_antarctica(storage, version="vfixture",
                                                            capture_directory=str(root / "captures"))
                 self.assertEqual(candidate["feature_count"], 3)
@@ -347,10 +436,22 @@ class GnisAntarcticaSourceTests(unittest.TestCase):
                 self.assertIn(f"{prefix}/metadata/source_manifest.json", staged)
                 self.assertIn(f"{prefix}/metadata/source_audit.json", staged)
                 self.assertIn(f"{prefix}/metadata/candidate_ready.json", staged)
-                reused = source.capture_gnis_antarctica(storage, version="vfixture",
-                                                       capture_directory=str(root / "captures"))
+                originals = {key: (storage.read_key(key), storage.object_snapshot(key))
+                             for key in storage.list_prefix("")}
+                capture_root = Path(candidate["capture_directory"])
+                retained_manifest = (capture_root / "capture_manifest.json").read_bytes()
+                with patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                    reused = source.capture_gnis_antarctica(storage, version="vfixture",
+                                                           capture_directory=str(capture_root))
                 self.assertTrue(reused["reused"])
                 self.assertEqual(reused["version"], candidate["version"])
+                refresh = source.capture_gnis_antarctica(storage, version="refresh", capture_directory=str(root / "captures"))
+                self.assertTrue(refresh["reused"])
+                self.assertEqual(refresh["version"], candidate["version"])
+                self.assertNotEqual(refresh["capture_directory"], candidate["capture_directory"])
+                self.assertEqual((capture_root / "capture_manifest.json").read_bytes(), retained_manifest)
+                self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key))
+                                  for key in storage.list_prefix("")}, originals)
 
     def test_parquet_preserves_native_point_z_and_source_values(self):
         gpkg_body = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
@@ -401,7 +502,7 @@ class GnisAntarcticaSourceTests(unittest.TestCase):
         mutated = connection.serialize()
         connection.close()
         with patch.multiple(source, **_pins()):
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
+            with self.assertRaisesRegex(ValueError, "text_field_drift"):
                 source._validate_captures(_build_captures(mutated))
 
     def test_geometry_attribute_delta_drift_is_rejected(self):
@@ -445,7 +546,7 @@ class GnisAntarcticaSourceTests(unittest.TestCase):
         mutated = connection.serialize()
         connection.close()
         with patch.multiple(source, **_pins()):
-            with self.assertRaisesRegex(ValueError, "source_count_drift"):
+            with self.assertRaisesRegex(ValueError, "source_allnames_roster_drift"):
                 source._validate_captures(_build_captures(mutated))
 
     def test_duplicate_variant_row_is_rejected(self):
@@ -462,13 +563,13 @@ class GnisAntarcticaSourceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_allnames_roster_drift"):
                 source._validate_captures(_build_captures(gpkg_body, allnames_rows=reduced))
 
-    def test_variant_multiplicity_pin_detects_id_roster_drift(self):
+    def test_cross_format_variant_multiplicity_drift_is_rejected(self):
         gpkg_body = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
-        pins = _pins()
-        pins["EXPECTED_ALLNAMES_ID_SHA256"] = "0" * 64
-        with patch.multiple(source, **pins):
-            with self.assertRaisesRegex(ValueError, "source_allnames_id_roster_drift"):
-                source._validate_captures(_build_captures(gpkg_body))
+        text_rows = _allnames_text_rows(ALLNAMES_ROWS)
+        text_rows[1][0] = 2814091
+        with patch.multiple(source, **_pins()):
+            with self.assertRaisesRegex(ValueError, "text_allnames_field_drift"):
+                source._validate_captures(_build_captures(gpkg_body, allnames_text_rows=text_rows))
 
     def test_text_cross_format_drift_is_rejected(self):
         gpkg_body = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
@@ -521,7 +622,7 @@ class GnisAntarcticaSourceTests(unittest.TestCase):
 
     def test_fgdc_publication_date_drift_is_rejected(self):
         gpkg_body = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
-        captures = _build_captures(gpkg_body, pubdate="20261101")
+        captures = _build_captures(gpkg_body, pubdate="20260230")
         with patch.multiple(source, **_pins()):
             with self.assertRaisesRegex(ValueError, "gpkg_publication_date_drift"):
                 source._validate_captures(captures)
@@ -620,11 +721,13 @@ class GnisAntarcticaSourceTests(unittest.TestCase):
 
 class GnisAntarcticaRegistrationTests(unittest.TestCase):
     def test_registered_job_check_and_stopped_schedule(self):
-        from dagster import DefaultScheduleStatus
+        from dagster import AssetCheckSeverity, DefaultScheduleStatus
+        from dagster_hifld.capture_completeness import approved_baseline_drift
         from dagster_hifld.assets.gnis_antarctica import (
             gnis_antarctica_draft_schedule,
             usgs_gnis_antarctica,
             usgs_gnis_antarctica_complete,
+            usgs_gnis_antarctica_baseline_drift,
         )
         from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
         from dagster_hifld.definitions import defs
@@ -636,6 +739,22 @@ class GnisAntarcticaRegistrationTests(unittest.TestCase):
         self.assertTrue(set(usgs_gnis_antarctica_complete.check_keys)
                         <= defs.resolve_asset_graph().asset_check_keys)
         self.assertTrue(next(iter(usgs_gnis_antarctica_complete.check_specs)).blocking)
+        candidate = {"dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+                     "feature_count": 4, "variant_name_count": 6, "source_id_sha256": "new",
+                     "source_population_complete": True, "cross_format_verified": True,
+                     "candidate_ready": "fixture/metadata/candidate_ready.json"}
+        self.assertTrue(usgs_gnis_antarctica_complete(candidate).passed)
+        self.assertFalse(usgs_gnis_antarctica_complete({**candidate, "cross_format_verified": False}).passed)
+        self.assertFalse(next(iter(usgs_gnis_antarctica_baseline_drift.check_specs)).blocking)
+        skipped = usgs_gnis_antarctica_baseline_drift(candidate)
+        self.assertEqual(skipped.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(skipped.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+        reference = {**candidate, "version": "approved-fixture", "release_accepted": True,
+                     "feature_count": 3, "source_id_sha256": "old"}
+        compared = approved_baseline_drift(candidate, reference)
+        self.assertFalse(compared.passed)
+        self.assertEqual(compared.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(compared.metadata["feature_count_delta"].value, 1)
         schedule = repo.get_schedule_def("gnis_antarctica_draft_refresh_schedule")
         self.assertEqual(schedule.default_status, DefaultScheduleStatus.STOPPED)
         self.assertEqual(schedule.execution_timezone, "America/New_York")

@@ -2,11 +2,11 @@
 from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+from dagster_hifld.download import build_version_id
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.gnis_antarctica import (
     DATASET_SLUG,
-    EXPECTED_ALLNAMES_COUNT,
-    EXPECTED_COUNT,
     FILE_SLUG,
     capture_gnis_antarctica,
 )
@@ -31,7 +31,7 @@ def usgs_gnis_antarctica(context, config: GnisAntarcticaConfig,
                          staging_storage: StagingStorageResource) -> dict:
     result = capture_gnis_antarctica(
         staging_storage,
-        version="v20261102",
+        version=build_version_id(context),
         capture_directory=config.capture_directory or None,
     )
     context.instance.add_dynamic_partitions(
@@ -44,15 +44,15 @@ def usgs_gnis_antarctica(context, config: GnisAntarcticaConfig,
 
 @asset_check(asset=usgs_gnis_antarctica, blocking=True)
 def usgs_gnis_antarctica_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT
-              and candidate.get("variant_name_count") == EXPECTED_ALLNAMES_COUNT
+    passed = (candidate.get("source_population_complete") is True
+              and candidate.get("cross_format_verified") is True
               and candidate.get("candidate_ready") is not None)
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
             "source_variant_name_count": candidate.get("variant_name_count", 0),
-            "cross_format_verified": True,
+            "cross_format_verified": candidate.get("cross_format_verified", False),
             "source_release_accepted": False,
             "source_freshness_accepted": False,
             "schema_contract_accepted": False,
@@ -77,6 +77,8 @@ gnis_antarctica_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [usgs_gnis_antarctica]
-ASSET_CHECKS = [usgs_gnis_antarctica_complete]
+usgs_gnis_antarctica_baseline_drift = register_approved_baseline_drift(
+    usgs_gnis_antarctica, "usgs_gnis_antarctica_baseline_drift")
+ASSET_CHECKS = [usgs_gnis_antarctica_complete, usgs_gnis_antarctica_baseline_drift]
 JOBS = [gnis_antarctica_draft_job]
 SCHEDULES = [gnis_antarctica_draft_schedule]
