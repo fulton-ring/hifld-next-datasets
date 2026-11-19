@@ -794,13 +794,16 @@ def _construct_school_capture(
 def _school_release_from_receipt(receipt: dict, archive: bytes) -> census_latest.GeodatabaseRelease:
     if not isinstance(receipt, dict):
         raise ValueError("retained_capture_receipt_invalid")
-    if receipt.get("raw_sha256") != _sha256(archive) or receipt.get("wire_bytes_retained") != len(archive):
+    size = len(archive)
+    if not 0 < size <= MAX_ARCHIVE_BYTES:
+        raise ValueError("retained_capture_archive_receipt_mismatch")
+    digest = _sha256(archive)
+    if receipt.get("raw_sha256") != digest or receipt.get("wire_bytes_retained") != size:
         raise ValueError("retained_capture_archive_receipt_mismatch")
     url = receipt.get("requested_url")
     if "url" in receipt and receipt["url"] != url:
         raise ValueError("retained_capture_release_mismatch")
     release = census_latest.geodatabase_release_from_receipt({**receipt, "url": url}, "school")
-    size = len(archive)
     if (receipt.get("method") != "GET" or receipt.get("status") != 200
             or receipt.get("final_url") != release.source_url
             or receipt.get("final_host") != "www2.census.gov"
@@ -809,11 +812,9 @@ def _school_release_from_receipt(receipt: dict, archive: bytes) -> census_latest
             or receipt.get("transfer_complete") is not True
             or receipt.get("transfer_error_code") is not None
             or receipt.get("raw_archive_key") != "raw/" + release.source_file
-            or receipt.get("raw_sha256") != _sha256(archive)
-            or receipt.get("wire_sha256") != _sha256(archive)
+            or receipt.get("wire_sha256") != digest
             or any(receipt.get(name) != size for name in (
-                "wire_bytes_received", "wire_bytes_retained", "decoded_bytes_produced"))
-            or not 0 < size <= MAX_ARCHIVE_BYTES):
+                "wire_bytes_received", "decoded_bytes_produced"))):
         raise ValueError("retained_capture_archive_receipt_mismatch")
     if receipt.get("content_length_header") is not None and receipt["content_length_header"] != size:
         raise ValueError("retained_capture_archive_receipt_mismatch")
@@ -832,7 +833,8 @@ def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *
             staging, version, config, client, retained_archive=retained_archive,
             retained_receipt=retained_receipt, retained_receipt_bytes=retained_receipt_bytes)
     if (not isinstance(staging, StagingStorageResource) or isinstance(staging, PublishedStorageResource)
-            or not staging.use_local or staging.bucket):
+            or not staging.use_local or staging.bucket or not staging.local_dir
+            or Path(staging.prefix).is_absolute()):
         raise ValueError("school_current_capture_requires_isolated_local_staging")
     replayed = retained_archive is not None
     owned = client is None and not replayed
@@ -880,6 +882,8 @@ def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *
             state_root = f"_construction-state/{config.dataset_slug}/{version}"
             state_key = state_root + "/bundle.json"
             fingerprint = _sha256(_json_bytes(identity))
+            candidate_storage = staging.model_copy(update={
+                "local_dir": str(Path(staging.local_dir) / staging.prefix), "prefix": ""})
             observation = f"_capture-observations/{config.dataset_slug}/{_sha256(receipt_bytes)}"
             write_immutable(staging, observation + "/source_archive.receipt.json", receipt_bytes)
             for path in sorted((root / "discovery").rglob("*")):
@@ -897,18 +901,16 @@ def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *
                 fcntl.flock(lock, fcntl.LOCK_EX)
                 reused = bool(staging.list_prefix(target) or staging.list_prefix(state_root))
                 if reused:
-                    original = json.loads(load_first_construction(staging, state_key, version, fingerprint))
+                    original = json.loads(load_first_construction(candidate_storage, state_key, version, fingerprint))
                     objects = original["payload"]["objects"]
                 else:
-                    seal_ready_candidate(staging, state_key, version, fingerprint, {
+                    seal_ready_candidate(candidate_storage, state_key, version, fingerprint, {
                         "processing_identity": identity, "source_record_sha256": result["records_sha256"],
                         "source_schema_sha256": schema_sha, "capture_receipts": {}, "objects": objects})
                     for name in objects:
                         write_immutable(staging, target + "/" + name, private.read_key(prefix + "/" + name))
-                verification_storage = staging.model_copy(update={
-                    "local_dir": str(Path(staging.local_dir) / staging.prefix), "prefix": ""})
                 verify_cached_candidate(
-                    verification_storage, Path(__file__).parents[3], state_key, target, version, fingerprint,
+                    candidate_storage, Path(__file__).parents[3], state_key, target, version, fingerprint,
                     identity, result["records_sha256"], schema_sha, objects, {})
                 return {**result, "version": version, "reused": reused}
         except Exception as exc:

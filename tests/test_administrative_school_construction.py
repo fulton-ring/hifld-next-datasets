@@ -7,6 +7,7 @@ import json
 import tempfile
 import unittest
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -122,6 +123,10 @@ class AdministrativeSchoolConstructionTests(unittest.TestCase):
         self.assertEqual(report["capture_replay"], {
             "mode": "retained_transfer_replay", "new_network_retrieval_performed": False,
             "original_retrieved_at": json.loads(receipt)["observed_at"]})
+        with patch.object(source._shared.httpx, "Client", side_effect=AssertionError("replay used HTTP")):
+            reused = source.replay_retained_capture(cold, first["version"], self.archive, receipt)
+        self.assertTrue(reused["reused"])
+        self.assertEqual(snapshot(target), after)
 
     def test_each_native_runtime_identity_change_gets_a_distinct_candidate(self):
         first, target, before, receipt = self.first_capture()
@@ -218,6 +223,46 @@ class AdministrativeSchoolConstructionTests(unittest.TestCase):
         evidence = snapshot(self.root / "stage" / "_quarantine")
         self.assertTrue(any(name.endswith("annual-listing.body") for name in evidence))
         self.assertIn(b"not-a-file-geodatabase", evidence.values())
+        self.assertFalse((self.root / "stage" / source.DATASET_SLUG).exists())
+
+    def test_partial_live_transfer_preserves_actual_wire_and_failed_receipt(self):
+        class Interrupted(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b"partial-school-archive"
+                raise httpx.ReadError("fixture stream interrupted")
+
+        def respond(request):
+            stream = Interrupted() if str(request.url) == URL else httpx.ByteStream(
+                self.responses[str(request.url)])
+            return httpx.Response(200, stream=stream, headers={"Content-Type": "application/zip"})
+
+        with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            with self.assertRaisesRegex(ValueError, "source_archive_transfer_drift"):
+                source.capture(self.storage, client=client)
+        evidence = snapshot(self.root / "stage" / "_quarantine")
+        self.assertIn(b"partial-school-archive", evidence.values())
+        receipts = [json.loads(body) for name, body in evidence.items()
+                    if name.endswith("source_archive.receipt.json")]
+        self.assertEqual(len(receipts), 1)
+        self.assertFalse(receipts[0]["transfer_complete"])
+        self.assertEqual(receipts[0]["wire_sha256"], source._sha256(b"partial-school-archive"))
+        self.assertFalse((self.root / "stage" / source.DATASET_SLUG).exists())
+
+    def test_published_directory_without_school_archive_has_no_fallback(self):
+        self.responses[DIRECTORY] = b'<a href="another-product.gdb.zip">other</a>'
+        with self.assertRaisesRegex(ValueError, "published_geodatabase_missing_or_ambiguous"):
+            source.capture(self.storage, client=self.client)
+        self.assertEqual(self.requests, [ROOT, DIRECTORY])
+        evidence = snapshot(self.root / "stage" / "_quarantine")
+        self.assertTrue(any(name.endswith("annual-listing.body") for name in evidence))
+        self.assertFalse((self.root / "stage" / source.DATASET_SLUG).exists())
+
+    def test_native_population_outside_the_guard_is_quarantined(self):
+        with patch.object(source, "CONFIG", replace(source.CONFIG, feature_count_range=(3, 1_000))):
+            with self.assertRaisesRegex(ValueError, "source_layer_population_or_geometry_drift"):
+                source.capture(self.storage, client=self.client)
+        evidence = snapshot(self.root / "stage" / "_quarantine")
+        self.assertIn(self.archive, evidence.values())
         self.assertFalse((self.root / "stage" / source.DATASET_SLUG).exists())
 
     def test_asset_registers_the_resolved_candidate_version(self):
