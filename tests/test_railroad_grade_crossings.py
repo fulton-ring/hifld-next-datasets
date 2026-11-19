@@ -209,18 +209,14 @@ def _fixture():
 
 def _pins(features, schema, geom, counts, bounds):
     null_count, invalid_count = counts
-    return dict(EXPECTED_COUNT=6, PAGE_START_RECORDS=2,
+    return dict(PAGE_START_RECORDS=2,
                 EXPECTED_NULL_GEOMETRY_COUNT=null_count,
                 EXPECTED_INVALID_GEOMETRY_COUNT=invalid_count,
                 EXPECTED_CROSSINGID_NULL_COUNT=0, EXPECTED_CROSSINGID_DUPLICATE_COUNT=0,
-                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14, 15])).hexdigest(),
-                EXPECTED_RECORD_SHA256=source._list_sha(sorted(features, key=lambda row: row["attributes"]["OBJECTID"])),
-                EXPECTED_GEOMETRY_SHA256=source._list_sha(geom),
                 EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
                 EXPECTED_SERVICE_LAYER_ROSTER=[(0, "Railroad Grade Crossings", "Feature Layer")],
                 EXPECTED_LAYER_EXTENT={"xmin": -150.1233369997574, "ymin": 0.0, "xmax": 0.0,
-                                       "ymax": 64.91895099993351},
-                EXPECTED_OBSERVED_BOUNDS=bounds)
+                                       "ymax": 64.91895099993351})
 
 
 def _page_features(captures):
@@ -440,23 +436,27 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_page_unexpected_exceeded_transfer_limit"):
                 source._validate_captures(captures)
 
-    def test_record_value_change_is_detected(self):
+    def test_record_value_change_is_accepted(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
         page = json.loads(captures["page_000000_00002"][0])
         page["features"][0]["attributes"]["STATENAME"] = "XX"
         _replace(captures, "page_000000_00002", page)
+        features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                source._validate_captures(captures)
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(extracted["features"][0]["attributes"]["STATENAME"], "XX")
 
-    def test_geometry_change_is_detected(self):
+    def test_geometry_change_is_accepted(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
         page = json.loads(captures["page_000004_00002"][0])
         page["features"][1]["geometry"]["x"] = -120.5
         _replace(captures, "page_000004_00002", page)
+        features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                source._validate_captures(captures)
+            _, _, extracted = source._validate_captures(captures)
+        changed = next(row for row in extracted["features"]
+                       if row["attributes"]["OBJECTID"] == 15)
+        self.assertEqual(changed["geometry"]["x"], -120.5)
 
     def test_coordinate_range_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
@@ -468,14 +468,15 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_coordinate_range_drift"):
                 source._validate_captures(captures)
 
-    def test_zero_zero_relocation_row_is_coverage_pinned_not_repaired(self):
+    def test_zero_zero_relocation_row_is_preserved_not_repaired(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
-        pins = _pins(_page_features(captures), schema, geom, counts, bounds)
-        pins["EXPECTED_OBSERVED_BOUNDS"] = {"xmin": -150.1233369997574, "ymin": 31.2,
-                                            "xmax": -88.24450490024674, "ymax": 64.91895099993351}
-        with patch.multiple(source, **pins):
-            with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
-                source._validate_captures(captures)
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            _, _, extracted = source._validate_captures(captures)
+        by_oid = {row["attributes"]["OBJECTID"]: row for row in extracted["features"]}
+        self.assertEqual(by_oid[12]["geometry"], {"x": 0.0, "y": 0.0})
+        self.assertEqual(by_oid[12]["attributes"]["LATITUDE"], 0.0)
+        self.assertIsNone(by_oid[12]["attributes"]["LATDD"])
 
     def test_non_numeric_point_geometry_fails_closed(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
@@ -517,14 +518,6 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_feature_id_duplicate_drift"):
                 source._validate_captures(captures)
 
-    def test_observed_coverage_drift_is_detected(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        pins = _pins(_page_features(captures), schema, geom, counts, bounds)
-        pins["EXPECTED_OBSERVED_BOUNDS"] = {"xmin": -160.0, "ymin": 14.0, "xmax": -119.5, "ymax": 34.42}
-        with patch.multiple(source, **pins):
-            with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
-                source._validate_captures(captures)
-
     def test_count_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
         count = json.loads(captures["count_after"][0])
@@ -532,8 +525,37 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         _replace(captures, "count_after", count)
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_count_drift"):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                 source._validate_captures(captures)
+
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        added_attributes = _attributes(10)
+        added_attributes["OBJECTID"] = 16
+        added_attributes["CrossingID"] = "999999Z"
+        added = {"attributes": added_attributes, "geometry": {"x": -100.0, "y": 40.0}}
+        ids = [10, 11, 12, 13, 14, 15, 16]
+        for name in ("ids_seed", "ids_before", "ids_after"):
+            doc = json.loads(captures[name][0]); doc["objectIds"] = ids
+            _replace(captures, name, doc)
+        for name in ("count_before", "count_after"):
+            doc = json.loads(captures[name][0]); doc["count"] = 7
+            _replace(captures, name, doc)
+        page = {"features": [added], "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
+        _replace(captures, "page_000006_00001", page)
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(len(extracted["features"]), 7)
+        from dagster_hifld.assets.railroad_grade_crossings import (
+            fra_railroad_grade_crossings_approved_baseline_drift,
+        )
+        candidate = {"dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+                     "feature_count": 7, "source_id_sha256": source._sha(source._canonical(ids)),
+                     "release_accepted": False}
+        drift = fra_railroad_grade_crossings_approved_baseline_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
 
     def test_id_roster_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
@@ -542,7 +564,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         _replace(captures, "ids_after", ids)
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                 source._validate_captures(captures)
 
     def test_seed_roster_mismatch_is_rejected(self):

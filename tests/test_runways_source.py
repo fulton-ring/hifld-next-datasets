@@ -153,19 +153,15 @@ def _fixture():
 
 def _pins(features, schema, geom, counts, bounds):
     null_count, empty_count, invalid_count = counts
-    return dict(EXPECTED_COUNT=6, PAGE_START_RECORDS=2,
+    return dict(PAGE_START_RECORDS=2,
                 EXPECTED_NULL_GEOMETRY_COUNT=null_count,
                 EXPECTED_EMPTY_GEOMETRY_COUNT=empty_count,
                 EXPECTED_INVALID_GEOMETRY_COUNT=invalid_count,
                 EXPECTED_GLOBAL_ID_NULL_COUNT=0, EXPECTED_GLOBAL_ID_DUPLICATE_COUNT=0,
-                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14, 15])).hexdigest(),
-                EXPECTED_RECORD_SHA256=source._list_sha(sorted(features, key=lambda row: row["attributes"]["OBJECTID"])),
-                EXPECTED_GEOMETRY_SHA256=source._list_sha(geom),
                 EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
                 EXPECTED_SERVICE_LAYER_ROSTER=[(0, "Runways", "Feature Layer")],
                 EXPECTED_LAYER_EXTENT={"xmin": -177.39266815799996, "ymin": -14.340687855999931,
-                                       "xmax": 174.13517812600003, "ymax": 76.53588492300008},
-                EXPECTED_OBSERVED_BOUNDS=bounds)
+                                       "xmax": 174.13517812600003, "ymax": 76.53588492300008})
 
 
 def _page_features(captures):
@@ -379,23 +375,25 @@ class RunwaysTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_page_unexpected_exceeded_transfer_limit"):
                 source._validate_captures(captures)
 
-    def test_record_value_change_is_detected(self):
+    def test_record_value_change_is_accepted(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
         page = json.loads(captures["page_000000_00002"][0])
         page["features"][0]["attributes"]["DIM_UOM"] = "METERS"
         captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                source._validate_captures(captures)
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(extracted["features"][0]["attributes"]["DIM_UOM"], "METERS")
 
-    def test_geometry_change_is_detected(self):
+    def test_geometry_change_is_accepted(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
         page = json.loads(captures["page_000000_00002"][0])
         page["features"][0]["geometry"]["rings"][0][1][0] = -159.75
         captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                source._validate_captures(captures)
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(extracted["features"][0]["geometry"]["rings"][0][1][0], -159.75)
 
     def test_coordinate_range_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
@@ -457,14 +455,6 @@ class RunwaysTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_feature_id_duplicate_drift"):
                 source._validate_captures(captures)
 
-    def test_observed_coverage_drift_is_detected(self):
-        _, features, captures, schema, geom, counts, bounds = _fixture()
-        pins = _pins(_page_features(captures), schema, geom, counts, bounds)
-        pins["EXPECTED_OBSERVED_BOUNDS"] = {"xmin": -160.0, "ymin": 14.0, "xmax": -119.0, "ymax": 34.6}
-        with patch.multiple(source, **pins):
-            with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
-                source._validate_captures(captures)
-
     def test_count_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
         count = json.loads(captures["count_after"][0])
@@ -472,8 +462,34 @@ class RunwaysTests(unittest.TestCase):
         captures["count_after"] = (json.dumps(count, separators=(",", ":")).encode(), {"status": 200})
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_count_drift"):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                 source._validate_captures(captures)
+
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        added = {"attributes": _attributes(16),
+                 "geometry": {"rings": [[[-160.0, 14.0], [-160.0, 14.5], [-159.5, 14.5],
+                                         [-159.5, 14.0], [-160.0, 14.0]]]}}
+        ids = [10, 11, 12, 13, 14, 15, 16]
+        for name in ("ids_seed", "ids_before", "ids_after"):
+            doc = json.loads(captures[name][0]); doc["objectIds"] = ids
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), {"status": 200})
+        for name in ("count_before", "count_after"):
+            doc = json.loads(captures[name][0]); doc["count"] = 7
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), {"status": 200})
+        page = {"features": [added], "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
+        captures["page_000006_00001"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(len(extracted["features"]), 7)
+        from dagster_hifld.assets.runways import faa_runways_approved_baseline_drift
+        candidate = {"dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+                     "feature_count": 7, "source_id_sha256": source._sha(source._canonical(ids)),
+                     "release_accepted": False}
+        drift = faa_runways_approved_baseline_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
 
     def test_id_roster_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
@@ -482,7 +498,7 @@ class RunwaysTests(unittest.TestCase):
         captures["ids_after"] = (json.dumps(ids, separators=(",", ":")).encode(), {"status": 200})
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
-            with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
                 source._validate_captures(captures)
 
     def test_seed_roster_mismatch_is_rejected(self):

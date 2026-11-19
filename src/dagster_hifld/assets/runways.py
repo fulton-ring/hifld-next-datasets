@@ -12,12 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.runways import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     EXPECTED_EMPTY_GEOMETRY_COUNT,
     EXPECTED_GLOBAL_ID_DUPLICATE_COUNT,
     EXPECTED_GLOBAL_ID_NULL_COUNT,
@@ -60,7 +60,10 @@ def faa_runways(context, config: RunwaysConfig, staging_storage: StagingStorageR
 
 @asset_check(asset=faa_runways, blocking=True)
 def faa_runways_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT
+    count = candidate.get("source_reported_count")
+    passed = (candidate.get("source_population_complete") is True
+              and type(count) is int and count > 0
+              and candidate.get("feature_count") == count
               and candidate.get("candidate_ready") is not None
               and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
               and candidate.get("source_empty_geometry_count") == EXPECTED_EMPTY_GEOMETRY_COUNT
@@ -69,6 +72,7 @@ def faa_runways_complete(candidate: dict) -> AssetCheckResult:
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": count if count is not None else "missing",
             "global_id_null_count": EXPECTED_GLOBAL_ID_NULL_COUNT,
             "global_id_duplicate_count": EXPECTED_GLOBAL_ID_DUPLICATE_COUNT,
             "source_release_accepted": False,
@@ -80,6 +84,10 @@ def faa_runways_complete(candidate: dict) -> AssetCheckResult:
             "release_accepted": False,
         },
     )
+
+
+faa_runways_approved_baseline_drift = register_approved_baseline_drift(
+    faa_runways, "faa_runways_approved_baseline_drift")
 
 
 faa_runways_draft_job = define_asset_job(
@@ -95,6 +103,6 @@ faa_runways_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [faa_runways]
-ASSET_CHECKS = [faa_runways_complete]
+ASSET_CHECKS = [faa_runways_complete, faa_runways_approved_baseline_drift]
 JOBS = [faa_runways_draft_job]
 SCHEDULES = [faa_runways_draft_schedule]
