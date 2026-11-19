@@ -780,6 +780,34 @@ class NativeLifecycleTests(unittest.TestCase):
                                    / "vlegacy/metadata/source_manifest.json").read_bytes())
             self.assertEqual(manifest["source_release"]["source_listing_sha256"], "")
 
+    def test_explicit_runtime_conflict_cannot_mark_prior_candidate_quarantined(self):
+        with self.captured() as (storage, site, client, release):
+            first = source.capture(storage, "vexplicit", client)
+            target = Path(storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / first["version"]
+            before = snapshot(target)
+            with patch.object(source.pyogrio, "__gdal_version_string__", "different-build"):
+                with self.assertRaisesRegex(ValueError, "immutable_staged_object_changed"):
+                    source.capture(storage, "vexplicit", client)
+            self.assertEqual(snapshot(target), before)
+            self.assertTrue(list((Path(storage.local_dir) / "_quarantine" / source.DATASET_SLUG).rglob("quarantine.json")))
+
+    def test_actual_receipt_discovery_drift_and_conflicting_url_fail_closed(self):
+        with self.captured() as (storage, site, client, release):
+            first = source.capture(storage, client=client)
+            target = Path(storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / first["version"]
+            before = snapshot(target)
+            receipt = json.loads((target / "raw/source_archive.receipt.json").read_bytes())
+            drifted = [
+                {**receipt, "url": release.source_url.replace("www2.census.gov", "mirror.example.net")},
+                {**receipt, "source_release": {**receipt["source_release"], "product": "nationgeo"}},
+                {**receipt, "source_release": {**receipt["source_release"], "listing_sha256": ""}},
+            ]
+            for changed in drifted:
+                with self.subTest(receipt=changed), self.assertRaisesRegex(ValueError, "retained_capture_release_mismatch"):
+                    source.replay_retained_capture(storage, first["version"], site[release.source_url],
+                                                    source._json_bytes(changed))
+                self.assertEqual(snapshot(target), before)
+
 
 class _RecordingStorage:
     def __init__(self) -> None:
