@@ -188,8 +188,8 @@ def _client(docs, features, *, bisect=False, torn=False, missing_row=False, gzip
                 rows = features[offset:offset + width]
                 if missing_row and offset == 0:
                     rows = rows[:-1]
-                body = _canonical({'features': rows, 'spatialReference': {'wkid': 4326},
-                    'exceededTransferLimit': offset + width < len(features)})
+                body = json.dumps({'features': rows, 'spatialReference': {'wkid': 4326},
+                    'exceededTransferLimit': offset + width < len(features)}, separators=(',', ':')).encode()
             return httpx.Response(200, headers={'Content-Encoding': 'gzip'},
                 stream=httpx.ByteStream(gzip.compress(body, mtime=gzip_mtime)))
         if 'returnIdsOnly' in query:
