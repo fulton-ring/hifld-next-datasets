@@ -300,6 +300,11 @@ class WbdWbdlineTests(unittest.TestCase):
                                      (min(roster), max(roster)))
                     self.assertTrue(wbd_wbdline_complete(result).passed)
                     prefix = Path(storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / result["version"]
+                    manifest = json.loads((prefix / "metadata/source_manifest.json").read_bytes())
+                    description = manifest["transformations"][0]["parameters"]["source_ids"]
+                    self.assertIn(f"{len(roster)} unique ascending native ids from {min(roster)} to {max(roster)}", description)
+                    self.assertNotIn("395,291", description)
+                    self.assertNotIn("409,308", description)
                     parquet = pq.read_table(prefix / "geoparquet" / (source.FILE_SLUG + ".parquet"))
                     self.assertEqual(parquet["objectid"].to_pylist(), list(roster))
                     self.assertEqual(parquet.column_names, [*source.FIELD_NAMES, "geometry"])
