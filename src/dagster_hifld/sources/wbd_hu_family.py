@@ -11,6 +11,15 @@ owns one parameterized implementation of those primitives and each level module
 stays a thin adapter that supplies its own layer identity, HUC code width,
 schema and baseline pins, page/capture budgets and evidence text.
 
+Population completeness follows the level adapter's spec: an adapter that
+pins ``expected_count`` (and the ID min/max range) is validated against those
+pins, while an adapter that passes ``expected_count=None`` gets completeness
+from the producer's own ``count_before``/``ids_before``/``count_after``/
+``ids_after`` witnesses — validated with
+``dagster_hifld.capture_completeness.validate_capture_witness`` — and page
+planning, the audit counts and the candidate result are derived from the
+observed roster instead of a count pinned in code.
+
 Two acquisition policies coexist deliberately:
 
 - The keyset window policy (``OBJECTID``-keyed ``where`` windows, refused
@@ -54,6 +63,7 @@ import pyproj
 from shapely import from_wkb, is_valid_reason
 from shapely.geometry import LinearRing, MultiPolygon
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
 from dagster_hifld.construction_state import load_first_construction
@@ -100,12 +110,12 @@ class WbdHuSpec:
     layer_id: int
     layer_name: str
     map_name: str
-    expected_count: int
-    expected_id_min: int
-    expected_id_max: int
+    expected_count: int | None
+    expected_id_min: int | None
+    expected_id_max: int | None
     expected_id_sha256: str
     page_size: int
-    page_count: int
+    page_count: int | None
     declared_max_record_count: int
     expected_extent: Mapping[str, float]
     expected_extent_tolerance: float
@@ -182,6 +192,18 @@ def page_url(spec: WbdHuSpec, last_objectid: int) -> str:
     return page_window_url(spec, last_objectid, spec.page_size)
 
 
+def page_count_for(spec: WbdHuSpec, roster: list[int]) -> int:
+    """The page slot count for one roster.
+
+    A pinned level keeps its pinned page count; an unpinned level derives the
+    plan from the observed roster length, so a complete upstream population
+    edit changes the plan without a code change.
+    """
+    if spec.page_count is not None:
+        return spec.page_count
+    return (len(roster) + spec.page_size - 1) // spec.page_size
+
+
 def capture_roster(spec: WbdHuSpec, roster: list[int]) -> list[tuple[str, str]]:
     """Exact GET URL bound to every capture slot; page slots are derived from
     the sorted roster so a replay can re-derive each request without extra
@@ -191,7 +213,7 @@ def capture_roster(spec: WbdHuSpec, roster: list[int]) -> list[tuple[str, str]]:
             ("layer_before", spec.layer_url + "?f=pjson"),
             ("count_before", count_url(spec)), ("ids_before", ids_url(spec))]
     last = 0
-    for index in range(spec.page_count):
+    for index in range(page_count_for(spec, roster)):
         record_count = min(spec.page_size, len(roster) - index * spec.page_size)
         urls.append((f"page_{index:04d}", page_window_url(spec, last, record_count)))
         end = (index + 1) * spec.page_size
@@ -332,18 +354,32 @@ def capture_page_window(spec: WbdHuSpec, client: httpx.Client, roster: list[int]
     return parts, refusals
 
 
-def is_page_part_name(spec: WbdHuSpec, name: str) -> bool:
+def _effective_page_count(spec: WbdHuSpec, page_count: int | None) -> int:
+    """The page slot count for a name check.
+
+    Pinned levels default to their pinned count; unpinned levels always pass
+    the count derived from the observed roster.
+    """
+    if page_count is not None:
+        return page_count
+    if spec.page_count is None:
+        raise ValueError("unpinned_level_page_count_required")
+    return spec.page_count
+
+
+def is_page_part_name(spec: WbdHuSpec, name: str, *, page_count: int | None = None) -> bool:
     """True for a nominal page name or a bisected a/b part name of one page."""
     if (not name.startswith("page_") or len(name) < 9 or not name[5:9].isdigit()
-            or int(name[5:9]) >= spec.page_count):
+            or int(name[5:9]) >= _effective_page_count(spec, page_count)):
         return False
     suffix = name[9:]
     return not suffix or set(suffix) <= {"a", "b"}
 
 
-def is_attrs_part_name(spec: WbdHuSpec, name: str) -> bool:
+def is_attrs_part_name(spec: WbdHuSpec, name: str, *, page_count: int | None = None) -> bool:
     """True for a refused single's attributes-only part (``..._attrs``)."""
-    return name.endswith("_attrs") and is_page_part_name(spec, name[:-len("_attrs")])
+    return name.endswith("_attrs") and is_page_part_name(
+        spec, name[:-len("_attrs")], page_count=page_count)
 
 
 def validate_spatial_reference(value: object, label: str, *, required: bool = True,
@@ -463,10 +499,14 @@ def validate_roster_document(spec: WbdHuSpec, document: object, label: str) -> l
     if not isinstance(document, dict) or document.get("objectIdFieldName") != spec.oid_field_name:
         raise ValueError("source_object_id_field_drift:" + label)
     ids = document.get("objectIds")
-    if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-            or len(ids) != spec.expected_count or len(set(ids)) != spec.expected_count
-            or ids != sorted(ids) or min(ids) != spec.expected_id_min
-            or max(ids) != spec.expected_id_max):
+    if (not isinstance(ids, list) or any(type(oid) is not int or oid <= 0 for oid in ids)
+            or len(set(ids)) != len(ids) or ids != sorted(ids)):
+        raise ValueError("source_id_population_drift:" + label)
+    if spec.expected_count is None:
+        if not ids:
+            raise ValueError("source_id_population_drift:" + label)
+    elif (len(ids) != spec.expected_count
+          or min(ids) != spec.expected_id_min or max(ids) != spec.expected_id_max):
         raise ValueError("source_id_population_drift:" + label)
     if spec.expected_id_sha256 and _sha(_canonical(ids)) != spec.expected_id_sha256:
         raise ValueError("source_id_roster_baseline_drift:" + label)
@@ -477,7 +517,9 @@ def validate_count(spec: WbdHuSpec, document: object, label: str) -> int:
     if not isinstance(document, dict):
         raise ValueError("source_count_population_drift:" + label)
     count = document.get("count")
-    if type(count) is not int or count != spec.expected_count:
+    if type(count) is not int or count < 0:
+        raise ValueError("source_count_population_drift:" + label)
+    if spec.expected_count is not None and count != spec.expected_count:
         raise ValueError("source_count_population_drift:" + label)
     return count
 
@@ -679,12 +721,17 @@ def validate_stream(spec: WbdHuSpec, root: Path, *, parquet_sink: Path | None,
     if json.loads(docs["service_after"]) != json.loads(docs["service_before"]) \
             or json.loads(docs["layer_after"]) != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
-    validate_count(spec, json.loads(docs["count_before"]), "before")
-    validate_count(spec, json.loads(docs["count_after"]), "after")
+    count_before = validate_count(spec, json.loads(docs["count_before"]), "before")
+    count_after = validate_count(spec, json.loads(docs["count_after"]), "after")
     roster = validate_roster_document(spec, json.loads(docs["ids_before"]), "before")
     roster_after = validate_roster_document(spec, json.loads(docs["ids_after"]), "after")
     if roster != roster_after:
         raise ValueError("source_id_roster_changed_during_capture")
+    if spec.expected_count is None:
+        # Unpinned level: the producer's own before/after count and ID
+        # witnesses carry completeness. A complete upstream population edit
+        # passes; a torn, duplicated or inconsistent capture is refused.
+        validate_capture_witness(count_before, roster, count_after, roster_after)
     expected_urls = dict(capture_roster(spec, roster))
     for name in METADATA_NAMES:
         validate_capture_request_identity(name, receipts[name], expected_urls[name])
@@ -713,8 +760,9 @@ def validate_stream(spec: WbdHuSpec, root: Path, *, parquet_sink: Path | None,
     last_objectid = 0
     names = tuple(field["name"] for field in spec.attribute_fields)
     geometry_types_seen: set[str] = set()
+    page_count = page_count_for(spec, roster)
     try:
-        for index in range(spec.page_count):
+        for index in range(page_count):
             name = f"page_{index:04d}"
             expected_page_ids = roster[index * spec.page_size:(index + 1) * spec.page_size]
             part_slices = _stream_page_plan(spec, page_parts, name, expected_page_ids)
@@ -732,7 +780,7 @@ def validate_stream(spec: WbdHuSpec, root: Path, *, parquet_sink: Path | None,
                 exceeded = page.get("exceededTransferLimit")
                 if exceeded is not None and type(exceeded) is not bool:
                     raise ValueError("source_page_transfer_flag_drift:" + part_name)
-                if (not attrs_part and exceeded is True and index == spec.page_count - 1
+                if (not attrs_part and exceeded is True and index == page_count - 1
                         and part_no == len(part_slices) - 1):
                     raise ValueError("source_page_transfer_limit_on_final_page:" + part_name)
                 if (not attrs_part and len(part_slices) == 1 and exceeded is True
@@ -913,10 +961,15 @@ def validate_stream(spec: WbdHuSpec, root: Path, *, parquet_sink: Path | None,
                 and tuple(sorted(refused_geometry_oids))
                 != tuple(spec.expected_refused_geometry_oids)):
             raise ValueError("source_refused_geometry_oids_drift")
-        audit = {
-            "source_feature_count": spec.expected_count,
-            "source_id_sha256": ids_sha, "source_id_min": spec.expected_id_min,
-            "source_id_max": spec.expected_id_max,
+        if spec.expected_count is None:
+            audit_counts = {"source_feature_count": len(roster),
+                            "source_id_min": roster[0], "source_id_max": roster[-1]}
+        else:
+            audit_counts = {"source_feature_count": spec.expected_count,
+                            "source_id_min": spec.expected_id_min,
+                            "source_id_max": spec.expected_id_max}
+        audit = {**audit_counts,
+            "source_id_sha256": ids_sha,
             "source_schema_sha256": _sha(_canonical(layer["fields"])),
             "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
             "baseline_digest_scheme": spec.baseline_digest_scheme,
@@ -956,19 +1009,22 @@ def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) 
     return _sha(_canonical(_capture_identity(captures, root)))
 
 
-def _validate_manifest_page_parts(spec: WbdHuSpec, page_parts: object) -> dict:
+def _validate_manifest_page_parts(spec: WbdHuSpec, page_parts: object,
+                                  *, page_count: int) -> dict:
     if not isinstance(page_parts, dict):
         raise ValueError("retained_capture_page_parts_invalid")
     for page, parts in page_parts.items():
         if spec.parts_policy == PARTS_POLICY_SINGLE_OR_AB:
-            if page not in {f"page_{index:04d}" for index in range(spec.page_count)} \
+            if page not in {f"page_{index:04d}" for index in range(page_count)} \
                     or not isinstance(parts, list) \
                     or (parts != [page] and parts != [page + "a", page + "b"]):
                 raise ValueError("retained_capture_page_parts_invalid")
         else:
-            if (not is_page_part_name(spec, page) or not isinstance(parts, list) or not parts
+            if (not is_page_part_name(spec, page, page_count=page_count)
+                    or not isinstance(parts, list) or not parts
                     or len(set(parts)) != len(parts)
-                    or not all((is_page_part_name(spec, part) or is_attrs_part_name(spec, part))
+                    or not all((is_page_part_name(spec, part, page_count=page_count)
+                                or is_attrs_part_name(spec, part, page_count=page_count))
                                and part.startswith(page) for part in parts)):
                 raise ValueError("retained_capture_page_parts_invalid")
     return page_parts
@@ -988,11 +1044,15 @@ def read_replay(spec: WbdHuSpec, root: Path) -> tuple[dict[str, tuple[bytes, dic
     manifest = json.loads(manifest_path.read_bytes())
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
         raise ValueError("retained_capture_manifest_invalid")
-    page_parts = _validate_manifest_page_parts(spec, manifest.get("page_parts") or {})
+    ids = validate_roster_document(spec, json.loads(_load_capture(root, "ids_before")[0]),
+                                   "replay")
+    page_count = page_count_for(spec, ids)
+    page_parts = _validate_manifest_page_parts(spec, manifest.get("page_parts") or {},
+                                               page_count=page_count)
     page_refusals = manifest.get("page_refusals") or []
     if not isinstance(page_refusals, list) or not all(
             isinstance(entry, str) and entry.endswith("_refusal")
-            and is_page_part_name(spec, entry[:-len("_refusal")])
+            and is_page_part_name(spec, entry[:-len("_refusal")], page_count=page_count)
             # The one-level policy never retains mid-node refusals: a refusing
             # half aborts the capture, so only nominal page refusals are valid.
             and (spec.parts_policy == PARTS_POLICY_BISECT_ATTRS
@@ -1000,7 +1060,7 @@ def read_replay(spec: WbdHuSpec, root: Path) -> tuple[dict[str, tuple[bytes, dic
             for entry in page_refusals):
         raise ValueError("retained_capture_page_refusals_invalid")
     page_slots = set()
-    for index in range(spec.page_count):
+    for index in range(page_count):
         page = f"page_{index:04d}"
         if page in page_parts:
             page_slots.update(page_parts[page])
@@ -1013,8 +1073,6 @@ def read_replay(spec: WbdHuSpec, root: Path) -> tuple[dict[str, tuple[bytes, dic
     validate_capture_roster(root, set(roster_files) | {"capture_manifest.json"})
     if roster_files != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    ids = validate_roster_document(spec, json.loads(_load_capture(root, "ids_before")[0]),
-                                   "replay")
     expected_urls = dict(capture_roster(spec, ids))
     captures = {}
     for name in sorted(expected_names):
@@ -1028,7 +1086,7 @@ def read_replay(spec: WbdHuSpec, root: Path) -> tuple[dict[str, tuple[bytes, dic
             validate_capture_request_identity(name, receipt, expected_url)
             if not is_refusal(body):
                 raise ValueError("retained_capture_refusal_document_drift:" + name)
-        elif is_attrs_part_name(spec, name):
+        elif is_attrs_part_name(spec, name, page_count=page_count):
             bound = name[:-len("_attrs")]
             sub = ids[int(bound[5:9]) * spec.page_size:(int(bound[5:9]) + 1) * spec.page_size]
             for tag in bound[9:]:
@@ -1324,9 +1382,11 @@ def capture_candidate(spec: WbdHuSpec, storage: StagingStorageResource, *, versi
 def candidate_result(spec: WbdHuSpec, audit: dict, version: str, prefix: str,
                      capture_hash: str, *, reused: bool, root: Path) -> dict[str, object]:
     return {"dataset_slug": spec.dataset_slug, "file_slug": spec.file_slug, "version": version,
-            "feature_count": spec.expected_count, "source_population_complete": True,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"],
+            "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"],
-            "source_id_min": spec.expected_id_min, "source_id_max": spec.expected_id_max,
+            "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": reused,

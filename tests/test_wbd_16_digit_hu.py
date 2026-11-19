@@ -16,7 +16,7 @@ from shapely.geometry import Polygon
 from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.wbd_16_digit_hu import (
-    wbd_16_digit_hu, wbd_16_digit_hu_complete, wbd_16_digit_hu_draft_schedule,
+    wbd_16_digit_hu, wbd_16_digit_hu_complete, wbd_16_digit_hu_draft_schedule, wbd_16_digit_hu_drift,
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wbd_16_digit_hu as source
@@ -49,9 +49,7 @@ def patches(module, **values):
 @contextlib.contextmanager
 def relaxed_pins(**extra):
     scale = {
-        "EXPECTED_COUNT": _TEST_COUNT, "PAGE_SIZE": _TEST_PAGE_SIZE,
-        "PAGE_COUNT": _TEST_PAGE_COUNT,
-        "EXPECTED_ID_MIN": min(_TEST_ROSTER), "EXPECTED_ID_MAX": max(_TEST_ROSTER),
+        "PAGE_SIZE": _TEST_PAGE_SIZE,
         "EXPECTED_ID_SHA256": "", "EXPECTED_SCHEMA_SHA256": "",
         "EXPECTED_RECORD_SHA256": "", "EXPECTED_GEOMETRY_SHA256": "",
         "EXPECTED_NULL_GEOMETRY_COUNT": None,
@@ -261,11 +259,8 @@ class Wbd16DigitHuTests(unittest.TestCase):
         self.assertEqual(source.LAYER_URL, source.SERVICE_URL + "/8")
         self.assertEqual(source.LAYER_NAME, "16-digit HU")
         self.assertEqual(source.MAP_NAME, "wbd")
-        self.assertEqual(source.EXPECTED_COUNT, 7266)
         self.assertEqual(source.PAGE_SIZE, 100)
         self.assertEqual(source.DECLARED_MAX_RECORD_COUNT, 2000)
-        self.assertEqual((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE,
-                         source.PAGE_COUNT)
         self.assertEqual(source.SERVICE_DOC_URL,
                          "https://www.usgs.gov/national-hydrography/access-national-hydrography-products")
         self.assertEqual(source.EXPECTED_COPYRIGHT_TEXT,
@@ -295,12 +290,14 @@ class Wbd16DigitHuTests(unittest.TestCase):
         self.assertIn(wbd_16_digit_hu, hifld_ingest_assets)
         self.assertEqual(wbd_16_digit_hu_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
-        check = wbd_16_digit_hu_complete({"feature_count": source.EXPECTED_COUNT,
-                                          "source_population_complete": True})
+        check = wbd_16_digit_hu_complete({"feature_count": _TEST_COUNT,
+                            "source_reported_count": _TEST_COUNT,
+                            "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = wbd_16_digit_hu_complete({"feature_count": source.EXPECTED_COUNT - 1,
-                                           "source_population_complete": True})
+        failed = wbd_16_digit_hu_complete({"feature_count": _TEST_COUNT - 1,
+                             "source_reported_count": _TEST_COUNT,
+                             "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_pages_cover_roster_exactly_once(self):
@@ -567,9 +564,9 @@ class Wbd16DigitHuTests(unittest.TestCase):
             ("layer versioned", lambda d: d["layer_before"].update(isDataVersioned=True),
              "source_layer_identity_or_extent_drift"),
             ("count before", lambda d: d["count_before"].update(count=_TEST_COUNT - 1),
-             "source_count_population_drift:before"),
+             "source_count_or_id_roster_drift"),
             ("ids before", lambda d: d["ids_before"].update(objectIds=_TEST_ROSTER[:-1]),
-             "source_id_population_drift:before"),
+             "source_id_roster_changed_during_capture"),
             ("ids changed mid capture", lambda d: d["ids_after"].update(objectIds=[11, 12, 999, 100_003, 200_004]),
              "source_id_roster_changed_during_capture"),
             ("service identity", lambda d: d["service_before"].update(copyrightText="changed"),
@@ -620,6 +617,36 @@ class Wbd16DigitHuTests(unittest.TestCase):
             self.assertEqual(decoded.area, reference.area)
             self.assertEqual(decoded.length, reference.length)
         self.assertEqual(derived["parquet_path"], sink)
+
+    def test_upstream_population_edit_passes_completeness_and_reports_drift(self):
+        # A complete upstream population edit (producer count and ID witnesses
+        # agree on the grown roster) validates end-to-end; the blocking
+        # complete check passes and the non-blocking approved-baseline drift
+        # check reports the changed population (issue 1094, non-ArcGIS branch).
+        documents = _documents()
+        new_oid = max(_TEST_ROSTER) + 1
+        documents["ids_before"]["objectIds"] = list(_TEST_ROSTER) + [new_oid]
+        documents["ids_after"]["objectIds"] = list(_TEST_ROSTER) + [new_oid]
+        documents["count_before"]["count"] = len(_TEST_ROSTER) + 1
+        documents["count_after"]["count"] = len(_TEST_ROSTER) + 1
+        documents["page_0002"]["features"].append(
+            {"attributes": _attributes(new_oid),
+             "geometry": {"rings": _feature_rings(new_oid)}})
+        with relaxed_pins():
+            temporary = tempfile.TemporaryDirectory(prefix="wbd-16-digit-hu-upstream-edit-")
+            self.addCleanup(temporary.cleanup)
+            root = _write_capture_root(Path(temporary.name) / "captures", documents)
+            audit, _derived = source._validate_stream(root, parquet_sink=None)
+        self.assertEqual(audit["source_feature_count"], len(_TEST_ROSTER) + 1)
+        self.assertEqual(audit["source_id_max"], new_oid)
+        candidate = {"feature_count": audit["source_feature_count"],
+                     "source_reported_count": audit["source_feature_count"],
+                     "source_population_complete": True}
+        self.assertTrue(wbd_16_digit_hu_complete(candidate).passed)
+        drift = wbd_16_digit_hu_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value,
+                         "skipped_no_approved_baseline")
 
     def test_unsafe_capture_version_is_refused(self):
         temporary = tempfile.TemporaryDirectory(prefix="wbd-16-digit-hu-version-")
