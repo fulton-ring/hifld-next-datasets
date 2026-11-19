@@ -29,7 +29,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.http_capture import capture_roster_digests
-from dagster_hifld.sources.arcgis_layer import load_replay, write_outputs
+from dagster_hifld.sources.arcgis_layer import _validate_offset_replay_refusal, load_replay, write_outputs
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
@@ -173,36 +173,23 @@ def _validate_refused_evidence(directory: Path, accepted: dict[str, tuple[bytes,
     if not groups:
         raise ValueError("trails_refused_evidence_invalid")
     roster = {}
-    for (name, _stamp), slot in groups.items():
+    for (name, stamp), slot in groups.items():
         if set(slot) != {"body", "wire", "receipt.json"}:
             raise ValueError("trails_refused_evidence_invalid")
-        files = {suffix: path.read_bytes() for suffix, path in slot.items()}
-        body, wire = files["body"], files["wire"]
+        receipt_body = slot["receipt.json"].read_bytes()
         try:
-            receipt = json.loads(files["receipt.json"])
+            receipt = json.loads(receipt_body)
+            if (not isinstance(receipt, dict) or type(receipt.get("bytes")) is not int
+                    or type(receipt.get("wire_bytes")) is not int
+                    or (receipt.get("complete_body") is True and receipt.get("status") == 200)):
+                raise ValueError("trails_refused_evidence_invalid")
+            _validate_offset_replay_refusal(directory, f"{name}.error-{stamp}",
+                accepted[name][1]["url"], max_capture_bytes=MAX_RESPONSE_BYTES)
         except ValueError as exc:
             raise ValueError("trails_refused_evidence_invalid") from exc
-        if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
-                or receipt.get("url") != accepted[name][1]["url"]
-                or type(receipt.get("bytes")) is not int or receipt["bytes"] != len(body)
-                or receipt.get("sha256") != _sha(body)
-                or type(receipt.get("wire_bytes")) is not int or receipt["wire_bytes"] != len(wire)
-                or receipt.get("wire_sha256") != _sha(wire)):
-            raise ValueError("trails_refused_evidence_invalid")
-        status, complete = receipt.get("status"), receipt.get("complete_body")
-        if status is None:
-            failed = (complete is False and receipt.get("final_url") is None
-                      and receipt.get("error_code") == "request_error" and not body and not wire)
-        else:
-            failed = (type(status) is int and 100 <= status <= 599
-                      and receipt.get("final_url") == receipt["url"]
-                      and ((complete is True and status != 200)
-                           or (complete is False and isinstance(receipt.get("error_code"), str)
-                               and bool(receipt["error_code"]))))
-        if not failed:
-            raise ValueError("trails_refused_evidence_invalid")
-        roster.update({slot[suffix].name: {"bytes": len(payload), "sha256": _sha(payload)}
-                       for suffix, payload in files.items()})
+        roster.update({slot["body"].name: {"bytes": receipt["bytes"], "sha256": receipt["sha256"]},
+                       slot["wire"].name: {"bytes": receipt["wire_bytes"], "sha256": receipt["wire_sha256"]},
+                       slot["receipt.json"].name: {"bytes": len(receipt_body), "sha256": _sha(receipt_body)}})
     return roster
 
 
@@ -708,11 +695,26 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
         layer, audit = _population(captures)
     fields = _fields(layer)
     service_info = json.loads(captures["service_before"][0])
-    parquet = _parquet_pages(root, fields, audit["feature_count"])
     identity = _processing_identity()
     version = content_derived_version(audit["record_sha256"], audit["geometry_sha256"], audit["schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
+    result = {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["feature_count"],
+        "source_population_complete":True,"source_id_sha256":audit["id_sha256"],"source_schema_sha256":audit["schema_sha256"],
+        "source_record_sha256":audit["record_sha256"],"source_geometry_sha256":audit["geometry_sha256"],
+        "candidate_ready":f"{prefix}/metadata/candidate_ready.json","capture_directory":str(root),"reused":False,
+        "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,
+        "id_contract_accepted":False,"baseline_accepted":False,"coverage_accepted":False,"rights_accepted":False,
+        "mapping_approved":False,"release_accepted":False}
+    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+    fingerprint = _sha(_canonical(identity))
+    if storage.object_snapshot(state_key) is not None:
+        payload = json.loads(load_first_construction(storage, state_key, version, fingerprint))["payload"]
+        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
+            fingerprint, identity, audit["record_sha256"], audit["schema_sha256"],
+            payload["objects"], payload["capture_receipts"])
+        return {**result, "reused": True}
+    parquet = _parquet_pages(root, fields, audit["feature_count"])
     inputs = [{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,
         "role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":receipt["url"],
         "retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],
@@ -741,40 +743,25 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
     validate_output_policy(manifest); provenance_projection(manifest)
     outputs = {parquet_path:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
                "metadata/source_audit.json":_canonical(audit)+b"\n"}
-    for name,(body,receipt) in captures.items():
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (root/f"{name}.wire").read_bytes()
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt)+b"\n"
-    refused_dir = root / _REFUSED_DIR
-    if refused_dir.is_dir():
-        for path in sorted(refused_dir.iterdir()):
-            outputs[f"evidence/refused/{path.name}"] = path.read_bytes()
     ready = {"approved":False,"version":version,"objects":{parquet_path:{"bytes":len(parquet),"sha256":_sha(parquet)}},
         "source_population_complete":True,"source_id_sha256":audit["id_sha256"],"source_record_sha256":audit["record_sha256"],
         "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
         "coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    outputs["metadata/candidate_ready.json"] = _canonical(ready)+b"\n"
-    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    fingerprint = _sha(_canonical(identity))
-    reused = storage.object_snapshot(state_key) is not None
-    if reused:
-        payload = json.loads(load_first_construction(storage, state_key, version, fingerprint))["payload"]
-        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
-            fingerprint, identity, audit["record_sha256"], audit["schema_sha256"],
-            payload["objects"], payload["capture_receipts"])
-    else:
-        descriptors = write_outputs(storage, prefix, outputs)
-        seal_ready_candidate(storage, state_key, version, fingerprint, {
-            "processing_identity": identity, "source_record_sha256": audit["record_sha256"],
-            "source_schema_sha256": audit["schema_sha256"], "objects": descriptors,
-            "capture_receipts": {name: receipt for name, (_body, receipt) in captures.items()}})
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["feature_count"],
-        "source_population_complete":True,"source_id_sha256":audit["id_sha256"],"source_schema_sha256":audit["schema_sha256"],
-        "source_record_sha256":audit["record_sha256"],"source_geometry_sha256":audit["geometry_sha256"],
-        "candidate_ready":f"{prefix}/metadata/candidate_ready.json","capture_directory":str(root),"reused":reused,
-        "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,
-        "id_contract_accepted":False,"baseline_accepted":False,"coverage_accepted":False,"rights_accepted":False,
-        "mapping_approved":False,"release_accepted":False}
+    descriptors = write_outputs(storage, prefix, outputs)
+    for name, (body, receipt) in captures.items():
+        descriptors.update(write_outputs(storage, prefix, {
+            f"raw/{name}.body": body, f"raw/{name}.wire": (root / f"{name}.wire").read_bytes(),
+            f"raw/{name}.receipt.json": _canonical(receipt) + b"\n"}))
+    refused_dir = root / _REFUSED_DIR
+    if refused_dir.is_dir():
+        for path in sorted(refused_dir.iterdir()):
+            descriptors.update(write_outputs(storage, prefix, {f"evidence/refused/{path.name}": path.read_bytes()}))
+    descriptors.update(write_outputs(storage, prefix, {"metadata/candidate_ready.json": _canonical(ready)+b"\n"}))
+    seal_ready_candidate(storage, state_key, version, fingerprint, {
+        "processing_identity": identity, "source_record_sha256": audit["record_sha256"],
+        "source_schema_sha256": audit["schema_sha256"], "objects": descriptors,
+        "capture_receipts": {name: receipt for name, (_body, receipt) in captures.items()}})
+    return result
 
 
 def _ids_view(captures: dict[str, tuple[bytes, dict]]) -> list[int]:
