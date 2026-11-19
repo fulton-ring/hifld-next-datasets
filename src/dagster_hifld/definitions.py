@@ -39,11 +39,6 @@ from dagster_hifld.assets.noaa_current_dart import (
     noaa_dart_draft_refresh_schedule,
 )
 
-from dagster_hifld.assets.usace_pylon_areas import (
-    usace_pylon_areas_draft_schedule,
-    usace_pylon_areas_complete,
-    usace_pylon_areas_draft_job,
-)
 from dagster_hifld.assets.hf_areas_usace_ienc import (
     hf_areas_usace_ienc_draft_schedule,
     hf_areas_usace_ienc_complete,
@@ -278,10 +273,6 @@ from dagster_hifld.assets.usace_notice_marks import (
 )
 
 
-from dagster_hifld.assets.usace_pylon_locations import (
-    pylon_locations_draft_refresh_job,
-    pylon_locations_draft_refresh_schedule,
-)
 
 from dagster_hifld.assets.usace_distance_marks import (
     distance_marks_draft_refresh_job,
@@ -297,16 +288,6 @@ from dagster_hifld.assets.usace_recommended_tracks import (
 )
 
 
-from dagster_hifld.assets.usace_pontoon_areas import (
-    usace_pontoon_areas_complete,
-    usace_pontoon_areas_draft_job,
-    usace_pontoon_areas_draft_schedule,
-)
-from dagster_hifld.assets.usace_hulke_areas import (
-    usace_hulke_areas_complete,
-    usace_hulke_areas_draft_job,
-    usace_hulke_areas_draft_schedule,
-)
 from dagster_hifld.assets.usace_landmark_areas import (
     usace_landmark_areas_complete,
     usace_landmark_areas_draft_job,
@@ -728,7 +709,6 @@ defs = Definitions(
         [
             *hifld_asset_checks,
             epa_disaster_debris_complete,
-            usace_pylon_areas_complete,
             hf_areas_usace_ienc_complete,
             land_region_areas_usace_ienc_complete,
             usace_recommended_tracks_complete,
@@ -759,8 +739,6 @@ defs = Definitions(
             usace_caution_areas_complete,
             usace_berths_areas_complete,
             usace_dry_docks_complete,
-            usace_pontoon_areas_complete,
-            usace_hulke_areas_complete,
             usace_landmark_areas_complete,
             usace_pile_locations_complete,
             usace_daymark_locations_complete,
@@ -794,10 +772,8 @@ defs = Definitions(
             noaa_eez_draft_refresh_job,
             noaa_territorial_draft_refresh_job,
             noaa_dart_draft_refresh_job,
-            usace_pylon_areas_draft_job,
             hf_areas_usace_ienc_draft_job,
             land_region_areas_usace_ienc_draft_job,
-            pylon_locations_draft_refresh_job,
             distance_marks_draft_refresh_job,
             recommended_tracks_draft_job,
             usace_overhead_pipeline_lines_draft_job,
@@ -821,8 +797,6 @@ defs = Definitions(
             usace_navigation_marks_areas_draft_job,
             usace_navigation_lights_draft_job,
             usace_notice_marks_draft_job,
-            usace_pontoon_areas_draft_job,
-            usace_hulke_areas_draft_job,
             usace_landmark_areas_draft_job,
             usace_caution_areas_draft_job,
             usace_pile_locations_draft_job,
@@ -849,13 +823,11 @@ defs = Definitions(
             bts_ferry_terminals_draft_refresh_schedule,
             elsd_source_integrity_schedule,
             epa_disaster_debris_draft_schedule,
-            usace_pylon_areas_draft_schedule,
             hf_areas_usace_ienc_draft_schedule,
             land_region_areas_usace_ienc_draft_schedule,
             noaa_eez_draft_weekly_schedule,
             noaa_territorial_draft_weekly_schedule,
             noaa_dart_draft_refresh_schedule,
-            pylon_locations_draft_refresh_schedule,
             distance_marks_draft_refresh_schedule,
             recommended_tracks_draft_schedule,
             usace_overhead_pipeline_lines_draft_schedule,
@@ -882,8 +854,6 @@ defs = Definitions(
             usace_notice_marks_draft_schedule,
             usace_berths_areas_draft_schedule,
             usace_dry_docks_draft_schedule,
-            usace_pontoon_areas_draft_schedule,
-            usace_hulke_areas_draft_schedule,
             usace_landmark_areas_draft_schedule,
             usace_caution_areas_draft_schedule,
             usace_pile_locations_draft_schedule,

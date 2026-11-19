@@ -71,4 +71,7 @@ def pylon_locations_draft_refresh_schedule(context):
 usace_pylon_locations_usace_ienc_drift = register_approved_baseline_drift(
     usace_pylon_locations_usace_ienc, "usace_pylon_locations_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_pylon_locations_usace_ienc]
 ASSET_CHECKS = [usace_pylon_locations_usace_ienc_drift]
+JOBS = [pylon_locations_draft_refresh_job]
+SCHEDULES = [pylon_locations_draft_refresh_schedule]

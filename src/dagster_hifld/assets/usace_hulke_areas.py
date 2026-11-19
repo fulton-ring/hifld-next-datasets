@@ -98,4 +98,7 @@ usace_hulke_areas_draft_schedule = ScheduleDefinition(
 
 usace_hulke_areas_usace_ienc_drift = register_approved_baseline_drift(usace_hulke_areas_usace_ienc, "usace_hulke_areas_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_hulke_areas_usace_ienc]
 ASSET_CHECKS = [usace_hulke_areas_complete, usace_hulke_areas_usace_ienc_drift]
+JOBS = [usace_hulke_areas_draft_job]
+SCHEDULES = [usace_hulke_areas_draft_schedule]
