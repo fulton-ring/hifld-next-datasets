@@ -124,6 +124,36 @@ class PadUsProtectionCompletenessTests(unittest.TestCase):
                 self.assertFalse(storage.list_prefix(source.DATASET_SLUG))
                 self.assertTrue(storage.list_prefix("_quarantine/" + source.DATASET_SLUG))
 
+    def test_retained_request_binding_and_missing_page_evidence_fail_closed(self):
+        for failure in ("metadata_url", "page_url", "missing_wire"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp, \
+                    self.fixture_context(fixture.make_responder(fixture._fixture_rows())):
+                root = Path(tmp)
+                capture = root / "capture"
+                source.fetch_pad_us_protection_mechanism_category_pages(capture)
+                if failure == "missing_wire":
+                    (capture / "page_000002.wire").unlink()
+                else:
+                    name = "layer_before" if failure == "metadata_url" else "page_000001"
+                    path = capture / f"{name}.receipt.json"
+                    receipt = json.loads(path.read_bytes())
+                    receipt["url"] = receipt["final_url"] = source._page_url(99999)
+                    path.write_bytes(source._canonical(receipt))
+                rejected = root / "rejected.parquet"
+                with self.assertRaises(ValueError):
+                    source._stream_validate(capture, parquet_sink=rejected)
+                self.assertFalse(rejected.exists())
+                self.assertFalse(rejected.with_name(rejected.name + ".construction-tmp").exists())
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "stage"))
+                with patch.object(httpx.Client, "send", side_effect=AssertionError(
+                        "retained replay must not attempt HTTP")) as send:
+                    with self.assertRaises(ValueError):
+                        source.capture_pad_us_protection_mechanism_category(
+                            storage, version="bad-replay", capture_directory=str(capture))
+                send.assert_not_called()
+                self.assertFalse(storage.list_prefix(source.DATASET_SLUG))
+                self.assertTrue(storage.list_prefix("_quarantine/" + source.DATASET_SLUG))
+
 
 if __name__ == "__main__":
     unittest.main()

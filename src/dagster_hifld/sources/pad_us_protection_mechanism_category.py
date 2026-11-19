@@ -597,6 +597,9 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     page_bodies = [name for name in _expected_capture_names(count)
                    if name.startswith("page_") and name != "page_tail"]
     try:
+        if any(not (capture_root / f"{name}.{suffix}").is_file()
+               for name in page_bodies for suffix in ("body", "wire", "receipt.json")):
+            raise PadUsProtectionError("source_page_population_incomplete")
         for index, page_name in enumerate(page_bodies):
             body, receipt = _read_capture(capture_root, page_name)
             validate_capture_request_identity(page_name, receipt, _page_url(last_objectid))
@@ -1070,11 +1073,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                                         "(closed rings; clockwise exteriors, "
                                                         "counter-clockwise holes, 2-ordinate "
                                                         "vertices); null source geometry retained "
-                                                        "as null; producer-served features whose "
-                                                        "rings cannot form a valid OGC polygon are "
-                                                        "retained verbatim in the digests with "
-                                                        "explicitly gated null candidate geometry "
-                                                        "and pinned failure modes",
+                                                        "as null; GDAL converts served rings "
+                                                        "without repair, and OGC-invalid geometry "
+                                                        "remains in the candidate with observed "
+                                                        "diagnostics rather than null coercion",
                                             "candidate_status": "unapproved; publication blocked "
                                                                 "pending succession, freshness, "
                                                                 "schema/ID contract, coverage, "
@@ -1256,7 +1258,7 @@ def capture_pad_us_protection_mechanism_category(storage: StagingStorageResource
 
 
 def build_pad_us_protection_mechanism_category_baseline(capture_root: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
+    """Recompute observed content diagnostics from a completed capture."""
     extracted = _stream_validate(Path(capture_root).absolute(), parquet_sink=None)
     return {"source_record_sha256": extracted["record_sha"],
             "source_geometry_sha256": extracted["geometry_sha"],
