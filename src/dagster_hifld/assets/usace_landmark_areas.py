@@ -98,4 +98,7 @@ usace_landmark_areas_draft_schedule = ScheduleDefinition(
 
 usace_landmark_areas_usace_ienc_drift = register_approved_baseline_drift(usace_landmark_areas_usace_ienc, "usace_landmark_areas_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_landmark_areas_usace_ienc]
 ASSET_CHECKS = [usace_landmark_areas_complete, usace_landmark_areas_usace_ienc_drift]
+JOBS = [usace_landmark_areas_draft_job]
+SCHEDULES = [usace_landmark_areas_draft_schedule]

@@ -36,13 +36,9 @@ from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import shoreli
 from dagster_hifld.assets.shoreline_construction_lines_usace_ienc import shoreline_construction_lines_usace_ienc
 from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
-from dagster_hifld.assets.usace_landmark_areas import usace_landmark_areas_usace_ienc
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.usace_daymark_locations import usace_daymark_locations_usace_ienc
-from dagster_hifld.assets.usace_lateral_buoys import usace_lateral_buoys_usace_ienc
-from dagster_hifld.assets.usace_landmark_locations import usace_landmark_locations_usace_ienc
-from dagster_hifld.assets.usace_dynamic_buoys import usace_dynamic_buoys_usace_ienc
 from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
 from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_areas_usace_ienc
 from dagster_hifld.assets.usace_dumping_ground_areas import usace_dumping_ground_areas_usace_ienc
@@ -73,7 +69,6 @@ hifld_ingest_assets = [
     census_elementary_districts,
     noaa_current_dart,
     noaa_12nm_territorial_sea,
-    usace_landmark_areas_usace_ienc,
     noaa_200nm_eez_and_maritime_boundaries,
     national_transit_map_stops,
     usace_administrative_areas_usace_ienc,
@@ -102,9 +97,6 @@ hifld_ingest_assets = [
     usace_caution_areas_usace_ienc,
     usace_pile_locations_usace_ienc,
     usace_daymark_locations_usace_ienc,
-    usace_lateral_buoys_usace_ienc,
-    usace_landmark_locations_usace_ienc,
-    usace_dynamic_buoys_usace_ienc,
     usace_pipeline_areas_usace_ienc,
     usace_data_quality_areas_usace_ienc,
     usace_dumping_ground_areas_usace_ienc,
