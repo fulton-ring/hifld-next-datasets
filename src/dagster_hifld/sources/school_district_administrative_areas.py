@@ -1,12 +1,8 @@
 """Issue #303 adapter over the shared Census school-district GDB extractor.
 
-Targets the complete current U.S. Census TIGER/Line nationwide school
-geodatabase layer ``School_District_Administrative`` in the maintained TGRGDB26
-archive (52 Vermont supervisory unions and interstate supervisory districts,
-native EPSG:4269 MultiPolygons, including the 2026 native STATEFP, SDADMLEA,
-LSAD, MTFCC and FUNCSTAT columns). This is the inventory's fourth
-school-district type; the unified and secondary siblings cover other layers of
-the same publication from their own pinned 2024 editions.
+Discovers the maintained nationwide school geodatabase and preserves its
+complete ``School_District_Administrative`` layer, native fields, identifiers,
+EPSG:4269 coordinates and MultiPolygon WKB in an immutable local candidate.
 """
 from __future__ import annotations
 
@@ -18,10 +14,10 @@ from dagster_hifld.sources import census_tiger_common as _shared
 
 DATASET_SLUG = "school-district-administrative-areas"
 FILE_SLUG = DATASET_SLUG
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_school.gdb.zip"
+SOURCE_URL = ""
 SOURCE_HOST = "www2.census.gov"
 LAYER_NAME = "School_District_Administrative"
-EXPECTED_COUNT = 52
+FEATURE_COUNT_RANGE = (1, 1_000)
 MAX_ARCHIVE_BYTES = _shared.MAX_ARCHIVE_BYTES
 MAX_UNCOMPRESSED_BYTES = _shared.MAX_UNCOMPRESSED_BYTES
 EXPECTED_SOURCE_FIELDS = [
@@ -49,20 +45,20 @@ EXPECTED_OUTPUT_FIELDS = ["OBJECTID", "STATEFP", "SDADMLEA", "GEOID", "GEOIDFQ",
 CONFIG = _shared.SchoolDistrictLayerConfig(
     dataset_slug=DATASET_SLUG,
     layer_name=LAYER_NAME,
-    expected_count=EXPECTED_COUNT,
+    expected_count=None,
     issue_number=303,
     inventory_id=DATASET_SLUG,
     title="School District Administrative Areas",
     coverage_statement=(
-        "The complete observed current (TGRGDB26) administrative school district layer contains "
-        "52 features, all Vermont supervisory unions or interstate supervisory districts (STATEFP 50); "
-        "the Census publishes no administrative districts for other states in this vintage. All native "
-        "2026 columns, identifiers and coordinates are retained. Equivalence to the historical HIFLD "
-        "archive population is not established."
+        "The full producer-declared native layer population is checked against its scanned rows "
+        "and native ID roster. The configured population range is a plausibility guard, not an "
+        "assertion of the current population. All source attributes and coordinates are retained."
     ),
     source_url=SOURCE_URL,
-    source_vintage="2026",
+    source_vintage="",
     expected_source_fields=list(EXPECTED_SOURCE_FIELDS),
+    discover_current=True,
+    feature_count_range=FEATURE_COUNT_RANGE,
 )
 
 
@@ -110,7 +106,7 @@ def _assert_full_parity(
 
 
 def _source_records_sha256(table: pa.Table, ids: list[int]) -> str:
-    return _shared._source_records_sha256(table, ids)
+    return _shared._source_records_sha256(table, ids, CONFIG)
 
 
 def _packaged_code_sha256() -> str:
@@ -119,7 +115,7 @@ def _packaged_code_sha256() -> str:
 
 def _capture(
     staging,
-    version: str,
+    version: str | None,
     client: httpx.Client | None = None,
     *,
     retained_archive: bytes | None = None,
@@ -137,7 +133,7 @@ def _capture(
     )
 
 
-def capture(staging, version: str, client: httpx.Client | None = None) -> dict:
+def capture(staging, version: str | None = None, client: httpx.Client | None = None) -> dict:
     """Capture the complete administrative layer through the shared immutable spec."""
     return _capture(staging, version, client)
 

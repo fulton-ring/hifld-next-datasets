@@ -11,7 +11,6 @@ from dagster import (
     schedule,
 )
 
-from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.school_district_administrative_areas import (
@@ -20,8 +19,8 @@ from dagster_hifld.sources.school_district_administrative_areas import (
 
 _DESCRIPTION = (
     "Draft extraction of the current U.S. Census TIGER/Line School_District_Administrative "
-    "layer (TGRGDB26 archive; 52 Vermont supervisory unions and interstate supervisory districts, "
-    "native EPSG:4269). HIFLD archive equivalence and release approval remain unresolved."
+    "layer from the discovered maintained school geodatabase, in native EPSG:4269. "
+    "HIFLD archive equivalence and release approval remain unresolved."
 )
 
 
@@ -34,10 +33,8 @@ _DESCRIPTION = (
 def census_school_district_administrative_areas(context, staging_storage: StagingStorageResource) -> dict:
     if isinstance(staging_storage, PublishedStorageResource) or not staging_storage.use_local or staging_storage.bucket:
         raise ValueError("school_district_administrative_areas_draft_requires_isolated_local_staging")
-    version = build_version_id(context)
-    if staging_storage.list_keys(DATASET_SLUG, FILE_SLUG, version):
-        raise ValueError("source_capture_version_already_exists")
-    result = capture(staging_storage, version)
+    result = capture(staging_storage)
+    version = result["version"]
     context.add_output_metadata({
         "feature_count": MetadataValue.int(result["feature_count"]),
         "source_ids_sha256": MetadataValue.text(result["ids_sha256"]),

@@ -57,11 +57,12 @@ class SchoolDistrictAdministrativeAreasSourceTests(unittest.TestCase):
     def test_config_targets_the_official_administrative_layer(self):
         self.assertEqual(source.DATASET_SLUG, "school-district-administrative-areas")
         self.assertEqual(source.LAYER_NAME, "School_District_Administrative")
-        self.assertEqual(source.EXPECTED_COUNT, 52)
+        self.assertIsNone(source.CONFIG.expected_count)
+        self.assertEqual(source.CONFIG.feature_count_range, (1, 1_000))
+        self.assertTrue(source.CONFIG.discover_current)
         self.assertEqual(source.CONFIG.issue_number, 303)
-        self.assertEqual(source.CONFIG.source_url,
-                         "https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_school.gdb.zip")
-        self.assertEqual(source.CONFIG.source_vintage, "2026")
+        self.assertEqual(source.CONFIG.source_url, "")
+        self.assertEqual(source.CONFIG.source_vintage, "")
         self.assertEqual(source.SOURCE_HOST, "www2.census.gov")
         self.assertEqual([name for name, _ in source.EXPECTED_SOURCE_FIELDS],
                          ["STATEFP", "SDADMLEA", "GEOID", "GEOIDFQ", "NAME", "LSAD", "LOGRADE",

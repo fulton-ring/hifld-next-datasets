@@ -11,20 +11,24 @@ lives here; each school-district adapter passes its own
 from __future__ import annotations
 
 import hashlib
+import fcntl
 import io
 import json
 import os
 import platform
 import re
+import stat
 import tempfile
 import zipfile
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from uuid import uuid4
 
 import geopandas as gpd
 import httpx
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyogrio
@@ -33,9 +37,13 @@ import shapely
 
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, capture_root
 from dagster_hifld.sources import census_latest
-from dagster_hifld.sources.capture_common import processing_identity, quarantine_incomplete_capture
+from dagster_hifld.sources.capture_common import (
+    content_derived_version, processing_identity, quarantine_incomplete_capture,
+    seal_ready_candidate, verify_cached_candidate, write_immutable,
+)
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 CODE_IDENTITY_SCHEME = "sha256-packaged-dagster_hifld-py-v1"
@@ -371,7 +379,7 @@ class SchoolDistrictLayerConfig:
 
     dataset_slug: str
     layer_name: str
-    expected_count: int
+    expected_count: int | None
     issue_number: int
     inventory_id: str
     title: str
@@ -381,6 +389,8 @@ class SchoolDistrictLayerConfig:
     source_vintage: str = "2024"
     expected_source_fields: list[tuple[str, pa.DataType]] = field(
         default_factory=lambda: list(EXPECTED_SOURCE_FIELDS))
+    discover_current: bool = False
+    feature_count_range: tuple[int, int] | None = None
 
     @property
     def file_slug(self) -> str:
@@ -506,6 +516,14 @@ def _validate_archive(archive: bytes) -> None:
         raise ValueError("source_archive_invalid_zip") from exc
 
 
+def _school_count_matches(count: int, config: SchoolDistrictLayerConfig) -> bool:
+    if type(count) is not int:
+        return False
+    if config.expected_count is not None:
+        return count == config.expected_count
+    return config.feature_count_range is not None and config.feature_count_range[0] <= count <= config.feature_count_range[1]
+
+
 def _native_table(archive_path: Path, config: SchoolDistrictLayerConfig) -> tuple[pa.Table, list[int], dict]:
     try:
         layers = pyogrio.list_layers(archive_path)
@@ -513,7 +531,7 @@ def _native_table(archive_path: Path, config: SchoolDistrictLayerConfig) -> tupl
         if config.layer_name not in layer_names:
             raise ValueError("source_target_layer_missing")
         info = pyogrio.read_info(archive_path, layer=config.layer_name, force_feature_count=True)
-        if info.get("features") != config.expected_count or info.get("geometry_type") != "MultiPolygon":
+        if not _school_count_matches(info.get("features"), config) or info.get("geometry_type") != "MultiPolygon":
             raise ValueError("source_layer_population_or_geometry_drift")
         try:
             crs = pyproj.CRS.from_user_input(info.get("crs"))
@@ -528,14 +546,14 @@ def _native_table(archive_path: Path, config: SchoolDistrictLayerConfig) -> tupl
         if geometry_name != "SHAPE":
             raise ValueError("source_geometry_column_drift")
         actual = [(field.name, field.type) for field in table.schema]
-        if actual != config.expected_source_fields or table.num_rows != config.expected_count:
+        if actual != config.expected_source_fields or table.num_rows != info["features"]:
             raise ValueError("source_schema_or_feature_count_drift")
         fid_frame = pyogrio.read_dataframe(archive_path, layer=config.layer_name, fid_as_index=True, read_geometry=False, use_arrow=True)
         ids = [int(value) for value in fid_frame.index.tolist()]
-        if len(ids) != config.expected_count or len(set(ids)) != config.expected_count or sorted(ids) != list(range(1, config.expected_count + 1)):
+        if len(ids) != table.num_rows or len(set(ids)) != table.num_rows or sorted(ids) != list(range(1, table.num_rows + 1)):
             raise ValueError("source_native_id_population_drift")
         table_geoids = table.column("GEOID").to_pylist()
-        if fid_frame["GEOID"].tolist() != table_geoids or len(set(table_geoids)) != config.expected_count:
+        if fid_frame["GEOID"].tolist() != table_geoids or len(set(table_geoids)) != table.num_rows:
             raise ValueError("source_geoid_population_drift")
         return table, ids, {"info": info, "table_metadata": metadata, "layers": layer_names}
     except ValueError:
@@ -546,7 +564,7 @@ def _native_table(archive_path: Path, config: SchoolDistrictLayerConfig) -> tupl
 
 def _build_geoparquet(table: pa.Table, ids: list[int], config: SchoolDistrictLayerConfig) -> tuple[bytes, dict]:
     geometry_values = table.column("SHAPE").to_pylist()
-    if len(geometry_values) != config.expected_count or any(not isinstance(value, bytes) for value in geometry_values):
+    if not _school_count_matches(len(geometry_values), config) or any(not isinstance(value, bytes) for value in geometry_values):
         raise ValueError("source_geometry_population_drift")
     geometry_types: set[str] = set()
     xmin = ymin = float("inf")
@@ -592,7 +610,7 @@ def _build_geoparquet(table: pa.Table, ids: list[int], config: SchoolDistrictLay
 
 def _assert_full_parity(source: pa.Table, ids: list[int], parquet: bytes, config: SchoolDistrictLayerConfig) -> None:
     output = pq.read_table(pa.BufferReader(parquet))
-    if output.num_rows != config.expected_count or output.column_names != config.output_fields:
+    if not _school_count_matches(output.num_rows, config) or output.num_rows != source.num_rows or output.column_names != config.output_fields:
         raise ValueError("native_output_population_or_field_roster_drift")
     if output.column("OBJECTID").to_pylist() != ids:
         raise ValueError("native_output_id_parity_drift")
@@ -601,7 +619,7 @@ def _assert_full_parity(source: pa.Table, ids: list[int], parquet: bytes, config
             raise ValueError("native_output_attribute_parity_drift:" + source_name)
     if output.column("geometry").to_pylist() != source.column("SHAPE").to_pylist():
         raise ValueError("native_output_geometry_parity_drift")
-    if len(set(output.column("OBJECTID").to_pylist())) != config.expected_count:
+    if len(set(output.column("OBJECTID").to_pylist())) != source.num_rows:
         raise ValueError("native_output_duplicate_ids")
 
 
@@ -624,7 +642,7 @@ def _packaged_code_sha256() -> str:
     return digest.hexdigest()
 
 
-def _capture(
+def _construct_school_capture(
     staging,
     version: str,
     config: SchoolDistrictLayerConfig,
@@ -634,8 +652,8 @@ def _capture(
     retained_receipt: dict | None = None,
     retained_receipt_bytes: bytes | None = None,
 ) -> dict:
-    owned = client is None
-    client = client or httpx.Client(timeout=120, follow_redirects=True)
+    owned = client is None and retained_archive is None
+    client = client or (httpx.Client(timeout=120, follow_redirects=True) if owned else None)
     try:
         if retained_archive is None:
             archive, receipt = _capture_archive(staging, version, client, config)
@@ -667,6 +685,12 @@ def _capture(
         archive_sha = receipt["raw_sha256"]
         retrieved_at = receipt["observed_at"]
         identity = processing_identity(Path(__file__).parents[3])
+        if config.discover_current:
+            identity = {**identity, "native_runtime": {
+                "pyogrio": pyogrio.__version__, "gdal": pyogrio.__gdal_version_string__,
+                "pyproj": pyproj.__version__, "httpx": httpx.__version__,
+                "numpy": np.__version__, "shapely": shapely.__version__,
+            }}
         try:
             validate_construction_code_identity(
                 Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
@@ -738,7 +762,7 @@ def _capture(
                 "runtime_package_source_sha256": _packaged_code_sha256(),
                 "python": identity["python"],
             },
-            "coverage_statement": f"Full {config.expected_count}-feature population of the named {config.source_vintage} Census source layer. {config.coverage_statement} Equivalence to HIFLD archive coverage remains unverified.",
+            "coverage_statement": f"Full {len(ids)}-feature population of the named {config.source_vintage} Census source layer. {config.coverage_statement} Equivalence to HIFLD archive coverage remains unverified.",
             "capture_replay": {
                 "mode": "retained_transfer_replay" if replayed else "live_http_capture",
                 "original_retrieved_at": retrieved_at,
@@ -750,7 +774,7 @@ def _capture(
         }
         staging.write(config.dataset_slug, config.file_slug, version, "metadata/native_capture.json", _json_bytes(capture_manifest))
         return {
-            "feature_count": config.expected_count, "ids_sha256": ids_sha,
+            "feature_count": len(ids), "ids_sha256": ids_sha,
             "records_sha256": records_sha, "source_archive_sha256": archive_sha,
             "parquet_sha256": parquet_sha, "release_accepted": False,
         }
@@ -765,6 +789,134 @@ def _capture(
     finally:
         if owned:
             client.close()
+
+
+def _school_release_from_receipt(receipt: dict, archive: bytes) -> census_latest.GeodatabaseRelease:
+    if not isinstance(receipt, dict):
+        raise ValueError("retained_capture_receipt_invalid")
+    if receipt.get("raw_sha256") != _sha256(archive) or receipt.get("wire_bytes_retained") != len(archive):
+        raise ValueError("retained_capture_archive_receipt_mismatch")
+    url = receipt.get("requested_url")
+    if "url" in receipt and receipt["url"] != url:
+        raise ValueError("retained_capture_release_mismatch")
+    release = census_latest.geodatabase_release_from_receipt({**receipt, "url": url}, "school")
+    size = len(archive)
+    if (receipt.get("method") != "GET" or receipt.get("status") != 200
+            or receipt.get("final_url") != release.source_url
+            or receipt.get("final_host") != "www2.census.gov"
+            or receipt.get("content_encoding") != "identity"
+            or not str(receipt.get("content_type", "")).lower().startswith("application/zip")
+            or receipt.get("transfer_complete") is not True
+            or receipt.get("transfer_error_code") is not None
+            or receipt.get("raw_archive_key") != "raw/" + release.source_file
+            or receipt.get("raw_sha256") != _sha256(archive)
+            or receipt.get("wire_sha256") != _sha256(archive)
+            or any(receipt.get(name) != size for name in (
+                "wire_bytes_received", "wire_bytes_retained", "decoded_bytes_produced"))
+            or not 0 < size <= MAX_ARCHIVE_BYTES):
+        raise ValueError("retained_capture_archive_receipt_mismatch")
+    if receipt.get("content_length_header") is not None and receipt["content_length_header"] != size:
+        raise ValueError("retained_capture_archive_receipt_mismatch")
+    try:
+        if datetime.fromisoformat(receipt["observed_at"]).utcoffset() is None:
+            raise ValueError("missing_timezone")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("retained_capture_receipt_invalid") from exc
+    return release
+
+
+def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *,
+             retained_archive=None, retained_receipt=None, retained_receipt_bytes=None) -> dict:
+    if not config.discover_current:
+        return _construct_school_capture(
+            staging, version, config, client, retained_archive=retained_archive,
+            retained_receipt=retained_receipt, retained_receipt_bytes=retained_receipt_bytes)
+    if (not isinstance(staging, StagingStorageResource) or isinstance(staging, PublishedStorageResource)
+            or not staging.use_local or staging.bucket):
+        raise ValueError("school_current_capture_requires_isolated_local_staging")
+    replayed = retained_archive is not None
+    owned = client is None and not replayed
+    client = client or (httpx.Client(timeout=120, follow_redirects=True) if owned else None)
+    with tempfile.TemporaryDirectory(prefix="hifld-school-current-", dir=capture_root()) as temporary:
+        root = Path(temporary)
+        private = StagingStorageResource(local_dir=str(root / "candidate"))
+        prefix = f"{config.dataset_slug}/{config.file_slug}/private"
+        try:
+            if replayed:
+                archive, receipt = retained_archive, retained_receipt
+                receipt_bytes = retained_receipt_bytes
+                (root / "retained.archive").write_bytes(archive)
+                (root / "retained.receipt.json").write_bytes(receipt_bytes or b"")
+            else:
+                release = census_latest.discover_geodatabase(client, root / "discovery", "school")
+                config = replace(config, source_url=release.source_url, source_vintage=str(release.vintage))
+                archive, receipt = _capture_archive(private, "private", client, config)
+                receipt["source_release"] = release.as_receipt_evidence()
+                receipt_bytes = _json_bytes(receipt)
+            release = _school_release_from_receipt(receipt, archive)
+            if receipt_bytes is None or json.loads(receipt_bytes) != receipt:
+                raise ValueError("retained_capture_receipt_invalid")
+            config = replace(config, source_url=release.source_url, source_vintage=str(release.vintage))
+            result = _construct_school_capture(
+                private, "private", config, retained_archive=archive,
+                retained_receipt=receipt, retained_receipt_bytes=receipt_bytes)
+            manifest_key = prefix + "/metadata/source_manifest.json"
+            manifest = json.loads(private.read_key(manifest_key))
+            identity = manifest["processing_identity"]
+            manifest["source_release"] = release.as_receipt_evidence()
+            private.write_key(manifest_key, _json_bytes(manifest))
+            report_key = prefix + "/metadata/native_capture.json"
+            report = json.loads(private.read_key(report_key))
+            report["source_release"] = release.as_receipt_evidence()
+            report["capture_replay"]["mode"] = "retained_transfer_replay" if replayed else "live_http_capture"
+            report["capture_replay"]["new_network_retrieval_performed"] = not replayed
+            private.write_key(report_key, _json_bytes(report))
+            schema_sha = _sha256(_json_bytes({"layer": config.layer_name, "fields": report["source_schema"]}))
+            version = content_derived_version(result["records_sha256"], result["source_archive_sha256"], schema_sha, identity)
+            target = f"{config.dataset_slug}/{config.file_slug}/{version}"
+            state_root = f"_construction-state/{config.dataset_slug}/{version}"
+            state_key = state_root + "/bundle.json"
+            fingerprint = _sha256(_json_bytes(identity))
+            observation = f"_capture-observations/{config.dataset_slug}/{_sha256(receipt_bytes)}"
+            write_immutable(staging, observation + "/source_archive.receipt.json", receipt_bytes)
+            for path in sorted((root / "discovery").rglob("*")):
+                if path.is_file():
+                    write_immutable(staging, observation + "/discovery/" + path.relative_to(root / "discovery").as_posix(), path.read_bytes())
+            objects = {name[len(prefix) + 1:]: {
+                "bytes": private.object_snapshot(name).size, "sha256": private.sha256_key(name)}
+                for name in private.list_prefix(prefix)}
+            lock_key = f"_locks/{config.dataset_slug}.lock"
+            write_immutable(staging, lock_key, b"")
+            lock_path = Path(staging.local_dir) / staging.prefix / lock_key
+            with os.fdopen(os.open(lock_path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as lock:
+                if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode) or os.fstat(lock.fileno()).st_nlink != 1:
+                    raise ValueError("school_candidate_lock_aliased")
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                reused = bool(staging.list_prefix(target) or staging.list_prefix(state_root))
+                if reused:
+                    original = json.loads(load_first_construction(staging, state_key, version, fingerprint))
+                    objects = original["payload"]["objects"]
+                else:
+                    seal_ready_candidate(staging, state_key, version, fingerprint, {
+                        "processing_identity": identity, "source_record_sha256": result["records_sha256"],
+                        "source_schema_sha256": schema_sha, "capture_receipts": {}, "objects": objects})
+                    for name in objects:
+                        write_immutable(staging, target + "/" + name, private.read_key(prefix + "/" + name))
+                verify_cached_candidate(
+                    staging, Path(__file__).parents[3], state_key, target, version, fingerprint,
+                    identity, result["records_sha256"], schema_sha, objects, {})
+                return {**result, "version": version, "reused": reused}
+        except Exception as exc:
+            quarantine = f"_quarantine/{config.dataset_slug}/{uuid4().hex}"
+            for path in sorted(root.rglob("*")):
+                if path.is_file():
+                    write_immutable(staging, quarantine + "/" + path.relative_to(root).as_posix(), path.read_bytes())
+            write_immutable(staging, quarantine + "/metadata/failure.json", _json_bytes({
+                "failure_code": str(exc).split(":", 1)[0], "release_accepted": False}))
+            raise
+        finally:
+            if owned:
+                client.close()
 
 
 def capture(
