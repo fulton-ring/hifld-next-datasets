@@ -98,4 +98,7 @@ usace_pontoon_areas_draft_schedule = ScheduleDefinition(
 
 usace_pontoon_areas_usace_ienc_drift = register_approved_baseline_drift(usace_pontoon_areas_usace_ienc, "usace_pontoon_areas_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_pontoon_areas_usace_ienc]
 ASSET_CHECKS = [usace_pontoon_areas_complete, usace_pontoon_areas_usace_ienc_drift]
+JOBS = [usace_pontoon_areas_draft_job]
+SCHEDULES = [usace_pontoon_areas_draft_schedule]

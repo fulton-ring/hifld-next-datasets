@@ -19,8 +19,6 @@ from dagster_hifld.assets.usace_navigation_lights import usace_navigation_lights
 from dagster_hifld.assets.usace_notice_marks import usace_notice_marks_usace_ienc
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
 from dagster_hifld.assets.usace_dry_docks import usace_dry_docks_usace_ienc
-from dagster_hifld.assets.usace_pylon_areas import usace_pylon_areas_usace_ienc
-from dagster_hifld.assets.usace_pylon_locations import usace_pylon_locations_usace_ienc
 from dagster_hifld.assets.usace_distance_marks import usace_distance_marks_usace_ienc
 from dagster_hifld.assets.usace_recommended_tracks import usace_recommended_tracks_ienc
 from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pipeline_lines_usace_ienc
@@ -38,8 +36,6 @@ from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import shoreli
 from dagster_hifld.assets.shoreline_construction_lines_usace_ienc import shoreline_construction_lines_usace_ienc
 from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
-from dagster_hifld.assets.usace_pontoon_areas import usace_pontoon_areas_usace_ienc
-from dagster_hifld.assets.usace_hulke_areas import usace_hulke_areas_usace_ienc
 from dagster_hifld.assets.usace_landmark_areas import usace_landmark_areas_usace_ienc
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
@@ -77,8 +73,6 @@ hifld_ingest_assets = [
     census_elementary_districts,
     noaa_current_dart,
     noaa_12nm_territorial_sea,
-    usace_pontoon_areas_usace_ienc,
-    usace_hulke_areas_usace_ienc,
     usace_landmark_areas_usace_ienc,
     noaa_200nm_eez_and_maritime_boundaries,
     national_transit_map_stops,
@@ -88,8 +82,6 @@ hifld_ingest_assets = [
     usace_notice_marks_usace_ienc,
     usace_berths_areas_usace_ienc,
     usace_dry_docks_usace_ienc,
-    usace_pylon_areas_usace_ienc,
-    usace_pylon_locations_usace_ienc,
     usace_distance_marks_usace_ienc,
     usace_recommended_tracks_ienc,
     usace_overhead_pipeline_lines_usace_ienc,
