@@ -21,3 +21,7 @@ county_subdivisions_draft_refresh_job = define_asset_job('county_subdivisions_dr
 county_subdivisions_draft_refresh_schedule = ScheduleDefinition(name='county_subdivisions_draft_monthly',
     job=county_subdivisions_draft_refresh_job, cron_schedule='0 10 1 * *',
     execution_timezone='America/New_York', default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [census_county_subdivisions]
+JOBS = [county_subdivisions_draft_refresh_job]
+SCHEDULES = [county_subdivisions_draft_refresh_schedule]

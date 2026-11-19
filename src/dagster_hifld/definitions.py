@@ -25,12 +25,6 @@ from dagster_hifld.assets.epa_disaster_debris import (
     epa_disaster_debris_recovery_data,
 )
 
-from dagster_hifld.assets.census_consolidated_cities import (
-    concity_source_integrity_job,
-    concity_source_integrity_schedule,
-)
-
-
 
 from dagster_hifld.assets.noaa import (
     noaa_eez_draft_refresh_job,
@@ -359,10 +353,6 @@ from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_DIRS,
     discover_legacy_unknown_shapefile,
     discover_legacy_unknown_shapefile_keys,
-)
-from dagster_hifld.assets.census_county_subdivisions import (
-    county_subdivisions_draft_refresh_job,
-    county_subdivisions_draft_refresh_schedule,
 )
 from dagster_hifld.assets.usace_crane_locations import (
     usace_crane_locations_complete,
@@ -870,8 +860,6 @@ defs = Definitions(
             fws_cbrs_map_panels_draft_refresh_job,
             fws_cbrs_prohibitions_draft_refresh_job,
             fws_cbrs_units_draft_refresh_job,
-            concity_source_integrity_job,
-            county_subdivisions_draft_refresh_job,
             usace_crane_locations_draft_job,
             usace_floating_docks_draft_job,
             usace_data_coverage_areas_draft_job,
@@ -937,8 +925,6 @@ defs = Definitions(
             fws_cbrs_map_panels_draft_refresh_schedule,
             fws_cbrs_prohibitions_draft_refresh_schedule,
             fws_cbrs_units_draft_refresh_schedule,
-            concity_source_integrity_schedule,
-            county_subdivisions_draft_refresh_schedule,
             usace_crane_locations_draft_schedule,
             usace_floating_docks_draft_schedule,
             usace_data_coverage_areas_draft_schedule,

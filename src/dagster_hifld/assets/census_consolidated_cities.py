@@ -15,3 +15,7 @@ def census_consolidated_cities(context,config:CensusConsolidatedCitiesConfig,sta
 
 concity_source_integrity_job=define_asset_job('concity_source_integrity',selection=AssetSelection.assets(census_consolidated_cities))
 concity_source_integrity_schedule=ScheduleDefinition(name='concity_source_integrity_monthly',job=concity_source_integrity_job,cron_schedule='0 8 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS=[census_consolidated_cities]
+JOBS=[concity_source_integrity_job]
+SCHEDULES=[concity_source_integrity_schedule]

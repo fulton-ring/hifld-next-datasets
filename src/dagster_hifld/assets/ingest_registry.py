@@ -12,7 +12,6 @@ from dagster_hifld.assets.noaa import (
     noaa_12nm_territorial_sea,
     noaa_200nm_eez_and_maritime_boundaries,
 )
-from dagster_hifld.assets.census_blocks_2020 import census_blocks_2020_ingest_assets
 from dagster_hifld.assets.national_transit_map_stops import national_transit_map_stops
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
@@ -60,8 +59,6 @@ from dagster_hifld.assets.fws import fws_cbrs_buffer_zone
 from dagster_hifld.assets.fws_map_panels import fws_cbrs_map_panels
 from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
 from dagster_hifld.assets.fws_units import fws_cbrs_units
-from dagster_hifld.assets.census_consolidated_cities import census_consolidated_cities
-from dagster_hifld.assets.census_county_subdivisions import census_county_subdivisions
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 from dagster_hifld.assets.usace_floating_docks import usace_floating_docks_usace_ienc
 from dagster_hifld.assets.floodwalls_usace_ienc import floodwalls_usace_ienc
@@ -87,7 +84,6 @@ hifld_ingest_assets = [
     usace_pontoon_areas_usace_ienc,
     usace_hulke_areas_usace_ienc,
     usace_landmark_areas_usace_ienc,
-    *census_blocks_2020_ingest_assets,
     noaa_200nm_eez_and_maritime_boundaries,
     national_transit_map_stops,
     usace_administrative_areas_usace_ienc,
@@ -132,8 +128,6 @@ hifld_ingest_assets = [
     fws_cbrs_map_panels,
     fws_cbrs_prohibitions,
     fws_cbrs_units,
-    census_consolidated_cities,
-    census_county_subdivisions,
     usace_crane_locations_ienc,
     usace_floating_docks_usace_ienc,
     floodwalls_usace_ienc,

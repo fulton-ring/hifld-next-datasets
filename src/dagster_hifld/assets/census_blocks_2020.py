@@ -143,3 +143,5 @@ def _make_tabblock20_ingest_asset(file_slug: str):
 census_blocks_2020_ingest_assets = [
     _make_tabblock20_ingest_asset(file_slug) for file_slug in CENSUS_2020_TABBLOCK20_FILE_SLUGS
 ]
+
+INGEST_ASSETS = census_blocks_2020_ingest_assets
