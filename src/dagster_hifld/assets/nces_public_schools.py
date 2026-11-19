@@ -5,6 +5,7 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.nces_public_schools import (
@@ -42,12 +43,14 @@ def nces_public_schools(context, config: NcesPublicSchoolsConfig,
 
 @asset_check(asset=nces_public_schools, blocking=True)
 def nces_public_schools_complete(candidate: dict) -> AssetCheckResult:
+    count = candidate.get("source_reported_count")
     passed = (candidate.get("source_population_complete") is True
               and bool(candidate.get("schoolyear"))
-              and isinstance(candidate.get("feature_count"), int)
-              and candidate["feature_count"] > 0)
+              and type(count) is int and count > 0
+              and candidate.get("feature_count") == count)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "schoolyear": candidate.get("schoolyear", "missing"),
         "source_url": candidate.get("source_url", "missing"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
@@ -73,7 +76,10 @@ nces_public_schools_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+nces_public_schools_drift = register_approved_baseline_drift(
+    nces_public_schools, "nces_public_schools_drift")
+
 INGEST_ASSETS = [nces_public_schools]
-ASSET_CHECKS = [nces_public_schools_complete]
+ASSET_CHECKS = [nces_public_schools_complete, nces_public_schools_drift]
 JOBS = [nces_public_schools_draft_job]
 SCHEDULES = [nces_public_schools_draft_schedule]
