@@ -25,11 +25,12 @@ pending.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
@@ -37,9 +38,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from time import sleep, time_ns
+from time import sleep
 
-from dagster_hifld.capture_completeness import validate_capture_witness
+from dagster_hifld.http_capture import validate_capture_roster
+from dagster_hifld.sources.arcgis_layer import (
+    capture_layer_roster, capture_witness, load_replay, offset_layer_capture_roster,
+    retained_capture_ids, witness_aside as _witness_refused,
+)
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -75,23 +80,10 @@ CROSSWALK_DEAD_REDIRECT_NOTE = (
     "services/Hosted/BOEM_Offshore_Marine_Cadastre_Data_Collection/FeatureServer/3) "
     "no longer resolves; the same cadastre product is served first-party on BOEM's "
     "own gis.boem.gov server (layer 11).")
-# The per-value and per-geometry baselines, gate counts and observed bounds
-# are pinned from the dated complete capture (2026-11-13, 28 accepted
-# resultOffset pages). The producer republished layer 11 between 11:34Z and
-# 12:03Z on 2026-11-13, resequencing all OBJECTIDs (roster
-# 643,213,655..644,611,532 -> 644,316,363..644,852,019, same count); the id,
-# record and geometry digests were re-pinned from a fresh complete capture
-# (2026-11-13 ~20:11Z, /workspace/captures258b in task sandbox cf4728bd)
-# whose every other pinned value matched the original capture verbatim.
-# Unpinned values (None or "") are checked only once pinned.
 EXPECTED_SCHEMA_SHA256 = "9294be8bdc15558774532cf2c997830b3ef153aefd8cd4c3efa88c4de92ebe05"
-# The producer publishes 91 blocks (all in protraction NG16-02) as two
-# same-key features each; rows are kept verbatim and the count is pinned as a
-# drift gate.
 BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests, gate counts and observed bounds "
-    "are pinned from a completed capture; unpinned values are checked only once "
-    "pinned.")
+    "Completeness is checked against captured publisher witnesses; no "
+    "independently approved release baseline is configured.")
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID", False),
     ("PROT_NUMBER", "esriFieldTypeString", True),
@@ -150,38 +142,15 @@ def _validate_source_spatial_reference(value: object, label: str) -> None:
 
 
 def _capture_names(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [
-        ("service_before", SERVICE_URL + "?f=pjson"),
-        ("layer_before", LAYER_URL + "?f=pjson"),
-        ("count_before", _query(where="1=1", returnCountOnly="true")),
-        ("ids_before", _query(where="1=1", returnIdsOnly="true")),
-    ]
-    # The server drops very long objectIds lists, so pages walk the sorted
-    # roster in OBJECTID order with resultOffset/resultRecordCount pagination.
-    for page in range(0, (len(ids) + PAGE_SIZE - 1) // PAGE_SIZE):
-        urls.append((f"page_{page:03d}", _query(
-            where="1=1", outFields="*", returnGeometry="true", outSR="4269",
-            orderByFields="OBJECTID ASC", resultOffset=page * PAGE_SIZE,
-            resultRecordCount=PAGE_SIZE)))
-    urls.extend([
-        ("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson"),
-        ("count_after", _query(where="1=1", returnCountOnly="true")),
-        ("ids_after", _query(where="1=1", returnIdsOnly="true")),
-    ])
-    return urls
+    roster = offset_layer_capture_roster(len(ids), layer_url=LAYER_URL,
+        service_url=SERVICE_URL, page_size=PAGE_SIZE, page_params={'outSR': '4269'},
+        short_last_page=False, after_order=('layer_after', 'service_after', 'count_after', 'ids_after'))
+    return [(name, _query(**dict(parse_qsl(urlsplit(url).query))) if '/query?' in url else url)
+            for name, url in roster]
 
 
 _BRACKET_RETRY_ATTEMPTS = 4
 _BRACKET_RETRY_BASE_DELAY_SECONDS = 5.0
-
-
-def _witness_refused(root: Path, name: str) -> None:
-    """Move a retained refused answer aside so the slot can be refetched."""
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(root / f"{name}.error-{stamp}.{suffix}")
 
 
 def _document_complete(name: str, body: bytes) -> bool:
@@ -222,22 +191,35 @@ def _acquire_document(client: httpx.Client, root: Path, name: str, url: str) -> 
 
 
 def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
+    if any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError('offline_capture_symlink_rejected')
+    if (root / 'capture-summary.json').is_symlink():
+        raise ValueError('offline_capture_symlink_rejected')
+    if (root / 'capture-summary.json').stat().st_size > 65536:
+        raise ValueError('offline_capture_summary_oversized')
     summary = json.loads((root / "capture-summary.json").read_bytes())
     if summary.get("complete") is not True:
         raise ValueError("offline_native_capture_incomplete")
+    if (root / 'ids_before.body').stat().st_size > MAX_BODY_BYTES:
+        raise ValueError('offline_capture_size_limit')
+    ids = retained_capture_ids(root)
+    roster = _capture_names(ids)
+    required = {f'{name}.{suffix}' for name, _ in roster for suffix in ('body', 'wire', 'receipt.json')}
+    optional = {'candidate-verification.json'}
+    names = '|'.join(re.escape(name) for name, _ in roster)
+    optional.update(path.name for path in root.iterdir()
+                    if re.fullmatch(rf'(?:{names})\.error-\d+\.(?:body|wire|receipt\.json)', path.name))
+    validate_capture_roster(root, required | {'capture-summary.json'} | ({p.name for p in root.iterdir()} & optional))
     captures = {}
-    for receipt_path in sorted(root.glob("*.receipt.json")):
-        receipt = json.loads(receipt_path.read_bytes())
-        name = receipt_path.name.removesuffix(".receipt.json")
-        body = (root / f"{name}.body").read_bytes()
-        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
-            raise ValueError("offline_capture_body_receipt_mismatch:" + name)
-        # The preserved one-shot capture was recorded with identity encoding;
-        # reconstruct the shared receipt shape without changing observation time.
-        receipt.update({"complete_body": True, "wire_bytes": len(body), "wire_sha256": _sha(body),
-                        "content_encoding": "identity", "error_code": None})
+    for name, url in roster:
+        for suffix in ('body', 'wire', 'receipt.json'):
+            if (root / f'{name}.{suffix}').stat().st_size > (65536 if suffix == 'receipt.json' else MAX_BODY_BYTES):
+                raise ValueError('offline_capture_size_limit')
+        body, receipt = load_replay(root, name)
+        if receipt.get('method') != 'GET' or receipt.get('url') != url or receipt.get('final_url') != url:
+            raise ValueError('offline_capture_request_mismatch:' + name)
         captures[name] = (body, receipt)
+    capture_witness(captures)
     return captures
 
 
@@ -253,11 +235,13 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
             if not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids) \
                     or len(ids) != len(set(ids)):
                 raise ValueError("source_seed_id_roster_invalid")
-            urls = [(n, u) for n, u in _capture_names(ids) if n != "ids_before"]
-            for name, url in urls:
+            def fetch(client, url, root, name):
+                if name == 'ids_before':
+                    return captures[name]
                 body, receipt = _acquire_document(client, root, name, url)
                 captures[name] = (body, receipt)
-        return captures
+                return body, receipt
+            return capture_layer_roster(client, root, _capture_names(ids), fetch)
     except Exception as exc:
         if captures:
             quarantine_incomplete_capture(storage, root, DATASET_SLUG, "incomplete", captures, type(exc).__name__)
@@ -319,9 +303,7 @@ def _validate_rings(rings: object) -> list[list[list[float]]] | None:
 def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
         -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
     docs = {name: json.loads(body) for name, (body, _) in captures.items()}
-    ids_before = validate_capture_witness(
-        docs["count_before"].get("count"), docs["ids_before"].get("objectIds"),
-        docs["count_after"].get("count"), docs["ids_after"].get("objectIds"))
+    ids_before = capture_witness(captures)
     count = len(ids_before)
     service, layer = docs["service_before"], docs["layer_before"]
     if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
@@ -407,11 +389,6 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
         else:
             ring_counts[len(rings)] = ring_counts.get(len(rings), 0) + 1
             geometry_parts.append(rings)
-    # The producer publication itself is not unique by (PROT_NUMBER,
-    # BLOCK_NUMBER): the complete capture found 91 blocks (all in protraction
-    # NG16-02) published as two same-key features each. Rows are never merged
-    # or dropped; the duplicate count is audited and pinned as a drift gate
-    # instead.
     featureclass = [f["attributes"] for f in features]
     prot_numbers = [attrs["PROT_NUMBER"] for attrs in featureclass]
     block_keys = [(attrs["PROT_NUMBER"], attrs["BLOCK_NUMBER"]) for attrs in featureclass]
@@ -520,11 +497,8 @@ def capture_boem_ocs_lease_blocks(storage: StagingStorageResource, *, version: s
     capture_root.mkdir(parents=True, exist_ok=True)
     if offline_capture_directory:
         captures = _load_offline(Path(offline_capture_directory))
-        # The offline loader records identity-encoding receipts whose wire
-        # equals the body; materialize the wire evidence so acquisition
-        # failures replayed offline quarantine complete evidence.
         for name, (body, _receipt) in captures.items():
-            (capture_root / f"{name}.wire").write_bytes(body)
+            shutil.copyfile(Path(offline_capture_directory) / f'{name}.wire', capture_root / f'{name}.wire')
     else:
         captures = _acquire(capture_root, storage)
         (capture_root / "capture-summary.json").write_bytes(_canonical(
@@ -570,6 +544,8 @@ def capture_boem_ocs_lease_blocks(storage: StagingStorageResource, *, version: s
                 "source_authority_accepted": False, "mapping_approved": False,
                 "release_accepted": False}
 
+    if storage.list_prefix(prefix):
+        raise ValueError('unsealed_candidate_prefix:' + prefix)
     parquet_body = _geoparquet(features, fields, capture_root)
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
@@ -665,8 +641,7 @@ def capture_boem_ocs_lease_blocks(storage: StagingStorageResource, *, version: s
                "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in captures.items():
         outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (capture_root / f"{name}.wire").read_bytes() \
-            if (capture_root / f"{name}.wire").exists() else body
+        outputs[f"raw/{name}.wire"] = (capture_root / f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(dict(receipt)) + b"\n"
     ready = {"approved": False, "version": version, "objects": source_objects,
              "source_record_sha256": audit["source_record_sha256"], "release_accepted": False,
