@@ -899,16 +899,28 @@ def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *
                 if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode) or os.fstat(lock.fileno()).st_nlink != 1:
                     raise ValueError("school_candidate_lock_aliased")
                 fcntl.flock(lock, fcntl.LOCK_EX)
-                reused = bool(staging.list_prefix(target) or staging.list_prefix(state_root))
+                reused = bool(candidate_storage.list_prefix(state_root))
                 if reused:
                     original = json.loads(load_first_construction(candidate_storage, state_key, version, fingerprint))
                     objects = original["payload"]["objects"]
                 else:
+                    existing = set(candidate_storage.list_prefix(target))
+                    expected = {target + "/" + name for name in objects}
+                    if existing - expected:
+                        raise ValueError("school_unsealed_candidate_roster_drift")
+                    for key in existing:
+                        write_immutable(candidate_storage, key, private.read_key(prefix + key[len(target):]))
+                    for name in objects:
+                        write_immutable(candidate_storage, target + "/" + name, private.read_key(prefix + "/" + name))
+                    staged_objects = {key[len(target) + 1:]: {
+                        "bytes": candidate_storage.object_snapshot(key).size,
+                        "sha256": candidate_storage.sha256_key(key)}
+                        for key in candidate_storage.list_prefix(target)}
+                    if staged_objects != objects:
+                        raise ValueError("school_unsealed_candidate_integrity_failed")
                     seal_ready_candidate(candidate_storage, state_key, version, fingerprint, {
                         "processing_identity": identity, "source_record_sha256": result["records_sha256"],
                         "source_schema_sha256": schema_sha, "capture_receipts": {}, "objects": objects})
-                    for name in objects:
-                        write_immutable(staging, target + "/" + name, private.read_key(prefix + "/" + name))
                 verify_cached_candidate(
                     candidate_storage, Path(__file__).parents[3], state_key, target, version, fingerprint,
                     identity, result["records_sha256"], schema_sha, objects, {})

@@ -61,7 +61,7 @@ class AdministrativeSchoolConstructionTests(unittest.TestCase):
 
     def first_capture(self):
         result = source.capture(self.storage, client=self.client)
-        target = self.root / "stage" / source.DATASET_SLUG / source.FILE_SLUG / result["version"]
+        target = self.root / "stage" / self.storage.prefix / source.DATASET_SLUG / source.FILE_SLUG / result["version"]
         before = snapshot(target)
         return result, target, before, before["raw/source_archive.receipt.json"]
 
@@ -278,3 +278,139 @@ class AdministrativeSchoolConstructionTests(unittest.TestCase):
         key = build_publish_partition_key(source.DATASET_SLUG, source.FILE_SLUG, first["version"])
         context.instance.add_dynamic_partitions.assert_called_once_with(PUBLISH_PARTITION_NAME, [key])
         self.assertEqual(result["partition_key"], key)
+
+    def test_unsealed_output_and_seal_failures_can_retry_without_changing_history(self):
+        self.storage = self.storage.model_copy(update={"prefix": "isolated"})
+        _, original_target, original, receipt = self.first_capture()
+        scoped = self.root / "stage" / "isolated"
+        shared = source._shared
+        write = shared.write_immutable
+        seal = shared.seal_ready_candidate
+        candidate_root = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/"
+        for failure in ("first_write", "mid_write", "seal"):
+            with self.subTest(failure=failure), patch.object(
+                    shared.pyogrio, "__gdal_version_string__", "retry-" + failure):
+                history = snapshot(scoped / "_construction-state")
+                observed = []
+
+                def fail_write(storage, key, body):
+                    if key.startswith(candidate_root):
+                        observed.append(key)
+                        if len(observed) == (1 if failure == "first_write" else 3):
+                            raise OSError("injected candidate write failure")
+                    return write(storage, key, body)
+
+                def fail_seal(storage, key, version, fingerprint, payload):
+                    observed.append(candidate_root + version + "/seal")
+                    raise OSError("injected seal failure")
+
+                with patch.object(shared, "write_immutable", side_effect=fail_write if failure != "seal" else write), \
+                        patch.object(shared, "seal_ready_candidate", side_effect=fail_seal if failure == "seal" else seal):
+                    with self.assertRaisesRegex(OSError, "injected"):
+                        source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                version = observed[-1].split("/")[2]
+                target = scoped / candidate_root / version
+                self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                partial = snapshot(target)
+                if failure == "mid_write":
+                    extra = target / "untrusted-extra.json"
+                    extra.write_bytes(b"untrusted extra object")
+                    with self.assertRaisesRegex(ValueError, "school_unsealed_candidate_roster_drift"):
+                        source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                    self.assertEqual(extra.read_bytes(), b"untrusted extra object")
+                    self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                    extra.unlink()
+                    name = next(iter(partial))
+                    (target / name).write_bytes(b"untrusted partial object")
+                    with self.assertRaisesRegex(ValueError, "immutable_staged_object_changed"):
+                        source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                    self.assertEqual((target / name).read_bytes(), b"untrusted partial object")
+                    self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                    (target / name).write_bytes(partial[name])
+                result = source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                self.assertFalse(result["reused"])
+                self.assertEqual(result["version"], version)
+                completed = snapshot(target)
+                for name, body in partial.items():
+                    self.assertEqual(completed[name], body)
+                complete_history = snapshot(scoped / "_construction-state")
+                self.assertEqual({name: complete_history[name] for name in history}, history)
+                reused = source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                self.assertTrue(reused["reused"])
+                self.assertEqual(snapshot(target), completed)
+                self.assertEqual(snapshot(scoped / "_construction-state"), complete_history)
+                self.assertEqual(snapshot(original_target), original)
+
+    def test_interrupted_or_completed_seal_never_rewrites_completed_outputs(self):
+        from dagster_hifld import construction_state
+
+        self.storage = self.storage.model_copy(update={"prefix": "isolated"})
+        _, original_target, original, receipt = self.first_capture()
+        scoped = self.root / "stage" / "isolated"
+        shared = source._shared
+        install = construction_state._install_once
+        seal = shared.seal_ready_candidate
+        for failure in ("partial_seal", "completed_seal"):
+            with self.subTest(failure=failure), patch.object(
+                    shared.pyogrio, "__gdal_version_string__", "retry-" + failure):
+                versions = []
+
+                def fail_install(root, key, body):
+                    if key.endswith(".first-construction.json"):
+                        raise OSError("injected interrupted seal")
+                    return install(root, key, body)
+
+                def fail_seal(storage, key, version, fingerprint, payload):
+                    versions.append(version)
+                    seal(storage, key, version, fingerprint, payload)
+                    raise OSError("injected completed seal")
+
+                def observe_seal(storage, key, version, fingerprint, payload):
+                    versions.append(version)
+                    return seal(storage, key, version, fingerprint, payload)
+
+                with patch.object(construction_state, "_install_once", side_effect=(
+                        fail_install if failure == "partial_seal" else install)), patch.object(
+                        shared, "seal_ready_candidate", side_effect=(
+                            observe_seal if failure == "partial_seal" else fail_seal)):
+                    with self.assertRaises((OSError, construction_state.ConstructionStateError)):
+                        source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                target = scoped / source.DATASET_SLUG / source.FILE_SLUG / versions[0]
+                completed = snapshot(target)
+                self.assertEqual(len(completed), 5)
+                history = snapshot(scoped / "_construction-state")
+                if failure == "partial_seal":
+                    with self.assertRaisesRegex(ValueError, "construction_missing_original_state"):
+                        source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                else:
+                    result = source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                    self.assertTrue(result["reused"])
+                self.assertEqual(snapshot(target), completed)
+                self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                self.assertEqual(snapshot(original_target), original)
+
+    def test_required_objects_are_read_back_before_the_first_seal(self):
+        self.storage = self.storage.model_copy(update={"prefix": "isolated"})
+        _, original_target, original, receipt = self.first_capture()
+        scoped = self.root / "stage" / "isolated"
+        history = snapshot(scoped / "_construction-state")
+        shared = source._shared
+        write = shared.write_immutable
+        candidate_root = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/"
+        corrupted = []
+
+        def corrupt_write(storage, key, body):
+            result = write(storage, key, body)
+            if key.startswith(candidate_root) and key.endswith(".parquet"):
+                storage.write_key(key, b"injected damaged output")
+                corrupted.append(key)
+            return result
+
+        with patch.object(shared.pyogrio, "__gdal_version_string__", "damaged-output"), \
+                patch.object(shared, "write_immutable", side_effect=corrupt_write):
+            with self.assertRaisesRegex(ValueError, "school_unsealed_candidate_integrity_failed"):
+                source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+        self.assertEqual(len(corrupted), 1)
+        self.assertEqual(self.storage.read_key(corrupted[0]), b"injected damaged output")
+        self.assertEqual(snapshot(scoped / "_construction-state"), history)
+        self.assertEqual(snapshot(original_target), original)
