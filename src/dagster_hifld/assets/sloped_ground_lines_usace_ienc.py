@@ -69,4 +69,7 @@ sloped_ground_lines_usace_ienc_draft_schedule = ScheduleDefinition(
 
 sloped_ground_lines_usace_ienc_drift = register_approved_baseline_drift(sloped_ground_lines_usace_ienc, "sloped_ground_lines_usace_ienc_drift")
 
+INGEST_ASSETS = [sloped_ground_lines_usace_ienc]
 ASSET_CHECKS = [sloped_ground_lines_usace_ienc_complete, sloped_ground_lines_usace_ienc_drift]
+JOBS = [sloped_ground_lines_usace_ienc_draft_job]
+SCHEDULES = [sloped_ground_lines_usace_ienc_draft_schedule]
