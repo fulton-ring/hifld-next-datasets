@@ -44,21 +44,9 @@ from dagster_hifld.assets.noaa_current_dart import (
 
 
 
-from dagster_hifld.assets.building_locations_usace_ienc import (
-    building_locations_population_complete,
-    building_locations_draft_schedule,
-)
 
 
-from dagster_hifld.assets.usace_berths_areas import (
-    usace_berths_areas_complete,
-    usace_berths_areas_draft_schedule,
-)
 
-from dagster_hifld.assets.usace_dry_docks import (
-    usace_dry_docks_complete,
-    usace_dry_docks_draft_schedule,
-)
 
 
 
@@ -140,11 +128,6 @@ from dagster_hifld.assets.usace_crane_locations import (
     usace_crane_locations_draft_schedule,
 )
 
-from dagster_hifld.assets.usace_floating_docks import (
-    usace_floating_docks_complete,
-    usace_floating_docks_draft_job,
-    usace_floating_docks_draft_schedule,
-)
 
 _SOURCE_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS
 _STAGED_DISCOVERY_FORMAT_DIRS = CANONICAL_SOURCE_FORMAT_DIRS | {"unknown", "geoparquet"}
@@ -528,13 +511,9 @@ defs = Definitions(
             usace_obstruction_lines_complete,
             usace_administrative_areas_complete,
             usace_navigation_marks_areas_complete,
-            building_locations_population_complete,
-            usace_berths_areas_complete,
-            usace_dry_docks_complete,
             usace_crane_locations_complete,
             usace_crane_locations_quality,
             usace_crane_locations_release,
-            usace_floating_docks_complete,
             epa_frs_sic_complete,
             epa_frs_sic_published_membership_compatible,
         ],
@@ -553,7 +532,6 @@ defs = Definitions(
             usace_navigation_marks_areas_draft_job,
             ibc_boundary_draft_refresh_job,
             usace_crane_locations_draft_job,
-            usace_floating_docks_draft_job,
             epa_frs_sic_draft_job,
         ],
         discovered("JOBS"),
@@ -566,15 +544,11 @@ defs = Definitions(
             noaa_eez_draft_weekly_schedule,
             noaa_territorial_draft_weekly_schedule,
             noaa_dart_draft_refresh_schedule,
-            building_locations_draft_schedule,
             usace_obstruction_lines_draft_schedule,
             usace_administrative_areas_draft_schedule,
             usace_navigation_marks_areas_draft_schedule,
-            usace_berths_areas_draft_schedule,
-            usace_dry_docks_draft_schedule,
             ibc_boundary_draft_refresh_schedule,
             usace_crane_locations_draft_schedule,
-            usace_floating_docks_draft_schedule,
             epa_frs_sic_draft_schedule,
         ],
         discovered("SCHEDULES"),
