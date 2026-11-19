@@ -88,6 +88,13 @@ CASES = (
         "2024-01-01T00:00:00.000Z",
     ),
     (
+        "incorporated_places",
+        "write_gpkg",
+        "SHAPE",
+        "multi",
+        "2024-01-01T00:00:00.000Z",
+    ),
+    (
         "historical_tsunami_events",
         "write_gpkg",
         "geometry",
