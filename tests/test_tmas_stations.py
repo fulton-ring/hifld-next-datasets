@@ -427,6 +427,20 @@ class TmasStationsTests(unittest.TestCase):
                 source._read_replay(root)
             (root / "extra.body").unlink()
             name = "page_000000_00002"
+            body_path = root / f"{name}.body"
+            original_body = body_path.read_bytes()
+            body_path.write_bytes(original_body + b" ")
+            with self.assertRaisesRegex(ValueError, "retained_capture_artifact_size_mismatch"):
+                source._read_replay(root)
+            body_path.unlink()
+            body_path.symlink_to(root / f"{name}.wire")
+            with self.assertRaisesRegex(ValueError, "capture_roster_nonregular_path"):
+                source._read_replay(root)
+            body_path.unlink()
+            body_path.write_bytes(original_body)
+            with patch.object(source, "MAX_CAPTURE_TOTAL_BYTES", 1):
+                with self.assertRaisesRegex(ValueError, "retained_capture_budget_invalid"):
+                    source._read_replay(root)
             receipt_path = root / f"{name}.receipt.json"
             receipt_bytes = receipt_path.read_bytes()
             manifest_path = root / "capture_manifest.json"

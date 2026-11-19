@@ -27,7 +27,9 @@ from shapely.geometry import Point
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.capture_completeness import validate_capture_witness
-from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
+from dagster_hifld.http_capture import (
+    capture_roster_digests, validate_capture_roster, validate_retained_capture_replay,
+)
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
@@ -514,6 +516,8 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if any(path.is_symlink() for path in (root, *root.parents, manifest_path)):
         raise ValueError("unsafe_capture_directory")
+    if manifest_path.stat().st_size > MAX_CAPTURE_BYTES:
+        raise ValueError("retained_capture_budget_invalid")
     manifest = json.loads(manifest_path.read_bytes())
     receipts = manifest.get("receipts")
     if not isinstance(receipts, dict):
@@ -530,6 +534,9 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
                    for value in roster.values())
             or sum(value["bytes"] for value in roster.values()) > MAX_CAPTURE_TOTAL_BYTES):
         raise ValueError("retained_capture_budget_invalid")
+    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
+    if any((root / name).stat().st_size != value["bytes"] for name, value in roster.items()):
+        raise ValueError("retained_capture_artifact_size_mismatch")
 
     def load(root: Path, name: str):
         body, receipt = load_replay(root, name)
@@ -682,8 +689,8 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                     "license": "https://www.usa.gov/publicdomain/label/1.0/",
                     "attribution": "BTS NTAD; item metadata states the work is a U.S. "
                                    "government work not protected by copyright, available for "
-                               "unrestricted public use; rights review remains pending."}
-               for name, (_, receipt) in sorted(captures.items())],
+                                   "unrestricted public use; rights review remains pending."}
+                   for name, (_, receipt) in sorted(captures.items())],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "source_fields": "all six source fields retained in "
@@ -755,7 +762,7 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                         "evidence": {stem: {"kind": entry["kind"],
                                             "files": {suffix: {"bytes": len(body), "sha256": _sha(body)}
                                                       for suffix, body in sorted(entry["files"].items())}}
-                                 for stem, entry in sorted(evidence.items())}}) + b"\n")
+                                     for stem, entry in sorted(evidence.items())}}) + b"\n")
         _read_replay(capture_root)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {rel: parquet_body, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
@@ -770,7 +777,8 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
             outputs[f"raw/evidence/{stem}{suffix}"] = body
     outputs["metadata/candidate_ready.json"] = _canonical(
         {"approved": False, "version": version, "objects": source_objects,
-         "source_record_sha256": audit["source_record_sha256"], "source_population_complete": True, "freshness_accepted": False,
+         "source_record_sha256": audit["source_record_sha256"], "source_population_complete": True,
+         "freshness_accepted": False,
          "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
          "mapping_approved": False, "release_accepted": False}) + b"\n"
     fingerprint = _sha(_canonical(identity))
@@ -812,10 +820,10 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": audit["source_feature_count"], "source_population_complete": True,
-                "source_id_sha256": audit["source_id_sha256"], "capture_directory": str(capture_root), "source_null_geometry_count": audit["null_geometry_count"],
+            "source_id_sha256": audit["source_id_sha256"], "capture_directory": str(capture_root),
+            "source_null_geometry_count": audit["null_geometry_count"],
             "source_invalid_geometry_count": audit["invalid_geometry_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
             "source_release_accepted": False, "source_freshness_accepted": False,
             "schema_contract_accepted": False, "id_contract_accepted": False,
-            "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
-            }
+            "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
