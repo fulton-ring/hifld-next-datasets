@@ -251,6 +251,9 @@ def _load(root: Path) -> dict[str, tuple[bytes, dict]]:
     if (sum(len(body) + int(receipt.get("wire_bytes", 0)) for body, receipt in result.values())
             + refused_bytes > MAX_CAPTURE_BYTES):
         raise ValueError("trails_capture_budget_exceeded")
+    if "artifact_roster" in manifest and any(manifest.get(name) != roster
+            for name, roster in _artifact_rosters(root).items()):
+        raise ValueError("trails_capture_artifact_roster_mismatch")
     if "artifact_roster" in manifest and _artifact_rosters(root) != {
             key: manifest.get(key) for key in ("artifact_roster", "refused_roster")}:
         raise ValueError("trails_capture_artifact_digest_mismatch")
@@ -425,7 +428,9 @@ def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
     if not ids_before:
         raise ValueError("trails_dimensions_probe_without_ids")
     expected_page_names = {f"page_{start:05d}" for start in range(0, len(ids_before), BATCH_SIZE)}
-    if {name for name in docs if name.startswith("page_")} != expected_page_names:
+    expected_names = expected_page_names | {"service_before", "service_after", "layer_before", "layer_after",
+        "count_before", "count_after", "ids_before", "ids_after", "dimensions_probe"}
+    if set(docs) != expected_names:
         raise ValueError("trails_page_receipt_roster_drift")
     if "dimensions_probe" not in docs:
         raise ValueError("trails_dimensions_probe_missing")
@@ -729,7 +734,7 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
     refused_dir = root / _REFUSED_DIR
     if refused_dir.is_dir():
         for path in sorted(refused_dir.iterdir()):
-            outputs[f"raw/refused/{path.name}"] = path.read_bytes()
+            outputs[f"evidence/refused/{path.name}"] = path.read_bytes()
     ready = {"approved":False,"version":version,"objects":{parquet_path:{"bytes":len(parquet),"sha256":_sha(parquet)}},
         "source_population_complete":True,"source_id_sha256":audit["id_sha256"],"source_record_sha256":audit["record_sha256"],
         "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,

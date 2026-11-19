@@ -187,7 +187,7 @@ class TrailsUSGSTests(unittest.TestCase):
                 ("count_after", {"count": 4}, "source_count_or_id_roster_drift"),
                 ("ids_after", {"objectIds": [1, 3, 10]}, "source_count_or_id_roster_drift"),
                 ("service_after", {"changed": True}, "trails_service_changed_during_capture"),
-                ("layer_after", {"hasM": False}, "trails_layer_contract_changed_during_capture"),
+                ("layer_after", {"hasM": False}, "trails_layer_changed_during_capture"),
                 ("page_00002", {"features": []}, "trails_page_population_incomplete"),
             ):
                 with self.subTest(target=target):
@@ -210,7 +210,7 @@ class TrailsUSGSTests(unittest.TestCase):
             self.assertEqual(first["feature_count"], 3)
             root = pathlib.Path(first["capture_directory"])
             originals = {key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}
-            self.assertEqual(sum("/raw/refused/" in key for key in originals), 3)
+            self.assertEqual(sum("/evidence/refused/" in key for key in originals), 3)
             parquet_key = first["candidate_ready"].replace("metadata/candidate_ready.json", "geoparquet/trails-2.parquet")
             table = pq.read_table(io.BytesIO(storage.read_key(parquet_key)))
             self.assertEqual(table.column("objectid").to_pylist(), [1, 3, 9])
