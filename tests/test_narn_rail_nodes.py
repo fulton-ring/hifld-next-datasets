@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import hashlib
+import copy
+import gzip
 import json
 import os
 import shutil
@@ -9,6 +11,13 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs
+
+import httpx
+from dagster import AssetCheckSeverity, DagsterInstance, materialize
+from dagster_hifld.assets import narn_rail_nodes as assets
+from dagster_hifld.capture_completeness import approved_baseline_drift
+from dagster_hifld.sources import arcgis_layer as shared
 
 import pyarrow.parquet as pq
 import shapely
@@ -132,8 +141,7 @@ def _pins(features, schema, geom, counts, bounds):
                 EXPECTED_INVALID_GEOMETRY_COUNT=invalid_count,
                 EXPECTED_FRANODEID_NULL_COUNT=0, EXPECTED_FRANODEID_DUPLICATE_COUNT=0,
                 EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
-                EXPECTED_SERVICE_LAYER_ROSTER=[(0, "North American Rail Network Nodes", "Feature Layer")],
-                EXPECTED_LAYER_EXTENT={"xmin": -160.0, "ymin": 14.0, "xmax": -59.0, "ymax": 65.0})
+                EXPECTED_SERVICE_LAYER_ROSTER=[(0, "North American Rail Network Nodes", "Feature Layer")])
 
 
 def _page_features(captures):
@@ -142,7 +150,179 @@ def _page_features(captures):
     return rows
 
 
+def _live_docs(*, added=False, removed=False):
+    fields, features, captures, schema, *_ = _fixture()
+    features[4]['geometry'] = {'x': -150.0, 'y': 60.0}
+    if added:
+        extra = copy.deepcopy(features[1])
+        extra['attributes'].update(OBJECTID=16, FRANODEID=300006)
+        extra['geometry'] = {'x': -55.0, 'y': 66.0}
+        features.append(extra)
+    if removed:
+        features.pop(0)
+    docs = {name: json.loads(body) for name, (body, _) in captures.items() if not name.startswith('page_')}
+    ids = [row['attributes']['OBJECTID'] for row in features]
+    for name in ('ids_seed', 'ids_before', 'ids_after'):
+        docs[name]['objectIds'] = ids
+    for name in ('count_before', 'count_after'):
+        docs[name]['count'] = len(ids)
+    extent = {'xmin': min(row['geometry']['x'] for row in features),
+              'ymin': min(row['geometry']['y'] for row in features),
+              'xmax': max(row['geometry']['x'] for row in features),
+              'ymax': max(row['geometry']['y'] for row in features),
+              'spatialReference': {'wkid': 4326}}
+    for name in ('layer_before', 'layer_after'):
+        docs[name]['extent'] = extent
+    return docs, features, hashlib.sha256(_canonical(schema)).hexdigest()
+
+
+def _client(docs, features, *, bisect=False, torn=False, missing_row=False, gzip_mtime=0):
+    counts = {}
+    def respond(request):
+        query = parse_qs(request.url.query.decode())
+        if 'resultOffset' in query:
+            offset, width = int(query['resultOffset'][0]), int(query['resultRecordCount'][0])
+            if bisect and offset == 0 and width > 1:
+                body = _canonical({'error': {'code': 500}})
+            else:
+                rows = features[offset:offset + width]
+                if missing_row and offset == 0:
+                    rows = rows[:-1]
+                body = _canonical({'features': rows, 'spatialReference': {'wkid': 4326},
+                    'exceededTransferLimit': offset + width < len(features)})
+            return httpx.Response(200, headers={'Content-Encoding': 'gzip'},
+                stream=httpx.ByteStream(gzip.compress(body, mtime=gzip_mtime)))
+        if 'returnIdsOnly' in query:
+            doc = docs['ids_before']
+        elif 'returnCountOnly' in query:
+            key = str(request.url)
+            counts[key] = counts.get(key, 0) + 1
+            doc = {'count': len(features) + 1} if torn and counts[key] == 2 else docs['count_before']
+        elif '/sharing/rest/content/items/' in request.url.path:
+            doc = docs['portal_item']
+        elif request.url.path.endswith('/0'):
+            doc = docs['layer_before']
+        else:
+            doc = docs['service_before']
+        return httpx.Response(200, stream=httpx.ByteStream(_canonical(doc)))
+    return httpx.Client(transport=httpx.MockTransport(respond))
+
+
 class NarnRailNodesTests(unittest.TestCase):
+    def test_real_acquisition_replay_refresh_and_changed_population(self):
+        from dagster_hifld.resources import StagingStorageResource
+        docs, features, schema_sha = _live_docs()
+        with tempfile.TemporaryDirectory() as tmp, DagsterInstance.ephemeral() as instance, \
+                patch.multiple(source, EXPECTED_SCHEMA_SHA256=schema_sha, PAGE_START_RECORDS=2,
+                               DOC_CAPTURE_BASE_DELAY_SECONDS=0, PAGE_PROBE_BASE_DELAY_SECONDS=0):
+            root = Path(tmp)
+            storage = StagingStorageResource(local_dir=str(root / 'stage'))
+            client = _client(docs, features, bisect=True)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                first = source.capture_narn_rail_nodes(storage, version='fixture', capture_directory=str(root / 'live'))
+            prefix = first['candidate_ready'].removesuffix('/metadata/candidate_ready.json')
+            original = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}
+            self.assertTrue((Path(first['capture_directory']) / 'page_000000_00002.body').exists())
+            with patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected network')):
+                replay = source.capture_narn_rail_nodes(storage, version='replay',
+                    capture_directory=str(root / 'replay'), offline_capture_directory=first['capture_directory'])
+            self.assertTrue(replay['reused'])
+            self.assertEqual(replay['version'], first['version'])
+            client = _client(docs, features, bisect=True, gzip_mtime=1)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                refreshed = source.capture_narn_rail_nodes(storage, version='refresh', capture_directory=str(root / 'fresh'))
+            self.assertTrue(refreshed['reused'])
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix(prefix)}, original)
+            added_docs, added_features, _ = _live_docs(added=True)
+            client = _client(added_docs, added_features)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                result = materialize([*assets.INGEST_ASSETS, *assets.ASSET_CHECKS], instance=instance,
+                    resources={'staging_storage': storage}, run_config={'ops': {assets.fra_narn_rail_network_nodes.op.name: {
+                        'config': {'capture_directory': str(root / 'added')}}}})
+            self.assertTrue(result.success)
+            added = result.output_for_node(assets.fra_narn_rail_network_nodes.op.name)
+            self.assertEqual(added['feature_count'], 7)
+            evaluations = {check.check_name: check for check in result.get_asset_check_evaluations()}
+            self.assertTrue(evaluations['fra_narn_rail_network_nodes_complete'].passed)
+            warning = evaluations['fra_narn_rail_network_nodes_approved_baseline_drift']
+            self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(warning.metadata['comparison_status'].value, 'skipped_no_approved_baseline')
+            drift = approved_baseline_drift(added, {**first, 'release_accepted': True})
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.metadata['feature_count_delta'].value, 1)
+            removed_docs, removed_features, _ = _live_docs(removed=True)
+            client = _client(removed_docs, removed_features)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                removed = source.capture_narn_rail_nodes(storage, version='removed', capture_directory=str(root / 'removed'))
+            self.assertEqual(removed['feature_count'], 5)
+            self.assertNotEqual(removed['version'], first['version'])
+            for mode in ('missing_wire', 'missing_refusal', 'wire', 'forged_gzip', 'url', 'manifest', 'extra', 'budget'):
+                directory = root / ('bad-' + mode)
+                shutil.copytree(first['capture_directory'], directory)
+                page = 'page_000002_00002'
+                manifest_path = directory / 'capture_manifest.json'
+                manifest = json.loads(manifest_path.read_bytes())
+                if mode == 'missing_wire':
+                    (directory / f'{page}.wire').unlink()
+                elif mode == 'missing_refusal':
+                    (directory / 'page_000000_00002.body').unlink()
+                elif mode == 'wire':
+                    (directory / f'{page}.wire').write_bytes(b'corrupt')
+                elif mode in ('forged_gzip', 'url'):
+                    receipt_path = directory / f'{page}.receipt.json'
+                    receipt = json.loads(receipt_path.read_bytes())
+                    if mode == 'forged_gzip':
+                        wire = b'not-valid-gzip'
+                        (directory / f'{page}.wire').write_bytes(wire)
+                        receipt.update(wire_bytes=len(wire), wire_sha256=source._sha(wire), content_encoding='gzip')
+                        manifest['artifact_roster'][f'{page}.wire'] = {'bytes': len(wire), 'sha256': source._sha(wire)}
+                    else:
+                        receipt.update(url=source.LAYER_URL + '/unrelated', final_url=source.LAYER_URL + '/unrelated')
+                    receipt_path.write_bytes(_canonical(receipt) + b'\n')
+                    manifest['receipts'][page] = receipt
+                    body = receipt_path.read_bytes()
+                    manifest['artifact_roster'][receipt_path.name] = {'bytes': len(body), 'sha256': source._sha(body)}
+                    manifest_path.write_bytes(_canonical(manifest) + b'\n')
+                elif mode == 'manifest':
+                    manifest_path.write_bytes(b'{}')
+                elif mode == 'extra':
+                    (directory / 'unrostered.body').write_bytes(b'{}')
+                else:
+                    with (directory / f'{page}.wire').open('wb') as stream:
+                        stream.truncate(source.MAX_CAPTURE_BYTES + 1)
+                with self.subTest(replay=mode), patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected network')):
+                    with self.assertRaises((ValueError, OSError)):
+                        source.capture_narn_rail_nodes(storage, version='refused',
+                            capture_directory=str(root / 'refused'), offline_capture_directory=str(directory))
+            staged = Path(storage.local_dir) / prefix
+            manifest_path = staged / 'metadata/source_manifest.json'
+            original_manifest = manifest_path.read_bytes()
+            manifest_path.write_bytes(b'{}')
+            with self.assertRaisesRegex(ValueError, 'cached_candidate_object_integrity_failed'):
+                source.capture_narn_rail_nodes(storage, version='conflict', capture_directory=str(root / 'conflict'),
+                    offline_capture_directory=first['capture_directory'])
+            manifest_path.write_bytes(original_manifest)
+            state = Path(storage.local_dir) / f"_construction-state/{source.DATASET_SLUG}/{first['version']}.json"
+            state.unlink()
+            with self.assertRaisesRegex(ValueError, 'unsealed_candidate_prefix'):
+                source.capture_narn_rail_nodes(storage, version='partial', capture_directory=str(root / 'partial'),
+                    offline_capture_directory=first['capture_directory'])
+
+    def test_real_acquisition_rejects_torn_witness_and_incomplete_page(self):
+        from dagster_hifld.resources import StagingStorageResource
+        docs, features, schema_sha = _live_docs()
+        with tempfile.TemporaryDirectory() as tmp, patch.multiple(source,
+                EXPECTED_SCHEMA_SHA256=schema_sha, PAGE_START_RECORDS=2,
+                DOC_CAPTURE_BASE_DELAY_SECONDS=0, PAGE_PROBE_BASE_DELAY_SECONDS=0):
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / 'stage'))
+            for mode in ('torn', 'page'):
+                client = _client(docs, features, torn=mode == 'torn', missing_row=mode == 'page')
+                with self.subTest(mode=mode), patch.object(source.httpx, 'Client', return_value=client):
+                    with self.assertRaises(ValueError):
+                        source.capture_narn_rail_nodes(storage, version='invalid', capture_directory=str(Path(tmp) / mode))
+            self.assertFalse(storage.list_prefix(source.DATASET_SLUG))
+            self.assertTrue(storage.list_prefix('_quarantine/' + source.DATASET_SLUG))
+
     def test_streamed_list_sha_matches_canonical_digest(self):
         items = [[1, {"a": "b", "list": [1, 2, 3]}], None, "x", 4.5]
         self.assertEqual(source._list_sha(items), hashlib.sha256(_canonical(items)).hexdigest())
@@ -497,7 +677,7 @@ class NarnRailNodesTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
+            with patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep") as sleep_mock:
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
@@ -525,7 +705,7 @@ class NarnRailNodesTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
+            with patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
@@ -559,7 +739,7 @@ class NarnRailNodesTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
+            with patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
@@ -600,7 +780,7 @@ class NarnRailNodesTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 pages = source._capture_pages(None, root, 6)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
@@ -636,7 +816,7 @@ class NarnRailNodesTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 pages = source._capture_pages(None, root, 6)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
@@ -659,7 +839,7 @@ class NarnRailNodesTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
                     source._capture_pages(None, root, 6)
@@ -741,7 +921,7 @@ class NarnRailNodesTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_narn_rail_nodes(storage, version="vfixture",
                                                            capture_directory=str(root / "captures"))

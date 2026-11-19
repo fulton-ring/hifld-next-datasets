@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import shutil
 import time
@@ -55,14 +56,20 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
-from dagster_hifld.capture_completeness import validate_capture_witness
+from dagster_hifld.http_capture import (
+    capture_roster_digests, validate_capture_roster, validate_retained_capture_replay,
+)
+from dagster_hifld.sources.arcgis_layer import (
+    capture_layer_roster, capture_witness, load_replay, offset_layer_capture_roster,
+    capture_with_retry as _capture_with_retry, producer_error_doc as _producer_error_doc,
+)
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.capture_common import (
-    capture_get, candidate_prefix, content_derived_version,
+    candidate_prefix, content_derived_version,
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable,
 )
@@ -92,7 +99,7 @@ MAX_CAPTURE_TOTAL_BYTES = 512 * 1024 * 1024
 MIN_FREE_BYTES = 4_000_000_000
 # Every request retries a bounded number of times on transient producer error
 # documents or incomplete transport captures; a retry re-issues the exact same
-# request, and completeness is still enforced by the pinned before/after id
+# request, and completeness is still enforced by the captured before/after id
 # rosters, counts, exact page tiling, and full-record digests, so retries can
 # never mask drift. Pages wider than one record that keep failing are bisected;
 # a single-record page that keeps failing fails the capture explicitly.
@@ -100,15 +107,7 @@ DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 PAGE_PROBE_ATTEMPTS = 2
 PAGE_PROBE_BASE_DELAY_SECONDS = 5.0
-# Pins below are the observed 2026-11-13 complete-layer population contract,
-# established by two dated complete captures (~06:35-06:40 UTC, independent
-# passes) that produced identical record and geometry digests (126 accepted
-# pages tiling the sorted OBJECTID roster without gaps or overlaps; every
-# accepted page returned exactly its expected sorted-OBJECTID slice, and the
-# observed point bounds equal the layer's declared extent exactly).
 EXPECTED_SCHEMA_SHA256 = "ae7b8bf0a22ba6b0f7150fa32a315f677fa651230d38450e37a9ad902df10040"
-EXPECTED_LAYER_EXTENT = {"xmin": -156.68972645852205, "ymin": 14.67991800007465,
-                         "xmax": -59.94056699910081, "ymax": 64.92397910374177}
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_INVALID_GEOMETRY_COUNT = 0
 EXPECTED_FRANODEID_NULL_COUNT = 0
@@ -167,23 +166,22 @@ def _page_query(offset: int, count: int) -> str:
                    "resultRecordCount": count, "f": "json"})
 
 
+def _capture_roster(total: int):
+    return offset_layer_capture_roster(total, layer_url=LAYER_URL, service_url=SERVICE_URL,
+        page_size=PAGE_START_RECORDS,
+        extra_documents=(("portal_item", f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"),),
+        page_params={"outSR": "4326"},
+        page_namer=lambda _index, offset: _page_name(offset, min(PAGE_START_RECORDS, total - offset)),
+        after_order=("layer_after", "service_after", "count_after", "ids_after"))
+
+
 def _doc_urls() -> list[tuple[str, str]]:
-    return [
-        ("portal_item", f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json"),
-        ("service_before", SERVICE_URL + "?f=pjson"),
-        ("layer_before", LAYER_URL + "?f=pjson"),
-        ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-        ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-    ]
+    return [(name, url) for name, url in _capture_roster(0)
+            if name == 'portal_item' or name.endswith('_before')]
 
 
 def _after_doc_urls() -> list[tuple[str, str]]:
-    return [
-        ("layer_after", LAYER_URL + "?f=pjson"),
-        ("service_after", SERVICE_URL + "?f=pjson"),
-        ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-        ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-    ]
+    return [(name, url) for name, url in _capture_roster(0) if name.endswith('_after')]
 
 
 def _validate_spatial_reference(value: object, label: str) -> None:
@@ -302,7 +300,10 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_record_limit_drift")
     extent = layer.get("extent", {})
     _validate_spatial_reference(extent.get("spatialReference"), "source_layer_extent")
-    if {key: extent.get(key) for key in EXPECTED_LAYER_EXTENT} != EXPECTED_LAYER_EXTENT:
+    declared_extent = {key: extent.get(key) for key in ('xmin', 'ymin', 'xmax', 'ymax')}
+    if (any(type(value) not in (int, float) or not math.isfinite(value) for value in declared_extent.values())
+            or declared_extent['xmin'] > declared_extent['xmax'] or declared_extent['ymin'] > declared_extent['ymax']
+            or extent != docs['layer_after'].get('extent')):
         raise ValueError("source_layer_extent_drift")
     fields_value = layer.get("fields")
     if not isinstance(fields_value, list) or any(not isinstance(x, dict) for x in fields_value):
@@ -325,8 +326,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     if any(docs[name].get("objectIdFieldName") != "OBJECTID"
            for name in ("ids_seed", "ids_before", "ids_after")):
         raise ValueError("source_id_field_changed")
-    ids = validate_capture_witness(source_count, docs["ids_before"].get("objectIds"),
-                                   docs["count_after"].get("count"), docs["ids_after"].get("objectIds"))
+    ids = capture_witness(captures)
     seed = docs["ids_seed"].get("objectIds")
     if not isinstance(seed, list) or sorted(seed) != ids:
         raise ValueError("source_id_population_drift")
@@ -357,7 +357,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
              "source_geometry_type": "esriGeometryPoint",
              "null_geometry_count": null_geometry,
              "invalid_geometry_count": invalid_geometry,
-             "observed_bounds": bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
+             "observed_bounds": bounds, "declared_layer_extent": declared_extent,
              "unique_object_id_count": len(ids), "unique_franodeid_count":
                  len({value for value in franodeids if value is not None}),
              "franodeid_null_count": franodeid_nulls,
@@ -410,50 +410,6 @@ def _code_identity() -> dict[str, object]:
     return processing_identity(Path(__file__).parents[3])
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents and
-    incomplete transport captures; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
-    final attempt's body is always returned as captured, so a persistent
-    producer failure surfaces to the caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
-
-
 def _capture_pages(client: httpx.Client, capture_root: Path,
                    total: int) -> dict[str, tuple[bytes, dict[str, object]]]:
     """Capture the complete layer as ordered, adaptively bisected roster pages.
@@ -466,8 +422,7 @@ def _capture_pages(client: httpx.Client, capture_root: Path,
     """
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
     pages: deque[tuple[int, int]] = deque(
-        (offset, min(PAGE_START_RECORDS, total - offset))
-        for offset in range(0, total, PAGE_START_RECORDS)
+        _parse_page_name(name) for name, _url in _capture_roster(total) if name.startswith("page_")
     )
     while pages:
         offset, count = pages.popleft()
@@ -496,8 +451,51 @@ def _capture_pages(client: httpx.Client, capture_root: Path,
     return captures
 
 
+def _read_replay(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
+    if any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError('retained_capture_symlink_rejected')
+    manifest_path = root / 'capture_manifest.json'
+    if manifest_path.is_symlink() or manifest_path.stat().st_size > MAX_CAPTURE_BYTES:
+        raise ValueError('retained_capture_manifest_invalid')
+    manifest = json.loads(manifest_path.read_bytes())
+    if (not isinstance(manifest, dict) or manifest.get('complete') is not True
+            or not isinstance(manifest.get('receipts'), dict)
+            or not isinstance(manifest.get('artifact_roster'), dict)):
+        raise ValueError('retained_capture_manifest_invalid')
+    urls = dict(_doc_urls() + _after_doc_urls())
+    urls['ids_seed'] = _query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'})
+    names = set(manifest['receipts'])
+    if not set(urls) <= names:
+        raise ValueError('source_capture_roster_incomplete_or_unexpected')
+    for name in names - set(urls):
+        offset, count = _parse_page_name(name)
+        if not 0 < count <= PAGE_START_RECORDS:
+            raise ValueError('source_capture_roster_incomplete_or_unexpected')
+        urls[name] = _page_query(offset, count)
+    validate_capture_roster(root, set(manifest['artifact_roster']) | {'capture_manifest.json'})
+    for path in root.iterdir():
+        if path.stat().st_size > MAX_CAPTURE_BYTES:
+            raise ValueError('source_capture_exceeds_scratch_budget')
+    if sum((root / f'{name}.{suffix}').stat().st_size for name in names for suffix in ('body', 'wire')) > MAX_CAPTURE_TOTAL_BYTES:
+        raise ValueError('source_capture_exceeds_scratch_budget')
+
+    def load(directory, name):
+        body, receipt = load_replay(directory, name)
+        return body, (directory / f'{name}.wire').read_bytes(), receipt
+
+    def validate_request(name, receipt, url):
+        if receipt.get('method') != 'GET' or receipt.get('url') != url or receipt.get('final_url') != url:
+            raise ValueError('retained_capture_request_mismatch:' + name)
+
+    captures = validate_retained_capture_replay(root, capture_names=names, expected_urls=urls,
+        load_capture=load, validate_request_identity=validate_request)
+    capture_witness(captures)
+    return captures
+
+
 def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
-                            capture_directory: str | None = None) -> dict[str, object]:
+                            capture_directory: str | None = None,
+                            offline_capture_directory: str | None = None) -> dict[str, object]:
     """Capture, verify, and stage a complete unapproved NARN Rail Nodes candidate."""
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) \
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
@@ -518,45 +516,59 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
     try:
-        with httpx.Client(follow_redirects=False, timeout=180,
-                          headers={"User-Agent": "hifld-next-datasets/narn-rail-nodes-draft"}) as client:
-            seed_body, seed_receipt = _capture_with_retry(
-                client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
-                attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or not seed
-                    or any(type(value) is not int for value in seed) or len(set(seed)) != len(seed)):
-                raise ValueError("source_seed_id_population_drift")
-            seed_count = len(seed)
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            captured_total = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
-            for name, url in _doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name,
-                                                    max_bytes=MAX_CAPTURE_BYTES,
-                                                    attempts=DOC_CAPTURE_ATTEMPTS,
-                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                captures[name] = (body, receipt)
-                captured_total += receipt["bytes"] + receipt["wire_bytes"]
+        if offline_capture_directory:
+            offline = Path(offline_capture_directory).absolute()
+            _read_replay(offline)
+            for path in offline.iterdir():
+                shutil.copyfile(path, capture_root / path.name)
+            captures = _read_replay(capture_root)
+        else:
+            with httpx.Client(follow_redirects=False, timeout=180,
+                              headers={"User-Agent": "hifld-next-datasets/narn-rail-nodes-draft"}) as client:
+                seed_body, seed_receipt = _capture_with_retry(
+                    client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
+                    capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
+                    attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                seed = json.loads(seed_body).get("objectIds")
+                if (not isinstance(seed, list) or not seed
+                        or any(type(value) is not int for value in seed) or len(set(seed)) != len(seed)):
+                    raise ValueError("source_seed_id_population_drift")
+                seed_count = len(seed)
+                captures["ids_seed"] = (seed_body, seed_receipt)
+                captured_total = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
+                for name, url in _doc_urls():
+                    body, receipt = _capture_with_retry(client, url, capture_root, name,
+                                                        max_bytes=MAX_CAPTURE_BYTES,
+                                                        attempts=DOC_CAPTURE_ATTEMPTS,
+                                                        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                    captures[name] = (body, receipt)
+                    captured_total += receipt["bytes"] + receipt["wire_bytes"]
+                    if captured_total > MAX_CAPTURE_TOTAL_BYTES:
+                        raise ValueError("source_capture_exceeds_scratch_budget")
+                layer_doc = json.loads(captures["layer_before"][0])
+                if layer_doc.get("maxRecordCount") != 2000 or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
+                    raise ValueError("source_record_limit_drift")
+                captures.update(_capture_pages(client, capture_root, seed_count))
+                captured_total += sum(receipt["bytes"] + receipt["wire_bytes"]
+                                      for _, receipt in _page_receipts(captures))
                 if captured_total > MAX_CAPTURE_TOTAL_BYTES:
                     raise ValueError("source_capture_exceeds_scratch_budget")
-            layer_doc = json.loads(captures["layer_before"][0])
-            if layer_doc.get("maxRecordCount") != 2000 or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
-                raise ValueError("source_record_limit_drift")
-            captures.update(_capture_pages(client, capture_root, seed_count))
-            captured_total += sum(receipt["bytes"] + receipt["wire_bytes"]
-                                  for _, receipt in _page_receipts(captures))
-            if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                raise ValueError("source_capture_exceeds_scratch_budget")
-            for name, url in _after_doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name,
-                                                    max_bytes=MAX_CAPTURE_BYTES,
-                                                    attempts=DOC_CAPTURE_ATTEMPTS,
-                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                captures[name] = (body, receipt)
-                captured_total += receipt["bytes"] + receipt["wire_bytes"]
-                if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
+                def fetch(client, url, root, name):
+                    nonlocal captured_total
+                    if name in captures:
+                        return captures[name]
+                    body, receipt = _capture_with_retry(client, url, capture_root, name,
+                                                        max_bytes=MAX_CAPTURE_BYTES,
+                                                        attempts=DOC_CAPTURE_ATTEMPTS,
+                                                        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                    captures[name] = (body, receipt)
+                    captured_total += receipt["bytes"] + receipt["wire_bytes"]
+                    if captured_total > MAX_CAPTURE_TOTAL_BYTES:
+                        raise ValueError("source_capture_exceeds_scratch_budget")
+                    return body, receipt
+                roster = (_doc_urls() + [(name, _page_query(*_parse_page_name(name)))
+                          for name in sorted(captures) if name.startswith('page_')] + _after_doc_urls())
+                captures.update(capture_layer_roster(client, capture_root, roster, fetch))
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}
@@ -696,6 +708,7 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
                     "source_feature_count": len(extracted["features"]),
                     "source_record_sha256": audit["source_record_sha256"],
                     "source_geometry_sha256": audit["source_geometry_sha256"],
+                    "artifact_roster": capture_roster_digests(capture_root, exclude={'capture_manifest.json'}),
                     "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}) + b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {rel: parquet_body, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
@@ -732,6 +745,8 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
                 "source_release_accepted": False, "source_freshness_accepted": False,
                 "schema_contract_accepted": False, "id_contract_accepted": False,
                 "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
+    if storage.list_prefix(prefix):
+        raise ValueError('unsealed_candidate_prefix:' + prefix)
     for relative, body in outputs.items():
         write_immutable(storage, f"{prefix}/{relative}", body)
     descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
