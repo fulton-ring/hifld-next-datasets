@@ -586,10 +586,14 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
         last_objectid = pages[-1]['last_objectid'] if pages else 0
         tail_valid = False
         try:
-            tail_document = json.loads(_read_capture(capture_root, 'page_tail', expected_url=_page_url(last_objectid))[0])
-            tail_valid = isinstance(tail_document, dict) and tail_document.get('features') == []
+            tail_body, tail_receipt = _read_capture(capture_root, 'page_tail')
+            tail_document = json.loads(tail_body)
         except ValueError:
             pass
+        else:
+            if tail_receipt['url'] != _page_url(last_objectid):
+                raise EPAFRSInterestsError('retained_capture_receipt_invalid:page_tail')
+            tail_valid = isinstance(tail_document, dict) and tail_document.get('features') == []
         refresh_closing = state.get('complete') is not True or tail is None or not tail_valid
         closing_names = ('layer_after', 'service_after', 'count_after')
         if not refresh_closing:
