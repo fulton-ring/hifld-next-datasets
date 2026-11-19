@@ -69,4 +69,7 @@ sea_areas_usace_ienc_draft_schedule = ScheduleDefinition(
 
 sea_areas_usace_ienc_drift = register_approved_baseline_drift(sea_areas_usace_ienc, "sea_areas_usace_ienc_drift")
 
+INGEST_ASSETS = [sea_areas_usace_ienc]
 ASSET_CHECKS = [sea_areas_usace_ienc_complete, sea_areas_usace_ienc_drift]
+JOBS = [sea_areas_usace_ienc_draft_job]
+SCHEDULES = [sea_areas_usace_ienc_draft_schedule]

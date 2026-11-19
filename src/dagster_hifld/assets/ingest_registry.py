@@ -26,10 +26,6 @@ from dagster_hifld.assets.usace_dam_lines import usace_dam_lines_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
 from dagster_hifld.assets.usace_obstruction_locations import usace_obstruction_locations_usace_ienc
 from dagster_hifld.assets.usace_mooring_facility_lines import usace_mooring_facility_lines_usace_ienc
-from dagster_hifld.assets.river_areas_usace_ienc import river_areas_usace_ienc
-from dagster_hifld.assets.river_gauges_usace_ienc import river_gauges_usace_ienc
-from dagster_hifld.assets.sea_area_locations_usace_ienc import sea_area_locations_usace_ienc
-from dagster_hifld.assets.sea_areas_usace_ienc import sea_areas_usace_ienc
 from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
@@ -72,10 +68,6 @@ hifld_ingest_assets = [
     usace_obstruction_lines_usace_ienc,
     usace_obstruction_locations_usace_ienc,
     usace_mooring_facility_lines_usace_ienc,
-    river_areas_usace_ienc,
-    river_gauges_usace_ienc,
-    sea_area_locations_usace_ienc,
-    sea_areas_usace_ienc,
     small_craft_facility_areas_usace_ienc,
     coastlines_usace_ienc,
     locks_usace_ienc,
