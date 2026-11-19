@@ -71,4 +71,7 @@ floodwalls_usace_ienc_draft_schedule = ScheduleDefinition(
 
 floodwalls_usace_ienc_drift = register_approved_baseline_drift(floodwalls_usace_ienc, "floodwalls_usace_ienc_drift")
 
+INGEST_ASSETS = [floodwalls_usace_ienc]
 ASSET_CHECKS = [floodwalls_usace_ienc_complete, floodwalls_usace_ienc_drift]
+JOBS = [floodwalls_usace_ienc_draft_job]
+SCHEDULES = [floodwalls_usace_ienc_draft_schedule]

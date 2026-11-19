@@ -71,4 +71,7 @@ harbor_facility_locations_usace_ienc_draft_schedule = ScheduleDefinition(
 
 harbor_facility_locations_usace_ienc_drift = register_approved_baseline_drift(harbor_facility_locations_usace_ienc, "harbor_facility_locations_usace_ienc_drift")
 
+INGEST_ASSETS = [harbor_facility_locations_usace_ienc]
 ASSET_CHECKS = [harbor_facility_locations_usace_ienc_complete, harbor_facility_locations_usace_ienc_drift]
+JOBS = [harbor_facility_locations_usace_ienc_draft_job]
+SCHEDULES = [harbor_facility_locations_usace_ienc_draft_schedule]

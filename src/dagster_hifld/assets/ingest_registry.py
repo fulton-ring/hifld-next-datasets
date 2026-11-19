@@ -30,14 +30,6 @@ from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_c
 from dagster_hifld.assets.ibc import ibc_canada_us_border
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 from dagster_hifld.assets.usace_floating_docks import usace_floating_docks_usace_ienc
-from dagster_hifld.assets.floodwalls_usace_ienc import floodwalls_usace_ienc
-from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
-    harbor_facility_locations_usace_ienc,
-)
-from dagster_hifld.assets.hf_areas_usace_ienc import hf_areas_usace_ienc_candidate
-from dagster_hifld.assets.land_region_areas_usace_ienc import (
-    land_region_areas_usace_ienc_candidate,
-)
 from dagster_hifld.assets.building_locations_usace_ienc import building_locations_usace_ienc
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
@@ -67,10 +59,6 @@ hifld_ingest_assets = [
     ibc_canada_us_border,
     usace_crane_locations_ienc,
     usace_floating_docks_usace_ienc,
-    floodwalls_usace_ienc,
-    harbor_facility_locations_usace_ienc,
-    land_region_areas_usace_ienc_candidate,
-    hf_areas_usace_ienc_candidate,
     epa_frs_sic_powerplants,
     building_locations_usace_ienc,
 ]
