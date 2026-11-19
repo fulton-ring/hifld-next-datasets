@@ -22,14 +22,14 @@ service is the fresher maintained publication and the staged snapshot is
 comparison context only. The DataLumos project 240701 archive copy is
 identification context only and is never fetched.
 
-The capture pages the complete enumerated OBJECTID roster (1..2456 observed
-2026-11-14) in resultOffset/resultRecordCount segments, because this MapServer
+The capture pages the complete enumerated native OBJECTID roster
+in resultOffset/resultRecordCount segments, because this MapServer
 layer refuses geometry queries carrying the ``objectIds`` parameter with a
 complete HTTP 200 Esri error envelope (verified 2026-11-14) and serves only
 about 25-40 geometry-bearing features per request. Segments tile the roster
 exactly, and the request order brackets the whole extraction window: the
 service/layer/count/roster documents are captured before the first segment,
-the independent attributes-only second extraction (two 2000-record pages)
+the independent attributes-only second extraction (up to 2000 records per page)
 follows the segments, and the closing brackets are captured (refreshed on a
 resumed capture that filled segment gaps) after everything else, so producer
 changes during extraction fail the capture closed and nothing is skipped,
@@ -71,6 +71,7 @@ from shapely import from_wkb
 from shapely.validation import explain_validity
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
@@ -79,9 +80,12 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version,
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.arcgis_layer import esri_polygon_wkb as _esri_polygon_wkb
+from dagster_hifld.sources.arcgis_layer import (
+    esri_polygon_wkb as _esri_polygon_wkb, load_replay,
+)
 from dagster_hifld.sources.wbd_hu_family import (
     producer_error_document as _producer_error_envelope,
     query_url as _layer_query_url, validate_esri_value as _validate_field_value,
@@ -142,58 +146,30 @@ EXPECTED_FIELD_DECLARATIONS = [
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS
                     if field["type"] != "esriFieldTypeGeometry"]
 ATTRIBUTE_NAMES = [field["name"] for field in ATTRIBUTE_FIELDS]
-EXPECTED_COUNT = 2456
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_IDS_SHA256 = "3a17498efa87414b08c662682f528b042d44e432e7647c251998825521a662dc"
 # Live-verified 2026-11-14: this MapServer layer refuses geometry queries that
 # carry the ``objectIds`` parameter with a complete HTTP 200 error envelope,
 # and refuses 50-feature geometry pages (25-40 features served reliably), so
 # segments are offset-paged 25 features at a time.
 PAGE_SIZE = 25
-PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
 MAX_BODY_BYTES = 64 * 1024 * 1024
 MAX_CAPTURE_BYTES = 8 * 1024 * 1024 * 1024
 MIN_FREE_BYTES = 8_000_000_000
 CAPTURE_ATTEMPTS = 4
 CAPTURE_RETRY_BASE_DELAY_SECONDS = 5.0
-# The attributes-only second extraction pages 2000 records per request
-# (2456 records -> two pages at offsets 0 and 2000).
 ATTRS_PAGE_SIZE = 2000
-ATTRS_PAGE_OFFSETS = list(range(0, EXPECTED_COUNT, ATTRS_PAGE_SIZE))
 
 
-def _doc_names() -> tuple[str, ...]:
+def _doc_names(population_count: int) -> tuple[str, ...]:
     return ("service_before", "layer_before", "count_before", "ids_before",
             "service_after", "layer_after", "count_after", "ids_after",
-            *{f"attrs_{offset:05d}" for offset in ATTRS_PAGE_OFFSETS})
-# Data-derived content pins, filled from the completed capture baseline
-# (build_wbd_hu8_subbasin_baseline over the 2026-11-14 capture). Empty/None
-# pins are skipped so the baseline can be recomputed before they are frozen.
+            *(f"attrs_{offset:05d}" for offset in range(0, population_count, ATTRS_PAGE_SIZE)))
 EXPECTED_SCHEMA_SHA256 = "40da5d74cb4436d30c9284dfa4603e9da7cd1e584a1cfb02768583cbfe0c821e"
-EXPECTED_RECORD_SHA256 = "32a7ab0dcf3c4749d81944288b04a7fe4924fbfa1bb89c3b04d56b3ffa082736"
-EXPECTED_GEOMETRY_SHA256 = "72b2723886e27a071132db0afd1350bf8976e849e035669b30bccd4201c5df7e"
-EXPECTED_HUC8_SHA256 = "3fdb3497194e3ffb5083860f16076c5e9a24e01cdf493eb69fddec35d21f2f65"
-EXPECTED_DISTINCT_HUC8_COUNT = 2456
-EXPECTED_VERTEX_COUNT = 32_082_141
-EXPECTED_INVALID_GEOMETRY_COUNT = 2
 EXPECTED_INVALID_OBJECTIDS = [220, 897]
 EXPECTED_INVALID_VALIDITY_EXPLANATIONS = {
     220: "Ring Self-intersection[-73.0254787636093 41.2132910533631]",
     897: "Ring Self-intersection[-123.014188872192 37.9433382647988]",
 }
 GEOMETRY_REPAIR_AREA_TOLERANCE = 1e-12
-EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-EXPECTED_NULL_ATTR_COUNTS = {
-    "objectid": 0, "tnmid": 0, "metasourceid": 27, "sourcedatadesc": 61,
-    "sourceoriginator": 30, "sourcefeatureid": 2456, "loaddate": 1,
-    "referencegnis_ids": 107, "areaacres": 7, "areasqkm": 11, "states": 0,
-    "huc8": 0, "name": 0, "globalid": 0, "shape_Length": 0, "shape_Area": 0,
-}
-EXPECTED_OBSERVED_BOUNDS = {
-    "xmin": -179.22967074159106, "ymin": -14.610185778206187,
-    "xmax": 179.85665946479332, "ymax": 71.43957229864525,
-}
-EXPECTED_CANDIDATE_GEOMETRY_TYPES = ("MultiPolygon", "Polygon")
 CROSSWALK_OPEN_REST_SERVICE = SERVICE_URL
 CROSSWALK_STATUS = "Deprecate"
 CROSSWALK_JUSTIFICATION = "No longer supported as part of the HIFLD mission"
@@ -223,12 +199,12 @@ def _before_doc_urls() -> list[tuple[str, str]]:
     ]
 
 
-def _attrs_doc_urls() -> list[tuple[str, str]]:
+def _attrs_doc_urls(population_count: int) -> list[tuple[str, str]]:
     """Independent attributes-only second extraction, captured after every segment."""
     return [(f"attrs_{offset:05d}", _query({
         "where": "1=1", "outFields": "*", "returnGeometry": "false",
         "resultOffset": str(offset), "resultRecordCount": str(ATTRS_PAGE_SIZE),
-        "f": "json"})) for offset in ATTRS_PAGE_OFFSETS]
+        "f": "json"})) for offset in range(0, population_count, ATTRS_PAGE_SIZE)]
 
 
 def _after_doc_urls() -> list[tuple[str, str]]:
@@ -241,10 +217,10 @@ def _after_doc_urls() -> list[tuple[str, str]]:
     ]
 
 
-def _doc_urls() -> list[tuple[str, str]]:
+def _doc_urls(population_count: int) -> list[tuple[str, str]]:
     """Every document URL in capture order: opening brackets, the independent
     attributes-only extraction, then the closing brackets."""
-    return [*_before_doc_urls(), *_attrs_doc_urls(), *_after_doc_urls()]
+    return [*_before_doc_urls(), *_attrs_doc_urls(population_count), *_after_doc_urls()]
 
 
 def _segment_url(offset: int, count: int) -> str:
@@ -253,10 +229,10 @@ def _segment_url(offset: int, count: int) -> str:
                    "resultRecordCount": str(count), "f": "json"})
 
 
-def _capture_urls() -> dict[str, str]:
-    urls = dict(_doc_urls())
-    for offset in range(0, EXPECTED_COUNT, PAGE_SIZE):
-        count = min(PAGE_SIZE, EXPECTED_COUNT - offset)
+def _capture_urls(population_count: int) -> dict[str, str]:
+    urls = dict(_doc_urls(population_count))
+    for offset in range(0, population_count, PAGE_SIZE):
+        count = min(PAGE_SIZE, population_count - offset)
         urls[_segment_name(offset, count)] = _segment_url(offset, count)
     return urls
 
@@ -272,6 +248,9 @@ def _producer_error_doc(body: bytes) -> bool:
 
 
 def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
+    while any((capture_root / f"{name}.attempt-{attempt:02d}{suffix}").exists()
+              for suffix in (".body", ".wire", ".receipt.json")):
+        attempt += 1
     for suffix in (".body", ".wire", ".receipt.json"):
         path = capture_root / f"{name}{suffix}"
         if path.exists():
@@ -293,9 +272,11 @@ def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name
             body, receipt = capture_get(client, url, capture_root, name,
                                         max_bytes=MAX_BODY_BYTES)
         except ValueError as exc:
-            if attempt >= CAPTURE_ATTEMPTS or not str(exc).startswith("incomplete_source_capture:"):
+            if not str(exc).startswith("incomplete_source_capture:"):
                 raise
             _preserve_failed_attempt(capture_root, name, attempt)
+            if attempt >= CAPTURE_ATTEMPTS:
+                raise
             time.sleep(CAPTURE_RETRY_BASE_DELAY_SECONDS * 3 ** (attempt - 1))
             continue
         if _producer_error_doc(body):
@@ -309,7 +290,11 @@ def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name
 
 
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
+    if (capture_root / f"{name}.receipt.json").is_symlink():
+        raise WbdHu8SubbasinError("retained_capture_symlink_rejected:" + name)
     try:
+        if (capture_root / f"{name}.receipt.json").stat().st_size > 65536:
+            raise WbdHu8SubbasinError("retained_capture_size_limit:" + name)
         receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise WbdHu8SubbasinError("retained_capture_receipt_invalid:" + name) from exc
@@ -324,16 +309,22 @@ def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, objec
     body_path, wire_path = capture_root / f"{name}.body", capture_root / f"{name}.wire"
     if any(path.is_symlink() for path in (body_path, wire_path)):
         raise WbdHu8SubbasinError("retained_capture_symlink_rejected:" + name)
-    body, wire = body_path.read_bytes(), wire_path.read_bytes()
+    if any(path.stat().st_size > MAX_BODY_BYTES for path in (body_path, wire_path)):
+        raise WbdHu8SubbasinError("retained_capture_size_limit:" + name)
     receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+    try:
+        body, replay_receipt = load_replay(capture_root, name)
+    except ValueError as exc:
+        raise WbdHu8SubbasinError(str(exc)) from exc
+    if replay_receipt != receipt:
         raise WbdHu8SubbasinError("retained_capture_receipt_invalid:" + name)
     return body, receipt
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
     path = capture_root / "capture_state.json"
+    if path.is_symlink():
+        raise WbdHu8SubbasinError("retained_capture_symlink_rejected:capture_state")
     if not path.exists():
         return {"segments": [], "complete": False}
     try:
@@ -355,12 +346,11 @@ def _roster(document: object, label: str) -> list[int]:
     if not isinstance(document, dict):
         raise WbdHu8SubbasinError(label + "_document_invalid")
     ids = document.get("objectIds")
-    if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-            or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
-            or sorted(ids) != EXPECTED_IDS):
+    if (document.get("objectIdFieldName") != "objectid"
+            or not isinstance(ids, list) or not ids
+            or any(type(oid) is not int or oid <= 0 for oid in ids)
+            or len(set(ids)) != len(ids)):
         raise WbdHu8SubbasinError("source_id_population_drift:" + label)
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(sorted(ids))) != EXPECTED_IDS_SHA256:
-        raise WbdHu8SubbasinError("source_id_roster_drift:" + label)
     return sorted(ids)
 
 
@@ -552,9 +542,7 @@ class _StreamBuilder:
     def _ensure_writer(self) -> None:
         if self._writer is None and self.tmp_path is not None:
             crs = pyproj.CRS.from_epsg(SOURCE_CRS_WKID).to_json_dict()
-            declared_types = (list(EXPECTED_CANDIDATE_GEOMETRY_TYPES)
-                              if EXPECTED_CANDIDATE_GEOMETRY_TYPES
-                              else ["MultiPolygon", "Polygon"])
+            declared_types = ["MultiPolygon", "Polygon"]
             self.schema = _arrow_schema(self.fields, declared_types, crs)
             self._writer = pq.ParquetWriter(self.tmp_path, self.schema,
                                             compression="zstd", use_dictionary=False)
@@ -595,20 +583,20 @@ class _StreamBuilder:
                   "source_area": raw_geometry.area, "repaired_area": fixed.area}
         return fixed.wkb, record
 
-    def process_attrs_page(self, name: str, offset: int) -> None:
+    def process_attrs_page(self, name: str, offset: int, roster: list[int]) -> None:
         page = json.loads(_read_capture(self.capture_root, name)[0])
         if not isinstance(page, dict) or "error" in page:
             raise WbdHu8SubbasinError("source_attrs_page_error:" + name)
         features = page.get("features")
         if not isinstance(features, list):
             raise WbdHu8SubbasinError("source_attrs_page_incomplete:" + name)
-        expected = EXPECTED_IDS[offset:offset + len(features)]
-        if offset + len(features) < EXPECTED_COUNT:
+        expected = roster[offset:offset + len(features)]
+        if offset + len(features) < len(roster):
             if page.get("exceededTransferLimit") is not True:
                 raise WbdHu8SubbasinError("source_attrs_page_transfer_flag_drift:" + name)
         elif page.get("exceededTransferLimit"):
             raise WbdHu8SubbasinError("source_attrs_page_transfer_flag_drift:" + name)
-        if len(features) != min(ATTRS_PAGE_SIZE, EXPECTED_COUNT - offset):
+        if len(features) != min(ATTRS_PAGE_SIZE, len(roster) - offset):
             raise WbdHu8SubbasinError("source_attrs_page_incomplete:" + name)
         for index, feature in enumerate(features):
             if not isinstance(feature, dict) or set(feature) != {"attributes"}:
@@ -637,7 +625,7 @@ class _StreamBuilder:
         features = page.get("features")
         if not isinstance(features, list) or len(features) != count:
             raise WbdHu8SubbasinError("source_page_row_count_incomplete:" + name)
-        if offset + count < EXPECTED_COUNT:
+        if offset + count < len(roster):
             if page.get("exceededTransferLimit") is not True:
                 raise WbdHu8SubbasinError("source_page_transfer_flag_drift:" + name)
         elif page.get("exceededTransferLimit"):
@@ -717,8 +705,7 @@ class _StreamBuilder:
                 self.tmp_path.replace(self.parquet_sink)
             else:
                 self.tmp_path.unlink(missing_ok=True)
-        if (EXPECTED_CANDIDATE_GEOMETRY_TYPES is not None
-                and sorted(self.geometry_types) != sorted(EXPECTED_CANDIDATE_GEOMETRY_TYPES)):
+        if self.geometry_types - {"Polygon", "MultiPolygon"}:
             raise WbdHu8SubbasinError("source_candidate_geometry_types_drift")
         bounds = (None if self._xmin is None else
                   {"xmin": self._xmin, "ymin": self._ymin,
@@ -742,7 +729,7 @@ class _StreamBuilder:
                 "max_objectid": self.ids[-1] if len(self.ids) else 0}
 
 
-def _plan_segments(capture_root: Path) -> list[tuple[str, int, int]]:
+def _plan_segments(capture_root: Path, population_count: int) -> list[tuple[str, int, int]]:
     """Order the state's accepted segments; they must tile the roster exactly.
 
     Segments start at PAGE_SIZE but a producer refusal bisects the refused
@@ -760,12 +747,12 @@ def _plan_segments(capture_root: Path) -> list[tuple[str, int, int]]:
         offset, count, name = entry.get("offset"), entry.get("count"), entry.get("name")
         if (type(offset) is not int or type(count) is not int or offset < 0 or count < 1
                 or name != _segment_name(offset, count) or offset != cursor
-                or offset + count > EXPECTED_COUNT or entry.get("features") != count
+                or offset + count > population_count or entry.get("features") != count
                 or count > PAGE_SIZE):
             raise WbdHu8SubbasinError("source_capture_roster_incomplete_or_unexpected")
         ordered.append((name, offset, count))
         cursor = offset + count
-    if cursor != EXPECTED_COUNT:
+    if cursor != population_count:
         raise WbdHu8SubbasinError("source_capture_roster_incomplete_or_unexpected")
     return ordered
 
@@ -773,72 +760,54 @@ def _plan_segments(capture_root: Path) -> list[tuple[str, int, int]]:
 def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[str, object]:
     """Re-verify every retained capture and optionally rebuild the parquet."""
     capture_root = Path(capture_root).absolute()
-    docs = {name: json.loads(_read_capture(capture_root, name)[0]) for name in _doc_names()}
+    roster = _roster(json.loads(_read_capture(capture_root, "ids_before")[0]), "ids_before")
+    population_count = len(roster)
+    docs = {name: json.loads(_read_capture(capture_root, name)[0])
+            for name, _url in (*_before_doc_urls(), *_after_doc_urls())}
     _validate_service(docs["service_before"], "service_before")
     fields, schema_sha = _validate_layer(docs["layer_before"])
     count_before = docs["count_before"].get("count")
-    if type(count_before) is not int or count_before != EXPECTED_COUNT:
+    if type(count_before) is not int or count_before != population_count:
         raise WbdHu8SubbasinError("source_count_drift:before")
-    roster = _roster(docs["ids_before"], "ids_before")
     for name, mirror in (("layer_after", "layer_before"), ("service_after", "service_before"),
                          ("count_after", "count_before"), ("ids_after", "ids_before")):
         if json.loads(_read_capture(capture_root, name)[0]) != docs[mirror]:
             raise WbdHu8SubbasinError("source_metadata_or_count_changed_during_capture:" + name)
     if EXPECTED_SCHEMA_SHA256 and schema_sha != EXPECTED_SCHEMA_SHA256:
         raise WbdHu8SubbasinError("source_schema_baseline_drift")
-    # Bounds are pinned from the completed capture baseline; per-vertex
-    # containment is re-checked against them while streaming the segments.
-    if EXPECTED_OBSERVED_BOUNDS is not None:
-        bounds = (EXPECTED_OBSERVED_BOUNDS["xmin"], EXPECTED_OBSERVED_BOUNDS["ymin"],
-                  EXPECTED_OBSERVED_BOUNDS["xmax"], EXPECTED_OBSERVED_BOUNDS["ymax"])
-    else:
-        bounds = (-180.5, -90.5, 180.5, 90.5)
-    ordered = _plan_segments(capture_root)
+    roster_after = _roster(docs["ids_after"], "ids_after")
+    validate_capture_witness(count_before, roster, docs["count_after"].get("count"), roster_after)
+    bounds = (-180.5, -90.5, 180.5, 90.5)
+    ordered = _plan_segments(capture_root, population_count)
+    expected_urls = dict(_doc_urls(population_count))
+    expected_urls.update((name, _segment_url(offset, count)) for name, offset, count in ordered)
+    for name, url in expected_urls.items():
+        validate_capture_request_identity(name, _read_capture(capture_root, name)[1], url)
     stream = _StreamBuilder(capture_root, fields, parquet_sink)
     try:
-        for offset in ATTRS_PAGE_OFFSETS:
-            stream.process_attrs_page(f"attrs_{offset:05d}", offset)
+        for offset in range(0, population_count, ATTRS_PAGE_SIZE):
+            stream.process_attrs_page(f"attrs_{offset:05d}", offset, roster)
         for name, offset, count in ordered:
             stream.process(name, offset, count, roster, bounds)
         summary = stream.finish(parquet_ok=True)
     except BaseException:
         stream.finish(parquet_ok=False)
         raise
-    if len(stream.ids) != EXPECTED_COUNT or summary["max_objectid"] <= 0:
+    if len(stream.ids) != population_count or summary["max_objectid"] <= 0:
         raise WbdHu8SubbasinError("source_page_population_incomplete")
+    validate_capture_witness(count_before, roster, docs["count_after"]["count"],
+                             roster_after, list(stream.ids))
     if summary["attrs_path_sha"] != summary["record_sha"]:
         raise WbdHu8SubbasinError("source_attribute_cross_path_drift")
-    if EXPECTED_IDS_SHA256 and summary["ids_sha"] != EXPECTED_IDS_SHA256:
-        raise WbdHu8SubbasinError("source_id_roster_drift:stream")
-    if (EXPECTED_OBSERVED_BOUNDS is not None
-            and summary["observed_bounds"] != EXPECTED_OBSERVED_BOUNDS):
-        raise WbdHu8SubbasinError("source_observed_bounds_drift")
-    if EXPECTED_RECORD_SHA256 and summary["record_sha"] != EXPECTED_RECORD_SHA256:
-        raise WbdHu8SubbasinError("source_value_or_geometry_baseline_drift")
-    if EXPECTED_GEOMETRY_SHA256 and summary["geometry_sha"] != EXPECTED_GEOMETRY_SHA256:
-        raise WbdHu8SubbasinError("source_geometry_or_coverage_drift")
-    if EXPECTED_HUC8_SHA256 and summary["huc8_sha"] != EXPECTED_HUC8_SHA256:
-        raise WbdHu8SubbasinError("source_huc8_roster_drift")
-    if (EXPECTED_DISTINCT_HUC8_COUNT is not None
-            and summary["distinct_huc8_count"] != EXPECTED_DISTINCT_HUC8_COUNT):
+    if summary["distinct_huc8_count"] != population_count:
         raise WbdHu8SubbasinError("source_distinct_huc8_count_drift")
-    if EXPECTED_VERTEX_COUNT is not None and summary["vertex_count"] != EXPECTED_VERTEX_COUNT:
-        raise WbdHu8SubbasinError("source_vertex_count_drift")
-    if (EXPECTED_INVALID_GEOMETRY_COUNT is not None
-            and summary["invalid_geometry_count"] != EXPECTED_INVALID_GEOMETRY_COUNT):
-        raise WbdHu8SubbasinError("source_invalid_geometry_count_drift")
-    if (EXPECTED_INVALID_OBJECTIDS is not None
-            and summary["invalid_geometry_ids"] != EXPECTED_INVALID_OBJECTIDS):
-        raise WbdHu8SubbasinError("source_invalid_geometry_roster_drift")
-    if (EXPECTED_EMPTY_GEOMETRY_COUNT is not None
-            and summary["empty_geometry_count"] != EXPECTED_EMPTY_GEOMETRY_COUNT):
+    if summary["empty_geometry_count"]:
         raise WbdHu8SubbasinError("source_empty_geometry_count_drift")
     if summary["candidate_invalid_geometry_count"]:
         raise WbdHu8SubbasinError("candidate_invalid_geometry_drift")
-    if (EXPECTED_NULL_ATTR_COUNTS is not None
-            and summary["null_attr_counts"] != EXPECTED_NULL_ATTR_COUNTS):
-        raise WbdHu8SubbasinError("source_null_attribute_count_drift")
     return {"fields": fields, "schema_sha": schema_sha, "segments": len(ordered),
+            "source_reported_count": count_before, "feature_count": population_count,
+            "min_objectid": min(roster),
             "record_sha": summary["record_sha"], "geometry_sha": summary["geometry_sha"],
             "attrs_path_sha": summary["attrs_path_sha"],
             "ids_sha": summary["ids_sha"], "huc8_sha": summary["huc8_sha"],
@@ -863,7 +832,7 @@ def _default_client() -> httpx.Client:
                         headers={"Connection": "close", "User-Agent": USER_AGENT})
 
 
-def _covered_tiling(state: dict[str, object]) -> list[tuple[int, int]]:
+def _covered_tiling(state: dict[str, object], population_count: int) -> list[tuple[int, int]]:
     """Validate the state's accepted segments and return their covered spans."""
     segments = state.get("segments")
     if not isinstance(segments, list) or any(not isinstance(item, dict) for item in segments):
@@ -872,7 +841,7 @@ def _covered_tiling(state: dict[str, object]) -> list[tuple[int, int]]:
     for entry in segments:
         offset, count = entry.get("offset"), entry.get("count")
         if (type(offset) is not int or type(count) is not int or offset < 0
-                or count < 1 or count > PAGE_SIZE or offset + count > EXPECTED_COUNT
+                or count < 1 or count > PAGE_SIZE or offset + count > population_count
                 or entry.get("name") != _segment_name(offset, count)
                 or entry.get("features") != count):
             raise WbdHu8SubbasinError("capture_state_invalid")
@@ -884,15 +853,15 @@ def _covered_tiling(state: dict[str, object]) -> list[tuple[int, int]]:
     return spans
 
 
-def _segment_gaps(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+def _segment_gaps(spans: list[tuple[int, int]], population_count: int) -> list[tuple[int, int]]:
     gaps: list[tuple[int, int]] = []
     cursor = 0
     for start, end in spans:
         if start > cursor:
             gaps.append((cursor, start - cursor))
         cursor = max(cursor, end)
-    if cursor < EXPECTED_COUNT:
-        gaps.append((cursor, EXPECTED_COUNT - cursor))
+    if cursor < population_count:
+        gaps.append((cursor, population_count - cursor))
     return gaps
 
 
@@ -910,7 +879,7 @@ def _fetch_doc_group(client: httpx.Client, urls: list[tuple[str, str]], capture_
                 (capture_root / f"{name}{suffix}").unlink(missing_ok=True)
     for name, url in urls:
         if (capture_root / f"{name}.body").exists():
-            _read_capture(capture_root, name)
+            validate_capture_request_identity(name, _read_capture(capture_root, name)[1], url)
             continue
         body, _receipt = _capture_with_retry(client, url, capture_root, name)
         if _producer_error_doc(body):
@@ -940,24 +909,24 @@ def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
     if shutil.disk_usage(capture_root).free < MIN_FREE_BYTES:
         raise WbdHu8SubbasinError("disk_floor_before_acquisition")
     state = _load_state(capture_root)
-    spans = _covered_tiling(state)
     with _default_client() as client:
         _fetch_doc_group(client, _before_doc_urls(), capture_root)
         seed = _roster(json.loads(_read_capture(capture_root, "ids_before")[0]), "ids_seed")
-        if seed != EXPECTED_IDS:
-            raise WbdHu8SubbasinError("source_id_roster_drift:ids_seed")
+        population_count = len(seed)
+        count_before = json.loads(_read_capture(capture_root, "count_before")[0]).get("count")
+        validate_capture_witness(count_before, seed, count_before, seed)
         segments = list(state.get("segments") or [])
         filled_gaps = False
         work: list[tuple[int, int]] = []
         while True:
-            spans = _covered_tiling({"segments": segments})
-            gaps = _segment_gaps(spans)
+            spans = _covered_tiling({"segments": segments}, population_count)
+            gaps = _segment_gaps(spans, population_count)
             if not gaps:
                 state["segments"] = segments
-                state["complete"] = True
-                _save_state(capture_root, state)
                 break
             filled_gaps = True
+            state["complete"] = False
+            _save_state(capture_root, state)
             if not work:
                 offset, length = gaps[0]
                 work.append((offset, min(PAGE_SIZE, length)))
@@ -976,7 +945,7 @@ def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
             features = page.get("features") if isinstance(page, dict) else None
             if (not isinstance(features, list) or len(features) != count
                     or [feature.get("attributes", {}).get("objectid")
-                        for feature in features] != EXPECTED_IDS[offset:offset + count]):
+                        for feature in features] != seed[offset:offset + count]):
                 raise WbdHu8SubbasinError("source_segment_roster_incomplete:" + name)
             if any(start <= offset and offset + count <= end for start, end in spans):
                 raise WbdHu8SubbasinError("source_segment_roster_duplicate:" + name)
@@ -985,12 +954,19 @@ def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
                              "captured_at": datetime.now(timezone.utc).isoformat()})
             state["segments"] = segments
             _save_state(capture_root, state)
-        _fetch_doc_group(client, _attrs_doc_urls(), capture_root)
-        _fetch_doc_group(client, _after_doc_urls(), capture_root, refresh=filled_gaps)
+        attrs_urls = _attrs_doc_urls(population_count)
+        if any(not (capture_root / f"{name}.body").exists() for name, _url in attrs_urls):
+            state["complete"] = False
+            _save_state(capture_root, state)
+        _fetch_doc_group(client, attrs_urls, capture_root)
+        _fetch_doc_group(client, _after_doc_urls(), capture_root,
+                         refresh=filled_gaps or state.get("complete") is not True)
+        state["complete"] = True
+        _save_state(capture_root, state)
 
 
-def _receipt_map(capture_root: Path, segment_names: list[str]) -> dict[str, dict[str, object]]:
-    names = [*_doc_names(), *segment_names]
+def _receipt_map(capture_root: Path, segment_names: list[str], population_count: int) -> dict[str, dict[str, object]]:
+    names = [*_doc_names(population_count), *segment_names]
     return {name: _load_receipt(capture_root, name) for name in names}
 
 
@@ -1036,7 +1012,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         return _verify_sealed_candidate(storage, prefix, state_key, version, identity,
                                         extracted, parquet_path)
     audit = {
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": extracted["feature_count"],
+        "source_reported_count": extracted["source_reported_count"],
         "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
@@ -1056,7 +1033,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "distinct_huc8_count": extracted["distinct_huc8_count"],
         "null_attribute_counts": extracted["null_attr_counts"],
         "source_esri_ids_member_objectids": extracted["ids_member_roster"],
-        "unique_source_id_count": EXPECTED_COUNT,
+        "unique_source_id_count": extracted["feature_count"],
         "source_max_objectid": extracted["max_objectid"],
         "observed_bounds": extracted["observed_bounds"],
         "source_fields": extracted["fields"],
@@ -1095,8 +1072,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "producer_max_record_count": EXPECTED_MAX_RECORD_COUNT,
                        "resumable": True, "resumed_segments": resumed_segments,
                        "id_roster_enumeration_note":
-                           "returnIdsOnly enumerated the complete contiguous OBJECTID "
-                           "roster 1..2456 (observed 2026-11-14). The layer refuses "
+                           "returnIdsOnly enumerates the complete native OBJECTID "
+                           "roster. The layer refuses "
                            "geometry queries carrying objectIds (HTTP 200 error envelope) "
                            "and about 50-feature pages, so segments are offset-paged 25 "
                            "features at a time; accepted segments must tile the roster "
@@ -1109,8 +1086,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
     }
-    ordered = _plan_segments(capture_root)
-    receipts = _receipt_map(capture_root, [name for name, _offset, _count in ordered])
+    ordered = _plan_segments(capture_root, extracted["feature_count"])
+    receipts = _receipt_map(capture_root, [name for name, _offset, _count in ordered],
+                            extracted["feature_count"])
     repaired_roster = ", ".join(str(oid) for oid in (EXPECTED_INVALID_OBJECTIDS or []))
     repair_declaration = (
         "minimally repairs exactly the pinned OGC-invalid ring self-intersections "
@@ -1126,7 +1104,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "title": "8-digit HU (Subbasin) — USGS Watershed Boundary Dataset",
         "description":
             "Complete observed USGS The National Map 'wbd' MapServer layer "
-            + str(LAYER_ID) + " '" + LAYER_NAME + "' (" + str(EXPECTED_COUNT)
+            + str(LAYER_ID) + " '" + LAYER_NAME + "' (" + str(extracted["feature_count"])
             + " subbasins, service data refreshed October, 2026) — the layer named by the "
               "HIFLD Open inventory entry wbd/8-digit-hu-subbasin and the DHS HIFLD Open "
               "crosswalk's Open REST Service for the WBD family. Succession, freshness, "
@@ -1262,7 +1240,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
+            "feature_count": extracted["feature_count"],
+            "source_reported_count": extracted["source_reported_count"],
+            "source_population_complete": True,
+            "source_id_min": extracted["min_objectid"], "source_id_max": extracted["max_objectid"],
             "source_vertex_count": extracted["vertex_count"],
             "source_invalid_geometry_count": extracted["invalid_geometry_count"],
             "source_invalid_geometry_ids": extracted["invalid_geometry_ids"],
@@ -1306,7 +1287,10 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
+            "feature_count": extracted["feature_count"],
+            "source_reported_count": extracted["source_reported_count"],
+            "source_population_complete": True,
+            "source_id_min": extracted["min_objectid"], "source_id_max": extracted["max_objectid"],
             "source_vertex_count": extracted["vertex_count"],
             "source_invalid_geometry_count": extracted["invalid_geometry_count"],
             "source_invalid_geometry_ids": extracted["invalid_geometry_ids"],
@@ -1381,14 +1365,14 @@ def capture_wbd_hu8_subbasin(storage: StagingStorageResource, *, version: str,
 
 
 def build_wbd_hu8_subbasin_baseline(capture_root: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
+    """Report observed content facts from a completed capture without approving it."""
     extracted = _stream_validate(Path(capture_root).absolute(), parquet_sink=None)
     return {"source_record_sha256": extracted["record_sha"],
             "source_geometry_sha256": extracted["geometry_sha"],
             "source_ids_sha256": extracted["ids_sha"],
             "source_huc8_sha256": extracted["huc8_sha"],
             "source_schema_sha256": extracted["schema_sha"],
-            "source_feature_count": EXPECTED_COUNT,
+            "source_feature_count": extracted["feature_count"],
             "source_max_objectid": extracted["max_objectid"],
             "source_vertex_count": extracted["vertex_count"],
             "source_invalid_geometry_count": extracted["invalid_geometry_count"],

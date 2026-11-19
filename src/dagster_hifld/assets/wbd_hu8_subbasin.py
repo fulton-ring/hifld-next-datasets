@@ -5,11 +5,11 @@ from dagster import (
 )
 
 from dagster_hifld.download import build_version_id
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.wbd_hu8_subbasin import (
-    DATASET_SLUG, EXPECTED_COUNT, EXPECTED_EMPTY_GEOMETRY_COUNT,
-    EXPECTED_INVALID_GEOMETRY_COUNT, EXPECTED_INVALID_OBJECTIDS, FILE_SLUG,
+    DATASET_SLUG, EXPECTED_INVALID_OBJECTIDS, FILE_SLUG,
     capture_wbd_hu8_subbasin,
 )
 
@@ -46,19 +46,21 @@ def wbd_hu8_subbasin(context, config: WbdHu8SubbasinConfig,
 
 @asset_check(asset=wbd_hu8_subbasin, blocking=True)
 def wbd_hu8_subbasin_complete(candidate: dict) -> AssetCheckResult:
-    # The producer's own baseline carries exactly the pinned OGC-invalid ring
-    # self-intersections (source-invalid); the candidate written geometry must
-    # itself be valid (candidate-invalid must be zero after the pinned minimal
-    # repair). The two counts are distinct properties of distinct artifacts.
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT
-              and candidate.get("source_invalid_geometry_count")
-              == EXPECTED_INVALID_GEOMETRY_COUNT
-              and candidate.get("source_invalid_geometry_ids") == EXPECTED_INVALID_OBJECTIDS
+    count = candidate.get("source_reported_count")
+    invalid_ids = candidate.get("source_invalid_geometry_ids")
+    passed = (type(count) is int and count > 0
+              and candidate.get("feature_count") == count
+              and candidate.get("source_population_complete") is True
+              and isinstance(invalid_ids, list)
+              and all(type(oid) is int and oid in EXPECTED_INVALID_OBJECTIDS for oid in invalid_ids)
+              and len(set(invalid_ids)) == len(invalid_ids)
+              and candidate.get("source_invalid_geometry_count") == len(invalid_ids)
               and candidate.get("candidate_invalid_geometry_count") == 0
-              and candidate.get("source_empty_geometry_count") == EXPECTED_EMPTY_GEOMETRY_COUNT
-              and candidate.get("source_distinct_huc8_count") == EXPECTED_COUNT)
+              and candidate.get("source_empty_geometry_count") == 0
+              and candidate.get("source_distinct_huc8_count") == count)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_huc8_sha256": candidate.get("source_huc8_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
@@ -92,6 +94,8 @@ wbd_hu8_subbasin_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [wbd_hu8_subbasin]
-ASSET_CHECKS = [wbd_hu8_subbasin_complete]
+wbd_hu8_subbasin_drift = register_approved_baseline_drift(
+    wbd_hu8_subbasin, "wbd_hu8_subbasin_drift")
+ASSET_CHECKS = [wbd_hu8_subbasin_complete, wbd_hu8_subbasin_drift]
 JOBS = [wbd_hu8_subbasin_draft_job]
 SCHEDULES = [wbd_hu8_subbasin_draft_schedule]
