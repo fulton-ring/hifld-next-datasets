@@ -55,10 +55,6 @@ from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
 from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
 
 from dagster_hifld.assets.ibc import ibc_canada_us_border
-from dagster_hifld.assets.fws import fws_cbrs_buffer_zone
-from dagster_hifld.assets.fws_map_panels import fws_cbrs_map_panels
-from dagster_hifld.assets.fws_prohibitions import fws_cbrs_prohibitions
-from dagster_hifld.assets.fws_units import fws_cbrs_units
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 from dagster_hifld.assets.usace_floating_docks import usace_floating_docks_usace_ienc
 from dagster_hifld.assets.floodwalls_usace_ienc import floodwalls_usace_ienc
@@ -124,10 +120,6 @@ hifld_ingest_assets = [
     locks_usace_ienc,
     lock_basins_usace_ienc_candidate,
     ibc_canada_us_border,
-    fws_cbrs_buffer_zone,
-    fws_cbrs_map_panels,
-    fws_cbrs_prohibitions,
-    fws_cbrs_units,
     usace_crane_locations_ienc,
     usace_floating_docks_usace_ienc,
     floodwalls_usace_ienc,
