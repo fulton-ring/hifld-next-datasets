@@ -1,4 +1,4 @@
-"""Candidate-only streaming extraction of the official 2024 Census Tract layer."""
+"""Candidate-only streaming extraction of the current national Census Tract layer."""
 from __future__ import annotations
 
 import hashlib
@@ -18,6 +18,7 @@ import shapely
 
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as shared_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.sources.esri_common import sha as _sha
@@ -26,17 +27,15 @@ from dagster_hifld.validation import sha256_file
 DATASET_SLUG = "census-tracts-2"
 FILE_SLUG = DATASET_SLUG
 LAYER = "Census_Tract"
-GDB = "tlgdb_2024_a_us_substategeo.gdb"
-SOURCE_URL = f"https://www2.census.gov/geo/tiger/TGRGDB24/{GDB}.zip"
-SOURCE_SHA256 = "e2409cd4ddb1a9302b130096fbcf9925ca3a701f720b8991045602bcb99d6b35"
-SOURCE_BYTES = 736_048_475
-SOURCE_FEATURE_COUNT = 85_529
-SOURCE_MEMBERS = 84
-SOURCE_EXPANDED_BYTES = 1_050_730_729
+# The producer publishes one national substate-geographic FileGDB per vintage; the
+# newest published edition is resolved at capture time, never a pinned TGRGDB year.
+GEODATABASE_PRODUCT = "substategeo"
 SOURCE_CRS = "EPSG:4269"
 SOURCE_GEOMETRY = "MultiPolygon"
-RAW_KEY = f"_raw-captures/{DATASET_SLUG}/{SOURCE_SHA256}/original.gdb.zip"
-RAW_RECEIPT_KEY = RAW_KEY + ".receipt.json"
+FEATURE_COUNT_RANGE = (80_000, 100_000)
+MAX_ARCHIVE_MEMBERS = 200
+MAX_UNCOMPRESSED_BYTES = 2_000_000_000
+MAX_SOURCE_BYTES = 900_000_000
 OUTPUT_NAME = f"{DATASET_SLUG}.parquet"
 READY_ROSTER = "metadata/ready_roster.json"
 DOWNSTREAM_METADATA = frozenset({
@@ -85,7 +84,7 @@ def _safe_local_staging(storage: StagingStorageResource) -> Path:
     return root
 
 
-def _validate_capture(source_path: Path, receipt_path: Path) -> dict[str, object]:
+def _validate_capture(source_path: Path, receipt_path: Path) -> tuple[dict[str, object], census_latest.GeodatabaseRelease]:
     if source_path.is_symlink() or receipt_path.is_symlink() or not source_path.is_file() or not receipt_path.is_file():
         raise CensusTractsError("retained_source_or_receipt_missing_or_aliased")
     try:
@@ -94,38 +93,52 @@ def _validate_capture(source_path: Path, receipt_path: Path) -> dict[str, object
         raise CensusTractsError("retained_source_receipt_invalid") from exc
     if not isinstance(receipt, dict):
         raise CensusTractsError("retained_source_receipt_not_object")
+    try:
+        release = census_latest.geodatabase_release_from_receipt(receipt, GEODATABASE_PRODUCT)
+    except ValueError as exc:
+        raise CensusTractsError("retained_source_receipt_not_current_substategeo") from exc
+    archive_sha = sha256_file(source_path)
+    archive_bytes = source_path.stat().st_size
     if (
-        receipt.get("url") != SOURCE_URL or receipt.get("final_url") != SOURCE_URL
+        receipt.get("url") != release.source_url or receipt.get("final_url") != release.source_url
         or type(receipt.get("status")) is not int or receipt["status"] != 200
         or receipt.get("complete_body") is not True
-        or receipt.get("bytes") != SOURCE_BYTES or receipt.get("sha256") != SOURCE_SHA256
-        or receipt.get("wire_bytes_downloaded") != SOURCE_BYTES
+        or receipt.get("bytes") != archive_bytes or receipt.get("sha256") != archive_sha
+        or receipt.get("wire_bytes_downloaded") != archive_bytes
         or receipt.get("requested_accept_encoding") != "identity"
-        or source_path.stat().st_size != SOURCE_BYTES or sha256_file(source_path) != SOURCE_SHA256
+        or archive_bytes <= 0 or archive_bytes > MAX_SOURCE_BYTES
     ):
         raise CensusTractsError("retained_source_receipt_or_archive_identity_drift")
-    return receipt
+    return receipt, release
 
 
-def _copy_raw_once(root: Path, source_path: Path, receipt_path: Path) -> Path:
-    target = root / RAW_KEY
+def _raw_keys(archive_sha: str) -> tuple[str, str]:
+    raw_key = f"_raw-captures/{DATASET_SLUG}/{archive_sha}/original.gdb.zip"
+    return raw_key, raw_key + ".receipt.json"
+
+
+def _copy_raw_once(root: Path, source_path: Path, receipt_path: Path, receipt: dict[str, object]) -> Path:
+    archive_sha = sha256_file(source_path)
+    archive_bytes = source_path.stat().st_size
+    raw_key, raw_receipt_key = _raw_keys(archive_sha)
+    target = root / raw_key
     target.parent.mkdir(parents=True, exist_ok=True)
-    receipt_target = root / RAW_RECEIPT_KEY
+    receipt_target = root / raw_receipt_key
     if target.exists():
-        if target.is_symlink() or target.stat().st_nlink != 1 or sha256_file(target) != SOURCE_SHA256:
+        if target.is_symlink() or target.stat().st_nlink != 1 or sha256_file(target) != archive_sha:
             raise CensusTractsError("canonical_raw_archive_changed_or_aliased")
         if not receipt_target.is_file() or receipt_target.read_bytes() != receipt_path.read_bytes():
             raise CensusTractsError("canonical_raw_receipt_changed")
         return target
-    if shutil.disk_usage(root).free < SOURCE_BYTES + MIN_FREE_BYTES:
+    if shutil.disk_usage(root).free < archive_bytes + MIN_FREE_BYTES:
         raise CensusTractsError("insufficient_space_before_canonical_raw_copy")
     partial = target.with_name("original.gdb.zip.partial")
     try:
         shutil.copyfile(source_path, partial)
-        if partial.stat().st_size != SOURCE_BYTES or sha256_file(partial) != SOURCE_SHA256:
+        if partial.stat().st_size != archive_bytes or sha256_file(partial) != archive_sha:
             raise CensusTractsError("canonical_raw_copy_hash_mismatch")
         os.replace(partial, target)
-        receipt_target.write_bytes(receipt_path.read_bytes())
+        receipt_target.write_bytes(_canonical(receipt))
     finally:
         if partial.exists():
             partial.unlink()
@@ -160,21 +173,23 @@ def _parse_layer_definition(xml: str) -> dict[str, object]:
             "has_z": False, "has_m": False, "xml": xml}
 
 
-def _validate_archive(path: Path) -> dict[str, object]:
+def _validate_archive(path: Path, release: census_latest.GeodatabaseRelease) -> dict[str, object]:
     import zipfile
 
+    gdb_root = release.source_file[:-4]
     with zipfile.ZipFile(path) as archive:
         members = archive.infolist()
-        if len(members) != SOURCE_MEMBERS or len({entry.filename for entry in members}) != SOURCE_MEMBERS:
+        if not members or len(members) > MAX_ARCHIVE_MEMBERS or len({entry.filename for entry in members}) != len(members):
             raise CensusTractsError("archive_member_roster_drift")
-        if sum(entry.file_size for entry in members) != SOURCE_EXPANDED_BYTES:
+        expanded = sum(entry.file_size for entry in members)
+        if expanded <= 0 or expanded > MAX_UNCOMPRESSED_BYTES:
             raise CensusTractsError("archive_expanded_size_drift")
         for entry in members:
             member = PurePosixPath(entry.filename)
             if (member.is_absolute() or ".." in member.parts or len(member.parts) != 2
-                or member.parts[0] != GDB or entry.flag_bits & 1 or stat.S_ISLNK(entry.external_attr >> 16)):
+                or member.parts[0] != gdb_root or entry.flag_bits & 1 or stat.S_ISLNK(entry.external_attr >> 16)):
                 raise CensusTractsError("unsafe_archive_member")
-    uri = f"/vsizip/{path}/{GDB}"
+    uri = f"/vsizip/{path}/{gdb_root}"
     _, definition_table = pyogrio.read_arrow(uri, sql="GetLayerDefinition " + LAYER)
     if definition_table.num_rows != 1 or "FIELD_1" not in definition_table.column_names:
         raise CensusTractsError("native_layer_definition_missing")
@@ -187,7 +202,7 @@ def _validate_archive(path: Path) -> dict[str, object]:
         fields != expected_fields or types != ["object", "object", "object", "float64", "float64", "object", "object"]
         or info.get("crs") != SOURCE_CRS or info.get("geometry_type") != SOURCE_GEOMETRY
         or info.get("geometry_name") != "SHAPE" or info.get("fid_column") != "OBJECTID"
-        or info.get("features") != SOURCE_FEATURE_COUNT
+        or not FEATURE_COUNT_RANGE[0] <= info.get("features", 0) <= FEATURE_COUNT_RANGE[1]
     ):
         raise CensusTractsError("source_layer_count_schema_or_crs_drift")
     return {"uri": uri, "info": info, "native_definition": native_definition}
@@ -272,7 +287,8 @@ def _stream_layer(uri: str, output_path: Path) -> dict[str, object]:
                 writer.write_batch(batch)
                 if rows % 8192 < batch.num_rows and shutil.disk_usage(output_path.parent).free < MIN_FREE_BYTES:
                     raise CensusTractsError("minimum_disk_reserve_reached_during_candidate_stream")
-        if rows != SOURCE_FEATURE_COUNT or len(seen_oids) != SOURCE_FEATURE_COUNT or len(seen_geoids) != SOURCE_FEATURE_COUNT:
+        if (not FEATURE_COUNT_RANGE[0] <= rows <= FEATURE_COUNT_RANGE[1]
+                or len(seen_oids) != rows or len(seen_geoids) != rows):
             raise CensusTractsError("source_layer_population_or_identifier_drift")
         id_digest.update("\n".join(str(value) for value in sorted(seen_oids)).encode())
         id_hash = id_digest.hexdigest()
@@ -301,27 +317,32 @@ def _stream_layer(uri: str, output_path: Path) -> dict[str, object]:
 
 
 def _manifest(identity: dict[str, object], audit: dict[str, object], receipt: dict[str, object],
-              native_definition: dict[str, object]) -> dict[str, object]:
+              release: census_latest.GeodatabaseRelease, native_definition: dict[str, object]) -> dict[str, object]:
+    archive_sha = str(receipt["sha256"])
+    archive_bytes = int(receipt["bytes"])
     manifest = {
         "schema_version": 1, "processor": "HIFLD Next", "approved": False,
         "code_commit": identity["code_commit"], "code_identity_scheme": identity["code_identity_scheme"],
-        "title": "Census Tracts — exact 2024 TIGER/Line source, unapproved candidate",
+        "title": f"Census Tracts — {release.vintage} TIGER/Line national substate GDB, unapproved candidate",
         "publisher": "U.S. Census Bureau", "agency": "U.S. Census Bureau",
-        "source_url": SOURCE_URL, "license": LICENSE,
+        "source_url": release.source_url, "license": LICENSE,
+        "source_release": release.as_metadata(),
         "lineage": (
-            "Direct extraction from the official U.S. Census Bureau TIGER/Line 2024 national substate "
-            "geodatabase. This is a proposed source route for HIFLD inventory census-tracts-2; equivalence "
-            "to the DataLumos archive or the DHS crosswalk entry has not been established."
+            "Direct extraction from the official U.S. Census Bureau TIGER/Line national substate "
+            "geodatabase, edition resolved at capture time. This is a proposed source route for "
+            "HIFLD inventory census-tracts-2; equivalence to the DataLumos archive or the DHS "
+            "crosswalk entry has not been established."
         ),
         "processing_fingerprint": _sha(_canonical(identity)),
         "inputs": [{
-            "input_id": "tiger2024-substategeo:" + SOURCE_SHA256,
+            "input_id": f"tiger{release.vintage}-substategeo:" + archive_sha,
             "producer": "U.S. Census Bureau", "host": "www2.census.gov", "role": "producer_publication",
-            "canonical_url": SOURCE_URL, "retrieval_url": SOURCE_URL, "observed_final_url": SOURCE_URL,
-            "retrieved_at": receipt["observed_at"], "http_status": 200,
-            "sha256": SOURCE_SHA256, "bytes": SOURCE_BYTES, "license": LICENSE,
-            "attribution": "U.S. Census Bureau, TIGER/Line 2024 substate geographic database.",
-            "release_date_unknown_reason": "The archive is explicitly the 2024 edition; an exact producer publication day has not been independently established.",
+            "canonical_url": release.source_url, "retrieval_url": str(receipt["final_url"]),
+            "observed_final_url": str(receipt["final_url"]),
+            "retrieved_at": receipt["observed_at"], "http_status": receipt["status"],
+            "sha256": archive_sha, "bytes": archive_bytes, "license": LICENSE,
+            "attribution": f"U.S. Census Bureau, TIGER/Line {release.vintage} substate geographic database.",
+            "release_date_unknown_reason": f"The producer identifies this as the {release.vintage} TIGER/Line edition; the directory listing and HTTP Last-Modified values are retained as discovery evidence and are not treated as the producer release date.",
         }],
         "transformations": [{
             "operation": "stream_exact_original_filegdb_layer_to_native_geoparquet",
@@ -329,7 +350,7 @@ def _manifest(identity: dict[str, object], audit: dict[str, object], receipt: di
                 "geometry": "EPSG:4269 MultiPolygon WKB exposed by GDAL Arrow; copied byte-for-byte to Parquet with no repair, reprojection or simplification",
                 "FileGDB_declared_shape_type": native_definition["source_shape_type"],
                 "source_native_OID": "OBJECTID esriFieldTypeOID Length4; GDAL Arrow exposes original values as int64, compatibility remains unapproved",
-                "source_feature_count": SOURCE_FEATURE_COUNT, "source_archive_sha256": SOURCE_SHA256},
+                "source_feature_count": audit["feature_count"], "source_archive_sha256": archive_sha},
         }],
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "Exact source physical attributes, original FID and WKB are retained; output capability does not grant source, baseline, rights, coverage, schema or release acceptance.",
@@ -376,11 +397,12 @@ def _check_file_roster(root: Path, expected: dict[str, dict[str, object]]) -> No
 
 
 def _write_ready_roster(root: Path, *, identity: dict[str, object], fingerprint: str,
-                        version: str, receipt: dict[str, object]) -> dict[str, object]:
+                        version: str, receipt: dict[str, object],
+                        archive_sha: str) -> dict[str, object]:
     roster = _file_roster(root, exclude=frozenset({READY_ROSTER}))
     ready = {
         "schema_version": 1, "candidate_version": version,
-        "source_archive_sha256": SOURCE_SHA256,
+        "source_archive_sha256": archive_sha,
         "receipt_sha256": _sha(_canonical(receipt)),
         "source_schema_sha256": _sha(_canonical(EXPECTED_NAMES)),
         "processing_fingerprint": fingerprint,
@@ -395,7 +417,9 @@ def _write_ready_roster(root: Path, *, identity: dict[str, object], fingerprint:
 
 def _verify_ready_roster(root: Path, *, identity: dict[str, object], fingerprint: str,
                          version: str, receipt: dict[str, object],
-                         native_definition: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
+                         native_definition: dict[str, object],
+                         release: census_latest.GeodatabaseRelease, raw_key: str,
+                         raw_receipt_key: str, archive_sha: str, archive_bytes: int) -> tuple[dict[str, object], dict[str, object]]:
     """Accept an existing candidate only when its complete immutable roster matches."""
     ready_path = root / READY_ROSTER
     if root.is_symlink() or not root.is_dir() or ready_path.is_symlink() or not ready_path.is_file():
@@ -406,7 +430,7 @@ def _verify_ready_roster(root: Path, *, identity: dict[str, object], fingerprint
         raise CensusTractsError("existing_candidate_ready_roster_invalid") from exc
     if not isinstance(ready, dict) or ready != {
         "schema_version": 1, "candidate_version": version,
-        "source_archive_sha256": SOURCE_SHA256,
+        "source_archive_sha256": archive_sha,
         "receipt_sha256": _sha(_canonical(receipt)),
         "source_schema_sha256": _sha(_canonical(EXPECTED_NAMES)),
         "processing_fingerprint": fingerprint,
@@ -444,10 +468,9 @@ def _verify_ready_roster(root: Path, *, identity: dict[str, object], fingerprint
     if (root / "metadata/processing_identity.json").read_bytes() != _canonical(identity):
         raise CensusTractsError("existing_candidate_code_identity_drift")
     capture = read_json("metadata/source_capture.json")
-    expected_capture = {"archive_key": RAW_KEY, "receipt_key": RAW_RECEIPT_KEY,
-        "archive_sha256": SOURCE_SHA256, "archive_bytes": SOURCE_BYTES,
-        "archive_members": SOURCE_MEMBERS, "archive_expanded_bytes": SOURCE_EXPANDED_BYTES,
-        "source_url": SOURCE_URL}
+    expected_capture = {"archive_key": raw_key, "receipt_key": raw_receipt_key,
+        "archive_sha256": archive_sha, "archive_bytes": archive_bytes,
+        "source_url": release.source_url, "source_release": release.as_metadata()}
     if capture != expected_capture:
         raise CensusTractsError("existing_candidate_source_capture_drift")
     baseline = read_json("metadata/baseline_comparison.json")
@@ -461,17 +484,18 @@ def _verify_ready_roster(root: Path, *, identity: dict[str, object], fingerprint
     if (manifest.get("approved") is not False or manifest.get("code_commit") != identity.get("code_commit")
         or manifest.get("code_identity_scheme") != identity.get("code_identity_scheme")
         or manifest.get("processing_fingerprint") != fingerprint
-        or manifest.get("source_url") != SOURCE_URL or not isinstance(inputs, list) or len(inputs) != 1
-        or not isinstance(inputs[0], dict) or inputs[0].get("sha256") != SOURCE_SHA256
-        or inputs[0].get("bytes") != SOURCE_BYTES or inputs[0].get("canonical_url") != SOURCE_URL
+        or manifest.get("source_url") != release.source_url or not isinstance(inputs, list) or len(inputs) != 1
+        or not isinstance(inputs[0], dict) or inputs[0].get("sha256") != archive_sha
+        or inputs[0].get("bytes") != archive_bytes or inputs[0].get("canonical_url") != release.source_url
         or inputs[0].get("retrieved_at") != receipt.get("observed_at")
         or not isinstance(transformations, list) or len(transformations) != 1
         or not isinstance(transformations[0], dict)
-        or transformations[0].get("parameters", {}).get("source_archive_sha256") != SOURCE_SHA256):
+        or transformations[0].get("parameters", {}).get("source_archive_sha256") != archive_sha):
         raise CensusTractsError("existing_candidate_provenance_identity_drift")
     audit = read_json("metadata/source_audit.json")
     output_record = expected_files["geoparquet/" + OUTPUT_NAME]
-    if (audit.get("approved") is not False or audit.get("feature_count") != SOURCE_FEATURE_COUNT
+    if (audit.get("approved") is not False
+        or not FEATURE_COUNT_RANGE[0] <= audit.get("feature_count", -1) <= FEATURE_COUNT_RANGE[1]
         or audit.get("parquet_sha256") != output_record.get("sha256")
         or audit.get("parquet_bytes") != output_record.get("bytes")
         or audit.get("crs") != SOURCE_CRS or audit.get("geometry_type") != SOURCE_GEOMETRY
@@ -479,21 +503,24 @@ def _verify_ready_roster(root: Path, *, identity: dict[str, object], fingerprint
         or not audit.get("native_objectid_sha256")
         or audit.get("source_batch_sha256") != audit.get("parquet_batch_sha256")
         or not isinstance(audit.get("statefp_counts"), dict)
-        or sum(audit["statefp_counts"].values()) != SOURCE_FEATURE_COUNT):
+        or not FEATURE_COUNT_RANGE[0] <= sum(audit["statefp_counts"].values()) <= FEATURE_COUNT_RANGE[1]):
         raise CensusTractsError("existing_candidate_source_audit_or_output_drift")
     parquet_path = root / "geoparquet" / OUTPUT_NAME
     parquet = pq.ParquetFile(parquet_path)
-    if (parquet.metadata.num_rows != SOURCE_FEATURE_COUNT
+    if (not FEATURE_COUNT_RANGE[0] <= parquet.metadata.num_rows <= FEATURE_COUNT_RANGE[1]
         or tuple(parquet.schema_arrow.names) != EXPECTED_NAMES
         or sha256_file(parquet_path) != output_record["sha256"]):
         raise CensusTractsError("existing_candidate_native_output_changed")
     return audit, ready
 
 
-def _candidate_result(version: str, identity: dict[str, object], audit: dict[str, object], *, reused: bool) -> dict[str, object]:
+def _candidate_result(version: str, identity: dict[str, object], audit: dict[str, object], *, reused: bool,
+                      release: census_latest.GeodatabaseRelease, archive_sha: str,
+                      archive_bytes: int) -> dict[str, object]:
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["feature_count"], "source_population_complete": True,
-        "source_archive_bytes": SOURCE_BYTES, "source_archive_sha256": SOURCE_SHA256,
+        "source_archive_bytes": archive_bytes, "source_archive_sha256": archive_sha,
+        "source_release_vintage": str(release.vintage),
         "source_id_sha256": audit["native_objectid_sha256"], "source_schema_sha256": _sha(_canonical(EXPECTED_NAMES)),
         "native_parquet_sha256": audit["parquet_sha256"], "native_parquet_bytes": audit["parquet_bytes"],
         "native_value_parity": audit["source_batch_sha256"] == audit["parquet_batch_sha256"],
@@ -507,20 +534,25 @@ def stage_census_tracts(
     """Copy one verified original archive, then stream full native layer to Parquet."""
     root = _safe_local_staging(storage)
     source = Path(archive_path).absolute(); receipt_file = Path(receipt_path).absolute()
-    receipt = _validate_capture(source, receipt_file)
-    archive = _copy_raw_once(root, source, receipt_file)
+    receipt, release = _validate_capture(source, receipt_file)
+    archive_sha = str(receipt["sha256"]); archive_bytes = int(receipt["bytes"])
+    raw_key, raw_receipt_key = _raw_keys(archive_sha)
+    archive = _copy_raw_once(root, source, receipt_file, receipt)
     if shutil.disk_usage(root).free < MIN_FREE_BYTES:
         raise CensusTractsError("insufficient_space_before_candidate_stream")
-    archive_audit = _validate_archive(archive)
+    archive_audit = _validate_archive(archive, release)
     identity = processing_identity()
     fingerprint = _sha(_canonical(identity))
-    version = f"v0.0.0-draft-tiger2024-{SOURCE_SHA256[:12]}-{fingerprint[:16]}"
+    version = census_latest.release_version(str(release.vintage), archive_sha, identity["code_commit"])
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
     target = root / prefix
     if target.exists() or target.is_symlink():
         audit, _ = _verify_ready_roster(target, identity=identity, fingerprint=fingerprint, version=version,
-                                        receipt=receipt, native_definition=archive_audit["native_definition"])
-        return _candidate_result(version, identity, audit, reused=True)
+                                        receipt=receipt, native_definition=archive_audit["native_definition"],
+                                        release=release, raw_key=raw_key, raw_receipt_key=raw_receipt_key,
+                                        archive_sha=archive_sha, archive_bytes=archive_bytes)
+        return _candidate_result(version, identity, audit, reused=True,
+                                 release=release, archive_sha=archive_sha, archive_bytes=archive_bytes)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".census-tracts-building-", dir=target.parent))
     try:
@@ -529,19 +561,20 @@ def stage_census_tracts(
         result = _stream_layer(archive_audit["uri"], parquet_path)
         if shutil.disk_usage(root).free < MIN_FREE_BYTES:
             raise CensusTractsError("minimum_disk_reserve_breached_after_candidate_stream")
-        manifest = _manifest(identity, result, receipt, archive_audit["native_definition"])
+        manifest = _manifest(identity, result, receipt, release, archive_audit["native_definition"])
         objects = {
             "metadata/source_manifest.json": _canonical(manifest),
             "metadata/processing_identity.json": _canonical(identity),
-            "metadata/source_capture.json": _canonical({"archive_key": RAW_KEY, "receipt_key": RAW_RECEIPT_KEY,
-                "archive_sha256": SOURCE_SHA256, "archive_bytes": SOURCE_BYTES, "archive_members": SOURCE_MEMBERS,
-                "archive_expanded_bytes": SOURCE_EXPANDED_BYTES, "source_url": SOURCE_URL}),
+            "metadata/source_capture.json": _canonical({"archive_key": raw_key, "receipt_key": raw_receipt_key,
+                "archive_sha256": archive_sha, "archive_bytes": archive_bytes,
+                "source_url": release.source_url, "source_release": release.as_metadata()}),
             "metadata/source_audit.json": _canonical({"approved": False, "layer": LAYER, **result,
                 "native_layer_definition": archive_audit["native_definition"],
                 "source_driver_geometry_type": archive_audit["info"]["geometry_type"],
                 "FileGDB_declared_shape_type": archive_audit["native_definition"]["source_shape_type"],
                 "source_oid_arrow_representation": "OBJECTID is physical esriFieldTypeOID Length4; GDAL Arrow emits int64 with every original value retained",
-                "statefp_counts": result["statefp_counts"], "coverage_scope": "all rows returned by the exact Census_Tract layer in the pinned 2024 national substate GDB"}),
+                "statefp_counts": result["statefp_counts"],
+                "coverage_scope": f"all rows returned by the exact Census_Tract layer in the {release.vintage} national substate GDB"}),
             "metadata/baseline_comparison.json": _canonical({"schema_version": 1, "approved": False, "status": "blocked",
                 "reason_codes": ["published_baseline_and_ID_schema_contract_acceptance_pending"]}),
         }
@@ -549,7 +582,8 @@ def stage_census_tracts(
             path = temporary / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(body)
-        _write_ready_roster(temporary, identity=identity, fingerprint=fingerprint, version=version, receipt=receipt)
+        _write_ready_roster(temporary, identity=identity, fingerprint=fingerprint, version=version,
+                            receipt=receipt, archive_sha=archive_sha)
         os.replace(temporary, target)
     except BaseException as exc:
         quarantine = root / "_quarantine" / DATASET_SLUG / ("failed-" + fingerprint[:16])
@@ -558,8 +592,9 @@ def stage_census_tracts(
             os.replace(temporary, quarantine)
         try:
             (quarantine / "failure.json").write_bytes(_canonical({"approved": False, "failure": type(exc).__name__,
-                "reason": str(exc), "archive_key": RAW_KEY, "source_sha256": SOURCE_SHA256}))
+                "reason": str(exc), "archive_key": raw_key, "source_sha256": archive_sha}))
         except OSError:
             pass
         raise
-    return _candidate_result(version, identity, result, reused=False)
+    return _candidate_result(version, identity, result, reused=False,
+                             release=release, archive_sha=archive_sha, archive_bytes=archive_bytes)

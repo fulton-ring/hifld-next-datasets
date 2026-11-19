@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 from dagster import DefaultScheduleStatus
@@ -18,10 +19,8 @@ from dagster_hifld.definitions import defs
 from dagster_hifld.sources.census_block_groups import (
     DATASET_SLUG,
     EXPECTED_NAMES,
-    SOURCE_BYTES,
-    SOURCE_FEATURE_COUNT,
-    SOURCE_SHA256,
-    SOURCE_URL,
+    FEATURE_COUNT_RANGE,
+    GEODATABASE_PRODUCT,
     CensusBlockGroupsError,
     _batch_digest,
     _manifest,
@@ -36,19 +35,27 @@ from dagster_hifld.sources.census_block_groups import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import census_block_groups as block_groups_source
+from dagster_hifld.sources import census_latest
+
+TIGER_ROOT = "https://www2.census.gov/geo/tiger/"
+FIXTURE_URL = "https://www2.census.gov/geo/tiger/TGRGDB25/tlgdb_2025_a_us_substategeo.gdb.zip"
+RELEASE = census_latest.geodatabase_release_from_url(FIXTURE_URL, GEODATABASE_PRODUCT)
+ARCHIVE_SHA = hashlib.sha256(b"fixture-substategeo-archive-bytes").hexdigest()
+ARCHIVE_BYTES = 512_000_000
 
 
 class CensusBlockGroupsTests(unittest.TestCase):
     def _cached_candidate(self, root: Path):
         identity = {"code_commit": "packaged-sha256:" + "a" * 64,
                     "code_identity_scheme": "sha256-packaged-dagster-hifld-v1"}
-        receipt = {"observed_at": "2026-10-21T17:04:58.415344+00:00"}
+        receipt = {"url": FIXTURE_URL, "final_url": FIXTURE_URL, "status": 200, "complete_body": True,
+                   "bytes": ARCHIVE_BYTES, "sha256": ARCHIVE_SHA, "wire_bytes_downloaded": ARCHIVE_BYTES,
+                   "requested_accept_encoding": "identity", "observed_at": "2026-10-21T17:04:58.415344+00:00"}
         native_definition = {"source_shape_type": "esriGeometryPolygon"}
-        fingerprint = hashlib.sha256(_canonical(identity)).hexdigest()
-        version = f"v0.0.0-draft-tiger2024-{SOURCE_SHA256[:12]}-{fingerprint[:16]}"
+        version = census_latest.release_version(str(RELEASE.vintage), ARCHIVE_SHA, identity["code_commit"])
         target = root / DATASET_SLUG / DATASET_SLUG / version
         target.mkdir(parents=True)
-        count = SOURCE_FEATURE_COUNT
+        count = 242_748
         table = pa.table({
             "OBJECTID": pa.array(range(1, count + 1), type=pa.int64()),
             "GEOID": pa.array(["010010201001"] * count, type=pa.string()),
@@ -73,24 +80,22 @@ class CensusBlockGroupsTests(unittest.TestCase):
             "source_driver_geometry_type": "MultiPolygon", "FileGDB_declared_shape_type": "esriGeometryPolygon",
             "source_batch_sha256": "b" * 64, "parquet_batch_sha256": "b" * 64,
             "source_oid_arrow_representation": "OBJECTID is physical esriFieldTypeOID Length4; GDAL Arrow emits int64 with every original value retained",
-            "coverage_scope": "all rows returned by the exact Block_Group layer in the pinned 2024 national substate GDB",
+            "coverage_scope": f"all rows returned by the exact Block_Group layer in the {RELEASE.vintage} national substate GDB",
             "native_objectid_sha256": "c" * 64, "statefp_counts": {"01": count},
             "parquet_bytes": parquet_path.stat().st_size, "parquet_sha256": parquet_sha,
             "bounds": [-1.0, -1.0, 1.0, 1.0], "arrow_schema": str(schema),
         }
         baseline = {"schema_version": 1, "approved": False, "status": "blocked",
                     "reason_codes": ["published_baseline_and_ID_schema_contract_acceptance_pending"]}
-        capture = {"archive_key": block_groups_source.RAW_KEY,
-                   "receipt_key": block_groups_source.RAW_RECEIPT_KEY,
-                   "archive_sha256": SOURCE_SHA256, "archive_bytes": SOURCE_BYTES,
-                   "archive_members": block_groups_source.SOURCE_MEMBERS,
-                   "archive_expanded_bytes": block_groups_source.SOURCE_EXPANDED_BYTES,
-                   "source_url": SOURCE_URL}
+        raw_key, raw_receipt_key = block_groups_source._raw_keys(ARCHIVE_SHA)
+        capture = {"archive_key": raw_key, "receipt_key": raw_receipt_key,
+                   "archive_sha256": ARCHIVE_SHA, "archive_bytes": ARCHIVE_BYTES,
+                   "source_url": FIXTURE_URL, "source_release": RELEASE.as_metadata()}
         objects = {
             "metadata/processing_identity.json": identity,
             "metadata/source_capture.json": capture,
             "metadata/source_audit.json": audit,
-            "metadata/source_manifest.json": _manifest(identity, audit, receipt, native_definition),
+            "metadata/source_manifest.json": _manifest(identity, audit, receipt, RELEASE, native_definition),
             "metadata/baseline_comparison.json": baseline,
         }
         for name, value in objects.items():
@@ -118,20 +123,22 @@ class CensusBlockGroupsTests(unittest.TestCase):
             DefaultScheduleStatus.STOPPED,
         )
 
-    def test_source_check_requires_exact_full_population_and_parquet_parity(self):
+    def test_source_check_requires_range_population_and_parquet_parity(self):
         candidate = {
-            "feature_count": SOURCE_FEATURE_COUNT,
+            "feature_count": 242_748,
             "source_population_complete": True,
-            "source_archive_bytes": SOURCE_BYTES,
-            "source_archive_sha256": SOURCE_SHA256,
+            "source_archive_bytes": ARCHIVE_BYTES,
+            "source_archive_sha256": ARCHIVE_SHA,
             "source_id_sha256": "1" * 64,
             "native_parquet_sha256": "2" * 64,
             "native_value_parity": True,
             "code_identity_scheme": "sha256-packaged-dagster_hifld-v1",
         }
         self.assertTrue(census_block_groups_source_complete(candidate).passed)
-        for key, value in (("feature_count", SOURCE_FEATURE_COUNT - 1), ("native_value_parity", False),
-                           ("source_archive_sha256", "0" * 64)):
+        for key, value in (("feature_count", FEATURE_COUNT_RANGE[0] - 1),
+                           ("feature_count", FEATURE_COUNT_RANGE[1] + 1),
+                           ("native_value_parity", False),
+                           ("source_archive_sha256", "")):
             changed = dict(candidate, **{key: value})
             self.assertFalse(census_block_groups_source_complete(changed).passed)
 
@@ -142,7 +149,7 @@ class CensusBlockGroupsTests(unittest.TestCase):
             receipt = root / "receipt.json"
             source.write_bytes(b"partial")
             receipt.write_text(json.dumps({
-                "url": SOURCE_URL, "final_url": SOURCE_URL, "status": 200,
+                "url": FIXTURE_URL, "final_url": FIXTURE_URL, "status": 200,
                 "complete_body": False, "bytes": 7,
                 "sha256": hashlib.sha256(b"partial").hexdigest(),
                 "wire_bytes_downloaded": 7, "requested_accept_encoding": "identity",
@@ -164,10 +171,12 @@ class CensusBlockGroupsTests(unittest.TestCase):
     def test_manifest_pins_native_parquet_without_approving_release_or_other_formats(self):
         identity = {"code_commit": "packaged-sha256:" + "a" * 64,
                     "code_identity_scheme": "sha256-packaged-dagster_hifld-v1"}
-        audit = {"parquet_bytes": 1234, "parquet_sha256": "b" * 64}
-        receipt = {"observed_at": "2026-10-21T17:04:58.415344+00:00"}
+        audit = {"parquet_bytes": 1234, "parquet_sha256": "b" * 64, "feature_count": 242_748}
+        receipt = {"url": FIXTURE_URL, "final_url": FIXTURE_URL, "status": 200, "complete_body": True,
+                   "bytes": ARCHIVE_BYTES, "sha256": ARCHIVE_SHA,
+                   "observed_at": "2026-10-21T17:04:58.415344+00:00"}
         native_definition = {"source_shape_type": "esriGeometryPolygon"}
-        manifest = _manifest(identity, audit, receipt, native_definition)
+        manifest = _manifest(identity, audit, receipt, RELEASE, native_definition)
         self.assertIs(manifest["approved"], False)
         self.assertEqual(manifest["prebuilt_output_policy"]["formats"]["geoparquet"]["objects"][0]["bytes"], 1234)
         self.assertNotIn("geopackage", manifest["prebuilt_output_policy"]["formats"])
@@ -201,9 +210,12 @@ class CensusBlockGroupsTests(unittest.TestCase):
             (source_dir / snapshot_name).write_bytes(source_manifest)
             before = {path.relative_to(target).as_posix(): (path.read_bytes(), path.stat().st_mtime_ns)
                       for path in target.rglob("*") if path.is_file()}
+            raw_key, raw_receipt_key = block_groups_source._raw_keys(ARCHIVE_SHA)
             result = _reuse_existing_candidate(
                 target, identity=identity, receipt=receipt,
-                native_definition=native_definition, version=version,
+                release=RELEASE, native_definition=native_definition, version=version,
+                raw_key=raw_key, raw_receipt_key=raw_receipt_key,
+                archive_sha=ARCHIVE_SHA, archive_bytes=ARCHIVE_BYTES,
             )
             after = {path.relative_to(target).as_posix(): (path.read_bytes(), path.stat().st_mtime_ns)
                      for path in target.rglob("*") if path.is_file()}
@@ -221,10 +233,13 @@ class CensusBlockGroupsTests(unittest.TestCase):
             parquet = target / "geoparquet/census-block-groups-3.parquet"
             with parquet.open("ab") as stream:
                 stream.write(b"tamper")
+            raw_key, raw_receipt_key = block_groups_source._raw_keys(ARCHIVE_SHA)
             with self.assertRaisesRegex(CensusBlockGroupsError, "cached_candidate_native_parquet_tampered"):
                 _reuse_existing_candidate(
                     target, identity=identity, receipt=receipt,
-                    native_definition=native_definition, version=version,
+                    release=RELEASE, native_definition=native_definition, version=version,
+                    raw_key=raw_key, raw_receipt_key=raw_receipt_key,
+                    archive_sha=ARCHIVE_SHA, archive_bytes=ARCHIVE_BYTES,
                 )
 
     def test_cached_candidate_refuses_each_catalog_source_manifest_snapshot_tamper(self):
@@ -241,13 +256,71 @@ class CensusBlockGroupsTests(unittest.TestCase):
                             else "metadata/source/" + snapshot_name)
                 tampered = target / relative
                 tampered.write_bytes(tampered.read_bytes() + b"changed")
+                raw_key, raw_receipt_key = block_groups_source._raw_keys(ARCHIVE_SHA)
                 with self.assertRaisesRegex(
                     CensusBlockGroupsError, "cached_candidate_catalog_source_manifest_snapshot_tampered"
                 ):
                     _reuse_existing_candidate(
                         target, identity=identity, receipt=receipt,
-                        native_definition=native_definition, version=version,
+                        release=RELEASE, native_definition=native_definition, version=version,
+                        raw_key=raw_key, raw_receipt_key=raw_receipt_key,
+                        archive_sha=ARCHIVE_SHA, archive_bytes=ARCHIVE_BYTES,
                     )
+
+    def _discover(self, root_listing: str, directories: dict) -> "census_latest.GeodatabaseRelease":
+        def respond(request):
+            url = str(request.url)
+            if url == TIGER_ROOT:
+                return httpx.Response(200, stream=httpx.ByteStream(root_listing.encode()), request=request)
+            if url not in directories or directories[url] is None:
+                return httpx.Response(404, stream=httpx.ByteStream(b""), request=request)
+            return httpx.Response(200, stream=httpx.ByteStream(str(directories[url]).encode()), request=request)
+        with tempfile.TemporaryDirectory() as tmp:
+            with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+                return census_latest.discover_geodatabase(client, Path(tmp), GEODATABASE_PRODUCT)
+
+    def _discovery_receipt(self, release: "census_latest.GeodatabaseRelease") -> dict:
+        return {"url": release.source_url, "final_url": release.source_url, "status": 200,
+                "complete_body": True, "bytes": 4, "sha256": hashlib.sha256(b"abcd").hexdigest(),
+                "wire_bytes_downloaded": 4, "requested_accept_encoding": "identity",
+                "observed_at": "2026-10-21T17:04:58.415344+00:00"}
+
+    def test_discovery_resolves_current_vintage_and_capture_records_it(self):
+        # discovery over the producer listing resolves the newest published edition
+        release = self._discover(
+            '<a href="TGRGDB24/">24</a><a href="TGRGDB25/">25</a>',
+            {"https://www2.census.gov/geo/tiger/TGRGDB25/":
+             '<a href="tlgdb_2025_a_us_substategeo.gdb.zip">us</a>'})
+        self.assertEqual(release.vintage, 2025)
+        # the retained-replay path derives the same release from a capture receipt
+        receipt = self._discovery_receipt(release)
+        derived = census_latest.geodatabase_release_from_receipt(receipt, GEODATABASE_PRODUCT)
+        self.assertEqual(derived.vintage, 2025)
+        # and the capture records the resolved vintage and discovery evidence in the manifest
+        audit = {"parquet_bytes": 10, "parquet_sha256": "b" * 64, "feature_count": 242_748}
+        identity = {"code_commit": "packaged-sha256:" + "a" * 64,
+                    "code_identity_scheme": "sha256-packaged-dagster-hifld-v1"}
+        manifest = _manifest(identity, audit, receipt, derived, {"source_shape_type": "esriGeometryPolygon"})
+        self.assertEqual(manifest["source_release"]["tiger_vintage"], "2025")
+        self.assertEqual(manifest["inputs"][0]["canonical_url"], release.source_url)
+        self.assertEqual(manifest["inputs"][0]["sha256"], receipt["sha256"])
+
+    def test_upstream_edition_change_is_recorded_not_pinned(self):
+        # the producer publishes a newer edition; discovery resolves it and the capture records it
+        release = self._discover(
+            '<a href="TGRGDB23/">23</a><a href="TGRGDB24/">24</a><a href="TGRGDB26/">26</a>',
+            {"https://www2.census.gov/geo/tiger/TGRGDB26/":
+             '<a href="tlgdb_2026_a_us_substategeo.gdb.zip">us</a>'})
+        self.assertEqual(release.vintage, 2026)
+        receipt = self._discovery_receipt(release)
+        derived = census_latest.geodatabase_release_from_receipt(receipt, GEODATABASE_PRODUCT)
+        self.assertEqual(derived.vintage, 2026)
+        audit = {"parquet_bytes": 10, "parquet_sha256": "b" * 64, "feature_count": 242_748}
+        identity = {"code_commit": "packaged-sha256:" + "a" * 64,
+                    "code_identity_scheme": "sha256-packaged-dagster-hifld-v1"}
+        manifest = _manifest(identity, audit, receipt, derived, {"source_shape_type": "esriGeometryPolygon"})
+        self.assertEqual(manifest["source_release"]["tiger_vintage"], "2026")
+        self.assertEqual(manifest["source_url"], release.source_url)
 
 
 if __name__ == "__main__":
