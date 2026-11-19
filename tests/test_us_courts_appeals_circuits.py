@@ -3,10 +3,13 @@ import os
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
+
+import httpx
 from pathlib import Path
 
 import pyarrow.parquet as pq
-from dagster import DefaultScheduleStatus
+from dagster import AssetCheckSeverity, DefaultScheduleStatus
 from shapely import from_wkb
 from shapely.geometry import Polygon
 
@@ -15,8 +18,10 @@ from dagster_hifld.assets.us_courts_appeals_circuits import (
     us_courts_appeals_circuits, us_courts_appeals_circuits_complete,
     us_courts_appeals_circuits_draft_schedule,
 )
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import us_courts_appeals_circuits as source
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 # Real roster order as observed on 2026-11-14: OBJECTID 1..13 map to the twelve
@@ -25,7 +30,155 @@ CIRCUIT_BY_OID = {1: "01", 2: "10", 3: "11", 4: "02", 5: "03", 6: "04", 7: "05",
                   8: "06", 9: "07", 10: "08", 11: "09", 12: "DC", 13: "XX"}
 
 
+FIXTURE_EXPECTED_COUNT = 13
+FIXTURE_EXPECTED_IDS = list(range(1, 14))
+FIXTURE_EXPECTED_ID_SHA256 = "c94747afa847f98b263eca5299b28438181251bdd86c930a56c2e16f685c4294"
+FIXTURE_EXPECTED_NULL_GEOMETRY_IDS = [13]
+FIXTURE_PAGE_COUNT = (len(FIXTURE_EXPECTED_IDS) + source.PAGE_SIZE - 1) // source.PAGE_SIZE
+FIXTURE_EXPECTED_EDITING_INFO = {"lastEditDate": 1770136110448,
+                         "schemaLastEditDate": 1764780696628,
+                         "dataLastEditDate": 1764780696628}
+
+
 class UsCourtsAppealsCircuitsTests(unittest.TestCase):
+    def _added_documents(self):
+        docs = self._documents()
+        added = json.loads(json.dumps(docs["page_000"]["features"][0]))
+        added["attributes"].update(OBJECTID=27, Circuit="ZZ")
+        docs["page_000"]["features"].append(added)
+        for side in ("before", "after"):
+            docs[f"ids_{side}"]["objectIds"] = list(range(1, 14)) + [27]
+            docs[f"count_{side}"]["count"] = 14
+            docs[f"layer_{side}"]["editingInfo"]["dataLastEditDate"] += 1000
+        return docs
+
+    def test_upstream_added_feature_uses_capture_witness_and_warns(self):
+        docs = self._added_documents()
+        added = docs["page_000"]["features"][-1]
+        fields, features, audit = source._validate(self._captures(docs))
+        self.assertEqual(len(features), 14)
+        self.assertEqual(audit["source_feature_count"], 14)
+        self.assertEqual(audit["source_id_max"], 27)
+        self.assertEqual(audit["source_last_data_edit_utc"], "2025-12-03T16:51:37.628000Z")
+        self.assertEqual(features[-1], added)
+        candidate = source._candidate_result(audit, "candidate", "v-test", "capture-hash",
+                                             reused=False, root=Path("captures"))
+        self.assertEqual(candidate["source_reported_count"], 14)
+        self.assertTrue(us_courts_appeals_circuits_complete(candidate).passed)
+        from dagster_hifld.assets.us_courts_appeals_circuits import us_courts_appeals_circuits_drift
+        drift = us_courts_appeals_circuits_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+        self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+        self.assertFalse(list(us_courts_appeals_circuits_drift.check_specs)[0].blocking)
+        baseline = {**candidate, "version": "v-approved", "release_accepted": True,
+                    "feature_count": FIXTURE_EXPECTED_COUNT, "source_id_sha256": FIXTURE_EXPECTED_ID_SHA256}
+        compared = approved_baseline_drift(candidate, baseline)
+        self.assertFalse(compared.passed)
+        self.assertEqual(compared.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(compared.metadata["feature_count_delta"].value, 1)
+        self.assertTrue(compared.metadata["native_id_roster_changed"].value)
+        self.assertEqual(pq.read_table(__import__("io").BytesIO(
+            source._parquet_bytes(fields, features))).num_rows, 14)
+
+    def test_torn_duplicate_and_missing_capture_witnesses_are_refused(self):
+        cases = [
+            ("same count changed IDs", lambda d: d["ids_after"]["objectIds"].__setitem__(-1, 27 + 1),
+             "source_count_or_id_roster_drift"),
+            ("count changed", lambda d: d["count_after"].update(count=13 + 2),
+             "source_count_or_id_roster_drift"),
+            ("duplicate IDs", lambda d: [d[f"ids_{side}"]["objectIds"].__setitem__(-1, 1)
+                                        for side in ("before", "after")], "source_count_or_id_roster_drift"),
+            ("missing witness", lambda d: d.pop("count_after"), "source_capture_witness_missing"),
+            ("missing page", lambda d: d.pop("page_000"), "source_capture_name_roster_drift"),
+            ("omitted feature", lambda d: d["page_000"]["features"].pop(), "source_page_population_incomplete"),
+            ("empty population", lambda d: [(d[f"ids_{side}"].update(objectIds=[]),
+                                             d[f"count_{side}"].update(count=0))
+                                            for side in ("before", "after")], "source_population_empty"),
+        ]
+        for label, mutate, reason in cases:
+            with self.subTest(label=label):
+                docs = self._added_documents()
+                mutate(docs)
+                with self.assertRaisesRegex(ValueError, reason):
+                    source._validate(self._captures(docs))
+
+    def test_complete_removal_and_all_null_geometry_use_observed_counts(self):
+        docs = self._documents()
+        docs["page_000"]["features"].pop(0)
+        for feature in docs["page_000"]["features"]:
+            feature.pop("geometry", None)
+        for side in ("before", "after"):
+            docs[f"ids_{side}"]["objectIds"] = list(range(2, 14))
+            docs[f"count_{side}"]["count"] = 12
+        fields, features, audit = source._validate(self._captures(docs))
+        self.assertEqual(audit["source_feature_count"], 12)
+        self.assertEqual(audit["source_id_min"], 2)
+        self.assertEqual(audit["geometry_null_count"], 12)
+        self.assertIsNone(audit["geometry_bounds"])
+        table = pq.read_table(__import__("io").BytesIO(source._parquet_bytes(fields, features)))
+        self.assertEqual(table.column("OBJECTID").to_pylist(), list(range(2, 14)))
+        self.assertEqual(table.column("geometry").to_pylist(), [None] * 12)
+
+    def test_dynamic_acquisition_replay_and_transport_integrity(self):
+        docs = self._added_documents()
+        docs["page_001"] = {**docs["page_000"], "features": [docs["page_000"]["features"].pop()]}
+        ids = docs["ids_before"]["objectIds"]
+        with tempfile.TemporaryDirectory() as temporary, patch.object(source, "PAGE_SIZE", 13), \
+                patch.object(source, "validate_construction_code_identity"), \
+                patch.object(capture_common, "validate_construction_code_identity"):
+            responses = {}
+            for name, url in source._capture_roster(ids):
+                responses.setdefault(url, []).append(name)
+
+            def handle(request):
+                name = responses[str(request.url)].pop(0)
+                return httpx.Response(200, stream=httpx.ByteStream(json.dumps(docs[name]).encode()),
+                                      headers={"Content-Type": "application/json"})
+
+            client = httpx.Client(transport=httpx.MockTransport(handle))
+            storage = StagingStorageResource(local_dir=str(Path(temporary) / "stage"))
+            with patch.object(source.httpx, "Client", return_value=client):
+                result = source.capture_us_courts_appeals_circuits(storage, version="fixture-capture",
+                    capture_directory=str(Path(temporary) / "captures"))
+            self.assertEqual(result["feature_count"], 13 + 1)
+            self.assertEqual(result["source_reported_count"], 13 + 1)
+            self.assertEqual(result["source_id_max"], 27)
+            self.assertTrue(us_courts_appeals_circuits_complete(result).passed)
+            root = Path(result["capture_directory"])
+            self.assertTrue((root / "page_001.body").exists())
+            self.assertTrue(all(not remaining for remaining in responses.values()))
+            replay = source._read_replay(root)
+            self.assertEqual(source._validate(replay)[2]["source_feature_count"], 13 + 1)
+            with patch.object(source.httpx, "Client", side_effect=AssertionError("network on replay")):
+                reused = source.capture_us_courts_appeals_circuits(storage, version="fixture-replay", capture_directory=str(root))
+            self.assertEqual(reused["version"], result["version"])
+            self.assertTrue(reused["reused"])
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            receipt_path = root / "page_001.receipt.json"
+            receipt = json.loads(receipt_path.read_bytes())
+            receipt["url"] = source.LAYER_URL + "/query?objectIds=999"
+            receipt_path.write_bytes(_canonical(receipt))
+            manifest["receipts"]["page_001"] = receipt
+            manifest["artifact_roster"] = source.capture_roster_digests(root, exclude={"capture_manifest.json"})
+            (root / "capture_manifest.json").write_bytes(_canonical(manifest))
+            with self.assertRaisesRegex(ValueError, "request|url"):
+                source._read_replay(root)
+            for name, url in source._capture_roster(ids):
+                responses.setdefault(url, []).append(name)
+            docs["count_after"]["count"] += 1
+            failed_root = Path(temporary) / "torn"
+            client = httpx.Client(transport=httpx.MockTransport(handle))
+            with patch.object(source.httpx, "Client", return_value=client):
+                with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+                    source.capture_us_courts_appeals_circuits(storage, version="torn-capture",
+                        capture_directory=str(failed_root))
+            failure = next(failed_root.rglob("capture_manifest.json"))
+            self.assertFalse(json.loads(failure.read_bytes())["complete"])
+            self.assertTrue((failure.parent / "ids_after.body").exists())
+            self.assertTrue(any(key.endswith("/raw/ids_after.body")
+                                for key in storage.list_prefix(f"_quarantine/{source.DATASET_SLUG}")))
+
     def _shell(self, oid, lon0=-93.5, lat0=35.0):
         x0 = lon0 + (oid % 100) * 0.003
         y0 = lat0 + (oid // 100) * 0.003
@@ -51,12 +204,12 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
 
     def _features(self):
         rows = []
-        for oid in source.EXPECTED_IDS:
+        for oid in FIXTURE_EXPECTED_IDS:
             circuit = CIRCUIT_BY_OID[oid]
             attrs = {"OBJECTID": oid, "Circuit": circuit, "Shape__Area": None,
                      "Shape__Length": None, "GSA_Teams": None}
             feature = {"attributes": attrs}
-            if oid in source.EXPECTED_NULL_GEOMETRY_IDS:
+            if oid in FIXTURE_EXPECTED_NULL_GEOMETRY_IDS:
                 rows.append(feature)
                 continue
             rings = self._rings_for(oid)
@@ -86,7 +239,7 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
                  "hasZ": False, "hasM": False, "enableNullGeometry": False,
                  "isDataVersioned": False, "copyrightText": source.LAYER_COPYRIGHT,
                  "serviceItemId": source.CATALOG_ITEM_ID,
-                 "editingInfo": dict(source.EXPECTED_EDITING_INFO),
+                 "editingInfo": dict(FIXTURE_EXPECTED_EDITING_INFO),
                  "geometryProperties": dict(source.EXPECTED_GEOMETRY_PROPERTIES),
                  "spatialReference": sr,
                  "extent": {**source.EXPECTED_EXTENT, "spatialReference": sr},
@@ -104,18 +257,18 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
                              "licenseInfo": source.ITEM_LICENSE,
                              "extent": [list(source.ITEM_EXTENT[0]), list(source.ITEM_EXTENT[1])]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": FIXTURE_EXPECTED_COUNT},
+            "ids_before": {"objectIds": FIXTURE_EXPECTED_IDS},
             "service_after": json.loads(json.dumps(service)),
             "layer_after": json.loads(json.dumps(layer)),
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": FIXTURE_EXPECTED_COUNT},
+            "ids_after": {"objectIds": FIXTURE_EXPECTED_IDS},
         }
         page_fields = [{key: value for key, value in field.items()
                         if key not in ("nullable", "editable")}
                        for field in source.EXPECTED_FIELD_DECLARATIONS]
-        for page_index in range(source.PAGE_COUNT):
-            chunk = source.EXPECTED_IDS[page_index * source.PAGE_SIZE:
+        for page_index in range(FIXTURE_PAGE_COUNT):
+            chunk = FIXTURE_EXPECTED_IDS[page_index * source.PAGE_SIZE:
                                         (page_index + 1) * source.PAGE_SIZE]
             rows = [row for row in self._features() if row["attributes"]["OBJECTID"] in chunk]
             docs[f"page_{page_index:03d}"] = {"objectIdFieldName": "OBJECTID",
@@ -137,21 +290,21 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
         self.assertEqual(us_courts_appeals_circuits_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         check = us_courts_appeals_circuits_complete(
-            {"feature_count": 13, "source_population_complete": True})
+            {"feature_count": 13, "source_reported_count": 13, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         failed = us_courts_appeals_circuits_complete(
-            {"feature_count": 12, "source_population_complete": True})
+            {"feature_count": 12, "source_reported_count": 13, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_single_page_covers_source_ids(self):
         from urllib.parse import parse_qs, urlsplit
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(FIXTURE_EXPECTED_IDS))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")],
                          ["page_000"])
         params = parse_qs(urlsplit(urls["page_000"]).query)
         self.assertEqual([int(value) for value in params["objectIds"][0].split(",")],
-                         source.EXPECTED_IDS)
+                         FIXTURE_EXPECTED_IDS)
         self.assertEqual(params["outSR"], ["4326"])
         self.assertEqual(params["orderByFields"], ["OBJECTID ASC"])
         self.assertEqual(params["returnZ"], ["false"])
@@ -169,33 +322,23 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
         self.assertEqual(source.CATALOG_ORG_NAME, "Judicial Branch (AOUSC)")
         self.assertEqual(source.CATALOG_ORG_ID, "LJKafwRzLHEkKeOL")
         self.assertEqual(source.CATALOG_ITEM_OWNER, "Courts_GIS_AOUSC")
-        self.assertEqual(source.EXPECTED_COUNT, 13)
-        self.assertEqual(source.EXPECTED_IDS, list(range(1, 14)))
-        self.assertEqual(source.EXPECTED_CIRCUIT_ROSTER,
-                         ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "DC", "XX"])
-        self.assertEqual(source.EXPECTED_NULL_GEOMETRY_IDS, [13])
-        self.assertEqual(source.EXPECTED_LAST_DATA_EDIT_UTC, "2025-12-03T16:51:36.628000Z")
-        self.assertEqual(source.EXPECTED_LAST_EDIT_UTC, "2026-02-03T16:28:30.448000Z")
-        self.assertEqual(source.EXPECTED_RECORD_SHA256,
-                         "702c2a7c1f8602f89ebece3b7fd3f8f9761a3de41cac469d3dbc0aff6007508a")
-        self.assertEqual(source.EXPECTED_GEOMETRY_SHA256,
-                         "3ca0235fbd657f1834346c63c8499696b8e4dd341574770481fa0953d58eaec9")
-        self.assertEqual(source._sha(_canonical(source.EXPECTED_IDS)), source.EXPECTED_ID_SHA256)
-        self.assertEqual(source._sha(_canonical(source.EXPECTED_CIRCUIT_ROSTER)),
-                         source.EXPECTED_CIRCUIT_SHA256)
         self.assertEqual(source._sha(_canonical(source.EXPECTED_FIELD_DECLARATIONS)),
                          "bbe1329112e01bdf02081968554745f24acfba6b80d86ea9c415ffb7e235deec")
         self.assertIn("d8ff459672c746a4b3d53bae9330701a", source.LANDING_URL)
-        self.assertEqual(source._sha(_canonical(sorted(CIRCUIT_BY_OID.values()))),
-                         source.EXPECTED_CIRCUIT_SHA256)
+
+    def test_runtime_has_no_snapshot_population_pins(self):
+        for name in ("EXPECTED_COUNT", "EXPECTED_IDS", "EXPECTED_ID_SHA256",
+                     "EXPECTED_RECORD_SHA256", "EXPECTED_GEOMETRY_SHA256",
+                     "EXPECTED_CIRCUIT_ROSTER", "EXPECTED_NULL_GEOMETRY_IDS", "EXPECTED_EDITING_INFO"):
+            self.assertFalse(hasattr(source, name), name)
 
     def test_complete_native_population_and_geometry_are_validated(self):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 13)
         self.assertEqual(sorted(row["attributes"]["OBJECTID"] for row in features),
-                         source.EXPECTED_IDS)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+                         FIXTURE_EXPECTED_IDS)
+        self.assertEqual(audit["source_id_sha256"], FIXTURE_EXPECTED_ID_SHA256)
         self.assertEqual(audit["source_id_min"], 1)
         self.assertEqual(audit["source_id_max"], 13)
         self.assertEqual(audit["geometry_valid_count"], 12)
@@ -224,9 +367,9 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
         self.assertIsNone(geometry_column[12])
         self.assertEqual(len([value for value in geometry_column if value is not None]), 12)
         oid_column = table.column("OBJECTID").to_pylist()
-        self.assertEqual(oid_column, source.EXPECTED_IDS)
+        self.assertEqual(oid_column, FIXTURE_EXPECTED_IDS)
         self.assertEqual(table.column("Circuit").to_pylist(),
-                         [CIRCUIT_BY_OID[oid] for oid in source.EXPECTED_IDS])
+                         [CIRCUIT_BY_OID[oid] for oid in FIXTURE_EXPECTED_IDS])
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["primary_column"], "geometry")
         self.assertEqual(geo["columns"]["geometry"]["encoding"], "WKB")
@@ -251,12 +394,12 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
 
     def test_population_schema_id_circuit_geometry_and_contract_drift_fail_closed(self):
         cases = [
-            ("population after", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_id_population_drift:after"),
+            ("population after", lambda d: d["ids_after"].update(objectIds=FIXTURE_EXPECTED_IDS[:-1]),
+             "source_count_or_id_roster_drift"),
             ("id roster gap filled", lambda d: d["ids_before"].update(objectIds=[*range(1, 14, 1)][:-1]),
-             "source_id_population_drift:before"),
+             "source_count_or_id_roster_drift"),
             ("count before", lambda d: d["count_before"].update(count=12),
-             "source_count_population_drift:before"),
+             "source_count_or_id_roster_drift"),
             ("schema rename", lambda d: d["layer_before"]["fields"][1].update(name="renamed"),
              "source_field_schema_drift"),
             ("schema type change", lambda d: d["layer_before"]["fields"][1].update(type="esriFieldTypeInteger"),
@@ -282,7 +425,9 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
             ("layer dimensional", lambda d: d["layer_before"].update(hasZ=True),
              "source_layer_identity_extent_or_freshness_drift"),
             ("layer freshness", lambda d: d["layer_before"]["editingInfo"].update(dataLastEditDate=1764780696630),
-             "source_layer_identity_extent_or_freshness_drift"),
+             "source_service_or_layer_changed_during_capture"),
+            ("invalid edit timestamp", lambda d: d["layer_before"]["editingInfo"].update(dataLastEditDate="invalid"),
+             "source_layer_editing_info_invalid"),
             ("layer extent", lambda d: d["layer_before"]["extent"].update(xmax=0.0),
              "source_layer_identity_extent_or_freshness_drift"),
             ("layer copyright", lambda d: d["layer_before"].update(copyrightText="someone else"),
@@ -359,13 +504,6 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
              "source_oid_value_type_drift"),
             ("oid roster", lambda d: d["page_000"]["features"][0]["attributes"].update(OBJECTID=99),
              "source_feature_id_roster_drift"),
-            ("circuit roster", lambda d: d["page_000"]["features"][0]["attributes"].update(Circuit="99"),
-             "source_circuit_roster_drift"),
-            ("null geometry roster", lambda d: d["page_000"]["features"][11].pop("geometry"),
-             "source_null_geometry_roster_drift"),
-            ("null geometry gained", lambda d: d["page_000"]["features"][12].update(
-                geometry={"rings": [self._shell(13)]}),
-             "source_null_geometry_roster_drift"),
             ("capture roster", lambda d: d.pop("service_after"),
              "source_capture_name_roster_drift"),
         ]
@@ -377,16 +515,41 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
                     source._validate(self._captures(docs))
 
     def test_geometry_invalid_ring_fails_closed(self):
-        # A crossing bowtie ring is invalid under OGC; this source pins zero
-        # invalid geometries, so an invalid ring must abort the capture.
         spike = {"rings": [[[0.0, 20.0], [0.0, 24.0], [2.0, 24.0], [2.0, 22.0],
                             [2.0, 24.0], [4.0, 24.0], [4.0, 20.0], [0.0, 20.0]]]}
         self.assertFalse(from_wkb(source._esri_polygon_wkb(spike)).is_valid)
         docs = self._documents()
         docs["page_000"]["features"][0]["geometry"] = dict(spike)
         docs["page_000"]["features"][0]["attributes"].update(Shape__Area=None, Shape__Length=None)
-        with self.assertRaisesRegex(ValueError, "source_geometry_invalid_count_drift"):
+        with self.assertRaisesRegex(ValueError, "source_geometry_invalid"):
             source._validate(self._captures(docs))
+
+    def test_source_edits_are_preserved_without_population_pins(self):
+        cases = [
+            ("circuit roster", lambda d: d["page_000"]["features"][0]["attributes"].update(Circuit="99")),
+            ("null geometry roster", lambda d: d["page_000"]["features"][11].pop("geometry")),
+            ("null geometry gained", lambda d: d["page_000"]["features"][12].update(
+                geometry={"rings": [self._shell(13)]})),
+        ]
+        for label, mutate in cases:
+            with self.subTest(label=label):
+                docs = json.loads(json.dumps(self._documents()))
+                mutate(docs)
+                fields, features, audit = source._validate(self._captures(docs))
+                self.assertEqual(features, docs["page_000"]["features"])
+                self.assertEqual(audit["source_record_sha256"], source._sha(_canonical(
+                    [[row["attributes"]["OBJECTID"], row["attributes"]] for row in features])))
+                self.assertEqual(audit["source_geometry_sha256"], source._sha(_canonical(
+                    [[row["attributes"]["OBJECTID"], row.get("geometry")] for row in features])))
+                self.assertEqual(audit["geometry_null_ids"], [row["attributes"]["OBJECTID"]
+                    for row in features if row.get("geometry") is None])
+                table = pq.read_table(__import__("io").BytesIO(source._parquet_bytes(fields, features)))
+                for field in fields:
+                    self.assertEqual(table.column(field["name"]).to_pylist(),
+                                     [row["attributes"][field["name"]] for row in features])
+                for row, value in zip(features, table.column("geometry").to_pylist()):
+                    self.assertEqual(value, None if row.get("geometry") is None
+                                     else source._esri_polygon_wkb(row["geometry"]))
 
     def test_capture_version_cannot_escape_capture_root(self):
         with tempfile.TemporaryDirectory() as tmp:

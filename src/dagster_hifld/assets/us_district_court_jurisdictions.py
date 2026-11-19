@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.us_district_court_jurisdictions import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_us_district_court_jurisdictions,
+    DATASET_SLUG, FILE_SLUG, capture_us_district_court_jurisdictions,
 )
 
 
@@ -50,13 +51,16 @@ def us_district_court_jurisdictions(
 @asset_check(asset=us_district_court_jurisdictions, blocking=True)
 def us_district_court_jurisdictions_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
+        type(candidate.get("source_reported_count")) is int
+        and candidate["source_reported_count"] > 0
+        and candidate.get("feature_count") == candidate["source_reported_count"]
         and candidate.get("source_population_complete") is True
     )
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": candidate.get("source_reported_count", "missing"),
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
             "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -85,7 +89,9 @@ us_district_court_jurisdictions_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+us_district_court_jurisdictions_drift = register_approved_baseline_drift(us_district_court_jurisdictions, "us_district_court_jurisdictions_drift")
+
 INGEST_ASSETS = [us_district_court_jurisdictions]
-ASSET_CHECKS = [us_district_court_jurisdictions_complete]
+ASSET_CHECKS = [us_district_court_jurisdictions_complete, us_district_court_jurisdictions_drift]
 JOBS = [us_district_court_jurisdictions_draft_job]
 SCHEDULES = [us_district_court_jurisdictions_draft_schedule]
