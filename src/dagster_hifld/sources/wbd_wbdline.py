@@ -838,8 +838,26 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
+    if any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError("retained_capture_symlink_rejected")
+    entries = list(root.iterdir())
+    validate_capture_roster(root, {path.name for path in entries})
+    retained_bytes = 0
+    for path in entries:
+        limit = PAGE_MAX_BYTES
+        if path.name.endswith(".receipt.json"):
+            limit = 65536
+        elif path.name in {"service_doc.body", "service_doc.wire"}:
+            limit = DOC_MAX_BYTES
+        size = path.stat().st_size
+        if size > limit:
+            raise ValueError("retained_capture_size_limit:" + path.name)
+        retained_bytes += size
+    if retained_bytes > CAPTURE_MAX_BYTES:
+        raise ValueError("source_capture_budget_exceeded_before_replay")
     manifest = json.loads(manifest_path.read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
+    if (not isinstance(manifest, dict) or manifest.get("complete") is not True
+            or not isinstance(manifest.get("receipts"), dict)):
         raise ValueError("retained_capture_manifest_invalid")
     page_parts = manifest.get("page_parts") or {}
     ids = _validate_roster_document(json.loads(_load_capture(root, "ids_before")[0]), "replay")
@@ -853,9 +871,17 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
             and (parts == [page] or parts == sorted(set(parts)))
             for page, parts in page_parts.items()):
         raise ValueError("retained_capture_page_parts_invalid")
-    refusals = manifest.get("page_refusals") or []
-    if not isinstance(refusals, list) or not all(
-            isinstance(entry, str) and (entry.endswith("_refusal")) for entry in refusals):
+    required_refusals = set()
+    for page, parts in page_parts.items():
+        for part in parts:
+            suffix = part[len(page):]
+            for depth in range(len(suffix)):
+                if len(_slice_for_suffix(ids, int(page[5:]), suffix[:depth])) <= 1:
+                    raise ValueError("retained_capture_page_parts_invalid")
+                required_refusals.add(page + suffix[:depth] + "_refusal")
+    refusals = manifest.get("page_refusals", [])
+    if (not isinstance(refusals, list) or not all(isinstance(entry, str) for entry in refusals)
+            or len(set(refusals)) != len(refusals) or set(refusals) != required_refusals):
         raise ValueError("retained_capture_page_refusals_invalid")
     page_slots = set()
     for page in nominal:
@@ -864,10 +890,13 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
         else:
             page_slots.add(page)
     expected_names = {*METADATA_NAMES, *page_slots, *refusals}
+    required_artifacts = {f"{name}.{suffix}" for name in expected_names
+                          for suffix in ("body", "wire", "receipt.json")}
     roster_files = manifest.get("artifact_roster")
-    if not isinstance(roster_files, dict) or set(manifest["receipts"]) != expected_names:
+    if (not isinstance(roster_files, dict) or set(roster_files) != required_artifacts
+            or set(manifest["receipts"]) != expected_names):
         raise ValueError("retained_capture_roster_or_names_invalid")
-    validate_capture_roster(root, set(roster_files) | {"capture_manifest.json"})
+    validate_capture_roster(root, required_artifacts | {"capture_manifest.json"})
     if roster_files != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
     expected_urls = dict(_capture_roster(ids))

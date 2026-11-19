@@ -388,6 +388,68 @@ class WbdWbdlineTests(unittest.TestCase):
         small, large = peak(4), peak(8)
         self.assertLess(large, small * 1.4, (small, large))
 
+    def test_replay_requires_exact_actual_refusal_ancestors_for_split_parts(self):
+        for case in ("valid", "missing_root", "missing_parent", "extra", "duplicate", "forged", "wrong_url"):
+            with self.subTest(case=case):
+                documents = _documents()
+                page = documents.pop("page_0000")
+                for suffix, features in (("aa", page["features"][:1]),
+                                         ("ab", page["features"][1:2]), ("b", page["features"][2:])):
+                    documents["page_0000" + suffix] = dict(page, features=features)
+                refusal = {"error": {"code": 500, "message": "Error performing query operation"}}
+                refusals = ["page_0000_refusal", "page_0000a_refusal"]
+                if case == "missing_root":
+                    refusals.remove("page_0000_refusal")
+                elif case == "missing_parent":
+                    refusals.remove("page_0000a_refusal")
+                elif case == "extra":
+                    refusals.append("page_0000b_refusal")
+                elif case == "duplicate":
+                    refusals.append("page_0000a_refusal")
+                documents.update((name, refusal) for name in refusals)
+                if case == "forged":
+                    documents["page_0000a_refusal"] = page
+                root = self._capture_root(documents)
+                if case == "wrong_url":
+                    path = root / "page_0000a_refusal.receipt.json"
+                    receipt = json.loads(path.read_bytes())
+                    with relaxed_pins():
+                        receipt["url"] = receipt["final_url"] = source._window_url(_TEST_ROSTER, 0, "b")
+                    path.write_bytes(_canonical(receipt))
+                parts = {"page_0000": ["page_0000aa", "page_0000ab", "page_0000b"]}
+                _seal_manifest(root, documents, page_parts=parts, page_refusals=refusals)
+                with relaxed_pins():
+                    if case == "valid":
+                        _receipts, replay_parts = source._read_replay(root)
+                        audit, _derived = source._validate_stream(root, parquet_sink=None, page_parts=replay_parts)
+                        self.assertEqual(audit["source_feature_count"], len(_TEST_ROSTER))
+                    else:
+                        with self.assertRaisesRegex(ValueError, "refusal|request_identity"):
+                            source._read_replay(root)
+
+    def test_replay_preflights_flat_paths_and_all_budgets_before_reading(self):
+        for case in ("manifest", "body", "wire", "receipt", "service_doc", "aggregate", "directory", "symlink"):
+            with self.subTest(case=case):
+                documents = _documents()
+                root = self._capture_root(documents)
+                _seal_manifest(root, documents)
+                if case in ("manifest", "body", "wire", "receipt"):
+                    filename = {"manifest": "capture_manifest.json", "body": "page_0000.body",
+                                "wire": "page_0000.wire", "receipt": "page_0000.receipt.json"}[case]
+                    with (root / filename).open("r+b") as artifact:
+                        artifact.truncate(65537 if case == "receipt" else 1_000_001)
+                elif case == "directory":
+                    (root / "nested").mkdir()
+                elif case == "symlink":
+                    (root / "linked.body").symlink_to(root / "page_0000.body")
+                budget = sum(path.stat().st_size for path in root.iterdir() if path.is_file())
+                with relaxed_pins(PAGE_MAX_BYTES=1_000_000,
+                        DOC_MAX_BYTES=8 if case == "service_doc" else 4_000_000,
+                        CAPTURE_MAX_BYTES=budget - 1 if case == "aggregate" else 10_000_000), \
+                        patch.object(Path, "read_bytes", side_effect=AssertionError("read before replay preflight")):
+                    with self.assertRaisesRegex(ValueError, "size_limit|budget|nonregular"):
+                        source._read_replay(root)
+
     def test_real_recursive_bisection_preserves_refusals_and_single_feature_floor(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
