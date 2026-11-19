@@ -43,18 +43,10 @@ the producer's vertex values and path order retained unchanged; rows whose
 served paths cannot form a valid OGC linestring gate to null geometry and are
 counted by failure mode instead of being repaired. The geometry digest is
 updated from the raw served paths of every row before assembly and gating, so
-a coordinate change that still gates is refused by the pinned geometry
-baseline rather than hiding behind unchanged aggregate gate counts.
-
-The ID roster digest is pinned from the dated roster probes (2026-11-15). The
-per-value record and geometry baseline digests and the geometry-gate counts
-are pinned from the complete dated population walk (2026-11-15: 395,291
-features, 92,115,472 served web-mercator vertices, every feature a single
-served path, zero null or gated geometries, the producer's per-vertex ``ids``
-member on 328 features, served geometry bounds equal to the declared extent
-exactly; 17 refused windows were retained as evidence and every one served
-after roster-derived bisection, so the population is complete at native
-fidelity). Publication stays blocked pending succession, freshness, schema/ID,
+a coordinate change that still gates changes the observed geometry digest
+rather than hiding behind unchanged aggregate gate counts. Stable opening
+and closing publisher counts and native ID rosters witness completeness.
+Publication stays blocked pending succession, freshness, schema/ID,
 rights or release approvals; all runtime approval flags are false and the
 draft refresh schedule is stopped.
 """
@@ -64,6 +56,7 @@ import hashlib
 import json
 import math
 import shutil
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -79,6 +72,7 @@ from dagster_hifld.sources.esri_geometry import esri_polyline_wkb
 from shapely.geometry import MultiLineString
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
@@ -92,7 +86,7 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.arcgis_layer import (
-    _canonical, _capture_identity, _load_capture, _sha,
+    _canonical, _capture_identity, _sha, load_replay, RetainedCaptureViews,
 )
 
 DATASET_SLUG = FILE_SLUG = "wbd-wbdline"
@@ -109,13 +103,6 @@ LAYER_NAME = "WBDLine"
 MAP_NAME = "wbd"
 DHS_CROSSWALK_EVIDENCE_URL = ("https://atcoordinates.info/wp-content/uploads/2025/08/"
                               "hifld_open_crosswalk_geoplatform.xlsx")
-EXPECTED_COUNT = 395291
-EXPECTED_ID_MIN = 1
-EXPECTED_ID_MAX = 409308
-# Digest of the canonical-JSON sorted OBJECTID roster (395,291 unique ids,
-# ascending but gapped between 1 and 409,308), computed from the dated live
-# roster query (observed 2026-11-15 UTC).
-EXPECTED_ID_SHA256 = "9b72c896eecb9370b4460bf83ba54630f82d1dbb9bcef9dcbfbb12021c1d2af7"
 # This layer family refuses any window whose JSON would exceed roughly
 # 28-40 MB (Esri 500 "Error performing query operation"; observed across the
 # sibling WBD layers, 2026-11-14/15). Consecutive thousand-feature keyset
@@ -166,24 +153,11 @@ DISK_FLOOR_BYTES = 10_000_000_000
 # SR, but 16 of the 395,291 served features (2026-11-15 complete dated walk)
 # deviate from a shapely recomputation of the served path by up to 8.65e-6
 # relative (sub-decimeter absolute; producer-side vertex-precision noise, not
-# simplification — the pinned geometry digest holds the exact served
+# simplification — the observed geometry digest holds the exact served
 # coordinates regardless). The guard sits just above that observed maximum and
 # far below any real geometry change.
 SHAPE_PARITY_TOLERANCE = 1e-5
-# Native baselines pinned from the dated probes and the complete dated
-# population walk (2026-11-15); empty/None pins are checked only when non-empty.
 EXPECTED_SCHEMA_SHA256 = "9915218890bbae1273727a06e614e1de65cd01024f1faad24cbe4946bcf046cc"
-EXPECTED_RECORD_SHA256 = "6a297275443633f81b895c5c6346eab09bb9f03857774aa15c9963e1e7b5886d"
-# Geometry digest over every served row — one [objectid, served paths] document
-# per feature in ascending OBJECTID order, including the rows that gate to null
-# geometry — computed from the complete dated population walk (2026-11-15).
-EXPECTED_GEOMETRY_SHA256 = "cf4e10f87ea8ff6c78f3244726c99063747f9b1db850e1de5a4ce69ae1e8667f"
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
-BASELINE_PENDING_NOTE = (
-    "The record and geometry baselines and the geometry-gate counts are "
-    "pinned from the complete dated population walk (2026-11-15); this note "
-    "only applies when a pin is empty.")
 
 EXPECTED_PAGE_FIELD_DECLARATIONS = [{"name": "objectid", "type": "esriFieldTypeOID", "alias": "OBJECTID"}, {"name": "tnmid", "type": "esriFieldTypeString", "alias": "TNMID", "length": 40}, {"name": "hudigit", "type": "esriFieldTypeInteger", "alias": "HUDigit"}, {"name": "humod", "type": "esriFieldTypeString", "alias": "HUMod", "length": 30}, {"name": "linesource", "type": "esriFieldTypeString", "alias": "LineSource", "length": 75}, {"name": "loaddate", "type": "esriFieldTypeDate", "alias": "LoadDate", "length": 8}, {"name": "metasourceid", "type": "esriFieldTypeString", "alias": "MetaSourceID", "length": 40}, {"name": "shape_Length", "type": "esriFieldTypeDouble", "alias": "SHAPE_Length"}, {"name": "globalid", "type": "esriFieldTypeGlobalID", "alias": "globalid", "length": 38}]
 EXPECTED_LAYER_FIELDS = [{"name": "objectid", "type": "esriFieldTypeOID", "alias": "OBJECTID", "domain": None}, {"name": "shape", "type": "esriFieldTypeGeometry", "alias": "SHAPE", "domain": None}, {"name": "tnmid", "type": "esriFieldTypeString", "alias": "TNMID", "length": 40, "domain": None}, {"name": "hudigit", "type": "esriFieldTypeInteger", "alias": "HUDigit", "domain": {"type": "codedValue", "name": "HUDigit Domain", "description": "", "codedValues": [{"name": "No data", "code": 0}, {"name": "2-digit Hydrologic Unit", "code": 2}, {"name": "4-digit Hydrologic Unit", "code": 4}, {"name": "6-digit Hydrologic Unit", "code": 6}, {"name": "8-digit Hydrologic Unit", "code": 8}, {"name": "10-digit Hydrologic Unit", "code": 10}, {"name": "12-digit Hydrologic Unit", "code": 12}, {"name": "14-digit Hydrologic Unit", "code": 14}, {"name": "16-digit Hydrologic Unit", "code": 16}], "mergePolicy": "esriMPTDefaultValue", "splitPolicy": "esriSPTDuplicate"}}, {"name": "humod", "type": "esriFieldTypeString", "alias": "HUMod", "length": 30, "domain": None}, {"name": "linesource", "type": "esriFieldTypeString", "alias": "LineSource", "length": 75, "domain": None}, {"name": "loaddate", "type": "esriFieldTypeDate", "alias": "LoadDate", "length": 8, "domain": None}, {"name": "metasourceid", "type": "esriFieldTypeString", "alias": "MetaSourceID", "length": 40, "domain": None}, {"name": "shape_Length", "type": "esriFieldTypeDouble", "alias": "SHAPE_Length", "domain": None}, {"name": "globalid", "type": "esriFieldTypeGlobalID", "alias": "globalid", "length": 38, "domain": None}]
@@ -191,10 +165,8 @@ ATTRIBUTE_FIELDS = EXPECTED_PAGE_FIELD_DECLARATIONS
 FIELD_NAMES = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
 DIGEST_SEPARATOR = b"\x00"
 
-PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
 METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before",
                   "ids_before", "count_after", "ids_after", "layer_after", "service_after")
-CAPTURE_NAMES = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
 
 _EPSG3857_PROJJSON = {
     "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
@@ -263,7 +235,7 @@ def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
             ("service_before", SERVICE_URL + "?f=pjson"),
             ("layer_before", LAYER_URL + "?f=pjson"),
             ("count_before", _count_url()), ("ids_before", _ids_url())]
-    for index in range(PAGE_COUNT):
+    for index in range((len(roster) + PAGE_SIZE - 1) // PAGE_SIZE):
         urls.append((f"page_{index:04d}", _window_url(roster, index, "")))
     urls.extend([("count_after", _count_url()), ("ids_after", _ids_url()),
                  ("layer_after", LAYER_URL + "?f=pjson"),
@@ -278,6 +250,18 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str,
     if retained + 2 * max_bytes > CAPTURE_MAX_BYTES:
         raise ValueError("source_capture_budget_exceeded_before_request")
     return capture_get(client, url, root, name, max_bytes=max_bytes)
+
+
+def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
+    for suffix in ("body", "wire", "receipt.json"):
+        path = root / f"{name}.{suffix}"
+        if path.is_symlink():
+            raise ValueError("retained_capture_symlink_rejected")
+        limit = DOC_MAX_BYTES if name == "service_doc" else PAGE_MAX_BYTES
+        if path.stat().st_size > (65536 if suffix == "receipt.json" else limit):
+            raise ValueError("retained_capture_size_limit:" + name)
+    body, receipt = load_replay(root, name)
+    return body, (root / f"{name}.wire").read_bytes(), receipt
 
 
 def _is_refusal(body: bytes) -> bool:
@@ -324,7 +308,7 @@ def _part_url(roster: list[int], index: int, part_name: str) -> str:
 
 
 def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
-                         root: Path) -> tuple[dict[str, tuple[bytes, dict]], list[str]]:
+                         root: Path) -> tuple[dict[str, dict], list[str]]:
     """Capture one nominal page window, bisecting refusing windows recursively.
 
     The producer persistently refuses some windows (content-dependent
@@ -338,21 +322,22 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
     """
     name = f"page_{index:04d}"
     page_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
-    parts: dict[str, tuple[bytes, dict]] = {}
+    parts: dict[str, dict] = {}
     refusals: list[str] = []
 
     def walk(window_name: str, ids: list[int]) -> None:
         body, receipt = _capture(client, _window_url(roster, index, window_name[9:]),
                                  root, window_name)
         if not _is_refusal(body):
-            parts[window_name] = (body, receipt)
+            parts[window_name] = receipt
             return
         # Persist the refusing document under its evidence artifact name; the
         # receipt describes the request/response, not the retained file name.
         for suffix in (".body", ".wire", ".receipt.json"):
             (root / (window_name + suffix)).replace(root / (f"{window_name}_refusal" + suffix))
         refusals.append(f"{window_name}_refusal")
-        parts[f"{window_name}_refusal"] = (body, receipt)
+        parts[f"{window_name}_refusal"] = receipt
+        del body
         if len(ids) == 1:
             raise ValueError(
                 "source_page_window_refused_single_feature:"
@@ -518,12 +503,10 @@ def _validate_roster_document(document: object, label: str) -> list[int]:
     if not isinstance(document, dict) or document.get("objectIdFieldName") != OID_FIELD_NAME:
         raise ValueError("source_object_id_field_drift:" + label)
     ids = document.get("objectIds")
-    if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-            or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
-            or ids != sorted(ids) or min(ids) != EXPECTED_ID_MIN or max(ids) != EXPECTED_ID_MAX):
+    if (not isinstance(ids, list) or not ids
+            or any(type(oid) is not int or oid <= 0 for oid in ids)
+            or len(set(ids)) != len(ids) or ids != sorted(ids)):
         raise ValueError("source_id_population_drift:" + label)
-    if EXPECTED_ID_SHA256 and _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_baseline_drift:" + label)
     return ids
 
 
@@ -531,7 +514,7 @@ def _validate_count(document: object, label: str) -> int:
     if not isinstance(document, dict):
         raise ValueError("source_count_population_drift:" + label)
     count = document.get("count")
-    if type(count) is not int or count != EXPECTED_COUNT:
+    if type(count) is not int or count < 0:
         raise ValueError("source_count_population_drift:" + label)
     return count
 
@@ -580,12 +563,14 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
     if json.loads(docs["service_after"]) != json.loads(docs["service_before"]) \
             or _layer_stability_view(json.loads(docs["layer_after"])) != _layer_stability_view(layer):
         raise ValueError("source_service_or_layer_changed_during_capture")
-    _validate_count(json.loads(docs["count_before"]), "before")
-    _validate_count(json.loads(docs["count_after"]), "after")
+    count_before = _validate_count(json.loads(docs["count_before"]), "before")
+    count_after = _validate_count(json.loads(docs["count_after"]), "after")
     roster = _validate_roster_document(json.loads(docs["ids_before"]), "before")
     roster_after = _validate_roster_document(json.loads(docs["ids_after"]), "after")
     if roster != roster_after:
         raise ValueError("source_id_roster_changed_during_capture")
+    validate_capture_witness(count_before, roster, count_after, roster_after)
+    page_count = (len(roster) + PAGE_SIZE - 1) // PAGE_SIZE
     expected_urls = dict(_capture_roster(roster))
     for name in METADATA_NAMES:
         validate_capture_request_identity(name, receipts[name], expected_urls[name])
@@ -610,7 +595,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
     names = FIELD_NAMES
     geometry_types_seen: set[str] = set()
     try:
-        for index in range(PAGE_COUNT):
+        for index in range(page_count):
             name = f"page_{index:04d}"
             expected_page_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
             part_names = (page_parts or {}).get(name) or [name]
@@ -641,7 +626,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                 exceeded = page.get("exceededTransferLimit")
                 if exceeded is not None and type(exceeded) is not bool:
                     raise ValueError("source_page_transfer_flag_drift:" + part_name)
-                if (exceeded is True and index == PAGE_COUNT - 1
+                if (exceeded is True and index == page_count - 1
                         and part_no == len(part_names) - 1):
                     raise ValueError("source_page_transfer_limit_on_final_page:" + part_name)
                 rows = page.get("features")
@@ -800,20 +785,10 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
             tmp_path.replace(parquet_sink)
         ids_sha = _sha(_canonical(roster))
         record_sha, geometry_sha = record_hash.hexdigest(), geometry_hash.hexdigest()
-        if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-            raise ValueError("source_record_baseline_drift")
-        if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-            raise ValueError("source_geometry_baseline_drift")
-        if EXPECTED_NULL_GEOMETRY_COUNT is not None \
-                and null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
-            raise ValueError("source_null_geometry_count_drift")
-        if (EXPECTED_UNUSABLE_GEOMETRY_COUNTS is not None
-                and gate_counts != EXPECTED_UNUSABLE_GEOMETRY_COUNTS):
-            raise ValueError("source_unusable_geometry_counts_drift")
         audit = {
-            "source_feature_count": EXPECTED_COUNT,
-            "source_id_sha256": ids_sha, "source_id_min": EXPECTED_ID_MIN,
-            "source_id_max": EXPECTED_ID_MAX,
+            "source_feature_count": len(roster), "source_reported_count": count_before,
+            "source_id_sha256": ids_sha, "source_id_min": min(roster),
+            "source_id_max": max(roster),
             "source_schema_sha256": _sha(_canonical(layer["fields"])),
             "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
             "baseline_digest_scheme": ("sha256 of the concatenation of one canonical "
@@ -855,11 +830,11 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
         raise
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
+def _capture_identity_hash(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> str:
     return _sha(_canonical(_capture_identity(captures, root)))
 
 
-def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, list[str]]]:
+def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
@@ -867,10 +842,13 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
         raise ValueError("retained_capture_manifest_invalid")
     page_parts = manifest.get("page_parts") or {}
+    ids = _validate_roster_document(json.loads(_load_capture(root, "ids_before")[0]), "replay")
+    nominal = {f"page_{index:04d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
     if not isinstance(page_parts, dict) or not all(
-            isinstance(parts, list) and parts
-            and all(part == page or (part.startswith(page) and part[len(page):]
-                                     and set(part[len(page):]) <= {"a", "b"})
+            page in nominal and isinstance(parts, list) and parts
+            and all(isinstance(part, str) and (part == page or (
+                    part.startswith(page) and part[len(page):]
+                    and set(part[len(page):]) <= {"a", "b"}))
                     for part in parts)
             and (parts == [page] or parts == sorted(set(parts)))
             for page, parts in page_parts.items()):
@@ -880,8 +858,7 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
             isinstance(entry, str) and (entry.endswith("_refusal")) for entry in refusals):
         raise ValueError("retained_capture_page_refusals_invalid")
     page_slots = set()
-    for index in range(PAGE_COUNT):
-        page = f"page_{index:04d}"
+    for page in nominal:
         if page in page_parts:
             page_slots.update(page_parts[page])
         else:
@@ -893,7 +870,6 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
     validate_capture_roster(root, set(roster_files) | {"capture_manifest.json"})
     if roster_files != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    ids = _validate_roster_document(json.loads(_load_capture(root, "ids_before")[0]), "replay")
     expected_urls = dict(_capture_roster(ids))
     captures = {}
     for name in sorted(expected_names):
@@ -908,7 +884,7 @@ def _read_replay(root: Path) -> tuple[dict[str, tuple[bytes, dict]], dict[str, l
                 raise ValueError("retained_capture_refusal_document_drift:" + name)
         else:
             validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
+        captures[name] = receipt
     return captures, page_parts
 
 
@@ -950,7 +926,8 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
                               headers={"User-Agent": USER_AGENT}) as client:
                 ids_body, ids_receipt = _capture(client, _ids_url(), root, "ids_before")
                 roster = _validate_roster_document(json.loads(ids_body), "seed")
-                captures["ids_before"] = (ids_body, ids_receipt)
+                captures["ids_before"] = ids_receipt
+                del ids_body
                 doc_client = httpx.Client(follow_redirects=True,
                                           timeout=httpx.Timeout(60, connect=20, read=300),
                                           headers={"Connection": "close",
@@ -970,9 +947,10 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
                             page_refusals.extend(window_refusals)
                             continue
                         active = doc_client if name == "service_doc" else client
-                        captures[name] = _capture(active, url, root, name,
+                        body, captures[name] = _capture(active, url, root, name,
                                                   max_bytes=DOC_MAX_BYTES
                                                   if name == "service_doc" else PAGE_MAX_BYTES)
+                        del body
                 finally:
                     doc_client.close()
         except Exception as exc:
@@ -986,13 +964,14 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
                 "captured_at": datetime.now(timezone.utc).isoformat(),
                 "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
             if captures:
-                quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captures,
+                quarantine_incomplete_capture(storage, root, DATASET_SLUG, version,
+                                              RetainedCaptureViews(root, captures, ValueError),
                                               type(exc).__name__)
             raise
         (root / "capture_manifest.json").write_bytes(_canonical({
             "complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(),
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": dict(sorted(captures.items())),
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
             "page_parts": dict(sorted(page_parts.items())),
             "page_refusals": sorted(page_refusals)}) + b"\n")
@@ -1001,18 +980,15 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
     parquet_sink = staging / "_construction-tmp" / f"{DATASET_SLUG}-{version}.parquet"
     audit, derived = _validate_stream(root, parquet_sink=parquet_sink, page_parts=page_parts)
     identity = processing_identity(Path(__file__).parents[3])
-    capture_hash = _capture_identity_hash(captures, root)
+    capture_views = RetainedCaptureViews(root, captures, ValueError)
+    capture_hash = _capture_identity_hash(capture_views, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
-        "source_capture_evidence": _capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_capture_evidence": _capture_identity(capture_views, root),
+        "source_receipts": dict(sorted(captures.items())),
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
         "release_accepted": False, "baseline_accepted": False})
-    if not EXPECTED_ID_SHA256 or not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256 \
-            or EXPECTED_NULL_GEOMETRY_COUNT is None or EXPECTED_UNUSABLE_GEOMETRY_COUNTS is None:
-        audit["baseline_pending_note"] = BASELINE_PENDING_NOTE
-        audit["baseline_pending_complete_capture"] = True
     content_version = "v" + _sha(_canonical({
         "source_record_sha256": audit["source_record_sha256"],
         "source_geometry_sha256": audit["source_geometry_sha256"],
@@ -1023,7 +999,7 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
     parquet_path = derived["parquet_path"]
     parquet_bytes = parquet_path.stat().st_size
     parquet_sha = sha256_file(parquet_path)
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = dict(sorted(captures.items()))
     gate_note = (f"{audit['null_geometry_count']} rows gate to null geometry and are "
                  "counted by failure mode: "
                  + json.dumps(audit["unusable_geometry_counts"], sort_keys=True)
@@ -1193,9 +1169,10 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
 def _candidate_result(audit: dict, version: str, prefix: str, capture_hash: str,
                       *, reused: bool, root: Path) -> dict[str, object]:
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
+            "feature_count": audit["source_feature_count"], "source_population_complete": True,
+            "source_reported_count": audit["source_reported_count"],
             "source_id_sha256": audit["source_id_sha256"],
-            "source_id_min": EXPECTED_ID_MIN, "source_id_max": EXPECTED_ID_MAX,
+            "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": reused,
