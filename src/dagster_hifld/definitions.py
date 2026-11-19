@@ -318,25 +318,6 @@ from dagster_hifld.assets.ibc import (
     ibc_boundary_draft_refresh_schedule,
 )
 
-from dagster_hifld.assets.fws import (
-    fws_cbrs_buffer_draft_refresh_job,
-    fws_cbrs_buffer_draft_refresh_schedule,
-)
-
-from dagster_hifld.assets.fws_map_panels import (
-    fws_cbrs_map_panels_draft_refresh_job,
-    fws_cbrs_map_panels_draft_refresh_schedule,
-)
-
-from dagster_hifld.assets.fws_prohibitions import (
-    fws_cbrs_prohibitions_draft_refresh_job,
-    fws_cbrs_prohibitions_draft_refresh_schedule,
-)
-
-from dagster_hifld.assets.fws_units import (
-    fws_cbrs_units_draft_refresh_job,
-    fws_cbrs_units_draft_refresh_schedule,
-)
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -856,10 +837,6 @@ defs = Definitions(
             locks_usace_ienc_draft_job,
             lock_basins_usace_ienc_draft_job,
             ibc_boundary_draft_refresh_job,
-            fws_cbrs_buffer_draft_refresh_job,
-            fws_cbrs_map_panels_draft_refresh_job,
-            fws_cbrs_prohibitions_draft_refresh_job,
-            fws_cbrs_units_draft_refresh_job,
             usace_crane_locations_draft_job,
             usace_floating_docks_draft_job,
             usace_data_coverage_areas_draft_job,
@@ -921,10 +898,6 @@ defs = Definitions(
             locks_usace_ienc_draft_schedule,
             lock_basins_usace_ienc_draft_schedule,
             ibc_boundary_draft_refresh_schedule,
-            fws_cbrs_buffer_draft_refresh_schedule,
-            fws_cbrs_map_panels_draft_refresh_schedule,
-            fws_cbrs_prohibitions_draft_refresh_schedule,
-            fws_cbrs_units_draft_refresh_schedule,
             usace_crane_locations_draft_schedule,
             usace_floating_docks_draft_schedule,
             usace_data_coverage_areas_draft_schedule,

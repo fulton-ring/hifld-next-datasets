@@ -29,3 +29,9 @@ def fws_cbrs_prohibitions_draft_refresh_schedule(context):
     # Monthly integrity/availability poll; producer updates follow enacted/adopted CBRS maps.
     require_local(context.resources.staging_storage)
     return RunRequest(run_config={'ops':{fws_cbrs_prohibitions.op.name:{'config':{'capture_dir':''}}}})
+
+
+INGEST_ASSETS = [fws_cbrs_prohibitions]
+ASSET_CHECKS = []
+JOBS = [fws_cbrs_prohibitions_draft_refresh_job]
+SCHEDULES = [fws_cbrs_prohibitions_draft_refresh_schedule]
