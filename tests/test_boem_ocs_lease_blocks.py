@@ -252,7 +252,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
             table = pq.read_table(pa.BufferReader(storage.read_key(prefix + f'/geoparquet/{blocks.DATASET_SLUG}.parquet')))
             self.assertEqual(table['BLOCK_NUMBER'].to_pylist()[0], '   71')
             self.assertIsNone(table['geometry'].to_pylist()[-1])
-            for mode in ('wire', 'forged_gzip', 'missing', 'url', 'extra'):
+            for mode in ('wire', 'forged_gzip', 'missing', 'missing_wire', 'url', 'extra'):
                 directory = Path(tmp) / ('bad-' + mode)
                 shutil.copytree(first['capture_directory'], directory)
                 if mode == 'wire':
@@ -266,6 +266,8 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                     path.write_bytes(_body(receipt))
                 elif mode == 'missing':
                     (directory / 'page_001.body').unlink()
+                elif mode == 'missing_wire':
+                    (directory / 'page_001.wire').unlink()
                 elif mode == 'url':
                     path = directory / 'page_001.receipt.json'
                     receipt = json.loads(path.read_bytes())
