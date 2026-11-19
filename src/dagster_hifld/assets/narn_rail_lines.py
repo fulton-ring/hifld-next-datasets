@@ -28,6 +28,7 @@ from dagster_hifld.sources.narn_rail_lines import (
 
 class NarnRailLinesConfig(Config):
     capture_directory: str = ""
+    offline_capture_directory: str = ""
 
 
 @asset(
@@ -44,8 +45,9 @@ def fra_narn_rail_network_lines(context, config: NarnRailLinesConfig,
                                 staging_storage: StagingStorageResource) -> dict:
     result = capture_narn_rail_lines(
         staging_storage,
-        version="v20261113",
+        version="draft",
         capture_directory=config.capture_directory or None,
+        offline_capture_directory=config.offline_capture_directory or None,
     )
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,
