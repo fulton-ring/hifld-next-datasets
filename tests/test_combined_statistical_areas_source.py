@@ -2,9 +2,12 @@
 import json
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
+import httpx
 import pyarrow as pa
+from test_census_substate_construction import snapshot
 from dagster_hifld.sources import census_latest
 from dagster_hifld.sources import combined_statistical_areas as c
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
@@ -245,6 +248,99 @@ class CSAReleaseDiscoveryTests(unittest.TestCase):
             census_latest.geodatabase_release_from_receipt(
                 {'url':'https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_addr.gdb.zip'},
                 'nationgeo')
+
+
+class CSANativeLifecycleTests(unittest.TestCase):
+    @contextmanager
+    def captured(self):
+        body=(Path(__file__).parent/'fixtures/csa_native_synthetic.gdb.zip').read_bytes()
+        directory=census_latest.ROOT+'TGRGDB26/'
+        url=directory+'tlgdb_2026_us_nationgeo.gdb.zip'
+        listings={census_latest.ROOT:b'<a href="TGRGDB26/">26</a>',
+                  directory:b'<a href="tlgdb_2026_us_nationgeo.gdb.zip">archive</a>'}
+        client_type=httpx.Client
+        def respond(request):
+            return httpx.Response(200,stream=httpx.ByteStream(
+                body if str(request.url)==url else listings[str(request.url)]))
+        with tempfile.TemporaryDirectory() as tmp,patch.object(c,'FEATURE_COUNT_RANGE',(2,3)),patch.object(
+                c.httpx,'Client',side_effect=lambda **kwargs:client_type(
+                    transport=httpx.MockTransport(respond),**kwargs)):
+            storage=StagingStorageResource(local_dir=str(Path(tmp)/'stage'))
+            yield storage,body,listings,directory
+
+    def test_real_capture_receipt_replays_without_network_or_evidence_loss(self):
+        with self.captured() as (storage,body,listings,directory):
+            first=c.stage_csa_candidate(storage)
+            target=Path(storage.local_dir)/c.SLUG/c.SLUG/first['version']
+            before=snapshot(target)
+            receipt_path=target/'raw/retrieval.json'
+            receipt=c.strict_json(receipt_path.read_bytes())
+            archive=Path(storage.local_dir)/'_raw-captures'/c.SLUG/c.digest(body)/'original.gdb.zip'
+            with patch.object(c.httpx,'Client',side_effect=AssertionError('replay fetched HTTP')):
+                replay=c.stage_csa_candidate(storage,archive_path=archive,receipt_path=receipt_path)
+                self.assertTrue(replay['reused'])
+                cold_storage=StagingStorageResource(local_dir=str(Path(storage.local_dir).parent/'cold'))
+                cold=c.stage_csa_candidate(cold_storage,archive_path=archive,receipt_path=receipt_path)
+            self.assertFalse(cold['reused'])
+            self.assertEqual(first['version'],cold['version'])
+            self.assertEqual(snapshot(target),before)
+            self.assertEqual(snapshot(Path(cold_storage.local_dir)/c.SLUG/c.SLUG/cold['version']),before)
+            release=census_latest.geodatabase_release_from_receipt(receipt,'nationgeo')
+            self.assertEqual(release.listing_sha256,c.digest(listings[directory]))
+            self.assertEqual(release.annual_listing_sha256,c.digest(listings[census_latest.ROOT]))
+            self.assertEqual(receipt['source_release'],release.as_receipt_evidence())
+            self.assertFalse((Path(storage.local_dir)/'_quarantine').exists())
+
+    def test_unrelated_listing_changes_keep_original_candidate_evidence(self):
+        with self.captured() as (storage,body,listings,directory):
+            first=c.stage_csa_candidate(storage)
+            target=Path(storage.local_dir)/c.SLUG/c.SLUG/first['version']
+            before=snapshot(target)
+            original_hash=c.digest(listings[directory])
+            listings[directory]+=b'\n<!-- unrelated directory update -->'
+            listings[census_latest.ROOT]+=b'\n<!-- unrelated annual update -->'
+            second=c.stage_csa_candidate(storage)
+            self.assertEqual(second['version'],first['version'])
+            self.assertTrue(second['reused'])
+            self.assertEqual(snapshot(target),before)
+            depot=Path(storage.local_dir)/'_raw-captures'/c.SLUG/c.digest(body)
+            receipts=[c.strict_json(path.read_bytes()) for path in depot.glob('*.receipt-*.json')]
+            self.assertEqual({item['source_release']['listing_sha256'] for item in receipts},
+                             {original_hash,c.digest(listings[directory])})
+            self.assertFalse((Path(storage.local_dir)/'_quarantine').exists())
+
+    def test_runtime_change_creates_distinct_version_without_mutating_history(self):
+        with self.captured() as (storage,body,listings,directory):
+            first=c.stage_csa_candidate(storage)
+            before=snapshot(Path(storage.local_dir))
+            identity=c.processing_identity()
+            with patch.object(c.pyogrio,'__gdal_version_string__','different-build'):
+                changed=c.processing_identity()
+                self.assertEqual(identity['code_commit'],changed['code_commit'])
+                self.assertNotEqual(identity,changed)
+                second=c.stage_csa_candidate(storage)
+                self.assertNotEqual(first['version'],second['version'])
+                self.assertFalse(second['reused'])
+                self.assertTrue(c.stage_csa_candidate(storage)['reused'])
+            after=snapshot(Path(storage.local_dir))
+            self.assertEqual({name:after[name] for name in before},before)
+            self.assertTrue(c.stage_csa_candidate(storage)['reused'])
+            self.assertFalse((Path(storage.local_dir)/'_quarantine').exists())
+
+    def test_repinned_cached_discovery_claim_is_rejected(self):
+        with self.captured() as (storage,body,listings,directory):
+            first=c.stage_csa_candidate(storage)
+            target=Path(storage.local_dir)/c.SLUG/c.SLUG/first['version']
+            path=target/'metadata/source_manifest.json'
+            manifest=c.strict_json(path.read_bytes())
+            manifest['source_release']['source_listing_sha256']='f'*64
+            path.write_bytes(c.encode(manifest))
+            ready_path=target/'metadata/csa_candidate_ready.json'
+            ready=c.strict_json(ready_path.read_bytes())
+            ready['objects']['metadata/source_manifest.json']=c.sha256_file(path)
+            ready_path.write_bytes(c.encode(ready))
+            with self.assertRaisesRegex(ValueError,'cached_provenance_or_processing_identity_changed'):
+                c.stage_csa_candidate(storage)
 
 
 if __name__=='__main__':unittest.main()
