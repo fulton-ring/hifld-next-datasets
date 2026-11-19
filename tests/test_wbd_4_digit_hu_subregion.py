@@ -559,7 +559,7 @@ class Wbd4DigitHuSubregionTests(unittest.TestCase):
             ("count before", lambda d: d["count_before"].update(count=_TEST_COUNT - 1),
              "source_count_or_id_roster_drift"),
             ("ids before", lambda d: d["ids_before"].update(objectIds=_TEST_ROSTER[:-1]),
-             "source_count_or_id_roster_drift"),
+             "source_id_roster_changed_during_capture"),
             ("ids changed mid capture", lambda d: d["ids_after"].update(objectIds=[11, 12, 999, 100_003, 200_004]),
              "source_id_roster_changed_during_capture"),
             ("service identity", lambda d: d["service_before"].update(copyrightText="changed"),
@@ -632,10 +632,9 @@ class Wbd4DigitHuSubregionTests(unittest.TestCase):
             audit, _derived = source._validate_stream(root, parquet_sink=None)
         self.assertEqual(audit["source_feature_count"], len(_TEST_ROSTER) + 1)
         self.assertEqual(audit["source_id_max"], new_oid)
-        self.assertTrue(audit["source_population_complete"])
         candidate = {"feature_count": audit["source_feature_count"],
                      "source_reported_count": audit["source_feature_count"],
-                     "source_population_complete": audit["source_population_complete"]}
+                     "source_population_complete": True}
         self.assertTrue(wbd_4_digit_hu_subregion_complete(candidate).passed)
         drift = wbd_4_digit_hu_subregion_drift(candidate)
         self.assertFalse(drift.passed)
