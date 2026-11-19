@@ -21,14 +21,42 @@ import shapely
 from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources import county_subdivisions as source
+
+TIGER_ROOT='https://www2.census.gov/geo/tiger/'
+TGRGDB25_DIR=TIGER_ROOT+'TGRGDB25/'
+TGRGDB24_DIR=TIGER_ROOT+'TGRGDB24/'
+ZIP_URL=TGRGDB25_DIR+'tlgdb_2025_a_us_substategeo.gdb.zip'
+ZIP_URL_24=TGRGDB24_DIR+'tlgdb_2024_a_us_substategeo.gdb.zip'
+# Fixed retained edition used by the read-only replay fixtures.
+REPLAY_ZIP_URL=ZIP_URL_24
+ANNUAL_LISTING='<a href="TGRGDB25/">25</a>'
+ANNUAL_LISTING_BOTH='<a href="TGRGDB25/">25</a><a href="TGRGDB24/">24</a>'
+DIR25_LISTING='<a href="tlgdb_2025_a_us_substategeo.gdb.zip">us</a>'
+DIR24_LISTING='<a href="tlgdb_2024_a_us_substategeo.gdb.zip">us</a>'
+
+SYNTHETIC_BODY=b'EXPLICIT_SYNTHETIC_COMPLETE_2ROW_INPUT'
+SYNTHETIC_SHA=hashlib.sha256(SYNTHETIC_BODY).hexdigest()
+
+
+def discovery_transport(body_handler,annual_listing=ANNUAL_LISTING,fetched=None):
+    listings={TIGER_ROOT:annual_listing,TGRGDB25_DIR:DIR25_LISTING,TGRGDB24_DIR:DIR24_LISTING}
+    def respond(request):
+        url=str(request.url)
+        if fetched is not None:fetched.append(url)
+        if url in listings:return httpx.Response(200,stream=httpx.ByteStream(listings[url].encode()),request=request)
+        if url==ZIP_URL:return body_handler(request)
+        if url==ZIP_URL_24:return httpx.Response(200,stream=httpx.ByteStream(b'older-edition-bytes'),request=request)
+        return httpx.Response(404,stream=httpx.ByteStream(b''),request=request)
+    return httpx.MockTransport(respond)
 
 
 @contextmanager
 def synthetic_population():
     with tempfile.TemporaryDirectory(prefix='cousub-unit-') as tmp:
-        root=Path(tmp);body=b'EXPLICIT_SYNTHETIC_COMPLETE_2ROW_INPUT';raw=root/'source.bin';raw.write_bytes(body)
-        receipt={'url':source.URL,'final_url':source.URL,'status':200,'observed_at':'2026-10-19T12:00:00+00:00','bytes':len(body),'sha256':hashlib.sha256(body).hexdigest(),'complete_body':True}
+        root=Path(tmp);body=SYNTHETIC_BODY;raw=root/'source.bin';raw.write_bytes(body)
+        receipt={'url':REPLAY_ZIP_URL,'final_url':REPLAY_ZIP_URL,'status':200,'observed_at':'2026-10-19T12:00:00+00:00','bytes':len(body),'sha256':SYNTHETIC_SHA,'complete_body':True}
         receipt_path=root/'receipt.json';receipt_path.write_bytes(source.encode(receipt))
         rows=[]
         for i in [1,2]:
@@ -36,12 +64,12 @@ def synthetic_population():
             rows.append({'OBJECTID':i,'COUSUBNS':'0000000'+str(i),'GEOID':geoid,'GEOIDFQ':'0600000US'+geoid,'NAMELSAD':'Fixture '+str(i),'CLASSFP':'Z5','FUNCSTAT':'S','ALAND':float(i*100),'AWATER':0.0,'INTPTLAT':'+32.0000000','INTPTLON':'-86.0000000','SHAPE':shapely.to_wkb(MultiPolygon([Polygon([(i,0),(i+1,0),(i+1,1),(i,1),(i,0)])]))})
         schema=pa.schema([pa.field(n,t) for n,t in zip(source.FIELDS,(pa.int64(),*source.TYPES[1:]))]);table=pa.Table.from_pylist(rows,schema=schema)
         @contextmanager
-        def reader(_):
+        def reader(path,release):
             yield {'crs':'EPSG:4269','geometry_type':'MultiPolygon','fid_column':'OBJECTID'},pa.RecordBatchReader.from_batches(table.schema,table.to_batches(max_chunksize=1))
         physical={'members':{},'native_layer_definition':'EXPLICIT_SYNTHETIC','physical_fields':{}}
         repo=Path(source.__file__).parents[3];f='src/dagster_hifld/construction_state.py';identity={'code_identity_scheme':'git-commit-blobs-v1','code_commit':'a'*40,'files':{f:source.sha256_file(repo/f)},'test_scope':'synthetic two-row behavior, not source acceptance'}
         storage=StagingStorageResource(local_dir=str(root/'staging'))
-        with patch.multiple(source,BYTES=len(body),SHA256=hashlib.sha256(body).hexdigest(),COUNT=2,STATE_COUNTS={'01':2}),patch.object(source,'source_reader',reader),patch.object(source,'native_definition',return_value=physical),patch.object(source,'processing_identity',return_value=identity),patch.object(source,'validate_construction_code_identity',return_value=None):
+        with patch.object(source,'FEATURE_COUNT_RANGE',(2,3)),patch.object(source,'source_reader',reader),patch.object(source,'native_definition',return_value=physical),patch.object(source,'processing_identity',return_value=identity),patch.object(source,'validate_construction_code_identity',return_value=None):
             yield root,storage,raw,receipt_path,table
 
 
@@ -67,7 +95,7 @@ class CountySubdivisionCaptureTests(unittest.TestCase):
     def test_complete_real_population_schema_and_physical_width(self):
         raw=os.environ.get('HIFLD_COUSUB_TEST_ARCHIVE')
         if not raw:self.skipTest('Set HIFLD_COUSUB_TEST_ARCHIVE for complete preserved real Census source audit')
-        path=Path(raw);receipt=source.strict_json(Path(os.environ['HIFLD_COUSUB_TEST_RECEIPT']).read_bytes());source.validate_receipt(path,receipt);audit=source.source_audit(path)
+        path=Path(raw);receipt=source.strict_json(Path(os.environ['HIFLD_COUSUB_TEST_RECEIPT']).read_bytes());release=census_latest.geodatabase_release_from_receipt(receipt,source.GEODATABASE_PRODUCT);source.validate_receipt(path,receipt,release);audit=source.source_audit(path,release)
         self.assertEqual(audit['rows'],36492);self.assertEqual(len(audit['state_counts']),56);self.assertEqual(audit['native_wkb_bytes'],489108707);self.assertEqual(audit['physical_fields']['OBJECTID']['Length'],'4');self.assertEqual(audit['native_attributes'],11)
         self.assertEqual(audit['state_counts']['60'],16);self.assertEqual(audit['state_counts']['69'],12)
 
@@ -76,31 +104,35 @@ class CountySubdivisionTests(unittest.TestCase):
     def stage(self,storage,raw,receipt):return source.stage_county_subdivisions_candidate(storage,archive_path=raw,receipt_path=receipt)
 
     def test_actual_httpx_gzip_wire_length_and_lossless_decoded_capture(self):
-        body=b'EXPLICIT_SYNTHETIC_GZIP_TRANSPORT_BEHAVIOR'*100;compressed=gzip.compress(body,mtime=0);original_client=httpx.Client
-        transport=httpx.MockTransport(lambda request:httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(compressed))},stream=httpx.ByteStream(compressed)))
-        with tempfile.TemporaryDirectory() as tmp,patch.multiple(source,BYTES=len(body),SHA256=hashlib.sha256(body).hexdigest(),RAW_KEY='_raw-captures/synthetic/original.zip'),patch.object(source.httpx,'Client',side_effect=lambda **kwargs:original_client(transport=transport,**kwargs)):
-            storage=StagingStorageResource(local_dir=str(Path(tmp)/'staging'));path,receipt,pointer=source.acquire(storage)
-            self.assertEqual(path.read_bytes(),body);self.assertEqual(receipt['wire_bytes_downloaded'],len(compressed));self.assertEqual(receipt['bytes'],len(body));self.assertTrue(receipt['complete_body']);self.assertEqual(pointer['kind'],'owned_content_addressed_capture')
+        body=b'EXPLICIT_SYNTHETIC_GZIP_TRANSPORT_BEHAVIOR'*100;compressed=gzip.compress(body,mtime=0);real_client=httpx.Client
+        def body_handler(request):
+            self.assertEqual(request.headers['accept-encoding'],'identity')
+            return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(compressed))},stream=httpx.ByteStream(compressed),request=request)
+        with tempfile.TemporaryDirectory() as tmp,patch.object(source.httpx,'Client',side_effect=lambda **kwargs:real_client(transport=discovery_transport(body_handler),**kwargs)):
+            storage=StagingStorageResource(local_dir=str(Path(tmp)/'staging'));path,receipt,release,pointer=source.acquire(storage)
+            self.assertEqual(path.read_bytes(),body);self.assertEqual(receipt['wire_bytes_downloaded'],len(compressed));self.assertEqual(receipt['bytes'],len(body));self.assertTrue(receipt['complete_body']);self.assertEqual(pointer['kind'],'owned_content_addressed_capture');self.assertEqual(release.vintage,2025);self.assertEqual(receipt['url'],ZIP_URL)
 
     def test_actual_httpx_truncated_wire_retains_partial_and_blocks(self):
-        body=b'EXPLICIT_SYNTHETIC_SHORT_ENCODED_TRANSPORT'*100;compressed=gzip.compress(body,mtime=0);original_client=httpx.Client
-        transport=httpx.MockTransport(lambda request:httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(compressed)+7)},stream=httpx.ByteStream(compressed)))
-        with tempfile.TemporaryDirectory() as tmp,patch.multiple(source,BYTES=len(body),SHA256=hashlib.sha256(body).hexdigest(),RAW_KEY='_raw-captures/synthetic/original.zip'),patch.object(source.httpx,'Client',side_effect=lambda **kwargs:original_client(transport=transport,**kwargs)):
+        body=b'EXPLICIT_SYNTHETIC_SHORT_ENCODED_TRANSPORT'*100;compressed=gzip.compress(body,mtime=0);real_client=httpx.Client
+        def body_handler(request):
+            return httpx.Response(200,headers={'Content-Encoding':'gzip','Content-Length':str(len(compressed)+7)},stream=httpx.ByteStream(compressed),request=request)
+        with tempfile.TemporaryDirectory() as tmp,patch.object(source.httpx,'Client',side_effect=lambda **kwargs:real_client(transport=discovery_transport(body_handler),**kwargs)):
             storage=StagingStorageResource(local_dir=str(Path(tmp)/'staging'))
             with self.assertRaisesRegex(ValueError,'encoded_transport_truncation'):source.acquire(storage)
-            self.assertFalse((Path(storage.local_dir)/source.RAW_KEY).exists());partials=list(Path(storage.local_dir).rglob('*.partial'));self.assertEqual(len(partials),1);self.assertEqual(partials[0].read_bytes(),body)
+            self.assertFalse((Path(storage.local_dir)/source.RAW_KEY_PREFIX/hashlib.sha256(body).hexdigest()/'original.gdb.zip').exists());partials=list(Path(storage.local_dir).rglob('*.partial'));self.assertEqual(len(partials),1);self.assertEqual(partials[0].read_bytes(),body)
             reports=list((Path(storage.local_dir)/'_quarantine').rglob('*.json'));self.assertEqual(len(reports),1);self.assertFalse(source.strict_json(reports[0].read_bytes())['receipt']['complete_body'])
 
 
     def test_actual_httpx_oversize_preserves_every_consumed_byte(self):
-        body=b'EXPLICIT_SYNTHETIC_OVERSIZE_TRANSPORT';original_client=httpx.Client
-        transport=httpx.MockTransport(lambda request:httpx.Response(200,headers={'Content-Length':str(len(body))},stream=httpx.ByteStream(body)))
-        with tempfile.TemporaryDirectory() as tmp,patch.multiple(source,BYTES=len(body)-1,SHA256=hashlib.sha256(body[:-1]).hexdigest(),RAW_KEY='_raw-captures/synthetic/original.zip'),patch.object(source.httpx,'Client',side_effect=lambda **kwargs:original_client(transport=transport,**kwargs)):
+        body=b'EXPLICIT_SYNTHETIC_OVERSIZE_TRANSPORT';real_client=httpx.Client
+        def body_handler(request):
+            return httpx.Response(200,headers={'Content-Length':str(len(body))},stream=httpx.ByteStream(body),request=request)
+        with tempfile.TemporaryDirectory() as tmp,patch.object(source,'MAX_SOURCE_BYTES',len(body)-1),patch.object(source.httpx,'Client',side_effect=lambda **kwargs:real_client(transport=discovery_transport(body_handler),**kwargs)):
             storage=StagingStorageResource(local_dir=str(Path(tmp)/'staging'))
             with self.assertRaisesRegex(ValueError,'oversized_source_or_storage_floor'):source.acquire(storage)
             partial=next(Path(storage.local_dir).rglob('*.partial'));self.assertEqual(partial.read_bytes(),body)
             report=source.strict_json(next((Path(storage.local_dir)/'_quarantine').rglob('*.json')).read_bytes())['receipt']
-            self.assertFalse(report['complete_body']);self.assertEqual(report['bytes'],len(body));self.assertEqual(report['wire_bytes_downloaded'],len(body));self.assertEqual(report['sha256'],hashlib.sha256(body).hexdigest());self.assertFalse((Path(storage.local_dir)/source.RAW_KEY).exists())
+            self.assertFalse(report['complete_body']);self.assertEqual(report['bytes'],len(body));self.assertEqual(report['wire_bytes_downloaded'],len(body));self.assertEqual(report['sha256'],hashlib.sha256(body).hexdigest());self.assertFalse((Path(storage.local_dir)/source.RAW_KEY_PREFIX/hashlib.sha256(body).hexdigest()/'original.gdb.zip').exists())
 
     def test_actual_httpx_floor_precedes_first_and_next_body_read(self):
         for stop_after in [0,1]:
@@ -110,11 +142,13 @@ class CountySubdivisionTests(unittest.TestCase):
                     def __iter__(self):
                         for number in range(3):
                             consumed.append(number);yield block
-                original_client=httpx.Client;transport=httpx.MockTransport(lambda request:httpx.Response(200,stream=CountedStream()))
+                def body_handler(request):
+                    return httpx.Response(200,stream=CountedStream(),request=request)
                 # Initial complete-input preflight succeeds; then the floor
                 # falls before exactly the first/second iterator read.
+                real_client=httpx.Client
                 free_values=iter([10**10]+[10**10]*stop_after+[299999999])
-                with patch.multiple(source,BYTES=3*len(block),RAW_KEY='_raw-captures/synthetic/original.zip'),patch.object(source.httpx,'Client',side_effect=lambda **kwargs:original_client(transport=transport,**kwargs)),patch.object(source.shutil,'disk_usage',side_effect=lambda _:source.shutil._ntuple_diskusage(10**10,0,next(free_values))):
+                with patch.object(source.httpx,'Client',side_effect=lambda **kwargs:real_client(transport=discovery_transport(body_handler),**kwargs)),patch.object(source.shutil,'disk_usage',side_effect=lambda _:source.shutil._ntuple_diskusage(10**10,0,next(free_values))):
                     storage=StagingStorageResource(local_dir=str(Path(tmp)/'staging'))
                     with self.assertRaisesRegex(ValueError,'oversized_source_or_storage_floor'):source.acquire(storage)
                 self.assertEqual(consumed,list(range(stop_after)))
@@ -122,10 +156,22 @@ class CountySubdivisionTests(unittest.TestCase):
                 report=source.strict_json(next((Path(storage.local_dir)/'_quarantine').rglob('*.json')).read_bytes())['receipt']
                 self.assertFalse(report['complete_body']);self.assertEqual(report['wire_bytes_downloaded'],len(block)*stop_after);self.assertEqual(report['bytes'],len(block)*stop_after)
 
+    def test_newer_published_vintage_selected_over_older(self):
+        body=b'EXPLICIT_SYNTHETIC_NEWER_EDITION_SELECTION';real_client=httpx.Client;fetched=[]
+        def body_handler(request):
+            return httpx.Response(200,stream=httpx.ByteStream(body),request=request)
+        with tempfile.TemporaryDirectory() as tmp,patch.object(source.httpx,'Client',side_effect=lambda **kwargs:real_client(transport=discovery_transport(body_handler,annual_listing=ANNUAL_LISTING_BOTH,fetched=fetched),**kwargs)):
+            storage=StagingStorageResource(local_dir=str(Path(tmp)/'staging'))
+            path,receipt,release,pointer=source.acquire(storage)
+            self.assertEqual(release.vintage,2025);self.assertEqual(receipt['url'],ZIP_URL);self.assertEqual(path.read_bytes(),body)
+            # The newest published edition is selected and downloaded; the older
+            # edition is never even listed, let alone fetched.
+            self.assertNotIn(TGRGDB24_DIR,fetched);self.assertNotIn(ZIP_URL_24,fetched)
+
     def test_native_width_values_geometry_refresh_and_no_raw_copy(self):
         with synthetic_population() as (_,storage,raw,receipt,_):
             first=self.stage(storage,raw,receipt);second=self.stage(storage,raw,receipt);self.assertFalse(first['reused']);self.assertTrue(second['reused'])
-            root=Path(storage.local_dir)/source.SLUG/source.SLUG/first['version'];t=pq.read_table(root/'geoparquet'/f'{source.SLUG}.parquet');self.assertEqual(t.schema.field('OBJECTID').type,pa.int32());self.assertEqual(t['COUSUBNS'].to_pylist(),['00000001','00000002']);self.assertFalse((Path(storage.local_dir)/source.RAW_KEY).exists());self.assertEqual(source.strict_json((root/'raw/source_capture.json').read_bytes())['kind'],'external_preserved_read_only_capture')
+            root=Path(storage.local_dir)/source.SLUG/source.SLUG/first['version'];t=pq.read_table(root/'geoparquet'/f'{source.SLUG}.parquet');self.assertEqual(t.schema.field('OBJECTID').type,pa.int32());self.assertEqual(t['COUSUBNS'].to_pylist(),['00000001','00000002']);self.assertFalse((Path(storage.local_dir)/source.RAW_KEY_PREFIX).exists());self.assertEqual(source.strict_json((root/'raw/source_capture.json').read_bytes())['kind'],'external_preserved_read_only_capture')
 
     def test_source_drift_preserves_original_and_prior_output(self):
         with synthetic_population() as (root,storage,raw,receipt,_):
@@ -229,7 +275,7 @@ class CountySubdivisionTests(unittest.TestCase):
 
     def test_newer_receipt_keeps_original_binding_and_history(self):
         with synthetic_population() as (_,storage,raw,receipt,_):
-            r=self.stage(storage,raw,receipt);base=Path(storage.local_dir);root=base/source.SLUG/source.SLUG/r['version'];original=(root/'metadata/source_manifest.json').read_bytes();d=source.strict_json(receipt.read_bytes());d['observed_at']='2026-10-20T12:00:00+00:00';receipt.write_bytes(source.encode(d));self.assertTrue(self.stage(storage,raw,receipt)['reused']);self.assertEqual((root/'metadata/source_manifest.json').read_bytes(),original);self.assertEqual(len(list((base/'_raw-capture-references'/source.SLUG/source.SHA256).glob('receipt-*.json'))),2)
+            r=self.stage(storage,raw,receipt);base=Path(storage.local_dir);root=base/source.SLUG/source.SLUG/r['version'];original=(root/'metadata/source_manifest.json').read_bytes();d=source.strict_json(receipt.read_bytes());d['observed_at']='2026-10-20T12:00:00+00:00';receipt.write_bytes(source.encode(d));self.assertTrue(self.stage(storage,raw,receipt)['reused']);self.assertEqual((root/'metadata/source_manifest.json').read_bytes(),original);self.assertEqual(len(list((base/'_raw-capture-references'/source.SLUG/SYNTHETIC_SHA).glob('receipt-*.json'))),2)
 
 
 if __name__=='__main__':unittest.main()
