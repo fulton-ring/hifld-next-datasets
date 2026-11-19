@@ -125,21 +125,6 @@ from dagster_hifld.assets.usace_dry_docks import (
     usace_dry_docks_draft_schedule,
 )
 
-from dagster_hifld.assets.usace_pipeline_areas import (
-    usace_pipeline_areas_complete,
-    usace_pipeline_areas_draft_job,
-    usace_pipeline_areas_draft_schedule,
-)
-from dagster_hifld.assets.usace_data_quality_areas import (
-    usace_data_quality_areas_complete,
-    usace_data_quality_areas_draft_job,
-    usace_data_quality_areas_draft_schedule,
-)
-from dagster_hifld.assets.usace_dumping_ground_areas import (
-    usace_dumping_ground_areas_complete,
-    usace_dumping_ground_areas_draft_job,
-    usace_dumping_ground_areas_draft_schedule,
-)
 
 
 
@@ -200,11 +185,6 @@ from dagster_hifld.assets.harbor_facility_locations_usace_ienc import (
     harbor_facility_locations_usace_ienc_draft_schedule,
 )
 
-from dagster_hifld.assets.usace_data_coverage_areas import (
-    usace_data_coverage_areas_complete,
-    usace_data_coverage_areas_draft_job,
-    usace_data_coverage_areas_draft_schedule,
-)
 
 
 from dagster_hifld.assets.epa_frs_sic_powerplants import (
@@ -721,9 +701,6 @@ defs = Definitions(
             usace_dry_docks_complete,
             usace_pile_locations_complete,
             usace_daymark_locations_complete,
-            usace_pipeline_areas_complete,
-            usace_data_quality_areas_complete,
-            usace_dumping_ground_areas_complete,
             coastlines_usace_ienc_complete,
             coastlines_usace_ienc_drift,
             usace_distance_marks_drift,
@@ -734,7 +711,6 @@ defs = Definitions(
             usace_crane_locations_quality,
             usace_crane_locations_release,
             usace_floating_docks_complete,
-            usace_data_coverage_areas_complete,
             epa_frs_sic_complete,
             epa_frs_sic_published_membership_compatible,
         ],
@@ -776,16 +752,12 @@ defs = Definitions(
             usace_caution_areas_draft_job,
             usace_pile_locations_draft_job,
             usace_daymark_locations_draft_job,
-            usace_pipeline_areas_draft_job,
-            usace_data_quality_areas_draft_job,
-            usace_dumping_ground_areas_draft_job,
             coastlines_usace_ienc_draft_job,
             locks_usace_ienc_draft_job,
             lock_basins_usace_ienc_draft_job,
             ibc_boundary_draft_refresh_job,
             usace_crane_locations_draft_job,
             usace_floating_docks_draft_job,
-            usace_data_coverage_areas_draft_job,
             epa_frs_sic_draft_job,
         ],
         discovered("JOBS"),
@@ -829,16 +801,12 @@ defs = Definitions(
             usace_caution_areas_draft_schedule,
             usace_pile_locations_draft_schedule,
             usace_daymark_locations_draft_schedule,
-            usace_pipeline_areas_draft_schedule,
-            usace_data_quality_areas_draft_schedule,
-            usace_dumping_ground_areas_draft_schedule,
             coastlines_usace_ienc_draft_schedule,
             locks_usace_ienc_draft_schedule,
             lock_basins_usace_ienc_draft_schedule,
             ibc_boundary_draft_refresh_schedule,
             usace_crane_locations_draft_schedule,
             usace_floating_docks_draft_schedule,
-            usace_data_coverage_areas_draft_schedule,
             epa_frs_sic_draft_schedule,
         ],
         discovered("SCHEDULES"),

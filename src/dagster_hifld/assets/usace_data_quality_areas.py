@@ -98,4 +98,7 @@ usace_data_quality_areas_draft_schedule = ScheduleDefinition(
 
 usace_data_quality_areas_drift = register_approved_baseline_drift(usace_data_quality_areas_usace_ienc, "usace_data_quality_areas_drift")
 
+INGEST_ASSETS = [usace_data_quality_areas_usace_ienc]
 ASSET_CHECKS = [usace_data_quality_areas_complete, usace_data_quality_areas_drift]
+JOBS = [usace_data_quality_areas_draft_job]
+SCHEDULES = [usace_data_quality_areas_draft_schedule]
