@@ -69,4 +69,7 @@ shoreline_construction_locations_usace_ienc_draft_schedule = ScheduleDefinition(
 
 shoreline_construction_locations_usace_ienc_drift = register_approved_baseline_drift(shoreline_construction_locations_usace_ienc, "shoreline_construction_locations_usace_ienc_drift")
 
+INGEST_ASSETS = [shoreline_construction_locations_usace_ienc]
 ASSET_CHECKS = [shoreline_construction_locations_usace_ienc_complete, shoreline_construction_locations_usace_ienc_drift]
+JOBS = [shoreline_construction_locations_usace_ienc_draft_job]
+SCHEDULES = [shoreline_construction_locations_usace_ienc_draft_schedule]
