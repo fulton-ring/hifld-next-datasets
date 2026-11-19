@@ -146,7 +146,7 @@ def _build_fixture_gdb(directory: Path, rows: pd.DataFrame | None = None,
         properties = {name: "float" if kind == "float64" else f"str:{width}"
                       for name, kind, width in source.EXPECTED_FIELD_DECLARATIONS}
         with fiona.open(path, "w", driver="OpenFileGDB", layer="Address_Ranges",
-                        schema={"geometry": None, "properties": properties}) as output:
+                        schema={"geometry": "None", "properties": properties}) as output:
             for row in rows.astype(object).where(rows.notna(), None).to_dict("records"):
                 output.write({"geometry": None, "properties": row})
     else:
