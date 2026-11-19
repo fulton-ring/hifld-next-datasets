@@ -32,6 +32,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import load_replay
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
@@ -312,13 +313,11 @@ def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise PadUsProtectionError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
+    _load_receipt(capture_root, name)
+    try:
+        return load_replay(capture_root, name)
+    except ValueError as exc:
+        raise PadUsProtectionError(str(exc)) from exc
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:

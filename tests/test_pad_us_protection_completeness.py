@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import gzip
 import json
 import tempfile
 import unittest
@@ -32,6 +33,51 @@ class PadUsProtectionCompletenessTests(unittest.TestCase):
         stack.enter_context(patch.object(source, "_doc_client",
                                          side_effect=lambda: httpx.Client(transport=transport)))
         return stack
+
+    def test_forged_decoded_page_cannot_seal_from_unchanged_wire(self):
+        for encoding in ("gzip", "identity"):
+            base = fixture.make_responder(fixture._fixture_rows())
+
+            def respond(request):
+                response = base.handler(request)
+                if encoding == "identity":
+                    return response
+                wire = gzip.compress(response.read(), mtime=0)
+                return httpx.Response(200, stream=httpx.ByteStream(wire), headers={
+                    **response.headers, "Content-Encoding": "gzip", "Content-Length": str(len(wire))})
+
+            with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as tmp, \
+                    self.fixture_context(httpx.MockTransport(respond)):
+                root = Path(tmp)
+                capture = root / "capture"
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "stage"))
+                first = source.capture_pad_us_protection_mechanism_category(
+                    storage, version="original", capture_directory=str(capture))
+                original = {key: storage.read_key(key) for key in storage.list_prefix(source.DATASET_SLUG)}
+                states = storage.list_prefix("_construction-state/" + source.DATASET_SLUG)
+                wire = (capture / "page_000000.wire").read_bytes()
+                receipt_path = capture / "page_000000.receipt.json"
+                receipt = json.loads(receipt_path.read_bytes())
+                self.assertEqual(receipt["content_encoding"], encoding)
+                page_path = capture / "page_000000.body"
+                page = json.loads(page_path.read_bytes())
+                page["features"][0]["attributes"]["FeatClass"] = "Designation"
+                body = json.dumps(page, separators=(",", ":"), ensure_ascii=False).encode()
+                page_path.write_bytes(body)
+                receipt.update(bytes=len(body), sha256=source._sha(body))
+                receipt_path.write_bytes(source._canonical(receipt))
+                with patch.object(httpx.Client, "send", side_effect=AssertionError(
+                        "retained replay must not attempt HTTP")) as send:
+                    with self.assertRaisesRegex(ValueError, "retained_capture_wire_body_mismatch:page_000000"):
+                        source.capture_pad_us_protection_mechanism_category(
+                            storage, version="forged", capture_directory=str(capture))
+                send.assert_not_called()
+                self.assertFalse(first["reused"])
+                self.assertEqual((capture / "page_000000.wire").read_bytes(), wire)
+                self.assertEqual(original, {key: storage.read_key(key) for key in original})
+                self.assertEqual(set(original), set(storage.list_prefix(source.DATASET_SLUG)))
+                self.assertEqual(states, storage.list_prefix("_construction-state/" + source.DATASET_SLUG))
+                self.assertTrue(storage.list_prefix("_quarantine/" + source.DATASET_SLUG))
 
     def test_population_add_remove_acquisition_replay_and_refresh(self):
         rows = fixture._fixture_rows()
