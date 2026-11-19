@@ -98,11 +98,11 @@ class ShorelineConstructionLinesUsaceIencTests(unittest.TestCase):
         self.assertIn("not a nationwide shoreline inventory", audit["source_coverage_scope"])
 
     def test_polyline_wkb_is_multi_linestring_and_preserves_paths(self):
-        single = source._esri_polyline_wkb({"paths": [self._path(1)]})
+        single = source.esri_polyline_wkb({"paths": [self._path(1)]})
         self.assertEqual(struct.unpack("<BI", single[:5]), (1, 5))
         self.assertEqual(struct.unpack("<I", single[5:9]), (1,))
         self.assertEqual(struct.unpack("<BI", single[9:14]), (1, 2))
-        multi = source._esri_polyline_wkb({"paths": [self._path(1), self._path(2)]})
+        multi = source.esri_polyline_wkb({"paths": [self._path(1), self._path(2)]})
         self.assertEqual(struct.unpack("<BI", multi[:5]), (1, 5))
         self.assertEqual(struct.unpack("<I", multi[5:9]), (2,))
         second = multi[82:]

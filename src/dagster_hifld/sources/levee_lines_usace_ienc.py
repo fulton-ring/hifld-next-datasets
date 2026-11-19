@@ -28,9 +28,19 @@ from dagster_hifld.sources.arcgis_layer import (
     capture_witness,
     read_ienc_layer_replay,
     ienc_layer_capture_roster,
-    PAGE_MAX_BYTES, _canonical, _capture, _capture_identity, _esri_polyline_wkb,
-    _load_capture, _parquet_bytes, _sha,    _validate_spatial_reference,
+    _canonical,
+    _sha,
+    _validate_spatial_reference,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    PAGE_MAX_BYTES,
+    capture_page,
+    capture_identity,
+    esri_polyline_wkb,
+    load_capture,
+    polyline_parquet_bytes,
+)
+
 
 DATASET_SLUG = "levee-lines-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -90,7 +100,7 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     return read_ienc_layer_replay(
         root, capture_roster=_capture_roster,
-        load_capture=_load_capture,
+        load_capture=load_capture,
         validate_request_identity=validate_capture_request_identity)
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
@@ -189,7 +199,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             if type(oid) is not int or oid not in expected_ids:
                 raise ValueError("source_feature_id_roster_drift")
             page_ids.append(oid)
-            wkb = _esri_polyline_wkb(geometry)
+            wkb = esri_polyline_wkb(geometry)
             geom = from_wkb(wkb)
             geometry_empty += int(geom.is_empty)
             geometry_valid += int(geom.is_valid and not geom.is_empty)
@@ -201,7 +211,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     if sorted(ids) != ids_before or len(features) != len(ids_before) or len(set(ids)) != len(ids_before):
         raise ValueError("source_feature_id_population_drift")
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
-    bounds = [from_wkb(_esri_polyline_wkb(row["geometry"])).bounds for row in features]
+    bounds = [from_wkb(esri_polyline_wkb(row["geometry"])).bounds for row in features]
     audit = {
         "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids)),
         "source_id_min": min(ids), "source_id_max": max(ids),
@@ -225,7 +235,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
 
 
 def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
-    return _sha(_canonical(_capture_identity(captures, root)))
+    return _sha(_canonical(capture_identity(captures, root)))
 
 
 def capture_levee_lines_usace_ienc(storage: StagingStorageResource, *, version: str,
@@ -261,7 +271,7 @@ def capture_levee_lines_usace_ienc(storage: StagingStorageResource, *, version: 
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
-                ids_body, ids_receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
+                ids_body, ids_receipt = capture_page(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
                 ids = json.loads(ids_body).get("objectIds")
                 if (not isinstance(ids, list) or not ids
                         or any(type(oid) is not int or oid <= 0 for oid in ids)
@@ -272,7 +282,7 @@ def capture_levee_lines_usace_ienc(storage: StagingStorageResource, *, version: 
                 for name, url in roster:
                     if name == "ids_before":
                         continue
-                    captures[name] = _capture(client, url, root, name)
+                    captures[name] = capture_page(client, url, root, name)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}
@@ -298,12 +308,12 @@ def capture_levee_lines_usace_ienc(storage: StagingStorageResource, *, version: 
     identity = processing_identity(Path(__file__).parents[3])
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
-        "source_capture_evidence": _capture_identity(captures, root),
+        "source_capture_evidence": capture_identity(captures, root),
         "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False, "baseline_accepted": False})
-    parquet = _parquet_bytes(fields, features)
+    parquet = polyline_parquet_bytes(fields, features)
     version = "v" + _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
         "source_geometry_sha256": audit["source_geometry_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
@@ -353,7 +363,7 @@ def capture_levee_lines_usace_ienc(storage: StagingStorageResource, *, version: 
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
@@ -374,7 +384,7 @@ def capture_levee_lines_usace_ienc(storage: StagingStorageResource, *, version: 
         if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            body, wire, _receipt = _load_capture(root, name)
+            body, wire, _receipt = load_capture(root, name)
             if (storage.read_key(f"{prefix}/raw/{name}.body") != body
                     or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
                 raise ValueError("cached_source_evidence_changed:" + name)

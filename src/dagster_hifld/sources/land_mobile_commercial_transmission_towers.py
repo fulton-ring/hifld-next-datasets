@@ -39,8 +39,13 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.arcgis_layer import (
-    _canonical, _load_capture, _sha,
+    _canonical,
+    _sha,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    load_capture,
+)
+
 
 DATASET_SLUG = "land-mobile-commercial-transmission-towers"
 FILE_SLUG = DATASET_SLUG
@@ -181,7 +186,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         root,
         capture_names=CAPTURE_NAMES,
         expected_urls={name: L_LMCOMM_URL for name in CAPTURE_NAMES},
-        load_capture=_load_capture,
+        load_capture=load_capture,
         validate_request_identity=validate_capture_request_identity,
     )
 
@@ -455,7 +460,7 @@ def _parquet_bytes(published: list[dict]) -> bytes:
 def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
     digests = {}
     for name in sorted(captures):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         digests[name] = {"decoded_sha256": _sha(captures[name][0]), "wire_sha256": _sha(wire)}
     return _sha(_canonical(digests))
 
@@ -623,7 +628,7 @@ def capture_land_mobile_commercial_transmission_towers(storage: StagingStorageRe
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
@@ -644,7 +649,7 @@ def capture_land_mobile_commercial_transmission_towers(storage: StagingStorageRe
         if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            body, wire, _receipt = _load_capture(root, name)
+            body, wire, _receipt = load_capture(root, name)
             if (storage.read_key(f"{prefix}/raw/{name}.body") != body
                     or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
                 raise ValueError("cached_source_evidence_changed:" + name)
