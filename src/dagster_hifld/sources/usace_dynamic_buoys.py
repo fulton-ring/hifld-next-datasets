@@ -26,10 +26,18 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.arcgis_layer import (
-    capture_witness, retained_capture_ids, _canonical, _capture_identity,
-    _load_capture, _parquet_bytes, _sha, _validate_spatial_reference,
+    capture_witness,
+    retained_capture_ids,
+    _canonical,
+    _sha,
+    _validate_spatial_reference,
     layer_capture_roster,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    capture_identity,
+    load_capture,
+)
+
 
 DATASET_SLUG = "dynamic-buoys-usace-ienc-"
 FILE_SLUG = DATASET_SLUG
@@ -98,7 +106,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         root,
         capture_names=_capture_names(ids),
         expected_urls=dict(_capture_roster(ids)),
-        load_capture=_load_capture,
+        load_capture=load_capture,
         validate_request_identity=validate_capture_request_identity,
     )
 
@@ -217,7 +225,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
 
 
 def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
-    return _sha(_canonical(_capture_identity(captures, root)))
+    return _sha(_canonical(capture_identity(captures, root)))
 
 
 def capture_usace_dynamic_buoys(storage: StagingStorageResource, *, version: str,
@@ -290,7 +298,7 @@ def capture_usace_dynamic_buoys(storage: StagingStorageResource, *, version: str
     identity = processing_identity(Path(__file__).parents[3])
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
-        "source_capture_evidence": _capture_identity(captures, root),
+        "source_capture_evidence": capture_identity(captures, root),
         "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
         "bts_item_succession_accepted": False, "source_release_accepted": False,
         "source_freshness_accepted": False, "schema_contract_accepted": False,
@@ -341,7 +349,7 @@ def capture_usace_dynamic_buoys(storage: StagingStorageResource, *, version: str
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
@@ -363,7 +371,7 @@ def capture_usace_dynamic_buoys(storage: StagingStorageResource, *, version: str
         if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            body, wire, _receipt = _load_capture(root, name)
+            body, wire, _receipt = load_capture(root, name)
             if (storage.read_key(f"{prefix}/raw/{name}.body") != body
                     or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
                 raise ValueError("cached_source_evidence_changed:" + name)

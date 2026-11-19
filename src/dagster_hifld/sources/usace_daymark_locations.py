@@ -29,9 +29,15 @@ from dagster_hifld.sources.arcgis_layer import (
     capture_witness,
     read_ienc_layer_replay,
     ienc_layer_capture_roster,
-    _canonical, _capture_identity,
-    _load_capture, _parquet_bytes, _sha, _validate_spatial_reference,
+    _canonical,
+    _sha,
+    _validate_spatial_reference,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    capture_identity,
+    load_capture,
+)
+
 
 DATASET_SLUG = "daymark-locations-usace-ienc-2"
 FILE_SLUG = DATASET_SLUG
@@ -98,7 +104,7 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[byt
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     return read_ienc_layer_replay(
         root, capture_roster=_capture_roster,
-        load_capture=_load_capture,
+        load_capture=load_capture,
         validate_request_identity=validate_capture_request_identity)
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
@@ -213,7 +219,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
 
 
 def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
-    return _sha(_canonical(_capture_identity(captures, root)))
+    return _sha(_canonical(capture_identity(captures, root)))
 
 
 def capture_usace_daymark_locations(storage: StagingStorageResource, *, version: str,
@@ -286,7 +292,7 @@ def capture_usace_daymark_locations(storage: StagingStorageResource, *, version:
     identity = processing_identity(Path(__file__).parents[3])
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
-        "source_capture_evidence": _capture_identity(captures, root),
+        "source_capture_evidence": capture_identity(captures, root),
         "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
         "bts_item_succession_accepted": False, "source_release_accepted": False,
         "source_freshness_accepted": False, "schema_contract_accepted": False,
@@ -340,7 +346,7 @@ def capture_usace_daymark_locations(storage: StagingStorageResource, *, version:
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
@@ -362,7 +368,7 @@ def capture_usace_daymark_locations(storage: StagingStorageResource, *, version:
         if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            body, wire, _receipt = _load_capture(root, name)
+            body, wire, _receipt = load_capture(root, name)
             if (storage.read_key(f"{prefix}/raw/{name}.body") != body
                     or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
                 raise ValueError("cached_source_evidence_changed:" + name)

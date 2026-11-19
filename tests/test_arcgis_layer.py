@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dagster_hifld.sources import arcgis_layer as common
+from dagster_hifld.sources import usace_ienc_common as ienc_common
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 
@@ -53,7 +54,7 @@ class ArcgisLayerTests(unittest.TestCase):
             (root / "earlier.wire").write_bytes(b"x" * 400)
             receipt = {"status": 200}
             client = object()
-            with patch.object(common, "capture_get", return_value=(b"{}", receipt)) as capture_get:
+            with patch.object(ienc_common, "capture_get", return_value=(b"{}", receipt)) as capture_get:
                 body, returned = common.capture_page(client, "https://ienccloud.us/example", root, "page",
                                                      page_max_bytes=100, capture_max_bytes=1000)
             self.assertEqual((body, returned), (b"{}", receipt))

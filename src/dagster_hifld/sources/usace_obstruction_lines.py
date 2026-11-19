@@ -23,12 +23,21 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
-# Shared capture/replay helpers moved out of this module so dataset modules
-# import them from sources.arcgis_layer instead of here.
+# Shared IENC capture/replay helpers moved out of this module so dataset
+# modules import them from sources.usace_ienc_common instead of here.
 from dagster_hifld.sources.arcgis_layer import (
-    capture_witness, _canonical, _capture, _capture_identity, _load_capture, _parquet_bytes, _sha,
+    capture_witness,
+    _canonical,
+    _sha,
     _validate_spatial_reference,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    capture_page,
+    capture_identity,
+    load_capture,
+    polyline_parquet_bytes,
+)
+
 
 DATASET_SLUG = "obstruction-lines-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -96,7 +105,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    ids_body, _ids_wire, _ids_receipt = _load_capture(root, "ids_before")
+    ids_body, _ids_wire, _ids_receipt = load_capture(root, "ids_before")
     replay_ids = json.loads(ids_body).get("objectIds")
     if (not isinstance(replay_ids, list) or not replay_ids
             or any(type(oid) is not int or oid <= 0 for oid in replay_ids)
@@ -107,7 +116,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     expected_urls = dict(_capture_urls(replay_ids))
     captures = {}
     for name in sorted(BASE_CAPTURE_NAMES):
-        body, _wire, receipt = _load_capture(root, name)
+        body, _wire, receipt = load_capture(root, name)
         if receipt != manifest["receipts"][name]:
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
         validate_capture_request_identity(name, receipt, expected_urls[name])
@@ -250,7 +259,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
                               headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
                 # IDs are acquired first to form an exact full-population query;
                 # count and ID brackets below independently detect source drift.
-                body,receipt=_capture(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_before")
+                body,receipt=capture_page(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_before")
                 ids=json.loads(body).get("objectIds")
                 if (not isinstance(ids,list) or not ids
                         or any(type(oid) is not int or oid <= 0 for oid in ids)
@@ -260,7 +269,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
                 urls=[(name,url) for name,url in urls if name!="ids_before"]
                 captures["ids_before"]=(body,receipt)
                 for name,url in urls:
-                    captures[name]=_capture(client,url,root,name)
+                    captures[name]=capture_page(client,url,root,name)
             fields,features,audit=_validate(captures)
         except Exception as exc:
             retained={}
@@ -279,7 +288,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
         captures=_read_replay(root)
     fields,features,audit=_validate(captures)
     identity=processing_identity(Path(__file__).parents[3])
-    evidence=_capture_identity(captures,root)
+    evidence=capture_identity(captures,root)
     capture_sha=_sha(_canonical(evidence))
     record_body=_canonical([row["attributes"] for row in features])
     geometry_body=_canonical([[row["attributes"]["OBJECTID"],row["geometry"]] for row in features])
@@ -293,7 +302,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
                                  "schema_sha256":_sha(schema_body),"decoded_wire_evidence_sha256":capture_sha,
                                  "processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    parquet=_parquet_bytes(fields,features)
+    parquet=polyline_parquet_bytes(fields,features)
     inputs=[{"input_id":name,"producer":PUBLISHER if name != "bts_item" else "USDOT Bureau of Transportation Statistics (BTS) IENC NTAD item",
              "host":urlsplit(receipt["url"]).hostname,
              "role":"official_distributor" if name == "bts_item" else "producer_publication",
@@ -329,7 +338,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
     outputs={f"geoparquet/{FILE_SLUG}.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
              "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
-        _body,wire,_receipt=_load_capture(root,name)
+        _body,wire,_receipt=load_capture(root,name)
         outputs[f"raw/{name}.body"]=body;outputs[f"raw/{name}.wire"]=wire
         outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
     ready={"approved":False,"version":version,"objects":{f"geoparquet/{FILE_SLUG}.parquet":{"bytes":len(parquet),"sha256":_sha(parquet)}},
@@ -353,7 +362,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
         if set(original_receipts)!=set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            fresh_body,fresh_wire,_receipt=_load_capture(root,name)
+            fresh_body,fresh_wire,_receipt=load_capture(root,name)
             if (storage.read_key(f"{prefix}/raw/{name}.body")!=fresh_body
                     or storage.read_key(f"{prefix}/raw/{name}.wire")!=fresh_wire):
                 raise ValueError("cached_source_evidence_changed:"+name)
