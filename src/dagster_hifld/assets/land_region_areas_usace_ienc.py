@@ -103,4 +103,7 @@ land_region_areas_usace_ienc_draft_schedule = ScheduleDefinition(
 
 land_region_areas_usace_ienc_candidate_drift = register_approved_baseline_drift(land_region_areas_usace_ienc_candidate, "land_region_areas_usace_ienc_candidate_drift")
 
+INGEST_ASSETS = [land_region_areas_usace_ienc_candidate]
 ASSET_CHECKS = [land_region_areas_usace_ienc_complete, land_region_areas_usace_ienc_candidate_drift]
+JOBS = [land_region_areas_usace_ienc_draft_job]
+SCHEDULES = [land_region_areas_usace_ienc_draft_schedule]
