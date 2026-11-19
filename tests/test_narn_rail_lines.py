@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import hashlib
+import copy
+import gzip
 import json
 import os
 import shutil
@@ -9,7 +11,13 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs
 
+import httpx
+from dagster import AssetCheckSeverity, DagsterInstance, materialize
+from dagster_hifld.assets import narn_rail_lines as assets
+from dagster_hifld.capture_completeness import approved_baseline_drift
+from dagster_hifld.sources import arcgis_layer as shared
 import pyarrow.parquet as pq
 import shapely
 
@@ -195,9 +203,7 @@ def _pins(features, schema, geom, counts, bounds, extras):
                 EXPECTED_INVALID_GEOMETRY_COUNT=invalid_count,
                 EXPECTED_FRAARCID_NULL_COUNT=0, EXPECTED_FRAARCID_DUPLICATE_COUNT=0,
                 EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
-                EXPECTED_SERVICE_LAYER_ROSTER=[(0, "North American Rail Network Lines", "Feature Layer")],
-                EXPECTED_LAYER_EXTENT={"xmin": -156.68977173810396, "ymin": 14.672258000071423,
-                                       "xmax": -59.927231000261614, "ymax": 64.92614460638065})
+                EXPECTED_SERVICE_LAYER_ROSTER=[(0, "North American Rail Network Lines", "Feature Layer")])
 
 
 def _page_features(captures):
@@ -206,7 +212,175 @@ def _page_features(captures):
     return rows
 
 
+def _current_fixture(change=0):
+    fields, rows, captures, schema, *_ = _fixture()
+    rows[3]['geometry'] = {'paths': [[[-106.0, 28.6], [-105.9, 28.7]]]}
+    if change > 0:
+        added = copy.deepcopy(rows[2])
+        added['attributes'].update(OBJECTID=16, FRAARCID=300007)
+        added['geometry'] = {'paths': [[[-55.0, 66.0], [-54.9, 66.1]], [[-54.8, 66.2], [-54.7, 66.3]]]}
+        rows.append(added)
+    elif change < 0:
+        rows.pop(0)
+    documents = {name: json.loads(body) for name, (body, _) in captures.items() if not name.startswith('page_')}
+    _, _, _, bounds, *_ = source._classify_geometries(rows, [field['name'] for field in fields])
+    for name, document in documents.items():
+        if name.startswith('ids_'):
+            document['objectIds'] = [row['attributes']['OBJECTID'] for row in rows]
+        elif name.startswith('count_'):
+            document['count'] = len(rows)
+        elif name.startswith('layer_'):
+            document['extent'] = {**bounds, 'spatialReference': {'wkid': 4326}}
+    return documents, rows, source._sha(_canonical(schema))
+
+
+def _fixture_client(documents, rows, *, adaptive=False, torn=False, incomplete=False):
+    requests = {}
+    documents_by_path = {source.SERVICE_URL: documents['service_before'],
+        source.LAYER_URL: documents['layer_before'],
+        f'https://www.arcgis.com/sharing/rest/content/items/{source.ITEM_ID}': documents['portal_item']}
+
+    def respond(request):
+        query = parse_qs(request.url.query.decode())
+        requests[str(request.url)] = requests.get(str(request.url), 0) + 1
+        if 'resultOffset' in query:
+            offset, width = int(query['resultOffset'][0]), int(query['resultRecordCount'][0])
+            if adaptive and offset == 0 and width > 1:
+                wire = gzip.compress(b'{"error":{"code":500}}', mtime=0)
+                if requests[str(request.url)] % 2:
+                    wire = wire[:-5]
+            else:
+                selected = rows[offset:offset + width]
+                if incomplete and offset == 0:
+                    selected = selected[:-1]
+                page = {'features': selected, 'spatialReference': {'wkid': 4326},
+                        'exceededTransferLimit': offset + width < len(rows)}
+                wire = gzip.compress(json.dumps(page, separators=(',', ':')).encode(), mtime=0)
+            return httpx.Response(200, headers={'Content-Encoding': 'gzip'}, stream=httpx.ByteStream(wire))
+        if 'returnIdsOnly' in query:
+            document = documents['ids_before']
+        elif 'returnCountOnly' in query:
+            document = {'count': len(rows) + 1} if torn and requests[str(request.url)] == 2 else documents['count_before']
+        else:
+            document = documents_by_path[str(request.url).split('?')[0]]
+        return httpx.Response(200, stream=httpx.ByteStream(json.dumps(document, separators=(',', ':')).encode()))
+
+    return httpx.Client(transport=httpx.MockTransport(respond))
+
+
 class NarnRailLinesTests(unittest.TestCase):
+    def test_real_adaptive_capture_replay_and_changed_population(self):
+        from dagster_hifld.resources import StagingStorageResource
+        documents, rows, schema_sha = _current_fixture()
+        with tempfile.TemporaryDirectory() as tmp, DagsterInstance.ephemeral() as instance, \
+                patch.multiple(source, EXPECTED_SCHEMA_SHA256=schema_sha, PAGE_START_RECORDS=4,
+                               DOC_CAPTURE_BASE_DELAY_SECONDS=0, PAGE_PROBE_BASE_DELAY_SECONDS=0):
+            root = Path(tmp)
+            storage = StagingStorageResource(local_dir=str(root / 'stage'))
+            client = _fixture_client(documents, rows, adaptive=True)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                first = source.capture_narn_rail_lines(storage, version='fixture', capture_directory=str(root / 'live'))
+            retained = Path(first['capture_directory'])
+            prefix = first['candidate_ready'].removesuffix('/metadata/candidate_ready.json')
+            original = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}
+            for width in (4, 2):
+                parent = f'page_000000_{width:05d}'
+                self.assertFalse(json.loads((retained / f'{parent}.attempt-01.receipt.json').read_bytes())['complete_body'])
+                self.assertTrue(json.loads((retained / f'{parent}.receipt.json').read_bytes())['complete_body'])
+            table = pq.read_table(Path(storage.local_dir) / prefix / f'geoparquet/{source.DATASET_SLUG}.parquet')
+            self.assertEqual(table.column_names, [field['name'] for field in _fields()] + ['geometry'])
+            for expected, actual in zip(rows, table.to_pylist(), strict=True):
+                geometry = shapely.from_wkb(actual.pop('geometry'))
+                self.assertEqual(actual, expected['attributes'])
+                self.assertEqual(shapely.get_coordinates(geometry).tolist(),
+                    [point for path in expected['geometry']['paths'] for point in path])
+                self.assertEqual(geometry.geom_type, 'MultiLineString' if len(expected['geometry']['paths']) > 1 else 'LineString')
+            with patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected replay HTTP')):
+                replay = source.capture_narn_rail_lines(storage, version='replay', capture_directory=str(root / 'replay'),
+                    offline_capture_directory=str(retained))
+            self.assertTrue(replay['reused'])
+            client = _fixture_client(documents, rows, adaptive=True)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                refreshed = source.capture_narn_rail_lines(storage, version='refresh', capture_directory=str(root / 'refresh'))
+            self.assertTrue(refreshed['reused'])
+            self.assertEqual(refreshed['version'], first['version'])
+            added_docs, added_rows, _ = _current_fixture(1)
+            client = _fixture_client(added_docs, added_rows, adaptive=True)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                result = materialize([*assets.INGEST_ASSETS, *assets.ASSET_CHECKS], instance=instance,
+                    resources={'staging_storage': storage}, run_config={'ops': {assets.fra_narn_rail_network_lines.op.name: {
+                        'config': {'capture_directory': str(root / 'added')}}}})
+            self.assertTrue(result.success)
+            added = result.output_for_node(assets.fra_narn_rail_network_lines.op.name)
+            self.assertEqual(added['feature_count'], 7)
+            checks = {check.check_name: check for check in result.get_asset_check_evaluations()}
+            self.assertTrue(checks['fra_narn_rail_network_lines_complete'].passed)
+            warning = checks['fra_narn_rail_network_lines_approved_baseline_drift']
+            self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(warning.metadata['comparison_status'].value, 'skipped_no_approved_baseline')
+            drift = approved_baseline_drift(added, {**first, 'release_accepted': True})
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.metadata['feature_count_delta'].value, 1)
+            removed_docs, removed_rows, _ = _current_fixture(-1)
+            client = _fixture_client(removed_docs, removed_rows, adaptive=True)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                removed = source.capture_narn_rail_lines(storage, version='removed', capture_directory=str(root / 'removed'))
+            self.assertEqual(removed['feature_count'], 5)
+            self.assertNotEqual(removed['version'], first['version'])
+            total_bytes = sum(path.stat().st_size for path in retained.iterdir())
+            with patch.object(source, 'MAX_CAPTURE_TOTAL_BYTES', total_bytes - 1), \
+                    patch.object(Path, 'read_bytes', side_effect=AssertionError('read before budget admission')), \
+                    patch.object(source.shutil, 'copyfile', side_effect=AssertionError('copy before budget admission')):
+                with self.assertRaisesRegex(ValueError, 'source_capture_exceeds_scratch_budget'):
+                    source.capture_narn_rail_lines(storage, version='budget', capture_directory=str(root / 'budget'),
+                        offline_capture_directory=str(retained))
+            for mode in ('missing_parent', 'wrong_parent_request', 'missing_wire'):
+                directory = root / mode
+                shutil.copytree(retained, directory)
+                if mode == 'missing_parent':
+                    for suffix in ('.body', '.wire', '.receipt.json'):
+                        (directory / ('page_000000_00004' + suffix)).unlink()
+                elif mode == 'missing_wire':
+                    (directory / 'page_000001_00001.wire').unlink()
+                else:
+                    path = directory / 'page_000000_00004.receipt.json'
+                    receipt = json.loads(path.read_bytes())
+                    receipt.update(url=source._page_query(4, 2), final_url=source._page_query(4, 2))
+                    path.write_bytes(_canonical(receipt))
+                path = directory / 'capture_manifest.json'
+                manifest = json.loads(path.read_bytes())
+                manifest['artifact_roster'] = source.capture_roster_digests(directory, exclude={'capture_manifest.json'})
+                path.write_bytes(_canonical(manifest))
+                with self.subTest(replay=mode), self.assertRaises((ValueError, OSError)):
+                    source.capture_narn_rail_lines(storage, version='invalid', capture_directory=str(root / 'invalid'),
+                        offline_capture_directory=str(directory))
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix(prefix)}, original)
+            path = Path(storage.local_dir) / prefix / 'metadata/source_manifest.json'
+            original_manifest = path.read_bytes()
+            path.write_bytes(b'{}')
+            with self.assertRaisesRegex(ValueError, 'cached_candidate_object_integrity_failed'):
+                source.capture_narn_rail_lines(storage, version='conflict', capture_directory=str(root / 'conflict'),
+                    offline_capture_directory=str(retained))
+            path.write_bytes(original_manifest)
+            (Path(storage.local_dir) / f"_construction-state/{source.DATASET_SLUG}/{first['version']}.json").unlink()
+            with self.assertRaisesRegex(ValueError, 'unsealed_candidate_prefix'):
+                source.capture_narn_rail_lines(storage, version='partial', capture_directory=str(root / 'partial'),
+                    offline_capture_directory=str(retained))
+
+    def test_real_capture_rejects_torn_counts_and_missing_rows(self):
+        from dagster_hifld.resources import StagingStorageResource
+        documents, rows, schema_sha = _current_fixture()
+        with tempfile.TemporaryDirectory() as tmp, patch.multiple(source, EXPECTED_SCHEMA_SHA256=schema_sha,
+                PAGE_START_RECORDS=4, DOC_CAPTURE_BASE_DELAY_SECONDS=0, PAGE_PROBE_BASE_DELAY_SECONDS=0):
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / 'stage'))
+            for mode in ('torn', 'incomplete'):
+                client = _fixture_client(documents, rows, torn=mode == 'torn', incomplete=mode == 'incomplete')
+                with self.subTest(mode=mode), patch.object(source.httpx, 'Client', return_value=client):
+                    with self.assertRaises(ValueError):
+                        source.capture_narn_rail_lines(storage, version=mode, capture_directory=str(Path(tmp) / mode))
+            self.assertFalse(storage.list_prefix(source.DATASET_SLUG))
+            self.assertTrue(storage.list_prefix('_quarantine/' + source.DATASET_SLUG))
+
     def test_streamed_list_sha_matches_canonical_digest(self):
         items = [[1, {"a": "b", "list": [1, 2, 3]}], None, "x", 4.5]
         self.assertEqual(source._list_sha(items), hashlib.sha256(_canonical(items)).hexdigest())
@@ -604,7 +778,7 @@ class NarnRailLinesTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
+            with patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep") as sleep_mock:
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
@@ -632,7 +806,7 @@ class NarnRailLinesTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
+            with patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
@@ -666,7 +840,7 @@ class NarnRailLinesTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
+            with patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
@@ -707,7 +881,7 @@ class NarnRailLinesTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 pages = source._capture_pages(None, root, 6)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
@@ -743,7 +917,7 @@ class NarnRailLinesTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 pages = source._capture_pages(None, root, 6)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
@@ -766,7 +940,7 @@ class NarnRailLinesTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
                     source._capture_pages(None, root, 6)
@@ -848,7 +1022,7 @@ class NarnRailLinesTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins(features, schema, geom, counts, bounds, extras)), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_narn_rail_lines(storage, version="vfixture",
                                                            capture_directory=str(root / "captures"))

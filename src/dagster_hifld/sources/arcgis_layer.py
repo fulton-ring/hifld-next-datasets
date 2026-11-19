@@ -37,7 +37,7 @@ import pyarrow.parquet as pq
 import pyproj
 
 from dagster_hifld.capture_completeness import validate_capture_witness
-from dagster_hifld.http_capture import capture_http_response, validate_retained_capture_replay
+from dagster_hifld.http_capture import capture_http_response, validate_capture_roster, validate_retained_capture_replay
 from dagster_hifld.source_release import ReleaseSignal
 from dagster_hifld.sources.capture_common import capture_get, write_immutable
 from dagster_hifld.sources.esri_common import arrow_type, canonical as _canonical, sha as _sha
@@ -319,6 +319,147 @@ def load_replay(root: Path, name: str) -> tuple[bytes, dict]:
             or result.decoded_sha256 != _sha(body)):
         raise ValueError("retained_capture_wire_body_mismatch:" + name)
     return body, receipt
+
+
+def read_adaptive_offset_replay(root: Path, *, document_urls: Mapping[str, str],
+                                page_size: int, page_name: Callable[[int, int], str],
+                                parse_page_name: Callable[[str], tuple[int, int]],
+                                page_query: Callable[[int, int], str], max_capture_bytes: int,
+                                max_capture_total_bytes: int, doc_capture_attempts: int,
+                                page_probe_attempts: int) -> dict[str, tuple[bytes, dict[str, object]]]:
+    """Replay adaptive offset captures with bounded, request-bound refusal custody."""
+    if any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError('retained_capture_symlink_rejected')
+    manifest_path = root / 'capture_manifest.json'
+    if manifest_path.is_symlink() or manifest_path.stat().st_size > max_capture_bytes:
+        raise ValueError('retained_capture_manifest_invalid')
+    entries = list(root.iterdir())
+    validate_capture_roster(root, {path.name for path in entries})
+    sizes = [path.stat().st_size for path in entries]
+    if any(size > max_capture_bytes for size in sizes) or sum(sizes) > max_capture_total_bytes:
+        raise ValueError('source_capture_exceeds_scratch_budget')
+    manifest = json.loads(manifest_path.read_bytes())
+    if (not isinstance(manifest, dict) or manifest.get('complete') is not True
+            or not isinstance(manifest.get('receipts'), dict)
+            or not isinstance(manifest.get('artifact_roster'), dict)):
+        raise ValueError('retained_capture_manifest_invalid')
+    urls = dict(document_urls)
+    names = set(manifest['receipts'])
+    if not set(urls) <= names:
+        raise ValueError('source_capture_roster_incomplete_or_unexpected')
+    pages = {}
+    for name in names - set(urls):
+        offset, count = parse_page_name(name)
+        if not 0 < count <= page_size:
+            raise ValueError('source_capture_roster_incomplete_or_unexpected')
+        pages[name] = (offset, count)
+        urls[name] = page_query(offset, count)
+    total = sum(count for offset, count in pages.values())
+    evidence_names = set(urls)
+    for offset, count in pages.values():
+        parent_offset = offset // page_size * page_size
+        parent_count = min(page_size, total - parent_offset)
+        while True:
+            if parent_count <= 0 or offset < parent_offset or offset + count > parent_offset + parent_count:
+                raise ValueError('source_capture_roster_incomplete_or_unexpected')
+            evidence_names.add(page_name(parent_offset, parent_count))
+            if (offset, count) == (parent_offset, parent_count):
+                break
+            middle = parent_count // 2
+            if middle == 0:
+                raise ValueError('source_capture_roster_incomplete_or_unexpected')
+            if offset < parent_offset + middle:
+                parent_count = middle
+            else:
+                parent_offset += middle
+                parent_count -= middle
+    allowed_artifacts = set()
+    for name in evidence_names:
+        attempts = page_probe_attempts if name.startswith('page_') and parse_page_name(name)[1] > 1 else doc_capture_attempts
+        stems = [name, *(f'{name}.attempt-{attempt:02d}' for attempt in range(1, attempts))]
+        allowed_artifacts.update(stem + suffix for stem in stems for suffix in ('.body', '.wire', '.receipt.json'))
+    if set(manifest['artifact_roster']) - allowed_artifacts:
+        raise ValueError('retained_capture_artifact_name_invalid')
+    validate_capture_roster(root, set(manifest['artifact_roster']) | {'capture_manifest.json'})
+
+    def load(directory, name):
+        body, receipt = load_replay(directory, name)
+        return body, (directory / f'{name}.wire').read_bytes(), receipt
+
+    def validate_request(name, receipt, url):
+        if receipt.get('method') != 'GET' or receipt.get('url') != url or receipt.get('final_url') != url:
+            raise ValueError('retained_capture_request_mismatch:' + name)
+
+    captures = validate_retained_capture_replay(root, capture_names=names, expected_urls=urls,
+        load_capture=load, validate_request_identity=validate_request)
+    for name in evidence_names:
+        attempts = page_probe_attempts if name.startswith('page_') and parse_page_name(name)[1] > 1 else doc_capture_attempts
+        retained_attempts = [attempt for attempt in range(1, attempts)
+            if any(f'{name}.attempt-{attempt:02d}{suffix}' in manifest['artifact_roster']
+                   for suffix in ('.body', '.wire', '.receipt.json'))]
+        last_attempt = attempts - 1 if name not in names else max(retained_attempts, default=0)
+        refusals = [f'{name}.attempt-{attempt:02d}' for attempt in range(1, last_attempt + 1)]
+        if name not in names:
+            refusals.append(name)
+        for refusal in refusals:
+            if any(refusal + suffix not in manifest['artifact_roster'] for suffix in ('.body', '.wire', '.receipt.json')):
+                raise ValueError('retained_capture_refusal_missing:' + refusal)
+            url = urls[name] if name in urls else page_query(*parse_page_name(name))
+            _validate_offset_replay_refusal(root, refusal, url, max_capture_bytes=max_capture_bytes)
+    capture_witness(captures)
+    return captures
+
+
+def _validate_offset_replay_refusal(root: Path, name: str, url: str, *, max_capture_bytes: int) -> None:
+    receipt = json.loads((root / f'{name}.receipt.json').read_bytes())
+    if (not isinstance(receipt, dict) or receipt.get('method') != 'GET' or receipt.get('url') != url
+            or type(receipt.get('complete_body')) is not bool):
+        raise ValueError('retained_capture_refusal_invalid:' + name)
+    if receipt['complete_body'] and receipt.get('status') == 200:
+        body, receipt = load_replay(root, name)
+        if (receipt.get('final_url') != url or receipt.get('error_code') is not None
+                or receipt.get('error_type') is not None or not producer_error_doc(body)):
+            raise ValueError('retained_capture_refusal_invalid:' + name)
+        return
+    body, wire = (root / f'{name}.body').read_bytes(), (root / f'{name}.wire').read_bytes()
+    if (receipt.get('bytes') != len(body) or receipt.get('sha256') != _sha(body)
+            or receipt.get('wire_bytes') != len(wire) or receipt.get('wire_sha256') != _sha(wire)):
+        raise ValueError('retained_capture_refusal_invalid:' + name)
+    if receipt.get('error_code') == 'request_error':
+        if (receipt['complete_body'] or receipt.get('status') is not None or receipt.get('final_url') is not None
+                or body or wire or receipt.get('content_encoding') is not None
+                or receipt.get('content_length') is not None or not isinstance(receipt.get('error_type'), str)):
+            raise ValueError('retained_capture_refusal_invalid:' + name)
+        return
+    if (receipt.get('final_url') != url or type(receipt.get('status')) is not int
+            or not 100 <= receipt['status'] <= 599
+            or not isinstance(receipt.get('content_encoding'), str)
+            or (receipt.get('content_length') is not None
+                and (type(receipt['content_length']) is not int or receipt['content_length'] < 0))
+            or (not receipt['complete_body'] and not isinstance(receipt.get('error_code'), str))):
+        raise ValueError('retained_capture_refusal_invalid:' + name)
+    if receipt.get('error_code') == 'invalid_content_length':
+        if (receipt['complete_body'] or body or wire or receipt.get('content_length') is not None
+                or receipt.get('error_type') is not None or receipt['content_encoding'] not in {'identity', 'gzip', 'deflate'}):
+            raise ValueError('retained_capture_refusal_invalid:' + name)
+        return
+    headers = {'Content-Encoding': receipt.get('content_encoding') or 'identity'}
+    if receipt.get('content_length') is not None:
+        headers['Content-Length'] = str(receipt['content_length'])
+    response = httpx.Response(receipt['status'], headers=headers, stream=httpx.ByteStream(wire))
+    result = capture_http_response(response, max_wire_bytes=max_capture_bytes, max_decoded_bytes=max_capture_bytes,
+        reserve=lambda _progress: None, retain_wire=lambda _chunk: None, retain_decoded=lambda _chunk: None)
+    response.close()
+    if (result.wire_bytes_retained != len(wire) or result.wire_sha256 != _sha(wire)
+            or result.decoded_bytes_retained != len(body) or result.decoded_sha256 != _sha(body)
+            or (receipt['complete_body'] and (not result.complete or receipt.get('error_code') is not None
+                or receipt.get('error_type') is not None))
+            or (not receipt['complete_body'] and receipt.get('error_code') != 'transport_error'
+                and (result.complete or result.error_code != receipt['error_code']))
+            or (receipt.get('error_code') == 'transport_error'
+                and (not isinstance(receipt.get('error_type'), str)
+                     or result.error_code not in {None, 'compressed_stream_incomplete', 'content_length_mismatch'}))):
+        raise ValueError('retained_capture_refusal_invalid:' + name)
 
 
 def write_outputs(storage, prefix: str, outputs: dict[str, bytes]) -> dict[str, dict[str, object]]:
