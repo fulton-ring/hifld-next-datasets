@@ -86,6 +86,7 @@ from shapely import from_wkb, is_valid_reason
 from shapely.geometry import LinearRing, MultiPolygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
@@ -119,12 +120,10 @@ LAYER_NAME = "10-digit HU (Watershed)"
 MAP_NAME = "wbd"
 DHS_CROSSWALK_EVIDENCE_URL = ("https://atcoordinates.info/wp-content/uploads/2025/08/"
                               "hifld_open_crosswalk_geoplatform.xlsx")
-EXPECTED_COUNT = 18_911
-EXPECTED_ID_MIN = 1
-EXPECTED_ID_MAX = 19_567
-# Digest of the canonical-JSON sorted OBJECTID roster (18,911 unique ids,
-# 1..19,567), computed from the complete dated population walk (2026-11-15).
-EXPECTED_ID_SHA256 = "f76070a8f58607499cb528be34afa191c2065faead0fab765c6990b86d8c384b"
+EXPECTED_COUNT = None
+EXPECTED_ID_MIN = None
+EXPECTED_ID_MAX = None
+EXPECTED_ID_SHA256 = ""
 # The 12-digit sibling layer streams at 500; this 10-digit layer fails
 # server-side at 250/400/500 features ("Error performing query operation")
 # and serves 100 features (~16 MB of JSON) reliably (observed 2026-11-14).
@@ -177,35 +176,15 @@ SHAPE_PARITY_TOLERANCE = 1e-6
 # decoded-batch refusal while the largest single served row (tens of
 # megabytes of WKB) still forms its own group (observed 2026-11-15).
 ROW_GROUP_GEOMETRY_BUDGET_BYTES = 64 * 1024 * 1024
-# Native baselines pinned from the complete dated population walk (2026-11-15,
-# two independent walks producing identical digests; the second walk verified
-# the first walk's sealed candidate). 18,911 rows: 18,903 valid served
-# polygons, 8 rows whose served rings formed OGC-invalid geometry under the
-# retired hand-written assembler (5 assemblies invalid, 3 self-intersecting
-# exteriors; they are retained verbatim and counted by the shared converter),
-# 91,144,356 served vertices, 177 multipart and
-# 48 with-hole features; the six windows the JSON serializer refuses at the
-# bisection floor (page_0178bbab, page_0182abab, page_0188aabb, page_0188abba,
-# page_0188baaa, page_0188baab) were served by the producer's protobuf
-# serializer and pass the same row contracts.
-# The geometry baseline digests the structurally validated [objectid, served
-# rings] of EVERY row, including rows that gate to null geometry (2026-11-15
-# review finding: the gate branch previously continued before the digest, so
-# all eight gated source geometries were excluded and a served-ring mutation
-# in a gated row went undetected). Repinned 2026-11-16 from the complete
-# corrected-scheme walk (2026-11-15T23:24Z-2026-11-16T00:02Z, retained capture
-# evidence; the walk also reproduced the ID, schema, record, null-geometry and
-# gate-count baselines and the served vertex/multipart/with-hole counts
-# unchanged). All pins stay enforced.
 EXPECTED_SCHEMA_SHA256 = "9d958f22b37d01eec29106caa71e17b908a331ce9c3101c7664dd06609b4192f"
-EXPECTED_RECORD_SHA256 = "a290786069b511921f22bbafae5015b8c753c41499bd191f733c52400eeb3cb3"
-EXPECTED_GEOMETRY_SHA256 = "44bf3e312fe5cf5a5c5fd7dd7f9a0c5e5655d158fe3ba41c9cea18a9900eb69a"
+EXPECTED_RECORD_SHA256 = ""
+EXPECTED_GEOMETRY_SHA256 = ""
 # Geometry quarantines retired by the shared GDAL Esri polygon converter
 # (issue #997): served rings always convert, OGC-invalid converted geometry
 # is retained verbatim and counted as ogc_invalid_geometry_counts, and the
-# only null candidate geometries are producer-null rows (none served).
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
+# only null candidate geometries are producer-null rows.
+EXPECTED_NULL_GEOMETRY_COUNT = None
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
 
 EXPECTED_PAGE_FIELD_DECLARATIONS = [{'name': 'objectid', 'type': 'esriFieldTypeOID', 'alias': 'ObjectID'}, {'name': 'tnmid', 'type': 'esriFieldTypeString', 'alias': 'TNMID', 'length': 40}, {'name': 'metasourceid', 'type': 'esriFieldTypeString', 'alias': 'MetaSourceID', 'length': 40}, {'name': 'sourcedatadesc', 'type': 'esriFieldTypeString', 'alias': 'SourceDataDesc', 'length': 100}, {'name': 'sourceoriginator', 'type': 'esriFieldTypeString', 'alias': 'SourceOriginator', 'length': 130}, {'name': 'sourcefeatureid', 'type': 'esriFieldTypeString', 'alias': 'SourceFeatureID', 'length': 40}, {'name': 'loaddate', 'type': 'esriFieldTypeDate', 'alias': 'LoadDate', 'length': 8}, {'name': 'referencegnis_ids', 'type': 'esriFieldTypeString', 'alias': 'ReferenceGNIS_IDs', 'length': 50}, {'name': 'areaacres', 'type': 'esriFieldTypeDouble', 'alias': 'AreaAcres'}, {'name': 'areasqkm', 'type': 'esriFieldTypeDouble', 'alias': 'AreaSqKm'}, {'name': 'states', 'type': 'esriFieldTypeString', 'alias': 'States', 'length': 50}, {'name': 'huc10', 'type': 'esriFieldTypeString', 'alias': 'HUC10', 'length': 10}, {'name': 'name', 'type': 'esriFieldTypeString', 'alias': 'Name', 'length': 120}, {'name': 'hutype', 'type': 'esriFieldTypeString', 'alias': 'HUType', 'length': 1}, {'name': 'humod', 'type': 'esriFieldTypeString', 'alias': 'HUMod', 'length': 30}, {'name': 'globalid', 'type': 'esriFieldTypeGlobalID', 'alias': 'globalid', 'length': 38}, {'name': 'shape_Length', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Length'}, {'name': 'shape_Area', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Area'}]
 EXPECTED_LAYER_FIELDS = [{'name': 'objectid', 'type': 'esriFieldTypeOID', 'alias': 'ObjectID', 'domain': None}, {'name': 'tnmid', 'type': 'esriFieldTypeString', 'alias': 'TNMID', 'length': 40, 'domain': None}, {'name': 'metasourceid', 'type': 'esriFieldTypeString', 'alias': 'MetaSourceID', 'length': 40, 'domain': None}, {'name': 'sourcedatadesc', 'type': 'esriFieldTypeString', 'alias': 'SourceDataDesc', 'length': 100, 'domain': None}, {'name': 'sourceoriginator', 'type': 'esriFieldTypeString', 'alias': 'SourceOriginator', 'length': 130, 'domain': None}, {'name': 'sourcefeatureid', 'type': 'esriFieldTypeString', 'alias': 'SourceFeatureID', 'length': 40, 'domain': None}, {'name': 'loaddate', 'type': 'esriFieldTypeDate', 'alias': 'LoadDate', 'length': 8, 'domain': None}, {'name': 'referencegnis_ids', 'type': 'esriFieldTypeString', 'alias': 'ReferenceGNIS_IDs', 'length': 50, 'domain': None}, {'name': 'areaacres', 'type': 'esriFieldTypeDouble', 'alias': 'AreaAcres', 'domain': None}, {'name': 'areasqkm', 'type': 'esriFieldTypeDouble', 'alias': 'AreaSqKm', 'domain': None}, {'name': 'states', 'type': 'esriFieldTypeString', 'alias': 'States', 'length': 50, 'domain': None}, {'name': 'huc10', 'type': 'esriFieldTypeString', 'alias': 'HUC10', 'length': 10, 'domain': None}, {'name': 'name', 'type': 'esriFieldTypeString', 'alias': 'Name', 'length': 120, 'domain': None}, {'name': 'hutype', 'type': 'esriFieldTypeString', 'alias': 'HUType', 'length': 1, 'domain': {'type': 'codedValue', 'name': 'HUType Domain', 'description': '', 'codedValues': [{'name': 'Standard', 'code': 'S'}, {'name': 'Closed Basin', 'code': 'C'}, {'name': 'Frontal', 'code': 'F'}, {'name': 'Multiple Outlet', 'code': 'M'}, {'name': 'Water', 'code': 'W'}, {'name': 'Island', 'code': 'I'}, {'name': 'Urban', 'code': 'U'}, {'name': 'Indeterminate', 'code': 'D'}], 'mergePolicy': 'esriMPTDefaultValue', 'splitPolicy': 'esriSPTDuplicate'}}, {'name': 'humod', 'type': 'esriFieldTypeString', 'alias': 'HUMod', 'length': 30, 'domain': None}, {'name': 'shape', 'type': 'esriFieldTypeGeometry', 'alias': 'Shape', 'domain': None}, {'name': 'globalid', 'type': 'esriFieldTypeGlobalID', 'alias': 'globalid', 'length': 38, 'domain': None}, {'name': 'shape_Length', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Length', 'domain': None}, {'name': 'shape_Area', 'type': 'esriFieldTypeDouble', 'alias': 'shape_Area', 'domain': None}]
@@ -213,10 +192,9 @@ ATTRIBUTE_FIELDS = EXPECTED_PAGE_FIELD_DECLARATIONS
 FIELD_NAMES = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
 DIGEST_SEPARATOR = family.DIGEST_SEPARATOR
 
-PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
+PAGE_COUNT = None
 METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before",
                   "ids_before", "count_after", "ids_after", "layer_after", "service_after")
-CAPTURE_NAMES = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
 
 _EPSG3857_PROJJSON = family.EPSG3857_PROJJSON
 
@@ -284,8 +262,8 @@ def _spec() -> family.WbdHuSpec:
             "and represented as Arrow int64 without conversion; no field "
             "added or dropped"),
         transformation_source_ids=(
-            "OBJECTID retained unchanged; served roster is 18,911 unique ids "
-            "from 1 to 19,567; HUC10 and TNMID retained verbatim including "
+            "OBJECTID retained unchanged; complete captured native ID roster "
+            "witnessed before and after paging; HUC10 and TNMID retained verbatim including "
             "leading zeros; no substitute or synthetic identifier"),
         transformation_raw_evidence=(
             "complete decoded response and wire bodies retained with "
@@ -367,7 +345,7 @@ def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
             ("layer_before", LAYER_URL + "?f=pjson"),
             ("count_before", _count_url()), ("ids_before", _ids_url())]
     urls.extend((f"page_{index:04d}", _window_url(roster, index))
-                for index in range(PAGE_COUNT))
+                for index in range(family.page_count_for(_spec(), roster)))
     urls.extend([("count_after", _count_url()), ("ids_after", _ids_url()),
                  ("layer_after", LAYER_URL + "?f=pjson"),
                  ("service_after", SERVICE_URL + "?f=pjson")])
@@ -819,12 +797,14 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
     if json.loads(docs["service_after"]) != json.loads(docs["service_before"]) \
             or json.loads(docs["layer_after"]) != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
-    _validate_count(json.loads(docs["count_before"]), "before")
-    _validate_count(json.loads(docs["count_after"]), "after")
+    count_before = _validate_count(json.loads(docs["count_before"]), "before")
+    count_after = _validate_count(json.loads(docs["count_after"]), "after")
     roster = _validate_roster_document(json.loads(docs["ids_before"]), "before")
     roster_after = _validate_roster_document(json.loads(docs["ids_after"]), "after")
     if roster != roster_after:
         raise ValueError("source_id_roster_changed_during_capture")
+    validate_capture_witness(count_before, roster, count_after, roster_after)
+    page_count = family.page_count_for(_spec(), roster)
     expected_urls = dict(_capture_roster(roster))
     for name in METADATA_NAMES:
         validate_capture_request_identity(name, receipts[name], expected_urls[name])
@@ -851,7 +831,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
     names = FIELD_NAMES
     geometry_types_seen: set[str] = set()
     try:
-        for index in range(PAGE_COUNT):
+        for index in range(page_count):
             name = f"page_{index:04d}"
             expected_page_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
             part_names = (page_parts or {}).get(name) or [name]
@@ -863,7 +843,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                 pbf_part = False
                 if path and path.endswith("_pbf"):
                     path, pbf_part = path[:-len("_pbf")], True
-                if part_name == name:
+                if part_name in (name, name + "_pbf"):
                     if len(part_names) != 1:
                         raise ValueError("source_page_parts_naming_drift:" + name)
                 elif not path or set(path) - {"a", "b"} or len(part_names) == 1:
@@ -888,7 +868,7 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                 exceeded = page.get("exceededTransferLimit")
                 if exceeded is not None and type(exceeded) is not bool:
                     raise ValueError("source_page_transfer_flag_drift:" + part_name)
-                if (exceeded is True and index == PAGE_COUNT - 1
+                if (exceeded is True and index == page_count - 1
                         and part_no == len(part_names) - 1):
                     raise ValueError("source_page_transfer_limit_on_final_page:" + part_name)
                 rows = page.get("features")
@@ -1085,9 +1065,9 @@ def _validate_stream(root: Path, *, parquet_sink: Path | None,
                 and null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
             raise ValueError("source_null_geometry_count_drift")
         audit = {
-            "source_feature_count": EXPECTED_COUNT,
-            "source_id_sha256": ids_sha, "source_id_min": EXPECTED_ID_MIN,
-            "source_id_max": EXPECTED_ID_MAX,
+            "source_feature_count": len(roster), "source_reported_count": count_before,
+            "source_id_sha256": ids_sha, "source_id_min": min(roster),
+            "source_id_max": max(roster),
             "source_schema_sha256": _sha(_canonical(layer["fields"])),
             "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
             "baseline_digest_scheme": ("sha256 of the concatenation of one canonical "
@@ -1188,6 +1168,8 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
         raise ValueError("retained_capture_manifest_invalid")
     page_parts = manifest.get("page_parts") or {}
+    ids = _validate_roster_document(json.loads(_load_capture(root, "ids_before")[0]), "replay")
+    nominal = {f"page_{index:04d}" for index in range(family.page_count_for(_spec(), ids))}
 
     def part_base_path(page: str, part: str) -> str:
         suffix = part[len(page):]
@@ -1196,9 +1178,9 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
         return suffix
 
     if not isinstance(page_parts, dict) or not all(
-            isinstance(parts, list) and parts and len(set(parts)) == len(parts)
+            page in nominal and isinstance(parts, list) and parts and len(set(parts)) == len(parts)
             and parts == sorted(parts)
-            and all(isinstance(part, str) and (part == page
+            and all(isinstance(part, str) and (part in (page, page + "_pbf")
                     if len(parts) == 1 else
                     part.startswith(page) and len(part) > len(page)
                     and part_base_path(page, part)
@@ -1241,9 +1223,9 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
             if not part.endswith("_pbf"):
                 continue
             leaf_path = part[len(page):-len("_pbf")]
-            if not leaf_path or (page + leaf_path + "_refusal") not in refusals:
+            if ((page + leaf_path + "_refusal") not in refusals
+                    or len(_window_slice(ids, int(page[5:9]), leaf_path)) > MIN_WINDOW_IDS):
                 raise ValueError("retained_capture_refusal_slot_invalid:" + page)
-    nominal = {f"page_{index:04d}" for index in range(PAGE_COUNT)}
     expected_names = ({*METADATA_NAMES, *(nominal - bisected)}
                       | part_names | set(refusals))
     roster_files = manifest.get("artifact_roster")
@@ -1252,7 +1234,6 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
     validate_capture_roster(root, set(roster_files) | {"capture_manifest.json"})
     if roster_files != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    ids = _validate_roster_document(json.loads(_load_capture(root, "ids_before")[0]), "replay")
     expected_urls = dict(_capture_roster(ids))
     captures: dict[str, dict] = {}
     for name in sorted(expected_names):
@@ -1282,8 +1263,6 @@ def _read_replay(root: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
             path = name[len(page):]
             if pbf_part:
                 path = path[:-len("_pbf")]
-                if not path:
-                    raise ValueError("retained_capture_page_parts_invalid")
             validate_capture_request_identity(
                 name, receipt,
                 _window_url(ids, int(page[5:9]), path, fmt="pbf" if pbf_part else "json"))
@@ -1489,9 +1468,7 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
                                         "geoparquet candidate",
             "parameters": {
                 "source_fields": descriptions["source_fields"],
-                "source_ids": "OBJECTID retained unchanged; served roster is 18,911 unique "
-                              "ids from 1 to 19,567; HUC10 and TNMID retained verbatim "
-                              "including leading zeros; no substitute or synthetic identifier",
+                "source_ids": _spec().transformation_source_ids,
                 "source_crs": f"EPSG:{SOURCE_CRS_WKID}",
                 "geometry": ("2D ring order, winding and hole ownership preserved; no "
                              "reprojection, repair or simplification; multi-owned holes "
@@ -1593,9 +1570,10 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
 def _candidate_result(audit: dict, version: str, prefix: str, capture_hash: str,
                       *, reused: bool, root: Path) -> dict[str, object]:
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
+            "feature_count": audit["source_feature_count"], "source_population_complete": True,
+            "source_reported_count": audit["source_reported_count"],
             "source_id_sha256": audit["source_id_sha256"],
-            "source_id_min": EXPECTED_ID_MIN, "source_id_max": EXPECTED_ID_MAX,
+            "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": reused,

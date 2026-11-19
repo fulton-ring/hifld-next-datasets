@@ -9,6 +9,7 @@ import sys
 import tempfile
 import tracemalloc
 import unittest
+import httpx
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,6 +20,7 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.wbd_10_digit_hu import (
     wbd_10_digit_hu, wbd_10_digit_hu_complete, wbd_10_digit_hu_draft_schedule,
+    wbd_10_digit_hu_drift,
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wbd_10_digit_hu as source
@@ -139,7 +141,9 @@ def _attributes(oid: int) -> dict:
     return attrs
 
 
-def _documents() -> dict:
+def _documents(roster=None) -> dict:
+    roster = _TEST_ROSTER if roster is None else roster
+    page_count = (len(roster) + _TEST_PAGE_SIZE - 1) // _TEST_PAGE_SIZE
     service = {"currentVersion": 11.3, "mapName": source.MAP_NAME,
                "copyrightText": source.EXPECTED_COPYRIGHT_TEXT,
                "capabilities": "Map,Query,Data", "maxRecordCount": 2000,
@@ -161,14 +165,14 @@ def _documents() -> dict:
              "sourceSpatialReference": dict(_SR), "spatialReference": None,
              "fields": json.loads(json.dumps(source.EXPECTED_LAYER_FIELDS))}
     features = {}
-    for oid in _TEST_ROSTER:
+    for oid in roster:
         features[oid] = {"attributes": _attributes(oid), "geometry": {"rings": _feature_rings(oid)}}
     pages = {}
-    for index in range(_TEST_PAGE_COUNT):
-        page_ids = _TEST_ROSTER[index * _TEST_PAGE_SIZE:(index + 1) * _TEST_PAGE_SIZE]
+    for index in range(page_count):
+        page_ids = roster[index * _TEST_PAGE_SIZE:(index + 1) * _TEST_PAGE_SIZE]
         pages[f"page_{index:04d}"] = {
             "displayFieldName": "NAME",
-            "exceededTransferLimit": index < _TEST_PAGE_COUNT - 1,
+            "exceededTransferLimit": index < page_count - 1,
             "features": [features[oid] for oid in page_ids],
             "fieldAliases": {field["name"]: field["alias"]
                              for field in source.EXPECTED_PAGE_FIELD_DECLARATIONS},
@@ -179,12 +183,12 @@ def _documents() -> dict:
     return {
         "service_doc": _SERVICE_DOC,
         "service_before": service, "layer_before": layer,
-        "count_before": {"count": _TEST_COUNT},
-        "ids_before": {"objectIdFieldName": "objectid", "objectIds": list(_TEST_ROSTER)},
+        "count_before": {"count": len(roster)},
+        "ids_before": {"objectIdFieldName": "objectid", "objectIds": list(roster)},
         "service_after": json.loads(json.dumps(service)),
         "layer_after": json.loads(json.dumps(layer)),
-        "count_after": {"count": _TEST_COUNT},
-        "ids_after": {"objectIdFieldName": "objectid", "objectIds": list(_TEST_ROSTER)},
+        "count_after": {"count": len(roster)},
+        "ids_after": {"objectIdFieldName": "objectid", "objectIds": list(roster)},
         **pages,
     }
 
@@ -354,6 +358,182 @@ def _write_capture_root(root: Path, documents: dict) -> Path:
 
 
 class Wbd10DigitHuTests(unittest.TestCase):
+    def _network_capture(self, documents, roster, extra=None, **limits):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+        responses = {}
+        with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE):
+            for name, url in source._capture_roster(roster):
+                responses.setdefault(str(httpx.URL(url)), []).append(documents[name])
+        for url, body in (extra or {}).items():
+            responses[str(httpx.URL(url))] = [body]
+
+        def respond(request):
+            return httpx.Response(200, stream=httpx.ByteStream(
+                _encode(responses[str(request.url)].pop(0))))
+
+        client = httpx.Client
+        with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE, DISK_FLOOR_BYTES=1, **limits), patch.object(
+                source.httpx, "Client", side_effect=lambda **kwargs: client(
+                    **kwargs, transport=httpx.MockTransport(respond))):
+            result = source.capture_wbd_10_digit_hu(
+                storage, version="observed", capture_directory=str(root / "captures"))
+        return result, storage
+
+    def test_observed_additions_removals_and_values_construct_and_cache_without_pins(self):
+        versions = set()
+        for roster in ([11, 12, 501], _TEST_ROSTER,
+                       [11, 12, 77, 501, 100_003, 200_004, 200_005]):
+            with self.subTest(roster=roster):
+                documents = _documents(roster)
+                documents["page_0000"]["features"][0]["attributes"]["name"] = "Publisher edit"
+                result, storage = self._network_capture(documents, roster)
+                self.assertFalse(result["reused"])
+                self.assertEqual(result["feature_count"], len(roster))
+                self.assertEqual(result["source_reported_count"], len(roster))
+                self.assertEqual((result["source_id_min"], result["source_id_max"]),
+                                 (min(roster), max(roster)))
+                self.assertEqual(result["source_id_sha256"], _digest(_canonical(roster)))
+                self.assertTrue(wbd_10_digit_hu_complete(result).passed)
+                self.assertFalse(result["release_accepted"])
+                prefix = Path(storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / result["version"]
+                table = pq.read_table(prefix / "geoparquet" / (source.FILE_SLUG + ".parquet"))
+                self.assertEqual(table.column_names, [*source.FIELD_NAMES, "geometry"])
+                self.assertEqual(table["objectid"].to_pylist(), list(roster))
+                self.assertEqual(table["huc10"][0].as_py(), _attributes(11)["huc10"])
+                self.assertEqual(table["tnmid"][0].as_py(), _attributes(11)["tnmid"])
+                self.assertEqual(table["loaddate"][0].as_py(), _attributes(11)["loaddate"])
+                self.assertEqual(table["name"][0].as_py(), "Publisher edit")
+                self.assertEqual(table["geometry"][0].as_py(), to_wkb(
+                    {"rings": _feature_rings(11)}, "esriGeometryPolygon", has_z=False, has_m=False))
+                self.assertEqual(json.loads(table.schema.metadata[b"geo"])["columns"]["geometry"]["crs"]["id"]["code"], 3857)
+                with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE, DISK_FLOOR_BYTES=1), patch.object(
+                        source.httpx, "Client", side_effect=AssertionError("network on replay")):
+                    replay = source.capture_wbd_10_digit_hu(storage, version="observed",
+                        capture_directory=result["capture_directory"])
+                self.assertTrue(replay["reused"])
+                self.assertEqual(replay["source_reported_count"], len(roster))
+                self.assertEqual(replay["version"], result["version"])
+                versions.add(result["version"])
+        self.assertEqual(len(versions), 3)
+        drift = wbd_10_digit_hu_drift(result)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.severity.value, "WARN")
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+
+    def test_real_bisected_leaf_protobuf_rescue_and_double_refusal(self):
+        documents = _documents()
+        refusal = {"error": {"code": 500, "message": "Error performing query operation"}}
+        leaf_b = dict(documents["page_0001"], features=[documents["page_0001"]["features"][1]],
+                      exceededTransferLimit=False)
+        documents["page_0001"] = refusal
+        with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE):
+            extra = {source._window_url(_TEST_ROSTER, 1, "a"): refusal,
+                     source._window_url(_TEST_ROSTER, 1, "a", fmt="pbf"):
+                         _encode_pbf_window([501], exceeded=True),
+                     source._window_url(_TEST_ROSTER, 1, "b"): leaf_b}
+        result, storage = self._network_capture(documents, _TEST_ROSTER, extra, MIN_WINDOW_IDS=1)
+        self.assertEqual(result["feature_count"], 5)
+        with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE, DISK_FLOOR_BYTES=1), patch.object(
+                source.httpx, "Client", side_effect=AssertionError("network on replay")):
+            replay = source.capture_wbd_10_digit_hu(storage, version="observed",
+                capture_directory=result["capture_directory"])
+        self.assertTrue(replay["reused"])
+        with patches(source, PAGE_SIZE=_TEST_PAGE_SIZE):
+            extra[source._window_url(_TEST_ROSTER, 1, "a", fmt="pbf")] = refusal
+        with self.assertRaisesRegex(ValueError, "source_page_window_refused_after_bisection:page_0001a"):
+            self._network_capture(documents, _TEST_ROSTER, extra, MIN_WINDOW_IDS=1)
+
+    def test_unpinned_torn_witnesses_and_page_coverage_fail(self):
+        mutations = (
+            lambda d: d["count_after"].update(count=6),
+            lambda d: d["count_before"].update(count=4),
+            lambda d: d["ids_after"].update(objectIds=[11, 12, 502, 100_003, 200_004]),
+            lambda d: d["ids_after"]["objectIds"].append(200_005),
+            lambda d: d["ids_before"]["objectIds"].__setitem__(1, 11),
+            lambda d: d["page_0001"]["features"].pop(),
+            lambda d: d["page_0001"]["features"].append(d["page_0000"]["features"][0]),
+        )
+        for index, mutate in enumerate(mutations):
+            with self.subTest(case=index):
+                documents = _documents()
+                mutate(documents)
+                with self.assertRaises(ValueError):
+                    self._network_capture(documents, _TEST_ROSTER)
+
+    def test_nominal_final_page_protobuf_rescue_constructs_and_replays(self):
+        documents = _documents()
+        refusal = {"error": {"code": 500, "message": "Error performing query operation"}}
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
+        responses = {}
+        with relaxed_pins():
+            for name, url in source._capture_roster(_TEST_ROSTER):
+                responses.setdefault(str(httpx.URL(url)), []).append(
+                    refusal if name == "page_0002" else documents[name])
+            responses[str(httpx.URL(source._window_url(_TEST_ROSTER, 2, fmt="pbf")))] = [
+                _encode_pbf_window(_TEST_ROSTER[4:], exceeded=False)]
+        calls = []
+
+        def respond(request):
+            url = str(request.url)
+            calls.append(url)
+            return httpx.Response(200, stream=httpx.ByteStream(_encode(responses[url].pop(0))))
+
+        client = httpx.Client
+        with relaxed_pins(DISK_FLOOR_BYTES=1), patch.object(
+                source.httpx, "Client", side_effect=lambda **kwargs: client(
+                    **kwargs, transport=httpx.MockTransport(respond))):
+            result = source.capture_wbd_10_digit_hu(
+                storage, version="nominal-pbf", capture_directory=str(root / "captures"))
+        retained = Path(result["capture_directory"])
+        manifest = json.loads((retained / "capture_manifest.json").read_bytes())
+        self.assertEqual(manifest["page_parts"]["page_0002"], ["page_0002_pbf"])
+        self.assertIn("page_0002_refusal", manifest["page_refusals"])
+        self.assertEqual(result["feature_count"], 5)
+        with relaxed_pins(DISK_FLOOR_BYTES=1), patch.object(
+                source.httpx, "Client", side_effect=AssertionError("network on replay")):
+            replay = source.capture_wbd_10_digit_hu(
+                storage, version="nominal-pbf", capture_directory=str(retained))
+        self.assertTrue(replay["reused"])
+        self.assertEqual(replay["version"], result["version"])
+        for case in ("missing", "forged", "extra", "substituted", "wrong_url", "above_floor"):
+            with self.subTest(case=case):
+                altered = root / case
+                shutil.copytree(retained, altered)
+                saved = json.loads((altered / "capture_manifest.json").read_bytes())
+                if case == "missing":
+                    saved["page_refusals"].remove("page_0002_refusal")
+                    del saved["receipts"]["page_0002_refusal"]
+                    for path in altered.glob("page_0002_refusal.*"):
+                        path.unlink()
+                elif case == "forged":
+                    body = _encode(documents["page_0002"])
+                    receipt = saved["receipts"]["page_0002_refusal"]
+                    receipt.update(bytes=len(body), sha256=_digest(body),
+                                   wire_bytes=len(body), wire_sha256=_digest(body))
+                    for suffix in ("body", "wire"):
+                        (altered / ("page_0002_refusal." + suffix)).write_bytes(body)
+                    (altered / "page_0002_refusal.receipt.json").write_bytes(_canonical(receipt))
+                elif case == "extra":
+                    saved["page_parts"]["page_9999"] = ["page_9999_pbf"]
+                elif case == "substituted":
+                    saved["page_parts"]["page_0001"] = ["page_0002_pbf"]
+                elif case == "wrong_url":
+                    receipt = saved["receipts"]["page_0002_pbf"]
+                    receipt["url"] = receipt["final_url"] = receipt["url"].replace("f=pbf", "f=json")
+                    (altered / "page_0002_pbf.receipt.json").write_bytes(_canonical(receipt))
+                saved["artifact_roster"] = source.capture_roster_digests(
+                    altered, exclude={"capture_manifest.json"})
+                (altered / "capture_manifest.json").write_bytes(_canonical(saved))
+                with relaxed_pins(MIN_WINDOW_IDS=0 if case == "above_floor" else 10):
+                    with self.assertRaises(ValueError):
+                        source._read_replay(altered)
+
     def _capture_root(self, documents: dict) -> Path:
         temporary = tempfile.TemporaryDirectory(prefix="wbd-10-digit-hu-capture-")
         self.addCleanup(temporary.cleanup)
@@ -367,11 +547,10 @@ class Wbd10DigitHuTests(unittest.TestCase):
         self.assertEqual(source.LAYER_URL, source.SERVICE_URL + "/5")
         self.assertEqual(source.LAYER_NAME, "10-digit HU (Watershed)")
         self.assertEqual(source.MAP_NAME, "wbd")
-        self.assertEqual(source.EXPECTED_COUNT, 18_911)
+        self.assertIsNone(source.EXPECTED_COUNT)
         self.assertEqual(source.PAGE_SIZE, 100)
         self.assertEqual(source.DECLARED_MAX_RECORD_COUNT, 2000)
-        self.assertEqual((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE,
-                         source.PAGE_COUNT)
+        self.assertIsNone(source.PAGE_COUNT)
         self.assertEqual(source.SERVICE_DOC_URL,
                          "https://www.usgs.gov/national-hydrography/access-national-hydrography-products")
         self.assertEqual(source.EXPECTED_COPYRIGHT_TEXT,
@@ -412,11 +591,11 @@ class Wbd10DigitHuTests(unittest.TestCase):
         self.assertIn(wbd_10_digit_hu, hifld_ingest_assets)
         self.assertEqual(wbd_10_digit_hu_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
-        check = wbd_10_digit_hu_complete({"feature_count": source.EXPECTED_COUNT,
+        check = wbd_10_digit_hu_complete({"feature_count": 5, "source_reported_count": 5,
                                           "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = wbd_10_digit_hu_complete({"feature_count": source.EXPECTED_COUNT - 1,
+        failed = wbd_10_digit_hu_complete({"feature_count": 4, "source_reported_count": 5,
                                            "source_population_complete": True})
         self.assertFalse(failed.passed)
 
