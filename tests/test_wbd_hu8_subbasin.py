@@ -1,6 +1,7 @@
 """Focused tests for the USGS WBD 8-digit HU (Subbasin) native capture draft."""
 
 import json
+import gzip
 import os
 import shutil
 import tempfile
@@ -253,7 +254,7 @@ def _segment_names():
 
 
 class WbdHu8SubbasinTests(unittest.TestCase):
-    def _transport(self, roster, mutate=None):
+    def _transport(self, roster, mutate=None, encoding="identity"):
         calls = []
         visits = {}
 
@@ -283,8 +284,10 @@ class WbdHu8SubbasinTests(unittest.TestCase):
             visits[name] = visit + 1
             if mutate:
                 mutate(name, visit, document)
-            return httpx.Response(200, stream=httpx.ByteStream(json.dumps(
-                document, separators=(",", ":"), allow_nan=False).encode()))
+            body = json.dumps(document, separators=(",", ":"), allow_nan=False).encode()
+            wire = gzip.compress(body, mtime=0) if encoding == "gzip" else body
+            return httpx.Response(200, headers={"Content-Encoding": encoding,
+                "Content-Length": str(len(wire))}, stream=httpx.ByteStream(wire))
 
         return httpx.MockTransport(respond), calls
 
@@ -341,8 +344,8 @@ class WbdHu8SubbasinTests(unittest.TestCase):
             source.fetch_wbd_hu8_subbasin_pages(root)
             self.assertEqual(calls[-4:], [str(httpx.URL(url)) for _name, url in source._after_doc_urls()])
 
-    def _real_capture(self, storage, root, roster, mutate=None):
-        transport, calls = self._transport(roster, mutate)
+    def _real_capture(self, storage, root, roster, mutate=None, encoding="identity"):
+        transport, calls = self._transport(roster, mutate, encoding)
         with patch.object(source, "PAGE_SIZE", FIXTURE_PAGE_SIZE), \
                 patch.object(source, "ATTRS_PAGE_SIZE", FIXTURE_ATTRS_PAGE_SIZE), \
                 patch.object(source, "MIN_FREE_BYTES", 1), \
@@ -428,6 +431,40 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self._real_replay(storage, root)
         self.assertEqual(cached_raw.read_bytes(), b"corrupt cached original")
+
+    def test_real_identity_and_gzip_replay_reject_cross_path_decoded_body_forgery(self):
+        for encoding in ("identity", "gzip"):
+            with self.subTest(encoding=encoding):
+                tmp = Path(self._tmpdir().name)
+                storage = self._storage(tmp)
+                root = tmp / "captures"
+                result, _calls = self._real_capture(storage, root, list(range(1, 9)), encoding=encoding)
+                replay = self._real_replay(storage, root)
+                self.assertTrue(replay["reused"])
+                self.assertEqual(replay["version"], result["version"])
+                def staged_inventory():
+                    stage = Path(storage.local_dir)
+                    return {path.relative_to(stage): path.read_bytes()
+                            for directory in (stage / source.DATASET_SLUG, stage / "_construction-state")
+                            for path in directory.rglob("*") if path.is_file()}
+                original = staged_inventory()
+                for name in (source._segment_name(0, FIXTURE_PAGE_SIZE), "attrs_00000"):
+                    body_path = root / f"{name}.body"
+                    wire_path = root / f"{name}.wire"
+                    wire = wire_path.read_bytes()
+                    document = json.loads(body_path.read_bytes())
+                    document["features"][0]["attributes"]["name"] = "Consistent forged native string"
+                    body = json.dumps(document, separators=(",", ":")).encode()
+                    body_path.write_bytes(body)
+                    receipt_path = root / f"{name}.receipt.json"
+                    receipt = json.loads(receipt_path.read_bytes())
+                    self.assertEqual(receipt["content_encoding"], encoding)
+                    receipt.update(bytes=len(body), sha256=_sha(body))
+                    receipt_path.write_bytes(_canonical(receipt))
+                    self.assertEqual(wire_path.read_bytes(), wire)
+                with self.assertRaisesRegex(source.WbdHu8SubbasinError, "wire_body_mismatch"):
+                    self._real_replay(storage, root)
+                self.assertEqual(staged_inventory(), original)
 
     def test_real_capture_transport_and_torn_population_regressions(self):
         tmp = Path(self._tmpdir().name)
