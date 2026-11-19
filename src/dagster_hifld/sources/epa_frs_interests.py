@@ -583,6 +583,32 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
     try:
         retained: dict[str, tuple[bytes, dict[str, object]]] = {}
         urls = _document_urls()
+        last_objectid = pages[-1]['last_objectid'] if pages else 0
+        tail_valid = False
+        try:
+            tail_document = json.loads(_read_capture(capture_root, 'page_tail', expected_url=_page_url(last_objectid))[0])
+            tail_valid = isinstance(tail_document, dict) and tail_document.get('features') == []
+        except ValueError:
+            pass
+        refresh_closing = state.get('complete') is not True or tail is None or not tail_valid
+        closing_names = ('layer_after', 'service_after', 'count_after')
+        if not refresh_closing:
+            try:
+                for name in (*METADATA_NAMES, *closing_names):
+                    document = json.loads(_read_capture(capture_root, name, expected_url=urls[name])[0])
+                    if not isinstance(document, dict) or 'error' in document:
+                        refresh_closing = True
+                        break
+            except ValueError:
+                refresh_closing = True
+        if refresh_closing:
+            _save_state(capture_root, {'data_pages': pages, 'tail': tail, 'complete': False})
+            for name in closing_names:
+                _witness_error_response(capture_root, name)
+            if not tail_valid:
+                tail = None
+                _witness_error_response(capture_root, 'page_tail')
+                _witness_error_response(capture_root, f'page_{len(pages):06d}')
         for name in METADATA_NAMES:
             url = urls[name]
             retained[name] = _retained_or_fetch(active, capture_root, name, url)
@@ -590,7 +616,6 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
         count_before = json.loads(retained["count_before"][0]).get("count")
         if type(count_before) is not int or count_before <= 0:
             raise EPAFRSInterestsError("source_count_drift")
-        last_objectid = pages[-1]["last_objectid"] if pages else 0
         while not (capture_root / "page_tail.body").exists():
             name = f"page_{len(pages):06d}"
             body, receipt = _retained_or_fetch(active, capture_root, name, _page_url(last_objectid))

@@ -299,6 +299,83 @@ class EpaFrsInterestsTests(unittest.TestCase):
             self.assertFalse(storage.list_prefix(src.DATASET_SLUG))
             self.assertTrue(storage.list_prefix('_quarantine/' + src.DATASET_SLUG))
 
+    def test_missing_tail_refreshes_closing_group_and_rejects_changed_count(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        for row in rows:
+            row['attributes']['OBJECTID'] *= 10
+        extra = _fixture_rows(FIXTURE_COUNT + 1)[-1]
+        extra['attributes']['OBJECTID'] = 15
+        current_rows = sorted([*rows, extra], key=lambda row: row['attributes']['OBJECTID'])
+        schema_sha = src._profile_schema({'fields': _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp, patch.object(src, 'EXPECTED_SCHEMA_SHA256', schema_sha):
+            root = Path(tmp)
+            with httpx.Client(transport=make_responder(rows)) as client:
+                src.fetch_frs_interests_pages(root, client=client)
+            closing = {f'{name}.{suffix}': (root / f'{name}.{suffix}').read_bytes()
+                for name in ('layer_after', 'service_after', 'count_after') for suffix in ('body', 'wire', 'receipt.json')}
+            for suffix in ('body', 'wire', 'receipt.json'):
+                (root / f'page_tail.{suffix}').unlink()
+            current = make_responder(current_rows)
+            calls = []
+            states = []
+
+            def recover(request):
+                calls.append(str(request.url))
+                states.append(src._load_state(root)['complete'])
+                return current.handler(request)
+
+            with httpx.Client(transport=httpx.MockTransport(recover)) as client:
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, 'source_metadata_or_count_changed_during_capture'):
+                    src.fetch_frs_interests_pages(root, client=client)
+            self.assertFalse(src._load_state(root)['complete'])
+            self.assertTrue(states)
+            self.assertFalse(any(states))
+            self.assertEqual(calls[-3:], [src.LAYER_URL + '?f=pjson', src.SERVICE_URL + '?f=pjson', src._count_url()])
+            for filename, body in closing.items():
+                name, suffix = filename.split('.', 1)
+                self.assertIn(body, [path.read_bytes() for path in root.glob(f'{name}.error-*.{suffix}')])
+
+    def test_closing_interruption_keeps_checkpoint_incomplete_and_refreshes_again(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({'fields': _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp, patch.object(src, 'EXPECTED_SCHEMA_SHA256', schema_sha):
+            root = Path(tmp)
+            base = make_responder(rows)
+            with httpx.Client(transport=base) as client:
+                src.fetch_frs_interests_pages(root, client=client)
+            state = src._load_state(root)
+            state['complete'] = False
+            src._save_state(root, state)
+            calls = []
+
+            def interrupted(request):
+                calls.append(str(request.url))
+                self.assertFalse(src._load_state(root)['complete'])
+                if str(request.url) == src.SERVICE_URL + '?f=pjson':
+                    raise httpx.ConnectError('fixture closing interruption', request=request)
+                return base.handler(request)
+
+            with httpx.Client(transport=httpx.MockTransport(interrupted)) as client:
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, 'source_capture_failed'):
+                    src.fetch_frs_interests_pages(root, client=client)
+            self.assertEqual(calls, [src.LAYER_URL + '?f=pjson', src.SERVICE_URL + '?f=pjson'])
+            self.assertFalse(src._load_state(root)['complete'])
+            first_layer = (root / 'layer_after.receipt.json').read_bytes()
+            calls.clear()
+            current = make_responder(rows, count=FIXTURE_COUNT + 1)
+
+            def resumed(request):
+                calls.append(str(request.url))
+                self.assertFalse(src._load_state(root)['complete'])
+                return current.handler(request)
+
+            with httpx.Client(transport=httpx.MockTransport(resumed)) as client:
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, 'source_metadata_or_count_changed_during_capture'):
+                    src.fetch_frs_interests_pages(root, client=client)
+            self.assertEqual(calls, [src.LAYER_URL + '?f=pjson', src.SERVICE_URL + '?f=pjson', src._count_url()])
+            self.assertFalse(src._load_state(root)['complete'])
+            self.assertIn(first_layer, [path.read_bytes() for path in root.glob('layer_after.error-*.receipt.json')])
+
     def test_source_is_explicit_and_draft_only(self):
         self.assertEqual(src.DATASET_SLUG, "frs-interests")
         self.assertEqual(src.ITEM_ID, "cdff193a3e3743a5bc770e2743f215b3")
