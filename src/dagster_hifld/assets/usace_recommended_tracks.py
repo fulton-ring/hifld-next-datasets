@@ -124,3 +124,8 @@ def recommended_tracks_draft_schedule(context):
 
 usace_recommended_tracks_drift = register_approved_baseline_drift(
     usace_recommended_tracks_ienc, "usace_recommended_tracks_drift")
+
+INGEST_ASSETS = [usace_recommended_tracks_ienc]
+ASSET_CHECKS = [usace_recommended_tracks_complete, usace_recommended_tracks_drift]
+JOBS = [recommended_tracks_draft_job]
+SCHEDULES = [recommended_tracks_draft_schedule]

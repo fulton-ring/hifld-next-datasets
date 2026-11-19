@@ -77,3 +77,8 @@ def distance_marks_draft_refresh_schedule(context):
 
 usace_distance_marks_drift = register_approved_baseline_drift(
     usace_distance_marks_usace_ienc, "usace_distance_marks_drift")
+
+INGEST_ASSETS = [usace_distance_marks_usace_ienc]
+ASSET_CHECKS = [usace_distance_marks_drift]
+JOBS = [distance_marks_draft_refresh_job]
+SCHEDULES = [distance_marks_draft_refresh_schedule]

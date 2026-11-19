@@ -72,3 +72,8 @@ usace_mooring_facility_lines_draft_schedule = ScheduleDefinition(
 
 usace_mooring_facility_lines_drift = register_approved_baseline_drift(
     usace_mooring_facility_lines_usace_ienc, "usace_mooring_facility_lines_drift")
+
+INGEST_ASSETS = [usace_mooring_facility_lines_usace_ienc]
+ASSET_CHECKS = [usace_mooring_facility_lines_complete, usace_mooring_facility_lines_drift]
+JOBS = [usace_mooring_facility_lines_draft_job]
+SCHEDULES = [usace_mooring_facility_lines_draft_schedule]

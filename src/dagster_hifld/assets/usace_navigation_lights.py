@@ -96,4 +96,7 @@ usace_navigation_lights_draft_schedule = ScheduleDefinition(
 usace_navigation_lights_usace_ienc_drift = register_approved_baseline_drift(
     usace_navigation_lights_usace_ienc, "usace_navigation_lights_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_navigation_lights_usace_ienc]
 ASSET_CHECKS = [usace_navigation_lights_complete, usace_navigation_lights_usace_ienc_drift]
+JOBS = [usace_navigation_lights_draft_job]
+SCHEDULES = [usace_navigation_lights_draft_schedule]
