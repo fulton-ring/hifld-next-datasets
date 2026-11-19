@@ -40,6 +40,7 @@ from dagster_hifld.sources.capture_common import (
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.nces_edge_common import dbf_record_count
 
 DATASET_SLUG = FILE_SLUG = "electric-retail-service-territories"
 PAGE_URL = "https://www.eia.gov/electricity/data/eia861/"
@@ -372,6 +373,16 @@ def aggregate_territories(
 
 def _read_counties(body: bytes, edition: str) -> gpd.GeoDataFrame:
     stem = f"tl_{edition}_us_county"
+    def read_counted_frame(path):
+        dbf = path.with_suffix('.dbf')
+        if dbf.stat().st_size > 65535 + MAX_COUNTY_COUNT * 65535 + 1:
+            raise ValueError('tiger_county_dbf_size_limit')
+        publisher_count = dbf_record_count(dbf.read_bytes(), 'tiger_county')
+        frame = gpd.read_file(path, engine='pyogrio')
+        if len(frame) != publisher_count:
+            raise ValueError('tiger_county_source_record_count_disagreement')
+        return frame
+
     members = {
         f"{stem}.cpg", f"{stem}.dbf", f"{stem}.prj", f"{stem}.shp",
         f"{stem}.shp.ea.iso.xml", f"{stem}.shp.iso.xml", f"{stem}.shx",
@@ -379,7 +390,7 @@ def _read_counties(body: bytes, edition: str) -> gpd.GeoDataFrame:
     frame = census_tiger_common.read_tiger_shapefile(
         body, expected_members=members, shapefile_name=f"{stem}.shp",
         extract_tmp_prefix="eia861-county-",
-        read_file=lambda path: gpd.read_file(path, engine="pyogrio"),
+        read_file=read_counted_frame,
     )
     required = {"GEOID", "STATEFP", "NAME", "NAMELSAD", "geometry"}
     if not required <= set(frame.columns) or str(frame.crs) != "EPSG:4269":
@@ -528,6 +539,7 @@ def capture_electric_retail_service_territories(
             raise ValueError("empty_electric_retail_population")
         identity = processing_identity(Path(__file__).parents[3])
         output = _geoparquet(features)
+        id_sha = _sha(_canonical(sorted((row['utility_number'], row['state']) for row in features)))
         record_sha = _sha(_canonical([
             {key: value for key, value in row.items() if key != "geometry"} for row in features
         ]))
@@ -655,6 +667,7 @@ def capture_electric_retail_service_territories(
             },
             "output": {
                 "feature_count": len(features), "utility_count": utility_count,
+                "source_id_sha256": id_sha,
                 "state_count": state_count, "county_row_count": len(territory_rows),
             },
             "processing_identity": identity,
@@ -692,6 +705,7 @@ def capture_electric_retail_service_territories(
         return {
             "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": len(features), "utility_count": utility_count,
+            "source_id_sha256": id_sha,
             "state_count": state_count, "county_row_count": len(territory_rows),
             "matched_county_row_count": join_audit["matched_county_rows"],
             "distinct_county_count": county_count,

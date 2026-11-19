@@ -12,7 +12,9 @@ import httpx
 import pyarrow.parquet as pq
 from shapely.geometry import box
 
-from dagster import DefaultScheduleStatus
+from dagster import AssetCheckSeverity, DagsterInstance, DefaultScheduleStatus, materialize
+from dagster_hifld.assets import electric_retail_service_territories as assets
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.assets.electric_retail_service_territories import (
     electric_retail_service_territories_draft_schedule,
     electric_retail_service_territories_geometry_valid,
@@ -105,12 +107,19 @@ def _frame_rows() -> list[list[str]]:
     return [FRAME_HEADERS, one, two]
 
 
-def _eia_zip() -> bytes:
+def _eia_zip(*, added_utility: bool = False) -> bytes:
+    service_rows = _service_rows()
+    frame_rows = _frame_rows()
+    if added_utility:
+        service_rows.append(["2025", "3", "Utility Three", "", "AL", "Autauga"])
+        frame_row = list(frame_rows[1])
+        frame_row[1:3] = ["3", "Utility Three"]
+        frame_rows.append(frame_row)
     service = _xlsx({
-        "Counties_States": _service_rows(),
+        "Counties_States": service_rows,
         "Counties_Territories": [SERVICE_HEADERS],
     })
-    frame = _xlsx({"Frame": _frame_rows()})
+    frame = _xlsx({"Frame": frame_rows})
     sink = io.BytesIO()
     with zipfile.ZipFile(sink, "w") as archive:
         archive.writestr("Service_Territory_2025.xlsx", service)
@@ -152,7 +161,98 @@ def _tiger_zip() -> bytes:
     return sink.getvalue()
 
 
+def _client(eia_body=None, tiger_body=None):
+    payloads = {
+        source.PAGE_URL: b'<a href="zip/f8612025.zip">2025</a>',
+        source.PAGE_URL + 'zip/f8612025.zip': eia_body if eia_body is not None else _eia_zip(),
+        source.REUSE_URL: b'<html>reuse</html>',
+        source.TIGER_ROOT: b'<a href="TIGER2026/">2026</a>',
+        source.TIGER_ROOT + 'TIGER2026/COUNTY/': b'<a href="tl_2026_us_county.zip">zip</a>',
+        source.TIGER_ROOT + 'TIGER2026/COUNTY/tl_2026_us_county.zip': tiger_body if tiger_body is not None else _tiger_zip(),
+    }
+    return httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(
+        200, stream=httpx.ByteStream(payloads[str(request.url)])) ))
+
+
 class ElectricRetailTerritoryTests(unittest.TestCase):
+    def test_oversized_dbf_is_refused_before_payload_read_or_decode(self):
+        with zipfile.ZipFile(io.BytesIO(_tiger_zip())) as archive:
+            members = {name: archive.read(name) for name in archive.namelist()}
+        output = io.BytesIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            oversized = Path(tmp) / 'oversized.dbf'
+            with oversized.open('wb') as stream:
+                stream.truncate(65535 + source.MAX_COUNTY_COUNT * 65535 + 2)
+            with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                for name, body in members.items():
+                    if name.endswith('.dbf'):
+                        archive.write(oversized, name)
+                    else:
+                        archive.writestr(name, body)
+        read_bytes = Path.read_bytes
+        def refuse_dbf_read(path):
+            if path.suffix == '.dbf':
+                raise AssertionError('oversized DBF payload was materialized')
+            return read_bytes(path)
+        with patch.object(Path, 'read_bytes', refuse_dbf_read), \
+                patch.object(zipfile.ZipFile, 'read', side_effect=AssertionError('unexpected member allocation')), \
+                patch.object(source.gpd, 'read_file', side_effect=AssertionError('unexpected decode')):
+            with self.assertRaisesRegex(ValueError, 'tiger_county_dbf_size_limit'):
+                source._read_counties(output.getvalue(), '2026')
+
+    def test_decoded_county_truncation_is_refused_against_publisher_count(self):
+        archive = _tiger_zip()
+        with patch.object(source, 'MIN_COUNTY_COUNT', 1), \
+                patch.object(source.gpd, 'read_file', return_value=_counties().iloc[:-1].copy()):
+            with self.assertRaisesRegex(ValueError, 'tiger_county_source_record_count_disagreement'):
+                source._read_counties(archive, '2026')
+
+    def test_physically_truncated_county_shapefile_is_refused(self):
+        with zipfile.ZipFile(io.BytesIO(_tiger_zip())) as archive:
+            members = {name: archive.read(name) for name in archive.namelist()}
+        members['tl_2026_us_county.shp'] = members['tl_2026_us_county.shp'][:-20]
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, 'w') as archive:
+            for name, body in members.items():
+                archive.writestr(name, body)
+        with patch.object(source, 'MIN_COUNTY_COUNT', 1):
+            with self.assertRaises(ValueError):
+                source._read_counties(output.getvalue(), '2026')
+
+    def test_added_utility_materializes_with_completeness_and_baseline_warn(self):
+        from dagster_hifld.resources import StagingStorageResource
+        self.assertIn(assets.electric_retail_service_territories_approved_baseline_drift, assets.ASSET_CHECKS)
+        with tempfile.TemporaryDirectory() as tmp, DagsterInstance.ephemeral() as instance, \
+                patch.object(source, 'MIN_COUNTY_COUNT', 1):
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / 'stage'))
+            with _client() as client:
+                before = source.capture_electric_retail_service_territories(storage, client=client,
+                    capture_directory=str(Path(tmp) / 'before'))
+            client = _client(_eia_zip(added_utility=True))
+            with patch.object(source.httpx, 'Client', return_value=client):
+                result = materialize([*assets.INGEST_ASSETS, *assets.ASSET_CHECKS], instance=instance,
+                    resources={'staging_storage': storage}, run_config={'ops': {
+                        assets.electric_retail_service_territories_eia861_candidate.op.name: {
+                            'config': {'capture_directory': str(Path(tmp) / 'after')}}}})
+            self.assertTrue(result.success)
+            after = result.output_for_node(assets.electric_retail_service_territories_eia861_candidate.op.name)
+            self.assertEqual((before['feature_count'], after['feature_count']), (4, 5))
+            self.assertEqual((before['county_row_count'], after['county_row_count']), (6, 7))
+            self.assertTrue(after['source_population_complete'])
+            self.assertNotEqual(before['source_id_sha256'], after['source_id_sha256'])
+            self.assertFalse(after['release_accepted'])
+            checks = {check.check_name: check for check in result.get_asset_check_evaluations()}
+            self.assertTrue(checks['electric_retail_service_territories_population_complete'].passed)
+            self.assertTrue(checks['electric_retail_service_territories_geometry_valid'].passed)
+            warning = checks['electric_retail_service_territories_approved_baseline_drift']
+            self.assertFalse(warning.passed)
+            self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(warning.metadata['comparison_status'].value, 'skipped_no_approved_baseline')
+            drift = approved_baseline_drift(after, {**before, 'release_accepted': True})
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(drift.metadata['feature_count_delta'].value, 1)
+
     def test_latest_release_selects_newest_active_annual_zip(self):
         html = (
             '<a href="zip/f8612025.zip">2025</a>'

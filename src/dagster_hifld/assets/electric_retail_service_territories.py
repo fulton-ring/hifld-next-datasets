@@ -6,6 +6,7 @@ from dagster import (
 )
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.electric_retail_service_territories_common import (
     DATASET_SLUG, FILE_SLUG, capture_electric_retail_service_territories,
@@ -105,10 +106,14 @@ electric_retail_service_territories_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [electric_retail_service_territories_eia861_candidate]
+electric_retail_service_territories_approved_baseline_drift = register_approved_baseline_drift(
+    electric_retail_service_territories_eia861_candidate,
+    "electric_retail_service_territories_approved_baseline_drift")
 ASSET_CHECKS = [
     electric_retail_service_territories_population_complete,
     electric_retail_service_territories_geometry_valid,
     electric_retail_service_territories_release_pending,
+    electric_retail_service_territories_approved_baseline_drift,
 ]
 JOBS = [electric_retail_service_territories_draft_job]
 SCHEDULES = [electric_retail_service_territories_draft_schedule]
