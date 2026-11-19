@@ -13,12 +13,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
+import fiona
 import pandas as pd
 import pyarrow as pa
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import census_latest
 from dagster_hifld.sources import address_ranges as source
+from test_census_substate_construction import snapshot
 
 
 def _release(vintage=2026):
@@ -135,12 +137,20 @@ def _fixture_rows() -> pd.DataFrame:
 
 
 def _build_fixture_gdb(directory: Path, rows: pd.DataFrame | None = None,
-                       name: str = "fixture.gdb") -> Path:
+                       name: str = "fixture.gdb", native_widths: bool = False) -> Path:
     import pyogrio
 
     path = directory / name
-    pyogrio.write_dataframe(rows if rows is not None else _fixture_rows(), path,
-                            layer="Address_Ranges", driver="OpenFileGDB")
+    rows = rows if rows is not None else _fixture_rows()
+    if native_widths:
+        properties = {name: "float" if kind == "float64" else f"str:{width}"
+                      for name, kind, width in source.EXPECTED_FIELD_DECLARATIONS}
+        with fiona.open(path, "w", driver="OpenFileGDB", layer="Address_Ranges",
+                        schema={"geometry": None, "properties": properties}) as output:
+            for row in rows.astype(object).where(rows.notna(), None).to_dict("records"):
+                output.write({"geometry": None, "properties": row})
+    else:
+        pyogrio.write_dataframe(rows, path, layer="Address_Ranges", driver="OpenFileGDB")
     return path
 
 
@@ -662,6 +672,111 @@ class ReplayTests(unittest.TestCase):
                                       / "address-ranges/address-ranges/vreject/metadata/native_capture.json").exists())
                     self.assertFalse((Path(directory)
                                       / "address-ranges/address-ranges/vreject/metadata/source_manifest.json").exists())
+
+
+class NativeLifecycleTests(unittest.TestCase):
+    @contextmanager
+    def captured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            release = _release()
+            gdb = _build_fixture_gdb(root, name=release.source_file[:-4], native_widths=True)
+            sink = io.BytesIO()
+            with zipfile.ZipFile(sink, "w", zipfile.ZIP_DEFLATED) as archive:
+                for path in sorted(gdb.iterdir()):
+                    archive.writestr(gdb.name + "/" + path.name, path.read_bytes())
+            site = {census_latest.ROOT: b'<a href="TGRGDB26/">26</a>',
+                    release.directory_url: b'<a href="tlgdb_2026_us_addr.gdb.zip">archive</a>',
+                    release.source_url: sink.getvalue()}
+            def respond(request):
+                return httpx.Response(200, headers={"Content-Type": "application/zip"},
+                                      stream=httpx.ByteStream(site[str(request.url)]))
+            with patch.object(source, "FEATURE_COUNT_RANGE", (2, 3)), httpx.Client(
+                    transport=httpx.MockTransport(respond)) as client:
+                storage = StagingStorageResource(local_dir=str(root / "stage"))
+                yield storage, site, client, release
+
+    def test_actual_capture_receipt_replays_without_network_or_evidence_loss(self):
+        with self.captured() as (storage, site, client, release):
+            first = source.capture(storage, client=client)
+            target = Path(storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / first["version"]
+            before = snapshot(target)
+            receipt_bytes = (target / "raw/source_archive.receipt.json").read_bytes()
+            receipt = json.loads(receipt_bytes)
+            with patch.object(source.httpx, "Client", side_effect=AssertionError("replay fetched HTTP")):
+                replay = source.replay_retained_capture(storage, first["version"],
+                    site[release.source_url], receipt_bytes)
+                cold_storage = StagingStorageResource(local_dir=str(target.parents[3] / "cold"))
+                cold = source.replay_retained_capture(cold_storage, first["version"],
+                    site[release.source_url], receipt_bytes)
+            self.assertTrue(replay["replayed"])
+            self.assertTrue(cold["replayed"])
+            self.assertEqual(snapshot(target), before)
+            cold_target = Path(cold_storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / first["version"]
+            self.assertEqual((cold_target / "raw/source_archive.receipt.json").read_bytes(), receipt_bytes)
+            self.assertEqual((cold_target / "metadata/source_manifest.json").read_bytes(),
+                             before["metadata/source_manifest.json"])
+            self.assertEqual(receipt["source_release"]["listing_sha256"],
+                             source._sha256(site[release.directory_url]))
+            self.assertEqual(receipt["source_release"]["annual_listing_sha256"],
+                             source._sha256(site[census_latest.ROOT]))
+
+    def test_listing_refresh_preserves_original_candidate_and_receipt(self):
+        with self.captured() as (storage, site, client, release):
+            first = source.capture(storage, client=client)
+            target = Path(storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / first["version"]
+            before = snapshot(target)
+            original_hash = source._sha256(site[release.directory_url])
+            site[release.directory_url] += b"\n<!-- unrelated directory update -->"
+            site[census_latest.ROOT] += b"\n<!-- unrelated annual update -->"
+            second = source.capture(storage, client=client)
+            self.assertEqual(first["version"], second["version"])
+            self.assertEqual(snapshot(target), before)
+            receipts = [json.loads(path.read_bytes()) for path in (
+                Path(storage.local_dir) / "_raw-captures" / source.DATASET_SLUG).rglob("receipt-*.json")]
+            self.assertEqual({item["source_release"]["listing_sha256"] for item in receipts},
+                             {original_hash, source._sha256(site[release.directory_url])})
+
+    def test_native_runtime_change_separates_versions_and_preserves_history(self):
+        with self.captured() as (storage, site, client, release):
+            first = source.capture(storage, client=client)
+            before = snapshot(Path(storage.local_dir))
+            identity = source.processing_identity(Path(source.__file__).parents[3])
+            with patch.object(source.pyogrio, "__gdal_version_string__", "different-build"):
+                second = source.capture(storage, client=client)
+                self.assertNotEqual(first["version"], second["version"])
+                self.assertNotEqual(identity, source.processing_identity(Path(source.__file__).parents[3]))
+            after = snapshot(Path(storage.local_dir))
+            self.assertEqual({name: after[name] for name in before}, before)
+
+    def test_explicit_existing_version_cannot_overwrite_other_archive(self):
+        with self.captured() as (storage, site, client, release):
+            first = source.capture(storage, "vexplicit", client)
+            target = Path(storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / first["version"]
+            before = snapshot(target)
+            repackaged = io.BytesIO(site[release.source_url])
+            with zipfile.ZipFile(repackaged, "a") as archive:
+                archive.comment = b"synthetic repackaging"
+            site[release.source_url] = repackaged.getvalue()
+            with self.assertRaises(ValueError):
+                source.capture(storage, "vexplicit", client)
+            self.assertEqual(snapshot(target), before)
+
+    def test_original_requested_url_only_receipt_remains_replayable(self):
+        with self.captured() as (storage, site, client, release):
+            first = source.capture(storage, client=client)
+            target = Path(storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / first["version"]
+            receipt = json.loads((target / "raw/source_archive.receipt.json").read_bytes())
+            receipt.pop("url", None)
+            receipt.pop("source_release", None)
+            cold_storage = StagingStorageResource(local_dir=str(target.parents[3] / "legacy"))
+            with patch.object(source.httpx, "Client", side_effect=AssertionError("replay fetched HTTP")):
+                result = source.replay_retained_capture(cold_storage, "vlegacy", site[release.source_url],
+                                                        source._json_bytes(receipt))
+            self.assertTrue(result["replayed"])
+            manifest = json.loads((Path(cold_storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG
+                                   / "vlegacy/metadata/source_manifest.json").read_bytes())
+            self.assertEqual(manifest["source_release"]["source_listing_sha256"], "")
 
 
 class _RecordingStorage:
