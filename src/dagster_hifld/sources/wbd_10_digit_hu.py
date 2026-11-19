@@ -120,9 +120,6 @@ LAYER_NAME = "10-digit HU (Watershed)"
 MAP_NAME = "wbd"
 DHS_CROSSWALK_EVIDENCE_URL = ("https://atcoordinates.info/wp-content/uploads/2025/08/"
                               "hifld_open_crosswalk_geoplatform.xlsx")
-EXPECTED_COUNT = None
-EXPECTED_ID_MIN = None
-EXPECTED_ID_MAX = None
 EXPECTED_ID_SHA256 = ""
 # The 12-digit sibling layer streams at 500; this 10-digit layer fails
 # server-side at 250/400/500 features ("Error performing query operation")
@@ -192,7 +189,6 @@ ATTRIBUTE_FIELDS = EXPECTED_PAGE_FIELD_DECLARATIONS
 FIELD_NAMES = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
 DIGEST_SEPARATOR = family.DIGEST_SEPARATOR
 
-PAGE_COUNT = None
 METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before",
                   "ids_before", "count_after", "ids_after", "layer_after", "service_after")
 
@@ -216,10 +212,10 @@ def _spec() -> family.WbdHuSpec:
         wbd_program_doc_url=WBD_PROGRAM_DOC_URL,
         dhs_crosswalk_evidence_url=DHS_CROSSWALK_EVIDENCE_URL,
         service_url=SERVICE_URL, layer_id=LAYER_ID, layer_name=LAYER_NAME,
-        map_name=MAP_NAME, expected_count=EXPECTED_COUNT,
-        expected_id_min=EXPECTED_ID_MIN, expected_id_max=EXPECTED_ID_MAX,
+        map_name=MAP_NAME, expected_count=None,
+        expected_id_min=None, expected_id_max=None,
         expected_id_sha256=EXPECTED_ID_SHA256, page_size=PAGE_SIZE,
-        page_count=PAGE_COUNT, declared_max_record_count=DECLARED_MAX_RECORD_COUNT,
+        page_count=None, declared_max_record_count=DECLARED_MAX_RECORD_COUNT,
         expected_extent=EXPECTED_EXTENT,
         expected_extent_tolerance=EXPECTED_EXTENT_TOLERANCE,
         expected_layer_extent=EXPECTED_EXTENT,

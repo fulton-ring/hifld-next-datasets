@@ -9,10 +9,11 @@ import sys
 import tempfile
 import tracemalloc
 import unittest
-import httpx
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
@@ -53,15 +54,16 @@ def patches(module, **values):
 @contextlib.contextmanager
 def relaxed_pins(**extra):
     scale = {
-        "EXPECTED_COUNT": _TEST_COUNT, "PAGE_SIZE": _TEST_PAGE_SIZE,
-        "PAGE_COUNT": _TEST_PAGE_COUNT,
-        "EXPECTED_ID_MIN": min(_TEST_ROSTER), "EXPECTED_ID_MAX": max(_TEST_ROSTER),
+        "PAGE_SIZE": _TEST_PAGE_SIZE,
         "EXPECTED_ID_SHA256": "", "EXPECTED_RECORD_SHA256": "",
         "EXPECTED_GEOMETRY_SHA256": "", "EXPECTED_NULL_GEOMETRY_COUNT": None,
         "EXPECTED_UNUSABLE_GEOMETRY_COUNTS": None,
     }
     scale.update(extra)
-    with patches(source, **scale):
+    original_spec = source._spec
+    with patches(source, **scale), patch.object(source, "_spec", side_effect=lambda: replace(
+            original_spec(), expected_count=_TEST_COUNT, page_count=_TEST_PAGE_COUNT,
+            expected_id_min=min(_TEST_ROSTER), expected_id_max=max(_TEST_ROSTER))):
         yield
 
 
@@ -547,10 +549,12 @@ class Wbd10DigitHuTests(unittest.TestCase):
         self.assertEqual(source.LAYER_URL, source.SERVICE_URL + "/5")
         self.assertEqual(source.LAYER_NAME, "10-digit HU (Watershed)")
         self.assertEqual(source.MAP_NAME, "wbd")
-        self.assertIsNone(source.EXPECTED_COUNT)
+        self.assertNotIn("EXPECTED_COUNT", vars(source))
+        self.assertIsNone(source._spec().expected_count)
         self.assertEqual(source.PAGE_SIZE, 100)
         self.assertEqual(source.DECLARED_MAX_RECORD_COUNT, 2000)
-        self.assertIsNone(source.PAGE_COUNT)
+        self.assertNotIn("PAGE_COUNT", vars(source))
+        self.assertIsNone(source._spec().page_count)
         self.assertEqual(source.SERVICE_DOC_URL,
                          "https://www.usgs.gov/national-hydrography/access-national-hydrography-products")
         self.assertEqual(source.EXPECTED_COPYRIGHT_TEXT,
