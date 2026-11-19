@@ -26,11 +26,13 @@ from test_census_substate_construction import snapshot
 def _release(vintage=2026):
     source_file = f"tlgdb_{vintage}_us_addr.gdb.zip"
     directory = f"https://www2.census.gov/geo/tiger/TGRGDB{vintage % 100:02d}/"
+    listing = f'<a href="{source_file}">archive</a>'.encode()
+    annual = f'<a href="TGRGDB{vintage % 100:02d}/">{vintage % 100:02d}</a>'.encode()
     return census_latest.GeodatabaseRelease(
         vintage=vintage, product="addr", source_file=source_file,
         source_url=directory + source_file, directory_url=directory,
-        listing_sha256="", listing_bytes=0,
-        latest_checked_at="2026-11-15T00:00:00+00:00", annual_listing_sha256="",
+        listing_sha256=hashlib.sha256(listing).hexdigest(), listing_bytes=len(listing),
+        latest_checked_at="2026-11-15T00:00:00+00:00", annual_listing_sha256=hashlib.sha256(annual).hexdigest(),
     )
 
 
@@ -557,7 +559,7 @@ class CaptureTransferTests(unittest.TestCase):
         self.assertEqual(population.call_args.kwargs["release"], release)
         self.assertRegex(result["version"], r"^v[0-9a-f]{32}$")
         self.assertEqual(result["version"], census_latest.release_version(
-            "2027", hashlib.sha256(body).hexdigest(), "fixture"))
+            "2027", hashlib.sha256(body).hexdigest(), source._sha256(source._json_bytes(identity))))
 
 
 class ReplayTests(unittest.TestCase):
@@ -786,6 +788,25 @@ class _RecordingStorage:
     def write(self, dataset, file, version, key, body):
         self.objects[f"{dataset}/{file}/{version}/{key}"] = body
         return f"{dataset}/{file}/{version}/{key}"
+
+    def object_exists(self, key):
+        return key in self.objects
+
+    def read_key(self, key):
+        return self.objects[key]
+
+    def write_key(self, key, body):
+        self.objects[key] = body
+        return key
+
+    def object_snapshot(self, key):
+        return hashlib.sha256(self.objects[key]).hexdigest() if key in self.objects else None
+
+    def write_key_if_unchanged(self, key, body, expected_snapshot):
+        if self.object_snapshot(key) != expected_snapshot:
+            raise ValueError("test_storage_snapshot_conflict")
+        self.objects[key] = body
+        return self.object_snapshot(key)
 
 
 class AssetRegistrationTests(unittest.TestCase):

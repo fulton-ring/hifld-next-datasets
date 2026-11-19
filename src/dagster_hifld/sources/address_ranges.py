@@ -19,6 +19,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 import httpx
 import numpy as np
@@ -32,7 +33,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import census_latest
-from dagster_hifld.sources.capture_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity as shared_processing_identity, write_immutable
 
 DATASET_SLUG = "address-ranges"
 FILE_SLUG = DATASET_SLUG
@@ -142,11 +143,51 @@ def _processing_runtime() -> dict[str, str]:
         "numpy": np.__version__,
         "pyarrow": pa.__version__,
         "pyogrio": pyogrio.__version__,
-        "gdal": ".".join(str(part) for part in pyogrio.__gdal_version__),
+        "gdal": pyogrio.__gdal_version_string__,
         "pyproj": pyproj.__version__,
         "proj": pyproj.proj_version_str,
         "httpx": httpx.__version__,
     }
+
+
+def processing_identity(repo_root: Path) -> dict:
+    return {**shared_processing_identity(repo_root), "source_runtime": _processing_runtime()}
+
+
+def _release_from_receipt(receipt: dict) -> census_latest.GeodatabaseRelease:
+    return census_latest.geodatabase_release_from_receipt(
+        {"url": receipt.get("requested_url"), **receipt}, GEODATABASE_PRODUCT)
+
+
+def _stage_archive(staging: StagingStorageResource, version: str, archive: bytes,
+                   receipt: dict, receipt_bytes: bytes,
+                   release: census_latest.GeodatabaseRelease) -> dict:
+    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
+    canonical_key = _canonical_source_key(release)
+    write_immutable(staging,
+        f"_raw-captures/{DATASET_SLUG}/{_sha256(archive)}/receipt-{_sha256(receipt_bytes)}.json",
+        receipt_bytes)
+    receipt_key = prefix + "/raw/source_archive.receipt.json"
+    if staging.object_exists(receipt_key):
+        original_bytes = staging.read_key(receipt_key)
+        original = json.loads(original_bytes)
+        original_release = _release_from_receipt(original)
+        if (original_release.source_url != release.source_url
+                or original.get("raw_archive_key") != canonical_key):
+            raise ValueError("immutable_source_receipt_identity_changed")
+        _require_accepted_transfer(receipt, archive, release)
+        _require_accepted_transfer(original, archive, original_release)
+        receipt, receipt_bytes = original, original_bytes
+    write_immutable(staging, prefix + "/" + canonical_key, archive)
+    write_immutable(staging, receipt_key, receipt_bytes)
+    return receipt
+
+
+def _failure_prefix(staging: StagingStorageResource, version: str) -> str:
+    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
+    if staging.object_exists(prefix + "/metadata/native_capture.json"):
+        return f"_quarantine/{DATASET_SLUG}/{uuid4().hex}"
+    return prefix
 
 
 def _reserve(current: int, upcoming: int) -> None:
@@ -219,16 +260,15 @@ def _capture_archive(staging: StagingStorageResource, version: str | None,
                 "transfer_error_code": result.error_code,
                 "raw_archive_key": canonical_key,
                 "raw_sha256": result.wire_sha256,
+                "source_release": release.as_receipt_evidence(),
                 "release_accepted": False,
             }
             body = bytes(wire)
             if version is None:
                 identity = processing_identity(Path(__file__).parents[3])
                 version = census_latest.release_version(
-                    str(release.vintage), receipt["raw_sha256"], identity["code_commit"])
-            staging.write(DATASET_SLUG, FILE_SLUG, version, canonical_key, body)
-            staging.write(DATASET_SLUG, FILE_SLUG, version, "raw/source_archive.receipt.json",
-                          _json_bytes(receipt))
+                    str(release.vintage), receipt["raw_sha256"], _sha256(_json_bytes(identity)))
+            receipt = _stage_archive(staging, version, body, receipt, _json_bytes(receipt), release)
             transfer_receipt_written = True
             _require_accepted_transfer(receipt, body, release)
             return body, receipt, version
@@ -247,10 +287,11 @@ def _retain_partial_transfer(staging: StagingStorageResource, version: str, wire
                              observed_at: str, error_type: str,
                              release: census_latest.GeodatabaseRelease) -> None:
     partial = bytes(wire)
+    prefix = _failure_prefix(staging, version)
     partial_key = "raw/source_archive.partial.zip" if partial else None
     if partial_key:
-        staging.write(DATASET_SLUG, FILE_SLUG, version, partial_key, partial)
-    staging.write(DATASET_SLUG, FILE_SLUG, version, "raw/source_archive.failure_receipt.json", _json_bytes({
+        staging.write_key(prefix + "/" + partial_key, partial)
+    staging.write_key(prefix + "/raw/source_archive.failure_receipt.json", _json_bytes({
         "method": "GET", "requested_url": release.source_url,
         "observed_at": observed_at,
         "wire_bytes_retained": len(partial),
@@ -560,11 +601,15 @@ def _validate_staged_population(staging: StagingStorageResource, version: str,
         feature_count = int(layout["feature_count"])
         ids = _verify_native_id_roster(zip_path, feature_count)
         scan = _scan_native_values(zip_path, feature_count)
-    staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/source_manifest.json",
-                  _json_bytes(_manifest(receipt, identity, replayed, release, feature_count)))
+    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
+    capture_key = prefix + "/metadata/native_capture.json"
+    if staging.object_exists(capture_key):
+        original_capture = json.loads(staging.read_key(capture_key))
+        replayed = "capture_replay" in original_capture
+    write_immutable(staging, prefix + "/metadata/source_manifest.json",
+                    _json_bytes(_manifest(receipt, identity, replayed, release, feature_count)))
     capture_manifest = _capture_manifest(receipt, integrity, layout, ids, scan, replayed, release)
-    staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/native_capture.json",
-                  _json_bytes(capture_manifest))
+    write_immutable(staging, capture_key, _json_bytes(capture_manifest))
     return {
         "feature_count": int(layout["feature_count"]),
         "archive_sha256": receipt["raw_sha256"],
@@ -588,6 +633,7 @@ def capture(staging: StagingStorageResource, version: str | None = None,
             release = census_latest.discover_geodatabase(
                 client, Path(temporary), GEODATABASE_PRODUCT)
         _archive, receipt, version = _capture_archive(staging, version, client, release)
+        release = _release_from_receipt(receipt)
         identity = processing_identity(Path(__file__).parents[3])
         try:
             validate_construction_code_identity(
@@ -599,7 +645,7 @@ def capture(staging: StagingStorageResource, version: str | None = None,
             staging, version, identity, receipt, replayed=False, release=release)
         return {**result, "version": version}
     except Exception as exc:
-        staging.write(DATASET_SLUG, FILE_SLUG, version or "unresolved", "metadata/quarantine.json", _json_bytes({
+        staging.write_key(_failure_prefix(staging, version or "unresolved") + "/metadata/quarantine.json", _json_bytes({
             "status": "quarantined",
             "source_url": release.source_url if release is not None else None,
             "observed_at": datetime.now(timezone.utc).isoformat(),
@@ -631,7 +677,7 @@ def replay_retained_capture(staging: StagingStorageResource, version: str, archi
     if not isinstance(receipt, dict):
         raise ValueError("retained_capture_receipt_invalid")
     try:
-        release = census_latest.geodatabase_release_from_receipt(receipt, GEODATABASE_PRODUCT)
+        release = _release_from_receipt(receipt)
     except ValueError as exc:
         raise ValueError("retained_capture_release_mismatch") from exc
     canonical_key = _canonical_source_key(release)
@@ -644,11 +690,11 @@ def replay_retained_capture(staging: StagingStorageResource, version: str, archi
     # Copy the original evidence bytes verbatim. This path is for a local
     # replay of an already observed transfer; it makes no new network request
     # and does not invent a retrieval timestamp.
-    staging.write(DATASET_SLUG, FILE_SLUG, version, canonical_key, archive)
-    staging.write(DATASET_SLUG, FILE_SLUG, version, "raw/source_archive.receipt.json", receipt_bytes)
     identity = processing_identity(Path(__file__).parents[3])
     try:
         _require_accepted_transfer(receipt, archive, release)
+        receipt = _stage_archive(staging, version, archive, receipt, receipt_bytes, release)
+        release = _release_from_receipt(receipt)
         validate_construction_code_identity(
             Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
         )
@@ -657,7 +703,7 @@ def replay_retained_capture(staging: StagingStorageResource, version: str, archi
             "version": version, "replayed": True}
         return result
     except Exception as exc:
-        staging.write(DATASET_SLUG, FILE_SLUG, version, "metadata/quarantine.json", _json_bytes({
+        staging.write_key(_failure_prefix(staging, version) + "/metadata/quarantine.json", _json_bytes({
             "status": "quarantined", "source_url": release.source_url,
             "observed_at": datetime.now(timezone.utc).isoformat(),
             "failure_code": str(exc).split(":", 1)[0],
