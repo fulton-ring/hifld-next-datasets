@@ -373,8 +373,16 @@ def aggregate_territories(
 
 def _read_counties(body: bytes, edition: str) -> gpd.GeoDataFrame:
     stem = f"tl_{edition}_us_county"
-    with zipfile.ZipFile(io.BytesIO(body)) as archive:
-        publisher_count = dbf_record_count(archive.read(f"{stem}.dbf"), "tiger_county")
+    def read_counted_frame(path):
+        dbf = path.with_suffix('.dbf')
+        if dbf.stat().st_size > 65535 + MAX_COUNTY_COUNT * 65535 + 1:
+            raise ValueError('tiger_county_dbf_size_limit')
+        publisher_count = dbf_record_count(dbf.read_bytes(), 'tiger_county')
+        frame = gpd.read_file(path, engine='pyogrio')
+        if len(frame) != publisher_count:
+            raise ValueError('tiger_county_source_record_count_disagreement')
+        return frame
+
     members = {
         f"{stem}.cpg", f"{stem}.dbf", f"{stem}.prj", f"{stem}.shp",
         f"{stem}.shp.ea.iso.xml", f"{stem}.shp.iso.xml", f"{stem}.shx",
@@ -382,10 +390,8 @@ def _read_counties(body: bytes, edition: str) -> gpd.GeoDataFrame:
     frame = census_tiger_common.read_tiger_shapefile(
         body, expected_members=members, shapefile_name=f"{stem}.shp",
         extract_tmp_prefix="eia861-county-",
-        read_file=lambda path: gpd.read_file(path, engine="pyogrio"),
+        read_file=read_counted_frame,
     )
-    if len(frame) != publisher_count:
-        raise ValueError("tiger_county_source_record_count_disagreement")
     required = {"GEOID", "STATEFP", "NAME", "NAMELSAD", "geometry"}
     if not required <= set(frame.columns) or str(frame.crs) != "EPSG:4269":
         raise ValueError("tiger_county_schema_or_crs_drift")

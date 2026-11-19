@@ -175,6 +175,31 @@ def _client(eia_body=None, tiger_body=None):
 
 
 class ElectricRetailTerritoryTests(unittest.TestCase):
+    def test_oversized_dbf_is_refused_before_payload_read_or_decode(self):
+        with zipfile.ZipFile(io.BytesIO(_tiger_zip())) as archive:
+            members = {name: archive.read(name) for name in archive.namelist()}
+        output = io.BytesIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            oversized = Path(tmp) / 'oversized.dbf'
+            with oversized.open('wb') as stream:
+                stream.truncate(65535 + source.MAX_COUNTY_COUNT * 65535 + 2)
+            with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                for name, body in members.items():
+                    if name.endswith('.dbf'):
+                        archive.write(oversized, name)
+                    else:
+                        archive.writestr(name, body)
+        read_bytes = Path.read_bytes
+        def refuse_dbf_read(path):
+            if path.suffix == '.dbf':
+                raise AssertionError('oversized DBF payload was materialized')
+            return read_bytes(path)
+        with patch.object(Path, 'read_bytes', refuse_dbf_read), \
+                patch.object(zipfile.ZipFile, 'read', side_effect=AssertionError('unexpected member allocation')), \
+                patch.object(source.gpd, 'read_file', side_effect=AssertionError('unexpected decode')):
+            with self.assertRaisesRegex(ValueError, 'tiger_county_dbf_size_limit'):
+                source._read_counties(output.getvalue(), '2026')
+
     def test_decoded_county_truncation_is_refused_against_publisher_count(self):
         archive = _tiger_zip()
         with patch.object(source, 'MIN_COUNTY_COUNT', 1), \
