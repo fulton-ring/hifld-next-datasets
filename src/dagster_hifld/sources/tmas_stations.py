@@ -1,45 +1,9 @@
-"""Lossless, approval-gated capture of the FHWA TMAS Stations NTAD layer.
+"""Source-faithful capture of FHWA TMAS Stations through BTS NTAD.
 
-The Federal Highway Administration (FHWA) Travel Monitoring Analysis System
-(TMAS) Stations dataset is published through the USDOT Bureau of
-Transportation Statistics (BTS) National Transportation Atlas Database (NTAD):
-the BTS ArcGIS item a016bbaee4794daca873135a5cf4164d (owner ``USDOT_BTS`` in
-the BTS organization ``xOi1kZaI0eWDREZv``, serviceItemId matching, access
-public) is the delegated official NTAD FeatureServer publication of the
-producer dataset; its item metadata states the work is a U.S. government work
-not protected by copyright under 17 U.S.C. § 101, available for unrestricted
-public use. The DHS HIFLD Open crosswalk (row "Travel Monitoring Analysis
-System (TMAS) Stations", Agency Department of Transportation, DOI
-10.3886/E241367V1) points the retired HIFLD Open geoplatform item
-f4e62fe944cb489ab5131c25105348fe at exactly this BTS-hosted service
-(https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/
-NTAD_Travel_Monitoring_Analysis_System_Stations/FeatureServer/0). The
-producer item description records the NTAD edition vintage ("compiled on
-December 31, 2025 and was published on March 23, 2026 from the Federal
-Highway Administration (FHWA)"; the item was last edited 2026-04-17) and
-cites the FHWA data dictionary DOI 10.21949/zxzj-hb56; those dates are
-retained as separate vintage evidence, never an accepted release date. The
-HIFLD Open inventory lists this dataset as
-travel-monitoring-analysis-system-tmas-stations (publisher FHWA); its
-DataLumos project 240593 archive copy is identification context only, never
-a pipeline input.
-
-The layer is captured as ordered-offset pages (the layer reports
-``maxRecordCount`` 2000 and advertises pagination plus ordering) of the
-sorted OBJECTID roster: every accepted page must return exactly its expected
-sorted id slice, the accepted pages must tile the complete roster without
-gaps or overlaps, and the before/after count/id/metadata brackets plus
-full-record and geometry digests prove that nothing was skipped, duplicated,
-or reordered. Schema, IDs, geometry and every attribute value are preserved
-unchanged. The layer's Station_Id attribute repeats across rows (the
-captured 2026-04-17 edition holds 6213 distinct values across 8060 non-null
-rows, 1847 extra occurrences); duplicates are preserved and counted, never
-dropped or failed — the row identity contract is the strictly validated
-OBJECTID roster. Producer point geometries carry the service's full double
-precision while the latitude/longitude attributes carry six decimal digits;
-every geometry must agree with its own attributes within 1e-8 degrees
-(observed worst deviation 4.5e-10) and the exact served x/y values are
-digest-pinned.
+Ordered-offset pages tile the capture-time native OBJECTID roster, bracketed
+by publisher count, ID and metadata witnesses. Station_Id duplicates and
+nullable attributes are preserved; native EPSG:4326 points must agree with
+their coordinate attributes. Candidates remain unapproved.
 """
 from __future__ import annotations
 
@@ -62,6 +26,10 @@ from shapely.geometry import Point
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.capture_completeness import validate_capture_witness
+from dagster_hifld.http_capture import (
+    capture_roster_digests, validate_capture_roster, validate_retained_capture_replay,
+)
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
@@ -69,7 +37,9 @@ from dagster_hifld.sources.capture_common import (
     capture_get, candidate_prefix, content_derived_version,
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
+from dagster_hifld.sources.arcgis_layer import load_replay
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "travel-monitoring-analysis-system-tmas-stations"
@@ -95,40 +65,13 @@ DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 PAGE_CAPTURE_ATTEMPTS = 4
 PAGE_CAPTURE_BASE_DELAY_SECONDS = 5.0
-# Pins below are the observed complete-layer population contract, established
-# by the dated complete capture 2026-11-14 (5 accepted pages tiling the sorted
-# OBJECTID roster without gaps or overlaps; every accepted page returned
-# exactly its expected sorted-OBJECTID slice; observed point bounds equal the
-# layer's declared extent exactly; no null attributes or geometries).
-EXPECTED_COUNT = 8060
-EXPECTED_ID_SHA256 = "20afcf25e15dcad068e0d22d37bd4e44c81a30b2631609f02fc22b1d8fcc8981"
 EXPECTED_SCHEMA_SHA256 = "e6bdc07f0f5aa48b243d14d04c69c9c38a8d334df1d01e4801af56532493c7af"
-EXPECTED_RECORD_SHA256 = "cacfe739b644c47c6ee74a0280b2c6fe894043522a76a63d07de0b8b9bfd4ea0"
-EXPECTED_GEOMETRY_SHA256 = "2108288d25df42b77bfe87b498921ea100bd90f68b7737e6b9054b5aeea8142e"
-EXPECTED_LAYER_EXTENT = {"xmin": -165.392939999978, "ymin": 17.97165599982555,
-                         "xmax": -65.77957099982048, "ymax": 64.97835000000852}
-EXPECTED_OBSERVED_BOUNDS = {"xmin": -165.392939999978, "ymin": 17.97165599982555,
-                            "xmax": -65.77957099982048, "ymax": 64.97835000000852}
 EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_INVALID_GEOMETRY_COUNT = 0
 EXPECTED_FIELD_NAMES = ["OBJECTID", "Station_Id", "functional_class", "state", "latitude", "longitude"]
 EXPECTED_FIELD_TYPES = ["esriFieldTypeOID", "esriFieldTypeString", "esriFieldTypeString",
                         "esriFieldTypeString", "esriFieldTypeDouble", "esriFieldTypeDouble"]
 EXPECTED_SERVICE_LAYER_ROSTER = [(LAYER_ID, LAYER_NAME, "Feature Layer")]
-# Producer fields are declared nullable but the captured edition has no nulls
-# anywhere; a null in any field is population drift that fails closed.
-EXPECTED_NULL_COUNTS = {"OBJECTID": 0, "Station_Id": 0, "functional_class": 0,
-                        "state": 0, "latitude": 0, "longitude": 0}
-# Station_Id repeats across station-period rows (6213 distinct values across
-# 8060 rows, 1847 extra occurrences, up to 24 copies); duplicates are
-# preserved and counted, never dropped.
-EXPECTED_STATION_ID_NULL_COUNT = 0
-EXPECTED_STATION_ID_UNIQUE_COUNT = 6213
-EXPECTED_STATION_ID_DUPLICATE_COUNT = 1847
-# Geometry/attribute agreement: producer point geometry equals its own
-# latitude/longitude attributes within this tolerance (observed worst
-# deviation 4.5e-10 degrees); the exact served x/y values are separately
-# digest-pinned.
 GEOMETRY_ATTRIBUTE_TOLERANCE_DEGREES = 1e-8
 EXPECTED_GEOMETRY_ATTRIBUTE_MISMATCH_COUNT = 0
 # Observed 2026-11-14: 52 jurisdiction codes (50 states + DC + PR; the item
@@ -171,7 +114,10 @@ def _page_name(offset: int, count: int) -> str:
 def _parse_page_name(name: str) -> tuple[int, int]:
     stem = name[5:]
     offset, count = stem.split("_", 1)
-    return int(offset), int(count)
+    offset, count = int(offset), int(count)
+    if offset < 0 or not 0 < count <= PAGE_START_RECORDS or name != _page_name(offset, count):
+        raise ValueError("source_page_name_invalid")
+    return offset, count
 
 
 def _page_query(offset: int, count: int) -> str:
@@ -199,12 +145,9 @@ def _after_doc_urls() -> list[tuple[str, str]]:
     ]
 
 
-def _capture_names(page_roster: list[tuple[int, int]] | None = None) -> set[str]:
+def _capture_names(page_roster: list[tuple[int, int]]) -> set[str]:
     names = {"ids_seed", *(name for name, _url in _doc_urls()),
              *(name for name, _url in _after_doc_urls())}
-    if page_roster is None:
-        page_roster = [(offset, min(PAGE_START_RECORDS, EXPECTED_COUNT - offset))
-                       for offset in range(0, EXPECTED_COUNT, PAGE_START_RECORDS)]
     return names | {_page_name(offset, count) for offset, count in page_roster}
 
 
@@ -286,24 +229,31 @@ def _collect_page(offset: int, count: int, page: object, ids: list[int],
     actual = [row.get("attributes", {}).get("OBJECTID") for row in rows if isinstance(row, dict)]
     if actual != expected or len(rows) != len(expected):
         raise ValueError("source_page_id_slice_incomplete_or_reordered")
-    if page.get("exceededTransferLimit") is True and offset + count >= EXPECTED_COUNT:
+    if page.get("exceededTransferLimit") is True and offset + count >= len(ids):
         raise ValueError("source_page_unexpected_exceeded_transfer_limit")
     features.extend(rows)
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    if set(captures) != _capture_names():
+    required = _capture_names([])
+    if not required <= set(captures):
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
     docs = {name: json.loads(body) for name, (body, _) in captures.items()
             if not name.startswith("page_")}
+    ids = validate_capture_witness(docs["count_before"].get("count"),
+        docs["ids_before"].get("objectIds"), docs["count_after"].get("count"),
+        docs["ids_after"].get("objectIds"))
+    validate_capture_witness(len(ids), docs["ids_seed"].get("objectIds"), len(ids), ids)
     page_names = sorted(name for name in captures if name.startswith("page_"))
     pages = [_parse_page_name(name) for name in page_names]
+    if set(captures) != _capture_names(pages):
+        raise ValueError("source_capture_roster_incomplete_or_unexpected")
     position = 0
     for offset, count in pages:
         if offset != position:
             raise ValueError("source_page_tiling_incomplete_or_overlapped")
         position += count
-    if position != EXPECTED_COUNT:
+    if position != len(ids):
         raise ValueError("source_page_tiling_incomplete_or_overlapped")
     portal = docs["portal_item"]
     if (not isinstance(portal, dict) or portal.get("id") != ITEM_ID
@@ -338,7 +288,10 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     extent = layer.get("extent", {})
     _validate_spatial_reference(extent.get("spatialReference"), "source_layer_extent")
     _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
-    if {key: extent.get(key) for key in EXPECTED_LAYER_EXTENT} != EXPECTED_LAYER_EXTENT:
+    bounds = [extent.get(key) for key in ("xmin", "ymin", "xmax", "ymax")]
+    if (any(type(value) not in (int, float) or not math.isfinite(value) for value in bounds)
+            or not -180 <= bounds[0] <= bounds[2] <= 180
+            or not -90 <= bounds[1] <= bounds[3] <= 90):
         raise ValueError("source_layer_extent_drift")
     fields_value = layer.get("fields")
     if not isinstance(fields_value, list) or any(not isinstance(x, dict) for x in fields_value):
@@ -358,21 +311,8 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
             raise ValueError("source_layer_metadata_changed_during_capture")
     if docs["service_after"] != service:
         raise ValueError("source_service_metadata_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT \
-            or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
     if docs["count_before"] != docs["count_after"]:
         raise ValueError("source_count_changed_during_capture")
-    rosters = [docs[name].get("objectIds") for name in ("ids_seed", "ids_before", "ids_after")]
-    if any(not isinstance(roster, list) or len(roster) != EXPECTED_COUNT
-           or any(type(value) is not int for value in roster) or len(set(roster)) != EXPECTED_COUNT
-           for roster in rosters):
-        raise ValueError("source_id_population_drift")
-    if any(sorted(roster) != sorted(rosters[0]) for roster in rosters[1:]):
-        raise ValueError("source_id_population_drift")
-    ids = sorted(rosters[0])
-    if _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_drift")
     if any(docs[name].get("objectIdFieldName") != "OBJECTID"
            for name in ("ids_seed", "ids_before", "ids_after")):
         raise ValueError("source_id_field_changed")
@@ -403,7 +343,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
                 null_counts[name] += 1
             elif not isinstance(value, str):
                 raise ValueError("source_string_value_type_drift:" + name)
-            if len(value) > 8000:
+            if value is not None and len(value) > 8000:
                 raise ValueError("source_string_length_drift:" + name)
         for name in ("latitude", "longitude"):
             value = attrs[name]
@@ -411,12 +351,14 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
                 null_counts[name] += 1
             elif type(value) not in (int, float) or not math.isfinite(value):
                 raise ValueError("source_double_value_type_drift:" + name)
-        if attrs["state"] not in EXPECTED_STATES:
+        if attrs["state"] is not None and attrs["state"] not in EXPECTED_STATES:
             raise ValueError("source_state_value_contract_drift")
-        if attrs["functional_class"] not in EXPECTED_FUNCTIONAL_CLASSES:
+        if attrs["functional_class"] is not None and attrs["functional_class"] not in EXPECTED_FUNCTIONAL_CLASSES:
             raise ValueError("source_functional_class_value_contract_drift")
-        states.add(attrs["state"])
-        functional_classes.add(attrs["functional_class"])
+        if attrs["state"] is not None:
+            states.add(attrs["state"])
+        if attrs["functional_class"] is not None:
+            functional_classes.add(attrs["functional_class"])
         station_ids.append(attrs["Station_Id"])
         geom = feature.get("geometry")
         if geom is None:
@@ -432,9 +374,10 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         x, y = geom["x"], geom["y"]
         if not (-180 <= x <= 180 and -90 <= y <= 90):
             raise ValueError("source_coordinate_range_drift")
-        if (attrs["latitude"] is not None and attrs["longitude"] is not None
-                and (abs(x - attrs["longitude"]) > GEOMETRY_ATTRIBUTE_TOLERANCE_DEGREES
-                     or abs(y - attrs["latitude"]) > GEOMETRY_ATTRIBUTE_TOLERANCE_DEGREES)):
+        if ((attrs["longitude"] is not None
+                and abs(x - attrs["longitude"]) > GEOMETRY_ATTRIBUTE_TOLERANCE_DEGREES)
+                or (attrs["latitude"] is not None
+                    and abs(y - attrs["latitude"]) > GEOMETRY_ATTRIBUTE_TOLERANCE_DEGREES)):
             geometry_attribute_mismatches += 1
         if xmin is None or x < xmin:
             xmin = x
@@ -448,37 +391,21 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     observed_bounds = None if xmin is None else {"xmin": xmin, "ymin": ymin,
                                                  "xmax": xmax, "ymax": ymax}
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
-    if null_counts != EXPECTED_NULL_COUNTS:
-        raise ValueError("source_null_population_drift")
-    if states != set(EXPECTED_STATES):
-        raise ValueError("source_state_value_contract_drift")
-    if functional_classes != EXPECTED_FUNCTIONAL_CLASSES:
-        raise ValueError("source_functional_class_value_contract_drift")
     station_id_nulls = sum(1 for value in station_ids if value is None)
     station_id_uniques = len({value for value in station_ids if value is not None})
     station_id_duplicates = len(station_ids) - station_id_uniques - station_id_nulls
-    if (station_id_nulls != EXPECTED_STATION_ID_NULL_COUNT
-            or station_id_uniques != EXPECTED_STATION_ID_UNIQUE_COUNT
-            or station_id_duplicates != EXPECTED_STATION_ID_DUPLICATE_COUNT):
-        raise ValueError("source_station_id_population_drift")
     if (geometry_attribute_mismatches != EXPECTED_GEOMETRY_ATTRIBUTE_MISMATCH_COUNT
             or null_geometry != EXPECTED_NULL_GEOMETRY_COUNT
             or invalid_geometry != EXPECTED_INVALID_GEOMETRY_COUNT):
         raise ValueError("source_geometry_population_drift")
-    if EXPECTED_OBSERVED_BOUNDS is not None and observed_bounds != EXPECTED_OBSERVED_BOUNDS:
-        raise ValueError("source_observed_coverage_drift")
     record_sha = _list_sha(features)
-    if record_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_record_value_drift")
     geometry_sha = _list_sha(geometry_records)
-    if geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_or_coverage_drift")
     audit = {"source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids)),
              "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
              "source_schema_sha256": schema_sha, "source_crs_wkid": SOURCE_CRS_WKID,
              "source_geometry_type": "esriGeometryPoint",
              "null_geometry_count": null_geometry, "invalid_geometry_count": invalid_geometry,
-             "observed_bounds": observed_bounds, "declared_layer_extent": EXPECTED_LAYER_EXTENT,
+             "observed_bounds": observed_bounds, "declared_layer_extent": extent,
              "unique_object_id_count": len(ids),
              "source_null_counts": null_counts,
              "unique_station_id_count": station_id_uniques,
@@ -588,6 +515,46 @@ def _capture_evidence(capture_root: Path,
     return evidence
 
 
+def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+    manifest_path = root / "capture_manifest.json"
+    if any(path.is_symlink() for path in (root, *root.parents, manifest_path)):
+        raise ValueError("unsafe_capture_directory")
+    if manifest_path.stat().st_size > MAX_CAPTURE_BYTES:
+        raise ValueError("retained_capture_budget_invalid")
+    manifest = json.loads(manifest_path.read_bytes())
+    receipts = manifest.get("receipts")
+    if not isinstance(receipts, dict):
+        raise ValueError("retained_capture_manifest_invalid")
+    pages = [_parse_page_name(name) for name in receipts if name.startswith("page_")]
+    names = _capture_names(pages)
+    urls = {"ids_seed": _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
+            **dict(_doc_urls()), **dict(_after_doc_urls()),
+            **{_page_name(offset, count): _page_query(offset, count) for offset, count in pages}}
+    roster = manifest.get("artifact_roster")
+    if (not isinstance(roster, dict)
+            or any(not isinstance(value, dict) or type(value.get("bytes")) is not int
+                   or value["bytes"] < 0 or value["bytes"] > MAX_CAPTURE_BYTES
+                   for value in roster.values())
+            or sum(value["bytes"] for value in roster.values()) > MAX_CAPTURE_TOTAL_BYTES):
+        raise ValueError("retained_capture_budget_invalid")
+    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
+    if any((root / name).stat().st_size != value["bytes"] for name, value in roster.items()):
+        raise ValueError("retained_capture_artifact_size_mismatch")
+
+    def load(root: Path, name: str):
+        body, receipt = load_replay(root, name)
+        return body, (root / f"{name}.wire").read_bytes(), receipt
+
+    captures = validate_retained_capture_replay(root, capture_names=names, expected_urls=urls,
+        load_capture=load, validate_request_identity=validate_capture_request_identity)
+    evidence = _capture_evidence(root, captures)
+    expected = {f"{name}{suffix}" for name in names for suffix in _EVIDENCE_SUFFIXES}
+    expected.update(stem + suffix for stem, entry in evidence.items() for suffix in entry["files"])
+    if set(roster) != expected:
+        raise ValueError("retained_capture_artifact_roster_invalid")
+    return captures
+
+
 def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                           capture_directory: str | None = None) -> dict[str, object]:
     """Capture, verify, and stage a complete unapproved TMAS stations candidate."""
@@ -604,70 +571,76 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise ValueError("disk_floor_before_acquisition")
     attempt_root = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "331", "captures")
-    capture_root = (attempt_root / f"{version}-{uuid4().hex}").absolute()
-    if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
-        raise ValueError("unsafe_capture_directory")
-    capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
-    try:
-        with httpx.Client(follow_redirects=False, timeout=180,
-                          headers={"User-Agent": "hifld-next-datasets/tmas-stations-draft"}) as client:
-            seed_body, seed_receipt = _capture_with_retry(
-                client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
-                attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or len(seed) != EXPECTED_COUNT
-                    or any(type(value) is not int for value in seed) or len(set(seed)) != EXPECTED_COUNT):
-                raise ValueError("source_seed_id_population_drift")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _doc_urls():
-                captures[name] = _capture_with_retry(client, url, capture_root, name,
-                                                     max_bytes=MAX_CAPTURE_BYTES,
-                                                     attempts=DOC_CAPTURE_ATTEMPTS,
-                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            layer_doc = json.loads(captures["layer_before"][0])
-            if layer_doc.get("maxRecordCount") != EXPECTED_MAX_RECORD_COUNT \
-                    or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
-                raise ValueError("source_record_limit_drift")
-            for offset in range(0, EXPECTED_COUNT, PAGE_START_RECORDS):
-                count = min(PAGE_START_RECORDS, EXPECTED_COUNT - offset)
-                name = _page_name(offset, count)
-                captures[name] = _capture_with_retry(client, _page_query(offset, count),
-                                                     capture_root, name,
-                                                     max_bytes=MAX_CAPTURE_BYTES,
-                                                     attempts=PAGE_CAPTURE_ATTEMPTS,
-                                                     base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS)
-            for name, url in _after_doc_urls():
-                captures[name] = _capture_with_retry(client, url, capture_root, name,
-                                                     max_bytes=MAX_CAPTURE_BYTES,
-                                                     attempts=DOC_CAPTURE_ATTEMPTS,
-                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+    replay = (attempt_root / "capture_manifest.json").exists() or (attempt_root / "capture_manifest.json").is_symlink()
+    if replay:
+        capture_root = attempt_root.absolute()
+        captures = _read_replay(capture_root)
         layer, source_fields, extracted = _validate_captures(captures)
-    except Exception as exc:
-        receipts = {}
-        for path in sorted(capture_root.glob("*.receipt.json")):
-            try:
-                receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
-            except (ValueError, OSError):
-                receipts[path.name.removesuffix(".receipt.json")] = {"receipt_readback_failed": True}
-        (capture_root / "capture_manifest.json").write_bytes(
-            _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
-                        "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        retained = dict(captures)
-        for receipt_path in capture_root.glob("*.receipt.json"):
-            name = receipt_path.name.removesuffix(".receipt.json")
-            if name in retained:
-                continue
-            try:
-                retained[name] = ((capture_root / f"{name}.body").read_bytes(),
-                                  json.loads(receipt_path.read_bytes()))
-            except (OSError, ValueError):
-                continue
-        if retained:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, retained,
-                                          type(exc).__name__)
-        raise
+    else:
+        capture_root = (attempt_root / f"{version}-{uuid4().hex}").absolute()
+        if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
+            raise ValueError("unsafe_capture_directory")
+        capture_root.mkdir(parents=True, exist_ok=True)
+        captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+        try:
+            with httpx.Client(follow_redirects=False, timeout=180,
+                              headers={"User-Agent": "hifld-next-datasets/tmas-stations-draft"}) as client:
+                seed_body, seed_receipt = _capture_with_retry(
+                    client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
+                    capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
+                    attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                seed = json.loads(seed_body).get("objectIds")
+                if (not isinstance(seed, list) or any(type(value) is not int or value <= 0 for value in seed)
+                        or len(set(seed)) != len(seed)):
+                    raise ValueError("source_seed_id_population_drift")
+                captures["ids_seed"] = (seed_body, seed_receipt)
+                for name, url in _doc_urls():
+                    captures[name] = _capture_with_retry(client, url, capture_root, name,
+                                                         max_bytes=MAX_CAPTURE_BYTES,
+                                                         attempts=DOC_CAPTURE_ATTEMPTS,
+                                                         base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                layer_doc = json.loads(captures["layer_before"][0])
+                if layer_doc.get("maxRecordCount") != EXPECTED_MAX_RECORD_COUNT \
+                        or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
+                    raise ValueError("source_record_limit_drift")
+                for offset in range(0, len(seed), PAGE_START_RECORDS):
+                    count = min(PAGE_START_RECORDS, len(seed) - offset)
+                    name = _page_name(offset, count)
+                    captures[name] = _capture_with_retry(client, _page_query(offset, count),
+                                                         capture_root, name,
+                                                         max_bytes=MAX_CAPTURE_BYTES,
+                                                         attempts=PAGE_CAPTURE_ATTEMPTS,
+                                                         base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS)
+                for name, url in _after_doc_urls():
+                    captures[name] = _capture_with_retry(client, url, capture_root, name,
+                                                         max_bytes=MAX_CAPTURE_BYTES,
+                                                         attempts=DOC_CAPTURE_ATTEMPTS,
+                                                         base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+            layer, source_fields, extracted = _validate_captures(captures)
+        except Exception as exc:
+            receipts = {}
+            for path in sorted(capture_root.glob("*.receipt.json")):
+                try:
+                    receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
+                except (ValueError, OSError):
+                    receipts[path.name.removesuffix(".receipt.json")] = {"receipt_readback_failed": True}
+            (capture_root / "capture_manifest.json").write_bytes(
+                _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
+                            "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
+            retained = dict(captures)
+            for receipt_path in capture_root.glob("*.receipt.json"):
+                name = receipt_path.name.removesuffix(".receipt.json")
+                if name in retained:
+                    continue
+                try:
+                    retained[name] = ((capture_root / f"{name}.body").read_bytes(),
+                                      json.loads(receipt_path.read_bytes()))
+                except (OSError, ValueError):
+                    continue
+            if retained:
+                quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, retained,
+                                              type(exc).__name__)
+            raise
     identity = _code_identity()
     parquet_body = _parquet_bytes(source_fields, extracted["features"])
     rel = f"geoparquet/{DATASET_SLUG}.parquet"
@@ -730,10 +703,8 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                                                              "longitude)",
                                             "source_ids": "Preserve producer OBJECTID and "
                                                           "Station_Id values unchanged "
-                                                          "(Station_Id repeats across rows: 6213 "
-                                                          "distinct values, 1847 extra "
-                                                          "occurrences in the captured roster; "
-                                                          "duplicates preserved, never dropped); "
+                                                          "(Station_Id duplicates preserved, "
+                                                          "counted and never dropped); "
                                                           "no substitute IDs, casts or joins",
                                             "geometry": "Source EPSG:4326 point x/y retained as "
                                                         "WKB without reprojection or repair; "
@@ -783,16 +754,19 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     evidence = _capture_evidence(capture_root, captures)
-    (capture_root / "capture_manifest.json").write_bytes(
-        _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
-                    "source_feature_count": EXPECTED_COUNT,
-                    "source_record_sha256": audit["source_record_sha256"],
-                    "source_geometry_sha256": audit["source_geometry_sha256"],
-                    "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())},
-                    "evidence": {stem: {"kind": entry["kind"],
-                                        "files": {suffix: {"bytes": len(body), "sha256": _sha(body)}
-                                                  for suffix, body in sorted(entry["files"].items())}}
-                                 for stem, entry in sorted(evidence.items())}}) + b"\n")
+    if not replay:
+        (capture_root / "capture_manifest.json").write_bytes(
+            _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
+                        "source_feature_count": audit["source_feature_count"],
+                        "source_record_sha256": audit["source_record_sha256"],
+                        "source_geometry_sha256": audit["source_geometry_sha256"],
+                        "artifact_roster": capture_roster_digests(capture_root),
+                        "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())},
+                        "evidence": {stem: {"kind": entry["kind"],
+                                            "files": {suffix: {"bytes": len(body), "sha256": _sha(body)}
+                                                      for suffix, body in sorted(entry["files"].items())}}
+                                     for stem, entry in sorted(evidence.items())}}) + b"\n")
+        _read_replay(capture_root)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {rel: parquet_body, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
                "metadata/source_audit.json": _canonical(audit) + b"\n",
@@ -806,7 +780,8 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
             outputs[f"raw/evidence/{stem}{suffix}"] = body
     outputs["metadata/candidate_ready.json"] = _canonical(
         {"approved": False, "version": version, "objects": source_objects,
-         "source_record_sha256": audit["source_record_sha256"], "freshness_accepted": False,
+         "source_record_sha256": audit["source_record_sha256"], "source_population_complete": True,
+         "freshness_accepted": False,
          "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
          "mapping_approved": False, "release_accepted": False}) + b"\n"
     fingerprint = _sha(_canonical(identity))
@@ -821,7 +796,8 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                                 audit["source_schema_sha256"], objects,
                                 payload.get("capture_receipts", {}))
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-                "feature_count": EXPECTED_COUNT,
+                "feature_count": audit["source_feature_count"], "source_population_complete": True,
+                "source_id_sha256": audit["source_id_sha256"], "capture_directory": str(capture_root),
                 "source_null_geometry_count": audit["null_geometry_count"],
                 "source_invalid_geometry_count": audit["invalid_geometry_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
@@ -846,10 +822,11 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
+            "feature_count": audit["source_feature_count"], "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "capture_directory": str(capture_root),
+            "source_null_geometry_count": audit["null_geometry_count"],
             "source_invalid_geometry_count": audit["invalid_geometry_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
             "source_release_accepted": False, "source_freshness_accepted": False,
             "schema_contract_accepted": False, "id_contract_accepted": False,
-            "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
-            "capture_directory": str(capture_root)}
+            "rights_accepted": False, "mapping_approved": False, "release_accepted": False}

@@ -1,4 +1,5 @@
 import hashlib
+import gzip
 import io
 import json
 import struct
@@ -8,10 +9,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pyarrow.parquet as pq
-from dagster import DefaultScheduleStatus
+from dagster import AssetCheckSeverity, DefaultScheduleStatus
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.tmas_stations import (
-    tmas_stations, tmas_stations_complete, tmas_stations_draft_schedule,
+    tmas_stations, tmas_stations_complete, tmas_stations_draft_schedule, tmas_stations_baseline_drift,
 )
 from dagster_hifld.sources import tmas_stations as source
 from dagster_hifld.resources import StagingStorageResource
@@ -19,12 +21,6 @@ from dagster_hifld.sources.esri_common import canonical as _canonical
 
 _REAL_HTTPX_CLIENT = __import__("httpx").Client
 
-# The live layer holds 8060 contiguous OBJECTIDs; tests exercise the identical
-# logic against a small patched roster for speed. Pins that bind captured
-# content (record/geometry digests, bounds, state and functional-class value
-# sets, Station_Id duplicate counts) are derived from the fixture in setUp so
-# the base documents validate cleanly and every drift case isolates its own
-# check.
 PATCH_IDS = list(range(1, 7))
 
 
@@ -37,36 +33,8 @@ def _feature(oid: int) -> dict:
             "geometry": {"x": attrs["longitude"], "y": attrs["latitude"]}}
 
 
-def _fixture_pins(mutate=None):
-    """Digest/roster pins computed exactly the way the module recomputes them."""
-    ids = list(range(1, 7))
-    features = sorted((_feature(oid) for oid in ids), key=lambda f: f["attributes"]["OBJECTID"])
-    if mutate is not None:
-        mutate(features)
-    record_sha = source._list_sha(features)
-    geometry_records = [[f["attributes"]["OBJECTID"], f["geometry"]["x"], f["geometry"]["y"]]
-                        for f in features]
-    geometry_sha = source._list_sha(geometry_records)
-    xs = [f["geometry"]["x"] for f in features]
-    ys = [f["geometry"]["y"] for f in features]
-    station_ids = [f["attributes"]["Station_Id"] for f in features]
-    uniques = len({value for value in station_ids if value is not None})
-    return {
-        "EXPECTED_COUNT": 6, "PAGE_START_RECORDS": 2,
-        "EXPECTED_ID_SHA256": hashlib.sha256(_canonical(ids)).hexdigest(),
-        "EXPECTED_RECORD_SHA256": record_sha,
-        "EXPECTED_GEOMETRY_SHA256": geometry_sha,
-        "EXPECTED_OBSERVED_BOUNDS": {"xmin": min(xs), "ymin": min(ys),
-                                     "xmax": max(xs), "ymax": max(ys)},
-        "EXPECTED_STATES": ["DC", "VA"],
-        "EXPECTED_FUNCTIONAL_CLASSES": {"1U", "3R"},
-        "EXPECTED_STATION_ID_NULL_COUNT": 0,
-        "EXPECTED_STATION_ID_UNIQUE_COUNT": uniques,
-        "EXPECTED_STATION_ID_DUPLICATE_COUNT": len(station_ids) - uniques,
-    }
-
-
-def _base_documents():
+def _base_documents(ids=None):
+    ids = PATCH_IDS if ids is None else ids
     service = {"serviceItemId": source.ITEM_ID, "serviceName": "NTAD_Travel_Monitoring_Analysis_System_Stations",
                "spatialReference": {"wkid": 4326, "latestWkid": 4326},
                "layers": [{"id": layer_id, "name": name, "type": layer_type}
@@ -75,7 +43,7 @@ def _base_documents():
              "geometryType": "esriGeometryPoint", "objectIdField": "OBJECTID",
              "hasZ": False, "hasM": False, "maxRecordCount": 2000,
              "spatialReference": {"wkid": 4326, "latestWkid": 4326},
-             "extent": {**source.EXPECTED_LAYER_EXTENT,
+             "extent": {"xmin": -165.39294, "ymin": 17.971656, "xmax": -65.779571, "ymax": 64.97835,
                         "spatialReference": {"wkid": 4326, "latestWkid": 4326}},
              "advancedQueryCapabilities": {"supportsPagination": True, "supportsOrderBy": True},
              "editingInfo": {"lastEditDate": 1776462237370},
@@ -102,17 +70,17 @@ def _base_documents():
                               "Statistics (BTS) National Transportation Atlas Database (NTAD). "
                               "Geospatial station data from the FHWA Travel Monitoring Analysis "
                               "System (TMAS) database...")}
-    docs = {"ids_seed": {"objectIdFieldName": "OBJECTID", "objectIds": list(PATCH_IDS)},
+    docs = {"ids_seed": {"objectIdFieldName": "OBJECTID", "objectIds": list(ids)},
             "portal_item": portal, "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": list(PATCH_IDS)},
+            "count_before": {"count": len(ids)},
+            "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": list(ids)},
             "service_after": json.loads(json.dumps(service)),
             "layer_after": json.loads(json.dumps(layer)),
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": list(PATCH_IDS)}}
-    for offset in range(0, source.EXPECTED_COUNT, source.PAGE_START_RECORDS):
-        count = min(source.PAGE_START_RECORDS, source.EXPECTED_COUNT - offset)
-        rows = [_feature(oid) for oid in PATCH_IDS[offset:offset + count]]
+            "count_after": {"count": len(ids)},
+            "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": list(ids)}}
+    for offset in range(0, len(ids), source.PAGE_START_RECORDS):
+        count = min(source.PAGE_START_RECORDS, len(ids) - offset)
+        rows = [_feature(oid) for oid in ids[offset:offset + count]]
         docs[source._page_name(offset, count)] = {
             "spatialReference": {"wkid": 4326, "latestWkid": 4326}, "features": rows}
     return docs
@@ -128,14 +96,14 @@ def _BASE_DOCS_LOADER():
     return _base_documents()
 
 
-def _synthetic_client_factory(docs):
+def _synthetic_client_factory(docs, *, encoding="identity"):
     """Serve the fixture documents as raw-order Esri JSON responses."""
     urls = {"ids_seed": source._query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
             **{name: url for name, url in source._doc_urls()},
             **{name: url for name, url in source._after_doc_urls()}}
-    for offset in range(0, source.EXPECTED_COUNT, source.PAGE_START_RECORDS):
-        count = min(source.PAGE_START_RECORDS, source.EXPECTED_COUNT - offset)
-        urls[source._page_name(offset, count)] = source._page_query(offset, count)
+    for name in docs:
+        if name.startswith("page_"):
+            urls[name] = source._page_query(*source._parse_page_name(name))
     bodies = {url: json.dumps(docs[name], separators=(",", ":"), ensure_ascii=False).encode()
               for name, url in urls.items()}
     import httpx
@@ -152,8 +120,11 @@ def _synthetic_client_factory(docs):
         if key not in bodies:
             return httpx.Response(404, content=b'{"error":{"code":404}}')
         body = bodies[key]
+        if encoding == "gzip":
+            body = gzip.compress(body)
         return httpx.Response(200, stream=_ByteStream([body]),
                               headers={"Content-Type": "application/json",
+                                       "Content-Encoding": encoding,
                                        "Content-Length": str(len(body))})
 
     def factory(*args, **kwargs):
@@ -164,10 +135,9 @@ def _synthetic_client_factory(docs):
 
 class TmasStationsTests(unittest.TestCase):
     def setUp(self):
-        self._patches = [patch.object(source, name, value) for name, value in _fixture_pins().items()]
-        for item in self._patches:
-            item.start()
-            self.addCleanup(item.stop)
+        pages = patch.object(source, "PAGE_START_RECORDS", 2)
+        pages.start()
+        self.addCleanup(pages.stop)
 
     def _documents(self, *, mutate=None):
         docs = _base_documents()
@@ -184,17 +154,16 @@ class TmasStationsTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(tmas_stations, hifld_ingest_assets)
         self.assertEqual(tmas_stations_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = tmas_stations_complete({"feature_count": 8060, "source_null_geometry_count": 0,
+        check = tmas_stations_complete({"feature_count": 6, "source_population_complete": True, "source_null_geometry_count": 0,
                                         "source_invalid_geometry_count": 0})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = tmas_stations_complete({"feature_count": 8059, "source_null_geometry_count": 0,
+        failed = tmas_stations_complete({"feature_count": 6, "source_population_complete": False, "source_null_geometry_count": 0,
                                          "source_invalid_geometry_count": 0})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_pages_tile_the_roster(self):
-        with patch.object(source, "EXPECTED_COUNT", 7), patch.object(source, "PAGE_START_RECORDS", 3):
-            names = source._capture_names()
+        names = source._capture_names([(0, 3), (3, 3), (6, 1)])
         self.assertEqual(sorted(name for name in names if name.startswith("page_")),
                          ["page_000000_00003", "page_000003_00003", "page_000006_00001"])
         query = source._page_query(0, 3)
@@ -208,7 +177,7 @@ class TmasStationsTests(unittest.TestCase):
         audit = extracted["audit"]
         self.assertEqual([f["name"] for f in fields_value], source.EXPECTED_FIELD_NAMES)
         self.assertEqual(len(extracted["features"]), 6)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], hashlib.sha256(_canonical(PATCH_IDS)).hexdigest())
         self.assertEqual(audit["source_geometry_type"], "esriGeometryPoint")
         self.assertEqual(audit["null_geometry_count"], 0)
         self.assertEqual(audit["geometry_attribute_mismatch_count"], 0)
@@ -216,6 +185,103 @@ class TmasStationsTests(unittest.TestCase):
         self.assertEqual(audit["station_id_duplicate_count"], 1)
         self.assertEqual(audit["observed_state_count"], 2)
         self.assertEqual(audit["source_null_counts"]["latitude"], 0)
+
+    def test_changed_native_roster_is_complete_against_publisher_witnesses(self):
+        docs = self._documents()
+        for name in ("ids_seed", "ids_before", "ids_after"):
+            docs[name]["objectIds"][-1] = 9
+        docs["page_000004_00002"]["features"][-1]["attributes"]["OBJECTID"] = 9
+        _, _, extracted = source._validate_captures(self._captures(docs))
+        self.assertEqual(extracted["ids"], [1, 2, 3, 4, 5, 9])
+
+    def test_additions_and_removals_cross_page_boundaries_without_snapshot_pins(self):
+        for ids in ([2, 8, 15], [1, 2, 3, 4, 5, 6, 12]):
+            with self.subTest(ids=ids):
+                docs = _base_documents(ids)
+                docs["ids_after"]["objectIds"].reverse()
+                _, _, extracted = source._validate_captures(self._captures(docs))
+                self.assertEqual(extracted["ids"], ids)
+                self.assertEqual(extracted["audit"]["source_feature_count"], len(ids))
+                self.assertEqual(extracted["audit"]["source_page_count"], (len(ids) + 1) // 2)
+
+    def test_nullable_values_duplicates_and_changed_coverage_are_observations(self):
+        docs = self._documents()
+        rows = docs["page_000000_00002"]["features"]
+        rows[0]["attributes"].update(Station_Id=None, state=None, latitude=None)
+        rows[1]["attributes"]["Station_Id"] = "S001"
+        rows[0]["geometry"].update(x=-105.0)
+        rows[0]["attributes"]["longitude"] = -105.0
+        _, _, extracted = source._validate_captures(self._captures(docs))
+        audit = extracted["audit"]
+        self.assertEqual(audit["station_id_null_count"], 1)
+        self.assertEqual(audit["source_null_counts"]["latitude"], 1)
+        self.assertEqual(audit["observed_bounds"]["xmin"], -105.0)
+        table = pq.read_table(io.BytesIO(source._parquet_bytes(docs["layer_before"]["fields"], extracted["features"])))
+        self.assertIsNone(table.column("Station_Id")[0].as_py())
+
+    def test_each_nonnull_coordinate_matches_geometry_independently(self):
+        for missing, component in (("latitude", "x"), ("longitude", "y")):
+            with self.subTest(missing=missing):
+                docs = self._documents()
+                row = docs["page_000000_00002"]["features"][0]
+                row["attributes"][missing] = None
+                _, _, extracted = source._validate_captures(self._captures(docs))
+                self.assertEqual(extracted["audit"]["source_null_counts"][missing], 1)
+                self.assertEqual(extracted["audit"]["geometry_attribute_mismatch_count"], 0)
+                row["geometry"][component] += 0.1
+                with self.assertRaisesRegex(ValueError, "source_geometry_population_drift"):
+                    source._validate_captures(self._captures(docs))
+
+    def test_null_state_and_class_are_not_counted_as_distinct_codes(self):
+        docs = self._documents()
+        docs["page_000000_00002"]["features"][0]["attributes"].update(state=None, functional_class=None)
+        _, _, extracted = source._validate_captures(self._captures(docs))
+        audit = extracted["audit"]
+        self.assertEqual(audit["observed_state_count"], 2)
+        self.assertEqual(audit["observed_functional_class_count"], 2)
+        self.assertEqual(audit["source_null_counts"]["state"], 1)
+        self.assertEqual(audit["source_null_counts"]["functional_class"], 1)
+
+    def test_dynamic_acquisition_and_sealing_preserve_each_previous_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            previous = {}
+            versions = []
+            for ids in ([2, 8, 15], [1, 2, 3, 4, 5, 6, 12]):
+                factory = _synthetic_client_factory(_base_documents(ids))
+                with patch.object(source.httpx, "Client", side_effect=factory):
+                    result = source.capture_tmas_stations(storage, version="dynamic", capture_directory=tmp + "/captures")
+                self.assertFalse(result["reused"])
+                self.assertTrue(result["source_population_complete"])
+                self.assertTrue(tmas_stations_complete(result).passed)
+                self.assertEqual(result["feature_count"], len(ids))
+                self.assertNotIn(result["version"], versions)
+                versions.append(result["version"])
+                for key, snapshot in previous.items():
+                    self.assertEqual((storage.read_key(key), storage.object_snapshot(key)), snapshot)
+                previous = {key: (storage.read_key(key), storage.object_snapshot(key))
+                            for key in storage.list_prefix("")}
+                with patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                    replay = source.capture_tmas_stations(storage, version="replay", capture_directory=result["capture_directory"])
+                self.assertTrue(replay["reused"])
+                self.assertEqual(replay["version"], result["version"])
+
+    def test_baseline_warn_is_separate_from_blocking_completeness(self):
+        candidate = {"dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+                     "feature_count": 7, "source_id_sha256": "new", "source_population_complete": True,
+                     "source_null_geometry_count": 0, "source_invalid_geometry_count": 0}
+        self.assertTrue(tmas_stations_complete(candidate).passed)
+        skipped = tmas_stations_baseline_drift(candidate)
+        self.assertFalse(skipped.passed)
+        self.assertEqual(skipped.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(skipped.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+        reference = {**candidate, "version": "approved-fixture", "release_accepted": True,
+                     "feature_count": 6, "source_id_sha256": "old"}
+        compared = approved_baseline_drift(candidate, reference)
+        self.assertFalse(compared.passed)
+        self.assertEqual(compared.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(compared.metadata["feature_count_delta"].value, 1)
+        self.assertFalse(next(iter(tmas_stations_baseline_drift.check_specs)).blocking)
 
     def test_parquet_preserves_native_attributes_and_point_geometry(self):
         layer, fields_value, extracted = source._validate_captures(self._captures(self._documents()))
@@ -234,18 +300,18 @@ class TmasStationsTests(unittest.TestCase):
 
     def test_population_schema_transfer_and_value_drift_fail_closed(self):
         cases = [
-            ("count", lambda d: d["count_after"].update(count=source.EXPECTED_COUNT - 1),
-             "source_count_drift"),
+            ("count", lambda d: d["count_after"].update(count=len(PATCH_IDS) - 1),
+             "source_count_or_id_roster_drift"),
             ("ids", lambda d: d["ids_after"].update(objectIds=PATCH_IDS[:-1]),
-             "source_id_population_drift"),
+             "source_count_or_id_roster_drift"),
             ("roster digest",
              lambda d: d["ids_before"].update(objectIds=PATCH_IDS[:-1] + [99]),
-             "source_id_population_drift"),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_schema_contract_drift"),
             ("field roster", lambda d: d["layer_before"]["fields"].pop(1),
              "source_schema_contract_drift"),
-            ("extent", lambda d: d["layer_before"]["extent"].update(xmin=-1.0),
+            ("extent", lambda d: d["layer_before"]["extent"].update(xmin=-181.0),
              "source_layer_extent_drift"),
             ("record limit", lambda d: d["layer_before"].update(maxRecordCount=1000),
              "source_record_limit_drift"),
@@ -274,22 +340,11 @@ class TmasStationsTests(unittest.TestCase):
                 x=200.0), "source_coordinate_range_drift"),
             ("geometry structure", lambda d: d["page_000000_00002"]["features"][0].update(
                 geometry={"x": -104.0}), "source_geometry_population_drift"),
-            ("null population", lambda d: d["page_000000_00002"]["features"][0]["attributes"].update(
-                latitude=None), "source_null_population_drift"),
-            ("station id duplicates",
-             lambda d: d["page_000000_00002"]["features"][1]["attributes"].update(Station_Id="S001"),
-             "source_station_id_population_drift"),
             ("geometry attribute mismatch",
              lambda d: d["page_000000_00002"]["features"][0]["geometry"].update(x=-150.0),
              "source_geometry_population_drift"),
-            ("record values", lambda d: d["page_000000_00002"]["features"][0]["attributes"].update(
-                Station_Id="S002"), "source_record_value_drift"),
-            ("coverage bounds", lambda d: (
-                d["page_000000_00002"]["features"][0]["geometry"].update(y=1.0),
-                d["page_000000_00002"]["features"][0]["attributes"].update(latitude=1.0)),
-             "source_observed_coverage_drift"),
             ("page tiling", lambda d: d.pop("page_000004_00002"),
-             "source_capture_roster_incomplete_or_unexpected"),
+             "source_page_tiling_incomplete_or_overlapped"),
         ]
         for label, mutate, expected in cases:
             with self.subTest(label=label):
@@ -304,11 +359,7 @@ class TmasStationsTests(unittest.TestCase):
         with self.subTest(label="within tolerance accepted"):
             docs = json.loads(json.dumps(self._documents()))
             move_geometry(docs["page_000000_00002"]["features"], 5e-9)
-            pins = _fixture_pins(mutate=lambda feats: move_geometry(feats, 5e-9))
-            with patch.object(source, "EXPECTED_RECORD_SHA256", pins["EXPECTED_RECORD_SHA256"]), \
-                    patch.object(source, "EXPECTED_GEOMETRY_SHA256", pins["EXPECTED_GEOMETRY_SHA256"]), \
-                    patch.object(source, "EXPECTED_OBSERVED_BOUNDS", pins["EXPECTED_OBSERVED_BOUNDS"]):
-                layer, fields_value, extracted = source._validate_captures(self._captures(docs))
+            layer, fields_value, extracted = source._validate_captures(self._captures(docs))
             self.assertEqual(extracted["audit"]["geometry_attribute_mismatch_count"], 0)
         with self.subTest(label="beyond tolerance fails closed"):
             docs = json.loads(json.dumps(self._documents()))
@@ -316,35 +367,10 @@ class TmasStationsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_geometry_population_drift"):
                 source._validate_captures(self._captures(docs))
 
-    def _replay_directory(self, root, docs, mutate=None):
-        documents = json.loads(json.dumps(docs))
-        if mutate is not None:
-            mutate(documents)
-        root.mkdir(parents=True)
-        urls = {"ids_seed": source._query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                **{name: url for name, url in source._doc_urls()},
-                **{name: url for name, url in source._after_doc_urls()}}
-        for offset in range(0, source.EXPECTED_COUNT, source.PAGE_START_RECORDS):
-            count = min(source.PAGE_START_RECORDS, source.EXPECTED_COUNT - offset)
-            name = source._page_name(offset, count)
-            urls[name] = source._page_query(offset, count)
-        for name in sorted(source._capture_names()):
-            body = json.dumps(documents[name], separators=(",", ":"), ensure_ascii=False).encode()
-            receipt = {"method": "GET", "url": urls[name], "final_url": urls[name],
-                       "observed_at": "2026-11-14T00:00:00+00:00", "status": 200, "complete_body": True,
-                       "wire_bytes": len(body), "wire_sha256": hashlib.sha256(body).hexdigest(),
-                       "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(),
-                       "content_encoding": "identity", "content_length": len(body),
-                       "error_code": None, "error_type": None}
-            (root / f"{name}.body").write_bytes(body)
-            (root / f"{name}.wire").write_bytes(body)
-            (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-        return root
-
     def test_valid_replay_seals_ready_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
-            root = self._replay_directory(Path(tmp) / "capture", self._documents())
+            root = Path(tmp) / "capture"
             factory = _synthetic_client_factory(self._documents())
             with patch.object(source.httpx, "Client", side_effect=factory):
                 first = source.capture_tmas_stations(storage, version="regression",
@@ -363,18 +389,114 @@ class TmasStationsTests(unittest.TestCase):
             audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
             self.assertEqual(audit["null_geometry_count"], 0)
             self.assertEqual(audit["geometry_attribute_mismatch_count"], 0)
-            with patch.object(source.httpx, "Client", side_effect=factory):
+            originals = {key: (storage.read_key(key), storage.object_snapshot(key))
+                         for key in storage.list_prefix("")}
+            capture_root = Path(first["capture_directory"])
+            capture_manifest = (capture_root / "capture_manifest.json").read_bytes()
+            with patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
                 second = source.capture_tmas_stations(storage, version="regression",
-                                                      capture_directory=str(root))
+                                                      capture_directory=first["capture_directory"])
             self.assertTrue(second["reused"])
             self.assertEqual(second["version"], first["version"])
+            self.assertEqual((capture_root / "capture_manifest.json").read_bytes(), capture_manifest)
+            with patch.object(source.httpx, "Client", side_effect=factory):
+                refresh = source.capture_tmas_stations(storage, version="fresh", capture_directory=str(root))
+            self.assertTrue(refresh["reused"])
+            self.assertEqual(refresh["version"], first["version"])
+            self.assertNotEqual(refresh["capture_directory"], first["capture_directory"])
+            self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key))
+                              for key in storage.list_prefix("")}, originals)
+
+    def test_wire_body_binding_rejects_forged_decoded_evidence(self):
+        for encoding in ("identity", "gzip"):
+            with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as tmp:
+                storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+                factory = _synthetic_client_factory(self._documents(), encoding=encoding)
+                with patch.object(source.httpx, "Client", side_effect=factory):
+                    first = source.capture_tmas_stations(storage, version="wire", capture_directory=tmp + "/capture")
+                root = Path(first["capture_directory"])
+                originals = {key: (storage.read_key(key), storage.object_snapshot(key))
+                             for key in storage.list_prefix("")}
+                with patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                    replay = source.capture_tmas_stations(storage, version="replay", capture_directory=str(root))
+                self.assertEqual(replay["version"], first["version"])
+                name = "page_000000_00002"
+                body = (root / f"{name}.body").read_bytes().replace(b"S001", b"S999")
+                (root / f"{name}.body").write_bytes(body)
+                receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
+                receipt.update(bytes=len(body), sha256=hashlib.sha256(body).hexdigest())
+                (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+                manifest = json.loads((root / "capture_manifest.json").read_bytes())
+                manifest["receipts"][name] = receipt
+                manifest["artifact_roster"] = source.capture_roster_digests(root, exclude={"capture_manifest.json"})
+                (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
+                with patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                    with self.assertRaisesRegex(ValueError, "retained_capture_wire_body_mismatch"):
+                        source.capture_tmas_stations(storage, version="forged", capture_directory=str(root))
+                self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key))
+                                  for key in storage.list_prefix("")}, originals)
+
+    def test_replay_custody_and_cached_parquet_integrity_fail_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            factory = _synthetic_client_factory(self._documents())
+            with patch.object(source.httpx, "Client", side_effect=factory):
+                first = source.capture_tmas_stations(storage, version="custody", capture_directory=tmp + "/capture")
+            root = Path(first["capture_directory"])
+            originals = {key: (storage.read_key(key), storage.object_snapshot(key))
+                         for key in storage.list_prefix("")}
+            (root / "extra.body").write_bytes(b"unbound")
+            with self.assertRaisesRegex(ValueError, "capture_roster_mismatch"):
+                source._read_replay(root)
+            (root / "extra.body").unlink()
+            name = "page_000000_00002"
+            body_path = root / f"{name}.body"
+            original_body = body_path.read_bytes()
+            body_path.write_bytes(original_body + b" ")
+            with self.assertRaisesRegex(ValueError, "retained_capture_artifact_size_mismatch"):
+                source._read_replay(root)
+            body_path.unlink()
+            body_path.symlink_to(root / f"{name}.wire")
+            with self.assertRaisesRegex(ValueError, "capture_roster_nonregular_path"):
+                source._read_replay(root)
+            body_path.unlink()
+            body_path.write_bytes(original_body)
+            with patch.object(source, "MAX_CAPTURE_TOTAL_BYTES", 1):
+                with self.assertRaisesRegex(ValueError, "retained_capture_budget_invalid"):
+                    source._read_replay(root)
+            receipt_path = root / f"{name}.receipt.json"
+            receipt_bytes = receipt_path.read_bytes()
+            manifest_path = root / "capture_manifest.json"
+            manifest_bytes = manifest_path.read_bytes()
+            receipt = json.loads(receipt_bytes)
+            receipt.update(url=source._page_query(2, 2), final_url=source._page_query(2, 2))
+            receipt_path.write_bytes(_canonical(receipt))
+            manifest = json.loads(manifest_bytes)
+            manifest["receipts"][name] = receipt
+            manifest["artifact_roster"] = source.capture_roster_digests(root, exclude={"capture_manifest.json"})
+            manifest_path.write_bytes(_canonical(manifest))
+            with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
+                source._read_replay(root)
+            receipt_path.write_bytes(receipt_bytes)
+            manifest_path.write_bytes(manifest_bytes)
+            self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key))
+                              for key in storage.list_prefix("")}, originals)
+            parquet_key = first["candidate_ready"].replace("metadata/candidate_ready.json", f"geoparquet/{source.FILE_SLUG}.parquet")
+            storage.write_key(parquet_key, b"corrupt parquet")
+            tampered = {key: (storage.read_key(key), storage.object_snapshot(key))
+                        for key in storage.list_prefix("")}
+            with patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                with self.assertRaisesRegex(ValueError, "cached_candidate_object_integrity_failed"):
+                    source.capture_tmas_stations(storage, version="corrupt", capture_directory=str(root))
+            self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key))
+                              for key in storage.list_prefix("")}, tampered)
 
     def test_drifted_replay_seals_no_ready_candidate(self):
         def mutate(docs):
             docs["page_000000_00002"]["features"][0]["attributes"]["state"] = "XX"
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
-            root = self._replay_directory(Path(tmp) / "capture", self._documents(), mutate)
+            root = Path(tmp) / "capture"
             factory = _synthetic_client_factory(_docs_with_state_drift())
             with patch.object(source.httpx, "Client", side_effect=factory):
                 with self.assertRaisesRegex(ValueError, "source_state_value_contract_drift"):
@@ -459,21 +581,12 @@ class TmasStationsRetryTests(unittest.TestCase):
                                            max_bytes=1024, attempts=3, base_delay=0.0)
 
 
-class TmasStationsLiveRosterTests(unittest.TestCase):
-    def test_live_page_roster_covers_8060_ids_in_5_pages(self):
-        self.assertEqual(source.EXPECTED_COUNT, 8060)
-        names = source._capture_names()
-        self.assertEqual(sorted(name for name in names if name.startswith("page_")),
-                         ["page_000000_02000", "page_002000_02000", "page_004000_02000",
-                          "page_006000_02000", "page_008000_00060"])
-        self.assertEqual(len(names), 10 + 5)
-        self.assertEqual(source._sha(_canonical(list(range(1, 8061)))), source.EXPECTED_ID_SHA256)
-
-    def test_page_urls_stay_under_the_request_line_limit(self):
-        for offset in range(0, source.EXPECTED_COUNT, source.PAGE_START_RECORDS):
-            count = min(source.PAGE_START_RECORDS, source.EXPECTED_COUNT - offset)
-            self.assertLess(len(source._page_query(offset, count)), 8000)
-
-
-if __name__ == "__main__":
-    unittest.main()
+class TmasStationsPageRosterTests(unittest.TestCase):
+    def test_large_dynamic_roster_and_request_line_limit(self):
+        count = 8061
+        pages = [(offset, min(2000, count - offset)) for offset in range(0, count, 2000)]
+        names = source._capture_names(pages)
+        self.assertIn("page_008000_00061", names)
+        self.assertEqual(len(names), 15)
+        for offset, size in pages:
+            self.assertLess(len(source._page_query(offset, size)), 8000)
