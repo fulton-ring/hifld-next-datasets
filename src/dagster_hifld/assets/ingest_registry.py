@@ -39,9 +39,6 @@ from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_li
 from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
 from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
 from dagster_hifld.assets.usace_daymark_locations import usace_daymark_locations_usace_ienc
-from dagster_hifld.assets.usace_pipeline_areas import usace_pipeline_areas_usace_ienc
-from dagster_hifld.assets.usace_data_quality_areas import usace_data_quality_areas_usace_ienc
-from dagster_hifld.assets.usace_dumping_ground_areas import usace_dumping_ground_areas_usace_ienc
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
 from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
@@ -58,7 +55,6 @@ from dagster_hifld.assets.land_region_areas_usace_ienc import (
     land_region_areas_usace_ienc_candidate,
 )
 from dagster_hifld.assets.building_locations_usace_ienc import building_locations_usace_ienc
-from dagster_hifld.assets.usace_data_coverage_areas import usace_data_coverage_areas_usace_ienc
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 
@@ -97,9 +93,6 @@ hifld_ingest_assets = [
     usace_caution_areas_usace_ienc,
     usace_pile_locations_usace_ienc,
     usace_daymark_locations_usace_ienc,
-    usace_pipeline_areas_usace_ienc,
-    usace_data_quality_areas_usace_ienc,
-    usace_dumping_ground_areas_usace_ienc,
     coastlines_usace_ienc,
     locks_usace_ienc,
     lock_basins_usace_ienc_candidate,
@@ -110,7 +103,6 @@ hifld_ingest_assets = [
     harbor_facility_locations_usace_ienc,
     land_region_areas_usace_ienc_candidate,
     hf_areas_usace_ienc_candidate,
-    usace_data_coverage_areas_usace_ienc,
     epa_frs_sic_powerplants,
     building_locations_usace_ienc,
 ]

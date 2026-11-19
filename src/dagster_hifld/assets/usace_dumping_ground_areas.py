@@ -98,4 +98,7 @@ usace_dumping_ground_areas_draft_schedule = ScheduleDefinition(
 
 usace_dumping_ground_areas_drift = register_approved_baseline_drift(usace_dumping_ground_areas_usace_ienc, "usace_dumping_ground_areas_drift")
 
+INGEST_ASSETS = [usace_dumping_ground_areas_usace_ienc]
 ASSET_CHECKS = [usace_dumping_ground_areas_complete, usace_dumping_ground_areas_drift]
+JOBS = [usace_dumping_ground_areas_draft_job]
+SCHEDULES = [usace_dumping_ground_areas_draft_schedule]
