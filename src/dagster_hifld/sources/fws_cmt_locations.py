@@ -40,8 +40,16 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.arcgis_layer import (
-    PAGE_MAX_BYTES, _capture, _canonical, _capture_identity, _load_capture, _sha,
+    _canonical,
+    _sha,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    PAGE_MAX_BYTES,
+    capture_page,
+    capture_identity,
+    load_capture,
+)
+
 
 DATASET_SLUG = "usfws-corporate-master-table"
 FILE_SLUG = DATASET_SLUG
@@ -186,7 +194,7 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
         raise ValueError("retained_capture_count_invalid")
     expected_urls = dict(_capture_roster(count))
     captures = validate_retained_capture_replay(root, capture_names=set(expected_urls),
-        expected_urls=expected_urls, load_capture=_load_capture,
+        expected_urls=expected_urls, load_capture=load_capture,
         validate_request_identity=validate_capture_request_identity)
     if json.loads(captures["count_before"][0]).get("count") != count:
         raise ValueError("retained_capture_count_invalid")
@@ -423,7 +431,7 @@ def _parquet_bytes(features: list[dict]) -> bytes:
 
 
 def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
-    return _sha(_canonical(_capture_identity(captures, root)))
+    return _sha(_canonical(capture_identity(captures, root)))
 
 
 def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
@@ -461,14 +469,14 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
                               headers={"User-Agent": "hifld-next-datasets/fws-cmt-draft"}) as client:
                 # Capture the source witness before deciding how many pages exist.
                 for name, url in _capture_roster()[:7]:
-                    captures[name] = _capture(client, url, root, name)
+                    captures[name] = capture_page(client, url, root, name)
                 count = json.loads(captures["count_before"][0]).get("count")
                 ids = json.loads(captures["ids_before"][0]).get("objectIds")
                 validate_capture_witness(count, ids, count, ids)
                 if not ids:
                     raise ValueError("source_empty_population_requires_review")
                 for name, url in _capture_roster(count)[7:]:
-                    captures[name] = _capture(client, url, root, name)
+                    captures[name] = capture_page(client, url, root, name)
             features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}
@@ -494,7 +502,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
     identity = processing_identity(Path(__file__).parents[3])
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
-        "source_capture_evidence": _capture_identity(captures, root),
+        "source_capture_evidence": capture_identity(captures, root),
         "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
         **UNACCEPTED_FLAGS})
     parquet = _parquet_bytes(features)
@@ -568,7 +576,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
@@ -591,7 +599,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
         if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            body, wire, _receipt = _load_capture(root, name)
+            body, wire, _receipt = load_capture(root, name)
             if (storage.read_key(f"{prefix}/raw/{name}.body") != body
                     or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
                 raise ValueError("cached_source_evidence_changed:" + name)
