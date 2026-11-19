@@ -95,4 +95,7 @@ usace_notice_marks_draft_schedule = ScheduleDefinition(
 usace_notice_marks_usace_ienc_drift = register_approved_baseline_drift(
     usace_notice_marks_usace_ienc, "usace_notice_marks_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_notice_marks_usace_ienc]
 ASSET_CHECKS = [usace_notice_marks_complete, usace_notice_marks_usace_ienc_drift]
+JOBS = [usace_notice_marks_draft_job]
+SCHEDULES = [usace_notice_marks_draft_schedule]

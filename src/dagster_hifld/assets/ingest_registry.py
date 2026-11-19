@@ -16,7 +16,6 @@ from dagster_hifld.assets.national_transit_map_stops import national_transit_map
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
 from dagster_hifld.assets.usace_navigation_lights import usace_navigation_lights_usace_ienc
-from dagster_hifld.assets.usace_notice_marks import usace_notice_marks_usace_ienc
 from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ienc
 from dagster_hifld.assets.usace_dry_docks import usace_dry_docks_usace_ienc
 from dagster_hifld.assets.usace_distance_marks import usace_distance_marks_usace_ienc
@@ -36,9 +35,6 @@ from dagster_hifld.assets.shoreline_construction_areas_usace_ienc import shoreli
 from dagster_hifld.assets.shoreline_construction_lines_usace_ienc import shoreline_construction_lines_usace_ienc
 from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
 from dagster_hifld.assets.sloped_ground_lines_usace_ienc import sloped_ground_lines_usace_ienc
-from dagster_hifld.assets.usace_caution_areas import usace_caution_areas_usace_ienc
-from dagster_hifld.assets.usace_pile_locations import usace_pile_locations_usace_ienc
-from dagster_hifld.assets.usace_daymark_locations import usace_daymark_locations_usace_ienc
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
 from dagster_hifld.assets.locks_usace_ienc import locks_usace_ienc
 from dagster_hifld.assets.lock_basins_usace_ienc import lock_basins_usace_ienc_candidate
@@ -70,7 +66,6 @@ hifld_ingest_assets = [
     usace_administrative_areas_usace_ienc,
     usace_navigation_marks_areas_usace_ienc,
     usace_navigation_lights_usace_ienc,
-    usace_notice_marks_usace_ienc,
     usace_berths_areas_usace_ienc,
     usace_dry_docks_usace_ienc,
     usace_distance_marks_usace_ienc,
@@ -90,9 +85,6 @@ hifld_ingest_assets = [
     shoreline_construction_lines_usace_ienc,
     small_craft_facility_areas_usace_ienc,
     sloped_ground_lines_usace_ienc,
-    usace_caution_areas_usace_ienc,
-    usace_pile_locations_usace_ienc,
-    usace_daymark_locations_usace_ienc,
     coastlines_usace_ienc,
     locks_usace_ienc,
     lock_basins_usace_ienc_candidate,
