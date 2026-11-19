@@ -147,12 +147,16 @@ def quarantine(storage: StagingStorageResource, body: bytes, receipt: dict, reas
     return prefix
 
 
-def validate_receipt(body: bytes, receipt: dict, url: str) -> None:
+def validate_receipt(body: bytes, receipt: dict, url: str, wire: bytes) -> None:
     if (receipt.get('requested_url') != url or receipt.get('final_url') != url
             or type(receipt.get('status')) is not int or receipt['status'] != 200
             or type(receipt.get('byte_length')) is not int or receipt['byte_length'] != len(body)
             or receipt.get('sha256') != sha(body)):
         raise CBRSQuarantineError('capture_receipt_url_status_hash_length_mismatch')
+    if (receipt.get('complete_body') is not True
+            or type(receipt.get('wire_bytes')) is not int or receipt['wire_bytes'] != len(wire)
+            or receipt.get('wire_sha256') != sha(wire)):
+        raise CBRSQuarantineError('capture_receipt_wire_hash_length_mismatch')
     timestamp=receipt.get('observed_at')
     if not isinstance(timestamp,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)',timestamp):
         raise CBRSQuarantineError('capture_receipt_requires_strict_aware_iso_timestamp')
@@ -181,11 +185,13 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                         (root / f'{name}.receipt.json').write_bytes(encode(receipt))
                     else:
                         body, receipt = load_replay(root, name)
+                        receipt = strict_json((root / f'{name}.receipt.json').read_bytes())
                         budget[0] += len(body) + receipt['wire_bytes']
                         if len(body) > MAX_BYTES or budget[0] > MAX_BYTES * 4:
                             raise CBRSQuarantineError('capture_size_limit')
-                    validate_receipt(body, receipt, url)
-                    captures[name] = (body, receipt)
+                    wire = (root / f'{name}.wire').read_bytes()
+                    validate_receipt(body, receipt, url, wire)
+                    captures[name] = (body, receipt, wire)
                 if pending is discovery:
                     roster = capture_urls(captures)
                     pending = [(name, url) for name, url in roster.items() if name not in captures]
@@ -208,14 +214,16 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
 def provenance(captures: dict, identity: dict) -> dict:
     urls = capture_urls(captures)
     if set(captures)!=set(urls): raise CBRSQuarantineError('capture_roster_drift')
-    for name,url in urls.items(): validate_receipt(*captures[name],url)
+    for name,url in urls.items():
+        body, receipt, wire = captures[name]
+        validate_receipt(body, receipt, url, wire)
     if b'gis1.wim.usgs.gov' not in captures['fws_data'][0] or b'a60c25b4b2e44969b3164742901058a2' not in captures['fws_data'][0]:
         raise CBRSQuarantineError('official_delegation_changed')
     item=strict_json(captures['official_item'][0])
     if item.get('url')!='https://gis1.wim.usgs.gov/server/rest/services/CBRSMapper/CoastalBarrierResourcesSystem/MapServer':
         raise CBRSQuarantineError('delegated_service_changed')
     inputs=[]
-    for name,(body,receipt) in captures.items():
+    for name,(body,receipt,wire) in captures.items():
         inputs.append({'input_id':name+':'+sha(body),'producer':'U.S. Fish and Wildlife Service',
             'host':urls[name].split('/')[2],'role':'producer_publication' if name=='fws_data' else 'official_distributor',
             'canonical_url':urls[name],'retrieval_url':receipt['requested_url'],'observed_final_url':receipt['final_url'],
@@ -417,7 +425,11 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
         raise CBRSQuarantineError('existing_candidate_unrostered_or_missing_object')
     try: validate_staged_release_derivatives(storage,prefix,{f'{prefix}/{name}' for name in actual})
     except (OSError,UnicodeError,ValueError,TypeError) as exc: raise CBRSQuarantineError('invalid_staged_release_derivatives') from exc
-    cached={name:((root/f'raw/captures/{name}.body').read_bytes(),strict_json((root/f'raw/captures/{name}.receipt.json').read_bytes())) for name in captures}
+    cached = {}
+    for name in captures:
+        body, receipt = load_replay(root / 'raw/captures', name)
+        receipt = strict_json((root / f'raw/captures/{name}.receipt.json').read_bytes())
+        cached[name] = (body, receipt, (root / f'raw/captures/{name}.wire').read_bytes())
     expected_manifest=provenance(cached, identity)
     expected_manifest['processing_fingerprint']=sha(encode(identity))
     if any(cached[name][0]!=captures[name][0] for name in captures):
@@ -517,7 +529,7 @@ def fidelity_payloads(fidelity: dict, rows: list[dict], records: bytes, comparis
 def stage_generalized_units_candidate(storage: StagingStorageResource, *, capture_dir: Path | None = None) -> dict:
     require_local(storage)
     captures = acquire(storage,capture_dir)
-    body,receipt = captures['page0000']
+    body,receipt,_wire = captures['page0000']
     try:
         identity = processing_identity()
         manifest=provenance(captures, identity)
@@ -535,7 +547,7 @@ def stage_generalized_units_candidate(storage: StagingStorageResource, *, captur
                     try:
                         if not storage.object_exists(ready_key):raise CBRSQuarantineError('existing_candidate_missing_ready_marker')
                         ready = strict_json(storage.read_key(ready_key))
-                        expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', f'metadata/{SLUG}_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'metadata/source-fidelity/{name}' for name in FIDELITY_FILES} | {f'raw/captures/{name}{suffix}' for name in captures for suffix in ('.body','.receipt.json')}
+                        expected_names = {f'raw/{ARCHIVE_NAME}', 'raw/retrieval.json', f'geopackage/{SLUG}.gpkg', 'candidate/typed-source.parquet', 'metadata/candidate.records.jsonl', 'metadata/source_manifest.json', 'metadata/processing_identity.json', f'metadata/{SLUG}_source_audit.json', 'metadata/proposed_source_contract.json', 'metadata/geopackage_source_fidelity.json', 'metadata/parquet_source_fidelity.json', 'metadata/baseline_comparison.json'} | {f'metadata/source-fidelity/{name}' for name in FIDELITY_FILES} | {f'raw/captures/{name}{suffix}' for name in captures for suffix in ('.body','.receipt.json','.wire')}
                         if set(ready.get('objects', {})) != expected_names or ready.get('version') != version or ready.get('status') != 'working_draft_candidate_ready':
                             raise CBRSQuarantineError('existing_candidate_inventory_conflict')
                         if (ready.get('source_sha256') != sha(body) or ready.get('candidate_records_sha256') != sha(records)
@@ -587,6 +599,7 @@ def stage_generalized_units_candidate(storage: StagingStorageResource, *, captur
             payloads.update(fidelity_payloads(fidelity,rows,records,directory/'comparison'))
             payloads.update({f'raw/captures/{name}.body':value[0] for name,value in captures.items()})
             payloads.update({f'raw/captures/{name}.receipt.json':encode(value[1]) for name,value in captures.items()})
+            payloads.update({f'raw/captures/{name}.wire':value[2] for name,value in captures.items()})
             ready = {'status':'working_draft_candidate_ready', 'approved':False, 'source_sha256':sha(body),
                 'candidate_records_sha256':sha(records), 'processing_fingerprint':fingerprint, 'version':version,
                 'objects':{name:sha(value) for name,value in payloads.items()}}

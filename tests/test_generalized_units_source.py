@@ -6,6 +6,7 @@ HIFLD_GENERALIZED_UNITS_TEST_CAPTURE_DIR with the expanded roster and wire evide
 """
 import collections
 import copy
+import gzip
 import json
 import os
 import shutil
@@ -98,6 +99,7 @@ def receipt(url, body=None):
     if body is not None:
         base['byte_length'] = len(body)
         base['sha256'] = s.sha(body)
+        base.update(bytes=len(body), complete_body=True, wire_bytes=len(body), wire_sha256=s.sha(body))
     return base
 
 
@@ -111,7 +113,7 @@ def synthetic_captures(objectids=None, *, mutate=None):
     layer_body = s.encode(synthetic_layer())
     service_body = s.encode({'serviceDescription': 'FWS delegated CBRS'})
     item_body = s.encode(ITEM)
-    return {'service_before': (service_body, receipt(s.capture_roster([])['service_before'], service_body)),
+    captures = {'service_before': (service_body, receipt(s.capture_roster([])['service_before'], service_body)),
             'service_after': (service_body, receipt(s.capture_roster([])['service_after'], service_body)),
             'layer_after': (layer_body, receipt(s.capture_roster([])['layer_after'], layer_body)),
             'fws_data': (LANDING, receipt(s.capture_roster([11, 12, 13])['fws_data'], LANDING)),
@@ -122,6 +124,7 @@ def synthetic_captures(objectids=None, *, mutate=None):
             'page0000': (body, receipt(s.capture_roster([11, 12, 13])['page0000'], body)),
             'count_after': (count_body, receipt(s.capture_roster([11, 12, 13])['count_after'], count_body)),
             'ids_after': (ids_body, receipt(s.capture_roster([11, 12, 13])['ids_after'], ids_body))}
+    return {name: (body, metadata, body) for name, (body, metadata) in captures.items()}
 
 
 def stage_with_synthetic(storage, captures=None):
@@ -152,7 +155,7 @@ class StructuralTests(unittest.TestCase):
                             ('ids', {'objectIdFieldName': 'OBJECTID', 'objectIds': [11, 12, 13, 14]}),
                             ('ids_after', {'objectIdFieldName': 'OBJECTID', 'objectIds': [14, 13, 12, 11]})]:
             body = s.encode(value)
-            captures[name] = (body, receipt(s.capture_roster([11, 12, 13])[name], body))
+            captures[name] = (body, receipt(s.capture_roster([11, 12, 13])[name], body), body)
         for name, url in s.capture_roster([11, 12, 13, 14]).items():
             captures[name][1].update(requested_url=url, final_url=url)
         with tempfile.TemporaryDirectory() as tmp:
@@ -244,7 +247,8 @@ class RealCaptureTests(unittest.TestCase):
     def captures(self):
         ids = json.loads((CAPTURE / 'ids.body').read_bytes())['objectIds']
         return {name: ((CAPTURE / (name + '.body')).read_bytes(),
-                       json.loads((CAPTURE / (name + '.receipt.json')).read_bytes())) for name in s.capture_roster(sorted(ids))}
+                       json.loads((CAPTURE / (name + '.receipt.json')).read_bytes()),
+                       (CAPTURE / (name + '.wire')).read_bytes()) for name in s.capture_roster(sorted(ids))}
 
     def test_complete_original(self):
         rows, audit = s.inspect_source(self.captures())
@@ -286,11 +290,11 @@ class DriftTests(unittest.TestCase):
                 captures = synthetic_captures(mutate=None)
                 if mode == 'count':
                     body = s.encode({'count': 2})
-                    captures['count_after'] = (body, receipt(s.capture_roster([11, 12, 13])['count_after'], body))
+                    captures['count_after'] = (body, receipt(s.capture_roster([11, 12, 13])['count_after'], body), body)
                 elif mode == 'ids':
                     after = json.loads(captures['ids_after'][0]); after['objectIds'].pop()
                     body = s.encode(after)
-                    captures['ids_after'] = (body, receipt(s.capture_roster([11, 12, 13])['ids_after'], body))
+                    captures['ids_after'] = (body, receipt(s.capture_roster([11, 12, 13])['ids_after'], body), body)
                 elif mode == 'partial':
                     captures = synthetic_captures(mutate=lambda p: p.update(exceededTransferLimit=True))
                 else:
@@ -308,6 +312,7 @@ class DriftTests(unittest.TestCase):
         for name in s.capture_roster([11, 12, 13]):
             for field, value in [('requested_url', 'https://example.com'), ('final_url', 'https://example.com'),
                                  ('status', True), ('byte_length', True), ('sha256', '0' * 64),
+                                 ('wire_bytes', 1), ('wire_sha256', '0' * 64), ('complete_body', False),
                                  ('observed_at', '2026-10-21T00:00:00+00:99'), ('observed_at', '2026-10-21')]:
                 captures = synthetic_captures(); captures[name][1][field] = value
                 with self.subTest(name=name, field=field), tempfile.TemporaryDirectory() as tmp, \
@@ -327,19 +332,19 @@ class DriftTests(unittest.TestCase):
     def test_delegation_and_layer_identity_drift(self):
         captures = synthetic_captures()
         body = b'<html>no service link here</html>'
-        captures['fws_data'] = (body, receipt(s.capture_roster([11, 12, 13])['fws_data'], body))
+        captures['fws_data'] = (body, receipt(s.capture_roster([11, 12, 13])['fws_data'], body), body)
         with self.assertRaisesRegex(ValueError, 'official_delegation_changed'):
             s.provenance(captures, s.processing_identity())
         captures = synthetic_captures()
         item = dict(ITEM); item['url'] = 'https://example.com/MapServer'
         body = s.encode(item)
-        captures['official_item'] = (body, receipt(s.capture_roster([11, 12, 13])['official_item'], body))
+        captures['official_item'] = (body, receipt(s.capture_roster([11, 12, 13])['official_item'], body), body)
         with self.assertRaisesRegex(ValueError, 'delegated_service_changed'):
             s.provenance(captures, s.processing_identity())
         captures = synthetic_captures(mutate=lambda p: p.update({'fields': p['fields']}))
         layer = synthetic_layer(); layer['name'] = 'Renamed Units'
         body = s.encode(layer)
-        captures['layer'] = (body, receipt(s.capture_roster([11, 12, 13])['layer'], body))
+        captures['layer'] = (body, receipt(s.capture_roster([11, 12, 13])['layer'], body), body)
         with tempfile.TemporaryDirectory() as tmp, patch.object(s, 'acquire', return_value=captures), \
                 self.assertRaisesRegex(ValueError, 'layer_identity_or_geometry_drift|mid_capture_metadata_drift'):
             s.stage_generalized_units_candidate(StagingStorageResource(local_dir=tmp))
@@ -439,6 +444,9 @@ class AcquisitionTests(unittest.TestCase):
             requests = []
             def handle(request):
                 requests.append(str(request.url))
+                if str(request.url) == urls['page0001']:
+                    return httpx.Response(200, headers={'Content-Encoding': 'gzip'},
+                        stream=httpx.ByteStream(gzip.compress(by_url[str(request.url)], mtime=0)))
                 return httpx.Response(200, stream=httpx.ByteStream(by_url[str(request.url)]))
             client_type = httpx.Client
             with tempfile.TemporaryDirectory() as tmp, patch.object(s.httpx, 'Client',
@@ -451,6 +459,27 @@ class AcquisitionTests(unittest.TestCase):
                 for path in Path(store.local_dir, '_raw-captures', s.SLUG).glob('*/*'):
                     shutil.copyfile(path, replay / path.name)
                 self.assertEqual(s.acquire(store, replay), acquired)
+                result = stage_with_synthetic(store, acquired)
+                self.assertEqual(stage_with_synthetic(store, acquired), result)
+                root = Path(store.local_dir, s.SLUG, s.SLUG, result['version'])
+                self.assertEqual((root / 'raw/captures/page0001.wire').read_bytes(), acquired['page0001'][2])
+                self.assertNotEqual(acquired['page0001'][2], acquired['page0001'][0])
+                fresh = copy.deepcopy(acquired)
+                for value in fresh.values():
+                    value[1]['observed_at'] = '2026-11-19T12:00:00Z'
+                self.assertEqual(stage_with_synthetic(store, fresh), result)
+                key = 'raw/captures/page0001.receipt.json'
+                forged = json.loads((root / key).read_bytes())
+                forged.update(wire_bytes=1, wire_sha256='0' * 64)
+                (root / key).write_bytes(s.encode(forged))
+                ready_path = root / f'metadata/{s.SLUG}_candidate_ready.json'
+                ready = json.loads(ready_path.read_bytes())
+                ready['objects'][key] = s.sha((root / key).read_bytes())
+                ready_path.write_bytes(s.encode(ready))
+                with self.assertRaisesRegex(s.CBRSQuarantineError, 'retained_capture_receipt_invalid'):
+                    stage_with_synthetic(store, acquired)
+                self.assertFalse(root.exists())
+                self.assertTrue(list(Path(store.local_dir, '_quarantine', s.SLUG).glob('invalid-cache-*/candidate/raw/captures/page0001.receipt.json')))
                 (replay / 'page0001.wire').write_bytes(b'truncated')
                 with self.assertRaisesRegex(s.CBRSQuarantineError, 'retained_capture_receipt_invalid'):
                     s.acquire(store, replay)
