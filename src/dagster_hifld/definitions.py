@@ -195,23 +195,8 @@ from dagster_hifld.assets.epa_frs_sic_powerplants import (
 )
 
 
-from dagster_hifld.assets.usace_caution_areas import (
-    usace_caution_areas_complete,
-    usace_caution_areas_draft_schedule,
-    usace_caution_areas_draft_job,
-)
 
-from dagster_hifld.assets.usace_pile_locations import (
-    usace_pile_locations_complete,
-    usace_pile_locations_draft_job,
-    usace_pile_locations_draft_schedule,
-)
 
-from dagster_hifld.assets.usace_daymark_locations import (
-    usace_daymark_locations_complete,
-    usace_daymark_locations_draft_job,
-    usace_daymark_locations_draft_schedule,
-)
 
 
 
@@ -231,11 +216,6 @@ from dagster_hifld.assets.usace_navigation_lights import (
     usace_navigation_lights_draft_schedule,
 )
 
-from dagster_hifld.assets.usace_notice_marks import (
-    usace_notice_marks_complete,
-    usace_notice_marks_draft_job,
-    usace_notice_marks_draft_schedule,
-)
 
 
 
@@ -683,7 +663,6 @@ defs = Definitions(
             usace_administrative_areas_complete,
             usace_navigation_marks_areas_complete,
             usace_navigation_lights_complete,
-            usace_notice_marks_complete,
             usace_overhead_cables_complete,
             usace_dam_lines_complete,
             building_locations_population_complete,
@@ -696,11 +675,8 @@ defs = Definitions(
             shoreline_construction_lines_usace_ienc_complete,
             small_craft_facility_areas_usace_ienc_complete,
             sloped_ground_lines_usace_ienc_complete,
-            usace_caution_areas_complete,
             usace_berths_areas_complete,
             usace_dry_docks_complete,
-            usace_pile_locations_complete,
-            usace_daymark_locations_complete,
             coastlines_usace_ienc_complete,
             coastlines_usace_ienc_drift,
             usace_distance_marks_drift,
@@ -748,10 +724,6 @@ defs = Definitions(
             usace_administrative_areas_draft_job,
             usace_navigation_marks_areas_draft_job,
             usace_navigation_lights_draft_job,
-            usace_notice_marks_draft_job,
-            usace_caution_areas_draft_job,
-            usace_pile_locations_draft_job,
-            usace_daymark_locations_draft_job,
             coastlines_usace_ienc_draft_job,
             locks_usace_ienc_draft_job,
             lock_basins_usace_ienc_draft_job,
@@ -795,12 +767,8 @@ defs = Definitions(
             usace_administrative_areas_draft_schedule,
             usace_navigation_marks_areas_draft_schedule,
             usace_navigation_lights_draft_schedule,
-            usace_notice_marks_draft_schedule,
             usace_berths_areas_draft_schedule,
             usace_dry_docks_draft_schedule,
-            usace_caution_areas_draft_schedule,
-            usace_pile_locations_draft_schedule,
-            usace_daymark_locations_draft_schedule,
             coastlines_usace_ienc_draft_schedule,
             locks_usace_ienc_draft_schedule,
             lock_basins_usace_ienc_draft_schedule,

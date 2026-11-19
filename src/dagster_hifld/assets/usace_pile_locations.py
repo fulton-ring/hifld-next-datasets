@@ -70,4 +70,7 @@ usace_pile_locations_draft_schedule = ScheduleDefinition(
 
 usace_pile_locations_usace_ienc_drift = register_approved_baseline_drift(usace_pile_locations_usace_ienc, "usace_pile_locations_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_pile_locations_usace_ienc]
 ASSET_CHECKS = [usace_pile_locations_complete, usace_pile_locations_usace_ienc_drift]
+JOBS = [usace_pile_locations_draft_job]
+SCHEDULES = [usace_pile_locations_draft_schedule]
