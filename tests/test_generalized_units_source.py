@@ -468,6 +468,8 @@ class AcquisitionTests(unittest.TestCase):
                 for value in fresh.values():
                     value[1]['observed_at'] = '2026-11-19T12:00:00Z'
                 self.assertEqual(stage_with_synthetic(store, fresh), result)
+                pristine = Path(tmp, 'pristine-candidate')
+                shutil.copytree(root, pristine)
                 key = 'raw/captures/page0001.receipt.json'
                 forged = json.loads((root / key).read_bytes())
                 forged.update(wire_bytes=1, wire_sha256='0' * 64)
@@ -480,6 +482,20 @@ class AcquisitionTests(unittest.TestCase):
                     stage_with_synthetic(store, acquired)
                 self.assertFalse(root.exists())
                 self.assertTrue(list(Path(store.local_dir, '_quarantine', s.SLUG).glob('invalid-cache-*/candidate/raw/captures/page0001.receipt.json')))
+                shutil.copytree(pristine, root)
+                wire_key = 'raw/captures/page0001.wire'
+                invalid_gzip = b'not-valid-gzip'
+                (root / wire_key).write_bytes(invalid_gzip)
+                forged = json.loads((root / key).read_bytes())
+                forged.update(wire_bytes=len(invalid_gzip), wire_sha256=s.sha(invalid_gzip))
+                (root / key).write_bytes(s.encode(forged))
+                ready = json.loads(ready_path.read_bytes())
+                for changed in (key, wire_key):
+                    ready['objects'][changed] = s.sha((root / changed).read_bytes())
+                ready_path.write_bytes(s.encode(ready))
+                with self.assertRaisesRegex(s.CBRSQuarantineError, 'retained_capture_wire_body_mismatch'):
+                    stage_with_synthetic(store, acquired)
+                self.assertFalse(root.exists())
                 (replay / 'page0001.wire').write_bytes(b'truncated')
                 with self.assertRaisesRegex(s.CBRSQuarantineError, 'retained_capture_receipt_invalid'):
                     s.acquire(store, replay)
