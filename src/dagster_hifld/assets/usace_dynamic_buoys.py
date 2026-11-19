@@ -73,4 +73,7 @@ usace_dynamic_buoys_draft_schedule = ScheduleDefinition(
 usace_dynamic_buoys_usace_ienc_drift = register_approved_baseline_drift(
     usace_dynamic_buoys_usace_ienc, "usace_dynamic_buoys_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_dynamic_buoys_usace_ienc]
 ASSET_CHECKS = [usace_dynamic_buoys_complete, usace_dynamic_buoys_usace_ienc_drift]
+JOBS = [usace_dynamic_buoys_draft_job]
+SCHEDULES = [usace_dynamic_buoys_draft_schedule]

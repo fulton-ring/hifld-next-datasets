@@ -76,4 +76,7 @@ usace_lateral_buoys_draft_schedule = ScheduleDefinition(
 
 usace_lateral_buoys_usace_ienc_drift = register_approved_baseline_drift(usace_lateral_buoys_usace_ienc, "usace_lateral_buoys_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_lateral_buoys_usace_ienc]
 ASSET_CHECKS = [usace_lateral_buoys_complete, usace_lateral_buoys_usace_ienc_drift]
+JOBS = [usace_lateral_buoys_draft_job]
+SCHEDULES = [usace_lateral_buoys_draft_schedule]
