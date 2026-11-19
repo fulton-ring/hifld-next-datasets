@@ -219,6 +219,29 @@ class TmasStationsTests(unittest.TestCase):
         table = pq.read_table(io.BytesIO(source._parquet_bytes(docs["layer_before"]["fields"], extracted["features"])))
         self.assertIsNone(table.column("Station_Id")[0].as_py())
 
+    def test_each_nonnull_coordinate_matches_geometry_independently(self):
+        for missing, component in (("latitude", "x"), ("longitude", "y")):
+            with self.subTest(missing=missing):
+                docs = self._documents()
+                row = docs["page_000000_00002"]["features"][0]
+                row["attributes"][missing] = None
+                _, _, extracted = source._validate_captures(self._captures(docs))
+                self.assertEqual(extracted["audit"]["source_null_counts"][missing], 1)
+                self.assertEqual(extracted["audit"]["geometry_attribute_mismatch_count"], 0)
+                row["geometry"][component] += 0.1
+                with self.assertRaisesRegex(ValueError, "source_geometry_population_drift"):
+                    source._validate_captures(self._captures(docs))
+
+    def test_null_state_and_class_are_not_counted_as_distinct_codes(self):
+        docs = self._documents()
+        docs["page_000000_00002"]["features"][0]["attributes"].update(state=None, functional_class=None)
+        _, _, extracted = source._validate_captures(self._captures(docs))
+        audit = extracted["audit"]
+        self.assertEqual(audit["observed_state_count"], 2)
+        self.assertEqual(audit["observed_functional_class_count"], 2)
+        self.assertEqual(audit["source_null_counts"]["state"], 1)
+        self.assertEqual(audit["source_null_counts"]["functional_class"], 1)
+
     def test_dynamic_acquisition_and_sealing_preserve_each_previous_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))

@@ -355,8 +355,10 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
             raise ValueError("source_state_value_contract_drift")
         if attrs["functional_class"] is not None and attrs["functional_class"] not in EXPECTED_FUNCTIONAL_CLASSES:
             raise ValueError("source_functional_class_value_contract_drift")
-        states.add(attrs["state"])
-        functional_classes.add(attrs["functional_class"])
+        if attrs["state"] is not None:
+            states.add(attrs["state"])
+        if attrs["functional_class"] is not None:
+            functional_classes.add(attrs["functional_class"])
         station_ids.append(attrs["Station_Id"])
         geom = feature.get("geometry")
         if geom is None:
@@ -372,9 +374,10 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         x, y = geom["x"], geom["y"]
         if not (-180 <= x <= 180 and -90 <= y <= 90):
             raise ValueError("source_coordinate_range_drift")
-        if (attrs["latitude"] is not None and attrs["longitude"] is not None
-                and (abs(x - attrs["longitude"]) > GEOMETRY_ATTRIBUTE_TOLERANCE_DEGREES
-                     or abs(y - attrs["latitude"]) > GEOMETRY_ATTRIBUTE_TOLERANCE_DEGREES)):
+        if ((attrs["longitude"] is not None
+                and abs(x - attrs["longitude"]) > GEOMETRY_ATTRIBUTE_TOLERANCE_DEGREES)
+                or (attrs["latitude"] is not None
+                    and abs(y - attrs["latitude"]) > GEOMETRY_ATTRIBUTE_TOLERANCE_DEGREES)):
             geometry_attribute_mismatches += 1
         if xmin is None or x < xmin:
             xmin = x
