@@ -284,6 +284,7 @@ def construction_bundle(storage,version,path,receipt,identity,manifest,raw_key,*
     return original,actual
 
 def source_payloads(receipt,identity,audit,manifest,table,raw_key,archive_sha,archive_bytes):
+    audit={**audit,'source_release':manifest['source_release']}
     proof={'status':'pass','method':'all_original_rows_attributes_types_and_native_WKB_exact_equality; full_deterministic_GPKG_container_and_exact_Arrow_metadata',
         'rows':table.num_rows,'records_sha256':record_hash(table),'crs':'EPSG:4269','approved':False}
     return {'raw/source_capture.json':encode({'key':raw_key,'sha256':archive_sha,'bytes':archive_bytes,'complete_original_members':len(audit['members']),'source_release':audit['source_release']}),

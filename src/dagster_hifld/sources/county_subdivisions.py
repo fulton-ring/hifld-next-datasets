@@ -186,7 +186,8 @@ def acquire(storage,archive_path=None,receipt_path=None):
             immutable(storage,f'_quarantine/{SLUG}/acquisitions/{uuid4().hex}.json',encode({'receipt':receipt,'preserved_partial_path':str(partial)}))
             raise CountySubdivisionQuarantineError('live_capture_failed_partial_retained:'+str(exc)) from exc
         pointer={'kind':'owned_content_addressed_capture','key':raw_key,'sha256':archive_sha,'bytes':archive_bytes}
-    immutable(storage,f'_raw-capture-references/{SLUG}/{archive_sha}/receipt-{digest(encode(receipt))}.json',encode({'capture':pointer,'receipt':receipt}))
+    reference=encode({'capture':pointer,'receipt':receipt})
+    immutable(storage,f'_raw-capture-references/{SLUG}/{archive_sha}/receipt-{digest(reference)}.json',reference)
     return path,receipt,release,pointer
 
 def processing_identity():
@@ -356,6 +357,7 @@ def original_bundle(storage,key,version,path,identity,pin,*,create=None):
     return payload['receipt'],pointer,actual
 
 def source_payloads(receipt,pointer,identity,audit,manifest):
+    audit={**audit,'source_release':manifest['source_release']}
     proof={'approved':False,'status':'pass','rows':audit['rows'],'native_record_hash':audit['records_sha256'],'all_native_values_types_ids_nulls_wkb':'full-population exact, bounded streaming; complete native GeoPackage container canonical byte check'}
     return {'raw/source_capture.json':encode({**pointer,'source_release':audit['source_release']}),'raw/retrieval.json':encode(receipt),'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),'metadata/cousub_source_audit.json':encode(audit),
         'metadata/geopackage_source_fidelity.json':encode(proof),'metadata/parquet_source_fidelity.json':encode(proof),'metadata/baseline_comparison.json':encode({'schema_version':1,'approved':False,'status':'blocked','reason_codes':['baseline_source_ID_schema_type_geometry_coverage_contract_unapproved']}),'metadata/baseline_differences.jsonl':b'','metadata/baseline_field_changes.jsonl':b''}

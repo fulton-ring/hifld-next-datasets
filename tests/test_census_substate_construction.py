@@ -67,10 +67,11 @@ class SubstateConstructionTests(unittest.TestCase):
             with self.subTest(module=module.SLUG), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 body = native_archive(root)
+                listings = {ROOT: ANNUAL, DIRECTORY: LISTING}
                 storage = StagingStorageResource(local_dir=str(root / 'stage'))
                 def respond(request):
                     return httpx.Response(200, stream=httpx.ByteStream({
-                        ROOT: ANNUAL, DIRECTORY: LISTING, URL: body}[str(request.url)]))
+                        **listings, URL: body}[str(request.url)]))
                 with patch.object(module, 'FEATURE_COUNT_RANGE', (2, 3)), patch.object(
                         module.httpx, 'Client', side_effect=lambda **kwargs: client_type(
                             transport=httpx.MockTransport(respond), **kwargs)):
@@ -85,6 +86,12 @@ class SubstateConstructionTests(unittest.TestCase):
                     self.assertEqual(release.listing_bytes, len(LISTING))
                     self.assertEqual(json.loads(before['metadata/source_manifest.json'])['source_release'],
                                      release.as_metadata())
+                    listings[ROOT] += b'\n<!-- unrelated annual index update -->'
+                    listings[DIRECTORY] += b'\n<!-- unrelated directory update -->'
+                    refresh = stage(module, storage)
+                    self.assertEqual(first['version'], refresh['version'])
+                    self.assertTrue(refresh['reused'])
+                    self.assertEqual(snapshot(target), before)
                     archive = Path(storage.local_dir) / module.RAW_KEY_PREFIX / receipt['sha256'] / 'original.gdb.zip'
                     with patch.object(module.httpx, 'Client', side_effect=AssertionError('replay fetched HTTP')):
                         replay = stage(module, storage, archive_path=archive, receipt_path=receipt_path)
