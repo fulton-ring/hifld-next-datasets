@@ -219,6 +219,30 @@ class TmasStationsTests(unittest.TestCase):
         table = pq.read_table(io.BytesIO(source._parquet_bytes(docs["layer_before"]["fields"], extracted["features"])))
         self.assertIsNone(table.column("Station_Id")[0].as_py())
 
+    def test_dynamic_acquisition_and_sealing_preserve_each_previous_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            previous = {}
+            versions = []
+            for ids in ([2, 8, 15], [1, 2, 3, 4, 5, 6, 12]):
+                factory = _synthetic_client_factory(_base_documents(ids))
+                with patch.object(source.httpx, "Client", side_effect=factory):
+                    result = source.capture_tmas_stations(storage, version="dynamic", capture_directory=tmp + "/captures")
+                self.assertFalse(result["reused"])
+                self.assertTrue(result["source_population_complete"])
+                self.assertTrue(tmas_stations_complete(result).passed)
+                self.assertEqual(result["feature_count"], len(ids))
+                self.assertNotIn(result["version"], versions)
+                versions.append(result["version"])
+                for key, snapshot in previous.items():
+                    self.assertEqual((storage.read_key(key), storage.object_snapshot(key)), snapshot)
+                previous = {key: (storage.read_key(key), storage.object_snapshot(key))
+                            for key in storage.list_prefix("")}
+                with patch.object(source.httpx, "Client", side_effect=AssertionError("HTTP forbidden")):
+                    replay = source.capture_tmas_stations(storage, version="replay", capture_directory=result["capture_directory"])
+                self.assertTrue(replay["reused"])
+                self.assertEqual(replay["version"], result["version"])
+
     def test_baseline_warn_is_separate_from_blocking_completeness(self):
         candidate = {"dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
                      "feature_count": 7, "source_id_sha256": "new", "source_population_complete": True,

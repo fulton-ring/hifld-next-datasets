@@ -561,7 +561,7 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise ValueError("disk_floor_before_acquisition")
     attempt_root = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "331", "captures")
-    replay = (attempt_root / "capture_manifest.json").exists()
+    replay = (attempt_root / "capture_manifest.json").exists() or (attempt_root / "capture_manifest.json").is_symlink()
     if replay:
         capture_root = attempt_root.absolute()
         captures = _read_replay(capture_root)
@@ -693,10 +693,8 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                                                              "longitude)",
                                             "source_ids": "Preserve producer OBJECTID and "
                                                           "Station_Id values unchanged "
-                                                          "(Station_Id repeats across rows: 6213 "
-                                                          "distinct values, 1847 extra "
-                                                          "occurrences in the captured roster; "
-                                                          "duplicates preserved, never dropped); "
+                                                          "(Station_Id duplicates preserved, "
+                                                          "counted and never dropped); "
                                                           "no substitute IDs, casts or joins",
                                             "geometry": "Source EPSG:4326 point x/y retained as "
                                                         "WKB without reprojection or repair; "
