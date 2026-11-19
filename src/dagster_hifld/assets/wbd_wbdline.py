@@ -5,10 +5,11 @@ from dagster import (
 )
 
 from dagster_hifld.download import build_version_id
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.wbd_wbdline import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_wbd_wbdline,
+    DATASET_SLUG, FILE_SLUG, capture_wbd_wbdline,
 )
 
 
@@ -22,7 +23,7 @@ class WbdWbdlineConfig(Config):
     compute_kind="http",
     description=(
         "USGS hydro.nationalmap.gov wbd MapServer layer 0 'WBDLine' "
-        "(395,291 features observed), named by the DHS HIFLD Open crosswalk as the "
+        "named by the DHS HIFLD Open crosswalk as the "
         "agency's current open REST publication. Unapproved candidate; succession, "
         "baseline, contract, coverage, rights, and release decisions remain pending."
     ),
@@ -43,10 +44,13 @@ def wbd_wbdline(context, config: WbdWbdlineConfig,
 
 @asset_check(asset=wbd_wbdline, blocking=True)
 def wbd_wbdline_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT \
-        and candidate.get("source_population_complete") is True
+    count = candidate.get("source_reported_count")
+    passed = (type(count) is int and count > 0
+              and candidate.get("feature_count") == count
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -71,6 +75,7 @@ wbd_wbdline_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [wbd_wbdline]
-ASSET_CHECKS = [wbd_wbdline_complete]
+wbd_wbdline_drift = register_approved_baseline_drift(wbd_wbdline, "wbd_wbdline_drift")
+ASSET_CHECKS = [wbd_wbdline_complete, wbd_wbdline_drift]
 JOBS = [wbd_wbdline_draft_job]
 SCHEDULES = [wbd_wbdline_draft_schedule]
