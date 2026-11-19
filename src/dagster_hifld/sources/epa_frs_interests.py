@@ -9,7 +9,7 @@ unapproved candidate; it does not establish currentness or permit publication.
 Two HIFLD Open inventory entries describe this exact product (the ``frs-interests``
 row and the duplicate ``epa-facility-registry-service-frs-interests`` row, which
 share one description, publisher and office), so every capture can stage a
-candidate under either dataset identity; the source pins are identical.
+candidate under either dataset identity; the native source contract is identical.
 """
 from __future__ import annotations
 
@@ -21,8 +21,6 @@ from array import array
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
-from time import time_ns
-from typing import Iterable, Iterator
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -37,7 +35,11 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
-    write_immutable,
+    validate_capture_request_identity, write_immutable,
+)
+from dagster_hifld.sources.arcgis_layer import (
+    RetainedCaptureViews, load_receipt, load_replay, save_state as _save_state,
+    witness_aside as _witness_error_response,
 )
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
@@ -66,11 +68,7 @@ PROPOSED_PHYSICAL_TYPE_MAPPING = {
     "esriFieldTypeDouble": {"arrow": "float64", "status": "proposed_unapproved"},
     "esriFieldTypeDate": {"arrow": "timestamp(ms, UTC)", "status": "proposed_unapproved"},
 }
-EXPECTED_COUNT = 7_068_559
 EXPECTED_SCHEMA_SHA256 = "749193bd01b2b1410e27b79c3996e8525035fc61bd15c7143c750cb91740c467"
-EXPECTED_RECORD_SHA256 = "cced1a9bf52a69fbe70bd3a3dc59b2f225466670c74f4ef224bf00707f045da1"
-EXPECTED_GEOMETRY_SHA256 = "5d0bd9592a151edaa099036e918333129f135ad6bce0a60552123ead99b41ce9"
-EXPECTED_IDS_SHA256 = "ff220ea309a3f919516d336ef201ffd01756f5e5f82213616c426cd53157f8f0"
 PAGE_SIZE = 2000
 MAX_BODY_BYTES = 6_000_000
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
@@ -111,7 +109,7 @@ METADATA_NAMES = ("portal_item", "service_before", "layer_before", "count_before
 
 
 class EPAFRSInterestsError(ValueError):
-    """The source snapshot cannot be represented as the pinned FRS_INTERESTS candidate."""
+    """The captured source cannot be represented as a complete native candidate."""
 
     def __init__(self, code: str):
         self.code = code
@@ -190,6 +188,13 @@ def _count_url() -> str:
     return LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnCountOnly": "true", "f": "json"})
 
 
+def _document_urls() -> dict[str, str]:
+    return {"portal_item": f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json",
+            "service_before": SERVICE_URL + "?f=pjson", "layer_before": LAYER_URL + "?f=pjson",
+            "count_before": _count_url(), "service_after": SERVICE_URL + "?f=pjson",
+            "layer_after": LAYER_URL + "?f=pjson", "count_after": _count_url()}
+
+
 def _expected_capture_names(count: int) -> list[str]:
     data_pages = (count + PAGE_SIZE - 1) // PAGE_SIZE
     return [*METADATA_NAMES, *(f"page_{index:06d}" for index in range(data_pages)),
@@ -197,26 +202,21 @@ def _expected_capture_names(count: int) -> list[str]:
 
 
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
-    """Parse and structurally validate one retained receipt without page bytes."""
+    return load_receipt(capture_root, name, EPAFRSInterestsError)
+
+
+def _read_capture(capture_root: Path, name: str, *, expected_url: str | None = None) -> tuple[bytes, dict[str, object]]:
     try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise EPAFRSInterestsError("retained_capture_receipt_invalid:" + name) from exc
-    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
-            or receipt.get("url") != receipt.get("final_url")
-            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
-        raise EPAFRSInterestsError("retained_capture_receipt_invalid:" + name)
-    return receipt
-
-
-def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise EPAFRSInterestsError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
+        if any((capture_root / f'{name}.{suffix}').stat().st_size > MAX_BODY_BYTES
+               for suffix in ('body', 'wire', 'receipt.json')):
+            raise EPAFRSInterestsError('source_capture_exceeds_byte_budget:' + name)
+        _load_receipt(capture_root, name)
+        body, receipt = load_replay(capture_root, name)
+        if expected_url is not None:
+            validate_capture_request_identity(name, receipt, expected_url)
+        return body, receipt
+    except (OSError, ValueError) as exc:
+        raise EPAFRSInterestsError('retained_capture_receipt_invalid:' + name) from exc
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
@@ -233,38 +233,22 @@ def _load_state(capture_root: Path) -> dict[str, object]:
     return state
 
 
-def _save_state(capture_root: Path, state: Mapping[str, object]) -> None:
-    tmp = capture_root / "capture_state.json.tmp"
-    tmp.write_bytes(_canonical(dict(state)) + b"\n")
-    tmp.replace(capture_root / "capture_state.json")
 
 
 def _retained_or_fetch(client: httpx.Client | None, capture_root: Path, name: str,
                        url: str) -> tuple[bytes, dict[str, object]]:
     if (capture_root / f"{name}.body").exists():
         try:
-            return _read_capture(capture_root, name)
+            return _read_capture(capture_root, name, expected_url=url)
         except EPAFRSInterestsError:
             if client is None:
                 raise
-            for suffix in ("body", "wire", "receipt.json"):
-                (capture_root / f"{name}.{suffix}").unlink(missing_ok=True)
+            _witness_error_response(capture_root, name)
     if client is None:
         raise EPAFRSInterestsError("retained_capture_file_missing:" + name)
     return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
 
 
-def _witness_error_response(capture_root: Path, name: str) -> None:
-    """Move a retained producer error answer aside so the slot can be refetched.
-
-    A complete HTTP 200 error body carries a self-consistent receipt, so without
-    this witness step a resumed capture would replay the same error forever.
-    """
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = capture_root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
 
 
 def _reject_error_response(capture_root: Path, name: str, body: bytes) -> None:
@@ -277,31 +261,17 @@ def _reject_error_response(capture_root: Path, name: str, body: bytes) -> None:
         raise EPAFRSInterestsError("source_page_error")
 
 
-def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
+def _load_receipt_map(capture_root: Path, count: int) -> dict[str, dict[str, object]]:
     """Load every expected receipt without holding any page body in memory."""
-    return {name: _load_receipt(capture_root, name) for name in _expected_capture_names(EXPECTED_COUNT)}
+    return {name: _load_receipt(capture_root, name) for name in _expected_capture_names(count)}
 
 
-class _RetainedCaptureViews(Mapping):
-    """Lazily materialize one capture view per access so quarantine stays bounded."""
-
-    def __init__(self, capture_root: Path, names: Iterable[str]):
-        self._capture_root = Path(capture_root)
-        self._names = tuple(names)
-
-    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
-        return _read_capture(self._capture_root, name)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._names)
-
-    def __len__(self) -> int:
-        return len(self._names)
 
 
 def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[str, object]:
     """Re-verify every retained page byte and optionally reconstruct the native geoparquet."""
-    docs = {name: json.loads(_read_capture(capture_root, name)[0]) for name in METADATA_NAMES}
+    urls = _document_urls()
+    docs = {name: json.loads(_read_capture(capture_root, name, expected_url=urls[name])[0]) for name in METADATA_NAMES}
     portal = docs["portal_item"]
     item_provenance = _item_provenance(portal)
     service, layer = docs["service_before"], docs["layer_before"]
@@ -324,10 +294,11 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise EPAFRSInterestsError("source_schema_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise EPAFRSInterestsError("source_schema_baseline_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT:
+    source_count = docs['count_before'].get('count')
+    if type(source_count) is not int or source_count <= 0:
         raise EPAFRSInterestsError("source_count_drift")
     for name in ("layer_after", "service_after", "count_after"):
-        body, _receipt = _read_capture(capture_root, name)
+        body, _receipt = _read_capture(capture_root, name, expected_url=urls[name])
         mirror = {"layer_after": "layer_before", "service_after": "service_before",
                   "count_after": "count_before"}[name]
         if json.loads(body) != docs[mirror]:
@@ -363,11 +334,11 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     record_hash, geometry_hash = hashlib.sha256(), hashlib.sha256()
     last_objectid = 0
     null_geometry_count = 0
-    page_bodies = sorted(name for name in _expected_capture_names(EXPECTED_COUNT)
+    page_bodies = sorted(name for name in _expected_capture_names(source_count)
                          if name.startswith("page_") and name != "page_tail")
     try:
         for page_name in page_bodies:
-            page = json.loads(_read_capture(capture_root, page_name)[0])
+            page = json.loads(_read_capture(capture_root, page_name, expected_url=_page_url(last_objectid))[0])
             if "error" in page:
                 raise EPAFRSInterestsError("source_page_error")
             if page.get("spatialReference", {}).get("latestWkid") != 4269:
@@ -398,16 +369,11 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         if writer is not None:
             writer.close()
             writer = None
-        if len(ids) != EXPECTED_COUNT or last_objectid == 0:
+        if len(ids) != source_count or last_objectid == 0:
             raise EPAFRSInterestsError("source_page_population_incomplete")
+        _read_capture(capture_root, 'page_tail', expected_url=_page_url(last_objectid))
         ids_sha = _sha(_canonical(list(ids)))
         record_sha, geometry_sha = record_hash.hexdigest(), geometry_hash.hexdigest()
-        if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-            raise EPAFRSInterestsError("source_value_or_geometry_baseline_drift")
-        if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-            raise EPAFRSInterestsError("source_geometry_or_coverage_drift")
-        if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
-            raise EPAFRSInterestsError("source_id_roster_drift")
         if tmp_path is not None:
             tmp_path.replace(sink_path)
     finally:
@@ -419,6 +385,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
     return {"item_provenance": item_provenance, "fields": fields, "schema_sha": schema_sha,
+            "source_reported_count": source_count,
             "record_sha": record_sha, "geometry_sha": geometry_sha, "ids_sha": ids_sha,
             "null_geometry_count": null_geometry_count, "parquet_path": sink_path}
 
@@ -441,14 +408,18 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
              "source_schema_sha256": extracted["schema_sha"],
-             "source_geometry_sha256": extracted["geometry_sha"]},
+             "source_geometry_sha256": extracted["geometry_sha"],
+             "source_reported_count": extracted['source_reported_count'],
+             "source_id_sha256": extracted['ids_sha']},
             parquet_body, dataset_slug=dataset_slug)
+    if storage.list_prefix(prefix):
+        raise EPAFRSInterestsError('unsealed_candidate_prefix:' + prefix)
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
+        "source_feature_count": extracted['source_reported_count'], "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"], "source_geometry_sha256": extracted["geometry_sha"],
         "source_schema_sha256": extracted["schema_sha"], "source_crs_epsg": 4269,
         "geometry_type": "Point", "null_geometry_count": extracted["null_geometry_count"],
-        "unique_source_id_count": EXPECTED_COUNT, "portal_item_id": ITEM_ID,
+        "unique_source_id_count": extracted['source_reported_count'], "portal_item_id": ITEM_ID,
         "portal_owner": "EPA_GEO", "portal_modified_epoch_ms": None,
         "portal_modified_is_source_release_date": False, "source_fields": extracted["fields"],
         "official_layer_name": LAYER_NAME, "arcgis_item_id": ITEM_ID,
@@ -459,7 +430,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "raw_source_values_preserved": True, "service_modified_is_not_release_date": True,
         "source_vintage": SOURCE_VINTAGE, "source_vintage_note": SOURCE_VINTAGE_NOTE,
         "pagination": {"mode": "objectid_keyset_asc", "page_size": PAGE_SIZE,
-                       "pages": (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE,
+                       "pages": (extracted['source_reported_count'] + PAGE_SIZE - 1) // PAGE_SIZE,
                        "tail_witness_page": True, "resumable": True, "resumed_pages": resumed_pages},
         "capture_window_utc": {"first_page": first_captured_at, "last_page": last_captured_at},
         "freshness_accepted": False, "schema_contract_accepted": False, "id_contract_accepted": False,
@@ -468,7 +439,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     parquet_body = Path(extracted["parquet_path"]).read_bytes()
     parquet_name = f"geoparquet/{dataset_slug}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
-    receipts = _load_receipt_map(capture_root)
+    receipts = _load_receipt_map(capture_root, extracted['source_reported_count'])
     manifest = {
         "schema_version": 1, "approved": False, "title": LAYER_NAME,
         "description": ("Exact EPA_GEO hosted full-universe EPA FRS INTERESTS point layer. "
@@ -547,7 +518,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": dataset_slug, "file_slug": dataset_slug, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_null_geometry_count": extracted["null_geometry_count"],
+            "feature_count": extracted['source_reported_count'], "source_null_geometry_count": extracted["null_geometry_count"],
+            "source_reported_count": extracted['source_reported_count'], "source_population_complete": True,
+            "source_id_sha256": extracted['ids_sha'],
             "source_invalid_geometry_count": 0, "reused": False,
             "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
             "source_release_accepted": False, "schema_contract_accepted": False,
@@ -577,7 +550,9 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
         raise EPAFRSInterestsError("cached_native_candidate_changed")
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": dataset_slug, "file_slug": dataset_slug, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_null_geometry_count": 0,
+            "feature_count": audit['source_reported_count'], "source_null_geometry_count": 0,
+            "source_reported_count": audit['source_reported_count'], "source_population_complete": True,
+            "source_id_sha256": audit['source_id_sha256'],
             "source_invalid_geometry_count": 0, "reused": True,
             "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
             "source_release_accepted": False, "schema_contract_accepted": False,
@@ -593,7 +568,7 @@ def _default_client() -> httpx.Client:
 
 
 def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None = None) -> dict[str, object]:
-    """Retain every raw response for the pinned layer, resuming earlier progress.
+    """Retain every raw response for the exact native layer, resuming earlier progress.
 
     Pure-local when the capture directory already holds every required page.
     """
@@ -607,14 +582,13 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
     first_captured_at = pages[0]["captured_at"] if pages else datetime.now(timezone.utc).isoformat()
     try:
         retained: dict[str, tuple[bytes, dict[str, object]]] = {}
+        urls = _document_urls()
         for name in METADATA_NAMES:
-            url = {"portal_item": f"https://www.arcgis.com/sharing/rest/content/items/{ITEM_ID}?f=json",
-                   "service_before": SERVICE_URL + "?f=pjson", "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url()}[name]
+            url = urls[name]
             retained[name] = _retained_or_fetch(active, capture_root, name, url)
             _reject_error_response(capture_root, name, retained[name][0])
         count_before = json.loads(retained["count_before"][0]).get("count")
-        if count_before != EXPECTED_COUNT:
+        if type(count_before) is not int or count_before <= 0:
             raise EPAFRSInterestsError("source_count_drift")
         last_objectid = pages[-1]["last_objectid"] if pages else 0
         while not (capture_root / "page_tail.body").exists():
@@ -655,14 +629,16 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
                         "captured_at": tail_receipt["observed_at"], "body_sha256": _sha(tail_body)}
                 _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
                 break
-            if len(pages) > (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE:
-                raise EPAFRSInterestsError("source_page_count_exceeds_pinned_population")
+            if len(pages) > (count_before + PAGE_SIZE - 1) // PAGE_SIZE:
+                raise EPAFRSInterestsError("source_page_population_incomplete")
         if tail is None and (capture_root / "page_tail.body").exists():
             tail_receipt = json.loads((capture_root / "page_tail.receipt.json").read_bytes())
             tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
                     "captured_at": tail_receipt["observed_at"]}
         if tail is None or not (capture_root / "page_tail.body").exists():
             raise EPAFRSInterestsError("source_tail_page_not_empty")
+        if sum(page['features'] for page in pages) != count_before:
+            raise EPAFRSInterestsError('source_page_population_incomplete')
         for name, url in (("layer_after", LAYER_URL + "?f=pjson"),
                           ("service_after", SERVICE_URL + "?f=pjson"),
                           ("count_after", _count_url())):
@@ -691,7 +667,7 @@ def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_ids_sha256": extracted["ids_sha"],
         "source_schema_sha256": extracted["schema_sha"],
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": extracted['source_reported_count'],
         "resumed_pages": len(pages),
         "first_captured_at": first_captured_at, "last_captured_at": last_captured_at,
     }) + b"\n")
@@ -709,7 +685,7 @@ def capture_epa_frs_interests(storage: StagingStorageResource, *, version: str,
     """Fetch (resumable), validate, and stage one complete unapproved source candidate.
 
     ``dataset_slug`` selects the HIFLD inventory identity the candidate is staged
-    under; both known identities share the same source and pins.
+    under; both known identities share the same native source contract.
     """
     if dataset_slug not in DATASET_SLUGS:
         raise EPAFRSInterestsError("unknown_dataset_slug:" + dataset_slug)
@@ -748,13 +724,13 @@ def capture_epa_frs_interests(storage: StagingStorageResource, *, version: str,
             valid_names.append(name)
         if valid_names:
             quarantine_incomplete_capture(storage, capture_root, dataset_slug, version,
-                                          _RetainedCaptureViews(capture_root, valid_names),
+                                          RetainedCaptureViews(capture_root, valid_names, EPAFRSInterestsError),
                                           getattr(exc, "code", type(exc).__name__) or type(exc).__name__)
         raise
 
 
 def build_frs_interests_baseline(capture_root: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
+    """Recompute observation digests from a completed capture without approving a baseline."""
     extracted = _stream_validate(Path(capture_root).absolute(), parquet_sink=None)
     return {"source_record_sha256": extracted["record_sha"],
             "source_geometry_sha256": extracted["geometry_sha"],
