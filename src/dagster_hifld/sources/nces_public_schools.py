@@ -588,7 +588,8 @@ def capture_nces_public_schools(
             audit["source_schema_sha256"], original.get("objects", {}), receipts)
         return {
             "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": feature_count, "schoolyear": schoolyear,
+            "feature_count": feature_count, "source_reported_count": audit["source_counts"]["dbf"],
+            "schoolyear": schoolyear,
             "source_url": source_url, "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
@@ -613,7 +614,8 @@ def capture_nces_public_schools(
                                         identity["files"], identity=identity)
     return {
         "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": feature_count, "schoolyear": schoolyear,
+        "feature_count": feature_count, "source_reported_count": audit["source_counts"]["dbf"],
+        "schoolyear": schoolyear,
         "source_url": source_url, "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"],
         "source_schema_sha256": audit["source_schema_sha256"],

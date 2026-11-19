@@ -14,10 +14,12 @@ from unittest.mock import patch
 import geopandas as gpd
 import httpx
 import pandas as pd
-from dagster import DagsterInstance, materialize
+from dagster import AssetCheckSeverity, DagsterInstance, materialize
 from shapely.geometry import Point
 
 from dagster_hifld.assets.nces_public_schools import nces_public_schools
+from dagster_hifld.assets import nces_public_schools as asset_module
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import nces_public_schools as source
 from dagster_hifld.sources.nces_public_schools import (
@@ -104,6 +106,101 @@ def _client(source_response: httpx.Response) -> httpx.Client:
 
 
 class NcesPublicSchoolsSourceTest(unittest.TestCase):
+    def test_population_changes_materialize_warn_and_replay_with_real_provenance(self) -> None:
+        frame = _frame()
+        grown = gpd.GeoDataFrame(pd.concat([frame, frame.iloc[[0]]], ignore_index=True),
+                                 geometry="geometry", crs=frame.crs)
+        grown.loc[2, "NCESSCH"] = "000000000003"
+        grown.loc[2, "LAT"] = 47.6
+        grown.loc[2, "LON"] = -122.3
+        grown.loc[2, "geometry"] = Point(-122.3, 47.6)
+        with tempfile.TemporaryDirectory() as directory, DagsterInstance.ephemeral() as instance:
+            root = Path(directory)
+            storage = StagingStorageResource(local_dir=str(root / "stage"), use_local=True)
+            baseline = None
+            versions = set()
+            for index, population in enumerate((frame, grown, frame.iloc[:1])):
+                body, written = _archive(population)
+                with patch.object(source.httpx, "Client", return_value=_client(_response(body))):
+                    run = materialize([nces_public_schools, *asset_module.ASSET_CHECKS],
+                                      instance=instance, resources={"staging_storage": storage})
+                self.assertTrue(run.success)
+                candidate = run.output_for_node(nces_public_schools.op.name)
+                versions.add(candidate["version"])
+                self.assertEqual(candidate["feature_count"], len(written))
+                self.assertEqual(candidate["source_reported_count"], len(written))
+                self.assertTrue(candidate["source_population_complete"])
+                self.assertFalse(candidate["release_accepted"])
+                checks = {check.check_name: check for check in run.get_asset_check_evaluations()}
+                self.assertTrue(checks["nces_public_schools_complete"].passed)
+                skipped = checks["nces_public_schools_drift"]
+                self.assertFalse(skipped.passed)
+                self.assertEqual(skipped.severity, AssetCheckSeverity.WARN)
+                self.assertEqual(skipped.metadata["comparison_status"].value,
+                                 "skipped_no_approved_baseline")
+                if baseline is None:
+                    baseline = {**candidate, "version": "approved-fixture", "release_accepted": True}
+                else:
+                    warning = approved_baseline_drift(candidate, baseline)
+                    self.assertFalse(warning.passed)
+                    self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+                    self.assertEqual(warning.metadata["feature_count_delta"].value, len(written) - 2)
+                prefix = candidate["candidate_ready"].removesuffix("metadata/candidate_ready.json")
+                audit = json.loads(storage.read_key(prefix + "metadata/source_audit.json"))
+                self.assertEqual(set(audit["source_counts"].values()), {len(written)})
+                parquet = gpd.read_parquet(io.BytesIO(storage.read_key(
+                    prefix + "geoparquet/public-schools.parquet")))
+                self.assertEqual(parquet["NCESSCH"].tolist(), written["NCESSCH"].tolist())
+                self.assertEqual(parquet.geometry.to_wkb().tolist(), written.geometry.to_wkb().tolist())
+                original = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}
+                replay_root = root / f"replay-{index}"
+                replay_root.mkdir()
+                for name in source.REPLAY_FILES:
+                    (replay_root / name).write_bytes(storage.read_key(prefix + "raw/" + name))
+                with patch.object(httpx.Client, "send", side_effect=AssertionError(
+                        "retained replay must not attempt HTTP")) as send:
+                    replay = source.capture_nces_public_schools(storage, capture_directory=replay_root)
+                send.assert_not_called()
+                self.assertTrue(replay["reused"])
+                self.assertEqual(replay["version"], candidate["version"])
+                self.assertEqual(replay["source_reported_count"], len(written))
+                self.assertEqual(original, {key: storage.read_key(key) for key in original})
+            self.assertEqual(len(versions), 3)
+
+    def test_torn_source_counts_and_publication_witness_are_refused(self) -> None:
+        body, _ = _archive()
+        archive = zipfile.ZipFile(io.BytesIO(body))
+        changed = io.BytesIO()
+        with zipfile.ZipFile(changed, "w") as output:
+            for name in archive.namelist():
+                payload = archive.read(name)
+                if name.endswith(".TXT"):
+                    payload = payload.splitlines(keepends=True)[0]
+                output.writestr(name, payload)
+        with tempfile.TemporaryDirectory() as directory:
+            storage = StagingStorageResource(local_dir=directory, use_local=True)
+            with patch.object(source.httpx, "Client", return_value=_client(_response(changed.getvalue()))):
+                with self.assertRaisesRegex(ValueError, "text_population_drift"):
+                    source.capture_nces_public_schools(storage)
+            self._assert_quarantine(storage, changed.getvalue(), 200)
+
+        requests = []
+
+        def respond(request):
+            if request.url.path.endswith("SchoolLocations"):
+                requests.append(request)
+                return _response(LANDING_HTML if len(requests) == 1 else LANDING_HTML.replace(
+                    b"2425", b"2526"))
+            return _response(body)
+
+        client = httpx.Client(transport=httpx.MockTransport(respond))
+        with tempfile.TemporaryDirectory() as directory:
+            storage = StagingStorageResource(local_dir=directory, use_local=True)
+            with patch.object(source.httpx, "Client", return_value=client):
+                with self.assertRaisesRegex(ValueError, "published_release_changed_during_capture"):
+                    source.capture_nces_public_schools(storage)
+            self._assert_quarantine(storage, body, 200)
+
     def test_no_module_level_release_or_count_pins(self) -> None:
         for name in ("EXPECTED_FEATURE_COUNT", "EXPECTED_COUNT", "SOURCE_VINTAGE",
                      "SOURCE_URL", "EXPECTED_BYTES", "EXPECTED_SHA256", "EXPECTED_ID_SHA256"):
