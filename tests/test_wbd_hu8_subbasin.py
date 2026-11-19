@@ -746,7 +746,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
             mutator(document)
             body = json.dumps(document, separators=(",", ":"), ensure_ascii=False,
                               allow_nan=False).encode("utf-8")
-            wire = body[::-1]
+            wire = body
             path.write_bytes(body)
             (root / f"{name}.wire").write_bytes(wire)
             receipt_path = root / f"{name}.receipt.json"
@@ -907,11 +907,11 @@ class WbdHu8SubbasinTests(unittest.TestCase):
                 body = json.dumps(document, separators=(",", ":"),
                                   ensure_ascii=False, allow_nan=False).encode("utf-8")
                 path.write_bytes(body)
-                (fixture_root / f"{name}.wire").write_bytes(body[::-1])
+                (fixture_root / f"{name}.wire").write_bytes(body)
                 receipt_path = fixture_root / f"{name}.receipt.json"
                 receipt = json.loads(receipt_path.read_bytes())
                 receipt.update({"bytes": len(body), "sha256": _sha(body),
-                                "wire_bytes": len(body), "wire_sha256": _sha(body[::-1])})
+                                "wire_bytes": len(body), "wire_sha256": _sha(body)})
                 receipt_path.write_bytes(_canonical(receipt) + b"\n")
             break_oid_3(root)
             sink = root / "8-digit-hu-subbasin.parquet"
@@ -1037,11 +1037,11 @@ class WbdHu8SubbasinTests(unittest.TestCase):
             body = json.dumps(document, separators=(",", ":"), ensure_ascii=False,
                               allow_nan=False).encode("utf-8")
             path.write_bytes(body)
-            (root / f"{name}.wire").write_bytes(body[::-1])
+            (root / f"{name}.wire").write_bytes(body)
             receipt_path = root / f"{name}.receipt.json"
             receipt = json.loads(receipt_path.read_bytes())
             receipt.update({"bytes": len(body), "sha256": _sha(body),
-                            "wire_bytes": len(body), "wire_sha256": _sha(body[::-1])})
+                            "wire_bytes": len(body), "wire_sha256": _sha(body)})
             receipt_path.write_bytes(_canonical(receipt) + b"\n")
             result = source.capture_wbd_hu8_subbasin(
                 storage, version="vtest0000000000000000000000000000",
