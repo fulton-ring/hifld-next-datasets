@@ -86,15 +86,8 @@ EXPECTED_COPYRIGHT_TEXT = ("U.S. Geological Survey (USGS) Gap Analysis Project (
 # pinned as the observed identity statement, not as a content description.
 EXPECTED_SERVICE_DESCRIPTION = ""
 EXPECTED_SERVICE_LAYERS = [(0, LAYER_NAME)]
-EXPECTED_COUNT: int | None = None
 EXPECTED_MAX_RECORD_COUNT = 2000
 EXPECTED_SCHEMA_SHA256 = "020f3a55a746d9280b8750d6401a8fdd6c1579ffb6a0c8d325dd854ff4762f4a"
-EXPECTED_IDS_SHA256 = ""
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT: int | None = None
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] = {}
-EXPECTED_INVALID_GEOMETRY_COUNT: int | None = None
 EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0672, "ymin": -1733741.441300001,
                          "xmax": 20037507.067199998, "ymax": 12930675.6069}
 BASELINE_PENDING_NOTE = (
@@ -508,11 +501,8 @@ def _validate_layer_document(layer: object) -> tuple[list[dict[str, object]], st
 def _validate_ids_roster(roster: object, label: str) -> list[int]:
     if (not isinstance(roster, list) or not roster
             or any(type(value) is not int or value <= 0 for value in roster)
-            or len(set(roster)) != len(roster)
-            or (EXPECTED_COUNT is not None and len(roster) != EXPECTED_COUNT)):
+            or len(set(roster)) != len(roster)):
         raise PadUsProtectionError("source_id_population_drift:" + label)
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(sorted(roster))) != EXPECTED_IDS_SHA256:
-        raise PadUsProtectionError("source_id_roster_drift:" + label)
     return sorted(roster)
 
 
@@ -539,8 +529,6 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise PadUsProtectionError("source_schema_baseline_drift")
     count = docs["count_before"].get("count")
-    if EXPECTED_COUNT is not None and count != EXPECTED_COUNT:
-        raise PadUsProtectionError("source_count_drift")
     roster_before = _validate_ids_roster(docs["ids_before"].get("objectIds"), "ids_before")
     for name in ("layer_after", "service_after", "count_after", "ids_after"):
         body, _receipt = _read_capture(capture_root, name)
@@ -695,17 +683,6 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                                          _page_url(last_objectid))
         ids_sha = _sha(_canonical(list(ids)))
         record_sha, geometry_sha = record_hash.hexdigest(), geometry_hash.hexdigest()
-        if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-            raise PadUsProtectionError("source_value_or_geometry_baseline_drift")
-        if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-            raise PadUsProtectionError("source_geometry_or_coverage_drift")
-        if list(ids) != roster_before:
-            raise PadUsProtectionError("source_id_roster_drift")
-        if EXPECTED_NULL_GEOMETRY_COUNT is not None and null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
-            raise PadUsProtectionError("source_null_geometry_count_drift")
-        if EXPECTED_INVALID_GEOMETRY_COUNT is not None \
-                and invalid_geometry_count != EXPECTED_INVALID_GEOMETRY_COUNT:
-            raise PadUsProtectionError("source_invalid_geometry_count_drift")
         if tmp_path is not None:
             tmp_path.replace(sink_path)
     finally:
@@ -793,11 +770,12 @@ def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, clie
             if name != "service_doc":
                 _reject_error_response(capture_root, name, retained[name][0])
         count_before = json.loads(retained["count_before"][0]).get("count")
-        if EXPECTED_COUNT is not None and count_before != EXPECTED_COUNT:
-            raise PadUsProtectionError("source_count_drift")
         roster_before = _validate_ids_roster(
             json.loads(retained["ids_before"][0]).get("objectIds"), "ids_before")
-        validate_capture_witness(count_before, roster_before, count_before, roster_before)
+        try:
+            validate_capture_witness(count_before, roster_before, count_before, roster_before)
+        except ValueError as exc:
+            raise PadUsProtectionError(str(exc)) from exc
         last_objectid = pages[-1]["last_objectid"] if pages else 0
         while not (capture_root / "page_tail.body").exists():
             name = f"page_{len(pages):06d}"
@@ -952,8 +930,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                               "USGS GAP's PAD-US publications and the exact crosswalk row "
                               "text was not re-verified in this session.",
         "baseline_pending_note": BASELINE_PENDING_NOTE,
-        "baseline_pending_complete_capture": bool(
-            not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256),
+        "baseline_pending_complete_capture": True,
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":

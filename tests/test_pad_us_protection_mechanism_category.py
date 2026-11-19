@@ -145,11 +145,6 @@ def _ids_roster(rows: list[dict]) -> list[int]:
                   if isinstance(row["attributes"]["OBJECTID"], int))
 
 
-def _ids_sha(rows: list[dict]) -> str:
-    return hashlib.sha256(json.dumps(_ids_roster(rows), sort_keys=True,
-                                     separators=(",", ":")).encode()).hexdigest()
-
-
 class JSONStream(httpx.SyncByteStream):
     def __init__(self, payload):
         if isinstance(payload, bytes):
@@ -248,14 +243,7 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=None,
                  real_identity: bool = False):
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
-        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
-        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
-        patch.object(src, "EXPECTED_IDS_SHA256", _FIXTURE_IDS_SHA),
-        patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0),
-        patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}),
-        patch.object(src, "EXPECTED_INVALID_GEOMETRY_COUNT", 0),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
@@ -310,18 +298,17 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
         self.assertEqual(src.LAYER_ID, 0)
         self.assertEqual(src.LAYER_NAME, "PADUS4_1ProtMechCat")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPolygon")
-        self.assertIsNone(src.EXPECTED_COUNT)
         self.assertEqual(src.PAGE_SIZE, 1000)
         self.assertEqual(len(src.NATIVE_FIELDS), 37)
         self.assertEqual(src.MIN_FREE_BYTES, 25_000_000_000)
         self.assertEqual(src.ACCEPT_ENCODING, "gzip")
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
-        self.assertEqual(src.EXPECTED_IDS_SHA256, "")
         self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
                          "020f3a55a746d9280b8750d6401a8fdd6c1579ffb6a0c8d325dd854ff4762f4a")
-        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
-        self.assertIsNone(src.EXPECTED_INVALID_GEOMETRY_COUNT)
+        for name in ("EXPECTED_COUNT", "EXPECTED_FEATURE_COUNT", "EXPECTED_IDS_SHA256",
+                     "EXPECTED_RECORD_SHA256", "EXPECTED_GEOMETRY_SHA256",
+                     "EXPECTED_NULL_GEOMETRY_COUNT", "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
+                     "EXPECTED_INVALID_GEOMETRY_COUNT"):
+            self.assertFalse(hasattr(src, name), name)
         self.assertTrue(src.BASELINE_PENDING_NOTE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
@@ -342,9 +329,8 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                     {**candidate, **updates}))
 
     def test_pinned_producer_geometry_defect_contract(self):
-        self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
-        self.assertIsNone(src.EXPECTED_INVALID_GEOMETRY_COUNT)
-        self.assertIsNone(src.EXPECTED_NULL_GEOMETRY_COUNT)
+        with self.assertRaisesRegex(src.PadUsProtectionError, "source_polygon_ordinate_contract_drift"):
+            src._validate_polygon_geometry({"rings": [[[0, 0, 1]] * 4]}, [[[0, 0, 1]] * 4])
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPolygon")
 
     def test_nonnullable_oid_value_null_is_refused(self):
@@ -721,9 +707,7 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport, page_size=2), \
-                    patch.object(src, "EXPECTED_COUNT", count), \
-                    patch.object(src, "EXPECTED_IDS_SHA256", _ids_sha(rows)):
+            with fixture_mode(schema_sha, transport, page_size=2):
                 src.fetch_pad_us_protection_mechanism_category_pages(capture_root)
                 tracemalloc.start()
                 try:
@@ -861,7 +845,7 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         cases = {
-            "source_count_drift": dict(count=FIXTURE_COUNT + 1),
+            "source_count_or_id_roster_drift": dict(count=FIXTURE_COUNT + 1),
             "source_schema_drift": dict(layer_fields=_fixture_layer_fields()
                                         + [{"name": "EXTRA", "type": "esriFieldTypeString",
                                             "alias": "EXTRA", "nullable": True, "length": 4,
@@ -899,7 +883,7 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                                "extent": {**src.EXPECTED_LAYER_EXTENT,
                                           "xmax": 1.0,
                                           "spatialReference": dict(src.NATIVE_LAYER_SR)}}),
-            "source_id_roster_drift:ids_before": dict(
+            "source_id_roster_drift": dict(
                 count=FIXTURE_COUNT, corrupt_ids=True),
             "source_page_transfer_truncated": dict(
                 geometry=lambda row: _fixture_geometry(row["attributes"]["OBJECTID"]),
@@ -988,25 +972,24 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                 src.capture_pad_us_protection_mechanism_category(storage, version="pin-run",
                                          capture_directory=str(capture_root))
                 baseline = json.loads((capture_root / "computed_baseline.json").read_bytes())
-                with patch.object(src, "EXPECTED_RECORD_SHA256",
-                                  baseline["source_record_sha256"]):
-                    again = src.capture_pad_us_protection_mechanism_category(storage, version="pin-run-verify",
-                                                     capture_directory=str(capture_root))
-                    self.assertTrue(again["reused"])
-                with patch.object(src, "EXPECTED_IDS_SHA256", "0" * 64):
-                    with self.assertRaisesRegex(src.PadUsProtectionError,
-                                                "source_id_roster_drift"):
-                        src.capture_pad_us_protection_mechanism_category(storage, version="pin-run-drift",
-                                                 capture_directory=str(capture_root))
-                # The retired quarantine census pins to an empty family; the
-                # computed baseline carries the OGC-invalid diagnostic counts.
+                again = src.capture_pad_us_protection_mechanism_category(
+                    storage, version="retained-verify", capture_directory=str(capture_root))
+                self.assertTrue(again["reused"])
+                page_path = capture_root / "page_000000.body"
+                page = json.loads(page_path.read_bytes())
+                page["features"][0]["attributes"]["Unit_Nm"] = "Changed after capture"
+                page_path.write_bytes(src._canonical(page))
+                with self.assertRaisesRegex(src.PadUsProtectionError,
+                                            "retained_capture_receipt_invalid:page_000000"):
+                    src.capture_pad_us_protection_mechanism_category(
+                        storage, version="retained-drift", capture_directory=str(capture_root))
                 self.assertEqual(baseline["source_unusable_geometry_counts"], {})
                 self.assertEqual(baseline["source_ogc_invalid_geometry_sample_objectids"], [])
                 quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
                                      .glob("*"))
                 self.assertTrue(quarantined)
                 failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
-                self.assertEqual(failure["reason_code"], "source_id_roster_drift:ids_before")
+                self.assertEqual(failure["reason_code"], "retained_capture_receipt_invalid:page_000000")
 
 
 if __name__ == "__main__":
