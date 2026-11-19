@@ -83,7 +83,9 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.arcgis_layer import esri_polygon_wkb as _esri_polygon_wkb
+from dagster_hifld.sources.arcgis_layer import (
+    esri_polygon_wkb as _esri_polygon_wkb, load_replay,
+)
 from dagster_hifld.sources.wbd_hu_family import (
     producer_error_document as _producer_error_envelope,
     query_url as _layer_query_url, validate_esri_value as _validate_field_value,
@@ -291,6 +293,8 @@ def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
     if (capture_root / f"{name}.receipt.json").is_symlink():
         raise WbdHu8SubbasinError("retained_capture_symlink_rejected:" + name)
     try:
+        if (capture_root / f"{name}.receipt.json").stat().st_size > 65536:
+            raise WbdHu8SubbasinError("retained_capture_size_limit:" + name)
         receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise WbdHu8SubbasinError("retained_capture_receipt_invalid:" + name) from exc
@@ -305,10 +309,14 @@ def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, objec
     body_path, wire_path = capture_root / f"{name}.body", capture_root / f"{name}.wire"
     if any(path.is_symlink() for path in (body_path, wire_path)):
         raise WbdHu8SubbasinError("retained_capture_symlink_rejected:" + name)
-    body, wire = body_path.read_bytes(), wire_path.read_bytes()
+    if any(path.stat().st_size > MAX_BODY_BYTES for path in (body_path, wire_path)):
+        raise WbdHu8SubbasinError("retained_capture_size_limit:" + name)
     receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+    try:
+        body, replay_receipt = load_replay(capture_root, name)
+    except ValueError as exc:
+        raise WbdHu8SubbasinError(str(exc)) from exc
+    if replay_receipt != receipt:
         raise WbdHu8SubbasinError("retained_capture_receipt_invalid:" + name)
     return body, receipt
 

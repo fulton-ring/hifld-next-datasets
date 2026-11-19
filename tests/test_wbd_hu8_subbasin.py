@@ -139,7 +139,7 @@ def _write_capture(root, name, url, document):
     # order; the fixture body preserves that natural order (no key sorting).
     body = json.dumps(document, separators=(",", ":"), ensure_ascii=False,
                       allow_nan=False).encode("utf-8")
-    wire = body[::-1]
+    wire = body
     (root / f"{name}.body").write_bytes(body)
     (root / f"{name}.wire").write_bytes(wire)
     (root / f"{name}.receipt.json").write_bytes(
@@ -474,7 +474,8 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         with self._patched(), patch.object(source, "_default_client",
                 side_effect=lambda: httpx.Client(transport=transport)):
             source.fetch_wbd_hu8_subbasin_pages(root)
-        for case in ("wire", "body", "segment_url", "attrs_url", "metadata_url", "receipt_symlink",
+        for case in ("wire", "body", "body_limit", "wire_limit", "receipt_limit",
+                     "segment_url", "attrs_url", "metadata_url", "receipt_symlink",
                      "state_symlink", "count", "ids", "duplicate_ids", "attrs_torn", "tile_gap"):
             with self.subTest(case=case):
                 altered = tmp / case
@@ -483,6 +484,15 @@ class WbdHu8SubbasinTests(unittest.TestCase):
                 if case in ("wire", "body"):
                     path = altered / f"{first}.{case}"
                     path.write_bytes(path.read_bytes() + b"corrupt")
+                elif case.endswith("_limit"):
+                    suffix = {"body_limit": "body", "wire_limit": "wire",
+                              "receipt_limit": "receipt.json"}[case]
+                    limit = 65536 if suffix == "receipt.json" else source.MAX_BODY_BYTES
+                    with (altered / f"{first}.{suffix}").open("r+b") as artifact:
+                        artifact.truncate(limit + 1)
+                    with patch.object(source, "load_replay", side_effect=AssertionError("unbounded replay")):
+                        with self.assertRaisesRegex(source.WbdHu8SubbasinError, "retained_capture_size_limit"):
+                            source._read_capture(altered, first)
                 elif case.endswith("_url"):
                     name = {"segment_url": first, "attrs_url": "attrs_00000",
                             "metadata_url": "ids_before"}[case]
@@ -561,7 +571,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
             calls.append(name)
             body = json.dumps(documents[name], separators=(",", ":"), ensure_ascii=False,
                               allow_nan=False).encode("utf-8")
-            wire = body[::-1]
+            wire = body
             (capture_root / f"{name}.body").write_bytes(body)
             (capture_root / f"{name}.wire").write_bytes(wire)
             (capture_root / f"{name}.receipt.json").write_bytes(
