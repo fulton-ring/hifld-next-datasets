@@ -5,10 +5,11 @@ from dagster import (
 )
 
 from dagster_hifld.download import build_version_id
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.tmas_stations import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_tmas_stations,
+    DATASET_SLUG, FILE_SLUG, capture_tmas_stations,
 )
 
 
@@ -22,8 +23,7 @@ class TmasStationsConfig(Config):
     compute_kind="http",
     description=(
         "FHWA Travel Monitoring Analysis System (TMAS) Stations via the delegated BTS NTAD "
-        "FeatureServer (item a016bbaee4794daca873135a5cf4164d, owner USDOT_BTS; 8060 point "
-        "stations observed, 2025-compiled/2026-03-23-published NTAD edition). "
+        "FeatureServer (item a016bbaee4794daca873135a5cf4164d, owner USDOT_BTS). "
         "Unapproved candidate; baseline, contract, coverage, rights, and release decisions remain pending."
     ),
 )
@@ -43,7 +43,7 @@ def tmas_stations(context, config: TmasStationsConfig,
 
 @asset_check(asset=tmas_stations, blocking=True)
 def tmas_stations_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_null_geometry_count", 1) == 0 \
+    passed = candidate.get("source_population_complete") is True and candidate.get("source_null_geometry_count", 1) == 0 \
         and candidate.get("source_invalid_geometry_count", 1) == 0
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
@@ -69,6 +69,7 @@ tmas_stations_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [tmas_stations]
-ASSET_CHECKS = [tmas_stations_complete]
+tmas_stations_baseline_drift = register_approved_baseline_drift(tmas_stations, "tmas_stations_baseline_drift")
+ASSET_CHECKS = [tmas_stations_complete, tmas_stations_baseline_drift]
 JOBS = [tmas_stations_draft_job]
 SCHEDULES = [tmas_stations_draft_schedule]
