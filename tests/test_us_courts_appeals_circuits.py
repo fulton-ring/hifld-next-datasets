@@ -21,7 +21,6 @@ from dagster_hifld.assets.us_courts_appeals_circuits import (
 from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import us_courts_appeals_circuits as source
-from dagster_hifld.sources import capture_common
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 # Real roster order as observed on 2026-11-14: OBJECTID 1..13 map to the twelve
@@ -124,9 +123,7 @@ class UsCourtsAppealsCircuitsTests(unittest.TestCase):
         docs = self._added_documents()
         docs["page_001"] = {**docs["page_000"], "features": [docs["page_000"]["features"].pop()]}
         ids = docs["ids_before"]["objectIds"]
-        with tempfile.TemporaryDirectory() as temporary, patch.object(source, "PAGE_SIZE", 13), \
-                patch.object(source, "validate_construction_code_identity"), \
-                patch.object(capture_common, "validate_construction_code_identity"):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(source, "PAGE_SIZE", 13):
             responses = {}
             for name, url in source._capture_roster(ids):
                 responses.setdefault(url, []).append(name)

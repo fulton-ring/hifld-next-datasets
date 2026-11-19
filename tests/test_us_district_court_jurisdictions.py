@@ -19,7 +19,6 @@ from dagster_hifld.assets.us_district_court_jurisdictions import (
 from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import us_district_court_jurisdictions as source
-from dagster_hifld.sources import capture_common
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
 # Real rosters as observed on 2026-11-14: 94 federal judicial districts plus the
@@ -128,9 +127,7 @@ class UsDistrictCourtJurisdictionsTests(unittest.TestCase):
         docs = self._added_documents()
         docs["page_001"] = {**docs["page_000"], "features": [docs["page_000"]["features"].pop()]}
         ids = docs["ids_before"]["objectIds"]
-        with tempfile.TemporaryDirectory() as temporary, patch.object(source, "PAGE_SIZE", 95), \
-                patch.object(source, "validate_construction_code_identity"), \
-                patch.object(capture_common, "validate_construction_code_identity"):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(source, "PAGE_SIZE", 95):
             responses = {}
             for name, url in source._capture_roster(ids):
                 responses.setdefault(url, []).append(name)
