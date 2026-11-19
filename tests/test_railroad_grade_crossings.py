@@ -454,7 +454,9 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         features = _page_features(captures)
         with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
             _, _, extracted = source._validate_captures(captures)
-        self.assertEqual(extracted["features"][1]["geometry"]["x"], -120.5)
+        changed = next(row for row in extracted["features"]
+                       if row["attributes"]["OBJECTID"] == 15)
+        self.assertEqual(changed["geometry"]["x"], -120.5)
 
     def test_coordinate_range_drift_is_rejected(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
