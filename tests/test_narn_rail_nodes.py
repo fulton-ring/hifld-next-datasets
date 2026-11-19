@@ -256,8 +256,21 @@ class NarnRailNodesTests(unittest.TestCase):
                 removed = source.capture_narn_rail_nodes(storage, version='removed', capture_directory=str(root / 'removed'))
             self.assertEqual(removed['feature_count'], 5)
             self.assertNotEqual(removed['version'], first['version'])
+            retained = Path(first['capture_directory'])
+            retained_bytes = sum(path.stat().st_size for path in retained.iterdir())
+            accepted_names = json.loads((retained / 'capture_manifest.json').read_bytes())['receipts']
+            accepted_bytes = sum((retained / f'{name}.{suffix}').stat().st_size
+                for name in accepted_names for suffix in ('body', 'wire'))
+            self.assertLess(accepted_bytes, retained_bytes - 1)
+            with patch.object(source, 'MAX_CAPTURE_TOTAL_BYTES', retained_bytes - 1), \
+                    patch.object(Path, 'read_bytes', side_effect=AssertionError('read before budget admission')), \
+                    patch.object(source.shutil, 'copyfile', side_effect=AssertionError('copy before budget admission')):
+                with self.assertRaisesRegex(ValueError, 'source_capture_exceeds_scratch_budget'):
+                    source.capture_narn_rail_nodes(storage, version='total-budget',
+                        capture_directory=str(root / 'total-budget'), offline_capture_directory=str(retained))
             for mode in ('missing_wire', 'missing_refusal', 'wire', 'forged_gzip', 'url', 'manifest',
-                         'extra', 'budget', 'symlink_root', 'symlink_manifest', 'symlink_artifact'):
+                         'extra', 'budget', 'symlink_root', 'symlink_manifest', 'symlink_artifact',
+                         'rostered_extra', 'rostered_page', 'rostered_attempt'):
                 directory = root / ('bad-' + mode)
                 shutil.copytree(first['capture_directory'], directory)
                 page = 'page_000002_00002'
@@ -288,6 +301,13 @@ class NarnRailNodesTests(unittest.TestCase):
                     manifest_path.write_bytes(b'{}')
                 elif mode == 'extra':
                     (directory / 'unrostered.body').write_bytes(b'{}')
+                elif mode.startswith('rostered_'):
+                    name = {'rostered_extra': 'unrelated.body', 'rostered_page': 'page_999999_00002.body',
+                            'rostered_attempt': 'layer_before.attempt-99.body'}[mode]
+                    body = b'{}'
+                    (directory / name).write_bytes(body)
+                    manifest['artifact_roster'][name] = {'bytes': len(body), 'sha256': source._sha(body)}
+                    manifest_path.write_bytes(_canonical(manifest) + b'\n')
                 elif mode.startswith('symlink_'):
                     path = directory if mode == 'symlink_root' else (
                         manifest_path if mode == 'symlink_manifest' else directory / f'{page}.body')
@@ -300,6 +320,8 @@ class NarnRailNodesTests(unittest.TestCase):
                 expected_error = {'forged_gzip': 'retained_capture_wire_body_mismatch',
                                   'url': 'retained_capture_request_mismatch',
                                   'budget': 'source_capture_exceeds_scratch_budget'}.get(mode, '.')
+                if mode.startswith('rostered_'):
+                    expected_error = 'retained_capture_artifact_name_invalid'
                 with self.subTest(replay=mode), patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected network')):
                     with self.assertRaisesRegex((ValueError, OSError), expected_error):
                         source.capture_narn_rail_nodes(storage, version='refused',

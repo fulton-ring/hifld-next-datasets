@@ -457,6 +457,11 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
     manifest_path = root / 'capture_manifest.json'
     if manifest_path.is_symlink() or manifest_path.stat().st_size > MAX_CAPTURE_BYTES:
         raise ValueError('retained_capture_manifest_invalid')
+    entries = list(root.iterdir())
+    validate_capture_roster(root, {path.name for path in entries})
+    sizes = [path.stat().st_size for path in entries]
+    if any(size > MAX_CAPTURE_BYTES for size in sizes) or sum(sizes) > MAX_CAPTURE_TOTAL_BYTES:
+        raise ValueError('source_capture_exceeds_scratch_budget')
     manifest = json.loads(manifest_path.read_bytes())
     if (not isinstance(manifest, dict) or manifest.get('complete') is not True
             or not isinstance(manifest.get('receipts'), dict)
@@ -467,17 +472,40 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
     names = set(manifest['receipts'])
     if not set(urls) <= names:
         raise ValueError('source_capture_roster_incomplete_or_unexpected')
+    pages = {}
     for name in names - set(urls):
         offset, count = _parse_page_name(name)
         if not 0 < count <= PAGE_START_RECORDS:
             raise ValueError('source_capture_roster_incomplete_or_unexpected')
+        pages[name] = (offset, count)
         urls[name] = _page_query(offset, count)
+    total = sum(count for offset, count in pages.values())
+    evidence_names = set(urls)
+    for offset, count in pages.values():
+        parent_offset = offset // PAGE_START_RECORDS * PAGE_START_RECORDS
+        parent_count = min(PAGE_START_RECORDS, total - parent_offset)
+        while True:
+            if parent_count <= 0 or offset < parent_offset or offset + count > parent_offset + parent_count:
+                raise ValueError('source_capture_roster_incomplete_or_unexpected')
+            evidence_names.add(_page_name(parent_offset, parent_count))
+            if (offset, count) == (parent_offset, parent_count):
+                break
+            middle = parent_count // 2
+            if middle == 0:
+                raise ValueError('source_capture_roster_incomplete_or_unexpected')
+            if offset < parent_offset + middle:
+                parent_count = middle
+            else:
+                parent_offset += middle
+                parent_count -= middle
+    allowed_artifacts = set()
+    for name in evidence_names:
+        attempts = PAGE_PROBE_ATTEMPTS if name.startswith('page_') and _parse_page_name(name)[1] > 1 else DOC_CAPTURE_ATTEMPTS
+        stems = [name, *(f'{name}.attempt-{attempt:02d}' for attempt in range(1, attempts))]
+        allowed_artifacts.update(stem + suffix for stem in stems for suffix in ('.body', '.wire', '.receipt.json'))
+    if set(manifest['artifact_roster']) - allowed_artifacts:
+        raise ValueError('retained_capture_artifact_name_invalid')
     validate_capture_roster(root, set(manifest['artifact_roster']) | {'capture_manifest.json'})
-    for path in root.iterdir():
-        if path.stat().st_size > MAX_CAPTURE_BYTES:
-            raise ValueError('source_capture_exceeds_scratch_budget')
-    if sum((root / f'{name}.{suffix}').stat().st_size for name in names for suffix in ('body', 'wire')) > MAX_CAPTURE_TOTAL_BYTES:
-        raise ValueError('source_capture_exceeds_scratch_budget')
 
     def load(directory, name):
         body, receipt = load_replay(directory, name)
