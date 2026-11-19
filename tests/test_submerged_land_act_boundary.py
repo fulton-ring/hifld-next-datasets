@@ -6,7 +6,7 @@ import hashlib
 import json
 import tempfile
 import unittest
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -109,42 +109,129 @@ def _fixture():
     return captures
 
 
-_UNPINNED = {
-    "EXPECTED_COUNT": None,
-    "EXPECTED_IDS_SHA256": "",
-    "EXPECTED_SCHEMA_SHA256": "",
-    "EXPECTED_RECORD_SHA256": "",
-    "EXPECTED_GEOMETRY_SHA256": "",
-    "EXPECTED_NULL_GEOMETRY_COUNT": None,
-    "EXPECTED_PATH_COUNT_DISTRIBUTION": None,
-    "EXPECTED_OBSERVED_BOUNDS": None,
-}
-
-
 @contextmanager
 def fixture_pins():
-    """Pin every module baseline to the fixture capture's own audit values."""
-    with ExitStack() as stack:
-        for name, value in _UNPINNED.items():
-            stack.enter_context(patch.object(sla, name, value))
-        audit = sla._validate(_fixture())[3]
-        stack.close()
-        pins = {
-            "EXPECTED_COUNT": audit["feature_count"],
-            "EXPECTED_IDS_SHA256": audit["source_id_sha256"],
-            "EXPECTED_SCHEMA_SHA256": audit["source_schema_sha256"],
-            "EXPECTED_RECORD_SHA256": audit["source_record_sha256"],
-            "EXPECTED_GEOMETRY_SHA256": audit["source_geometry_sha256"],
-            "EXPECTED_NULL_GEOMETRY_COUNT": audit["null_geometry_count"],
-            "EXPECTED_PATH_COUNT_DISTRIBUTION": audit["path_count_distribution"],
-            "EXPECTED_OBSERVED_BOUNDS": audit["geometry_bounds"],
-        }
-        for name, value in pins.items():
-            stack.enter_context(patch.object(sla, name, value))
-        yield audit
+    """Use the fixture's field aliases and lengths for the schema contract."""
+    captures = _fixture()
+    fields = json.loads(captures["layer_before"][0])["fields"]
+    with patch.object(sla, "EXPECTED_SCHEMA_SHA256", hashlib.sha256(_body(fields)).hexdigest()):
+        yield sla._validate(captures)[3]
 
 
 class SubmergedLandActBoundaryTests(unittest.TestCase):
+    def test_capture_witness_drift_and_missing_asset_evidence_are_refused(self):
+        for name, doc in (
+            ("ids_after", {"objectIds": [14728977, 14728978, 14728979, 14733729]}),
+            ("ids_before", {"objectIds": [14728977, 14728977, 14728979, 14733728]}),
+            ("count_before", {"count": 5}),
+            ("count_after", {"count": 5}),
+            ("service_after", {"changed": True}),
+            ("layer_after", {"changed": True}),
+        ):
+            with self.subTest(document=name), fixture_pins():
+                captures = _fixture()
+                captures[name] = (_body(doc), captures[name][1])
+                with self.assertRaises(ValueError):
+                    sla._validate(captures)
+        candidate = {"feature_count": 4, "source_reported_count": 4,
+                     "source_population_complete": True, "candidate_ready": "ready"}
+        for updates in ({"source_reported_count": None}, {"source_reported_count": True},
+                        {"source_reported_count": 0}, {"source_population_complete": False},
+                        {"source_reported_count": 5}, {"release_accepted": True}):
+            with self.subTest(candidate=updates):
+                self.assertFalse(submerged_land_act_boundary_complete({**candidate, **updates}).passed)
+
+    def test_upstream_row_added_passes_capture_and_warns_against_approved_release(self):
+        from dagster import AssetCheckSeverity
+        from dagster_hifld.capture_completeness import approved_baseline_drift
+
+        captures = _fixture()
+        page = json.loads(captures["page_000"][0])
+        added = copy.deepcopy(page["features"][0])
+        added["attributes"]["OBJECTID"] = 14733729
+        page["features"].append(added)
+        updates = {"page_000": page}
+        for name in ("ids_before", "ids_after"):
+            updates[name] = {"objectIds": [14728977, 14728978, 14728979, 14733728, 14733729]}
+        for name in ("count_before", "count_after"):
+            updates[name] = {"count": 5}
+        for name, doc in updates.items():
+            body = _body(doc)
+            receipt = dict(captures[name][1])
+            receipt.update(bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
+                           wire_bytes=len(body), wire_sha256=hashlib.sha256(body).hexdigest())
+            captures[name] = (body, receipt)
+        schema_sha = hashlib.sha256(_body(json.loads(captures["layer_before"][0])["fields"])).hexdigest()
+        with patch.object(sla, "EXPECTED_SCHEMA_SHA256", schema_sha):
+            original = sla._validate(_fixture())[3]
+            audit = sla._validate(captures)[3]
+        candidate = {"dataset_slug": sla.DATASET_SLUG, "file_slug": sla.FILE_SLUG,
+                     "feature_count": audit["feature_count"],
+                     "source_reported_count": audit["source_reported_count"],
+                     "source_population_complete": audit["source_population_complete"],
+                     "source_id_sha256": audit["source_id_sha256"], "candidate_ready": "ready"}
+        self.assertTrue(submerged_land_act_boundary_complete(candidate).passed)
+        baseline = {**candidate, "feature_count": original["feature_count"],
+                    "source_id_sha256": original["source_id_sha256"],
+                    "version": "approved-fixture", "release_accepted": True}
+        drift = approved_baseline_drift(candidate, baseline)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(drift.metadata["feature_count_delta"].value, 1)
+
+        import httpx
+        from dagster import DagsterInstance, materialize
+        from dagster_hifld.assets.submerged_land_act_boundary import (
+            submerged_land_act_boundary_approved_baseline_drift,
+        )
+        from urllib.parse import parse_qsl, urlsplit
+
+        def request_key(url):
+            parsed = urlsplit(str(url))
+            return parsed.path, tuple(sorted(parse_qsl(parsed.query)))
+
+        responses = {request_key(url): captures[name][0]
+                     for name, url in sla._capture_names(updates["ids_before"]["objectIds"])}
+
+        def respond(request):
+            return httpx.Response(200, stream=httpx.ByteStream(responses[request_key(request.url)]))
+
+        with tempfile.TemporaryDirectory() as tmp, DagsterInstance.ephemeral() as instance:
+            storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "staging"))
+            client = httpx.Client(transport=httpx.MockTransport(respond))
+            with patch.object(sla, "EXPECTED_SCHEMA_SHA256", schema_sha), \
+                    patch.object(sla.httpx, "Client", return_value=client), \
+                    patch.object(sla, "processing_identity", return_value={
+                        "code_commit": "a" * 40, "files": {"x.py": "b" * 64}}), \
+                    patch.object(sla, "validate_construction_code_identity"), \
+                    patch.object(capture_common, "validate_construction_code_identity"):
+                run = materialize(
+                    [submerged_land_act_boundary, submerged_land_act_boundary_complete,
+                     submerged_land_act_boundary_approved_baseline_drift], instance=instance,
+                    resources={"staging_storage": storage},
+                    run_config={"ops": {submerged_land_act_boundary.op.name: {
+                        "config": {"capture_directory": str(Path(tmp) / "capture")}}}})
+            self.assertTrue(run.success)
+            result = run.output_for_node(submerged_land_act_boundary.op.name)
+            self.assertEqual(result["feature_count"], 5)
+            self.assertTrue(result["source_population_complete"])
+            self.assertEqual(result["source_reported_count"], 5)
+            self.assertFalse(result["release_accepted"])
+            checks = {event.check_name: event for event in run.get_asset_check_evaluations()}
+            self.assertTrue(checks["submerged_land_act_boundary_complete"].passed)
+            skipped = checks["submerged_land_act_boundary_approved_baseline_drift"]
+            self.assertFalse(skipped.passed)
+            self.assertEqual(skipped.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(skipped.metadata["comparison_status"].value,
+                             "skipped_no_approved_baseline")
+            parquet_key = result["candidate_ready"].removesuffix("metadata/candidate_ready.json") \
+                + f"geoparquet/{sla.FILE_SLUG}.parquet"
+            import io
+            import pyarrow.parquet as pq
+            table = pq.read_table(io.BytesIO(storage.read_key(parquet_key)))
+            self.assertEqual(table.num_rows, 5)
+            self.assertEqual(table.column("OBJECTID").to_pylist()[-1], 14733729)
+
     def test_default_capture_root_keeps_the_historical_layout(self):
         self.assertEqual(str(sla.DEFAULT_CAPTURE_ROOT),
                          str(Path(tempfile.gettempdir()) / "sla-boundary-captures"))
@@ -154,11 +241,15 @@ class SubmergedLandActBoundaryTests(unittest.TestCase):
         self.assertEqual(submerged_land_act_boundary_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         check = submerged_land_act_boundary_complete({"feature_count": 5_746,
+                                                      "source_reported_count": 5_746,
+                                                      "source_population_complete": True,
                                                       "candidate_ready": "ready"})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["source_authority_accepted"].value)
         failed = submerged_land_act_boundary_complete({"feature_count": 5_745,
+                                                       "source_reported_count": 5_746,
+                                                       "source_population_complete": True,
                                                        "candidate_ready": "ready"})
         self.assertFalse(failed.passed)
 
@@ -327,12 +418,7 @@ class SubmergedLandActBoundaryTests(unittest.TestCase):
                         storage, offline_capture_directory=tmp)
                     self.assertFalse(result["reused"])
                     pins = [
-                        ("EXPECTED_IDS_SHA256", audit["source_id_sha256"]),
-                        ("EXPECTED_RECORD_SHA256", audit["source_record_sha256"]),
-                        ("EXPECTED_GEOMETRY_SHA256", audit["source_geometry_sha256"]),
-                        ("EXPECTED_NULL_GEOMETRY_COUNT", audit["null_geometry_count"]),
-                        ("EXPECTED_PATH_COUNT_DISTRIBUTION", audit["path_count_distribution"]),
-                        ("EXPECTED_OBSERVED_BOUNDS", audit["geometry_bounds"]),
+                        ("EXPECTED_SCHEMA_SHA256", audit["source_schema_sha256"]),
                     ]
                     for name, value in pins:
                         with self.subTest(pin=name):
@@ -340,8 +426,7 @@ class SubmergedLandActBoundaryTests(unittest.TestCase):
                                 again = sla.capture_submerged_land_act_boundary(
                                     storage, offline_capture_directory=tmp)
                                 self.assertTrue(again["reused"])
-                    for name, value in (("EXPECTED_IDS_SHA256", "0" * 64),
-                                        ("EXPECTED_COUNT", audit["feature_count"] + 1)):
+                    for name, value in (("EXPECTED_SCHEMA_SHA256", "0" * 64),):
                         with self.subTest(refusal=name):
                             with patch.object(sla, name, value):
                                 with self.assertRaisesRegex(ValueError, "source_"):
@@ -371,7 +456,6 @@ class SubmergedLandActBoundaryTests(unittest.TestCase):
                                        wire_bytes=len(body),
                                        wire_sha256=hashlib.sha256(body).hexdigest())
                         captures["page_000"] = (body, receipt)
-                    extra = ([patch.object(sla, "EXPECTED_RECORD_SHA256", "")] if mutate else [])
                     with patch.object(sla, "_load_offline", return_value=captures), \
                             patch.object(sla, "_geoparquet", side_effect=parquet), \
                             patch.object(sla, "processing_identity",
@@ -380,11 +464,8 @@ class SubmergedLandActBoundaryTests(unittest.TestCase):
                                          return_value=None), \
                             patch.object(capture_common, "validate_construction_code_identity",
                                          return_value=None):
-                        with ExitStack() as stack:
-                            for extra_patch in extra:
-                                stack.enter_context(extra_patch)
-                            return sla.capture_submerged_land_act_boundary(
-                                storage, offline_capture_directory=tmp)
+                        return sla.capture_submerged_land_act_boundary(
+                            storage, offline_capture_directory=tmp)
 
                 first = run("2026-01-01T00:00:00Z")
                 first_manifest = json.loads(storage.read_key(

@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.submerged_land_act_boundary import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_submerged_land_act_boundary,
+    DATASET_SLUG, FILE_SLUG, capture_submerged_land_act_boundary,
 )
 
 
@@ -49,13 +50,15 @@ def submerged_land_act_boundary(context, config: SubmergedLandActBoundaryConfig,
 
 @asset_check(asset=submerged_land_act_boundary, blocking=True)
 def submerged_land_act_boundary_complete(candidate: dict) -> AssetCheckResult:
-    count = candidate.get("feature_count", 0)
-    passed = (isinstance(count, int) and count > 0
-              and (EXPECTED_COUNT is None or count == EXPECTED_COUNT)
+    count = candidate.get("source_reported_count")
+    passed = (type(count) is int and count > 0
+              and candidate.get("feature_count") == count
+              and candidate.get("source_population_complete") is True
               and bool(candidate.get("candidate_ready"))
               and not candidate.get("release_accepted", False))
     return AssetCheckResult(passed=passed, metadata={
-        "complete_source_population": count,
+        "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "null_geometry_count": candidate.get("null_geometry_count"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_release_accepted": False,
@@ -71,6 +74,11 @@ def submerged_land_act_boundary_complete(candidate: dict) -> AssetCheckResult:
     })
 
 
+@asset_check(asset=submerged_land_act_boundary, blocking=False)
+def submerged_land_act_boundary_approved_baseline_drift(candidate: dict) -> AssetCheckResult:
+    return approved_baseline_drift(candidate)
+
+
 submerged_land_act_boundary_draft_job = define_asset_job(
     "submerged_land_act_boundary_draft_refresh",
     selection=AssetSelection.assets(submerged_land_act_boundary),
@@ -83,6 +91,7 @@ submerged_land_act_boundary_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [submerged_land_act_boundary]
-ASSET_CHECKS = [submerged_land_act_boundary_complete]
+ASSET_CHECKS = [submerged_land_act_boundary_complete,
+                submerged_land_act_boundary_approved_baseline_drift]
 JOBS = [submerged_land_act_boundary_draft_job]
 SCHEDULES = [submerged_land_act_boundary_draft_schedule]

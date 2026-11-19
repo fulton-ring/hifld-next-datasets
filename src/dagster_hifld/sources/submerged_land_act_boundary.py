@@ -1,45 +1,9 @@
-"""BOEM/BSEE national MMC cadastre Submerged Lands Act boundary candidate.
+"""Capture BOEM/BSEE's national MMC Submerged Lands Act boundary layer.
 
-The HIFLD inventory entry ``submerged-land-act-sla-boundary`` ("Submerged Land
-Act (SLA) Boundary", agency Bureau of Ocean Energy Management) is the SLA
-boundary line (also known as State Seaward Boundary and Fed/State Boundary)
-that defines the seaward limit of a state's submerged lands and the landward
-boundary of federally managed OCS lands. The DHS HIFLD Open crosswalk (DOI
-10.3886/E241367V1) row for this layer (Status Deprecate, DUA/GII not required,
-Agency Bureau of Ocean Energy Management, Open ID
-``1d939d74b3104da890d7a8517d4b885f``) directs the layer to the GeoPlatform
-GeoSeas hosted ``BOEM_Offshore_Marine_Cadastre_Data_Collection`` FeatureServer
-(layer 0), whose host no longer resolves (checked 2026-11-14, connection
-failure; the sibling lease-block row's GeoSeas link was already dead on
-2026-11-13). The same cadastre product is served first-party on BOEM's own
-ArcGIS Server (``gis.boem.gov``): the national ``BOEM_BSEE/MMC_Layers``
-FeatureServer layer 8 carries exactly this product ("Submerged Lands Act
-Boundary", esriGeometryPolyline, EPSG:4269, service copyright "BOEM, BSEE").
-That layer is queried here in bounded, OBJECTID-pinned ``resultOffset`` pages
-against the complete ID roster with before/after count/ids/layer/service
-brackets. Source JSON is retained byte-for-byte; the GeoParquet candidate keeps
-all five native attributes (including space-padded BLOCK_NUMBER values and
-string BDRY_APRV_DATE dates) and the producer's EPSG:4269 polyline coordinates
-without reprojection, densification or simplification. Features the producer
-publishes with an empty ``paths`` array are retained as null-geometry rows and
-counted instead of being dropped or repaired.
-
-ID-stability caution (inherited from issue 258 and observed for this layer):
-the producer republishes MMC_Layers and can resequence every OBJECTID between
-requests. On 2026-11-14 a 250-record sample page answered with OBJECTIDs that
-did not belong to the roster captured minutes earlier and minutes later
-(roster 14728977..14733728, count 5,746, twice), i.e. the layer flipped
-versions mid-probe. The capture therefore brackets every document
-(before/after service/layer/count/ids), requires every page's OBJECTIDs to be
-exactly the page's sorted-roster slice in producer order, and fails closed
-(quarantine) on any mid-capture republish. Baseline digests are pinned from a
-complete dated capture; a later republish surfaces as an explicit roster,
-record or geometry drift refusal, and the baselines are re-pinned from a fresh
-complete capture only with the republish documented (the sibling lease-block
-module documents one such re-pin). This is an unapproved draft candidate:
-source release date, freshness, schema/ID contracts, coverage, rights and
-release acceptance remain pending; all runtime approval flags are false and
-the draft refresh schedule is stopped.
+Before/after count, ID and metadata witnesses bracket exact sorted-roster
+pages. Native attributes and EPSG:4269 lines are retained without repair;
+empty paths remain null geometry with observed diagnostics. Candidates stay
+unapproved, and between-capture population changes do not block completeness.
 """
 from __future__ import annotations
 
@@ -58,6 +22,7 @@ import pyproj
 import shapely
 from time import sleep, time_ns
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -93,31 +58,11 @@ CROSSWALK_DEAD_REDIRECT_NOTE = (
     "services/Hosted/BOEM_Offshore_Marine_Cadastre_Data_Collection/FeatureServer/0) "
     "no longer resolves (checked 2026-11-14); the same cadastre product is served "
     "first-party on BOEM's own gis.boem.gov server (layer 8).")
-# The per-value and per-geometry baselines, gate counts and observed bounds are
-# pinned from a complete dated capture (2026-11-14, task sandbox b452585c,
-# capture /tmp/sla-boundary-captures/live-verify-3bc3ad1e341a4449af53f329b2be9a71
-# at head 7956541a; candidate v33632441f00353756c8af5da5fac1a5d). The producer
-# republishes this service and can resequence all OBJECTIDs between requests
-# (observed 2026-11-14; see module docstring); a later republish surfaces as an
-# explicit roster, record or geometry drift refusal and the baselines are
-# re-pinned from a fresh complete capture with the republish documented
-# (the sibling lease-block module documents one such re-pin). Unpinned values
-# (None or "") are checked only once pinned.
-EXPECTED_COUNT = 5_746
-EXPECTED_IDS_SHA256 = "4993608f0641ebb66dccb9b95f3e6a3072973aca1b529be93de93e5e520c7ac0"
 EXPECTED_SCHEMA_SHA256 = "4192cc66a498bcd20a264b1480657828aa834602d009d534450cadb0e7bcdafd"
-EXPECTED_RECORD_SHA256 = "acc89924fdf8caff09b43a8b39320ee12ad1cb46112e80c320eaf8d771388e75"
-EXPECTED_GEOMETRY_SHA256 = "d52150fa0c5419821114d3979913a99166f7d9cd5c5843f5178afc12ab144522"
-EXPECTED_NULL_GEOMETRY_COUNT = 4
-EXPECTED_PATH_COUNT_DISTRIBUTION = {1: 5_742}
-EXPECTED_OBSERVED_BOUNDS = [-171.95928955078125, 24.3953857421875,
-                            -66.9107666015625, 71.439208984375]
 BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests, gate counts and observed bounds "
-    "are pinned from a completed capture; unpinned values are checked only once "
-    "pinned. The producer republishes this service and can resequence all "
-    "OBJECTIDs between requests (observed 2026-11-14); a later republish "
-    "surfaces as an explicit drift refusal.")
+    "Completeness uses stable capture-time count and ID witnesses, exact page "
+    "coverage and unchanged metadata. No independently approved release baseline "
+    "is wired; count and ID drift comparison is skipped, not approved.")
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID", False),
     ("BDRY_APRV_DATE", "esriFieldTypeString", True),
@@ -279,8 +224,6 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
             if not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids) \
                     or len(ids) != len(set(ids)):
                 raise ValueError("source_seed_id_roster_invalid")
-            if EXPECTED_COUNT is not None and len(ids) != EXPECTED_COUNT:
-                raise ValueError("source_count_drift")
             urls = [(n, u) for n, u in _capture_names(sorted(ids)) if n != "ids_before"]
             for name, url in urls:
                 body, receipt = _acquire_document(client, root, name, url)
@@ -361,12 +304,10 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
             or len(ids_before) != len(set(ids_before))):
         raise ValueError("source_id_population_changed_during_capture")
     count = len(ids_before)
-    if EXPECTED_COUNT is not None and count != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(sorted(ids_before))) != EXPECTED_IDS_SHA256:
-        raise ValueError("source_id_roster_drift")
     if docs["count_before"].get("count") != count or docs["count_after"].get("count") != count:
         raise ValueError("source_count_bracket_mismatch")
+    validate_capture_witness(docs["count_before"].get("count"), ids_before,
+                             docs["count_after"].get("count"), ids_after)
     service, layer = docs["service_before"], docs["layer_before"]
     if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
             or layer.get("geometryType") != "esriGeometryPolyline"):
@@ -427,6 +368,8 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
         raise ValueError("source_feature_population_incomplete")
     if feature_ids != sorted(feature_ids):
         raise ValueError("source_page_order_drift")
+    validate_capture_witness(docs["count_before"]["count"], ids_before,
+                             docs["count_after"]["count"], ids_after, feature_ids)
     null_geometry = 0
     path_counts: dict[int, int] = {}
     geometry_parts = []
@@ -458,27 +401,18 @@ def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
             if value is not None and (type(value) not in (int, float) or value != value
                                       or value in (float("inf"), float("-inf"))):
                 raise ValueError("source_double_field_type_drift:" + name)
-    if EXPECTED_NULL_GEOMETRY_COUNT is not None and null_geometry != EXPECTED_NULL_GEOMETRY_COUNT:
-        raise ValueError("source_null_geometry_count_drift")
-    if (EXPECTED_PATH_COUNT_DISTRIBUTION is not None
-            and dict(sorted(path_counts.items())) != EXPECTED_PATH_COUNT_DISTRIBUTION):
-        raise ValueError("source_path_count_distribution_drift")
     flat = [vertex for paths in geometry_parts if paths is not None
             for path in paths for vertex in path]
     bounds = None if not flat else [min(v[0] for v in flat), min(v[1] for v in flat),
                                     max(v[0] for v in flat), max(v[1] for v in flat)]
-    if EXPECTED_OBSERVED_BOUNDS is not None and bounds != EXPECTED_OBSERVED_BOUNDS:
-        raise ValueError("source_observed_bounds_drift")
     record_sha = _sha(_canonical(features))
-    if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_value_or_geometry_baseline_drift")
     geometry_sha = _sha(_canonical([[f["attributes"]["OBJECTID"], paths]
                                     for f, paths in zip(features, geometry_parts)]))
-    if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_or_coverage_drift")
     nulls = {name: sum(1 for f in features if f["attributes"][name] is None)
              for name in FIELD_NAMES}
-    audit = {"feature_count": count, "unique_objectid_count": len(set(feature_ids)),
+    audit = {"feature_count": count, "source_reported_count": count,
+             "source_population_complete": True,
+             "unique_objectid_count": len(set(feature_ids)),
              "null_counts_by_field": nulls,
              "null_geometry_count": null_geometry,
              "path_count_distribution": dict(sorted(path_counts.items())),
@@ -601,6 +535,8 @@ def capture_submerged_land_act_boundary(storage: StagingStorageResource, *, vers
                                 payload["objects"], receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
                 "feature_count": audit["feature_count"],
+                "source_reported_count": audit["source_reported_count"],
+                "source_population_complete": audit["source_population_complete"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json",
                 "null_geometry_count": audit["null_geometry_count"],
                 "source_id_sha256": audit["source_id_sha256"],
@@ -682,8 +618,8 @@ def capture_submerged_land_act_boundary(storage: StagingStorageResource, *, vers
                            "between requests (observed 2026-11-14: a sample page answered with "
                            "OBJECTIDs outside the roster captured minutes before and after), so "
                            "the capture brackets every document and fails closed on a "
-                           "mid-capture republish; baseline digests are re-pinned only from a "
-                           "fresh complete capture with the republish documented.",
+                           "mid-capture republish. Between-capture population changes do not "
+                           "block completeness; no approved release baseline is wired.",
                 "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
                     "reason": "Source attributes and EPSG:4269 polyline geometry retained for an "
                               "unapproved candidate.",
@@ -737,6 +673,8 @@ def capture_submerged_land_act_boundary(storage: StagingStorageResource, *, vers
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": audit["feature_count"],
+            "source_reported_count": audit["source_reported_count"],
+            "source_population_complete": audit["source_population_complete"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "null_geometry_count": audit["null_geometry_count"],
             "source_id_sha256": audit["source_id_sha256"],
@@ -749,7 +687,7 @@ def capture_submerged_land_act_boundary(storage: StagingStorageResource, *, vers
 
 
 def build_submerged_land_act_boundary_baseline(capture_directory: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
+    """Recompute observed content diagnostics from a completed capture."""
     capture_root = Path(capture_directory)
     summary = json.loads((capture_root / "capture-summary.json").read_bytes())
     if summary.get("complete") is not True:
