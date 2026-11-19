@@ -69,4 +69,7 @@ river_gauges_usace_ienc_draft_schedule = ScheduleDefinition(
 
 river_gauges_usace_ienc_drift = register_approved_baseline_drift(river_gauges_usace_ienc, "river_gauges_usace_ienc_drift")
 
+INGEST_ASSETS = [river_gauges_usace_ienc]
 ASSET_CHECKS = [river_gauges_usace_ienc_complete, river_gauges_usace_ienc_drift]
+JOBS = [river_gauges_usace_ienc_draft_job]
+SCHEDULES = [river_gauges_usace_ienc_draft_schedule]
