@@ -69,4 +69,7 @@ small_craft_facility_areas_usace_ienc_draft_schedule = ScheduleDefinition(
 
 small_craft_facility_areas_usace_ienc_drift = register_approved_baseline_drift(small_craft_facility_areas_usace_ienc, "small_craft_facility_areas_usace_ienc_drift")
 
+INGEST_ASSETS = [small_craft_facility_areas_usace_ienc]
 ASSET_CHECKS = [small_craft_facility_areas_usace_ienc_complete, small_craft_facility_areas_usace_ienc_drift]
+JOBS = [small_craft_facility_areas_usace_ienc_draft_job]
+SCHEDULES = [small_craft_facility_areas_usace_ienc_draft_schedule]

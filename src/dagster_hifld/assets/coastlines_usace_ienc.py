@@ -99,3 +99,8 @@ coastlines_usace_ienc_draft_schedule = ScheduleDefinition(
 
 coastlines_usace_ienc_drift = register_approved_baseline_drift(
     coastlines_usace_ienc, "coastlines_usace_ienc_drift")
+
+INGEST_ASSETS = [coastlines_usace_ienc]
+ASSET_CHECKS = [coastlines_usace_ienc_complete, coastlines_usace_ienc_drift]
+JOBS = [coastlines_usace_ienc_draft_job]
+SCHEDULES = [coastlines_usace_ienc_draft_schedule]

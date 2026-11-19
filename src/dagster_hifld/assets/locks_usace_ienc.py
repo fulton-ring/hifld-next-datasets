@@ -73,3 +73,8 @@ locks_usace_ienc_draft_schedule = ScheduleDefinition(
 
 locks_usace_ienc_drift = register_approved_baseline_drift(
     locks_usace_ienc, "locks_usace_ienc_drift")
+
+INGEST_ASSETS = [locks_usace_ienc]
+ASSET_CHECKS = [locks_usace_ienc_complete, locks_usace_ienc_drift]
+JOBS = [locks_usace_ienc_draft_job]
+SCHEDULES = [locks_usace_ienc_draft_schedule]

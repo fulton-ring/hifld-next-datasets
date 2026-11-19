@@ -100,4 +100,7 @@ lock_basins_usace_ienc_draft_schedule = ScheduleDefinition(
 
 lock_basins_usace_ienc_candidate_drift = register_approved_baseline_drift(lock_basins_usace_ienc_candidate, "lock_basins_usace_ienc_candidate_drift")
 
+INGEST_ASSETS = [lock_basins_usace_ienc_candidate]
 ASSET_CHECKS = [lock_basins_usace_ienc_complete, lock_basins_usace_ienc_candidate_drift]
+JOBS = [lock_basins_usace_ienc_draft_job]
+SCHEDULES = [lock_basins_usace_ienc_draft_schedule]
