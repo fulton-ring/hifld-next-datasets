@@ -2,19 +2,23 @@
 
 import json
 import os
+import shutil
 import tempfile
 import unittest
+from urllib.parse import parse_qs
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pyarrow.parquet as pq
+import httpx
 from dagster import DefaultScheduleStatus
 from shapely import from_wkb
 
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.wbd_hu8_subbasin import (
     wbd_hu8_subbasin, wbd_hu8_subbasin_complete, wbd_hu8_subbasin_draft_schedule,
+    wbd_hu8_subbasin_drift,
 )
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources import wbd_hu8_subbasin as source
@@ -141,7 +145,7 @@ def _write_capture(root, name, url, document):
 
 
 def _fixture_urls():
-    urls = dict(source._doc_urls())
+    urls = dict(source._doc_urls(FIXTURE_COUNT))
     for offset in range(0, FIXTURE_COUNT, FIXTURE_PAGE_SIZE):
         count = min(FIXTURE_PAGE_SIZE, FIXTURE_COUNT - offset)
         urls[source._segment_name(offset, count)] = source._segment_url(offset, count)
@@ -180,25 +184,11 @@ def _build_fixture_capture(root):
 
 
 _PATCHES = (
-    patch.object(source, "EXPECTED_COUNT", FIXTURE_COUNT),
-    patch.object(source, "EXPECTED_IDS", list(range(1, FIXTURE_COUNT + 1))),
-    patch.object(source, "EXPECTED_IDS_SHA256", ""),
     patch.object(source, "PAGE_SIZE", FIXTURE_PAGE_SIZE),
     patch.object(source, "ATTRS_PAGE_SIZE", FIXTURE_ATTRS_PAGE_SIZE),
-    patch.object(source, "ATTRS_PAGE_OFFSETS", FIXTURE_ATTRS_OFFSETS),
     patch.object(source, "EXPECTED_SCHEMA_SHA256", ""),
-    patch.object(source, "EXPECTED_RECORD_SHA256", ""),
-    patch.object(source, "EXPECTED_GEOMETRY_SHA256", ""),
-    patch.object(source, "EXPECTED_HUC8_SHA256", ""),
-    patch.object(source, "EXPECTED_DISTINCT_HUC8_COUNT", None),
-    patch.object(source, "EXPECTED_VERTEX_COUNT", None),
-    patch.object(source, "EXPECTED_INVALID_GEOMETRY_COUNT", None),
-    patch.object(source, "EXPECTED_INVALID_OBJECTIDS", None),
+    patch.object(source, "EXPECTED_INVALID_OBJECTIDS", []),
     patch.object(source, "EXPECTED_INVALID_VALIDITY_EXPLANATIONS", {}),
-    patch.object(source, "EXPECTED_EMPTY_GEOMETRY_COUNT", None),
-    patch.object(source, "EXPECTED_NULL_ATTR_COUNTS", None),
-    patch.object(source, "EXPECTED_OBSERVED_BOUNDS", None),
-    patch.object(source, "EXPECTED_CANDIDATE_GEOMETRY_TYPES", None),
     patch.object(source, "EXPECTED_COPYRIGHT_TEXT", "test-service-refresh-statement"),
     patch.object(source, "MIN_FREE_BYTES", 1_000_000),
 )
@@ -262,6 +252,230 @@ def _segment_names():
 
 
 class WbdHu8SubbasinTests(unittest.TestCase):
+    def _transport(self, roster, mutate=None):
+        calls = []
+        visits = {}
+
+        def respond(request):
+            calls.append(str(request.url))
+            query = parse_qs(request.url.query.decode())
+            if request.url.path == httpx.URL(source.SERVICE_URL).path:
+                name, document = "service", _service_doc()
+                document["copyrightText"] = source.EXPECTED_COPYRIGHT_TEXT
+            elif query.get("f") == ["pjson"]:
+                name, document = "layer", _layer_doc()
+            elif query.get("returnCountOnly") == ["true"]:
+                name, document = "count", {"count": len(roster)}
+            elif query.get("returnIdsOnly") == ["true"]:
+                name, document = "ids", {"objectIdFieldName": "objectid", "objectIds": roster}
+            else:
+                offset = int(query["resultOffset"][0])
+                count = min(int(query["resultRecordCount"][0]), len(roster) - offset)
+                geometry = query["returnGeometry"] == ["true"]
+                name = source._segment_name(offset, count) if geometry else f"attrs_{offset:05d}"
+                document = _page_doc(offset, count, len(roster), geometry, count)
+                for feature, oid in zip(document["features"], roster[offset:offset + count]):
+                    feature["attributes"] = _attrs(oid)
+                    if geometry:
+                        feature["geometry"] = {"rings": _rings_for(oid)}
+            visit = visits.get(name, 0)
+            visits[name] = visit + 1
+            if mutate:
+                mutate(name, visit, document)
+            return httpx.Response(200, stream=httpx.ByteStream(json.dumps(
+                document, separators=(",", ":"), allow_nan=False).encode()))
+
+        return httpx.MockTransport(respond), calls
+
+    def test_real_retained_segment_request_identity_is_bound(self):
+        root = Path(self._tmpdir().name) / "captures"
+        transport, calls = self._transport(list(range(1, FIXTURE_COUNT + 1)))
+        with self._patched(), patch.object(source, "_default_client",
+                side_effect=lambda: httpx.Client(transport=transport)):
+            source.fetch_wbd_hu8_subbasin_pages(root)
+            self.assertTrue(calls)
+            receipt_path = root / (source._segment_name(0, FIXTURE_PAGE_SIZE) + ".receipt.json")
+            receipt = json.loads(receipt_path.read_bytes())
+            receipt["url"] = receipt["final_url"] = "https://example.invalid/substituted"
+            receipt_path.write_bytes(_canonical(receipt))
+            with self.assertRaisesRegex(ValueError, "request_identity"):
+                source._stream_validate(root, parquet_sink=None)
+
+    def test_interrupted_resumed_attrs_keep_closing_witnesses_pending(self):
+        root = Path(self._tmpdir().name) / "captures"
+        roster = list(range(1, FIXTURE_COUNT + 1))
+        transport, _calls = self._transport(roster)
+        with self._patched(), patch.object(source, "_default_client",
+                side_effect=lambda: httpx.Client(transport=transport)):
+            source.fetch_wbd_hu8_subbasin_pages(root)
+        state = json.loads((root / "capture_state.json").read_bytes())
+        removed = state["segments"].pop(0)
+        (root / "capture_state.json").write_bytes(_canonical(state))
+        for name in (removed["name"], *(f"attrs_{offset:05d}" for offset in FIXTURE_ATTRS_OFFSETS)):
+            for suffix in ("body", "wire", "receipt.json"):
+                (root / f"{name}.{suffix}").unlink()
+
+        def interrupt(name, _visit, _document):
+            if name == "attrs_00000":
+                raise httpx.ConnectError("fixture interruption")
+
+        transport, _calls = self._transport(roster, interrupt)
+        with self._patched(patch.object(source, "CAPTURE_ATTEMPTS", 1)), patch.object(
+                source, "_default_client", side_effect=lambda: httpx.Client(transport=transport)):
+            with self.assertRaises(ValueError):
+                source.fetch_wbd_hu8_subbasin_pages(root)
+        self.assertFalse(json.loads((root / "capture_state.json").read_bytes())["complete"])
+        self.assertTrue((root / "attrs_00000.attempt-01.receipt.json").exists())
+        transport, calls = self._transport(roster)
+        with self._patched(), patch.object(source, "_default_client",
+                side_effect=lambda: httpx.Client(transport=transport)):
+            source.fetch_wbd_hu8_subbasin_pages(root)
+            self.assertEqual(calls[-4:], [str(httpx.URL(url)) for _name, url in source._after_doc_urls()])
+            source._stream_validate(root, parquet_sink=None)
+        for suffix in ("body", "wire", "receipt.json"):
+            (root / f"attrs_00000.{suffix}").unlink()
+        transport, calls = self._transport(roster)
+        with self._patched(), patch.object(source, "_default_client",
+                side_effect=lambda: httpx.Client(transport=transport)):
+            source.fetch_wbd_hu8_subbasin_pages(root)
+            self.assertEqual(calls[-4:], [str(httpx.URL(url)) for _name, url in source._after_doc_urls()])
+
+    def _real_capture(self, storage, root, roster, mutate=None):
+        transport, calls = self._transport(roster, mutate)
+        with patch.object(source, "PAGE_SIZE", FIXTURE_PAGE_SIZE), \
+                patch.object(source, "ATTRS_PAGE_SIZE", FIXTURE_ATTRS_PAGE_SIZE), \
+                patch.object(source, "MIN_FREE_BYTES", 1), \
+                patch.object(source, "_default_client", side_effect=lambda: httpx.Client(transport=transport)):
+            result = source.capture_wbd_hu8_subbasin(storage, version="observed",
+                                                    capture_directory=str(root))
+        return result, calls
+
+    def _real_replay(self, storage, root):
+        def refuse(_request):
+            raise AssertionError("network request during replay")
+        with patch.object(source, "PAGE_SIZE", FIXTURE_PAGE_SIZE), \
+                patch.object(source, "ATTRS_PAGE_SIZE", FIXTURE_ATTRS_PAGE_SIZE), \
+                patch.object(source, "MIN_FREE_BYTES", 1), \
+                patch.object(source, "_default_client", side_effect=lambda: httpx.Client(
+                    transport=httpx.MockTransport(refuse))):
+            return source.capture_wbd_hu8_subbasin(storage, version="replay",
+                                                   capture_directory=str(root))
+
+    def test_real_population_refresh_replay_and_immutable_originals(self):
+        tmp = Path(self._tmpdir().name)
+        storage = self._storage(tmp)
+        versions = set()
+        for index, roster in enumerate(([1, 2, 5, 6, 7, 220, 897, 2001],
+                                        [2, 7, 220, 2001],
+                                        [1, 2, 5, 6, 7, 220, 897, 2001, 3001, 4001, 5001])):
+            with self.subTest(roster=roster):
+                root = tmp / f"capture-{index}"
+                result, calls = self._real_capture(storage, root, roster)
+                self.assertFalse(result["reused"])
+                self.assertEqual(result["feature_count"], len(roster))
+                self.assertEqual(result["source_reported_count"], len(roster))
+                self.assertEqual(result["source_id_sha256"], _sha(_canonical(roster)))
+                self.assertEqual((result["source_id_min"], result["source_id_max"]),
+                                 (min(roster), max(roster)))
+                self.assertTrue(wbd_hu8_subbasin_complete(result).passed)
+                prefix = Path(storage.local_dir) / source.DATASET_SLUG / source.FILE_SLUG / result["version"]
+                parquet = pq.read_table(prefix / "geoparquet" / (source.FILE_SLUG + ".parquet"))
+                self.assertEqual(parquet["objectid"].to_pylist(), list(roster))
+                self.assertEqual(parquet.column_names, [*source.ATTRIBUTE_NAMES, "geometry"])
+                for column, expected in _attrs(roster[0]).items():
+                    self.assertEqual(parquet[column][0].as_py(), expected)
+                self.assertEqual(parquet["geometry"][0].as_py(), source._esri_polygon_wkb(
+                    {"rings": _rings_for(roster[0])}))
+                self.assertEqual(json.loads(parquet.schema.metadata[b"geo"])["columns"]["geometry"]["crs"]["id"]["code"], 4326)
+                query_calls = [parse_qs(httpx.URL(url).query.decode()) for url in calls]
+                attrs_offsets = [int(q["resultOffset"][0]) for q in query_calls
+                                 if q.get("returnGeometry") == ["false"]]
+                self.assertEqual(attrs_offsets, list(range(0, len(roster), FIXTURE_ATTRS_PAGE_SIZE)))
+                original = {path.relative_to(prefix): path.read_bytes()
+                            for path in prefix.rglob("*") if path.is_file()}
+                replay = self._real_replay(storage, root)
+                self.assertTrue(replay["reused"])
+                self.assertEqual(replay["source_reported_count"], len(roster))
+                self.assertEqual(replay["version"], result["version"])
+                fresh_root = tmp / f"refresh-{index}"
+                refresh, _calls = self._real_capture(storage, fresh_root, roster)
+                self.assertTrue(refresh["reused"])
+                self.assertEqual(refresh["version"], result["version"])
+                self.assertNotEqual((root / "ids_before.receipt.json").read_bytes(),
+                                    (fresh_root / "ids_before.receipt.json").read_bytes())
+                self.assertEqual(original, {path.relative_to(prefix): path.read_bytes()
+                                           for path in prefix.rglob("*") if path.is_file()})
+                self.assertFalse(result["geometry_repair_accepted"])
+                self.assertFalse(result["release_accepted"])
+                versions.add(result["version"])
+        self.assertEqual(len(versions), 3)
+        drift = wbd_hu8_subbasin_drift(result)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.severity.value, "WARN")
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+        def edit(_name, _visit, document):
+            for feature in document.get("features", []):
+                if feature["attributes"]["objectid"] == roster[0]:
+                    feature["attributes"]["name"] = "Maintained publisher edit"
+        changed, _calls = self._real_capture(storage, tmp / "changed", roster, edit)
+        self.assertFalse(changed["reused"])
+        self.assertNotEqual(changed["version"], result["version"])
+        self.assertEqual(original, {path.relative_to(prefix): path.read_bytes()
+                                   for path in prefix.rglob("*") if path.is_file()})
+        cached_raw = prefix / "raw" / (source._segment_name(0, FIXTURE_PAGE_SIZE) + ".wire")
+        cached_raw.write_bytes(b"corrupt cached original")
+        with self.assertRaises(ValueError):
+            self._real_replay(storage, root)
+        self.assertEqual(cached_raw.read_bytes(), b"corrupt cached original")
+
+    def test_real_capture_transport_and_torn_population_regressions(self):
+        tmp = Path(self._tmpdir().name)
+        root = tmp / "captures"
+        roster = list(range(1, FIXTURE_COUNT + 1))
+        transport, _calls = self._transport(roster)
+        with self._patched(), patch.object(source, "_default_client",
+                side_effect=lambda: httpx.Client(transport=transport)):
+            source.fetch_wbd_hu8_subbasin_pages(root)
+        for case in ("wire", "body", "segment_url", "attrs_url", "metadata_url", "receipt_symlink",
+                     "state_symlink", "count", "ids", "duplicate_ids", "attrs_torn", "tile_gap"):
+            with self.subTest(case=case):
+                altered = tmp / case
+                shutil.copytree(root, altered)
+                first = source._segment_name(0, FIXTURE_PAGE_SIZE)
+                if case in ("wire", "body"):
+                    path = altered / f"{first}.{case}"
+                    path.write_bytes(path.read_bytes() + b"corrupt")
+                elif case.endswith("_url"):
+                    name = {"segment_url": first, "attrs_url": "attrs_00000",
+                            "metadata_url": "ids_before"}[case]
+                    path = altered / f"{name}.receipt.json"
+                    receipt = json.loads(path.read_bytes())
+                    receipt["url"] = receipt["final_url"] = "https://example.invalid/substituted"
+                    path.write_bytes(_canonical(receipt))
+                elif case.endswith("_symlink"):
+                    path = altered / ("capture_state.json" if case == "state_symlink"
+                                      else first + ".receipt.json")
+                    target = tmp / (case + "-target")
+                    path.rename(target)
+                    path.symlink_to(target)
+                elif case == "count":
+                    self._mutate_page(None, "count_after", lambda d: d.update(count=7))(altered)
+                elif case == "ids":
+                    self._mutate_page(None, "ids_after", lambda d: d["objectIds"].__setitem__(-1, 99))(altered)
+                elif case == "duplicate_ids":
+                    self._mutate_page(None, "ids_before", lambda d: d["objectIds"].__setitem__(1, 1))(altered)
+                elif case == "attrs_torn":
+                    self._mutate_page(None, "attrs_00000", lambda d: d["features"][0]["attributes"].update(
+                        name="Torn extraction"))(altered)
+                else:
+                    path = altered / "capture_state.json"
+                    state = json.loads(path.read_bytes())
+                    state["segments"].pop(0)
+                    path.write_bytes(_canonical(state))
+                with self._patched():
+                    with self.assertRaises(ValueError):
+                        source._stream_validate(altered, parquet_sink=None)
+
     def _patched(self, *extra):
         return _patch_all(*_PATCHES, *extra)
 
@@ -306,48 +520,52 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         self.assertEqual(wbd_hu8_subbasin_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         passed = wbd_hu8_subbasin_complete({
-            "feature_count": source.EXPECTED_COUNT,
-            "source_invalid_geometry_count": source.EXPECTED_INVALID_GEOMETRY_COUNT,
+            "feature_count": FIXTURE_COUNT,
+            "source_reported_count": FIXTURE_COUNT, "source_population_complete": True,
+            "source_invalid_geometry_count": len(source.EXPECTED_INVALID_OBJECTIDS),
             "source_invalid_geometry_ids": source.EXPECTED_INVALID_OBJECTIDS,
             "candidate_invalid_geometry_count": 0,
-            "source_empty_geometry_count": source.EXPECTED_EMPTY_GEOMETRY_COUNT,
-            "source_distinct_huc8_count": source.EXPECTED_COUNT})
+            "source_empty_geometry_count": 0,
+            "source_distinct_huc8_count": FIXTURE_COUNT})
         self.assertTrue(passed.passed)
         self.assertFalse(passed.metadata["release_accepted"].value)
         self.assertFalse(passed.metadata["geometry_repair_accepted"].value)
         candidate_invalid = wbd_hu8_subbasin_complete({
-            "feature_count": source.EXPECTED_COUNT,
-            "source_invalid_geometry_count": source.EXPECTED_INVALID_GEOMETRY_COUNT,
+            "feature_count": FIXTURE_COUNT,
+            "source_reported_count": FIXTURE_COUNT, "source_population_complete": True,
+            "source_invalid_geometry_count": len(source.EXPECTED_INVALID_OBJECTIDS),
             "source_invalid_geometry_ids": source.EXPECTED_INVALID_OBJECTIDS,
             "candidate_invalid_geometry_count": 1,
             "source_empty_geometry_count": 0,
-            "source_distinct_huc8_count": source.EXPECTED_COUNT})
+            "source_distinct_huc8_count": FIXTURE_COUNT})
         self.assertFalse(candidate_invalid.passed)
         roster_drift = wbd_hu8_subbasin_complete({
-            "feature_count": source.EXPECTED_COUNT,
-            "source_invalid_geometry_count": source.EXPECTED_INVALID_GEOMETRY_COUNT,
+            "feature_count": FIXTURE_COUNT,
+            "source_reported_count": FIXTURE_COUNT, "source_population_complete": True,
+            "source_invalid_geometry_count": len(source.EXPECTED_INVALID_OBJECTIDS),
             "source_invalid_geometry_ids": [source.EXPECTED_INVALID_OBJECTIDS[0]],
             "candidate_invalid_geometry_count": 0,
             "source_empty_geometry_count": 0,
-            "source_distinct_huc8_count": source.EXPECTED_COUNT})
+            "source_distinct_huc8_count": FIXTURE_COUNT})
         self.assertFalse(roster_drift.passed)
         source_drift = wbd_hu8_subbasin_complete({
-            "feature_count": source.EXPECTED_COUNT,
-            "source_invalid_geometry_count": source.EXPECTED_INVALID_GEOMETRY_COUNT + 1,
+            "feature_count": FIXTURE_COUNT,
+            "source_reported_count": FIXTURE_COUNT, "source_population_complete": True,
+            "source_invalid_geometry_count": len(source.EXPECTED_INVALID_OBJECTIDS) + 1,
             "source_invalid_geometry_ids": source.EXPECTED_INVALID_OBJECTIDS,
             "candidate_invalid_geometry_count": 0,
             "source_empty_geometry_count": 0,
-            "source_distinct_huc8_count": source.EXPECTED_COUNT})
+            "source_distinct_huc8_count": FIXTURE_COUNT})
         self.assertFalse(source_drift.passed)
 
     def test_capture_roster_pages_tile_source_ids(self):
         from urllib.parse import parse_qs, urlsplit
-        urls = source._capture_urls()
-        self.assertEqual(len(urls), len(source._doc_urls())
-                         + (source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE)
+        urls = source._capture_urls(FIXTURE_COUNT)
+        self.assertEqual(len(urls), len(source._doc_urls(FIXTURE_COUNT))
+                         + (FIXTURE_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE)
         covered = []
-        for offset in range(0, source.EXPECTED_COUNT, source.PAGE_SIZE):
-            count = min(source.PAGE_SIZE, source.EXPECTED_COUNT - offset)
+        for offset in range(0, FIXTURE_COUNT, source.PAGE_SIZE):
+            count = min(source.PAGE_SIZE, FIXTURE_COUNT - offset)
             params = parse_qs(urlsplit(urls[source._segment_name(offset, count)]).query)
             self.assertEqual(params["resultOffset"], [str(offset)])
             self.assertEqual(params["resultRecordCount"], [str(count)])
@@ -356,17 +574,16 @@ class WbdHu8SubbasinTests(unittest.TestCase):
             self.assertEqual(params["returnGeometry"], ["true"])
             self.assertNotIn("objectIds", params)
             covered.extend(range(offset + 1, offset + count + 1))
-        self.assertEqual(covered, source.EXPECTED_IDS)
+        self.assertEqual(covered, list(range(1, FIXTURE_COUNT + 1)))
         self.assertEqual(source.LAYER_URL,
                          "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/4")
         self.assertEqual(source.DATASET_SLUG, "wbd")
         self.assertEqual(source.FILE_SLUG, "8-digit-hu-subbasin")
 
     def test_source_pins_match_researched_producer_publication(self):
-        self.assertEqual(source.EXPECTED_COUNT, 2456)
-        self.assertEqual(source.EXPECTED_IDS, list(range(1, 2457)))
-        self.assertEqual(source._sha(_canonical(source.EXPECTED_IDS)),
-                         source.EXPECTED_IDS_SHA256)
+        for name in ("EXPECTED_COUNT", "EXPECTED_IDS", "PAGE_COUNT", "ATTRS_PAGE_OFFSETS",
+                     "EXPECTED_RECORD_SHA256", "EXPECTED_GEOMETRY_SHA256", "EXPECTED_HUC8_SHA256"):
+            self.assertNotIn(name, vars(source))
         self.assertIn("Data refreshed October, 2026.", source.EXPECTED_COPYRIGHT_TEXT)
         self.assertEqual(source.LAYER_NAME, "8-digit HU  (Subbasin)")
         self.assertEqual([name for _id, name in source.EXPECTED_SERVICE_LAYERS][4],
@@ -378,8 +595,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
              "sourcefeatureid", "loaddate", "referencegnis_ids", "areaacres", "areasqkm",
              "states", "huc8", "name", "shape", "globalid", "shape_Length",
              "shape_Area"])
-        for pin in (source.EXPECTED_SCHEMA_SHA256, source.EXPECTED_RECORD_SHA256,
-                    source.EXPECTED_GEOMETRY_SHA256, source.EXPECTED_HUC8_SHA256):
+        for pin in (source.EXPECTED_SCHEMA_SHA256,):
             self.assertTrue(pin == "" or (len(pin) == 64 and
                                           all(c in "0123456789abcdef" for c in pin)))
         self.assertIn("hydro.nationalmap.gov", source.CROSSWALK_OPEN_REST_SERVICE)
@@ -428,34 +644,30 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         root = Path(self._tmpdir().name) / "captures"
         _build_fixture_capture(root)
         summary = source._stream_validate(root, parquet_sink=None)
-        with patch.object(source, "EXPECTED_RECORD_SHA256", summary["record_sha"]):
+        with patch.object(source, "EXPECTED_SCHEMA_SHA256", summary["schema_sha"]):
             source._stream_validate(root, parquet_sink=None)
-        with patch.object(source, "EXPECTED_RECORD_SHA256", "f" * 64):
+        with patch.object(source, "EXPECTED_SCHEMA_SHA256", "f" * 64):
             with self.assertRaisesRegex(source.WbdHu8SubbasinError,
-                                        "source_value_or_geometry_baseline_drift"):
+                                        "source_schema_baseline_drift"):
                 source._stream_validate(root, parquet_sink=None)
-        with patch.object(source, "EXPECTED_GEOMETRY_SHA256", "e" * 64):
-            with self.assertRaisesRegex(source.WbdHu8SubbasinError,
-                                        "source_geometry_or_coverage_drift"):
-                source._stream_validate(root, parquet_sink=None)
-        with patch.object(source, "EXPECTED_HUC8_SHA256", summary["huc8_sha"]):
+        for name in (source._segment_name(0, FIXTURE_PAGE_SIZE), "attrs_00000"):
+            self._mutate_page(None, name, lambda d: d["features"][0]["attributes"].update(
+                name="Publisher edit", sourcefeatureid="new native value"))(root)
+        edited = source._stream_validate(root, parquet_sink=None)
+        self.assertNotEqual(edited["record_sha"], summary["record_sha"])
+        self.assertEqual(edited["attrs_path_sha"], edited["record_sha"])
+        self.assertNotEqual(edited["null_attr_counts"], summary["null_attr_counts"])
+        def densify(document):
+            ring = document["features"][0]["geometry"]["rings"][0]
+            ring.insert(1, [(ring[0][0] + ring[1][0]) / 2, (ring[0][1] + ring[1][1]) / 2])
+        self._mutate_page(None, source._segment_name(0, FIXTURE_PAGE_SIZE), densify)(root)
+        edited = source._stream_validate(root, parquet_sink=None)
+        self.assertNotEqual(edited["geometry_sha"], summary["geometry_sha"])
+        self.assertEqual(edited["vertex_count"], summary["vertex_count"] + 1)
+        self._mutate_page(None, "attrs_00000", lambda d: d["features"][0]["attributes"].update(
+            name="Torn publisher edit"))(root)
+        with self.assertRaisesRegex(source.WbdHu8SubbasinError, "source_attribute_cross_path_drift"):
             source._stream_validate(root, parquet_sink=None)
-        with patch.object(source, "EXPECTED_VERTEX_COUNT", 999):
-            with self.assertRaisesRegex(source.WbdHu8SubbasinError,
-                                        "source_vertex_count_drift"):
-                source._stream_validate(root, parquet_sink=None)
-        with patch.object(source, "EXPECTED_DISTINCT_HUC8_COUNT", FIXTURE_COUNT + 1):
-            with self.assertRaisesRegex(source.WbdHu8SubbasinError,
-                                        "source_distinct_huc8_count_drift"):
-                source._stream_validate(root, parquet_sink=None)
-        with patch.object(source, "EXPECTED_NULL_ATTR_COUNTS",
-                          dict(summary["null_attr_counts"])):
-            source._stream_validate(root, parquet_sink=None)
-        with patch.object(source, "EXPECTED_OBSERVED_BOUNDS",
-                          {"xmin": 0.0, "ymin": 0.0, "xmax": 0.05, "ymax": 0.05}):
-            with self.assertRaisesRegex(source.WbdHu8SubbasinError,
-                                        "source_geometry_outside_observed_coverage"):
-                source._stream_validate(root, parquet_sink=None)
 
     def _mutate_page(self, _root, name, mutator):
         def apply(root):
@@ -481,7 +693,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
              "source_count_drift:before"),
             ("id roster drift", self._mutate_page(None, "ids_before",
                                                   lambda d: d.update(objectIds=list(range(1, FIXTURE_COUNT)))),
-             "source_id_population_drift:ids_before"),
+             "source_count_drift:before"),
             ("id changed during capture", self._mutate_page(
                 None, "ids_after", lambda d: d.update(objectIds=list(range(2, FIXTURE_COUNT + 2)))),
              "source_metadata_or_count_changed_during_capture:ids_after"),
@@ -611,7 +823,6 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         from shapely.validation import explain_validity
         with self._patched(
                 patch.object(source, "EXPECTED_INVALID_OBJECTIDS", [3]),
-                patch.object(source, "EXPECTED_INVALID_GEOMETRY_COUNT", 1),
                 patch.object(source, "EXPECTED_INVALID_VALIDITY_EXPLANATIONS",
                              {3: explain_validity(from_wkb(source._esri_polygon_wkb(
                                  {"rings": [spike]})))})):
@@ -738,7 +949,6 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         from shapely.validation import explain_validity
         with self._patched(
                 patch.object(source, "EXPECTED_INVALID_OBJECTIDS", [3]),
-                patch.object(source, "EXPECTED_INVALID_GEOMETRY_COUNT", 1),
                 patch.object(source, "EXPECTED_INVALID_VALIDITY_EXPLANATIONS",
                              {3: explain_validity(from_wkb(source._esri_polygon_wkb(
                                  {"rings": [spike]})))}),
