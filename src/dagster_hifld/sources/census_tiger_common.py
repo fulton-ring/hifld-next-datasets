@@ -868,10 +868,13 @@ def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *
             report_key = prefix + "/metadata/native_capture.json"
             report = json.loads(private.read_key(report_key))
             report["source_release"] = release.as_receipt_evidence()
+            report["plausible_feature_count_range"] = list(config.feature_count_range)
             report["capture_replay"]["mode"] = "retained_transfer_replay" if replayed else "live_http_capture"
             report["capture_replay"]["new_network_retrieval_performed"] = not replayed
             private.write_key(report_key, _json_bytes(report))
-            schema_sha = _sha256(_json_bytes({"layer": config.layer_name, "fields": report["source_schema"]}))
+            schema_sha = _sha256(_json_bytes({
+                "source_url": release.source_url, "layer": config.layer_name,
+                "fields": report["source_schema"]}))
             version = content_derived_version(result["records_sha256"], result["source_archive_sha256"], schema_sha, identity)
             target = f"{config.dataset_slug}/{config.file_slug}/{version}"
             state_root = f"_construction-state/{config.dataset_slug}/{version}"
@@ -902,8 +905,10 @@ def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *
                         "source_schema_sha256": schema_sha, "capture_receipts": {}, "objects": objects})
                     for name in objects:
                         write_immutable(staging, target + "/" + name, private.read_key(prefix + "/" + name))
+                verification_storage = staging.model_copy(update={
+                    "local_dir": str(Path(staging.local_dir) / staging.prefix), "prefix": ""})
                 verify_cached_candidate(
-                    staging, Path(__file__).parents[3], state_key, target, version, fingerprint,
+                    verification_storage, Path(__file__).parents[3], state_key, target, version, fingerprint,
                     identity, result["records_sha256"], schema_sha, objects, {})
                 return {**result, "version": version, "reused": reused}
         except Exception as exc:
