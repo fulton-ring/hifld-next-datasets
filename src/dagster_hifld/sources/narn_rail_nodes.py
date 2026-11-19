@@ -57,7 +57,7 @@ import pyproj
 from shapely.geometry import Point
 
 from dagster_hifld.http_capture import (
-    capture_roster_digests, validate_capture_roster, validate_retained_capture_replay,
+    capture_http_response, capture_roster_digests, validate_capture_roster, validate_retained_capture_replay,
 )
 from dagster_hifld.sources.arcgis_layer import (
     capture_layer_roster, capture_witness, load_replay, offset_layer_capture_roster,
@@ -517,8 +517,74 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
 
     captures = validate_retained_capture_replay(root, capture_names=names, expected_urls=urls,
         load_capture=load, validate_request_identity=validate_request)
+    for name in evidence_names:
+        attempts = PAGE_PROBE_ATTEMPTS if name.startswith('page_') and _parse_page_name(name)[1] > 1 else DOC_CAPTURE_ATTEMPTS
+        retained_attempts = [attempt for attempt in range(1, attempts)
+            if any(f'{name}.attempt-{attempt:02d}{suffix}' in manifest['artifact_roster']
+                   for suffix in ('.body', '.wire', '.receipt.json'))]
+        last_attempt = attempts - 1 if name not in names else max(retained_attempts, default=0)
+        refusals = [f'{name}.attempt-{attempt:02d}' for attempt in range(1, last_attempt + 1)]
+        if name not in names:
+            refusals.append(name)
+        for refusal in refusals:
+            if any(refusal + suffix not in manifest['artifact_roster'] for suffix in ('.body', '.wire', '.receipt.json')):
+                raise ValueError('retained_capture_refusal_missing:' + refusal)
+            url = urls[name] if name in urls else _page_query(*_parse_page_name(name))
+            _validate_replay_refusal(root, refusal, url)
     capture_witness(captures)
     return captures
+
+
+def _validate_replay_refusal(root: Path, name: str, url: str) -> None:
+    receipt = json.loads((root / f'{name}.receipt.json').read_bytes())
+    if (not isinstance(receipt, dict) or receipt.get('method') != 'GET' or receipt.get('url') != url
+            or type(receipt.get('complete_body')) is not bool):
+        raise ValueError('retained_capture_refusal_invalid:' + name)
+    if receipt['complete_body'] and receipt.get('status') == 200:
+        body, receipt = load_replay(root, name)
+        if (receipt.get('final_url') != url or receipt.get('error_code') is not None
+                or receipt.get('error_type') is not None or not _producer_error_doc(body)):
+            raise ValueError('retained_capture_refusal_invalid:' + name)
+        return
+    body, wire = (root / f'{name}.body').read_bytes(), (root / f'{name}.wire').read_bytes()
+    if (receipt.get('bytes') != len(body) or receipt.get('sha256') != _sha(body)
+            or receipt.get('wire_bytes') != len(wire) or receipt.get('wire_sha256') != _sha(wire)):
+        raise ValueError('retained_capture_refusal_invalid:' + name)
+    if receipt.get('error_code') == 'request_error':
+        if (receipt['complete_body'] or receipt.get('status') is not None or receipt.get('final_url') is not None
+                or body or wire or receipt.get('content_encoding') is not None
+                or receipt.get('content_length') is not None or not isinstance(receipt.get('error_type'), str)):
+            raise ValueError('retained_capture_refusal_invalid:' + name)
+        return
+    if (receipt.get('final_url') != url or type(receipt.get('status')) is not int
+            or not 100 <= receipt['status'] <= 599
+            or not isinstance(receipt.get('content_encoding'), str)
+            or (receipt.get('content_length') is not None
+                and (type(receipt['content_length']) is not int or receipt['content_length'] < 0))
+            or (not receipt['complete_body'] and not isinstance(receipt.get('error_code'), str))):
+        raise ValueError('retained_capture_refusal_invalid:' + name)
+    if receipt.get('error_code') == 'invalid_content_length':
+        if (receipt['complete_body'] or body or wire or receipt.get('content_length') is not None
+                or receipt.get('error_type') is not None or receipt['content_encoding'] not in {'identity', 'gzip', 'deflate'}):
+            raise ValueError('retained_capture_refusal_invalid:' + name)
+        return
+    headers = {'Content-Encoding': receipt.get('content_encoding') or 'identity'}
+    if receipt.get('content_length') is not None:
+        headers['Content-Length'] = str(receipt['content_length'])
+    response = httpx.Response(receipt['status'], headers=headers, stream=httpx.ByteStream(wire))
+    result = capture_http_response(response, max_wire_bytes=MAX_CAPTURE_BYTES, max_decoded_bytes=MAX_CAPTURE_BYTES,
+        reserve=lambda _progress: None, retain_wire=lambda _chunk: None, retain_decoded=lambda _chunk: None)
+    response.close()
+    if (result.wire_bytes_retained != len(wire) or result.wire_sha256 != _sha(wire)
+            or result.decoded_bytes_retained != len(body) or result.decoded_sha256 != _sha(body)
+            or (receipt['complete_body'] and (not result.complete or receipt.get('error_code') is not None
+                or receipt.get('error_type') is not None))
+            or (not receipt['complete_body'] and receipt.get('error_code') != 'transport_error'
+                and (result.complete or result.error_code != receipt['error_code']))
+            or (receipt.get('error_code') == 'transport_error'
+                and (not isinstance(receipt.get('error_type'), str)
+                     or result.error_code not in {None, 'compressed_stream_incomplete', 'content_length_mismatch'}))):
+        raise ValueError('retained_capture_refusal_invalid:' + name)
 
 
 def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,

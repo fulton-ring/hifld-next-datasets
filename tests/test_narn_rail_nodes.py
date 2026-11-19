@@ -176,14 +176,31 @@ def _live_docs(*, added=False, removed=False):
     return docs, features, hashlib.sha256(_canonical(schema)).hexdigest()
 
 
-def _client(docs, features, *, bisect=False, torn=False, missing_row=False, gzip_mtime=0):
+def _client(docs, features, *, bisect=False, torn=False, missing_row=False, gzip_mtime=0, refusal_kind='error'):
     counts = {}
     def respond(request):
         query = parse_qs(request.url.query.decode())
         if 'resultOffset' in query:
             offset, width = int(query['resultOffset'][0]), int(query['resultRecordCount'][0])
             if bisect and offset == 0 and width > 1:
+                if refusal_kind == 'request':
+                    raise httpx.ConnectError('fixture connection refusal', request=request)
+                if refusal_kind == 'partial':
+                    wire = gzip.compress(b'partial response', mtime=0)[:-5]
+                    return httpx.Response(200, headers={'Content-Encoding': 'gzip'}, stream=httpx.ByteStream(wire))
+                if refusal_kind == 'transport':
+                    class Interrupted(httpx.SyncByteStream):
+                        def __iter__(self):
+                            yield gzip.compress(b'partial response', mtime=0)[:-5]
+                            raise httpx.ReadError('fixture interrupted transfer')
+                    return httpx.Response(200, headers={'Content-Encoding': 'gzip'}, stream=Interrupted())
                 body = _canonical({'error': {'code': 500}})
+                if refusal_kind == 'status':
+                    return httpx.Response(503, stream=httpx.ByteStream(body))
+                if refusal_kind == 'length':
+                    return httpx.Response(200, headers={'Content-Length': 'invalid'}, stream=httpx.ByteStream(body))
+                if refusal_kind == 'length_mismatch':
+                    return httpx.Response(200, headers={'Content-Length': str(len(body) + 1)}, stream=httpx.ByteStream(body))
             else:
                 rows = features[offset:offset + width]
                 if missing_row and offset == 0:
@@ -209,6 +226,65 @@ def _client(docs, features, *, bisect=False, torn=False, missing_row=False, gzip
 
 
 class NarnRailNodesTests(unittest.TestCase):
+    def test_bisection_refusal_custody_replay(self):
+        docs, features, _ = _live_docs()
+        with tempfile.TemporaryDirectory() as tmp, patch.multiple(source, PAGE_START_RECORDS=4,
+                DOC_CAPTURE_BASE_DELAY_SECONDS=0, PAGE_PROBE_BASE_DELAY_SECONDS=0):
+            root = Path(tmp)
+            for kind in ('error', 'partial', 'request', 'transport', 'status', 'length', 'length_mismatch'):
+                retained = root / kind
+                with _client(docs, features, bisect=True, refusal_kind=kind) as client:
+                    captures = {}
+                    for name, url in [('ids_seed', source._query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'})),
+                                      *source._doc_urls()]:
+                        captures[name] = source._capture_with_retry(client, url, retained, name,
+                            max_bytes=source.MAX_CAPTURE_BYTES, attempts=4, base_delay=0)
+                    captures.update(source._capture_pages(client, retained, len(features)))
+                    for name, url in source._after_doc_urls():
+                        captures[name] = source._capture_with_retry(client, url, retained, name,
+                            max_bytes=source.MAX_CAPTURE_BYTES, attempts=4, base_delay=0)
+                manifest = {'complete': True, 'receipts': {name: receipt for name, (_, receipt) in captures.items()},
+                            'artifact_roster': source.capture_roster_digests(retained)}
+                (retained / 'capture_manifest.json').write_bytes(_canonical(manifest))
+                with self.subTest(kind=kind, mode='legitimate'):
+                    self.assertEqual(set(source._read_replay(retained)), set(captures))
+                for mode in ('missing', 'missing_root_parent', 'missing_attempt', 'url', 'attempt_url', 'body', 'success'):
+                    directory = root / f'{kind}-{mode}'
+                    shutil.copytree(retained, directory)
+                    parent = 'page_000000_00002'
+                    if mode in ('missing', 'missing_root_parent', 'missing_attempt'):
+                        name = {'missing': parent, 'missing_root_parent': 'page_000000_00004',
+                                'missing_attempt': parent + '.attempt-01'}[mode]
+                        for suffix in ('.body', '.wire', '.receipt.json'):
+                            (directory / (name + suffix)).unlink()
+                    elif mode in ('url', 'attempt_url'):
+                        name = parent if mode == 'url' else parent + '.attempt-01'
+                        path = directory / (name + '.receipt.json')
+                        receipt = json.loads(path.read_bytes())
+                        receipt['url'] = source._page_query(2, 2)
+                        receipt['final_url'] = receipt['url']
+                        path.write_bytes(_canonical(receipt))
+                    elif mode == 'body':
+                        path = directory / (parent + '.body')
+                        path.write_bytes(b'{}')
+                        path = directory / (parent + '.receipt.json')
+                        receipt = json.loads(path.read_bytes())
+                        receipt.update(bytes=2, sha256=source._sha(b'{}'))
+                        path.write_bytes(_canonical(receipt))
+                    else:
+                        (directory / (parent + '.body')).write_bytes(b'{}')
+                        (directory / (parent + '.wire')).write_bytes(b'{}')
+                        path = directory / (parent + '.receipt.json')
+                        receipt = json.loads(path.read_bytes())
+                        receipt.update(bytes=2, sha256=source._sha(b'{}'), wire_bytes=2, wire_sha256=source._sha(b'{}'),
+                            complete_body=True, status=200, content_encoding='identity', content_length=None,
+                            error_code=None, error_type=None, final_url=receipt['url'])
+                        path.write_bytes(_canonical(receipt))
+                    manifest['artifact_roster'] = source.capture_roster_digests(directory, exclude={'capture_manifest.json'})
+                    (directory / 'capture_manifest.json').write_bytes(_canonical(manifest))
+                    with self.subTest(kind=kind, mode=mode), self.assertRaises(ValueError):
+                        source._read_replay(directory)
+
     def test_real_acquisition_replay_refresh_and_changed_population(self):
         from dagster_hifld.resources import StagingStorageResource
         docs, features, schema_sha = _live_docs()
