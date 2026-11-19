@@ -139,11 +139,12 @@ class CensusCDPTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             storage=StagingStorageResource(local_dir=tmp,use_local=True)
             head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(c.__file__).parents[3],text=True).strip()
-        identity={'code_identity_scheme':'git-commit-blobs-v1','files':{'src/dagster_hifld/construction_provenance.py':'0'*64}}
-        manifest={'code_commit':head,'code_identity_scheme':identity['code_identity_scheme']}
-        with self.assertRaisesRegex(ValueError,'construction_processing_blob_hash_mismatch'):
-            c.construction_bundle(storage,'v0.0.0-draft',Path(tmp)/'not-read',{},identity,manifest,'_raw-captures/census-designated-places/deadbeef/original.gdb.zip',create=True)
-        self.assertEqual(list(Path(tmp).rglob('*.json')),[])
+            identity={'code_identity_scheme':'git-commit-blobs-v1','files':{'src/dagster_hifld/construction_provenance.py':'0'*64}}
+            manifest={'code_commit':head,'code_identity_scheme':identity['code_identity_scheme']}
+            with self.assertRaisesRegex(ValueError,'construction_processing_blob_hash_mismatch'):
+                c.construction_bundle(storage,'v0.0.0-draft',Path(tmp)/'not-read',{},identity,manifest,'_raw-captures/census-designated-places/deadbeef/original.gdb.zip',create=True)
+            self.assertTrue(Path(tmp).is_dir())
+            self.assertEqual(list(Path(tmp).rglob('*.json')),[])
 
     def test_real_full_original_when_explicitly_requested(self):
         path=os.environ.get('CDP_TEST_ARCHIVE');receipt_path=os.environ.get('CDP_TEST_RECEIPT')
