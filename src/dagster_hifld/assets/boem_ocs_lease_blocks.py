@@ -23,7 +23,7 @@ class BoemOcsLeaseBlocksConfig(Config):
     compute_kind="http",
     description=(
         "BOEM/BSEE national Marine Mineral Cadastre 'BOEM OCS Lease Blocks' "
-        "layer (id 11, 278,438 source features observed 2026-11-13) on BOEM's "
+        "layer (id 11, complete capture-time source population) on BOEM's "
         "own gis.boem.gov server as the maintained first-party publication for "
         "the HIFLD inventory entry outer-continental-shelf-ocs-lease-blocks-1 "
         "(the crosswalk's GeoPlatform GeoSeas host no longer resolves). "

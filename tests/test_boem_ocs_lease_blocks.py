@@ -3,12 +3,22 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import gzip
 import json
+import shutil
 import tempfile
 import unittest
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+import httpx
+import pyarrow as pa
+import pyarrow.parquet as pq
+from dagster import AssetCheckSeverity, DagsterInstance, materialize
+from dagster_hifld.assets import boem_ocs_lease_blocks as assets
+from dagster_hifld.capture_completeness import approved_baseline_drift
 
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import boem_ocs_lease_blocks as blocks
@@ -124,7 +134,175 @@ def fixture_pins():
         yield audit
 
 
+def _live_fixture(*, extra=False, removed=False):
+    captures = _fixture(extra=extra)
+    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    features = docs.pop('page_000')['features']
+    if removed:
+        features.pop()
+    ids = [row['attributes']['OBJECTID'] for row in features]
+    for name in ('ids_before', 'ids_after'):
+        docs[name] = {'objectIds': ids}
+    for name in ('count_before', 'count_after'):
+        docs[name] = {'count': len(ids)}
+    for name in ('layer_before', 'layer_after'):
+        docs[name]['maxRecordCount'] = blocks.PAGE_SIZE
+    for index, start in enumerate(range(0, len(features), blocks.PAGE_SIZE)):
+        docs[f'page_{index:03d}'] = {'spatialReference': {'wkid': 4269},
+                                  'features': features[start:start + blocks.PAGE_SIZE]}
+    return docs
+
+
+def _write_capture(root, captures):
+    urls = dict(blocks._capture_names(json.loads(captures['ids_before'][0])['objectIds']))
+    for name, (body, receipt) in captures.items():
+        (root / f'{name}.body').write_bytes(body)
+        (root / f'{name}.wire').write_bytes(body)
+        (root / f'{name}.receipt.json').write_bytes(_body({**receipt, 'method': 'GET',
+            'url': urls[name], 'final_url': urls[name]}))
+    (root / 'capture-summary.json').write_bytes(b'{"complete":true}')
+
+
+def _client(docs, *, torn=False, missing_page_row=False):
+    ids = docs['ids_before']['objectIds']
+    urls = dict(blocks._capture_names(ids))
+    payloads = {url: _body(docs[name]) for name, url in urls.items()}
+    counts = {}
+    def respond(request):
+        url = str(request.url)
+        counts[url] = counts.get(url, 0) + 1
+        body = payloads[url]
+        if torn and url == urls['count_after'] and counts[url] == 2:
+            body = _body({'count': len(ids) + 1})
+        if missing_page_row and url == urls['page_000']:
+            page = copy.deepcopy(docs['page_000'])
+            page['features'].pop()
+            body = _body(page)
+        if url == urls.get('page_001'):
+            return httpx.Response(200, headers={'Content-Encoding': 'gzip'},
+                stream=httpx.ByteStream(gzip.compress(body, mtime=0)))
+        return httpx.Response(200, stream=httpx.ByteStream(body))
+    return httpx.Client(transport=httpx.MockTransport(respond))
+
+
 class BoemOcsLeaseBlocksTests(unittest.TestCase):
+    def test_offline_replay_preserves_equivalent_historical_query_serialization(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_capture(root, _fixture())
+            for path in root.glob('*.receipt.json'):
+                receipt = json.loads(path.read_bytes())
+                url = urlsplit(receipt['url'])
+                reordered = urlunsplit(url._replace(query=urlencode(list(reversed(parse_qsl(url.query))))))
+                receipt.update(url=reordered, final_url=reordered)
+                path.write_bytes(_body(receipt))
+            self.assertEqual(len(blocks._load_offline(root)), len(_fixture()))
+
+    def test_offline_loader_refuses_corrupt_wire_instead_of_rewriting_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_capture(root, _fixture())
+            (root / 'page_000.wire').write_bytes(b'corrupted')
+            with self.assertRaisesRegex(ValueError, 'retained_capture_receipt_invalid'):
+                blocks._load_offline(root)
+
+    def test_live_materialization_replay_and_population_changes_with_real_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp, fixture_pins(), \
+                patch.object(blocks, 'PAGE_SIZE', 2), DagsterInstance.ephemeral() as instance:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / 'stage'))
+            Path(storage.local_dir).mkdir()
+            client = _client(_live_fixture())
+            with patch.object(blocks.httpx, 'Client', return_value=client):
+                first = blocks.capture_boem_ocs_lease_blocks(storage, capture_directory=str(Path(tmp) / 'capture'))
+            prefix = first['candidate_ready'].removesuffix('/metadata/candidate_ready.json')
+            original = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}
+            self.assertNotEqual(storage.read_key(prefix + '/raw/page_001.wire'),
+                                storage.read_key(prefix + '/raw/page_001.body'))
+            with patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected network')):
+                replay = blocks.capture_boem_ocs_lease_blocks(storage,
+                    offline_capture_directory=first['capture_directory'], capture_directory=str(Path(tmp) / 'replay'))
+            self.assertEqual(replay['version'], first['version'])
+            self.assertTrue(replay['reused'])
+            client = _client(_live_fixture())
+            with patch.object(blocks.httpx, 'Client', return_value=client):
+                refresh = blocks.capture_boem_ocs_lease_blocks(storage, capture_directory=str(Path(tmp) / 'refresh'))
+            self.assertTrue(refresh['reused'])
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix(prefix)}, original)
+            client = _client(_live_fixture(extra=True))
+            with patch.object(blocks.httpx, 'Client', return_value=client):
+                run = materialize([*assets.INGEST_ASSETS, *assets.ASSET_CHECKS], instance=instance,
+                    resources={'staging_storage': storage}, run_config={'ops': {assets.boem_ocs_lease_blocks.op.name: {
+                        'config': {'capture_directory': str(Path(tmp) / 'added')}}}})
+            self.assertTrue(run.success)
+            added = run.output_for_node(assets.boem_ocs_lease_blocks.op.name)
+            self.assertEqual(added['feature_count'], 5)
+            evaluations = {check.check_name: check for check in run.get_asset_check_evaluations()}
+            self.assertTrue(evaluations['boem_ocs_lease_blocks_complete'].passed)
+            warning = evaluations['boem_ocs_lease_blocks_approved_baseline_drift']
+            self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(warning.metadata['comparison_status'].value, 'skipped_no_approved_baseline')
+            drift = approved_baseline_drift(added, {**first, 'release_accepted': True})
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.metadata['feature_count_delta'].value, 1)
+            client = _client(_live_fixture(removed=True))
+            with patch.object(blocks.httpx, 'Client', return_value=client):
+                removed = blocks.capture_boem_ocs_lease_blocks(storage, capture_directory=str(Path(tmp) / 'removed'))
+            self.assertEqual(removed['feature_count'], 3)
+            self.assertNotEqual(removed['version'], first['version'])
+            table = pq.read_table(pa.BufferReader(storage.read_key(prefix + f'/geoparquet/{blocks.DATASET_SLUG}.parquet')))
+            self.assertEqual(table['BLOCK_NUMBER'].to_pylist()[0], '   71')
+            self.assertIsNone(table['geometry'].to_pylist()[-1])
+            for mode in ('wire', 'forged_gzip', 'missing', 'missing_wire', 'url', 'extra'):
+                directory = Path(tmp) / ('bad-' + mode)
+                shutil.copytree(first['capture_directory'], directory)
+                if mode == 'wire':
+                    (directory / 'page_001.wire').write_bytes(b'tampered')
+                elif mode == 'forged_gzip':
+                    wire = b'not-valid-gzip'
+                    (directory / 'page_001.wire').write_bytes(wire)
+                    path = directory / 'page_001.receipt.json'
+                    receipt = json.loads(path.read_bytes())
+                    receipt.update(content_encoding='gzip', wire_bytes=len(wire), wire_sha256=blocks._sha(wire))
+                    path.write_bytes(_body(receipt))
+                elif mode == 'missing':
+                    (directory / 'page_001.body').unlink()
+                elif mode == 'missing_wire':
+                    (directory / 'page_001.wire').unlink()
+                elif mode == 'url':
+                    path = directory / 'page_001.receipt.json'
+                    receipt = json.loads(path.read_bytes())
+                    receipt.update(url='https://gis.boem.gov/unrelated', final_url='https://gis.boem.gov/unrelated')
+                    path.write_bytes(_body(receipt))
+                else:
+                    (directory / 'page_999.body').write_bytes(b'{}')
+                with self.subTest(replay=mode), patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected network')):
+                    with self.assertRaises((ValueError, OSError)):
+                        blocks.capture_boem_ocs_lease_blocks(storage, offline_capture_directory=str(directory),
+                            capture_directory=str(Path(tmp) / 'refused-replay'))
+            original_manifest = storage.read_key(prefix + '/metadata/source_manifest.json')
+            storage.write_key(prefix + '/metadata/source_manifest.json', b'{}')
+            with self.assertRaisesRegex(ValueError, 'cached_candidate_object_integrity_failed'):
+                blocks.capture_boem_ocs_lease_blocks(storage, offline_capture_directory=first['capture_directory'],
+                    capture_directory=str(Path(tmp) / 'conflict'))
+            storage.write_key(prefix + '/metadata/source_manifest.json', original_manifest)
+            state = Path(storage.local_dir) / f"_construction-state/{blocks.DATASET_SLUG}/{first['version']}.json"
+            state.unlink()
+            with self.assertRaisesRegex(ValueError, 'unsealed_candidate_prefix'):
+                blocks.capture_boem_ocs_lease_blocks(storage, offline_capture_directory=first['capture_directory'],
+                    capture_directory=str(Path(tmp) / 'partial'))
+
+    def test_real_acquisition_rejects_torn_witness_and_missing_page_row(self):
+        with tempfile.TemporaryDirectory() as tmp, fixture_pins(), patch.object(blocks, 'PAGE_SIZE', 2):
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / 'stage'))
+            Path(storage.local_dir).mkdir()
+            for mode in ('torn', 'page'):
+                client = _client(_live_fixture(), torn=mode == 'torn', missing_page_row=mode == 'page')
+                with self.subTest(mode=mode), patch.object(blocks.httpx, 'Client', return_value=client):
+                    with self.assertRaises(ValueError):
+                        blocks.capture_boem_ocs_lease_blocks(storage, capture_directory=str(Path(tmp) / mode))
+            self.assertFalse(storage.list_prefix(blocks.DATASET_SLUG))
+            self.assertTrue(storage.list_prefix('_quarantine/' + blocks.DATASET_SLUG))
+
     def test_default_capture_root_keeps_the_historical_layout(self):
         self.assertEqual(str(blocks.DEFAULT_CAPTURE_ROOT),
                          str(Path(tempfile.gettempdir()) / "boem-ocs-lease-block-captures"))
@@ -303,7 +481,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
         def parquet(features, _fields, _root):
             return b"candidate:" + hashlib.sha256(_body([f["attributes"] for f in features])).digest()
 
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as offline:
             storage = StagingStorageResource(use_local=True, local_dir=tmp)
             with fixture_pins():
                 def run(observed_at, mutate=False):
@@ -320,6 +498,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                                        wire_sha256=hashlib.sha256(body).hexdigest())
                         captures["page_000"] = (body, receipt)
                     extra = []
+                    _write_capture(Path(offline), captures)
                     with patch.object(blocks, "_load_offline", return_value=captures), \
                             patch.object(blocks, "_geoparquet", side_effect=parquet), \
                             patch.object(blocks, "processing_identity",
@@ -332,7 +511,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                             for extra_patch in extra:
                                 stack.enter_context(extra_patch)
                             return blocks.capture_boem_ocs_lease_blocks(
-                                storage, offline_capture_directory=tmp)
+                                storage, offline_capture_directory=offline)
 
                 first = run("2026-01-01T00:00:00Z")
                 first_manifest = json.loads(storage.read_key(
@@ -351,8 +530,9 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
     def test_manifest_records_first_party_host_and_pending_acceptance(self):
         fixture = _fixture()
         stable_identity = {"code_commit": "a" * 40, "files": {"x.py": "b" * 64}}
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as offline:
             storage = StagingStorageResource(use_local=True, local_dir=tmp)
+            _write_capture(Path(offline), fixture)
             with fixture_pins():
                 with patch.object(blocks, "_load_offline", return_value=copy.deepcopy(fixture)), \
                         patch.object(blocks, "_geoparquet", return_value=b"candidate"), \
@@ -362,7 +542,7 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                         patch.object(capture_common, "validate_construction_code_identity",
                                      return_value=None):
                     result = blocks.capture_boem_ocs_lease_blocks(
-                        storage, offline_capture_directory=tmp)
+                        storage, offline_capture_directory=offline)
             base = result["candidate_ready"].replace("metadata/candidate_ready.json", "metadata/")
             manifest = json.loads(storage.read_key(base + "source_manifest.json"))
             self.assertFalse(manifest["source_authority_accepted"])
@@ -474,11 +654,12 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
         doc = json.loads(fixture["page_000"][0])
         doc["features"].pop()
         fixture["page_000"] = (_body(doc), fixture["page_000"][1])
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as offline:
             storage = StagingStorageResource(use_local=True, local_dir=tmp)
+            _write_capture(Path(offline), fixture)
             with fixture_pins(), patch.object(blocks, "_load_offline", return_value=fixture):
                 with self.assertRaisesRegex(ValueError, "source_feature_population_incomplete"):
-                    blocks.capture_boem_ocs_lease_blocks(storage, offline_capture_directory=tmp)
+                    blocks.capture_boem_ocs_lease_blocks(storage, offline_capture_directory=offline)
             quarantined = sorted(str(path.relative_to(tmp)) for path in Path(tmp).rglob("*")
                                  if path.is_file())
             self.assertTrue(quarantined)
