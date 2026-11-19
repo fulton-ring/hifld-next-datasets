@@ -20,11 +20,7 @@ from dagster_hifld.assets.usace_berths_areas import usace_berths_areas_usace_ien
 from dagster_hifld.assets.usace_dry_docks import usace_dry_docks_usace_ienc
 from dagster_hifld.assets.usace_distance_marks import usace_distance_marks_usace_ienc
 from dagster_hifld.assets.usace_recommended_tracks import usace_recommended_tracks_ienc
-from dagster_hifld.assets.usace_overhead_pipeline_lines import usace_overhead_pipeline_lines_usace_ienc
-from dagster_hifld.assets.usace_overhead_cables import usace_overhead_cables_usace_ienc
-from dagster_hifld.assets.usace_dam_lines import usace_dam_lines_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
-from dagster_hifld.assets.usace_obstruction_locations import usace_obstruction_locations_usace_ienc
 from dagster_hifld.assets.usace_mooring_facility_lines import usace_mooring_facility_lines_usace_ienc
 from dagster_hifld.assets.small_craft_facility_areas_usace_ienc import small_craft_facility_areas_usace_ienc
 from dagster_hifld.assets.coastlines_usace_ienc import coastlines_usace_ienc
@@ -62,11 +58,7 @@ hifld_ingest_assets = [
     usace_dry_docks_usace_ienc,
     usace_distance_marks_usace_ienc,
     usace_recommended_tracks_ienc,
-    usace_overhead_pipeline_lines_usace_ienc,
-    usace_overhead_cables_usace_ienc,
-    usace_dam_lines_usace_ienc,
     usace_obstruction_lines_usace_ienc,
-    usace_obstruction_locations_usace_ienc,
     usace_mooring_facility_lines_usace_ienc,
     small_craft_facility_areas_usace_ienc,
     coastlines_usace_ienc,

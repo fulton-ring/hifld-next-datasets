@@ -69,4 +69,7 @@ usace_dam_lines_draft_schedule = ScheduleDefinition(
 
 usace_dam_lines_usace_ienc_drift = register_approved_baseline_drift(usace_dam_lines_usace_ienc, "usace_dam_lines_usace_ienc_drift")
 
+INGEST_ASSETS = [usace_dam_lines_usace_ienc]
 ASSET_CHECKS = [usace_dam_lines_complete, usace_dam_lines_usace_ienc_drift]
+JOBS = [usace_dam_lines_draft_job]
+SCHEDULES = [usace_dam_lines_draft_schedule]
