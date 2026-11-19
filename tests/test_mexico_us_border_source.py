@@ -5,23 +5,27 @@ from __future__ import annotations
 import copy
 import io
 import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pyarrow.parquet as pq
 import shapely
-from dagster import DefaultScheduleStatus
+from dagster import AssetCheckSeverity, DefaultScheduleStatus
 
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import mexico_us_border as source
 from dagster_hifld.sources.mexico_us_border import (
     DATASET_SLUG,
     EXPECTED_BORDER_TYPE_CODES,
-    EXPECTED_COUNT,
     EXPECTED_COVERAGE,
     EXPECTED_COPYRIGHT,
     EXPECTED_FIELD_DECLARATIONS,
-    EXPECTED_GLOBALIDS,
-    EXPECTED_ID_SHA256,
     EXPECTED_ITEM_TAGS,
     EXPECTED_LAYER_EXTENT,
     EXPECTED_LAYER_SR,
@@ -38,10 +42,23 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.mexico_us_border import (
     mexico_us_border,
     mexico_us_border_complete,
+    mexico_us_border_drift,
     mexico_us_border_draft_job,
     mexico_us_border_draft_schedule,
 )
 from dagster_hifld.definitions import defs
+
+EXPECTED_COUNT = 14
+EXPECTED_ID_SHA256 = "397db166b17b198de79db0e6b31cf193aa4e77f9b695385b7f70e94455f8d01c"
+EXPECTED_GLOBALIDS = [
+    "{2E367C76-0FEE-4316-9140-804CD159957E}", "{3CA5AD51-ECC8-41FC-BDA4-82A5C220AAF3}",
+    "{66A9F54A-4B41-4439-8945-2C34C048093F}", "{24116A62-D6FB-4A7B-83FA-8558F3970889}",
+    "{1093EA66-C068-4E44-877F-FF84EC423B5F}", "{996B5DDE-A90B-480F-93A1-710174260EAD}",
+    "{6FBF3B57-42D2-4159-8BE3-534D91E35B85}", "{8C94A81E-BDA2-44A8-BD5B-3730602BBECF}",
+    "{E13A1DCA-0153-41B8-B619-6CE2C8291F23}", "{8558ACF7-E07D-41C0-91A8-9EA5420EFC58}",
+    "{65F1D28C-EBD8-49CA-8790-B872FEA83DD6}", "{468B451C-A0F9-44BA-A09A-CF00F385CD05}",
+    "{70DA3A9C-525E-4F85-BF91-45AD61A7552D}", "{44E95C90-091B-4731-927E-528EA3F340C2}",
+]
 
 FIELD_NAMES = [field["name"] for field in EXPECTED_FIELD_DECLARATIONS]
 PORTAL_ITEM_URL = (
@@ -55,10 +72,11 @@ SERVICE_DESCRIPTION = (
 
 
 def _docs(ids: list[int] | None = None) -> dict[str, dict]:
-    object_ids = ids or list(range(1, EXPECTED_COUNT + 1))
+    object_ids = list(range(1, EXPECTED_COUNT + 1)) if ids is None else ids
     item = {
         "id": PORTAL_ITEM_ID,
         "owner": "ibwcgis",
+        "orgId": "0123456789ABCDEF",
         "type": "Feature Service",
         "access": "public",
         "title": "US_MexicoIB",
@@ -102,14 +120,15 @@ def _docs(ids: list[int] | None = None) -> dict[str, dict]:
             "DistanceNauticalMiles": 0.5401 + oid,
             "BORDER_TYPE": 1,
             "DateUpdated": 1627603200000,
-            "GlobalID": EXPECTED_GLOBALIDS[oid - 1],
+            "GlobalID": (EXPECTED_GLOBALIDS[oid - 1] if oid <= len(EXPECTED_GLOBALIDS)
+                         else f"{{00000000-0000-0000-0000-{oid:012d}}}"),
             "OBJECTID": oid,
             "Label": "US / Mexico Boundary",
             "Shape__Length": 1000.25 + oid,
         })
         features.append({
             "attributes": attrs,
-            "geometry": {"paths": [[[-100.0, 30.0], [-100.1, 30.1 + oid / 10]]]},
+            "geometry": {"paths": [[[-100.0, 30.0], [-100.1, 30.1 + (oid % 15) / 10]]]},
         })
     docs = {
         "portal_item": item,
@@ -120,9 +139,9 @@ def _docs(ids: list[int] | None = None) -> dict[str, dict]:
         "layer_after": layer,
         "count_before": {"count": len(object_ids)},
         "count_after": {"count": len(object_ids)},
-        "ids_seed": {"objectIds": object_ids},
-        "ids_before": {"objectIds": object_ids},
-        "ids_after": {"objectIds": object_ids},
+        "ids_seed": {"objectIds": list(object_ids)},
+        "ids_before": {"objectIds": list(object_ids)},
+        "ids_after": {"objectIds": list(object_ids)},
     }
     for page_index, start in enumerate(range(0, len(features), PAGE_SIZE)):
         docs[f"page_{page_index:03d}"] = {
@@ -136,7 +155,177 @@ def _captures(docs: dict[str, dict]) -> dict[str, tuple[bytes, dict]]:
     return {name: (json.dumps(doc).encode("utf-8"), {}) for name, doc in docs.items()}
 
 
+def _client(docs, ids, refusal=None):
+    responses = {}
+    for name, url in [("ids_seed", source._query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
+                      *source._capture_roster(ids)]:
+        responses.setdefault(url, []).append(name)
+    calls = []
+
+    def handle(request):
+        name = responses[str(request.url)][0]
+        calls.append(name)
+        if name == refusal:
+            return httpx.Response(503, stream=httpx.ByteStream(b"unavailable"))
+        responses[str(request.url)].pop(0)
+        return httpx.Response(200, stream=httpx.ByteStream(json.dumps(docs[name]).encode()),
+                              headers={"Content-Type": "application/json"})
+
+    return httpx.Client(transport=httpx.MockTransport(handle)), responses, calls
+
+
 class MexicoUsBorderSourceTest(unittest.TestCase):
+    def test_complete_upstream_addition_and_removal_use_publisher_witnesses(self) -> None:
+        for ids in (list(range(1, 15)) + [27], list(range(2, 15))):
+            with self.subTest(ids=ids):
+                fields, features, audit = _validate(_captures(_docs(ids)))
+                self.assertEqual(audit["source_feature_count"], len(ids))
+                self.assertEqual(audit["source_id_min"], min(ids))
+                self.assertEqual(audit["source_id_max"], max(ids))
+                table = pq.read_table(io.BytesIO(_parquet_bytes(fields, features, 4326)))
+                self.assertEqual(table.column("OBJECTID").to_pylist(), ids)
+                self.assertEqual(audit["global_id_distinct_count"], len(ids))
+
+    def test_changed_global_id_is_preserved_without_a_snapshot_digest(self) -> None:
+        docs = _docs()
+        replacement = "{00000000-0000-0000-0000-000000000000}"
+        docs["page_000"]["features"][2]["attributes"]["GlobalID"] = replacement
+        fields, features, audit = _validate(_captures(docs))
+        table = pq.read_table(io.BytesIO(_parquet_bytes(fields, features, 4326)))
+        self.assertEqual(table.column("GlobalID")[2].as_py(), replacement)
+        self.assertEqual(audit["global_id_duplicate_count"], 0)
+
+    def test_torn_counts_ids_seed_and_exact_pages_fail_closed(self) -> None:
+        cases = [
+            ("count mismatch", lambda d: d["count_after"].update(count=14), "source_count_or_id_roster_drift"),
+            ("same count different IDs", lambda d: d["ids_after"]["objectIds"].__setitem__(-1, 28),
+             "source_count_or_id_roster_drift"),
+            ("seed mismatch", lambda d: d["ids_seed"].update(objectIds=list(range(1, 16))),
+             "source_seed_id_population_drift"),
+            ("duplicate witness IDs", lambda d: d["ids_after"]["objectIds"].__setitem__(-1, 1),
+             "source_count_or_id_roster_drift"),
+            ("missing witness", lambda d: d.pop("count_after"), "source_capture_witness_missing"),
+            ("missing page", lambda d: d.pop("page_000"), "source_capture_roster_incomplete"),
+            ("omitted row", lambda d: d["page_000"]["features"].pop(), "source_page_id_population_drift"),
+            ("duplicate captured ID", lambda d: d["page_000"]["features"][-1]["attributes"].update(OBJECTID=1),
+             "source_page_id_population_drift"),
+            ("extra page", lambda d: d.update(page_001=copy.deepcopy(d["page_000"])), "source_capture_roster_incomplete"),
+        ]
+        for label, mutate, reason in cases:
+            with self.subTest(label=label):
+                docs = copy.deepcopy(_docs(list(range(1, 15)) + [27]))
+                mutate(docs)
+                with self.assertRaisesRegex(ValueError, reason):
+                    _validate(_captures(docs))
+        docs = _docs([])
+        with self.assertRaisesRegex(ValueError, "source_population_empty"):
+            _validate(_captures(docs))
+
+    def test_pages_must_match_their_own_observed_id_slice(self) -> None:
+        docs = copy.deepcopy(_docs(list(range(1, 15)) + [27]))
+        docs["page_001"] = {**docs["page_000"], "features": [docs["page_000"]["features"].pop()]}
+        docs["page_000"]["features"][0], docs["page_001"]["features"][0] = (
+            docs["page_001"]["features"][0], docs["page_000"]["features"][0])
+        with patch.object(source, "PAGE_SIZE", 14):
+            with self.assertRaisesRegex(ValueError, "source_page_id_population_drift:page_000"):
+                _validate(_captures(docs))
+
+    def test_acquisition_first_construction_and_cached_replay_use_shared_witnesses(self) -> None:
+        for ids in (list(range(1, 15)) + [27], list(range(2, 15))):
+            with self.subTest(ids=ids), tempfile.TemporaryDirectory() as temporary, patch.object(source, "PAGE_SIZE", 14):
+                docs = copy.deepcopy(_docs(ids))
+                if len(ids) > 14:
+                    docs["page_001"] = {**docs["page_000"], "features": [docs["page_000"]["features"].pop()]}
+                for name in ("ids_seed", "ids_before", "ids_after"):
+                    docs[name]["objectIds"] = list(reversed(ids))
+                storage = StagingStorageResource(local_dir=str(Path(temporary) / "stage"))
+                client, responses, _calls = _client(docs, ids)
+                with patch.object(source.httpx, "Client", return_value=client), \
+                        patch.object(source, "capture_layer_roster", wraps=source.capture_layer_roster) as shared:
+                    result = source.capture_mexico_us_border(storage, version="fixture-capture",
+                        capture_directory=str(Path(temporary) / "captures"))
+                self.assertEqual(shared.call_count, 1)
+                self.assertEqual(result["feature_count"], len(ids))
+                self.assertEqual(result["source_reported_count"], len(ids))
+                self.assertTrue(mexico_us_border_complete(result).passed)
+                self.assertTrue(all(not pending for pending in responses.values()))
+                root = Path(result["capture_directory"])
+                self.assertEqual(len(list(root.glob("page_*.body"))), (len(ids) + 13) // 14)
+                manifest_before = (root / "capture_manifest.json").read_bytes()
+                with patch.object(source.httpx, "Client", side_effect=AssertionError("network on replay")):
+                    cached = source.capture_mexico_us_border(storage, version="replay", capture_directory=str(root))
+                self.assertTrue(cached["reused"])
+                self.assertEqual(cached["version"], result["version"])
+                self.assertEqual(cached["source_reported_count"], len(ids))
+                self.assertEqual((root / "capture_manifest.json").read_bytes(), manifest_before)
+                drift = mexico_us_border_drift(result)
+                self.assertFalse(drift.passed)
+                self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+                self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+                self.assertFalse(list(mexico_us_border_drift.check_specs)[0].blocking)
+                baseline = {**result, "version": "approved-fixture", "release_accepted": True,
+                            "feature_count": EXPECTED_COUNT, "source_id_sha256": EXPECTED_ID_SHA256}
+                compared = approved_baseline_drift(result, baseline)
+                self.assertFalse(compared.passed)
+                self.assertEqual(compared.severity, AssetCheckSeverity.WARN)
+                self.assertEqual(compared.metadata["feature_count_delta"].value, len(ids) - EXPECTED_COUNT)
+                self.assertTrue(compared.metadata["native_id_roster_changed"].value)
+                prefix = result["candidate_ready"].removesuffix("metadata/candidate_ready.json")
+                table = pq.read_table(io.BytesIO(storage.read_key(prefix + f"geoparquet/{DATASET_SLUG}.parquet")))
+                self.assertEqual(table.column("OBJECTID").to_pylist(), ids)
+                for key in ("source_release_accepted", "source_freshness_accepted", "schema_contract_accepted",
+                            "id_contract_accepted", "coverage_accepted", "rights_accepted", "release_accepted"):
+                    self.assertIs(result[key], False)
+                receipt_path = root / "page_000.receipt.json"
+                receipt = json.loads(receipt_path.read_bytes())
+                receipt["url"] = source.LAYER_URL + "/query?objectIds=999"
+                receipt_path.write_bytes(source._canonical(receipt))
+                forged_manifest = json.loads(manifest_before)
+                forged_manifest["receipts"]["page_000"] = receipt
+                forged_manifest["artifact_roster"] = source.capture_roster_digests(root, exclude={"capture_manifest.json"})
+                (root / "capture_manifest.json").write_bytes(source._canonical(forged_manifest))
+                forged_bytes = (root / "capture_manifest.json").read_bytes()
+                with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch:page_000"):
+                    source.capture_mexico_us_border(storage, version="corrupt-replay", capture_directory=str(root))
+                self.assertEqual((root / "capture_manifest.json").read_bytes(), forged_bytes)
+
+    def test_torn_live_witness_and_refused_page_retain_quarantine_evidence(self) -> None:
+        for refusal in (None, "page_000"):
+            with self.subTest(refusal=refusal), tempfile.TemporaryDirectory() as temporary:
+                ids = list(range(1, 15)) + [27]
+                docs = copy.deepcopy(_docs(ids))
+                docs["count_after"]["count"] += 1
+                client, _responses, calls = _client(docs, ids, refusal)
+                storage = StagingStorageResource(local_dir=str(Path(temporary) / "stage"))
+                requested = Path(temporary) / "captures"
+                with patch.object(source.httpx, "Client", return_value=client):
+                    with self.assertRaisesRegex(ValueError, "incomplete_source_capture|source_count_or_id_roster_drift"):
+                        source.capture_mexico_us_border(storage, version="failed-capture", capture_directory=str(requested))
+                manifest_path = next(requested.rglob("capture_manifest.json"))
+                manifest = json.loads(manifest_path.read_bytes())
+                self.assertFalse(manifest["complete"])
+                quarantine = storage.list_prefix(f"_quarantine/{DATASET_SLUG}")
+                self.assertTrue(any(name.endswith("/raw/portal_item.body") for name in quarantine))
+                self.assertFalse(any(name.endswith("candidate_ready.json") for name in storage.list_prefix(DATASET_SLUG)))
+                if refusal:
+                    self.assertEqual(calls.count("page_000"), 2)
+                    for attempt in (1, 2):
+                        self.assertEqual((manifest_path.parent / f"page_000.attempt{attempt}.body").read_bytes(), b"unavailable")
+                else:
+                    self.assertTrue((manifest_path.parent / "ids_after.body").exists())
+
+    def test_shared_replay_rejects_forged_decoded_body_even_with_matching_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            body, wire = b'{"count":15}', b'{"count":14}'
+            (root / "count_before.body").write_bytes(body)
+            (root / "count_before.wire").write_bytes(wire)
+            (root / "count_before.receipt.json").write_bytes(source._canonical({
+                "complete_body": True, "status": 200, "bytes": len(body), "sha256": source._sha(body),
+                "wire_bytes": len(wire), "wire_sha256": source._sha(wire), "content_encoding": "identity"}))
+            with self.assertRaisesRegex(ValueError, "retained_capture_wire_body_mismatch"):
+                source._load_replay(root, "count_before")
+
     def test_registered_stopped_draft_and_unapproved_release_gate(self) -> None:
         self.assertIn(mexico_us_border, hifld_ingest_assets)
         registered = defs.get_repository_def()
@@ -148,7 +337,7 @@ class MexicoUsBorderSourceTest(unittest.TestCase):
         self.assertIn(mexico_us_border_draft_schedule.name,
                       {schedule.name for schedule in registered.schedule_defs})
         self.assertEqual(mexico_us_border_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = mexico_us_border_complete({"feature_count": EXPECTED_COUNT, "source_population_complete": True})
+        check = mexico_us_border_complete({"feature_count": EXPECTED_COUNT, "source_reported_count": EXPECTED_COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["mapping_approved"].value)
@@ -170,6 +359,7 @@ class MexicoUsBorderSourceTest(unittest.TestCase):
     def test_portal_item_identity_and_rights_are_required(self) -> None:
         for mutation, error in (
             ({"owner": "someone_else"}, "ibwc_portal_item_identity_drift"),
+            ({"orgId": "another_org"}, "ibwc_portal_item_identity_drift"),
             ({"type": "Map Service"}, "ibwc_portal_item_identity_drift"),
             ({"url": "https://services.arcgis.example/FeatureServer"}, "ibwc_portal_item_identity_drift"),
             ({"licenseInfo": "restricted"}, "ibwc_portal_item_rights_drift"),
@@ -183,13 +373,13 @@ class MexicoUsBorderSourceTest(unittest.TestCase):
     def test_changed_ids_fail_closed(self) -> None:
         docs = _docs()
         docs["ids_after"] = {"objectIds": list(range(1, EXPECTED_COUNT)) + [15]}
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             _validate(_captures(docs))
 
     def test_changed_global_ids_fail_closed(self) -> None:
         docs = _docs()
-        docs["page_000"]["features"][2]["attributes"]["GlobalID"] = "{00000000-0000-0000-0000-000000000000}"
-        with self.assertRaisesRegex(ValueError, "source_global_id_population_drift"):
+        docs["page_000"]["features"][2]["attributes"]["GlobalID"] = docs["page_000"]["features"][0]["attributes"]["GlobalID"]
+        with self.assertRaisesRegex(ValueError, "source_global_id_duplicate"):
             _validate(_captures(docs))
 
     def test_type_loss_fails_closed(self) -> None:

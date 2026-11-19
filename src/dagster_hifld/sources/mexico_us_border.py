@@ -35,7 +35,10 @@ from dagster_hifld.sources.capture_common import (
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
-from dagster_hifld.sources.arcgis_layer import layer_capture_roster
+from dagster_hifld.sources.arcgis_layer import (
+    capture_layer_roster, capture_witness, layer_capture_roster, load_replay as _load_replay,
+    retained_capture_ids,
+)
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "mexico-and-us-border-1"
@@ -48,19 +51,6 @@ PORTAL_ITEM_URL = f"https://gisportal.ibwc.gov/agsportal/sharing/rest/content/it
 PUBLISHER = "International Boundary and Water Commission, United States and Mexico"
 CROSSWALK_NOTE = ("DHS HIFLD Open Data crosswalk (DOI 10.3886/E241367V1) deprecates this layer "
                   "and directs users to the IBWC portal item and REST service captured here.")
-EXPECTED_COUNT = 14
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "397db166b17b198de79db0e6b31cf193aa4e77f9b695385b7f70e94455f8d01c"
-EXPECTED_GLOBALID_SHA256 = "75eaee73cf7d5c69f9cd29cd679a85694167669bfc2e987e7999fb83e9e7797f"
-EXPECTED_GLOBALIDS = [
-    "{2E367C76-0FEE-4316-9140-804CD159957E}", "{3CA5AD51-ECC8-41FC-BDA4-82A5C220AAF3}",
-    "{66A9F54A-4B41-4439-8945-2C34C048093F}", "{24116A62-D6FB-4A7B-83FA-8558F3970889}",
-    "{1093EA66-C068-4E44-877F-FF84EC423B5F}", "{996B5DDE-A90B-480F-93A1-710174260EAD}",
-    "{6FBF3B57-42D2-4159-8BE3-534D91E35B85}", "{8C94A81E-BDA2-44A8-BD5B-3730602BBECF}",
-    "{E13A1DCA-0153-41B8-B619-6CE2C8291F23}", "{8558ACF7-E07D-41C0-91A8-9EA5420EFC58}",
-    "{65F1D28C-EBD8-49CA-8790-B872FEA83DD6}", "{468B451C-A0F9-44BA-A09A-CF00F385CD05}",
-    "{70DA3A9C-525E-4F85-BF91-45AD61A7552D}", "{44E95C90-091B-4731-927E-528EA3F340C2}",
-]
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 2_500_000
 MAX_CAPTURE_BYTES = 10_000_000
@@ -101,7 +91,7 @@ EXPECTED_MAX_RECORD_COUNT = 2000
 EXPECTED_COPYRIGHT = ("International Boundary and Water Commission, United States and Mexico; "
                       "National Institute of Geography and Statistics, Mexico; United States Geological Survey")
 EXPECTED_ITEM = {
-    "id": PORTAL_ITEM_ID, "owner": "ibwcgis", "type": "Feature Service", "access": "public",
+    "id": PORTAL_ITEM_ID, "owner": "ibwcgis", "orgId": "0123456789ABCDEF", "type": "Feature Service", "access": "public",
     "title": "US_MexicoIB", "created": 1706746235861, "url": SERVICE_URL,
 }
 EXPECTED_ITEM_TAGS = ["NGDA", "National Geospatial Data Asset", "NGDAID82",
@@ -298,25 +288,17 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     )
 
 
-def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
-    paths = [root / f"{name}.body", root / f"{name}.wire", root / f"{name}.receipt.json"]
-    if any(path.is_symlink() for path in paths):
-        raise ValueError("retained_capture_symlink_rejected")
-    body = paths[0].read_bytes(); wire = paths[1].read_bytes(); receipt = json.loads(paths[2].read_bytes())
-    if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise ValueError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
-
-
 def _validate(captures: dict[str, tuple[bytes, dict]]):
-    if not {"ids_seed", *[name for name, _url in _capture_roster(EXPECTED_IDS)]} <= set(captures):
+    before = capture_witness(captures)
+    if not before:
+        raise ValueError("source_population_empty")
+    if {"ids_seed", *[name for name, _url in _capture_roster(before)]} != set(captures):
         raise ValueError("source_capture_roster_incomplete")
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
     item = docs["portal_item"]
     item_url = f"https://gisportal.ibwc.gov/agsportal/home/item.html?id={PORTAL_ITEM_ID}"
     if (item.get("id") != PORTAL_ITEM_ID or item.get("owner") != EXPECTED_ITEM["owner"]
+            or item.get("orgId") != EXPECTED_ITEM["orgId"]
             or item.get("type") != EXPECTED_ITEM["type"] or item.get("access") != EXPECTED_ITEM["access"]
             or item.get("title") != EXPECTED_ITEM["title"] or item.get("created") != EXPECTED_ITEM["created"]
             or item.get("url") != SERVICE_URL):
@@ -370,19 +352,12 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     # declared it must agree with the native Web Mercator pair.
     if layer.get("spatialReference"):
         _validate_spatial_reference(layer.get("spatialReference"), "source_layer", EXPECTED_LAYER_SR)
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(before, list) or before != after or before != EXPECTED_IDS
-            or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT
-            or _sha(_canonical(sorted(before))) != EXPECTED_ID_SHA256):
-        raise ValueError("source_id_population_drift")
-    if docs["ids_seed"].get("objectIds") != EXPECTED_IDS:
+    seed = docs["ids_seed"].get("objectIds")
+    if (not isinstance(seed, list) or any(type(oid) is not int for oid in seed)
+            or sorted(seed) != before):
         raise ValueError("source_seed_id_population_drift")
     features = []
     pages = sorted(name for name in captures if name.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE:
-        raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page = docs[name]
         if "error" in page or page.get("exceededTransferLimit") is True:
@@ -393,6 +368,13 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         rows = page.get("features")
         if not isinstance(rows, list):
             raise ValueError("source_page_features_missing")
+        index = int(name.removeprefix("page_"))
+        expected_ids = before[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
+        page_ids = [row.get("attributes", {}).get("OBJECTID") for row in rows]
+        if (len(page_ids) != len(expected_ids)
+                or any(type(oid) is not int for oid in page_ids)
+                or sorted(page_ids) != expected_ids):
+            raise ValueError("source_page_id_population_drift:" + name)
         features.extend(rows)
     expected_attrs = [field["name"] for field in fields]
     got = []
@@ -447,15 +429,14 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         geometry = shapely.from_wkb(_esri_polyline(geom))
         geometry_empty += int(geometry.is_empty)
         geometry_valid += int(geometry.is_valid and not geometry.is_empty)
-    if len(features) != EXPECTED_COUNT or sorted(got) != sorted(before) or len(set(got)) != EXPECTED_COUNT:
-        raise ValueError("source_feature_population_incomplete")
+    capture_witness(captures, captured_ids=got)
     features.sort(key=lambda feature: feature["attributes"]["OBJECTID"])
     global_ids = [feature["attributes"]["GlobalID"] for feature in features]
     record_sha = _sha(_canonical([feature["attributes"] for feature in features]))
     geometry_sha = _sha(_canonical([[feature["attributes"]["OBJECTID"], feature["geometry"]] for feature in features]))
     schema_sha = _sha(_canonical(fields))
-    if _sha(_canonical(global_ids)) != EXPECTED_GLOBALID_SHA256:
-        raise ValueError("source_global_id_population_drift")
+    if len(set(global_ids)) != len(global_ids):
+        raise ValueError("source_global_id_duplicate")
     return fields, features, {"source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
         "source_schema_sha256": schema_sha,
         "source_id_sha256": _sha(_canonical(sorted(got))),
@@ -469,11 +450,12 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "geometry_empty_count": geometry_empty,
         "geometry_invalid_count": len(features) - geometry_valid - geometry_empty,
         "source_coverage_scope": "Complete observed current official IBWC US–Mexico international boundary feature layer; "
-        "14 boundary segments including land, river and maritime portions of the 1970 Treaty boundary.",
+        "Observed land, river and maritime segments of the 1970 Treaty boundary.",
         "drift_guard": "Current public IBWC portal item " + PORTAL_ITEM_ID + " (owner ibwcgis on gisportal.ibwc.gov) is the "
         "producing agency's own publication; the DHS HIFLD crosswalk directs this layer there. Official service-directory "
         "membership, service/layer identity, field names/types/domains, native Web Mercator layer CRS, pinned layer extent, "
-        "page errors, and before/after exact OBJECTID and GlobalID rosters are checked; service coordinates are requested "
+        "page errors, capture-time count/OBJECTID witnesses, exact page coverage and native GlobalID uniqueness "
+        "are checked; service coordinates are requested "
         "in WGS84 via the service's own outSR=4326 response."}
 
 
@@ -528,10 +510,7 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
             validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
             if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
                 raise ValueError("retained_capture_artifact_digest_mismatch")
-            ids_body, ids_receipt = _load_replay(root, "ids_before")
-            ids = json.loads(ids_body).get("objectIds")
-            if not isinstance(ids, list):
-                raise ValueError("retained_id_seed_invalid")
+            ids = retained_capture_ids(root)
             names = ["ids_seed", *[name for name, _url in _capture_roster(ids)]]
             if set(retained_manifest["receipts"]) != set(names):
                 raise ValueError("retained_capture_roster_changed")
@@ -569,11 +548,18 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
                 seed_body, seed_receipt = _fetch_retry(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                                                        root, "ids_seed", capture_budget)
                 ids = json.loads(seed_body).get("objectIds")
-                if ids != EXPECTED_IDS or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256:
-                    raise ValueError("source_seed_id_count_or_roster_drift")
                 captures["ids_seed"] = (seed_body, seed_receipt)
-                for name, url in _capture_roster(ids):
+                if (not isinstance(ids, list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
+                    raise ValueError("source_seed_id_count_or_roster_drift")
+                ids = sorted(ids)
+
+                def fetch(client, url, root, name):
                     captures[name] = _fetch_retry(client, url, root, name, capture_budget)
+                    return captures[name]
+
+                capture_layer_roster(client, root, _capture_roster(ids), fetch)
         fields, features, audit = _validate(captures)
     except Exception as exc:
         retained = {}
@@ -622,7 +608,7 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
         for name, (_body, receipt) in sorted(captures.items())]
     manifest = {"schema_version": 1, "approved": False, "title": "Mexico and US Border (IBWC US_MexicoIB)",
         "description": "Complete observed current official IBWC US–Mexico international boundary feature layer; "
-        "unapproved faithful candidate. 14 polyline segments (land, river and maritime) per the 1970 Treaty boundary. "
+        "unapproved faithful candidate. Observed polyline segments (land, river and maritime) per the 1970 Treaty boundary. "
         "Intended for mapping purposes only per the producer's own service description.",
         "publisher": PUBLISHER, "agency": PUBLISHER, "source_url": LAYER_URL,
         "license": "Public domain per IBWC portal item metadata; acceptance pending.",
@@ -705,7 +691,8 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
             fingerprint, identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             payload.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": audit["source_feature_count"], "source_population_complete": True,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
             "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],
@@ -722,7 +709,8 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": audit["source_feature_count"], "source_population_complete": True,
+        "feature_count": audit["source_feature_count"],
+        "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
         "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],

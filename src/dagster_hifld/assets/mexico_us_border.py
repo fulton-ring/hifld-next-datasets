@@ -12,12 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.mexico_us_border import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     FILE_SLUG,
     capture_mexico_us_border,
 )
@@ -33,7 +33,7 @@ class MexicoUsBorderConfig(Config):
     compute_kind="http",
     description=(
         "Official IBWC US–Mexico international boundary FeatureServer layer 0 "
-        "(US_MexicoIB, 14 source polyline segments observed). Complete observed "
+        "(US_MexicoIB). Complete observed "
         "1970 Treaty boundary feature class; unapproved faithful candidate. "
         "Crosswalk succession, source vintage, rights and schema contract remain pending."
     ),
@@ -59,13 +59,16 @@ def mexico_us_border(
 @asset_check(asset=mexico_us_border, blocking=True)
 def mexico_us_border_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
+        type(candidate.get("source_reported_count")) is int
+        and candidate["source_reported_count"] > 0
+        and candidate.get("feature_count") == candidate["source_reported_count"]
         and candidate.get("source_population_complete") is True
     )
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": candidate.get("source_reported_count", "missing"),
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
             "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_coverage_scope": candidate.get("source_coverage_scope", "missing"),
@@ -95,7 +98,10 @@ mexico_us_border_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+mexico_us_border_drift = register_approved_baseline_drift(
+    mexico_us_border, "mexico_us_border_drift")
+
 INGEST_ASSETS = [mexico_us_border]
-ASSET_CHECKS = [mexico_us_border_complete]
+ASSET_CHECKS = [mexico_us_border_complete, mexico_us_border_drift]
 JOBS = [mexico_us_border_draft_job]
 SCHEDULES = [mexico_us_border_draft_schedule]
