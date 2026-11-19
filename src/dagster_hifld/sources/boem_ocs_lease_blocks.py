@@ -216,7 +216,14 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
             if (root / f'{name}.{suffix}').stat().st_size > (65536 if suffix == 'receipt.json' else MAX_BODY_BYTES):
                 raise ValueError('offline_capture_size_limit')
         body, receipt = load_replay(root, name)
-        if receipt.get('method') != 'GET' or receipt.get('url') != url or receipt.get('final_url') != url:
+        observed_url = receipt.get('url')
+        if (receipt.get('method') != 'GET' or not isinstance(observed_url, str)
+                or receipt.get('final_url') != observed_url):
+            raise ValueError('offline_capture_request_mismatch:' + name)
+        observed, expected = urlsplit(observed_url), urlsplit(url)
+        if (observed._replace(query='') != expected._replace(query='')
+                or sorted(parse_qsl(observed.query, keep_blank_values=True))
+                != sorted(parse_qsl(expected.query, keep_blank_values=True))):
             raise ValueError('offline_capture_request_mismatch:' + name)
         captures[name] = (body, receipt)
     capture_witness(captures)

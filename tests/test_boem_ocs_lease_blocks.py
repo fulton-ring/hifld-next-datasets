@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import gzip
 import json
 import shutil
 import tempfile
@@ -10,6 +11,7 @@ import unittest
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 import pyarrow as pa
@@ -176,11 +178,26 @@ def _client(docs, *, torn=False, missing_page_row=False):
             page = copy.deepcopy(docs['page_000'])
             page['features'].pop()
             body = _body(page)
+        if url == urls.get('page_001'):
+            return httpx.Response(200, headers={'Content-Encoding': 'gzip'},
+                stream=httpx.ByteStream(gzip.compress(body, mtime=0)))
         return httpx.Response(200, stream=httpx.ByteStream(body))
     return httpx.Client(transport=httpx.MockTransport(respond))
 
 
 class BoemOcsLeaseBlocksTests(unittest.TestCase):
+    def test_offline_replay_preserves_equivalent_historical_query_serialization(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_capture(root, _fixture())
+            for path in root.glob('*.receipt.json'):
+                receipt = json.loads(path.read_bytes())
+                url = urlsplit(receipt['url'])
+                reordered = urlunsplit(url._replace(query=urlencode(list(reversed(parse_qsl(url.query))))))
+                receipt.update(url=reordered, final_url=reordered)
+                path.write_bytes(_body(receipt))
+            self.assertEqual(len(blocks._load_offline(root)), len(_fixture()))
+
     def test_offline_loader_refuses_corrupt_wire_instead_of_rewriting_receipt(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -199,6 +216,8 @@ class BoemOcsLeaseBlocksTests(unittest.TestCase):
                 first = blocks.capture_boem_ocs_lease_blocks(storage, capture_directory=str(Path(tmp) / 'capture'))
             prefix = first['candidate_ready'].removesuffix('/metadata/candidate_ready.json')
             original = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}
+            self.assertNotEqual(storage.read_key(prefix + '/raw/page_001.wire'),
+                                storage.read_key(prefix + '/raw/page_001.body'))
             with patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected network')):
                 replay = blocks.capture_boem_ocs_lease_blocks(storage,
                     offline_capture_directory=first['capture_directory'], capture_directory=str(Path(tmp) / 'replay'))
