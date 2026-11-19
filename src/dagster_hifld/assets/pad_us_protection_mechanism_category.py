@@ -12,14 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.pad_us_protection_mechanism_category import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
-    EXPECTED_UNUSABLE_GEOMETRY_COUNTS,
     FILE_SLUG,
     capture_pad_us_protection_mechanism_category,
 )
@@ -65,12 +63,14 @@ def pad_us_protection_mechanism_category(
 
 
 def pad_us_protection_mechanism_category_complete_contract(candidate: dict) -> bool:
-    """Every producer null geometry is an unusable-ring gate: the observed null
-    count must equal the pinned true nulls plus the unusable-gated ones."""
+    """Require witnessed coverage and an internally consistent observed null count."""
+    count = candidate.get("source_reported_count")
+    nulls = candidate.get("source_null_geometry_count")
     return (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and candidate.get("source_null_geometry_count")
-        == EXPECTED_NULL_GEOMETRY_COUNT + sum(EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values())
+        type(count) is int and count > 0
+        and candidate.get("feature_count") == count
+        and candidate.get("source_population_complete") is True
+        and type(nulls) is int and 0 <= nulls <= count
     )
 
 
@@ -81,6 +81,8 @@ def pad_us_protection_mechanism_category_complete(candidate: dict) -> AssetCheck
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": candidate.get("source_reported_count", "missing"),
+            "source_null_geometry_count": candidate.get("source_null_geometry_count", "missing"),
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
             "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_release_accepted": False,
@@ -108,7 +110,11 @@ pad_us_protection_mechanism_category_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+pad_us_protection_mechanism_category_drift = register_approved_baseline_drift(
+    pad_us_protection_mechanism_category, "pad_us_protection_mechanism_category_drift")
+
 INGEST_ASSETS = [pad_us_protection_mechanism_category]
-ASSET_CHECKS = [pad_us_protection_mechanism_category_complete]
+ASSET_CHECKS = [pad_us_protection_mechanism_category_complete,
+                pad_us_protection_mechanism_category_drift]
 JOBS = [pad_us_protection_mechanism_category_draft_job]
 SCHEDULES = [pad_us_protection_mechanism_category_draft_schedule]

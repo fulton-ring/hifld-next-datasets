@@ -247,7 +247,6 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=None,
                  real_identity: bool = False):
-    import dagster_hifld.assets.pad_us_protection_mechanism_category as asset_module
     contexts = [
         patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
@@ -257,9 +256,6 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
         patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0),
         patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}),
         patch.object(src, "EXPECTED_INVALID_GEOMETRY_COUNT", 0),
-        patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", 0),
-        patch.object(asset_module, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {}),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
@@ -314,18 +310,14 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
         self.assertEqual(src.LAYER_ID, 0)
         self.assertEqual(src.LAYER_NAME, "PADUS4_1ProtMechCat")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPolygon")
-        self.assertEqual(src.EXPECTED_COUNT, 656_986)
+        self.assertIsNone(src.EXPECTED_COUNT)
         self.assertEqual(src.PAGE_SIZE, 1000)
         self.assertEqual(len(src.NATIVE_FIELDS), 37)
         self.assertEqual(src.MIN_FREE_BYTES, 25_000_000_000)
         self.assertEqual(src.ACCEPT_ENCODING, "gzip")
-        # The per-value and per-geometry baselines are pinned from the first
-        # complete capture of the maintained view; the ID roster and schema
-        # digests are pinned from the 2026-11-14 probes.
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "9e9581c01249866a808d340892e89b6562f0dc063241cb66d038bdf2dd17c6a3")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "81d48e7d8e2f52f5f72034a8519944174c8af824416900fd6d46b3307ad84d61")
-        self.assertEqual(src.EXPECTED_IDS_SHA256,
-                         "136194b0dfac75e6d781c82e4d3d2a2a0e39074059326628c9182730bd312c7b")
+        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
+        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
+        self.assertEqual(src.EXPECTED_IDS_SHA256, "")
         self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
                          "020f3a55a746d9280b8750d6401a8fdd6c1579ffb6a0c8d325dd854ff4762f4a")
         self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
@@ -336,41 +328,24 @@ class PadUsProtectionMechanismCategoryTests(unittest.TestCase):
                             for key in keys))
 
     def test_blocking_completeness_check_gates_the_pinned_null_contract(self):
-        # Every producer null geometry is either a true null or an
-        # unusable-ring gate, so the blocking check must accept exactly the
-        # pinned contract and reject any drift from it.
-        contract = (src.EXPECTED_NULL_GEOMETRY_COUNT
-                    + sum(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values()))
-        self.assertTrue(pad_us_protection_mechanism_category_complete_contract(
-            {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": contract}))
-        self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
-            {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": contract + 1}))
-        self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
-            {"feature_count": src.EXPECTED_COUNT - 1, "source_null_geometry_count": contract}))
-        # A counterfactual contract pins exactly its own null count and
-        # nothing else; the retired unusable census contributes nothing.
-        import dagster_hifld.assets.pad_us_protection_mechanism_category as asset_module
-        with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 342), \
-                patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", 342):
-            pinned = (src.EXPECTED_NULL_GEOMETRY_COUNT
-                      + sum(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS.values()))
-            self.assertEqual(pinned, 342)
+        candidate = {"feature_count": 1000, "source_reported_count": 1000,
+                     "source_population_complete": True, "source_null_geometry_count": 0}
+        for nulls in (0, 1, 342, 1000):
             self.assertTrue(pad_us_protection_mechanism_category_complete_contract(
-                {"feature_count": src.EXPECTED_COUNT, "source_null_geometry_count": pinned}))
-            self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
-                {"feature_count": src.EXPECTED_COUNT,
-                 "source_null_geometry_count": pinned + 1}))
+                {**candidate, "source_null_geometry_count": nulls}))
+        for updates in ({"source_reported_count": None}, {"source_reported_count": True},
+                        {"source_population_complete": False}, {"feature_count": 999},
+                        {"source_null_geometry_count": -1}, {"source_null_geometry_count": 1001},
+                        {"source_null_geometry_count": True}):
+            with self.subTest(updates=updates):
+                self.assertFalse(pad_us_protection_mechanism_category_complete_contract(
+                    {**candidate, **updates}))
 
     def test_pinned_producer_geometry_defect_contract(self):
-        # The retired quarantine census pins to an empty family: served rings
-        # convert through the shared GDAL converter and OGC-invalid geometry
-        # is retained verbatim and counted by reason (issue #997). The invalid
-        # count covers every converted row now, so its pin waits for the next
-        # complete capture to re-derive it.
         self.assertEqual(src.EXPECTED_UNUSABLE_GEOMETRY_COUNTS, {})
         self.assertIsNone(src.EXPECTED_INVALID_GEOMETRY_COUNT)
-        self.assertNotEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertNotEqual(src.EXPECTED_GEOMETRY_SHA256, "")
+        self.assertIsNone(src.EXPECTED_NULL_GEOMETRY_COUNT)
+        self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPolygon")
 
     def test_nonnullable_oid_value_null_is_refused(self):
         # OBJECTID is the only non-nullable source attribute (the view layer
