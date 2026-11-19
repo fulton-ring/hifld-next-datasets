@@ -1,51 +1,10 @@
-"""Complete capture of the USGS WBD 2-digit HU (Region) layer.
+"""Capture the maintained USGS WBD 2-digit hydrologic-unit layer.
 
-The HIFLD Open inventory entry ``wbd/2-digit-hu-region`` ("2-digit HU
-(Region)", publisher "U.S. Geological Survey, National Geospatial Technical
-Operations Center") carries the Watershed Boundary Dataset description. The DHS
-HIFLD Open crosswalk (August 2025,
-https://atcoordinates.info/wp-content/uploads/2025/08/hifld_open_crosswalk_geoplatform.xlsx)
-marks the retired GeoPlatform-hosted HIFLD item 409515c7627c444fb08b66cf89634028
-as Deprecate and names the USGS hydro.nationalmap.gov ``wbd`` MapServer as the
-agency's current open REST service; its layer 1 "2-digit HU (Region)" is the
-exact maintained producer publication captured here. The service documents
-itself as compiled from USGS NHD and USDA NRCS WBD sources and is refreshed by
-USGS ("Data refreshed October, 2026" in the observed copyrightText). DataLumos
-project 240697 is archive identification context only and is never fetched.
-
-Scale (observed 2026-11-14): the layer holds 22 polygon features carrying
-3,552,737 web-mercator vertices, and the declared ``maxRecordCount`` of 2000 cannot
-actually be served for this geometry-heavy layer: query windows that decode to
-more than roughly 28-40 MB of JSON fail server-side with Esri error 500 "Error
-performing query operation" (observed: every broad window at 10-2000 features,
-three of five 5-feature windows, and the single 2-feature window that carries
-OBJECTIDs 17+18; every one-feature window up to 27.4 MB served). This module
-therefore pins ``PAGE_SIZE = 2`` and streams the capture: every page is
-retained as raw evidence in a capture directory, then validated page-by-page
-into a native geoparquet candidate with streaming record/geometry/ID digests.
-A persistently refusing window is retained as evidence and re-fetched as two
-half-size parts derived from the pinned roster (one bisection level, never a
-repair loop); a refusing half fails the capture. Ring assembly keeps the
-producer's winding and hole ownership; rows that still cannot form a valid OGC
-polygon gate to null geometry and are counted by failure mode instead of being
-repaired, with the counts pinned for later drift refusal after the first
-complete walk. The geometry digest is updated from the raw served rings of
-every row before assembly and gating, so a coordinate change that still gates
-is refused by the pinned geometry baseline rather than hiding behind unchanged
-aggregate gate counts.
-
-The per-value record and geometry baseline digests, the ID roster digest and
-the geometry-gate counts are pinned below from the complete dated population
-walk (2026-11-14). Publication stays blocked pending succession, freshness,
-schema/ID contract, coverage, rights and release acceptance; all runtime
-approval flags are false and the draft refresh schedule is stopped.
-
-The service validation, refused-window capture/bisection, retained-capture
-replay, streaming validation and Esri polygon assembly primitives are shared
-with the other WBD hydrologic-unit keyset-window layer through
-``dagster_hifld.sources.wbd_hu_family``; this module supplies only the layer
-identity, HUC code width, schema/baseline pins, page and capture budgets and
-the evidence text below.
+The shared WBD family validates stable capture-time count/ID witnesses and
+exact page coverage, preserving native schema, EPSG:3857 coordinates and IDs.
+Refused geometry windows bisect once; a refusing half aborts capture.
+Population changes between captures do not block completeness. Candidates
+remain unapproved, with no independently approved release baseline wired.
 """
 
 from __future__ import annotations
@@ -71,12 +30,9 @@ LAYER_NAME = "2-digit HU (Region)"
 MAP_NAME = "wbd"
 DHS_CROSSWALK_EVIDENCE_URL = ("https://atcoordinates.info/wp-content/uploads/2025/08/"
                               "hifld_open_crosswalk_geoplatform.xlsx")
-EXPECTED_COUNT = 22
-EXPECTED_ID_MIN = 1
-EXPECTED_ID_MAX = 22
-# Digest of the canonical-JSON sorted OBJECTID roster (22 unique ids, 1..22),
-# computed from the complete dated population walk (2026-11-14).
-EXPECTED_ID_SHA256 = "fd827f7c830e956e37ad3fb5b166b0b6379fd439549589cf735ffa11ac6f8124"
+EXPECTED_ID_MIN = None
+EXPECTED_ID_MAX = None
+EXPECTED_ID_SHA256 = ""
 # This 2-digit layer refuses any window whose JSON would exceed roughly
 # 28-40 MB (broad windows at 10-2000 features, three of five 5-feature
 # windows, and the 2-feature window carrying OBJECTIDs 17+18 all fail with
@@ -114,25 +70,15 @@ DISK_FLOOR_BYTES = 2_000_000_000
 # far below this guard across the served population (2026-11-14), so the
 # parity guard sits far above the numeric noise and far below real drift.
 SHAPE_PARITY_TOLERANCE = 1e-6
-# Native baselines pinned from the complete dated population walk (2026-11-14);
-# empty/None pins are checked only when non-empty.
 EXPECTED_SCHEMA_SHA256 = "cc3308bf19b6db3ebdf0e125b91f829db672512b6f2188de03cb498c7d783845"
-EXPECTED_RECORD_SHA256 = "87a5b6a972cea49fd96efc22997a8a821b3ec08633170427a2324cb9a91e4439"
-# Geometry digest over every served row — one [objectid, served rings] document
-# per feature in ascending OBJECTID order, including the rows that gate to null
-# geometry — computed from the complete dated population walk (2026-11-14).
-EXPECTED_GEOMETRY_SHA256 = "0946ee86214c9fbb02f5feb900c2a43fc1a1395e34bf58c580bf42cdc61fa67e"
-# Geometry quarantines retired by the shared GDAL Esri polygon converter
-# (issue #997): served rings always convert, OGC-invalid converted geometry is
-# retained verbatim and counted as ogc_invalid_geometry_counts, and the only
-# null candidate geometries are producer-null rows (none served).
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
+EXPECTED_RECORD_SHA256 = ""
+EXPECTED_GEOMETRY_SHA256 = ""
+EXPECTED_NULL_GEOMETRY_COUNT = None
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
 BASELINE_PENDING_NOTE = (
-    "The record, geometry and ID-roster baselines and the geometry-gate counts "
-    "are not pinned yet: no complete capture existed at draft time (observed "
-    "2026-11-14). The first complete capture computes them for the maintainer "
-    "to pin.")
+    "Completeness uses capture-time source witnesses and exact page coverage. "
+    "No independently approved release baseline is wired; drift comparison "
+    "is skipped, not approved.")
 
 EXPECTED_PAGE_FIELD_DECLARATIONS = [{"name": "objectid", "type": "esriFieldTypeOID", "alias": "ObjectID"}, {"name": "tnmid", "type": "esriFieldTypeString", "alias": "TNMID", "length": 40}, {"name": "metasourceid", "type": "esriFieldTypeString", "alias": "MetaSourceID", "length": 40}, {"name": "sourcedatadesc", "type": "esriFieldTypeString", "alias": "SourceDataDesc", "length": 100}, {"name": "sourceoriginator", "type": "esriFieldTypeString", "alias": "SourceOriginator", "length": 130}, {"name": "sourcefeatureid", "type": "esriFieldTypeString", "alias": "SourceFeatureID", "length": 40}, {"name": "loaddate", "type": "esriFieldTypeDate", "alias": "LoadDate", "length": 8}, {"name": "referencegnis_ids", "type": "esriFieldTypeString", "alias": "ReferenceGNIS_IDs", "length": 50}, {"name": "areaacres", "type": "esriFieldTypeDouble", "alias": "AreaAcres"}, {"name": "areasqkm", "type": "esriFieldTypeDouble", "alias": "AreaSqKm"}, {"name": "states", "type": "esriFieldTypeString", "alias": "States", "length": 50}, {"name": "huc2", "type": "esriFieldTypeString", "alias": "HUC2", "length": 2}, {"name": "name", "type": "esriFieldTypeString", "alias": "Name", "length": 120}, {"name": "globalid", "type": "esriFieldTypeGlobalID", "alias": "globalid", "length": 38}, {"name": "shape_Length", "type": "esriFieldTypeDouble", "alias": "shape_Length"}, {"name": "shape_Area", "type": "esriFieldTypeDouble", "alias": "shape_Area"}]
 EXPECTED_LAYER_FIELDS = [{"name": "objectid", "type": "esriFieldTypeOID", "alias": "ObjectID", "domain": None}, {"name": "tnmid", "type": "esriFieldTypeString", "alias": "TNMID", "length": 40, "domain": None}, {"name": "metasourceid", "type": "esriFieldTypeString", "alias": "MetaSourceID", "length": 40, "domain": None}, {"name": "sourcedatadesc", "type": "esriFieldTypeString", "alias": "SourceDataDesc", "length": 100, "domain": None}, {"name": "sourceoriginator", "type": "esriFieldTypeString", "alias": "SourceOriginator", "length": 130, "domain": None}, {"name": "sourcefeatureid", "type": "esriFieldTypeString", "alias": "SourceFeatureID", "length": 40, "domain": None}, {"name": "loaddate", "type": "esriFieldTypeDate", "alias": "LoadDate", "length": 8, "domain": None}, {"name": "referencegnis_ids", "type": "esriFieldTypeString", "alias": "ReferenceGNIS_IDs", "length": 50, "domain": None}, {"name": "areaacres", "type": "esriFieldTypeDouble", "alias": "AreaAcres", "domain": None}, {"name": "areasqkm", "type": "esriFieldTypeDouble", "alias": "AreaSqKm", "domain": None}, {"name": "states", "type": "esriFieldTypeString", "alias": "States", "length": 50, "domain": None}, {"name": "huc2", "type": "esriFieldTypeString", "alias": "HUC2", "length": 2, "domain": None}, {"name": "name", "type": "esriFieldTypeString", "alias": "Name", "length": 120, "domain": None}, {"name": "shape", "type": "esriFieldTypeGeometry", "alias": "Shape", "domain": None}, {"name": "globalid", "type": "esriFieldTypeGlobalID", "alias": "globalid", "length": 38, "domain": None}, {"name": "shape_Length", "type": "esriFieldTypeDouble", "alias": "shape_Length", "domain": None}, {"name": "shape_Area", "type": "esriFieldTypeDouble", "alias": "shape_Area", "domain": None}]
@@ -140,9 +86,8 @@ ATTRIBUTE_FIELDS = EXPECTED_PAGE_FIELD_DECLARATIONS
 FIELD_NAMES = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
 DIGEST_SEPARATOR = family.DIGEST_SEPARATOR
 
-PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
+PAGE_COUNT = None
 METADATA_NAMES = family.METADATA_NAMES
-CAPTURE_NAMES = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
 
 GATE_MODES: frozenset = frozenset()
 _EPSG3857_PROJJSON = family.EPSG3857_PROJJSON
@@ -168,7 +113,7 @@ def _spec() -> family.WbdHuSpec:
         wbd_program_doc_url=WBD_PROGRAM_DOC_URL,
         dhs_crosswalk_evidence_url=DHS_CROSSWALK_EVIDENCE_URL,
         service_url=SERVICE_URL, layer_id=LAYER_ID, layer_name=LAYER_NAME,
-        map_name=MAP_NAME, expected_count=EXPECTED_COUNT,
+        map_name=MAP_NAME, expected_count=None,
         expected_id_min=EXPECTED_ID_MIN, expected_id_max=EXPECTED_ID_MAX,
         expected_id_sha256=EXPECTED_ID_SHA256, page_size=PAGE_SIZE,
         page_count=PAGE_COUNT, declared_max_record_count=DECLARED_MAX_RECORD_COUNT,
@@ -214,8 +159,8 @@ def _spec() -> family.WbdHuSpec:
             "epoch-milliseconds and represented as Arrow int64 "
             "without conversion; no field added or dropped"),
         transformation_source_ids=(
-            "OBJECTID retained unchanged; served roster is 22 unique "
-            "ids from 1 to 22; HUC2 and TNMID retained verbatim "
+            "OBJECTID retained unchanged against the capture-time roster; "
+            "HUC2 and TNMID retained verbatim "
             "including leading zeros; no substitute or synthetic identifier"),
         transformation_raw_evidence=(
             "complete decoded response and wire bodies retained with "

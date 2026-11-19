@@ -6,6 +6,7 @@ import json
 import struct
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -40,9 +41,15 @@ _GATE_FEATURES = {501: "source_polygon_ring_degenerate",
 
 @contextlib.contextmanager
 def patches(module, **values):
+    count_supplied = "EXPECTED_COUNT" in values and not hasattr(module, "EXPECTED_COUNT")
+    count = values.pop("EXPECTED_COUNT") if count_supplied else None
+    original_spec = module._spec if count_supplied else None
     with contextlib.ExitStack() as stack:
         for name, value in values.items():
             stack.enter_context(patch.object(module, name, value))
+        if count_supplied:
+            stack.enter_context(patch.object(
+                module, "_spec", side_effect=lambda: replace(original_spec(), expected_count=count)))
         yield
 
 
@@ -235,11 +242,10 @@ class Wbd12DigitHuTests(unittest.TestCase):
         self.assertEqual(source.LAYER_URL, source.SERVICE_URL + "/6")
         self.assertEqual(source.LAYER_NAME, "12-digit HU (Subwatershed)")
         self.assertEqual(source.MAP_NAME, "wbd")
-        self.assertEqual(source.EXPECTED_COUNT, 103_068)
+        self.assertIsNone(source._spec().expected_count)
         self.assertEqual(source.PAGE_SIZE, 500)
         self.assertEqual(source.DECLARED_MAX_RECORD_COUNT, 2000)
-        self.assertEqual((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE,
-                         source.PAGE_COUNT)
+        self.assertIsNone(source._spec().page_count)
         self.assertEqual(source.SERVICE_DOC_URL,
                          "https://www.usgs.gov/national-hydrography/access-national-hydrography-products")
         self.assertEqual(source.EXPECTED_COPYRIGHT_TEXT,
@@ -266,11 +272,13 @@ class Wbd12DigitHuTests(unittest.TestCase):
         self.assertIn(wbd_12_digit_hu, hifld_ingest_assets)
         self.assertEqual(wbd_12_digit_hu_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
-        check = wbd_12_digit_hu_complete({"feature_count": source.EXPECTED_COUNT,
+        check = wbd_12_digit_hu_complete({"feature_count": 5,
+                                          "source_reported_count": 5,
                                           "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = wbd_12_digit_hu_complete({"feature_count": source.EXPECTED_COUNT - 1,
+        failed = wbd_12_digit_hu_complete({"feature_count": 4,
+                                           "source_reported_count": 5,
                                            "source_population_complete": True})
         self.assertFalse(failed.passed)
 
