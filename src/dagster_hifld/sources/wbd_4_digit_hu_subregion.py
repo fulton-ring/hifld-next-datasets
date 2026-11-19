@@ -33,12 +33,18 @@ raw served rings of every row before assembly and gating, so a coordinate
 change that still gates is refused by the pinned geometry baseline rather than
 hiding behind unchanged aggregate gate counts.
 
-The per-value record and geometry baseline digests and the geometry-gate counts
-are pinned below from the complete dated population walk; the ID-roster and
-layer-schema digests are pinned from the dated live service documents
-(2026-11-15). Publication stays blocked pending succession, freshness,
-schema/ID contract, coverage, rights and release acceptance; all runtime
-approval flags are false and the draft refresh schedule is stopped.
+Population completeness comes from the producer's own before/after count and
+ID witnesses at capture time (see ``dagster_hifld.capture_completeness``):
+the layer's observed population, however it has been edited upstream, is the
+validated population, and the candidate's drift is reported by the
+non-blocking approved-baseline asset check instead of a code pin. The
+layer-schema digest is still pinned from the dated live service documents
+(2026-11-15); the record/geometry baseline digest and geometry-gate count
+slots stay empty (they are checked only when non-empty) so a maintainer can
+pin them from an approved release without a code change. Publication stays
+blocked pending succession, freshness, schema/ID contract, coverage, rights
+and release acceptance; all runtime approval flags are false and the draft
+refresh schedule is stopped.
 
 The service validation, refused-window capture/bisection, retained-capture
 replay, streaming validation and Esri polygon assembly primitives are shared
@@ -70,13 +76,9 @@ LAYER_NAME = "4-digit HU (Subregion)"
 MAP_NAME = "wbd"
 DHS_CROSSWALK_EVIDENCE_URL = ("https://atcoordinates.info/wp-content/uploads/2025/08/"
                               "hifld_open_crosswalk_geoplatform.xlsx")
-EXPECTED_COUNT = 245
-EXPECTED_ID_MIN = 1
-EXPECTED_ID_MAX = 246
-# Digest of the canonical-JSON sorted OBJECTID roster (245 unique ids, 1..246,
-# with one unused OBJECTID between them), computed from the dated live roster
-# query (observed 2026-11-15 UTC).
-EXPECTED_ID_SHA256 = "a930bde06abceaff0a06d933d31494c098e87a4545d05e51857a57966e6abf21"
+# Optional baseline pins, checked only when non-empty; left empty so
+# completeness comes from the producer's capture-time witnesses (issue 1094).
+EXPECTED_ID_SHA256 = ""
 # This 4-digit layer refuses any window whose JSON would exceed roughly
 # 28-40 MB: 50-feature and some 10-feature windows failed with Esri 500
 # "Error performing query operation" while other 20-feature windows up to
@@ -120,22 +122,10 @@ SHAPE_PARITY_TOLERANCE = 1e-6
 # until the first complete population walk; empty/None pins are checked only
 # when non-empty.
 EXPECTED_SCHEMA_SHA256 = "7457266cc07d5067461ce5549079e7ff814c1c8c68a8483bdf5e009e19e4b062"
-EXPECTED_RECORD_SHA256 = "2dd385984894eedcca5bcaf710a74c08136a6681d5b01b12d6f49729998ae3f2"
-# Geometry digest over every served row — one [objectid, served rings] document
-# per feature in ascending OBJECTID order, including the rows that gate to null
-# geometry — computed from the complete dated population walk (2026-11-15).
-EXPECTED_GEOMETRY_SHA256 = "8b98e7ff114d9ee859b95ecb15021f1f1978b0dce7d8a8405502e5260509a5e2"
-# Geometry quarantines retired by the shared GDAL Esri polygon converter
-# (issue #997): served rings always convert, OGC-invalid converted geometry
-# is retained verbatim and counted as ogc_invalid_geometry_counts, and the
-# only null candidate geometries are producer-null rows (none served).
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
-BASELINE_PENDING_NOTE = (
-    "The record and geometry baselines and the geometry-gate counts are not "
-    "pinned yet: no complete capture existed at draft time (observed "
-    "2026-11-15). The first complete capture computes them for the maintainer "
-    "to pin.")
+EXPECTED_RECORD_SHA256 = ""
+EXPECTED_GEOMETRY_SHA256 = ""
+EXPECTED_NULL_GEOMETRY_COUNT = None
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
 
 EXPECTED_PAGE_FIELD_DECLARATIONS = [{"name": "objectid", "type": "esriFieldTypeOID", "alias": "ObjectID"}, {"name": "tnmid", "type": "esriFieldTypeString", "alias": "TNMID", "length": 40}, {"name": "metasourceid", "type": "esriFieldTypeString", "alias": "MetaSourceID", "length": 40}, {"name": "sourcedatadesc", "type": "esriFieldTypeString", "alias": "SourceDataDesc", "length": 100}, {"name": "sourceoriginator", "type": "esriFieldTypeString", "alias": "SourceOriginator", "length": 130}, {"name": "sourcefeatureid", "type": "esriFieldTypeString", "alias": "SourceFeatureID", "length": 40}, {"name": "loaddate", "type": "esriFieldTypeDate", "alias": "LoadDate", "length": 8}, {"name": "referencegnis_ids", "type": "esriFieldTypeString", "alias": "ReferenceGNIS_IDs", "length": 50}, {"name": "areaacres", "type": "esriFieldTypeDouble", "alias": "AreaAcres"}, {"name": "areasqkm", "type": "esriFieldTypeDouble", "alias": "AreaSqKm"}, {"name": "states", "type": "esriFieldTypeString", "alias": "States", "length": 50}, {"name": "huc4", "type": "esriFieldTypeString", "alias": "HUC4", "length": 4}, {"name": "name", "type": "esriFieldTypeString", "alias": "Name", "length": 120}, {"name": "globalid", "type": "esriFieldTypeGlobalID", "alias": "globalid", "length": 38}, {"name": "shape_Length", "type": "esriFieldTypeDouble", "alias": "shape_Length"}, {"name": "shape_Area", "type": "esriFieldTypeDouble", "alias": "shape_Area"}]
 EXPECTED_LAYER_FIELDS = [{"name": "objectid", "type": "esriFieldTypeOID", "alias": "ObjectID", "domain": None}, {"name": "tnmid", "type": "esriFieldTypeString", "alias": "TNMID", "length": 40, "domain": None}, {"name": "metasourceid", "type": "esriFieldTypeString", "alias": "MetaSourceID", "length": 40, "domain": None}, {"name": "sourcedatadesc", "type": "esriFieldTypeString", "alias": "SourceDataDesc", "length": 100, "domain": None}, {"name": "sourceoriginator", "type": "esriFieldTypeString", "alias": "SourceOriginator", "length": 130, "domain": None}, {"name": "sourcefeatureid", "type": "esriFieldTypeString", "alias": "SourceFeatureID", "length": 40, "domain": None}, {"name": "loaddate", "type": "esriFieldTypeDate", "alias": "LoadDate", "length": 8, "domain": None}, {"name": "referencegnis_ids", "type": "esriFieldTypeString", "alias": "ReferenceGNIS_IDs", "length": 50, "domain": None}, {"name": "areaacres", "type": "esriFieldTypeDouble", "alias": "AreaAcres", "domain": None}, {"name": "areasqkm", "type": "esriFieldTypeDouble", "alias": "AreaSqKm", "domain": None}, {"name": "states", "type": "esriFieldTypeString", "alias": "States", "length": 50, "domain": None}, {"name": "huc4", "type": "esriFieldTypeString", "alias": "HUC4", "length": 4, "domain": None}, {"name": "name", "type": "esriFieldTypeString", "alias": "Name", "length": 120, "domain": None}, {"name": "shape", "type": "esriFieldTypeGeometry", "alias": "Shape", "domain": None}, {"name": "globalid", "type": "esriFieldTypeGlobalID", "alias": "globalid", "length": 38, "domain": None}, {"name": "shape_Length", "type": "esriFieldTypeDouble", "alias": "shape_Length", "domain": None}, {"name": "shape_Area", "type": "esriFieldTypeDouble", "alias": "shape_Area", "domain": None}]
@@ -143,10 +133,7 @@ ATTRIBUTE_FIELDS = EXPECTED_PAGE_FIELD_DECLARATIONS
 FIELD_NAMES = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
 DIGEST_SEPARATOR = family.DIGEST_SEPARATOR
 
-PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
-METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before",
-                  "ids_before", "count_after", "ids_after", "layer_after", "service_after")
-CAPTURE_NAMES = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
+
 
 _EPSG3857_PROJJSON = family.EPSG3857_PROJJSON
 
@@ -163,10 +150,10 @@ def _spec() -> family.WbdHuSpec:
         wbd_program_doc_url=WBD_PROGRAM_DOC_URL,
         dhs_crosswalk_evidence_url=DHS_CROSSWALK_EVIDENCE_URL,
         service_url=SERVICE_URL, layer_id=LAYER_ID, layer_name=LAYER_NAME,
-        map_name=MAP_NAME, expected_count=EXPECTED_COUNT,
-        expected_id_min=EXPECTED_ID_MIN, expected_id_max=EXPECTED_ID_MAX,
+        map_name=MAP_NAME, expected_count=None,
+        expected_id_min=None, expected_id_max=None,
         expected_id_sha256=EXPECTED_ID_SHA256, page_size=PAGE_SIZE,
-        page_count=PAGE_COUNT, declared_max_record_count=DECLARED_MAX_RECORD_COUNT,
+        page_count=None, declared_max_record_count=DECLARED_MAX_RECORD_COUNT,
         expected_extent=EXPECTED_EXTENT,
         expected_extent_tolerance=EXPECTED_EXTENT_TOLERANCE,
         expected_layer_extent=EXPECTED_EXTENT,
@@ -193,7 +180,7 @@ def _spec() -> family.WbdHuSpec:
         max_bisection_depth=1, single_refusal_retries=0,
         single_refusal_retry_seconds=0.0, attrs_parts=False,
         digest_geometry_before_gate=True, capture_root_family="381",
-        baseline_pending_note=BASELINE_PENDING_NOTE,
+        baseline_pending_note=None,
         audit_page_refusal_count=False, coverage_scope=_COVERAGE_SCOPE,
         baseline_digest_scheme=_DIGEST_SCHEME,
         manifest_title='4-digit HU (Subregion)',

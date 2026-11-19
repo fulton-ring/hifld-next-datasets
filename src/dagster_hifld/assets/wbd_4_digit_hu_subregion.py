@@ -6,9 +6,10 @@ from dagster import (
 
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.wbd_4_digit_hu_subregion import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_wbd_4_digit_hu_subregion,
+    DATASET_SLUG, FILE_SLUG, capture_wbd_4_digit_hu_subregion,
 )
 
 
@@ -43,10 +44,11 @@ def wbd_4_digit_hu_subregion(context, config: Wbd4DigitHuSubregionConfig,
 
 @asset_check(asset=wbd_4_digit_hu_subregion, blocking=True)
 def wbd_4_digit_hu_subregion_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT \
-        and candidate.get("source_population_complete") is True
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": candidate.get("source_reported_count", "missing"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -70,7 +72,9 @@ wbd_4_digit_hu_subregion_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+wbd_4_digit_hu_subregion_drift = register_approved_baseline_drift(wbd_4_digit_hu_subregion, "wbd_4_digit_hu_subregion_drift")
+
 INGEST_ASSETS = [wbd_4_digit_hu_subregion]
-ASSET_CHECKS = [wbd_4_digit_hu_subregion_complete]
+ASSET_CHECKS = [wbd_4_digit_hu_subregion_complete, wbd_4_digit_hu_subregion_drift]
 JOBS = [wbd_4_digit_hu_subregion_draft_job]
 SCHEDULES = [wbd_4_digit_hu_subregion_draft_schedule]

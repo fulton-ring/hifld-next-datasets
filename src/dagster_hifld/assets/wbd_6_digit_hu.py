@@ -6,9 +6,10 @@ from dagster import (
 
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.wbd_6_digit_hu import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_wbd_6_digit_hu,
+    DATASET_SLUG, FILE_SLUG, capture_wbd_6_digit_hu,
 )
 
 
@@ -43,10 +44,11 @@ def wbd_6_digit_hu(context, config: Wbd6DigitHuConfig,
 
 @asset_check(asset=wbd_6_digit_hu, blocking=True)
 def wbd_6_digit_hu_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT \
-        and candidate.get("source_population_complete") is True
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": candidate.get("source_reported_count", "missing"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -70,7 +72,9 @@ wbd_6_digit_hu_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+wbd_6_digit_hu_drift = register_approved_baseline_drift(wbd_6_digit_hu, "wbd_6_digit_hu_drift")
+
 INGEST_ASSETS = [wbd_6_digit_hu]
-ASSET_CHECKS = [wbd_6_digit_hu_complete]
+ASSET_CHECKS = [wbd_6_digit_hu_complete, wbd_6_digit_hu_drift]
 JOBS = [wbd_6_digit_hu_draft_job]
 SCHEDULES = [wbd_6_digit_hu_draft_schedule]

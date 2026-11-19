@@ -38,12 +38,17 @@ updated from the raw served rings of every row before assembly and gating, so
 a coordinate change that still gates is refused by the pinned geometry baseline
 rather than hiding behind unchanged aggregate gate counts.
 
-The ID roster digest is pinned from the dated roster probes (2026-11-15). The
-per-value record and geometry baseline digests and the geometry-gate counts
-are pinned below from the complete dated population walk (2026-11-15: 8,149
-features, 12,574,181 served web-mercator vertices, 8,333 clockwise shells,
-220 counter-clockwise holes, 21 multipart features, 62 features with holes;
-the observed geometry bounds equal the declared layer extent exactly).
+Population completeness comes from the producer's own before/after count and
+ID witnesses at capture time (see ``dagster_hifld.capture_completeness``): the
+layer's observed population, however it has been edited upstream, is the
+validated population, and drift from an approved release is reported by the
+non-blocking approved-baseline asset check instead of a code pin. The complete dated population walk (2026-11-15: 8,149 features,
+12,574,181 served web-mercator vertices, 8,333 clockwise shells, 220
+counter-clockwise holes, 21 multipart features, 62 features with holes; the
+observed geometry bounds equal the declared layer extent exactly) remains the
+provenance for the layer identity and schema pins; the ID-roster,
+record/geometry baseline digest and geometry-gate count slots stay empty
+(checked only when non-empty).
 Publication stays blocked pending succession, freshness, schema/ID contract,
 coverage, rights and release acceptance; all runtime approval flags are false
 and the draft refresh schedule is stopped.
@@ -78,13 +83,9 @@ LAYER_NAME = "14-digit HU"
 MAP_NAME = "wbd"
 DHS_CROSSWALK_EVIDENCE_URL = ("https://atcoordinates.info/wp-content/uploads/2025/08/"
                               "hifld_open_crosswalk_geoplatform.xlsx")
-EXPECTED_COUNT = 8149
-EXPECTED_ID_MIN = 1
-EXPECTED_ID_MAX = 8942
-# Digest of the canonical-JSON sorted OBJECTID roster (8,149 unique ids,
-# 1..8,942, the producer's served history with 793 unused ids), computed from
-# the dated roster probes (2026-11-15).
-EXPECTED_ID_SHA256 = "d1bd73f0fdc2f06949d1cd1047dae3dc6dc9b07822b208f5cab9fdc6e1319f36"
+# Optional baseline pins, checked only when non-empty; left empty so
+# completeness comes from the producer's capture-time witnesses (issue 1094).
+EXPECTED_ID_SHA256 = ""
 # The layer refuses any window too heavy to construct server-side (Esri error
 # 500 "Error performing query operation"; dated probes 2026-11-15: served
 # windows measured about 6.1 MB at 100 features and 16.3 MB at 200 features,
@@ -129,17 +130,10 @@ SHAPE_PARITY_TOLERANCE = 1e-6
 # Native baselines pinned from the dated probes and the complete dated
 # population walk (2026-11-15); empty/None pins are checked only when non-empty.
 EXPECTED_SCHEMA_SHA256 = "f79d4887393b923ef7695c884910bdba60c17908bdea134dcfd38b956245307b"
-EXPECTED_RECORD_SHA256 = "1a7c54c9242f34663683e36510c0b930e1fce70dae9a38e3e9534c73820c5567"
-# Geometry digest over every served row — one [objectid, served rings] document
-# per feature in ascending OBJECTID order, including the rows that gate to null
-# geometry — computed from the complete dated population walk (2026-11-15).
-EXPECTED_GEOMETRY_SHA256 = "022d6003f5e15b4d354226f8530caeb0e0e29952b68bbbb84411f8f598787c0c"
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
-BASELINE_PENDING_NOTE = (
-    "The record, geometry baselines and the geometry-gate counts "
-    "are pinned from the complete dated population walk (2026-11-15); "
-    "this note only applies when a pin is empty.")
+EXPECTED_RECORD_SHA256 = ""
+EXPECTED_GEOMETRY_SHA256 = ""
+EXPECTED_NULL_GEOMETRY_COUNT = None
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
 
 EXPECTED_PAGE_FIELD_DECLARATIONS = [
     {"name":"objectid", "type":"esriFieldTypeOID", "alias":"OBJECTID"},
@@ -192,10 +186,6 @@ ATTRIBUTE_FIELDS = EXPECTED_PAGE_FIELD_DECLARATIONS
 FIELD_NAMES = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
 DIGEST_SEPARATOR = family.DIGEST_SEPARATOR
 
-PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
-METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before",
-                  "ids_before", "count_after", "ids_after", "layer_after", "service_after")
-CAPTURE_NAMES = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
 
 _EPSG3857_PROJJSON = family.EPSG3857_PROJJSON
 
@@ -212,10 +202,10 @@ def _spec() -> family.WbdHuSpec:
         wbd_program_doc_url=WBD_PROGRAM_DOC_URL,
         dhs_crosswalk_evidence_url=DHS_CROSSWALK_EVIDENCE_URL,
         service_url=SERVICE_URL, layer_id=LAYER_ID, layer_name=LAYER_NAME,
-        map_name=MAP_NAME, expected_count=EXPECTED_COUNT,
-        expected_id_min=EXPECTED_ID_MIN, expected_id_max=EXPECTED_ID_MAX,
+        map_name=MAP_NAME, expected_count=None,
+        expected_id_min=None, expected_id_max=None,
         expected_id_sha256=EXPECTED_ID_SHA256, page_size=PAGE_SIZE,
-        page_count=PAGE_COUNT, declared_max_record_count=DECLARED_MAX_RECORD_COUNT,
+        page_count=None, declared_max_record_count=DECLARED_MAX_RECORD_COUNT,
         expected_extent=EXPECTED_EXTENT,
         expected_extent_tolerance=EXPECTED_EXTENT_TOLERANCE,
         expected_layer_extent=EXPECTED_LAYER_EXTENT,
@@ -242,7 +232,7 @@ def _spec() -> family.WbdHuSpec:
         max_bisection_depth=1, single_refusal_retries=0,
         single_refusal_retry_seconds=0.0, attrs_parts=False,
         digest_geometry_before_gate=True, capture_root_family="378",
-        baseline_pending_note=BASELINE_PENDING_NOTE,
+        baseline_pending_note=None,
         audit_page_refusal_count=False, coverage_scope=_COVERAGE_SCOPE,
         baseline_digest_scheme=_DIGEST_SCHEME,
         manifest_title='14-digit HU',

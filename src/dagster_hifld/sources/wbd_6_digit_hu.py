@@ -38,12 +38,16 @@ pinned geometry baseline rather than hiding behind unchanged aggregate gate
 counts. The observed pages carry no per-ring ``ids`` member; the shared
 validation still accepts and cross-checks one if the producer serves it.
 
-The ID roster digest is pinned from the dated roster probes (2026-11-15). The
-per-value record and geometry baseline digests and the geometry-gate counts
-are pinned below from the complete dated population walk (2026-11-15: 407
-features, 1,005,950 served web-mercator vertices, 553 clockwise shells,
-38 counter-clockwise holes, 33 multipart features, 3 features with holes; the
-observed geometry bounds equal the declared layer extent exactly).
+Population completeness comes from the producer's own before/after count and
+ID witnesses at capture time (see ``dagster_hifld.capture_completeness``): the
+layer's observed population, however it has been edited upstream, is the
+validated population, and drift from an approved release is reported by the
+non-blocking approved-baseline asset check instead of a code pin. The complete dated population walk (2026-11-15: 407 features, 1,005,950 served
+web-mercator vertices, 553 clockwise shells, 38 counter-clockwise holes, 33
+multipart features, 3 features with holes; the observed geometry bounds equal
+the declared layer extent exactly) remains the provenance for the layer
+identity and schema pins; the ID-roster, record/geometry baseline digest and
+geometry-gate count slots stay empty (checked only when non-empty).
 Publication stays blocked pending succession, freshness, schema/ID contract,
 coverage, rights and release acceptance; all runtime approval flags are false
 and the draft refresh schedule is stopped.
@@ -78,12 +82,9 @@ LAYER_NAME = "6-digit HU (Basin)"
 MAP_NAME = "wbd"
 DHS_CROSSWALK_EVIDENCE_URL = ("https://atcoordinates.info/wp-content/uploads/2025/08/"
                               "hifld_open_crosswalk_geoplatform.xlsx")
-EXPECTED_COUNT = 407
-EXPECTED_ID_MIN = 1
-EXPECTED_ID_MAX = 407
-# Digest of the canonical-JSON sorted OBJECTID roster (407 unique ids, 1..407
-# contiguous), computed from the dated live roster query (observed 2026-11-15 UTC).
-EXPECTED_ID_SHA256 = "e1fdafe159f6606a751fedbd796610d2043f2b09bbb23704d373ede73680c4e9"
+# Optional baseline pins, checked only when non-empty; left empty so
+# completeness comes from the producer's capture-time witnesses (issue 1094).
+EXPECTED_ID_SHA256 = ""
 # This layer family refuses any window whose JSON would exceed roughly
 # 28-40 MB (Esri 500 "Error performing query operation"; observed across the
 # sibling WBD layers, 2026-11-14/15). Consecutive ten-feature windows measured
@@ -130,21 +131,10 @@ SHAPE_PARITY_TOLERANCE = 1e-6
 # Native baselines pinned from the dated probes and the complete dated
 # population walk (2026-11-15); empty/None pins are checked only when non-empty.
 EXPECTED_SCHEMA_SHA256 = "2743f801f4cdada1cb61330e2a3bab08440fe0c2dc0a6045f1eab27ffbeb9aea"
-EXPECTED_RECORD_SHA256 = "d2f6ea2ad79787b658b09127fba3a7d5ade7aad0715f0ff68dcf0f730d9498ba"
-# Geometry digest over every served row — one [objectid, served rings] document
-# per feature in ascending OBJECTID order, including the rows that gate to null
-# geometry — computed from the complete dated population walk (2026-11-15).
-EXPECTED_GEOMETRY_SHA256 = "8b626e98c8509be280bd4d73cc4eaae1770897c83e6ada4966bb880e3644aed6"
-# Geometry quarantines retired by the shared GDAL Esri polygon converter
-# (issue #997): served rings always convert, OGC-invalid converted geometry
-# is retained verbatim and counted as ogc_invalid_geometry_counts, and the
-# only null candidate geometries are producer-null rows (none served).
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_UNUSABLE_GEOMETRY_COUNTS = {}
-BASELINE_PENDING_NOTE = (
-    "The record and geometry baselines and the geometry-gate counts are "
-    "pinned from the complete dated population walk (2026-11-15); this note "
-    "only applies when a pin is empty.")
+EXPECTED_RECORD_SHA256 = ""
+EXPECTED_GEOMETRY_SHA256 = ""
+EXPECTED_NULL_GEOMETRY_COUNT = None
+EXPECTED_UNUSABLE_GEOMETRY_COUNTS = None
 
 EXPECTED_PAGE_FIELD_DECLARATIONS = [{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID"},{"name":"tnmid","type":"esriFieldTypeString","alias":"TNMID","length":40},{"name":"loaddate","type":"esriFieldTypeDate","alias":"LOADDATE","length":8},{"name":"areaacres","type":"esriFieldTypeDouble","alias":"AREAACRES"},{"name":"areasqkm","type":"esriFieldTypeDouble","alias":"AREASQKM"},{"name":"states","type":"esriFieldTypeString","alias":"STATES","length":50},{"name":"huc6","type":"esriFieldTypeString","alias":"HUC6","length":6},{"name":"name","type":"esriFieldTypeString","alias":"NAME","length":120},{"name":"MaxSimpTol","type":"esriFieldTypeDouble","alias":"MaxSimpTol"},{"name":"MinSimpTol","type":"esriFieldTypeDouble","alias":"MinSimpTol"},{"name":"shape_Length","type":"esriFieldTypeDouble","alias":"Shape_Length"},{"name":"shape_Area","type":"esriFieldTypeDouble","alias":"Shape_Area"},{"name":"metasourceid","type":"esriFieldTypeString","alias":"MetaSourceID","length":40},{"name":"sourcedatadesc","type":"esriFieldTypeString","alias":"SourceDataDesc","length":100},{"name":"sourceoriginator","type":"esriFieldTypeString","alias":"SourceOriginator","length":130},{"name":"sourcefeatureid","type":"esriFieldTypeString","alias":"SourceFeatureID","length":40},{"name":"InPoly_FID","type":"esriFieldTypeInteger","alias":"InPoly_FID"},{"name":"SimPgnFlag","type":"esriFieldTypeSmallInteger","alias":"SimPgnFlag"},{"name":"referencegnis_ids","type":"esriFieldTypeString","alias":"ReferenceGNIS_IDs","length":50}]
 EXPECTED_LAYER_FIELDS = [{"name":"OBJECTID","type":"esriFieldTypeOID","alias":"OBJECTID","domain": None},{"name":"shape","type":"esriFieldTypeGeometry","alias":"Shape","domain": None},{"name":"tnmid","type":"esriFieldTypeString","alias":"TNMID","length":40,"domain": None},{"name":"loaddate","type":"esriFieldTypeDate","alias":"LOADDATE","length":8,"domain": None},{"name":"areaacres","type":"esriFieldTypeDouble","alias":"AREAACRES","domain": None},{"name":"areasqkm","type":"esriFieldTypeDouble","alias":"AREASQKM","domain": None},{"name":"states","type":"esriFieldTypeString","alias":"STATES","length":50,"domain": None},{"name":"huc6","type":"esriFieldTypeString","alias":"HUC6","length":6,"domain": None},{"name":"name","type":"esriFieldTypeString","alias":"NAME","length":120,"domain": None},{"name":"MaxSimpTol","type":"esriFieldTypeDouble","alias":"MaxSimpTol","domain": None},{"name":"MinSimpTol","type":"esriFieldTypeDouble","alias":"MinSimpTol","domain": None},{"name":"shape_Length","type":"esriFieldTypeDouble","alias":"Shape_Length","domain": None},{"name":"shape_Area","type":"esriFieldTypeDouble","alias":"Shape_Area","domain": None},{"name":"metasourceid","type":"esriFieldTypeString","alias":"MetaSourceID","length":40,"domain": None},{"name":"sourcedatadesc","type":"esriFieldTypeString","alias":"SourceDataDesc","length":100,"domain": None},{"name":"sourceoriginator","type":"esriFieldTypeString","alias":"SourceOriginator","length":130,"domain": None},{"name":"sourcefeatureid","type":"esriFieldTypeString","alias":"SourceFeatureID","length":40,"domain": None},{"name":"InPoly_FID","type":"esriFieldTypeInteger","alias":"InPoly_FID","domain": None},{"name":"SimPgnFlag","type":"esriFieldTypeSmallInteger","alias":"SimPgnFlag","domain": None},{"name":"referencegnis_ids","type":"esriFieldTypeString","alias":"ReferenceGNIS_IDs","length":50,"domain": None}]
@@ -152,10 +142,6 @@ ATTRIBUTE_FIELDS = EXPECTED_PAGE_FIELD_DECLARATIONS
 FIELD_NAMES = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
 DIGEST_SEPARATOR = family.DIGEST_SEPARATOR
 
-PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
-METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before",
-                  "ids_before", "count_after", "ids_after", "layer_after", "service_after")
-CAPTURE_NAMES = {*METADATA_NAMES, *(f"page_{index:04d}" for index in range(PAGE_COUNT))}
 
 _EPSG3857_PROJJSON = family.EPSG3857_PROJJSON
 
@@ -172,10 +158,10 @@ def _spec() -> family.WbdHuSpec:
         wbd_program_doc_url=WBD_PROGRAM_DOC_URL,
         dhs_crosswalk_evidence_url=DHS_CROSSWALK_EVIDENCE_URL,
         service_url=SERVICE_URL, layer_id=LAYER_ID, layer_name=LAYER_NAME,
-        map_name=MAP_NAME, expected_count=EXPECTED_COUNT,
-        expected_id_min=EXPECTED_ID_MIN, expected_id_max=EXPECTED_ID_MAX,
+        map_name=MAP_NAME, expected_count=None,
+        expected_id_min=None, expected_id_max=None,
         expected_id_sha256=EXPECTED_ID_SHA256, page_size=PAGE_SIZE,
-        page_count=PAGE_COUNT, declared_max_record_count=DECLARED_MAX_RECORD_COUNT,
+        page_count=None, declared_max_record_count=DECLARED_MAX_RECORD_COUNT,
         expected_extent=EXPECTED_EXTENT,
         expected_extent_tolerance=EXPECTED_EXTENT_TOLERANCE,
         expected_layer_extent=EXPECTED_LAYER_EXTENT,
@@ -202,7 +188,7 @@ def _spec() -> family.WbdHuSpec:
         max_bisection_depth=1, single_refusal_retries=0,
         single_refusal_retry_seconds=0.0, attrs_parts=False,
         digest_geometry_before_gate=True, capture_root_family="382",
-        baseline_pending_note=BASELINE_PENDING_NOTE,
+        baseline_pending_note=None,
         audit_page_refusal_count=False, coverage_scope=_COVERAGE_SCOPE,
         baseline_digest_scheme=_DIGEST_SCHEME,
         manifest_title='6-digit HU (Basin)',
