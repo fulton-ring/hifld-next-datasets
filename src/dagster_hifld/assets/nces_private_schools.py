@@ -2,6 +2,7 @@
 from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
 
 from dagster_hifld.download import build_version_id
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.nces_private_schools import DATASET_SLUG, FILE_SLUG, capture_private_schools
@@ -72,6 +73,8 @@ nces_private_schools_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [nces_private_schools]
-ASSET_CHECKS = [nces_private_schools_complete]
+nces_private_schools_approved_baseline_drift = register_approved_baseline_drift(
+    nces_private_schools, "nces_private_schools_approved_baseline_drift")
+ASSET_CHECKS = [nces_private_schools_complete, nces_private_schools_approved_baseline_drift]
 JOBS = [nces_private_schools_draft_job]
 SCHEDULES = [nces_private_schools_draft_schedule]

@@ -8,9 +8,13 @@ from unittest.mock import patch
 
 import fiona
 import httpx
+from dagster import AssetCheckSeverity, DagsterInstance, materialize
 from fiona.crs import CRS
 
+from dagster_hifld.assets import nces_private_schools as assets
 from dagster_hifld.assets.nces_private_schools import nces_private_schools_draft_schedule
+from dagster_hifld.capture_completeness import approved_baseline_drift
+from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.source_manifest import CATALOG_METADATA_FIELDS
@@ -36,7 +40,7 @@ LANDING_HTML = (
 ).encode()
 
 
-def _archive(stem: str = STEM, schoolyear: str = SCHOOLYEAR) -> bytes:
+def _archive(stem: str = STEM, schoolyear: str = SCHOOLYEAR, *, added_school: bool = False) -> bytes:
     properties = {
         name: (f"str:{width}" if kind == "C" else f"float:{width}.{decimals}")
         for name, kind, width, decimals in EXPECTED_FIELDS
@@ -46,7 +50,10 @@ def _archive(stem: str = STEM, schoolyear: str = SCHOOLYEAR) -> bytes:
         "CSA": "001", "CD": "01", "SLDL": "01", "SLDU": "01", "ZIP": "99999",
     }
     rows = []
-    for ppin, state, x, y in (("A0000001", "AK", -149.9, 61.2), ("A0000002", "HI", -157.8, 21.3)):
+    schools = [("A0000001", "AK", -149.9, 61.2), ("A0000002", "HI", -157.8, 21.3)]
+    if added_school:
+        schools.append(("A0000003", "MA", -71.1, 42.3))
+    for ppin, state, x, y in schools:
         row = {}
         for name, kind, _width, _decimals in EXPECTED_FIELDS:
             if name == "PPIN":
@@ -104,6 +111,42 @@ def _client(source_response: httpx.Response) -> httpx.Client:
 
 
 class NcesPrivateSchoolsSourceContractTest(unittest.TestCase):
+    def test_added_school_completes_and_registered_baseline_check_warns(self):
+        drift_check = assets.nces_private_schools_approved_baseline_drift
+        self.assertIn(drift_check, assets.ASSET_CHECKS)
+        with tempfile.TemporaryDirectory() as directory, DagsterInstance.ephemeral() as instance:
+            storage = StagingStorageResource(local_dir=str(Path(directory) / 'staging'))
+            with patch.object(source.httpx, 'Client', return_value=_client(_response(_archive()))):
+                before = source.capture_private_schools(storage, version='baseline',
+                    capture_directory=str(Path(directory) / 'baseline-capture'))
+            with patch.object(source.httpx, 'Client', return_value=_client(_response(_archive(added_school=True)))):
+                result = materialize([assets.nces_private_schools, *assets.ASSET_CHECKS],
+                    instance=instance, resources={'staging_storage': storage}, run_config={'ops': {
+                        assets.nces_private_schools.op.name: {'config': {
+                            'capture_directory': str(Path(directory) / 'added-capture')}}}})
+            self.assertTrue(result.success)
+            after = result.output_for_node(assets.nces_private_schools.op.name)
+            self.assertEqual((before['feature_count'], after['feature_count']), (2, 3))
+            self.assertTrue(after['source_population_complete'])
+            self.assertNotEqual(before['source_id_sha256'], after['source_id_sha256'])
+            self.assertFalse(after['release_accepted'])
+            prefix = f"private-schools/private-schools/{after['version']}"
+            audit = json.loads(storage.read_key(prefix + '/metadata/source_audit.json'))
+            self.assertEqual(audit['source_counts'], {'dbf': 3, 'shx': 3, 'shp': 3, 'decoded': 3})
+            evaluations = {evaluation.check_name: evaluation for evaluation in result.get_asset_check_evaluations()}
+            self.assertTrue(evaluations['nces_private_schools_complete'].passed)
+            warning = evaluations['nces_private_schools_approved_baseline_drift']
+            self.assertFalse(warning.passed)
+            self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(warning.metadata['comparison_status'].value, 'skipped_no_approved_baseline')
+            self.assertIn(build_publish_partition_key('private-schools', 'private-schools', after['version']),
+                          instance.get_dynamic_partitions(PUBLISH_PARTITION_NAME))
+            drift = approved_baseline_drift(after, {**before, 'release_accepted': True})
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(drift.metadata['feature_count_delta'].value, 1)
+            self.assertTrue(drift.metadata['native_id_roster_changed'].value)
+
     def test_no_module_level_release_or_count_pins(self):
         for name in ("EXPECTED_COUNT", "EXPECTED_ZIP_BYTES", "EXPECTED_ZIP_SHA256",
                      "SOURCE_URL", "SOURCE_RELEASE", "EXPECTED_SOURCE_ID_SHA256",
