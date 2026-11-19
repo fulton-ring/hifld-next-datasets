@@ -23,7 +23,7 @@ class WbdWbdlineConfig(Config):
     compute_kind="http",
     description=(
         "USGS hydro.nationalmap.gov wbd MapServer layer 0 'WBDLine' "
-        "(395,291 features observed), named by the DHS HIFLD Open crosswalk as the "
+        "named by the DHS HIFLD Open crosswalk as the "
         "agency's current open REST publication. Unapproved candidate; succession, "
         "baseline, contract, coverage, rights, and release decisions remain pending."
     ),

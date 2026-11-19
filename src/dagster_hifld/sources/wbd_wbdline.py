@@ -18,8 +18,8 @@ and is refreshed by USGS ("Data refreshed October, 2026" in the observed
 service copyrightText). DataLumos project 240700 is archive identification
 context only and is never fetched.
 
-Scale (observed 2026-11-15): the layer holds 395,291 polyline features whose
-served OBJECTID roster is unique and ascending but gapped (ids 1..409,308 with
+Historical scale measurement (2026-11-15): the layer served 395,291 polyline
+features with a unique ascending but gapped OBJECTID roster (ids 1..409,308 with
 4,420 gaps), and the declared ``maxRecordCount`` of 2000 cannot actually be
 served everywhere for this geometry-heavy layer family: query windows that
 exceed the producer's per-query budget fail server-side with Esri error 500
@@ -150,8 +150,8 @@ DOC_MAX_BYTES = 4_000_000
 CAPTURE_MAX_BYTES = 10_000_000_000
 DISK_FLOOR_BYTES = 10_000_000_000
 # The live service computes shape_Length planarly in the layer's web-mercator
-# SR, but 16 of the 395,291 served features (2026-11-15 complete dated walk)
-# deviate from a shapely recomputation of the served path by up to 8.65e-6
+# SR, but a historical complete walk (2026-11-15) found 16 of 395,291 features
+# deviated from a shapely recomputation of the served path by up to 8.65e-6
 # relative (sub-decimeter absolute; producer-side vertex-precision noise, not
 # simplification — the observed geometry digest holds the exact served
 # coordinates regardless). The guard sits just above that observed maximum and
@@ -285,7 +285,7 @@ def _slice_for_suffix(roster: list[int], index: int, suffix: str) -> list[int]:
     The nominal page window covers ``roster[index*PAGE_SIZE:(index+1)*PAGE_SIZE]``;
     each ``a`` takes the first half of the current slice and each ``b`` the
     second half, so a leaf part's expected id population and request URL are
-    re-derivable from the pinned roster alone.
+    re-derivable from the captured roster alone.
     """
     ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
     for char in suffix:
@@ -296,7 +296,7 @@ def _slice_for_suffix(roster: list[int], index: int, suffix: str) -> list[int]:
 
 def _window_url(roster: list[int], index: int, suffix: str) -> str:
     """Exact GET URL bound to a page window (``suffix`` empty for the nominal
-    page), re-derived from the pinned roster so replay needs no extra state."""
+    page), re-derived from the captured roster so replay needs no extra state."""
     ids = _slice_for_suffix(roster, index, suffix)
     last = ids[0] - 1 if ids and ids[0] > 1 else 0
     return _page_window_url(last, len(ids))
@@ -314,7 +314,7 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
     The producer persistently refuses some windows (content-dependent
     server-side budget, observed 2026-11-14/15); each refusal document is
     retained as evidence and the window is re-fetched as two half-size parts
-    whose URLs are derived from the pinned roster, recursively, until every
+    whose URLs are derived from the captured roster, recursively, until every
     leaf part serves. A single-feature window that still refuses fails the
     capture: the producer cannot serve that feature's native fidelity and no
     simplified or re-encoded substitute is acceptable (fail-closed floor,
@@ -1088,10 +1088,11 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
                                  "declared physical types; esriFieldTypeDate served as "
                                  "epoch-milliseconds and represented as Arrow int64 "
                                  "without conversion; no field added or dropped",
-                "source_ids": "OBJECTID retained unchanged; served roster is 395,291 "
-                              "unique ascending gapped ids between 1 and 409,308; TNMID "
-                              "retained verbatim including the braced GUID form; no "
-                              "substitute or synthetic identifier",
+                "source_ids": (
+                    f"OBJECTID retained unchanged; served roster contains {audit['source_feature_count']} "
+                    f"unique ascending native ids from {audit['source_id_min']} to {audit['source_id_max']}; "
+                    "TNMID retained verbatim including the braced GUID form; no "
+                    "substitute or synthetic identifier"),
                 "source_crs": f"EPSG:{SOURCE_CRS_WKID}",
                 "geometry": ("2D served paths retained verbatim with producer vertex "
                              "values and path order; no reprojection, repair or "
