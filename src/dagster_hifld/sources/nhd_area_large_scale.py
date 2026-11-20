@@ -522,7 +522,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
         raise ValueError("source_schema_contract_drift")
     field_names = [entry["name"] for entry in fields_value]
     for name in ("layer_before", "layer_after"):
-        if docs[name] != layer:
+        if _layer_contract_view(docs[name]) != _layer_contract_view(layer):
             raise ValueError("source_layer_metadata_changed_during_capture")
     count_before = docs["count_before"].get("count")
     if type(count_before) is not int or count_before <= 0:
