@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.secondary_roads_census import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_secondary_roads_census,
+    DATASET_SLUG, FILE_SLUG, capture_secondary_roads_census,
 )
 
 
@@ -22,9 +23,9 @@ class SecondaryRoadsCensusConfig(Config):
     compute_kind="http",
     description=(
         "Census TIGERweb Transportation MapServer layer 3 Secondary Roads Interstates and US Highways "
-        "(31212 S1200 features with route type U or I observed). The DHS crosswalk points the retired "
-        "HIFLD Open item at this maintained producer layer; historical equivalence, baseline, contract, "
-        "coverage, rights and release remain unaccepted."
+        "(S1200 secondary-class segments with US Highway U or Interstate I route types observed). The DHS "
+        "crosswalk points the retired HIFLD Open item at this maintained producer layer; historical "
+        "equivalence, baseline, contract, coverage, rights and release remain unaccepted."
     ),
 )
 def secondary_roads_census(context, config: SecondaryRoadsCensusConfig,
@@ -43,9 +44,13 @@ def secondary_roads_census(context, config: SecondaryRoadsCensusConfig,
 
 @asset_check(asset=secondary_roads_census, blocking=True)
 def secondary_roads_census_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_population_complete") is True
+    passed = (type(candidate.get("source_reported_count")) is int
+              and candidate["source_reported_count"] > 0
+              and candidate.get("feature_count") == candidate["source_reported_count"]
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": candidate.get("source_reported_count", "missing"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -68,7 +73,10 @@ secondary_roads_census_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+secondary_roads_census_drift = register_approved_baseline_drift(
+    secondary_roads_census, "secondary_roads_census_drift")
+
 INGEST_ASSETS = [secondary_roads_census]
-ASSET_CHECKS = [secondary_roads_census_complete]
+ASSET_CHECKS = [secondary_roads_census_complete, secondary_roads_census_drift]
 JOBS = [secondary_roads_census_draft_job]
 SCHEDULES = [secondary_roads_census_draft_schedule]
