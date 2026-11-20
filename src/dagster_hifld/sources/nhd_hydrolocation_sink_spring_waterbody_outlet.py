@@ -181,6 +181,15 @@ def _segment_query(offset: int, count: int) -> str:
                    "resultRecordCount": str(count), "f": "json"})
 
 
+def _document_urls() -> dict[str, str]:
+    return {"service_doc": SERVICE_DOC_URL,
+            "alias_service": ALIAS_SERVICE_URL + "?f=pjson",
+            "service_before": SERVICE_URL + "?f=pjson", "service_after": SERVICE_URL + "?f=pjson",
+            "layer_before": LAYER_URL + "?f=pjson", "layer_after": LAYER_URL + "?f=pjson",
+            "count_before": _count_url(), "count_after": _count_url(),
+            "ids_seed": _ids_url(), "ids_before": _ids_url(), "ids_after": _ids_url()}
+
+
 _SEGMENT_NAME_PATTERN = re.compile(r"page_([0-9]{6})_([0-9]{5})$")
 
 
@@ -389,16 +398,7 @@ def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, objec
     try:
         body, receipt = arcgis_layer.load_replay(capture_root, name)
         if name in METADATA_NAMES + AFTER_NAMES:
-            url = {"service_doc": SERVICE_DOC_URL,
-                   "alias_service": ALIAS_SERVICE_URL + "?f=pjson",
-                   "service_before": SERVICE_URL + "?f=pjson",
-                   "service_after": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "layer_after": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url(), "count_after": _count_url(),
-                   "ids_seed": _ids_url(), "ids_before": _ids_url(),
-                   "ids_after": _ids_url()}[name]
-            validate_capture_request_identity(name, receipt, url)
+            validate_capture_request_identity(name, receipt, _document_urls()[name])
         elif _SEGMENT_NAME_PATTERN.fullmatch(name):
             validate_capture_request_identity(name, receipt, _segment_query(*_parse_segment_name(name)))
         return body, receipt
@@ -573,17 +573,11 @@ def fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(
     segments: list[dict[str, object]] = list(state.get("segments", []))
     first_captured_at = (segments[0]["captured_at"] if segments
                          else datetime.now(timezone.utc).isoformat())
+    urls = _document_urls()
     try:
         for name in METADATA_NAMES:
-            url = {"service_doc": SERVICE_DOC_URL,
-                   "alias_service": ALIAS_SERVICE_URL + "?f=pjson",
-                   "service_before": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url(),
-                   "ids_seed": _ids_url(),
-                   "ids_before": _ids_url()}[name]
             active_client = docs_active if name == "service_doc" else active
-            body, _receipt = _retained_or_fetch(active_client, capture_root, name, url)
+            body, _receipt = _retained_or_fetch(active_client, capture_root, name, urls[name])
             if name != "service_doc" and _producer_error_doc(body):
                 raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_page_error:" + name)
         seed = json.loads(_read_capture(capture_root, "ids_seed")[0]).get("objectIds")
@@ -605,11 +599,7 @@ def fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(
             for name in AFTER_NAMES:
                 _witness_aside(capture_root, name)
         for name in AFTER_NAMES:
-            url = {"layer_after": LAYER_URL + "?f=pjson",
-                   "service_after": SERVICE_URL + "?f=pjson",
-                   "count_after": _count_url(),
-                   "ids_after": _ids_url()}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
+            body, _receipt = _retained_or_fetch(active, capture_root, name, urls[name])
             if _producer_error_doc(body):
                 raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_page_error:" + name)
         count_after = json.loads(_read_capture(capture_root, "count_after")[0])

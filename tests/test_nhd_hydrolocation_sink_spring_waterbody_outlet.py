@@ -208,10 +208,6 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
             context.stop()
 
 
-def rows_fixture() -> list[dict]:
-    return _fixture_rows()
-
-
 def _staging(root: Path) -> StagingStorageResource:
     return StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
                                   prefix="", backend="local")
@@ -686,53 +682,57 @@ class NhdHydrolocationSinkSpringWaterbodyOutletWitnessTests(unittest.TestCase):
                 self.assertEqual(audit["source_feature_count"], count)
                 self.assertEqual(audit["source_id_sha256"], first["source_id_sha256"])
                 self.assertEqual(audit["observed_bounds"], first["observed_bounds"])
-                states = list((root / "staging" / "_construction-state" / src.DATASET_SLUG).glob("*.json"))
-                identity = json.loads(states[0].read_bytes())["payload"]["processing_identity"]
+                identity = json.loads((prefix.parent / "processing_identity.json").read_bytes())
                 self.assertEqual(identity["code_identity_scheme"], capture_common.CODE_IDENTITY_GIT)
                 self.assertTrue(identity["files"])
 
     def test_genuine_gzip_replay_and_tamper_cannot_change_sealed_candidate(self):
+        import shutil
+
         for encoding in ("identity", "gzip"):
-            for attack in ("decoded_body", "request_url"):
-                with self.subTest(encoding=encoding, attack=attack), tempfile.TemporaryDirectory() as tmp:
-                    root = Path(tmp)
-                    capture_root = root / "capture"
-                    inner = make_responder(_fixture_rows())
+            with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture_root = root / "capture"
+                inner = make_responder(_fixture_rows())
 
-                    def respond(request):
-                        response = inner.handler(request)
-                        if encoding == "identity":
-                            return response
-                        wire = gzip.compress(response.stream.body, mtime=0)
-                        return httpx.Response(200, stream=JSONStream(wire), headers={
-                            "content-type": response.headers["content-type"],
-                            "content-encoding": "gzip", "content-length": str(len(wire))})
+                def respond(request):
+                    response = inner.handler(request)
+                    if encoding == "identity":
+                        return response
+                    wire = gzip.compress(response.stream.body, mtime=0)
+                    return httpx.Response(200, stream=JSONStream(wire), headers={
+                        "content-type": response.headers["content-type"],
+                        "content-encoding": "gzip", "content-length": str(len(wire))})
 
-                    self._capture(root, capture_root, httpx.MockTransport(respond))
-                    inventory = self._inventory(root / "staging")
-                    requests = []
-                    self.assertTrue(self._capture(root, capture_root, self._offline(requests))["reused"])
-                    self.assertEqual(requests, [])
-                    name = src._segment_name(0, 2)
-                    if attack == "decoded_body":
-                        page = json.loads((capture_root / f"{name}.body").read_bytes())
-                        page["features"][0]["attributes"]["gnisidlabel"] += " forged"
-                        _replace_retained_body(capture_root, name, src._canonical(page), retain_wire=True)
-                        expected = "retained_capture_wire_body_mismatch"
-                    else:
-                        path = capture_root / f"{name}.receipt.json"
-                        receipt = json.loads(path.read_bytes())
-                        receipt["url"] = receipt["final_url"] = src._segment_query(1, 2)
-                        path.write_bytes(src._canonical(receipt))
-                        expected = "retained_capture_request_identity_mismatch"
-                    with self.assertRaisesRegex(src.NhdHydrolocationSinkSpringWaterbodyOutletError, expected):
-                        src._read_capture(capture_root, name)
-                    with self.assertRaises(src.NhdHydrolocationSinkSpringWaterbodyOutletError):
-                        self._capture(root, capture_root, self._offline(requests), "tampered")
-                    after = self._inventory(root / "staging")
-                    self.assertEqual(inventory, {key: after[key] for key in inventory})
-                    self.assertFalse(any(key not in inventory and not key.startswith("_quarantine/")
-                                         for key in after))
+                self._capture(root, capture_root, httpx.MockTransport(respond))
+                inventory = self._inventory(root / "staging")
+                requests = []
+                self.assertTrue(self._capture(root, capture_root, self._offline(requests))["reused"])
+                self.assertEqual(requests, [])
+                for attack in ("decoded_body", "request_url"):
+                    with self.subTest(attack=attack):
+                        attacked_root = root / attack
+                        shutil.copytree(capture_root, attacked_root)
+                        name = src._segment_name(0, 2)
+                        if attack == "decoded_body":
+                            page = json.loads((attacked_root / f"{name}.body").read_bytes())
+                            page["features"][0]["attributes"]["gnisidlabel"] += " forged"
+                            _replace_retained_body(attacked_root, name, src._canonical(page), retain_wire=True)
+                            expected = "retained_capture_wire_body_mismatch"
+                        else:
+                            path = attacked_root / f"{name}.receipt.json"
+                            receipt = json.loads(path.read_bytes())
+                            receipt["url"] = receipt["final_url"] = src._segment_query(1, 2)
+                            path.write_bytes(src._canonical(receipt))
+                            expected = "retained_capture_request_identity_mismatch"
+                        with self.assertRaisesRegex(src.NhdHydrolocationSinkSpringWaterbodyOutletError, expected):
+                            src._read_capture(attacked_root, name)
+                        with self.assertRaises(src.NhdHydrolocationSinkSpringWaterbodyOutletError):
+                            self._capture(root, attacked_root, self._offline(requests), "tampered")
+                        after = self._inventory(root / "staging")
+                        self.assertEqual(inventory, {key: after[key] for key in inventory})
+                        self.assertFalse(any(key not in inventory and not key.startswith("_quarantine/")
+                                             for key in after))
 
     def test_recovered_segment_refreshes_all_closing_witnesses_after_interruption(self):
         rows = _fixture_rows()
