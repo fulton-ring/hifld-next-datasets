@@ -18,7 +18,7 @@ from pyproj import CRS
 from shapely import from_wkb
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.arcgis_layer import capture_witness, read_ienc_layer_replay
+from dagster_hifld.sources.arcgis_layer import capture_witness, load_replay, read_ienc_layer_replay
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
@@ -48,8 +48,6 @@ SERVICE_URL = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/service
 LAYER_ID = 0
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "United States Army Corps of Engineers (USACE), USACE Institute for Water Resources / Waterborne Commerce Statistics Center; published through the USACE ArcGIS service and linked by the US DOT BTS NTAD catalog"
-EXPECTED_EXTENT = {"xmin": -18565289.717, "ymin": 1993523.1207999997,
-                   "xmax": -7181517.771299999, "ymax": 8737821.747599997}
 PAGE_SIZE = 1000
 PAGE_MAX_BYTES = 24_000_000
 CAPTURE_MAX_BYTES = 128_000_000
@@ -117,18 +115,8 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[byt
 
 
 def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
-    body_path, wire_path, receipt_path = (
-        root / f"{name}.body", root / f"{name}.wire", root / f"{name}.receipt.json"
-    )
-    if any(path.is_symlink() for path in (body_path, wire_path, receipt_path)):
-        raise ValueError("retained_capture_symlink_rejected")
-    body, wire = body_path.read_bytes(), wire_path.read_bytes()
-    receipt = json.loads(receipt_path.read_bytes())
-    if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise ValueError("retained_capture_receipt_invalid:" + name)
-    return body, wire, receipt
+    body, receipt = load_replay(root, name)
+    return body, (root / f"{name}.wire").read_bytes(), receipt
 
 
 def _validate_request_identity(name: str, receipt: dict, expected_url: str) -> None:
@@ -138,6 +126,14 @@ def _validate_request_identity(name: str, receipt: dict, expected_url: str) -> N
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+    if any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError("retained_capture_symlink_rejected")
+    validate_capture_roster(root, {path.name for path in root.iterdir()})
+    sizes = [path.stat().st_size for path in root.iterdir()]
+    if any(size > PAGE_MAX_BYTES for size in sizes):
+        raise ValueError("retained_capture_response_budget_exceeded")
+    if sum(sizes) > CAPTURE_MAX_BYTES:
+        raise ValueError("retained_capture_total_budget_exceeded")
     return read_ienc_layer_replay(
         root, capture_roster=_capture_urls,
         load_capture=_load_capture,
@@ -243,6 +239,8 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     ids_before = capture_witness(captures)
+    if not ids_before or set(captures) != _capture_names(ids_before):
+        raise ValueError("source_capture_roster_incomplete")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()
             if name not in {"data_gov_landing", "bts_metadata"}}
     catalog = captures["data_gov_landing"][0].decode("utf-8", errors="replace")
@@ -281,29 +279,37 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             or layer.get("geometryType") != "esriGeometryPolygon"
             or layer.get("objectIdField") != "OBJECTID"
             or layer.get("maxRecordCount") != 2000
-            or layer.get("hasZ") is not False or layer.get("hasM") is not False
-            or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT):
+            or layer.get("hasZ") is not False or layer.get("hasM") is not False):
         raise ValueError("source_layer_identity_geometry_extent_or_page_limit_drift")
     _validate_crs(layer.get("spatialReference"), "source_layer")
     _validate_crs(layer.get("extent", {}).get("spatialReference"), "source_layer_extent")
+    declared_extent = {key: layer["extent"].get(key) for key in ("xmin", "ymin", "xmax", "ymax")}
+    if (any(type(value) not in (int, float) or not math.isfinite(value)
+            for value in declared_extent.values())
+            or declared_extent["xmin"] >= declared_extent["xmax"]
+            or declared_extent["ymin"] >= declared_extent["ymax"]):
+        raise ValueError("source_layer_extent_invalid")
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_changed_during_capture")
     features = []
     page_ids = []
-    page = docs["page_000"]
-    if "error" in page or page.get("exceededTransferLimit") is True:
-        raise ValueError("source_page_error_or_transfer_limit")
-    if page.get("geometryType") != "esriGeometryPolygon":
-        raise ValueError("source_page_geometry_type_drift")
-    _validate_crs(page.get("spatialReference"), "page_spatial_reference")
-    records = page.get("features")
-    if not isinstance(records, list):
-        raise ValueError("source_page_features_missing")
-    features.extend(records)
-    page_ids.extend(feature.get("attributes", {}).get("OBJECTID") for feature in records)
-    if (len(features) != len(ids_before) or sorted(page_ids) != ids_before
-            or len(set(page_ids)) != len(ids_before)):
-        raise ValueError("source_feature_population_incomplete")
+    for index, start in enumerate(range(0, len(ids_before), PAGE_SIZE)):
+        page = docs[f"page_{index:03d}"]
+        if "error" in page or page.get("exceededTransferLimit") is True:
+            raise ValueError("source_page_error_or_transfer_limit")
+        if page.get("geometryType") != "esriGeometryPolygon":
+            raise ValueError("source_page_geometry_type_drift")
+        _validate_crs(page.get("spatialReference"), "page_spatial_reference")
+        records = page.get("features")
+        if not isinstance(records, list):
+            raise ValueError("source_page_features_missing")
+        observed_ids = [feature.get("attributes", {}).get("OBJECTID") for feature in records]
+        if (any(type(oid) is not int for oid in observed_ids)
+                or observed_ids != ids_before[start:start + PAGE_SIZE]):
+            raise ValueError("source_page_id_slice_incomplete")
+        features.extend(records)
+        page_ids.extend(observed_ids)
+    capture_witness(captures, captured_ids=page_ids)
     expected_attributes = [field["name"] for field in ATTRIBUTE_FIELDS]
     port_values = []
     for feature in features:
@@ -342,8 +348,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             invalid_geometry_count += 1
         ring_vertex_order_sha.append([feature["attributes"]["OBJECTID"], rings])
     extent = {"xmin": min(xs), "ymin": min(ys), "xmax": max(xs), "ymax": max(ys)}
-    if any(abs(extent[key] - EXPECTED_EXTENT[key]) > 0.001 for key in EXPECTED_EXTENT):
-        raise ValueError("source_geometry_extent_drift")
+    if (extent["xmin"] < declared_extent["xmin"] - 0.001
+            or extent["ymin"] < declared_extent["ymin"] - 0.001
+            or extent["xmax"] > declared_extent["xmax"] + 0.001
+            or extent["ymax"] > declared_extent["ymax"] + 0.001):
+        raise ValueError("source_geometry_outside_declared_extent")
     source_port_roster = sorted(port_values)
     source_port_sha = _sha(_canonical(source_port_roster))
     audit = {
@@ -352,13 +361,14 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "source_id_max": max(source_port_roster), "source_objectid_sha256": _sha(_canonical(sorted(ids_before))),
         "source_schema_sha256": schema_sha, "source_record_sha256": records_sha,
         "source_geometry_sha256": geometry_sha, "source_coverage_extent": extent,
+        "source_declared_extent": declared_extent,
         "source_polygon_vertex_count": vertices, "source_ring_count_histogram": ring_count_histogram,
         "source_ring_xy_order_sha256": _sha(_canonical(ring_vertex_order_sha)),
         "source_invalid_geometry_count_without_repair": invalid_geometry_count,
         "source_id_field": "PORT (source float64 port code; preserved without coercion)",
         "source_object_id_field": "OBJECTID (service-generated ObjectID; retained, not treated as stable key)",
         "source_wkid": 3857, "source_geometry_type": "esriGeometryPolygon",
-        "source_coverage_scope": "All 150 records in the current official USACE Principal Ports CY2023 polygon layer; not claimed equivalent to the historical HIFLD CY2022 point layer.",
+        "source_coverage_scope": "All records witnessed at capture time in the official USACE Principal Ports CY2023 polygon layer; not claimed equivalent to the historical HIFLD CY2022 point layer.",
         "drift_guard": "Catalog/service/item identity, CY2023 marker, geometry type, source CRS, attribute declaration, count, exact OID roster consistency, and unique PORT identifiers are validated; data content hashes identify each unapproved snapshot and do not hard-pin values.",
     }
     return fields, features, audit
@@ -369,9 +379,6 @@ def _read_capture(root: Path, storage: StagingStorageResource,
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
     if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_bytes())
-        if manifest.get("complete") is not True:
-            raise ValueError("retained_capture_manifest_not_complete")
         return _read_replay(root)
     if any(root.glob("*.body")) or any(root.glob("*.wire")) or any(root.glob("*.receipt.json")):
         raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
@@ -513,7 +520,7 @@ def capture_principal_ports(storage: StagingStorageResource, *, version: str,
         })
     manifest = {
         "schema_version": 1, "approved": False, "title": "Principal Ports (official USACE CY2023 successor candidate)",
-        "description": "Unapproved faithful candidate for all 150 features in the official USACE CY2023 polygon successor layer. The historical HIFLD inventory is CY2022; the geometry has changed from point-like source descriptions to polygons, so equivalence and mapping are not asserted.",
+        "description": "Unapproved faithful candidate for the complete witnessed population in the official USACE CY2023 polygon successor layer. The historical HIFLD inventory is CY2022; the geometry has changed from point-like source descriptions to polygons, so equivalence and mapping are not asserted.",
         "publisher": PUBLISHER, "agency": "US Army Corps of Engineers", "source_url": DATA_GOV_LANDING_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
@@ -523,7 +530,7 @@ def capture_principal_ports(storage: StagingStorageResource, *, version: str,
                            "source_ids": "PORT code values and generated OBJECTID values are retained unchanged; no substitute IDs",
                            "geometry": "all XY vertices remain in native EPSG:3857 values; Esri exterior/hole rings are grouped into WKB MultiPolygon without reprojection, coordinate changes, winding changes, simplification or geometry repair; exact source ring arrays remain in retained raw Esri JSON",
                            "candidate_status": "unapproved CY2023 successor snapshot; source release date, relation to historical CY2022 point source, schema/ID/coverage contract and rights remain unresolved"}}],
-        "lineage": "The official Data.gov record identifies USACE as publisher, cites the CY2023 product and links the service resource DOI 10.21949/1528014. That DOI resolves to USACE's public ArcGIS Principal_Ports FeatureServer layer 0; the ArcGIS item account is usace_iwr_cac and the service copyright is U.S. Army Corps of Engineers. Data.gov links the BTS NTAD product landing DOI 10.21949/1522248 and data dictionary DOI 10.21949/1529073. This 150-record polygon layer is a geometry-changed successor candidate to the HIFLD archive's CY2022 data, not an accepted equivalent or continuity claim. The archived HIFLD copy is not used as a refresh source.",
+        "lineage": "The official Data.gov record identifies USACE as publisher, cites the CY2023 product and links the service resource DOI 10.21949/1528014. That DOI resolves to USACE's public ArcGIS Principal_Ports FeatureServer layer 0; the ArcGIS item account is usace_iwr_cac and the service copyright is U.S. Army Corps of Engineers. Data.gov links the BTS NTAD product landing DOI 10.21949/1522248 and data dictionary DOI 10.21949/1529073. This polygon layer is a geometry-changed successor candidate to the HIFLD archive's CY2022 data, not an accepted equivalent or continuity claim. The archived HIFLD copy is not used as a refresh source.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "All 12 native attributes, including PORT as float64 and OBJECTID, are retained; exact XY sequences are captured in the native raw Esri JSON; unapproved geometry conversion and schema/continuity decisions remain pending.",
             "objects": [{"path": f"geoparquet/{FILE_SLUG}.parquet", "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
@@ -572,7 +579,7 @@ def capture_principal_ports(storage: StagingStorageResource, *, version: str,
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": candidate_version,
                 "feature_count": len(features), "source_reported_count": len(features), "source_population_complete": True,
                 "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
-                "source_schema_sha256": schema_sha, "source_coverage_extent": EXPECTED_EXTENT,
+                "source_schema_sha256": schema_sha, "source_coverage_extent": audit["source_coverage_extent"],
                 "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
                 "source_objectid_sha256": audit["source_objectid_sha256"],
                 "source_invalid_geometry_count_without_repair": audit["source_invalid_geometry_count_without_repair"],
@@ -593,7 +600,7 @@ def capture_principal_ports(storage: StagingStorageResource, *, version: str,
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": candidate_version,
             "feature_count": len(features), "source_reported_count": len(features), "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
-            "source_schema_sha256": schema_sha, "source_coverage_extent": EXPECTED_EXTENT,
+            "source_schema_sha256": schema_sha, "source_coverage_extent": audit["source_coverage_extent"],
             "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
             "source_objectid_sha256": audit["source_objectid_sha256"],
             "source_invalid_geometry_count_without_repair": audit["source_invalid_geometry_count_without_repair"],

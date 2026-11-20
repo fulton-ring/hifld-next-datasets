@@ -32,7 +32,7 @@ class PrincipalPortsConfig(Config):
     group_name="usace",
     compute_kind="http",
     description=(
-        "Complete observed 150-feature official USACE Principal Ports CY2023 polygon layer. "
+        "Complete witnessed official USACE Principal Ports CY2023 polygon layer. "
         "Candidate successor only; historical HIFLD CY2022 geometry and schema continuity, "
         "release date, freshness, rights, and contract remain unapproved."
     ),
