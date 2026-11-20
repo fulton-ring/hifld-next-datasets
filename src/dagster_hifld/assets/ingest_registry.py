@@ -7,11 +7,6 @@ assets are derived automatically from this registry.
 
 from dagster_hifld.assets.discovery import discovered, unique
 
-from dagster_hifld.assets.noaa_current_dart import noaa_current_dart
-from dagster_hifld.assets.noaa import (
-    noaa_12nm_territorial_sea,
-    noaa_200nm_eez_and_maritime_boundaries,
-)
 from dagster_hifld.assets.national_transit_map_stops import national_transit_map_stops
 from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
@@ -22,14 +17,9 @@ from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ien
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
 from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 
-from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals
 
 hifld_ingest_assets = [
-    bts_ferry_terminals,
     census_elementary_districts,
-    noaa_current_dart,
-    noaa_12nm_territorial_sea,
-    noaa_200nm_eez_and_maritime_boundaries,
     national_transit_map_stops,
     usace_administrative_areas_usace_ienc,
     usace_navigation_marks_areas_usace_ienc,

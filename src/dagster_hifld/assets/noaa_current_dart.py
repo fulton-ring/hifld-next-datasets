@@ -26,3 +26,9 @@ def noaa_dart_draft_refresh_schedule(context):
     # Proposed weekly availability/integrity poll; not a claim that metadata timestamps are data releases.
     require_local(context.resources.staging_storage)
     return RunRequest(run_config={'ops':{noaa_current_dart.op.name:{'config':{'capture_dir':''}}}})
+
+
+INGEST_ASSETS = [noaa_current_dart]
+ASSET_CHECKS = []
+JOBS = [noaa_dart_draft_refresh_job]
+SCHEDULES = [noaa_dart_draft_refresh_schedule]
