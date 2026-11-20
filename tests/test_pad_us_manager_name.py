@@ -1,6 +1,8 @@
 """Focused tests for the USGS PAD-US Manager Name draft pipeline."""
 import io
+import gzip
 import json
+import os
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -14,10 +16,14 @@ import pyarrow.parquet as pq
 from dagster_hifld.assets.pad_us_manager_name import (
     pad_us_manager_name,
     pad_us_manager_name_complete,
+    pad_us_manager_name_approved_baseline_drift,
 )
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import capture_common
+from dagster_hifld.sources import arcgis_layer as shared
+from dagster_hifld.capture_completeness import approved_baseline_drift
+from dagster_hifld.esri_pbf import decode_feature_collection_pbf
 import shapely
 
 from dagster_hifld.sources import pad_us_manager_name as src
@@ -25,6 +31,8 @@ from dagster_hifld.sources.esri_geometry import to_wkb
 
 FIXTURE_COUNT = 7
 FIXTURE_OBJECTIDS = [2, 3, 7, 12, 41, 58, 900]  # sparse, non-contiguous roster (ascending)
+FIXTURE_LAYER_EXTENT = {"xmin": -20037507.0672, "ymin": -1733741.441300001,
+                        "xmax": 20037507.067199998, "ymax": 12930675.6069}
 
 
 def _fixture_attrs(oid: object) -> dict:
@@ -120,7 +128,7 @@ def _fixture_layer_doc(fields: list[dict]) -> dict:
             "geometryType": src.GEOMETRY_TYPE, "hasZ": False, "hasM": False,
             "maxRecordCount": src.MAX_RECORD_COUNT,
             "advancedQueryCapabilities": {"supportsPagination": True},
-            "extent": {**src.EXPECTED_LAYER_EXTENT,
+            "extent": {**FIXTURE_LAYER_EXTENT,
                        "spatialReference": {"latestWkid": src.NATIVE_LAYER_SR["latestWkid"]}},
             "fields": fields}
 
@@ -224,8 +232,6 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
 
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_size=2):
-    import dagster_hifld.assets.pad_us_manager_name as asset_module
-
     def decode(body: bytes, *, allow_transfer_limit: bool = False):
         document = json.loads(body)
         if "error" in document:
@@ -235,21 +241,13 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
         return document
 
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(src, "EXPECTED_IDS_SHA256", ""),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
-        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
-        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
-        patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(src, "EXPECTED_NAN_GEOMETRY_COUNT", None),
         patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT", None),
         patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS", None),
-        patch.object(src, "EXPECTED_OBSERVED_BOUNDS", None),
         patch.object(src, "SEGMENT_START_RECORDS", segment_size),
         patch.object(src, "SEGMENT_PROBE_BASE_DELAY_SECONDS", 0.0),
         patch.object(src, "DOC_CAPTURE_BASE_DELAY_SECONDS", 0.0),
-        patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(src, "decode_feature_collection_pbf", decode),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
@@ -276,6 +274,74 @@ def _staging(root: Path) -> StagingStorageResource:
 
 
 class PadUsManagerNameTests(unittest.TestCase):
+    def test_saved_native_pbf_capture_replay_and_refresh_preserve_originals(self):
+        body = (Path(__file__).parent / "fixtures"
+                / "pad_us_manager_name_oid3651_null_geometry.pbf").read_bytes()
+        decoded = decode_feature_collection_pbf(body, allow_transfer_limit=True)
+        features = decoded["features"]
+        base = make_responder(features, ids=[3651])
+        wire_mtime = {"value": 0}
+
+        def respond(request):
+            query = parse_qs(request.url.query.decode())
+            if query.get("f") == ["pbf"]:
+                self.assertEqual(query["resultOffset"], ["0"])
+                self.assertEqual(query["resultRecordCount"], ["1"])
+                return httpx.Response(200, headers={"Content-Encoding": "gzip"},
+                    stream=httpx.ByteStream(gzip.compress(body, mtime=wire_mtime["value"])))
+            return base.handler(request)
+
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = httpx.MockTransport(respond)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
+            patch.object(src, "SEGMENT_START_RECORDS", 1),
+            patch.object(src, "_default_client",
+                         side_effect=lambda: httpx.Client(transport=transport)),
+            patch.object(src, "_doc_client",
+                         side_effect=lambda: httpx.Client(transport=transport)),
+        ):
+            root = Path(tmp)
+            storage = _staging(root)
+            first = src.capture_pad_us_manager_name(storage, version="native",
+                                                   capture_directory=str(root / "capture"))
+            self.assertEqual(first["feature_count"], 1)
+            self.assertEqual(first["source_null_geometry_count"], 1)
+            prefix = first["candidate_ready"].removesuffix("/metadata/candidate_ready.json")
+            original = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}
+            table = pq.read_table(root / "capture" / f"{src.DATASET_SLUG}.parquet")
+            self.assertEqual(table.drop(["geometry"]).to_pylist(), [features[0]["attributes"]])
+            self.assertEqual(table.column("OBJECTID").to_pylist(), [3651])
+            self.assertEqual(table.column("Mang_Name").to_pylist(), ["BLM"])
+            self.assertEqual(table.column("State_Nm").to_pylist(), ["WY"])
+            self.assertEqual(table.column("geometry").to_pylist(), [None])
+            self.assertEqual(table.column("EsmtHldr").to_pylist(), [None])
+            crs = json.loads(table.schema.metadata[b"geo"])["columns"]["geometry"]["crs"]
+            self.assertEqual(crs["id"], {"authority": "EPSG", "code": 4326})
+            self.assertEqual(storage.read_key(prefix + "/raw/page_000000_00001.body"), body)
+            with patch.object(httpx.Client, "send",
+                              side_effect=AssertionError("unexpected HTTP during complete replay")):
+                replay = src.capture_pad_us_manager_name(storage, version="warm",
+                                                        capture_directory=str(root / "capture"))
+                self.assertTrue(replay["reused"])
+                cold = src.capture_pad_us_manager_name(
+                    StagingStorageResource(local_dir=str(root / "cold-stage")), version="cold",
+                    capture_directory=str(root / "capture"))
+                self.assertEqual(cold["version"], first["version"])
+            wire_mtime["value"] = 1
+            refreshed = src.capture_pad_us_manager_name(storage, version="refresh",
+                                                       capture_directory=str(root / "fresh"))
+            self.assertTrue(refreshed["reused"])
+            self.assertNotEqual((root / "fresh" / "page_000000_00001.wire").read_bytes(),
+                                (root / "capture" / "page_000000_00001.wire").read_bytes())
+            for result in (replay, cold, refreshed):
+                for key in ("feature_count", "source_reported_count", "source_population_complete",
+                            "source_null_geometry_count", "source_id_sha256", "source_schema_sha256"):
+                    self.assertEqual(result[key], first[key])
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix(prefix)},
+                             original)
+
     def test_source_is_explicit_and_draft_only(self):
         self.assertEqual(src.DATASET_SLUG, "pad-us-manager-name")
         self.assertEqual(src.SERVICE_URL,
@@ -284,21 +350,17 @@ class PadUsManagerNameTests(unittest.TestCase):
         self.assertEqual(src.LAYER_ID, 0)
         self.assertEqual(src.LAYER_NAME, "PADUS4_1ManagerName")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPolygon")
-        self.assertEqual(src.EXPECTED_COUNT, 655_335)
         self.assertEqual(src.MAX_RECORD_COUNT, 2000)
         self.assertEqual(src.SEGMENT_START_RECORDS, 1000)
         self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
                          "700b505d62ec00dda9ca8bb23a44283f928be1167971bd409a6477b83a4e7510")
-        self.assertEqual(src.EXPECTED_IDS_SHA256,
-                         "c796d962b10cfb278175ca0076a528414fcd6241514a7f75dd6980c430b3153a")
         self.assertEqual(src.EXPECTED_ZIP_SHA256,
                          "62ed113335e359509ad68a731146c74aa873c5a92da4f3fda572e54bc9b823ab")
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "a78bdae737ffe899263d0df21480a77790bd41a2ea8b9e2ead1f4deabe6b290a")
-            # The geometry digest coverage grew with the shared converter
-        # (issue #997); the transcribed pin waits for the next complete capture.
-        self.assertIsNone(src.EXPECTED_GEOMETRY_SHA256)
-        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 6)
-        self.assertTrue(src.BASELINE_PENDING_NOTE)
+        self.assertFalse(hasattr(src, "EXPECTED_COUNT"))
+        self.assertFalse(hasattr(src, "EXPECTED_IDS_SHA256"))
+        self.assertFalse(hasattr(src, "EXPECTED_RECORD_SHA256"))
+        self.assertFalse(hasattr(src, "EXPECTED_GEOMETRY_SHA256"))
+        self.assertFalse(hasattr(src, "EXPECTED_NULL_GEOMETRY_COUNT"))
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
                             for key in keys))
@@ -408,7 +470,8 @@ class PadUsManagerNameTests(unittest.TestCase):
             with fixture_mode(schema_sha, transport):
                 with DagsterInstance.from_config(str(instance_dir)) as instance:
                     result = materialize(
-                        [pad_us_manager_name, pad_us_manager_name_complete],
+                        [pad_us_manager_name, pad_us_manager_name_complete,
+                         pad_us_manager_name_approved_baseline_drift],
                         resources={"staging_storage": _staging(root)},
                         instance=instance,
                         run_config={"ops": {"ingest__pad_us_manager_name__pad_us_manager_name":
@@ -419,6 +482,11 @@ class PadUsManagerNameTests(unittest.TestCase):
                     checks = {check.check_name: check
                               for check in result.get_asset_check_evaluations()}
                     self.assertTrue(checks["pad_us_manager_name_complete"].passed)
+                    warning = checks["pad_us_manager_name_approved_baseline_drift"]
+                    self.assertFalse(warning.passed)
+                    self.assertEqual(warning.severity.value, "WARN")
+                    self.assertEqual(warning.metadata["comparison_status"].value,
+                                     "skipped_no_approved_baseline")
                     candidate = result.output_for_node(
                         "ingest__pad_us_manager_name__pad_us_manager_name")
                     self.assertEqual(candidate["feature_count"], FIXTURE_COUNT)
@@ -516,7 +584,7 @@ class PadUsManagerNameTests(unittest.TestCase):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         cases = {
-            "source_count_drift": dict(count=FIXTURE_COUNT + 1),
+            "source_count_or_id_roster_drift": dict(count=FIXTURE_COUNT + 1),
             "source_schema_drift": dict(layer_fields=_fixture_layer_fields()
                                         + [{"name": "EXTRA", "type": "esriFieldTypeString",
                                             "alias": "EXTRA", "nullable": True, "length": 4,
@@ -535,14 +603,12 @@ class PadUsManagerNameTests(unittest.TestCase):
                 layer={**_fixture_layer_doc(_fixture_layer_fields()), "hasM": True}),
             "source_record_limit_drift": dict(
                 layer={**_fixture_layer_doc(_fixture_layer_fields()), "maxRecordCount": 1000}),
-            "source_layer_extent_drift": dict(
+            "source_layer_extent_spatial_reference_drift": dict(
                 layer=lambda: {**_fixture_layer_doc(_fixture_layer_fields()),
-                               "extent": {**src.EXPECTED_LAYER_EXTENT,
-                                          "xmax": 1.0,
+                               "extent": {**FIXTURE_LAYER_EXTENT,
                                           "spatialReference": {
-                                              "latestWkid":
-                                                  src.NATIVE_LAYER_SR["latestWkid"]}}}),
-            "source_id_population_drift": dict(ids=FIXTURE_OBJECTIDS[:-1]),
+                                              "latestWkid": 4326}}}),
+            "source_id_population_drift": dict(ids=[*FIXTURE_OBJECTIDS[:-1], 2]),
             "sciencebase_corroboration_identity_drift": dict(
                 sb_item={**_fixture_sb_item(), "citation": "different citation"}),
             "sciencebase_corroboration_zip_reference_drift": dict(
@@ -587,63 +653,293 @@ class PadUsManagerNameTests(unittest.TestCase):
                     self.assertTrue(failure["reason_code"])
 
     def test_geometry_gates_are_enforced_once_pinned(self):
-        rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport):
-                src.capture_pad_us_manager_name(
-                    _staging(root), version="gate-run", capture_directory=str(capture_root))
-                baseline = json.loads((capture_root / "computed_baseline.json").read_bytes())
-                with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0):
-                    with self.assertRaisesRegex(src.PadUsManagerNameError,
-                                                "source_null_geometry_count_drift"):
-                        src.fetch_pad_us_manager_name_pages(capture_root)
-                with patch.object(src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
-                                  {"source_polygon_ring_degenerate": 2}):
-                    with self.assertRaisesRegex(src.PadUsManagerNameError,
-                                                "source_unusable_geometry_counts_drift"):
-                        src.fetch_pad_us_manager_name_pages(capture_root)
-                with patch.object(src, "EXPECTED_RECORD_SHA256",
-                                  baseline["source_record_sha256"]):
-                    with patch.object(src, "EXPECTED_GEOMETRY_SHA256",
-                                      baseline["source_geometry_sha256"]):
-                        with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT",
-                                          baseline["source_null_geometry_count"]):
-                            with patch.object(src, "EXPECTED_NAN_GEOMETRY_COUNT",
-                                              baseline["source_nan_geometry_count"]):
-                                with patch.object(
-                                        src, "EXPECTED_UNUSABLE_GEOMETRY_COUNTS",
-                                        baseline["source_unusable_geometry_counts"]):
-                                    again = src.capture_pad_us_manager_name(
-                                        _staging(root), version="gate-run-verify",
-                                        capture_directory=str(capture_root))
-                                    self.assertTrue(again["reused"])
+        for name, value, error in (
+            ("EXPECTED_NAN_GEOMETRY_COUNT", 0, "source_nan_geometry_count_drift"),
+            ("EXPECTED_EMPTY_GEOMETRY_COUNT", 0, "source_empty_geometry_count_drift"),
+            ("EXPECTED_UNUSABLE_GEOMETRY_COUNTS", {"conversion_failure": 1},
+             "source_unusable_geometry_counts_drift"),
+        ):
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                rows = _fixture_rows()
+                if name == "EXPECTED_EMPTY_GEOMETRY_COUNT":
+                    rows[4] = {**rows[4], "geometry": {"rings": []}}
+                with fixture_mode(schema_sha, make_responder(rows)):
+                    with patch.object(src, name, value):
+                        with self.assertRaisesRegex(src.PadUsManagerNameError, error):
+                            src.capture_pad_us_manager_name(_staging(root), version="gate",
+                                capture_directory=str(root / "capture"))
+                self.assertFalse(src._load_state(root / "capture")["complete"])
+                self.assertTrue(list((root / "staging" / "_quarantine").rglob("failure.json")))
 
-    def test_pinned_baseline_drift_is_refused_and_quarantined(self):
+    def test_changed_populations_complete_but_warn_against_approved_release(self):
+        from dagster import AssetCheckSeverity
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
+        populations = [
+            rows,
+            rows[:-1],
+            [*rows, {"attributes": _fixture_attrs(1001), "geometry": rows[0]["geometry"]}],
+            [{**rows[0], "attributes": {**rows[0]["attributes"], "Mang_Name": "Changed"},
+              "geometry": {"rings": [_cw_square(8.0, 8.0, 1.0)]}}, *rows[1:]],
+        ]
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            capture_root = root / "capture"
+            candidates = []
+            for index, population in enumerate(populations):
+                ids = [row["attributes"]["OBJECTID"] for row in population]
+                transport = make_responder(population, ids=ids)
+                with fixture_mode(schema_sha, transport):
+                    candidate = src.capture_pad_us_manager_name(_staging(root),
+                        version=f"population-{index}", capture_directory=str(root / str(index)))
+                self.assertEqual(candidate["feature_count"], len(ids))
+                self.assertEqual(candidate["source_reported_count"], len(ids))
+                self.assertTrue(candidate["source_population_complete"])
+                self.assertFalse(candidate["release_accepted"])
+                self.assertEqual(candidate["source_id_sha256"], src._sha(src._canonical(ids)))
+                candidates.append(candidate)
+            self.assertEqual(len({item["version"] for item in candidates}), 4)
+            baseline = {**candidates[0], "release_accepted": True}
+            for candidate in candidates[1:3]:
+                warning = approved_baseline_drift(candidate, baseline)
+                self.assertFalse(warning.passed)
+                self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+                self.assertTrue(warning.metadata["native_id_roster_changed"].value)
+            skipped = approved_baseline_drift(candidates[0])
+            self.assertEqual(skipped.metadata["comparison_status"].value,
+                             "skipped_no_approved_baseline")
+
+    def test_retained_transport_is_bounded_request_bound_and_wire_verified(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        cases = ("missing_wire", "malformed_gzip", "wrong_decoded_body",
+                 "wrong_request", "oversized")
+        for case in cases:
+            with self.subTest(case), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                    src.fetch_pad_us_manager_name_pages(root)
+                    name = src._load_state(root)["segments"][0]["name"]
+                    body, receipt = src._read_capture(root, name)
+                    self.assertEqual(shared.load_replay(root, name)[0], body)
+                    wire_path = root / f"{name}.wire"
+                    if case == "missing_wire":
+                        wire_path.unlink()
+                    elif case in ("malformed_gzip", "wrong_decoded_body"):
+                        wire = (b"not gzip" if case == "malformed_gzip"
+                                else gzip.compress(b"different decoded body", mtime=0))
+                        wire_path.write_bytes(wire)
+                        receipt.update(wire_bytes=len(wire), wire_sha256=src._sha(wire),
+                                       content_encoding="gzip", content_length=len(wire))
+                    elif case == "wrong_request":
+                        receipt["url"] = receipt["final_url"] = src._segment_query(2, 2)
+                    (root / f"{name}.receipt.json").write_bytes(src._canonical(receipt))
+                    with patch.object(src, "MAX_BODY_BYTES",
+                                      len(body) - 1 if case == "oversized" else src.MAX_BODY_BYTES):
+                        with self.assertRaisesRegex(
+                                src.PadUsManagerNameError,
+                                "source_capture_exceeds_scratch_budget" if case == "oversized"
+                                else "retained_capture_receipt_invalid"):
+                            src._read_capture(root, name)
+
+    def test_resume_refetches_entire_closing_group_after_another_interruption(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(_fixture_rows())
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
             with fixture_mode(schema_sha, transport):
-                storage = _staging(root)
-                src.capture_pad_us_manager_name(
-                    storage, version="pin-run", capture_directory=str(capture_root))
-                with patch.object(src, "EXPECTED_IDS_SHA256", "0" * 64):
-                    with self.assertRaisesRegex(src.PadUsManagerNameError,
-                                                "source_id_roster_drift"):
-                        src.capture_pad_us_manager_name(
-                            storage, version="pin-run-drift",
-                            capture_directory=str(capture_root))
-                quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
-                                     .glob("*"))
-                self.assertTrue(quarantined)
-                failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
-                self.assertTrue(failure["reason_code"].startswith("source_id_roster_drift"))
+                src.fetch_pad_us_manager_name_pages(root)
+                name = src._load_state(root)["segments"][0]["name"]
+                (root / f"{name}.wire").unlink()
+                original = src._capture_with_retry
+                calls = []
+
+                def interrupted(client, url, capture_root, capture_name, **kwargs):
+                    calls.append(capture_name)
+                    self.assertFalse(src._load_state(root)["complete"])
+                    if capture_name == "count_after":
+                        raise ValueError("interrupted_closing")
+                    return original(client, url, capture_root, capture_name, **kwargs)
+
+                with patch.object(src, "_capture_with_retry", side_effect=interrupted):
+                    with self.assertRaisesRegex(src.PadUsManagerNameError, "source_capture_failed"):
+                        src.fetch_pad_us_manager_name_pages(root)
+                self.assertFalse(src._load_state(root)["complete"])
+                self.assertTrue(list(root.glob("layer_after.error-*.body")))
+                self.assertIn(name, calls)
+                calls.clear()
+
+                def observed(client, url, capture_root, capture_name, **kwargs):
+                    calls.append(capture_name)
+                    self.assertFalse(src._load_state(root)["complete"])
+                    return original(client, url, capture_root, capture_name, **kwargs)
+
+                with patch.object(src, "_capture_with_retry", side_effect=observed):
+                    src.fetch_pad_us_manager_name_pages(root)
+                self.assertEqual(calls, list(src.AFTER_NAMES))
+                self.assertTrue(src._load_state(root)["complete"])
+                with patch.object(httpx.Client, "send", side_effect=AssertionError("unexpected HTTP")):
+                    src.fetch_pad_us_manager_name_pages(root)
+
+    def test_resumed_closing_count_or_roster_drift_refuses_and_quarantines(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        for drift in ("count", "ids", "metadata"):
+            with self.subTest(drift), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture = root / "capture"
+                with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                    src.fetch_pad_us_manager_name_pages(capture)
+                state = src._load_state(capture)
+                state["complete"] = False
+                src._save_state(capture, state)
+                kwargs = ({"count": FIXTURE_COUNT + 1} if drift == "count" else
+                          {"ids": [*FIXTURE_OBJECTIDS[:-1], 901]} if drift == "ids" else
+                          {"layer": {**_fixture_layer_doc(_fixture_layer_fields()),
+                                     "editingInfo": {"lastEditDate": 123}}})
+                with fixture_mode(schema_sha, make_responder(_fixture_rows(), **kwargs)):
+                    with self.assertRaises(src.PadUsManagerNameError):
+                        src.capture_pad_us_manager_name(_staging(root), version="drift",
+                                                       capture_directory=str(capture))
+                self.assertFalse(src._load_state(capture)["complete"])
+                for name in src.AFTER_NAMES:
+                    self.assertTrue(list(capture.glob(f"{name}.error-*.body")))
+                self.assertTrue(list((root / "staging" / "_quarantine").rglob("failure.json")))
+
+    def test_resume_replaces_corrupt_parent_checkpoint_after_bisection(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                src.fetch_pad_us_manager_name_pages(root)
+                name = src._load_state(root)["segments"][0]["name"]
+                (root / f"{name}.body").write_bytes(b"corrupt")
+            with fixture_mode(schema_sha, make_responder(_fixture_rows(), refuse_counts={2})):
+                src.fetch_pad_us_manager_name_pages(root)
+                state = src._load_state(root)
+                self.assertTrue(state["complete"])
+                self.assertNotIn(name, [entry["name"] for entry in state["segments"]])
+                self.assertEqual(sum(entry["count"] for entry in state["segments"]), FIXTURE_COUNT)
+                src._stream_validate(root, parquet_sink=None)
+
+    def test_torn_opening_metadata_and_missing_segment_body_preserve_witnesses(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                src.fetch_pad_us_manager_name_pages(root)
+                name = src._load_state(root)["segments"][0]["name"]
+                receipt = (root / f"{name}.receipt.json").read_bytes()
+                (root / f"{name}.body").unlink()
+                opening = (root / "layer_before.body").read_bytes()
+                (root / "layer_before.wire").unlink()
+                src.fetch_pad_us_manager_name_pages(root)
+                self.assertTrue(src._load_state(root)["complete"])
+                self.assertIn(receipt, [path.read_bytes()
+                                       for path in root.glob(f"{name}.error-*.receipt.json")])
+                self.assertIn(opening, [path.read_bytes()
+                                       for path in root.glob("layer_before.error-*.body")])
+
+    def test_capture_budget_refuses_partial_candidate_without_releasing_it(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = root / "capture"
+            with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                src.fetch_pad_us_manager_name_pages(capture)
+                name = src._load_state(capture)["segments"][0]["name"]
+                (capture / f"{name}.body").unlink()
+                state_before = (capture / "capture_state.json").read_bytes()
+                with patch.object(src, "MAX_CAPTURE_BYTES", 0):
+                    with self.assertRaises(src.PadUsManagerNameError):
+                        src.capture_pad_us_manager_name(_staging(root), version="budget",
+                                                       capture_directory=str(capture))
+                self.assertEqual((capture / "capture_state.json").read_bytes(), state_before)
+                self.assertFalse(list((root / "staging").rglob("candidate_ready.json")))
+                self.assertFalse(list((root / "staging" / "_quarantine").rglob("failure.json")))
+
+    def test_retained_directory_admission_refuses_before_any_read_or_recovery(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        for case in ("total", "artifact", "fifo", "symlink", "directory", "unknown"):
+            with self.subTest(case), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture = root / "capture"
+                with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                    src.fetch_pad_us_manager_name_pages(capture)
+                    target = capture / "capture_state.json"
+                    total = sum(path.stat().st_size for path in capture.iterdir())
+                    if case == "fifo":
+                        target.unlink()
+                        os.mkfifo(target)
+                    elif case == "symlink":
+                        target.unlink()
+                        target.symlink_to(capture / "computed_baseline.json")
+                    elif case == "directory":
+                        target.unlink()
+                        target.mkdir()
+                    elif case == "unknown":
+                        (capture / "unexpected.bin").write_bytes(b"unexpected")
+                    before = {path.name: path.lstat() for path in capture.iterdir()}
+                    with (
+                        patch.object(src, "MAX_CAPTURE_BYTES",
+                                     total - 1 if case == "total" else src.MAX_CAPTURE_BYTES),
+                        patch.object(src, "MAX_BODY_BYTES",
+                                     1 if case == "artifact" else src.MAX_BODY_BYTES),
+                        patch.object(Path, "read_bytes", side_effect=AssertionError("content read")),
+                        patch.object(src, "_witness_aside", side_effect=AssertionError("recovery")),
+                        patch.object(src, "quarantine_incomplete_capture",
+                                     side_effect=AssertionError("quarantine")),
+                        patch.object(httpx.Client, "send", side_effect=AssertionError("HTTP")),
+                    ):
+                        for run in (
+                            lambda: src._load_state(capture),
+                            lambda: src.fetch_pad_us_manager_name_pages(capture),
+                            lambda: src._stream_validate(capture, parquet_sink=None),
+                            lambda: src.capture_pad_us_manager_name(
+                                _staging(root), version="admission", capture_directory=str(capture)),
+                        ):
+                            with self.assertRaises(src.PadUsManagerNameError):
+                                run()
+                    self.assertEqual(before, {path.name: path.lstat()
+                                              for path in capture.iterdir()})
+
+    def test_admission_counts_retained_evidence_and_generated_sidecars(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        names = ("layer_before.error-123.body", "page_000000_00002.attempt-01.wire",
+                 "capture_state.json.tmp", f"{src.FILE_SLUG}.parquet",
+                 f"{src.FILE_SLUG}.parquet.construction-tmp")
+        for name in names:
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                    src.fetch_pad_us_manager_name_pages(root)
+                    (root / name).write_bytes(b"retained evidence or generated output")
+                    total = sum(path.stat().st_size for path in root.iterdir())
+                    with (
+                        patch.object(src, "MAX_CAPTURE_BYTES", total - 1),
+                        patch.object(Path, "read_bytes", side_effect=AssertionError("content read")),
+                    ):
+                        with self.assertRaisesRegex(src.PadUsManagerNameAdmissionError,
+                                                    "source_capture_exceeds_scratch_budget"):
+                            src.fetch_pad_us_manager_name_pages(root)
+
+    def test_direct_replay_refuses_nonregular_artifacts_before_loading(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        for kind in ("fifo", "symlink", "directory"):
+            with self.subTest(kind), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                    src.fetch_pad_us_manager_name_pages(root)
+                    path = root / "layer_before.wire"
+                    path.unlink()
+                    if kind == "fifo":
+                        os.mkfifo(path)
+                    elif kind == "symlink":
+                        path.symlink_to(root / "layer_before.body")
+                    else:
+                        path.mkdir()
+                    with patch.object(shared, "load_replay", side_effect=AssertionError("load")):
+                        with self.assertRaises(src.PadUsManagerNameAdmissionError):
+                            src._read_capture(root, "layer_before")
 
 
 if __name__ == "__main__":

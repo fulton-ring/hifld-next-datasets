@@ -1,46 +1,12 @@
-"""Streaming, approval-gated capture of the USGS PAD-US Manager Name layer.
+"""Capture the maintained USGS PAD-US Manager Name view.
 
-The HIFLD Open inventory entry ``pad-us-manager-name`` ("PAD-US Manager Name",
-agency US Geological Survey, publisher U.S. Geological Survey (USGS) Gap
-Analysis Project (GAP)) names the USGS PAD-US Manager Name publication. The
-producer's maintained publication for this entry is USGS's companion ArcGIS
-Online item ``d1c464bac63d44bc88a4a059dc69d259`` ("PAD-US Manager Name", owned
-by the USGS organizational account ``mcroft@usgs.gov_USUS``) whose
-``Manager_Name_PADUS`` FeatureServer layer 0 ``PADUS4_1ManagerName`` carries
-the PAD-US 4.1 data release (DOI 10.5066/P96WBCHS, cited verbatim in the
-layer document's copyright text) Combined feature class with the manager-name mapping
-fields. That producer service is captured here. The DataLumos project 240684
-archive copy is identification context only and is never fetched.
-
-Why the release ZIP is corroboration, not the pipeline input: the official
-PAD-US 4.1 national geodatabase (ScienceBase item ``652d4fc5d34e44db0e2ee45e``,
-1,523,434,496 bytes, SHA-256 ``62ed113335e359509ad68a731146c74aa873c5a92da4f3
-fda572e54bc9b823ab``, probed 2026-11-13) holds the Combined feature class with
-656,986 rows and a different field roster (Term and Duration present;
-EsmtHldr, EHoldTyp, WebServiceMangName, TranspPct and the service Shape__
-doubles absent), while this publication's layer holds 655,335 rows with those
-service-derived fields. The ZIP therefore cannot reconstruct this dataset's
-content; it is recorded as dated producer-lineage corroboration only.
-
-The layer serves 655,335 polygon features (maxRecordCount 2000, sparse
-OBJECTID roster enumerated by ``returnIdsOnly``), so this module streams the
-source in the native ``f=pbf`` binary pages the service publishes (a full
-``f=json`` enumeration would be tens of gigabytes): every roster segment is
-retained as raw wire evidence in a resumable capture directory, decoded by the
-repository's bounded FeatureCollection-PBF decoder, and re-verified before any
-candidate is sealed. Segments are adaptively bisected when the producer
-refuses, must tile the complete roster exactly, and before/after count/roster/
-service/layer brackets prove nothing was skipped, duplicated, or reordered.
-The PBF transport carries the service's own 1e-9-degree coordinate
-quantization; raw PBF pages are the authoritative transport evidence and the
-decoded coordinates are what the service itself serves in this format.
-
-Per-value and per-geometry baseline digests, geometry gate counts and observed
-bounds are computed by ``build_pad_us_manager_name_baseline`` from a completed
-capture directory and pinned as constants; unpinned values are checked only
-once pinned. Publication stays blocked pending the succession, freshness,
-schema/ID contract, rights and release decisions; all runtime approval flags
-are false and the draft refresh schedule is stopped.
+The USGS-linked Manager_Name_PADUS view serves PADUS4_1ManagerName.
+ScienceBase metadata corroborates the PAD-US 4.1 lineage; its national ZIP
+has a different field roster and is never fetched as pipeline data.
+Resumable offset segments retain native PBF, including its coordinate
+quantization, and must tile the publisher's count/ID roster exactly.
+The source layer remains EPSG:3857; served PBF geometry remains EPSG:4326.
+GDAL assembles source polygons without repair. All approvals stay false.
 """
 from __future__ import annotations
 
@@ -48,12 +14,12 @@ import hashlib
 import json
 import re
 import shutil
-import time
+import stat
 from array import array
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping
+from typing import Mapping
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -63,15 +29,18 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.esri_pbf import decode_feature_collection_pbf
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources import arcgis_layer as shared
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
+    validate_capture_request_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
@@ -116,37 +85,13 @@ EXPECTED_COPYRIGHT_TEXT = ("U.S. Geological Survey (USGS) Gap Analysis Project (
                            "Protected Areas Database of the United States (PAD-US) 4.1: "
                            "U.S. Geological Survey data release, "
                            "https://doi.org/10.5066/P96WBCHS")
-EXPECTED_COUNT = 655_335
-EXPECTED_IDS_SHA256 = "c796d962b10cfb278175ca0076a528414fcd6241514a7f75dd6980c430b3153a"
 EXPECTED_SCHEMA_SHA256 = "700b505d62ec00dda9ca8bb23a44283f928be1167971bd409a6477b83a4e7510"
 EXPECTED_CORROBORATION_COUNT = 656_986
 EXPECTED_ZIP_BYTES = 1_523_434_496
 EXPECTED_ZIP_SHA256 = "62ed113335e359509ad68a731146c74aa873c5a92da4f3fda572e54bc9b823ab"
-# The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (see the module
-# docstring); unpinned values ("", None) are checked only once pinned.
-EXPECTED_RECORD_SHA256 = "a78bdae737ffe899263d0df21480a77790bd41a2ea8b9e2ead1f4deabe6b290a"
-# The geometry digest covered only assembled rows before the shared GDAL
-# converter (issue #997); every served row now assembles, so the coverage grew
-# and this transcribed pin moves to the designed pending state until the next
-# complete capture re-derives it via build_pad_us_manager_name_baseline.
-EXPECTED_GEOMETRY_SHA256 = None
-EXPECTED_NULL_GEOMETRY_COUNT = 6
 EXPECTED_NAN_GEOMETRY_COUNT = 0
 EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-# Geometry quarantines retired by the shared GDAL Esri polygon converter
-# (issue #997): the producer's 1,750 self-intersecting-exterior rows now
-# convert through GDAL and are retained verbatim, counted as
-# ogc_invalid_geometry_counts instead of gated to null.
 EXPECTED_UNUSABLE_GEOMETRY_COUNTS: dict[str, int] | None = {}
-EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = {"xmax": 179.999988541,"xmin": -179.999988541,"ymax": 74.996355101,"ymin": -15.386135526}
-EXPECTED_LAYER_EXTENT = {"xmin": -20037507.0672, "ymin": -1733741.441300001,
-                         "xmax": 20037507.067199998, "ymax": 12930675.6069}
-BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests, geometry gate counts and "
-    "observed bounds are pinned from a completed resumable capture directory "
-    "by build_pad_us_manager_name_baseline; unpinned values are checked only "
-    "once pinned.")
 # Service-declared native field roster (layer 0 f=pjson, observed 2026-11-13);
 # the PBF page schema must reproduce this exact name order.
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
@@ -207,11 +152,45 @@ _ARROW_TYPES: dict[str, pa.DataType] = {
 
 
 class PadUsManagerNameError(ValueError):
-    """The source snapshot cannot be represented as the pinned candidate."""
+    """The source snapshot cannot be represented as a complete faithful candidate."""
 
     def __init__(self, code: str):
         self.code = code
         super().__init__(code)
+
+
+class PadUsManagerNameAdmissionError(PadUsManagerNameError):
+    """The retained directory is unsafe to read or recover."""
+
+
+def _preflight_capture_directory(capture_root: Path) -> None:
+    root = Path(capture_root).absolute()
+    if ".." in root.parts or any(parent.is_symlink() for parent in root.parents):
+        raise PadUsManagerNameAdmissionError("unsafe_capture_directory")
+    try:
+        root_stat = root.lstat()
+    except FileNotFoundError:
+        return
+    if not stat.S_ISDIR(root_stat.st_mode):
+        raise PadUsManagerNameAdmissionError("unsafe_capture_directory")
+    document_names = "|".join((*METADATA_NAMES, *AFTER_NAMES))
+    evidence = re.compile(
+        rf"(?:{document_names}|page_[0-9]{{6}}_[0-9]{{5}})"
+        r"(?:\.(?:attempt-[0-9]{2}|error-[0-9]+))?\.(?:body|wire|receipt\.json)"
+    )
+    parquet_names = {f"{FILE_SLUG}.parquet", f"{FILE_SLUG}.parquet.construction-tmp"}
+    sidecars = {"capture_state.json", "capture_state.json.tmp", "computed_baseline.json"}
+    total = 0
+    for path in root.iterdir():
+        entry = path.lstat()
+        if not stat.S_ISREG(entry.st_mode):
+            raise PadUsManagerNameAdmissionError("retained_capture_nonregular_file:" + path.name)
+        if path.name not in sidecars | parquet_names and not evidence.fullmatch(path.name):
+            raise PadUsManagerNameAdmissionError("retained_capture_unexpected_artifact:" + path.name)
+        limit = MAX_CAPTURE_BYTES if path.name in parquet_names else MAX_BODY_BYTES
+        total += entry.st_size
+        if entry.st_size > limit or total > MAX_CAPTURE_BYTES:
+            raise PadUsManagerNameAdmissionError("source_capture_exceeds_scratch_budget")
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -261,14 +240,11 @@ def _parse_segment_name(name: str) -> tuple[int, int]:
 
 
 def _validate_roster(roster: object, label: str) -> list[int]:
-    if not isinstance(roster, list) or len(roster) != EXPECTED_COUNT \
-            or any(type(value) is not int for value in roster) \
-            or len(set(roster)) != EXPECTED_COUNT:
+    if (not isinstance(roster, list) or not roster
+            or any(type(value) is not int or value <= 0 for value in roster)
+            or len(set(roster)) != len(roster)):
         raise PadUsManagerNameError("source_id_population_drift:" + label)
-    ids = sorted(roster)
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(ids)) != EXPECTED_IDS_SHA256:
-        raise PadUsManagerNameError("source_id_roster_drift:" + label)
-    return ids
+    return sorted(roster)
 
 
 def _validate_layer_document(layer: object) -> tuple[list[dict[str, object]], str]:
@@ -290,8 +266,6 @@ def _validate_layer_document(layer: object) -> tuple[list[dict[str, object]], st
     if not isinstance(extent_reference, dict) \
             or extent_reference.get("latestWkid") != NATIVE_LAYER_SR["latestWkid"]:
         raise PadUsManagerNameError("source_layer_extent_spatial_reference_drift")
-    if {key: extent.get(key) for key in EXPECTED_LAYER_EXTENT} != EXPECTED_LAYER_EXTENT:
-        raise PadUsManagerNameError("source_layer_extent_drift")
     return _profile_schema(layer)
 
 
@@ -397,62 +371,57 @@ def _validate_feature(feature: object, expected_names: tuple[str, ...],
 
 
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
-    """Parse and structurally validate one retained receipt without page bytes."""
-    try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise PadUsManagerNameError("retained_capture_receipt_invalid:" + name) from exc
-    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
-            or receipt.get("url") != receipt.get("final_url")
-            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
-        raise PadUsManagerNameError("retained_capture_receipt_invalid:" + name)
-    return receipt
+    return shared.load_receipt(capture_root, name, PadUsManagerNameError)
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise PadUsManagerNameError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
+    try:
+        paths = [capture_root / f"{name}.{suffix}"
+                 for suffix in ("body", "wire", "receipt.json")]
+        for path in paths:
+            entry = path.lstat()
+            if not stat.S_ISREG(entry.st_mode):
+                raise PadUsManagerNameAdmissionError("retained_capture_nonregular_file:" + name)
+            if entry.st_size > MAX_BODY_BYTES:
+                raise PadUsManagerNameAdmissionError("source_capture_exceeds_scratch_budget")
+        body, receipt = shared.load_replay(capture_root, name)
+        _load_receipt(capture_root, name)
+        base_name = name.split(".attempt-")[0].split(".error-")[0]
+        urls = {"sb_item": SB_ITEM_URL, "agol_item": AGOL_ITEM_URL,
+                "service_before": SERVICE_URL + "?f=pjson",
+                "service_after": SERVICE_URL + "?f=pjson",
+                "layer_before": LAYER_URL + "?f=pjson",
+                "layer_after": LAYER_URL + "?f=pjson",
+                "count_before": _count_url(), "count_after": _count_url(),
+                "ids_seed": _ids_url(), "ids_before": _ids_url(), "ids_after": _ids_url()}
+        url = urls.get(base_name)
+        if url is None:
+            url = _segment_query(*_parse_segment_name(base_name))
+        validate_capture_request_identity(name, receipt, url)
+        return body, receipt
+    except PadUsManagerNameAdmissionError:
+        raise
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        raise PadUsManagerNameError("retained_capture_receipt_invalid:" + name) from exc
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
-    path = capture_root / "capture_state.json"
-    if not path.exists():
-        return {"segments": [], "complete": False}
-    try:
-        state = json.loads(path.read_bytes())
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise PadUsManagerNameError("capture_state_invalid") from exc
-    if not isinstance(state, dict) or not isinstance(state.get("segments"), list):
-        raise PadUsManagerNameError("capture_state_invalid")
-    return state
+    _preflight_capture_directory(capture_root)
+    return shared.load_state(capture_root, PadUsManagerNameError)
 
 
-def _save_state(capture_root: Path, state: Mapping[str, object]) -> None:
-    tmp = capture_root / "capture_state.json.tmp"
-    tmp.write_bytes(_canonical(dict(state)) + b"\n")
-    tmp.replace(capture_root / "capture_state.json")
-
-
-def _witness_aside(capture_root: Path, name: str) -> None:
-    """Move a retained refused/torn response aside so the slot can be refetched."""
-    from time import time_ns
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = capture_root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
+_save_state = shared.save_state
+_witness_aside = shared.witness_aside
 
 
 def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
                        url: str) -> tuple[bytes, dict[str, object]]:
-    if (capture_root / f"{name}.body").exists():
+    if any((capture_root / f"{name}.{suffix}").exists()
+           for suffix in ("body", "wire", "receipt.json")):
         try:
             return _read_capture(capture_root, name)
+        except PadUsManagerNameAdmissionError:
+            raise
         except PadUsManagerNameError:
             _witness_aside(capture_root, name)
     return _capture_with_retry(client, url, capture_root, name,
@@ -460,53 +429,36 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
                                base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(document, dict) and "error" in document
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
+_producer_error_doc = shared.producer_error_doc
 
 
 def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
                         attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures."""
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
+    retained_bytes = sum(path.stat().st_size for path in capture_root.iterdir()
+                         if path.name.endswith((".body", ".wire", ".receipt.json")))
+    remaining = MAX_CAPTURE_BYTES - retained_bytes - attempts * 65536
+    if remaining < 2 * attempts:
+        raise PadUsManagerNameError("source_capture_exceeds_scratch_budget")
+    return shared.capture_with_retry(client, url, capture_root, name,
+                                     attempts=attempts, base_delay=base_delay,
+                                     max_bytes=min(MAX_BODY_BYTES, remaining // (2 * attempts)))
 
 
-def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
+def _plan_segment_gaps(capture_root: Path, roster: list[int],
+                       state: dict[str, object]) -> list[tuple[int, int]]:
     """Plan the roster gaps that still need a capture this session.
 
     A retained segment counts as accepted only when its receipt and body
     verify, its body decodes as a complete PBF page, and it already sits in
     the capture state; anything else is witnessed aside and refetched.
     """
-    state = _load_state(capture_root)
-    accepted_names = {entry.get("name") for entry in state["segments"]
-                      if isinstance(entry, dict)}
+    accepted_entries = {entry.get("name"): entry for entry in state["segments"]
+                        if isinstance(entry, dict)}
+    for path in (*capture_root.glob("page_*.wire"),
+                 *capture_root.glob("page_*.receipt.json")):
+        name = path.name.removesuffix(".wire").removesuffix(".receipt.json")
+        if _SEGMENT_NAME_PATTERN.fullmatch(name) and not (capture_root / f"{name}.body").exists():
+            _witness_aside(capture_root, name)
     retained: list[tuple[int, int]] = []
     for path in sorted(capture_root.glob("page_*.body")):
         name = path.name.removesuffix(".body")
@@ -515,10 +467,14 @@ def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int,
             continue
         try:
             body, _receipt = _read_capture(capture_root, name)
+        except PadUsManagerNameAdmissionError:
+            raise
         except PadUsManagerNameError:
             _witness_aside(capture_root, name)
             continue
-        if name not in accepted_names:
+        entry = accepted_entries.get(name)
+        if (entry is None or entry.get("body_sha256") != _receipt["sha256"]
+                or entry.get("captured_at") != _receipt["observed_at"]):
             _witness_aside(capture_root, name)
             continue
         try:
@@ -534,20 +490,28 @@ def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int,
             continue
         retained.append((offset, count))
     gaps: list[tuple[int, int]] = []
-    covered = bytearray(EXPECTED_COUNT)
+    covered = bytearray(len(roster))
+    accepted_segments = []
     for offset, count in sorted(retained):
-        if offset < 0 or count < 1 or offset + count > EXPECTED_COUNT \
+        if offset < 0 or count < 1 or offset + count > len(roster) \
                 or any(covered[offset:offset + count]):
             _witness_aside(capture_root, _segment_name(offset, count))
             continue
         covered[offset:offset + count] = b"\x01" * count
+        name = _segment_name(offset, count)
+        receipt = _load_receipt(capture_root, name)
+        accepted_segments.append({"name": name, "offset": offset, "count": count,
+                                  "features": count, "captured_at": receipt["observed_at"],
+                                  "body_sha256": receipt["sha256"]})
+    state["segments"] = accepted_segments
+    _save_state(capture_root, state)
     cursor = 0
-    while cursor < EXPECTED_COUNT:
+    while cursor < len(roster):
         if covered[cursor]:
             cursor += 1
             continue
         start = cursor
-        while cursor < EXPECTED_COUNT and not covered[cursor]:
+        while cursor < len(roster) and not covered[cursor]:
             cursor += 1
         chunk_start = start
         while chunk_start < cursor:
@@ -567,9 +531,9 @@ def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
     capture. A single-record segment that still fails ends the capture
     explicitly.
     """
-    segments = state.setdefault("segments", [])
-    accepted = {entry.get("name") for entry in segments if isinstance(entry, dict)}
-    todo: deque[tuple[int, int]] = deque(_plan_segment_gaps(capture_root, roster))
+    todo: deque[tuple[int, int]] = deque(_plan_segment_gaps(capture_root, roster, state))
+    segments = state["segments"]
+    accepted = {entry["name"] for entry in segments}
     while todo:
         offset, count = todo.popleft()
         name = _segment_name(offset, count)
@@ -629,8 +593,26 @@ def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client 
     and document.
     """
     capture_root = Path(capture_root).absolute()
+    _preflight_capture_directory(capture_root)
     capture_root.mkdir(parents=True, exist_ok=True)
     state = _load_state(capture_root)
+    if state.get("complete") is True:
+        try:
+            extracted = _stream_validate(capture_root, parquet_sink=None)
+        except PadUsManagerNameAdmissionError:
+            raise
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+        else:
+            return {"capture_directory": str(capture_root), "segments": extracted["segments"],
+                    "complete": True, "source_record_sha256": extracted["record_sha"],
+                    "source_geometry_sha256": extracted["geometry_sha"],
+                    "source_ids_sha256": extracted["ids_sha"],
+                    "source_schema_sha256": extracted["schema_sha"]}
+    state["complete"] = False
+    _save_state(capture_root, state)
+    for name in AFTER_NAMES:
+        _witness_aside(capture_root, name)
     owner_client = client is None
     owner_doc = doc_client is None
     active = client or _default_client()
@@ -661,8 +643,11 @@ def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client 
         if sorted(roster) != ids:
             raise PadUsManagerNameError("source_id_population_drift:ids_seed_vs_before")
         count_before = json.loads(_read_capture(capture_root, "count_before")[0])
-        if count_before.get("count") != EXPECTED_COUNT:
-            raise PadUsManagerNameError("source_count_drift")
+        try:
+            validate_capture_witness(count_before.get("count"), ids,
+                                     count_before.get("count"), roster)
+        except ValueError as exc:
+            raise PadUsManagerNameError(str(exc)) from exc
         _fetch_segments(active, capture_root, roster, state)
         segments = list(state["segments"])
         for name in AFTER_NAMES:
@@ -674,8 +659,6 @@ def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client 
             if _producer_error_doc(body):
                 raise PadUsManagerNameError("source_page_error:" + name)
         count_after = json.loads(_read_capture(capture_root, "count_after")[0])
-        if count_after.get("count") != EXPECTED_COUNT:
-            raise PadUsManagerNameError("source_metadata_or_count_changed_during_capture")
         after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
         if after_ids.get("objectIdFieldName") != "OBJECTID" \
                 or sorted(_validate_roster(after_ids.get("objectIds"), "ids_after")) != ids:
@@ -696,16 +679,16 @@ def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client 
         active.close()
     if owner_doc:
         docs_active.close()
-    _save_state(capture_root, {"segments": segments, "complete": True})
     last_captured_at = max((str(entry.get("captured_at", "")) for entry in segments),
                            default=first_captured_at)
     extracted = _stream_validate(capture_root, parquet_sink=None)
+    _save_state(capture_root, {"segments": segments, "complete": True})
     (capture_root / "computed_baseline.json").write_bytes(_canonical({
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_ids_sha256": extracted["ids_sha"],
         "source_schema_sha256": extracted["schema_sha"],
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": extracted["feature_count"],
         "source_max_objectid": extracted["max_objectid"],
         "source_null_geometry_count": extracted["null_geometry_count"],
         "source_nan_geometry_count": extracted["nan_geometry_count"],
@@ -899,6 +882,7 @@ class _SegmentStream:
 def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[str, object]:
     """Re-verify every retained capture and optionally reconstruct the native geoparquet."""
     capture_root = Path(capture_root).absolute()
+    _preflight_capture_directory(capture_root)
     docs = {name: json.loads(_read_capture(capture_root, name)[0])
             for name in METADATA_NAMES if name != "sb_item"}
     _validate_corroboration_documents(capture_root)
@@ -909,18 +893,23 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise PadUsManagerNameError("source_schema_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise PadUsManagerNameError("source_schema_baseline_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT:
-        raise PadUsManagerNameError("source_count_drift")
     seed = _validate_roster(docs["ids_seed"].get("objectIds"), "ids_seed")
     if docs["ids_before"].get("objectIdFieldName") != "OBJECTID":
         raise PadUsManagerNameError("source_id_field_changed")
     roster = _validate_roster(docs["ids_before"].get("objectIds"), "ids_before")
     if roster != seed:
         raise PadUsManagerNameError("source_id_population_drift:ids_seed_vs_before")
-    after_roster = _validate_roster(json.loads(
-        _read_capture(capture_root, "ids_after")[0]).get("objectIds"), "ids_after")
-    if after_roster != roster:
-        raise PadUsManagerNameError("source_id_population_drift:ids_after")
+    after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
+    if any(document.get("objectIdFieldName") != "OBJECTID"
+           for document in (docs["ids_seed"], docs["ids_before"], after_ids)):
+        raise PadUsManagerNameError("source_id_field_changed")
+    after_roster = _validate_roster(after_ids.get("objectIds"), "ids_after")
+    try:
+        validate_capture_witness(docs["count_before"].get("count"), roster,
+            json.loads(_read_capture(capture_root, "count_after")[0]).get("count"),
+            after_roster)
+    except ValueError as exc:
+        raise PadUsManagerNameError(str(exc)) from exc
     for name in ("layer_after", "service_after", "count_after"):
         body, _receipt = _read_capture(capture_root, name)
         mirror = {"layer_after": "layer_before", "service_after": "service_before",
@@ -941,11 +930,15 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         offset, count, name = entry.get("offset"), entry.get("count"), entry.get("name")
         if (type(offset) is not int or type(count) is not int or offset < 0 or count < 1
                 or name != _segment_name(offset, count) or offset != cursor
-                or offset + count > EXPECTED_COUNT or entry.get("features") != count):
+                or offset + count > len(roster) or entry.get("features") != count):
             raise PadUsManagerNameError("source_capture_roster_incomplete_or_unexpected")
+        _body, receipt = _read_capture(capture_root, name)
+        if (entry.get("body_sha256") != receipt["sha256"]
+                or entry.get("captured_at") != receipt["observed_at"]):
+            raise PadUsManagerNameError("source_segment_checkpoint_mismatch:" + name)
         ordered.append((name, offset, count))
         cursor = offset + count
-    if cursor != EXPECTED_COUNT:
+    if cursor != len(roster):
         raise PadUsManagerNameError("source_capture_roster_incomplete_or_unexpected")
     stream = _SegmentStream(capture_root, fields, parquet_sink)
     try:
@@ -955,18 +948,15 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     except BaseException:
         stream.finish(parquet_ok=False)
         raise
-    if len(stream.ids) != EXPECTED_COUNT or summary["max_objectid"] <= 0:
+    if len(stream.ids) != len(roster) or summary["max_objectid"] <= 0:
         raise PadUsManagerNameError("source_page_population_incomplete")
     ids_sha = summary["ids_sha"]
-    if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
-        raise PadUsManagerNameError("source_id_roster_drift")
-    if EXPECTED_RECORD_SHA256 and summary["record_sha"] != EXPECTED_RECORD_SHA256:
-        raise PadUsManagerNameError("source_value_or_geometry_baseline_drift")
-    if EXPECTED_GEOMETRY_SHA256 and summary["geometry_sha"] != EXPECTED_GEOMETRY_SHA256:
-        raise PadUsManagerNameError("source_geometry_or_coverage_drift")
-    for pin_name, value, actual in (("null", EXPECTED_NULL_GEOMETRY_COUNT,
-                                     summary["null_geometry_count"]),
-                                    ("nan", EXPECTED_NAN_GEOMETRY_COUNT,
+    try:
+        validate_capture_witness(len(roster), roster, len(after_roster),
+                                 after_roster, list(stream.ids))
+    except ValueError as exc:
+        raise PadUsManagerNameError(str(exc)) from exc
+    for pin_name, value, actual in (("nan", EXPECTED_NAN_GEOMETRY_COUNT,
                                      summary["nan_geometry_count"]),
                                     ("empty", EXPECTED_EMPTY_GEOMETRY_COUNT,
                                      summary["empty_geometry_count"])):
@@ -975,10 +965,10 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     if (EXPECTED_UNUSABLE_GEOMETRY_COUNTS is not None
             and summary["unusable_geometry_counts"] != EXPECTED_UNUSABLE_GEOMETRY_COUNTS):
         raise PadUsManagerNameError("source_unusable_geometry_counts_drift")
-    if (EXPECTED_OBSERVED_BOUNDS is not None
-            and summary["observed_bounds"] != EXPECTED_OBSERVED_BOUNDS):
-        raise PadUsManagerNameError("source_observed_bounds_drift")
     return {"fields": fields, "schema_sha": schema_sha, "segments": len(ordered),
+            "feature_count": len(roster),
+            "declared_layer_extent": {key: docs["layer_before"]["extent"].get(key)
+                                      for key in ("xmin", "ymin", "xmax", "ymax")},
             "record_sha": summary["record_sha"], "geometry_sha": summary["geometry_sha"],
             "ids_sha": ids_sha, "parquet_path": parquet_sink,
             "null_geometry_count": summary["null_geometry_count"],
@@ -1014,23 +1004,6 @@ def _load_document_receipts(capture_root: Path) -> dict[str, dict[str, object]]:
     """Receipts for the bounded metadata documents only; pages stay staged raw."""
     return {name: _load_receipt(capture_root, name)
             for name in sorted((*METADATA_NAMES, *AFTER_NAMES))}
-
-
-class _RetainedCaptureViews(Mapping):
-    """Lazily materialize one capture view per access so quarantine stays bounded."""
-
-    def __init__(self, capture_root: Path, names: Iterable[str]):
-        self._capture_root = Path(capture_root)
-        self._names = tuple(names)
-
-    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
-        return _read_capture(self._capture_root, name)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._names)
-
-    def __len__(self) -> int:
-        return len(self._names)
 
 
 def _document_input(name: str, receipt: Mapping[str, object]) -> dict[str, object]:
@@ -1125,6 +1098,7 @@ def _segment_pages_input(index_body: bytes, rows: list[list], total_bytes: int) 
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_segments: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
+    _preflight_capture_directory(capture_root)
     identity = _code_identity()
     version = content_derived_version(extracted["record_sha"], extracted["geometry_sha"],
                                       extracted["schema_sha"], identity)
@@ -1134,11 +1108,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         parquet_body = Path(extracted["parquet_path"]).read_bytes()
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
-            {"source_record_sha256": extracted["record_sha"],
-             "source_schema_sha256": extracted["schema_sha"]},
+            extracted,
             parquet_body)
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
+        "source_feature_count": extracted["feature_count"], "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_schema_sha256": extracted["schema_sha"], "source_crs_epsg": SOURCE_CRS_WKID,
@@ -1150,12 +1123,12 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "unusable_geometry_counts": extracted["unusable_geometry_counts"],
         "ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
         "ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_geometry_sample_objectids"],
-        "unique_source_id_count": EXPECTED_COUNT,
+        "unique_source_id_count": extracted["feature_count"],
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
         "source_max_objectid": extracted["max_objectid"],
         "observed_bounds": extracted["observed_bounds"],
-        "declared_layer_extent_3857": EXPECTED_LAYER_EXTENT,
+        "declared_layer_extent_3857": extracted["declared_layer_extent"],
         "source_fields": extracted["fields"],
         "official_layer_name": LAYER_NAME, "layer_id": LAYER_ID,
         "service_url": SERVICE_URL, "agol_item_url": AGOL_ITEM_URL,
@@ -1180,9 +1153,6 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                            "coordinates are what the service serves in "
                                            "this format."},
         "crosswalk_doi": "10.3886/E241367V1",
-        "baseline_pending_note": BASELINE_PENDING_NOTE,
-        "baseline_pending_complete_capture": bool(
-            not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256),
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
@@ -1197,8 +1167,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "resumed_segments": resumed_segments,
                        "id_roster_enumeration_note":
                            "returnIdsOnly enumerated the complete unique OBJECTID roster "
-                           "(655,335 ids; sparse non-contiguous span observed 2026-11-13). "
-                           "Segments page 2000 records by resultOffset over the sorted "
+                           "without assuming contiguous IDs. "
+                           "Segments page by resultOffset over the sorted "
                            "roster and refused segments are bisected until served; "
                            "accepted segments must tile the roster exactly and "
                            "before/after count/roster brackets prove nothing was skipped, "
@@ -1256,11 +1226,13 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                                         "clockwise exteriors, "
                                                         "counterclockwise holes joined to "
                                                         "their smallest containing exterior); "
-                                                        "rows whose rings cannot form a valid "
-                                                        "OGC polygon are gated to null "
-                                                        "candidate geometry and counted by "
-                                                        "failure mode instead of being "
-                                                        "coerced; the PBF transport carries "
+                                                        "source-null, NaN-pair and empty-ring "
+                                                        "geometry retain their distinct "
+                                                        "diagnostics; GDAL retains "
+                                                        "representable OGC-invalid polygons "
+                                                        "without repair and conversion "
+                                                        "failures refuse the candidate; "
+                                                        "the PBF transport carries "
                                                         "the service's own 1e-9-degree "
                                                         "quantization",
                                             "candidate_status": "unapproved; publication "
@@ -1337,7 +1309,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
+            "feature_count": extracted["feature_count"],
+            "source_reported_count": extracted["feature_count"],
+            "source_population_complete": True,
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_nan_geometry_count": extracted["nan_geometry_count"],
             "source_empty_geometry_count": extracted["empty_geometry_count"],
@@ -1355,7 +1329,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
 
 def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
                              version: str, identity: Mapping[str, object],
-                             audit: Mapping[str, object], current_parquet: bytes) \
+                             extracted: Mapping[str, object], current_parquet: bytes) \
         -> dict[str, object]:
     fingerprint = _sha(_canonical(identity))
     bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
@@ -1363,13 +1337,13 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
     if (not isinstance(payload, dict) or set(payload) != {"processing_identity",
             "source_record_sha256", "source_schema_sha256", "capture_receipts", "objects"}
             or payload["processing_identity"] != identity
-            or payload["source_record_sha256"] != audit["source_record_sha256"]
-            or payload["source_schema_sha256"] != audit["source_schema_sha256"]):
+            or payload["source_record_sha256"] != extracted["record_sha"]
+            or payload["source_schema_sha256"] != extracted["schema_sha"]):
         raise PadUsManagerNameError("cached_first_candidate_identity_or_source_changed")
     expected_objects = {name: descriptor for name, descriptor in payload["objects"].items()}
     verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
-                            fingerprint, identity, audit["source_record_sha256"],
-                            audit["source_schema_sha256"], expected_objects,
+                            fingerprint, identity, extracted["record_sha"],
+                            extracted["schema_sha"], expected_objects,
                             payload["capture_receipts"])
     if expected_objects.get(f"geoparquet/{DATASET_SLUG}.parquet") != \
             {"bytes": len(current_parquet), "sha256": _sha(current_parquet)}:
@@ -1377,10 +1351,17 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
-            "source_id_sha256": audit.get("source_ids_sha256", ""),
-            "source_schema_sha256": audit["source_schema_sha256"],
+            "feature_count": extracted["feature_count"],
+            "source_reported_count": extracted["feature_count"],
+            "source_population_complete": True,
+            "source_null_geometry_count": extracted["null_geometry_count"],
+            "source_nan_geometry_count": extracted["nan_geometry_count"],
+            "source_empty_geometry_count": extracted["empty_geometry_count"],
+            "source_unusable_geometry_counts": extracted["unusable_geometry_counts"],
+            "source_ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"],
+            "source_ogc_invalid_geometry_sample_objectids": extracted["ogc_invalid_geometry_sample_objectids"],
+            "source_id_sha256": extracted["ids_sha"],
+            "source_schema_sha256": extracted["schema_sha"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_release_accepted": False, "source_freshness_accepted": False,
             "schema_contract_accepted": False, "id_contract_accepted": False,
@@ -1409,8 +1390,7 @@ def capture_pad_us_manager_name(storage: StagingStorageResource, *, version: str
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise PadUsManagerNameError("unsafe_capture_directory")
-    resumed_segments = len(_load_state(capture_root).get("segments", [])) \
-        if (capture_root / "capture_state.json").exists() else 0
+    resumed_segments = len(_load_state(capture_root).get("segments", []))
     try:
         fetch_pad_us_manager_name_pages(capture_root)
         state = _load_state(capture_root)
@@ -1422,6 +1402,8 @@ def capture_pad_us_manager_name(storage: StagingStorageResource, *, version: str
                                resumed_segments=resumed_segments,
                                first_captured_at=captured[0] if captured else "",
                                last_captured_at=captured[-1] if captured else "")
+    except PadUsManagerNameAdmissionError:
+        raise
     except Exception as exc:
         valid_names = []
         for receipt_path in sorted(capture_root.glob("*.receipt.json")) \
@@ -1434,20 +1416,21 @@ def capture_pad_us_manager_name(storage: StagingStorageResource, *, version: str
             valid_names.append(name)
         if valid_names:
             quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          _RetainedCaptureViews(capture_root, valid_names),
+                                          shared.RetainedCaptureViews(capture_root, valid_names,
+                                                                      PadUsManagerNameError),
                                           getattr(exc, "code", type(exc).__name__)
                                           or type(exc).__name__)
         raise
 
 
 def build_pad_us_manager_name_baseline(capture_root: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
+    """Recompute observed content metrics, without approving a release baseline."""
     extracted = _stream_validate(Path(capture_root).absolute(), parquet_sink=None)
     return {"source_record_sha256": extracted["record_sha"],
             "source_geometry_sha256": extracted["geometry_sha"],
             "source_ids_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
-            "source_feature_count": EXPECTED_COUNT,
+            "source_feature_count": extracted["feature_count"],
             "source_max_objectid": extracted["max_objectid"],
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_nan_geometry_count": extracted["nan_geometry_count"],

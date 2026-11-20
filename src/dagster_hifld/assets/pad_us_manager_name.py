@@ -13,12 +13,11 @@ from dagster import (
 )
 
 from dagster_hifld.download import build_version_id
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.pad_us_manager_name import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_pad_us_manager_name,
 )
@@ -34,7 +33,7 @@ class PadUsManagerNameConfig(Config):
     compute_kind="http",
     description=(
         "USGS PAD-US Manager Name FeatureServer layer 0 'PADUS4_1ManagerName' "
-        "(655,335 source features observed 2026-11-13) carrying the PAD-US 4.1 "
+        "carrying the maintained PAD-US 4.1 "
         "release Combined feature class with manager-name mapping fields. "
         "Resumable roster-segmented native PBF capture; unapproved faithful "
         "candidate. Succession coverage, freshness, schema/ID contract, rights "
@@ -62,14 +61,20 @@ def pad_us_manager_name(
 @asset_check(asset=pad_us_manager_name, blocking=True)
 def pad_us_manager_name_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and (EXPECTED_NULL_GEOMETRY_COUNT is None
-             or candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT)
+        candidate.get("source_population_complete") is True
+        and type(candidate.get("source_reported_count")) is int
+        and candidate["source_reported_count"] > 0
+        and type(candidate.get("feature_count")) is int
+        and candidate.get("feature_count") == candidate["source_reported_count"]
+        and type(candidate.get("source_null_geometry_count")) is int
+        and 0 <= candidate["source_null_geometry_count"] <= candidate["source_reported_count"]
     )
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": candidate.get("source_reported_count", "missing"),
+            "source_null_geometry_count": candidate.get("source_null_geometry_count", "missing"),
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
             "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_release_accepted": False,
@@ -85,6 +90,11 @@ def pad_us_manager_name_complete(candidate: dict) -> AssetCheckResult:
     )
 
 
+pad_us_manager_name_approved_baseline_drift = register_approved_baseline_drift(
+    pad_us_manager_name, "pad_us_manager_name_approved_baseline_drift"
+)
+
+
 pad_us_manager_name_draft_job = define_asset_job(
     "pad_us_manager_name_draft_refresh",
     selection=AssetSelection.assets(pad_us_manager_name),
@@ -98,6 +108,6 @@ pad_us_manager_name_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [pad_us_manager_name]
-ASSET_CHECKS = [pad_us_manager_name_complete]
+ASSET_CHECKS = [pad_us_manager_name_complete, pad_us_manager_name_approved_baseline_drift]
 JOBS = [pad_us_manager_name_draft_job]
 SCHEDULES = [pad_us_manager_name_draft_schedule]
