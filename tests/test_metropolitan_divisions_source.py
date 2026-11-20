@@ -1,110 +1,180 @@
-"""Focused source contract and failure guards for the unapproved draft."""
-import hashlib
+"""Draft guard tests for the current-vintage Metdiv adapter.
+
+The synthetic TGRGDB27 national geodatabase is built in-test with the same
+native writer the producer uses (OpenFileGDB via GDAL) so the discovery,
+capture, replay and cache paths run on a fixture vintage distinct from any
+pinned archive. No dataset acceptance is implied.
+"""
+import io
 import json
+import re
 import tempfile
 import unittest
-from datetime import datetime, timezone
+import zipfile
+import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 import subprocess
 
 import httpx
 import pyarrow as pa
+import pyogrio
 import shapely
 
-from dagster_hifld.assets.metropolitan_divisions import metdiv_source_integrity_schedule
+from dagster_hifld.assets.metropolitan_divisions import census_metropolitan_divisions, metdiv_source_integrity_schedule
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources.capture_common import seal_ready_candidate, verify_cached_candidate
 from dagster_hifld.sources import metropolitan_divisions as source
+from test_census_substate_construction import snapshot
+
+VINTAGE = 2027
+GDB_NAME = f'tlgdb_{VINTAGE}_us_nationgeo.gdb'
+URL = census_latest.ROOT + f'TGRGDB{VINTAGE % 100:02d}/' + GDB_NAME + '.zip'
+ANNUAL = f'<a href="TGRGDB{VINTAGE % 100:02d}/">{VINTAGE % 100:02d}</a>'.encode()
+LISTING = f'<a href="{GDB_NAME}.zip">archive</a>'.encode()
+# The GDB writer omits the producer OID Editable declaration and pads string
+# widths to the driver default; the same-length patch restores the producer
+# declarations the adapter must retain.
+ET.register_namespace('typens', 'http://www.esri.com/schemas/ArcGIS/10.3')
+ET.register_namespace('xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+ET.register_namespace('xs', 'http://www.w3.org/2001/XMLSchema')
+ET.register_namespace('', '')
+
+
+def _metdiv_rows():
+    rows = []
+    for i, csafp in ((1, None), (2, '120')):
+        rows.append([csafp, '12060', f'1205{i + 3}', f'120601205{i + 3}', f'314M700US120601205{i + 3}',
+                     f'Metro div {i}', f'Metro div {i}', 'M2', 'G3110', 100.0 + i, 0.0,
+                     '+33.6457373', '-84.2948951'])
+    return rows
+
+
+def _msa_rows():
+    rows = []
+    for oid, csafp, memi, lsad in ((1, None, '1', 'M1'), (2, '120', '1', 'M1'), (3, '121', '2', 'M2'), (4, None, '2', 'M2')):
+        rows.append([csafp, f'{oid:05d}', f'{oid:05d}', f'310M700US{oid:05d}', f'CBSA {oid}', f'CBSA {oid}',
+                     lsad, memi, 'G3110', 100.0 + oid, 0.0, '+33.6457373', '-84.2948951'])
+    return rows
+
+
+def _write_layer(gdb, name, fields, types, rows):
+    geometry = shapely.to_wkb(shapely.MultiPolygon([shapely.Polygon([(0, 0), (1, 0), (1, 1), (0, 0)])]))
+    schema = pa.schema([pa.field(n, t) for n, t in zip(fields, types)] + [pa.field('SHAPE', pa.binary())])
+    data = {n: [r[i] for r in rows] for i, n in enumerate(fields)}
+    data['SHAPE'] = [geometry] * len(rows)
+    pyogrio.write_arrow(pa.Table.from_pydict(data, schema=schema), gdb, layer=name, driver='OpenFileGDB',
+                        geometry_name='SHAPE', geometry_type='MultiPolygon', crs='EPSG:4269',
+                        layer_options={'GEOMETRY_NAME': 'SHAPE'})
+
+
+def _patch_definition(table_file, layer, widths):
+    body = table_file.read_bytes()
+    start = None
+    for match in re.finditer(re.escape(b'<?xml'), body):
+        if (b'DEFeatureClassInfo' in body[match.start():match.start() + 400]
+                and layer.encode().upper() in body[max(0, match.start() - 200):match.start()]):
+            start = match.start()
+            break
+    if start is None:
+        return
+    end = body.find(b'</typens:DEFeatureClassInfo>', start) + len(b'</typens:DEFeatureClassInfo>')
+    root = ET.fromstring(body[start:end].decode('utf-8'))
+    fields = {f.findtext('Name'): f for f in root.findall('./GPFieldInfoExs/GPFieldInfoEx')}
+    oid = fields['OBJECTID']
+    if oid.find('Editable') is None:
+        element = ET.SubElement(oid, 'Editable')
+        element.text = 'false'
+    for name, width in widths.items():
+        fields[name].find('Length').text = width
+    new_xml = ET.tostring(root, encoding='unicode')
+    old_len = end - start
+    if len(new_xml) <= old_len:
+        pad = ' ' * (old_len - len(new_xml))
+        new_xml = new_xml.replace('<GPFieldInfoExs', f'<GPFieldInfoExs{pad}', 1)
+    assert len(new_xml) == old_len, (len(new_xml), old_len)
+    table_file.write_bytes(body[:start] + new_xml.encode('utf-8') + body[end:])
+
+
+MSA_WIDTHS = {'CSAFP': '3', 'CBSAFP': '5', 'GEOID': '5', 'GEOIDFQ': '14', 'NAME': '100',
+              'NAMELSAD': '100', 'LSAD': '2', 'MEMI': '1', 'MTFCC': '5', 'INTPTLAT': '11', 'INTPTLON': '12'}
+
+
+def build_metro_native_archive(fixture_dir):
+    """One synthetic TGRGDB27 nationgeo GDB carrying both metropolitan layers."""
+    gdb = Path(fixture_dir) / GDB_NAME
+    _write_layer(gdb, 'Metropolitan_Division',
+                 ('CSAFP', 'CBSAFP', 'METDIVFP', 'GEOID', 'GEOIDFQ', 'NAME', 'NAMELSAD', 'LSAD', 'MTFCC',
+                  'ALAND', 'AWATER', 'INTPTLAT', 'INTPTLON'),
+                 (pa.string(),) * 9 + (pa.float64(), pa.float64()) + (pa.string(), pa.string()),
+                 _metdiv_rows())
+    _write_layer(gdb, 'Core_Based_Statistical_Area',
+                 ('CSAFP', 'CBSAFP', 'GEOID', 'GEOIDFQ', 'NAME', 'NAMELSAD', 'LSAD', 'MEMI', 'MTFCC',
+                  'ALAND', 'AWATER', 'INTPTLAT', 'INTPTLON'),
+                 (pa.string(),) * 9 + (pa.float64(), pa.float64()) + (pa.string(), pa.string()),
+                 _msa_rows())
+    for path in sorted(gdb.iterdir()):
+        if not path.name.endswith('.gdbtable'):
+            continue
+        _patch_definition(path, 'Metropolitan_Division', {})
+        _patch_definition(path, 'Core_Based_Statistical_Area', MSA_WIDTHS)
+    sink = io.BytesIO()
+    with zipfile.ZipFile(sink, 'w') as archive:
+        for path in sorted(gdb.iterdir()):
+            archive.writestr(GDB_NAME + '/' + path.name, path.read_bytes())
+    return sink.getvalue()
+
+
+def _table(rows=25):
+    geometry = shapely.to_wkb(shapely.MultiPolygon([shapely.Polygon([(0, 0), (1, 0), (0, 1), (0, 0)])]))
+    props = {
+        "OBJECTID": list(range(1, rows + 1)),
+        "CSAFP": [None if i < 2 else "120" for i in range(rows)],
+        "CBSAFP": ["12060"] * rows,
+        "METDIVFP": [f"{12054 + i}" for i in range(rows)],
+        "GEOID": [str(1206012054 + i) for i in range(rows)],
+        "GEOIDFQ": [f"314M700US{1206012054 + i}" for i in range(rows)],
+        "NAME": [f"CBSA {i}" for i in range(rows)],
+        "NAMELSAD": [f"Division {i}" for i in range(rows)],
+        "LSAD": ["M2"] * rows,
+        "MTFCC": ["G3110"] * rows,
+        "ALAND": [float(i + 1) for i in range(rows)],
+        "AWATER": [float(i) for i in range(rows)],
+        "INTPTLAT": ["+33.6457373"] * rows,
+        "INTPTLON": ["-84.2948951"] * rows,
+        "SHAPE": [geometry] * rows,
+    }
+    schema = pa.schema([pa.field(name, typ) for name, typ in zip(source.FIELDS, source.TYPES)])
+    return pa.Table.from_pydict(props, schema=schema)
+
+
+def _release(vintage=VINTAGE):
+    directory = census_latest.ROOT + f'TGRGDB{vintage % 100:02d}/'
+    source_file = f'tlgdb_{vintage}_us_nationgeo.gdb.zip'
+    return census_latest.GeodatabaseRelease(
+        vintage=vintage, product='nationgeo', source_file=source_file,
+        source_url=directory + source_file, directory_url=directory,
+        listing_sha256='', listing_bytes=0,
+        latest_checked_at='2026-11-15T00:00:00+00:00', annual_listing_sha256='')
 
 
 class MetropolitanDivisionsSourceTests(unittest.TestCase):
     def setUp(self):
-        self.geometry = shapely.to_wkb(
-            shapely.MultiPolygon([shapely.Polygon([(0, 0), (1, 0), (0, 1), (0, 0)])])
-        )
-        self.rows = 37
-        props = {
-            "OBJECTID": list(range(1, self.rows + 1)),
-            "CSAFP": [None if i < 2 else "120" for i in range(self.rows)],
-            "CBSAFP": ["12060"] * self.rows,
-            "METDIVFP": [f"{12054 + i}" for i in range(self.rows)],
-            "GEOID": [str(1206012054 + i) for i in range(self.rows)],
-            "GEOIDFQ": [f"314M700US{1206012054 + i}" for i in range(self.rows)],
-            "NAME": [f"CBSA {i}" for i in range(self.rows)],
-            "NAMELSAD": [f"Division {i}" for i in range(self.rows)],
-            "LSAD": ["M2"] * self.rows,
-            "MTFCC": ["G3110"] * self.rows,
-            "ALAND": [float(i + 1) for i in range(self.rows)],
-            "AWATER": [float(i) for i in range(self.rows)],
-            "INTPTLAT": ["+33.6457373"] * self.rows,
-            "INTPTLON": ["-84.2948951"] * self.rows,
-            "SHAPE": [self.geometry] * self.rows,
-        }
-        schema = pa.schema([pa.field(name, typ) for name, typ in zip(source.FIELDS, source.TYPES)])
-        self.table = pa.Table.from_pydict(props, schema=schema)
+        self.rows = 25
+        self.table = _table(self.rows)
         self.metadata = {"geometry_type": "MultiPolygon", "crs": "EPSG:4269", "fid_column": "OBJECTID"}
 
     def receipt(self, body=b"x"):
-        return {"url": source.URL, "final_url": source.URL, "status": 200, "bytes": len(body),
-                "sha256": source.digest(body), "complete_body": True, "observed_at": "2026-10-19T00:00:00Z"}
-
-    def synthetic_baseline(self):
-        """Synthetic pinned GCS baseline: one collection plus five full assets."""
-        assets = {}
-        bodies = {}
-        for key, name, fmt in (
-            ("geojson-synthetic", "metropolitan-divisions-2-geojson.geojson", "geojson"),
-            ("geopackage-synthetic", "metropolitan-divisions-2.gpkg", "geopackage"),
-            ("geoparquet-synthetic", "metropolitan-divisions-2.parquet", "geoparquet"),
-            ("pmtiles-synthetic", "metropolitan-divisions-2.pmtiles", "pmtiles"),
-            ("shapefile-synthetic", "metropolitan-divisions-2.zip", "shapefile_zip"),
-        ):
-            body = f"synthetic-{key}".encode()
-            url = f"https://baseline.test/{name}"
-            assets[key] = {"name": name, "format": fmt, "url": url, "bytes": len(body),
-                "generation": f"1791506395{len(body):04d}", "md5": hashlib.md5(body).hexdigest(),
-                "collection_checksum": "d50110" + hashlib.md5(body).hexdigest(), "sha256": source.digest(body)}
-            bodies[key] = body
-        collection = {"hifld:feature_count": 37, "hifld:agency": "U.S. Census Bureau", "hifld:geometry_type": "MultiPolygon",
-            "assets": {key: {"href": spec["url"], "file:size": spec["bytes"], "file:checksum": spec["collection_checksum"]}
-                       for key, spec in assets.items()}}
-        bodies["collection"] = json.dumps(collection).encode()
-        specs = {"name": "collection.json", "url": "https://baseline.test/collection.json", "bytes": len(bodies["collection"]),
-            "generation": "1791506395736945", "md5": hashlib.md5(bodies["collection"]).hexdigest(),
-            "sha256": source.digest(bodies["collection"])}
-        served = {}
-        generations = {}
-        etags = {}
-        for key, spec in {**assets, "collection": specs}.items():
-            url = spec["url"] + "?generation=" + spec["generation"]
-            served[url] = bodies[key]
-            generations[url] = spec["generation"]
-            etags[url] = f'"{spec["md5"]}"'
-
-        def handler(request):
-            url = str(request.url)
-            return httpx.Response(200, content=served[url], headers={"content-length": str(len(served[url])),
-                "x-goog-generation": generations[url], "etag": etags[url]})
-
-        real_client = httpx.Client
-
-        def client_factory(**kwargs):
-            return real_client(transport=httpx.MockTransport(handler), follow_redirects=kwargs.get("follow_redirects", False),
-                timeout=kwargs.get("timeout", 60))
-
-        return assets, specs, bodies, client_factory
-
-    def counting_clock(self):
-        """Deterministic strictly increasing wall clock for receipt observed_at."""
-        ticks = iter(range(1, 10_000))
-        return type("Clock", (), {"now": staticmethod(
-            lambda tz=None: datetime(2026, 11, 13, 0, 0, 0, next(ticks), tz or timezone.utc))})
+        release = _release()
+        return {"url": release.source_url, "final_url": release.source_url, "status": 200,
+                "bytes": len(body), "sha256": source.digest(body), "complete_body": True,
+                "observed_at": "2026-10-19T00:00:00Z"}
 
     def test_registered_source_and_refresh_stopped(self):
-        from dagster_hifld.assets.metropolitan_divisions import census_metropolitan_divisions
         self.assertEqual(census_metropolitan_divisions.key.path, ["ingest", source.SLUG, source.SLUG])
         self.assertIn(census_metropolitan_divisions, hifld_ingest_assets)
         self.assertIn(census_metropolitan_divisions.key, {key for asset in defs.assets for key in asset.keys})
@@ -123,7 +193,8 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
     def test_full_native_schema_ids_values_and_geometry_validate(self):
         source.validate_table(self.table, self.metadata)
         variants = [
-            self.table.slice(0, 36), self.table.drop(["OBJECTID"]),
+            self.table.slice(0, source.FEATURE_COUNT_RANGE[0] - 1),
+            self.table.drop(["OBJECTID"]),
             self.table.append_column("unexpected", pa.array([1] * self.rows)),
             self.table.set_column(10, "ALAND", pa.array([1] * self.rows)),
             self.table.set_column(0, "OBJECTID", pa.array([1] * self.rows)),
@@ -134,19 +205,18 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
                 source.validate_table(candidate, self.metadata)
         with self.assertRaises(source.MetdivQuarantineError):
             source.validate_table(self.table, {**self.metadata, "crs": "EPSG:4326"})
-        changed = self.table.set_column(1, "GEOID", pa.array(["bad"] * self.rows))
+        changed = self.table.set_column(4, "GEOID", pa.array(["bad"] * self.rows))
         with self.assertRaises(source.MetdivQuarantineError):
             source.validate_table(changed, self.metadata)
 
-    def test_producer_nullable_field_population_is_pinned(self):
-        source.validate_table(self.table, self.metadata)
-        variants = (
+    def test_nullable_field_population_is_range_checked(self):
+        populated = self.table.set_column(1, "CSAFP", pa.array(["120"] * self.rows, type=pa.string()))
+        source.validate_table(populated, self.metadata)
+        for candidate in (
             self.table.set_column(1, "CSAFP", pa.array([None] * self.rows, type=pa.string())),
-            self.table.set_column(1, "CSAFP", pa.array(["120"] * self.rows)),
             self.table.set_column(2, "CBSAFP", pa.array([None] * self.rows, type=pa.string())),
-        )
-        for candidate in variants:
-            with self.subTest(schema=candidate.column(1).null_count), self.assertRaises(source.MetdivQuarantineError):
+        ):
+            with self.subTest(column=candidate.column_names[1]), self.assertRaises(source.MetdivQuarantineError):
                 source.validate_table(candidate, self.metadata)
 
     def test_missing_renamed_ids_and_geometry_coverage_drift_fail(self):
@@ -161,185 +231,108 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
         with self.assertRaises(source.MetdivQuarantineError):
             source.validate_table(bad_geometry, self.metadata)
 
-    def test_untrusted_or_incomplete_receipt_never_creates_candidate(self):
-        changes = ({"observed_at": "not-a-date"}, {"url": "https://example.invalid"},
-                   {"final_url": "https://example.invalid"}, {"status": 403}, {"bytes": 99},
-                   {"sha256": "0" * 64}, {"complete_body": False})
+    def test_provenance_preflight_all_invalid_receipts_no_candidate(self):
+        mutations = ({"observed_at": "not-a-date"}, {"url": "https://example.com/a"},
+                     {"final_url": "https://example.com/b"}, {"status": True}, {"status": 403},
+                     {"bytes": True}, {"sha256": "0" * 64}, {"complete_body": False})
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp)
             protected = Path(tmp) / "prior-fixture"
             protected.write_bytes(b"keep")
-            for change in changes:
+            for mutation in mutations:
                 receipt = self.receipt()
-                receipt.update(change)
-                with patch.object(source, "acquire", return_value=(b"x", receipt)), \
-                     patch.object(source, "processing_identity", return_value={"test": True}), \
+                receipt.update(mutation)
+                with patch.object(source, "acquire", return_value=(b"x", receipt, _release())), \
+                     patch.object(source, "processing_identity",
+                                  return_value={"code_commit": "fixture", "code_identity_scheme": "fixture",
+                                                "working_tree_status": "clean", "files": {}}), \
                      self.assertRaises(ValueError):
                     source.stage_metdiv_candidate(storage)
                 self.assertFalse((Path(tmp) / source.SLUG).exists())
                 self.assertEqual(protected.read_bytes(), b"keep")
+            self.assertEqual(len(list((Path(tmp) / "_quarantine").rglob("reason.json"))), len(mutations))
 
-    def test_live_baseline_http_branch_populates_receipt_sha256_and_pins_capture(self):
-        assets, specs, bodies, client_factory = self.synthetic_baseline()
+    def test_manifest_uses_resolved_vintage_and_discovery_evidence(self):
+        release = _release(VINTAGE)
+        body = b"current official archive"
+        receipt = self.receipt(body)
+        identity = {"code_commit": "fixture", "code_identity_scheme": "fixture", "working_tree_status": "clean"}
+        manifest = source.manifest_for(body, receipt, identity, release)
+        self.assertEqual(manifest["source_url"], release.source_url)
+        self.assertEqual(manifest["source_release"], release.as_metadata())
+        self.assertIn(str(VINTAGE), manifest["title"])
+        self.assertIn(str(VINTAGE), manifest["inputs"][0]["attribution"])
+        old = {**receipt, "url": "https://www2.census.gov/geo/tiger/TIGER2024/tl_2024_us_nationgeo.zip"}
+        with self.assertRaises(source.MetdivQuarantineError):
+            source.manifest_for(body, old, identity, release)
+        with self.assertRaises(source.MetdivQuarantineError):
+            source.manifest_for(body, {**receipt, "final_url": release.source_url + "?changed=1"}, identity, release)
+
+    def test_acquire_replay_accepts_current_release_and_rejects_old_url(self):
+        release = _release()
+        body = b"archive bytes"
+        receipt = self.receipt(body)
         with tempfile.TemporaryDirectory() as tmp:
-            storage = StagingStorageResource(local_dir=tmp)
-            with patch.object(source.httpx, "Client", client_factory), \
-                 patch.object(source, "BASELINE_COLLECTION", specs), patch.object(source, "BASELINE_ASSETS", assets):
-                blobs, receipts = source.acquire_published_baseline(storage)
-            self.assertEqual(set(blobs), {"collection", *assets})
-            self.assertEqual(blobs["collection"], bodies["collection"])
-            for key, spec in {**assets, "collection": specs}.items():
-                with self.subTest(key=key):
-                    summary = receipts[key]
-                    self.assertEqual(summary["sha256"], spec["sha256"])
-                    self.assertEqual(summary["md5"], spec["md5"])
-                    self.assertEqual(summary["bytes"], spec["bytes"])
-                    self.assertEqual(summary["generation"], spec["generation"])
-                    captured_key = (f"_raw-captures/{source.SLUG}/baseline/{spec['generation']}/"
-                                    + ("collection.json" if key == "collection" else spec["name"]))
-                    self.assertEqual(summary["capture_key"], captured_key)
-                    self.assertEqual(storage.read_key(captured_key), bodies[key])
-                    raw = source.strict_json(storage.read_key(summary["receipt_key"]))
-                    self.assertEqual(summary["receipt_key"],
-                                     captured_key + ".receipt-" + summary["receipt_sha256"] + ".json")
-                    self.assertEqual(source.digest(storage.read_key(summary["receipt_key"])), summary["receipt_sha256"])
-                    self.assertEqual(raw["sha256"], spec["sha256"])
-                    self.assertEqual(raw["bytes"], spec["bytes"])
-                    self.assertEqual(raw["generation"], spec["generation"])
-                    self.assertEqual(raw["etag"], f'"{spec["md5"]}"')
-                    self.assertEqual(raw["status"], 200)
-                    self.assertTrue(raw["complete_body"])
-            smaller = {**specs, "bytes": len(bodies["collection"]) - 1}
-            with patch.object(source.httpx, "Client", client_factory), \
-                 patch.object(source, "BASELINE_COLLECTION", smaller), patch.object(source, "BASELINE_ASSETS", assets), \
-                 self.assertRaisesRegex(ValueError, "published_baseline_oversized_response:collection"):
-                source.acquire_published_baseline(storage)
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
+            archive = Path(tmp) / "archive.zip"
+            archive.write_bytes(body)
+            receipt_path = Path(tmp) / "receipt.json"
+            receipt_path.write_text(json.dumps(receipt))
+            captured, captured_receipt, resolved = source.acquire(storage, archive, receipt_path)
+            self.assertEqual(captured, body)
+            self.assertEqual(captured_receipt, receipt)
+            self.assertEqual(resolved.vintage, VINTAGE)
+            old_receipt = {**receipt, "url": "https://www2.census.gov/geo/tiger/TIGER2024/tl_2024_us_nationgeo.zip"}
+            receipt_path.write_text(json.dumps(old_receipt))
+            with self.assertRaisesRegex(source.MetdivQuarantineError, "source_url_not_current_tgrgdb"):
+                source.acquire(storage, archive, receipt_path)
 
-    def test_repeated_live_baseline_acquisition_on_same_storage_is_repeatable(self):
-        assets, specs, bodies, client_factory = self.synthetic_baseline()
-        with tempfile.TemporaryDirectory() as tmp:
-            storage = StagingStorageResource(local_dir=tmp)
-            with patch.object(source.httpx, "Client", client_factory), \
-                 patch.object(source, "BASELINE_COLLECTION", specs), patch.object(source, "BASELINE_ASSETS", assets), \
-                 patch.object(source, "datetime", self.counting_clock()):
-                first_blobs, first_receipts = source.acquire_published_baseline(storage)
-                second_blobs, second_receipts = source.acquire_published_baseline(storage)
-            self.assertEqual(first_blobs, second_blobs)
-            for key, spec in {**assets, "collection": specs}.items():
-                with self.subTest(key=key):
-                    name = "collection.json" if key == "collection" else spec["name"]
-                    body_key = f"_raw-captures/{source.SLUG}/baseline/{spec['generation']}/{name}"
-                    self.assertEqual(first_receipts[key]["capture_key"], second_receipts[key]["capture_key"])
-                    self.assertNotEqual(first_receipts[key]["receipt_key"], second_receipts[key]["receipt_key"])
-                    for receipts in (first_receipts, second_receipts):
-                        stored = storage.read_key(receipts[key]["receipt_key"])
-                        self.assertEqual(receipts[key]["receipt_key"], body_key + ".receipt-" + source.digest(stored) + ".json")
-                        parsed = source.strict_json(stored)
-                        self.assertEqual(parsed["sha256"], spec["sha256"])
-                        self.assertEqual(parsed["bytes"], spec["bytes"])
-                        self.assertEqual(parsed["generation"], spec["generation"])
-                        self.assertEqual(parsed["status"], 200)
-                        self.assertTrue(parsed["complete_body"])
-            with patch.object(source.httpx, "Client", client_factory), \
-                 patch.object(source, "BASELINE_COLLECTION", specs), patch.object(source, "BASELINE_ASSETS", assets), \
-                 patch.object(source, "datetime", self.counting_clock()):
-                storage.write_key(first_receipts["collection"]["capture_key"], b"tampered-baseline-body")
-                with self.assertRaisesRegex(source.MetdivQuarantineError, "immutable_capture_changed"):
-                    source.acquire_published_baseline(storage)
+    def test_release_from_receipt_rejects_wrong_product(self):
+        with self.assertRaisesRegex(ValueError, "source_url_not_current_tgrgdb"):
+            census_latest.geodatabase_release_from_receipt(
+                {"url": "https://www2.census.gov/geo/tiger/TGRGDB27/tlgdb_2027_us_addr.gdb.zip"},
+                "nationgeo")
 
-    def test_default_ingest_path_stages_candidate_with_default_baseline_wiring(self):
-        comparison = {"baseline_collection": {}, "baseline_artifacts": {}, "baseline_receipts": {}, "formats": {},
-            "comparison_status": "breaking_change_review_required", "source_schema_contract_approved": False,
-            "source_id_contract_approved": False, "baseline_approved": False, "release_approved": False}
-        url = "https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_nationgeo.gdb.zip"
-        receipt = {"url": url, "final_url": url, "status": 200, "bytes": 1,
-            "sha256": source.digest(b"x"), "complete_body": True, "observed_at": "2026-11-13T00:00:00Z"}
-        definition = {"definition_xml": "<DEFeatureClassInfo/>", "fields": {"OBJECTID": {"FieldType": "esriFieldTypeOID"}},
-            "driver_oid_representation": "test", "draft_output_oid_representation": "test"}
-        calls = []
+    def test_native_definition_rejects_oid_width_or_field_drift(self):
+        fields = "".join(
+            f"<GPFieldInfoEx><Name>{name}</Name><FieldType>{kind}</FieldType><Length>{length}</Length>"
+            f"<IsNullable>{nullable}</IsNullable>{required}</GPFieldInfoEx>"
+            for name, kind, length, nullable, required in [
+                ("CSAFP", "esriFieldTypeString", 3, "true", ""),
+                ("CBSAFP", "esriFieldTypeString", 5, "true", ""),
+                ("METDIVFP", "esriFieldTypeString", 5, "true", ""),
+                ("GEOID", "esriFieldTypeString", 10, "true", ""),
+                ("GEOIDFQ", "esriFieldTypeString", 19, "true", ""),
+                ("NAME", "esriFieldTypeString", 100, "true", ""),
+                ("NAMELSAD", "esriFieldTypeString", 100, "true", ""),
+                ("LSAD", "esriFieldTypeString", 2, "true", ""),
+                ("MTFCC", "esriFieldTypeString", 5, "true", ""),
+                ("ALAND", "esriFieldTypeDouble", 8, "true", ""),
+                ("AWATER", "esriFieldTypeDouble", 8, "true", ""),
+                ("INTPTLAT", "esriFieldTypeString", 11, "true", ""),
+                ("INTPTLON", "esriFieldTypeString", 12, "true", ""),
+                ("OBJECTID", "esriFieldTypeOID", 4, "false", "<Required>true</Required><Editable>false</Editable>"),
+                ("SHAPE", "esriFieldTypeGeometry", 0, "true", ""),
+            ]
+        )
+        xml = f'<DEFeatureClassInfo><OIDFieldName>OBJECTID</OIDFieldName><HasZ>false</HasZ><HasM>false</HasM><GPFieldInfoExs>{fields}</GPFieldInfoExs></DEFeatureClassInfo>'
+        with patch.object(source.pyogrio, "read_arrow", return_value=({}, pa.table({"FIELD_1": [xml]}))):
+            declaration = source.read_native_definition(Path("/synthetic-unit-only.zip"), _release())
+        self.assertEqual(declaration["fields"]["OBJECTID"]["Length"], "4")
+        self.assertEqual(source.TYPES[0], pa.int64())
+        changed = xml.replace("<Length>4</Length>", "<Length>8</Length>")
+        with patch.object(source.pyogrio, "read_arrow", return_value=({}, pa.table({"FIELD_1": [changed]}))), \
+             self.assertRaises(ValueError):
+            source.read_native_definition(Path("/synthetic-unit-only.zip"), _release())
 
-        def baseline(storage_arg, baseline_dir=None):
-            calls.append(baseline_dir)
-            return {"collection": b"{}"}, {"collection": {"url": "https://baseline.test/collection.json",
-                "generation": "0", "bytes": 2, "md5": "0" * 32, "sha256": source.digest(b"{}"),
-                "capture_key": "_raw-captures/x", "receipt_sha256": "0" * 64}}
-
-        with tempfile.TemporaryDirectory() as tmp:
-            storage = StagingStorageResource(local_dir=tmp)
-            with patch.object(source, "acquire", return_value=(b"x", receipt)) as acquire, \
-                 patch.object(source, "URL", url), patch.object(source, "BYTES", 1), \
-                 patch.object(source, "SHA256", source.digest(b"x")), \
-                 patch.object(source, "inspect_archive", return_value=({**self.metadata, "native_layer_definition": definition},
-                                                                        self.table, {})), \
-                 patch.object(source, "processing_identity", return_value={"test": True}), \
-                 patch.object(source, "compare_published_baseline", return_value=comparison), \
-                 patch.object(source, "acquire_published_baseline", side_effect=baseline):
-                result = source.stage_metdiv_candidate(storage)
-            acquire.assert_called_once_with(storage, None, None)
-            self.assertEqual(calls, [None])
-            self.assertFalse(result["reused"])
-            self.assertEqual(result["feature_count"], 37)
-            root = Path(tmp) / source.SLUG / source.SLUG / result["version"]
-            self.assertTrue((root / "geopackage" / f"{source.SLUG}.gpkg").is_file())
-            self.assertTrue((root / "candidate" / "typed-source.parquet").is_file())
-            self.assertTrue((root / "metadata" / "baseline_comparison.json").is_file())
-            ready = source.strict_json((root / "metadata" / "metdiv_candidate_ready.json").read_bytes())
-            self.assertFalse(ready["approved"])
-            self.assertEqual(ready["source_sha256"], source.digest(b"x"))
-            self.assertTrue(ready["version"].startswith("v0.0.0-draft-census2026-"))
-
-    def test_second_default_staging_run_reuses_candidate_and_repeats_live_baseline(self):
-        assets, specs, bodies, client_factory = self.synthetic_baseline()
-        url = "https://www2.census.gov/geo/tiger/TGRGDB26/tlgdb_2026_us_nationgeo.gdb.zip"
-        receipt = {"url": url, "final_url": url, "status": 200, "bytes": 1,
-            "sha256": source.digest(b"x"), "complete_body": True, "observed_at": "2026-11-13T00:00:00Z"}
-        definition = {"definition_xml": "<DEFeatureClassInfo/>", "fields": {"OBJECTID": {"FieldType": "esriFieldTypeOID"}},
-            "driver_oid_representation": "test", "draft_output_oid_representation": "test"}
-        comparison = {"baseline_collection": {}, "baseline_artifacts": {}, "baseline_receipts": {}, "formats": {},
-            "comparison_status": "breaking_change_review_required", "source_schema_contract_approved": False,
-            "source_id_contract_approved": False, "baseline_approved": False, "release_approved": False}
-        with tempfile.TemporaryDirectory() as tmp:
-            storage = StagingStorageResource(local_dir=tmp)
-            with patch.object(source, "acquire", return_value=(b"x", receipt)) as acquire, \
-                 patch.object(source, "URL", url), patch.object(source, "BYTES", 1), \
-                 patch.object(source, "SHA256", source.digest(b"x")), \
-                 patch.object(source, "inspect_archive", return_value=({**self.metadata, "native_layer_definition": definition},
-                                                                        self.table, {})), \
-                 patch.object(source, "compare_published_baseline", side_effect=lambda table, blobs: dict(comparison)), \
-                 patch.object(source.httpx, "Client", client_factory), \
-                 patch.object(source, "BASELINE_COLLECTION", specs), patch.object(source, "BASELINE_ASSETS", assets), \
-                 patch.object(source, "datetime", self.counting_clock()):
-                first = source.stage_metdiv_candidate(storage)
-                second = source.stage_metdiv_candidate(storage)
-            self.assertEqual(acquire.call_count, 2)
-            self.assertFalse(first["reused"])
-            self.assertTrue(second["reused"])
-            self.assertEqual(first["version"], second["version"])
-            self.assertEqual(first["feature_count"], second["feature_count"])
-            # The reuse ran against the real construction-code validator with the
-            # sealed identity; assert that sealed identity is a supported scheme.
-            sealed = source.strict_json((Path(tmp) / source.SLUG / source.SLUG / second["version"]
-                                         / "metadata/processing_identity.json").read_bytes())
-            self.assertIn(sealed.get("code_identity_scheme"),
-                          ("git-commit-blobs-v1", "sha256-packaged-dagster-hifld-v1"))
-            baseline_keys = set(storage.list_prefix(f"_raw-captures/{source.SLUG}/baseline/"))
-            for key, spec in {**assets, "collection": specs}.items():
-                name = "collection.json" if key == "collection" else spec["name"]
-                body_key = f"_raw-captures/{source.SLUG}/baseline/{spec['generation']}/{name}"
-                receipt_keys = sorted(item for item in baseline_keys
-                                      if item.startswith(body_key + ".receipt-") and item.endswith(".json"))
-                with self.subTest(key=key):
-                    self.assertEqual(storage.read_key(body_key), bodies[key])
-                    self.assertEqual(len(receipt_keys), 2)
-                    for receipt_key in receipt_keys:
-                        stored = storage.read_key(receipt_key)
-                        self.assertEqual(receipt_key, body_key + ".receipt-" + source.digest(stored) + ".json")
-                        parsed = source.strict_json(stored)
-                        self.assertEqual(parsed["sha256"], spec["sha256"])
-                        self.assertEqual(parsed["bytes"], spec["bytes"])
-                        self.assertEqual(parsed["generation"], spec["generation"])
-                        self.assertEqual(parsed["status"], 200)
-                        self.assertTrue(parsed["complete_body"])
+    def test_identity_adapter_uses_shared_scheme_and_records_gdal(self):
+        identity = {"code_identity_scheme": "sha256-packaged-dagster-hifld-v1", "working_tree_status": "unknown",
+                    "code_commit": "packaged-sha256:" + "0" * 64, "files": {}, "installed_distributions": [],
+                    "python": "3.12", "pyarrow": "23", "proj": "9", "geos": "3"}
+        with patch.object(source, "package_processing_identity", return_value=identity):
+            actual = source.processing_identity()
+        self.assertEqual(actual["code_identity_scheme"], "sha256-packaged-dagster-hifld-v1")
+        self.assertEqual(actual["gdal"], source.pyogrio.__gdal_version_string__)
 
     def test_processing_identity_is_supported_by_the_real_construction_validator(self):
         from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -375,7 +368,8 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
             prefix = f"{source.SLUG}/{source.SLUG}/{version}"
             fingerprint = "a" * 64
             state_key = f"_construction-state/{source.SLUG}/{version}.json"
-            identity = {"code_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(), "files": {}}
+            identity = {"code_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+                        "files": {}}
             manifest_body = b"{}\n"
             scratch = Path(tmp) / "scratch.gpkg"
             source.write_native_gpkg(self.table, scratch)
@@ -404,40 +398,112 @@ class MetropolitanDivisionsSourceTests(unittest.TestCase):
                     fingerprint, identity, "b" * 64, "c" * 64, objects, {})
             self.assertTrue(result["reused"])
             storage.write_key(f"{prefix}/unexpected/source.json", b"{}\n")
-            with patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"), self.assertRaisesRegex(ValueError, "cached_candidate_storage_roster_changed"):
+            with patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"), \
+                 self.assertRaisesRegex(ValueError, "cached_candidate_storage_roster_changed"):
                 verify_cached_candidate(storage, Path(__file__).parents[1], state_key, prefix, version,
                     fingerprint, identity, "b" * 64, "c" * 64, objects, {})
 
-    def test_native_definition_rejects_oid_width_or_field_drift(self):
-        fields = "".join(
-            f"<GPFieldInfoEx><Name>{name}</Name><FieldType>{kind}</FieldType><Length>{length}</Length>"
-            f"<IsNullable>{nullable}</IsNullable>{required}</GPFieldInfoEx>"
-            for name, kind, length, nullable, required in [
-                ("CSAFP", "esriFieldTypeString", 3, "true", ""),
-                ("CBSAFP", "esriFieldTypeString", 5, "true", ""),
-                ("METDIVFP", "esriFieldTypeString", 5, "true", ""),
-                ("GEOID", "esriFieldTypeString", 10, "true", ""),
-                ("GEOIDFQ", "esriFieldTypeString", 19, "true", ""),
-                ("NAME", "esriFieldTypeString", 100, "true", ""),
-                ("NAMELSAD", "esriFieldTypeString", 100, "true", ""),
-                ("LSAD", "esriFieldTypeString", 2, "true", ""),
-                ("MTFCC", "esriFieldTypeString", 5, "true", ""),
-                ("ALAND", "esriFieldTypeDouble", 8, "true", ""),
-                ("AWATER", "esriFieldTypeDouble", 8, "true", ""),
-                ("INTPTLAT", "esriFieldTypeString", 11, "true", ""),
-                ("INTPTLON", "esriFieldTypeString", 12, "true", ""),
-                ("OBJECTID", "esriFieldTypeOID", 4, "false", "<Required>true</Required><Editable>false</Editable>"),
-                ("SHAPE", "esriFieldTypeGeometry", 0, "true", ""),
-            ]
-        )
-        xml = f'<DEFeatureClassInfo><OIDFieldName>OBJECTID</OIDFieldName><HasZ>false</HasZ><HasM>false</HasM><GPFieldInfoExs>{fields}</GPFieldInfoExs></DEFeatureClassInfo>'
-        with patch.object(source.pyogrio, "read_arrow", return_value=({}, pa.table({"FIELD_1": [xml]}))):
-            declaration = source.read_native_definition(Path("/synthetic-unit-only.zip"))
-        self.assertEqual(declaration["fields"]["OBJECTID"]["Length"], "4")
-        self.assertEqual(source.TYPES[0], pa.int64())
-        changed = xml.replace("<Length>4</Length>", "<Length>8</Length>")
-        with patch.object(source.pyogrio, "read_arrow", return_value=({}, pa.table({"FIELD_1": [changed]}))), self.assertRaises(ValueError):
-            source.read_native_definition(Path("/synthetic-unit-only.zip"))
+
+class MetropolitanDivisionsNativeLifecycleTests(unittest.TestCase):
+    @contextmanager
+    def captured(self):
+        with tempfile.TemporaryDirectory(prefix="metdiv-fixture-") as fixture_dir:
+            body = build_metro_native_archive(fixture_dir)
+            directory = census_latest.ROOT + f"TGRGDB{VINTAGE % 100:02d}/"
+            listings = {census_latest.ROOT: ANNUAL, directory: LISTING}
+            client_type = httpx.Client
+
+            def respond(request):
+                return httpx.Response(200, stream=httpx.ByteStream(
+                    body if str(request.url) == URL else listings[str(request.url)]))
+
+            with tempfile.TemporaryDirectory() as tmp, patch.object(source, "FEATURE_COUNT_RANGE", (2, 3)), \
+                 patch.object(source.httpx, "Client", side_effect=lambda **kwargs: client_type(
+                     transport=httpx.MockTransport(respond), **kwargs)):
+                storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+                yield storage, body, listings
+
+    def test_real_capture_receipt_replays_without_network_or_evidence_loss(self):
+        with self.captured() as (storage, body, listings):
+            first = source.stage_metdiv_candidate(storage)
+            self.assertFalse(first["reused"])
+            self.assertEqual(first["feature_count"], 2)
+            target = Path(storage.local_dir) / source.SLUG / source.SLUG / first["version"]
+            before = snapshot(target)
+            receipt_path = target / "raw/retrieval.json"
+            receipt = source.strict_json(receipt_path.read_bytes())
+            archive = Path(storage.local_dir) / "_raw-captures" / source.SLUG / source.digest(body) / "original.gdb.zip"
+            with patch.object(source.httpx, "Client", side_effect=AssertionError("replay fetched HTTP")):
+                replay = source.stage_metdiv_candidate(storage, archive_path=archive, receipt_path=receipt_path)
+                self.assertTrue(replay["reused"])
+                cold_storage = StagingStorageResource(local_dir=str(Path(storage.local_dir).parent / "cold"))
+                cold = source.stage_metdiv_candidate(cold_storage, archive_path=archive, receipt_path=receipt_path)
+            self.assertFalse(cold["reused"])
+            self.assertEqual(first["version"], cold["version"])
+            self.assertEqual(snapshot(target), before)
+            self.assertEqual(snapshot(Path(cold_storage.local_dir) / source.SLUG / source.SLUG / cold["version"]), before)
+            directory = census_latest.ROOT + f"TGRGDB{VINTAGE % 100:02d}/"
+            release = census_latest.geodatabase_release_from_receipt(receipt, "nationgeo")
+            self.assertEqual(release.vintage, VINTAGE)
+            self.assertEqual(release.listing_sha256, source.digest(listings[directory]))
+            self.assertEqual(release.annual_listing_sha256, source.digest(listings[census_latest.ROOT]))
+            self.assertEqual(receipt["source_release"], release.as_receipt_evidence())
+            manifest = source.strict_json((target / "metadata/source_manifest.json").read_bytes())
+            self.assertEqual(manifest["source_release"], release.as_metadata())
+            self.assertIn(str(VINTAGE), manifest["title"])
+            self.assertFalse((Path(storage.local_dir) / "_quarantine").exists())
+
+    def test_unrelated_listing_changes_keep_original_candidate_evidence(self):
+        with self.captured() as (storage, body, listings):
+            first = source.stage_metdiv_candidate(storage)
+            target = Path(storage.local_dir) / source.SLUG / source.SLUG / first["version"]
+            before = snapshot(target)
+            directory = census_latest.ROOT + f"TGRGDB{VINTAGE % 100:02d}/"
+            original_hash = source.digest(listings[directory])
+            listings[directory] += b"\n<!-- unrelated directory update -->"
+            listings[census_latest.ROOT] += b"\n<!-- unrelated annual update -->"
+            second = source.stage_metdiv_candidate(storage)
+            self.assertEqual(second["version"], first["version"])
+            self.assertTrue(second["reused"])
+            self.assertEqual(snapshot(target), before)
+            depot = Path(storage.local_dir) / "_raw-captures" / source.SLUG / source.digest(body)
+            receipts = [source.strict_json(path.read_bytes()) for path in depot.glob("*.receipt-*.json")]
+            self.assertEqual({item["source_release"]["listing_sha256"] for item in receipts},
+                             {original_hash, source.digest(listings[directory])})
+            self.assertFalse((Path(storage.local_dir) / "_quarantine").exists())
+
+    def test_runtime_change_creates_distinct_version_without_mutating_history(self):
+        with self.captured() as (storage, body, listings):
+            first = source.stage_metdiv_candidate(storage)
+            before = snapshot(Path(storage.local_dir))
+            identity = source.processing_identity()
+            with patch.object(source.pyogrio, "__gdal_version_string__", "different-build"):
+                changed = source.processing_identity()
+                self.assertEqual(identity["code_commit"], changed["code_commit"])
+                self.assertNotEqual(identity, changed)
+                second = source.stage_metdiv_candidate(storage)
+                self.assertNotEqual(first["version"], second["version"])
+                self.assertFalse(second["reused"])
+                self.assertTrue(source.stage_metdiv_candidate(storage)["reused"])
+            after = snapshot(Path(storage.local_dir))
+            self.assertEqual({name: after[name] for name in before}, before)
+            self.assertTrue(source.stage_metdiv_candidate(storage)["reused"])
+            self.assertFalse((Path(storage.local_dir) / "_quarantine").exists())
+
+    def test_repinned_cached_discovery_claim_is_rejected(self):
+        with self.captured() as (storage, body, listings):
+            first = source.stage_metdiv_candidate(storage)
+            target = Path(storage.local_dir) / source.SLUG / source.SLUG / first["version"]
+            path = target / "metadata/source_manifest.json"
+            manifest = source.strict_json(path.read_bytes())
+            manifest["source_release"]["source_listing_sha256"] = "f" * 64
+            path.write_bytes(source.encode(manifest))
+            ready_path = target / "metadata/metdiv_candidate_ready.json"
+            ready = source.strict_json(ready_path.read_bytes())
+            ready["objects"]["metadata/source_manifest.json"] = source.sha256_file(path)
+            ready_path.write_bytes(source.encode(ready))
+            with self.assertRaisesRegex(ValueError, "cached_provenance_or_processing_identity_changed"):
+                source.stage_metdiv_candidate(storage)
 
 
 if __name__ == "__main__":

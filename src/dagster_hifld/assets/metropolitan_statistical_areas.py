@@ -1,5 +1,4 @@
 """Explicit Census Metropolitan Statistical Areas draft source asset; release approval remains independent."""
-import os
 from pathlib import Path
 from dagster import AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, define_asset_job
 from dagster_hifld.resources import StagingStorageResource
@@ -9,13 +8,11 @@ from dagster_hifld.sources.metropolitan_statistical_areas import SLUG, stage_msa
 class MetropolitanStatisticalAreasConfig(Config):
     capture_directory: str = ""
 
-@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='census_bureau',compute_kind='http',description='Exact2026 Census GDB Core_Based_Statistical_Area MEMI=1 source; unapproved local draft, native IDs/types/geometry preserved.')
+@asset(key=AssetKey(['ingest',SLUG,SLUG]),group_name='census_bureau',compute_kind='http',description='Current Census TIGER national GDB Core_Based_Statistical_Area MEMI=1 source; unapproved local draft, native IDs/types/geometry preserved.')
 def census_metropolitan_statistical_areas(context,config:MetropolitanStatisticalAreasConfig,staging_storage:StagingStorageResource):
     capture=config.capture_directory or None
-    baseline=os.environ.get('HIFLD_MSA_BASELINE_DIR')
-    result=stage_msa_candidate(staging_storage,archive_path=Path(capture)/'official2026_nationgeo.zip' if capture else None,
-        receipt_path=Path(capture)/'official2026_nationgeo.receipt.json' if capture else None,
-        baseline_dir=Path(baseline) if baseline else None)
+    result=stage_msa_candidate(staging_storage,archive_path=Path(capture)/'official_nationgeo.zip' if capture else None,
+        receipt_path=Path(capture)/'official_nationgeo.receipt.json' if capture else None)
     context.add_output_metadata(result)
     return result
 
