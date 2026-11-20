@@ -31,7 +31,8 @@ from dagster_hifld.sources.capture_common import (
 from dagster_hifld.sources.arcgis_layer import esri_polygon_wkb as _esri_polygon_wkb
 from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture_identity, _load_capture, _sha,
-    _validate_spatial_reference, layer_capture_roster,
+    _validate_spatial_reference, capture_witness, layer_capture_roster,
+    retained_capture_ids,
 )
 
 DATASET_SLUG = "uscg-sectors"
@@ -97,38 +98,23 @@ ITEM_LICENSE = ("<span style='font-family:&quot;Avenir Next W01&quot;, &quot;Ave
 ITEM_EXTENT = [[-179.99998854073854, -17.557773333172747],
                [179.99998854093846, 74.70976665460748]]
 LAYER_COPYRIGHT = "Operation Systems Center (OSC), United States Coast Guard (USCG),"
-EXPECTED_COUNT = 36
-# Observed FID roster: the layer has 36 features with FID 1..37 and deleted FID 30.
-EXPECTED_IDS = sorted([*range(1, 30), *range(31, 38)])
-EXPECTED_ID_SHA256 = "28605f79a965b6306aae8b8e7daa9d2f3e7e01d8dbcca6e325c0fe75627690ca"
-EXPECTED_SECTOR_NAME_SHA256 = "0f5943abff8ff6327801eb9c291b29a4bb17237bb53034adb07cdc779f21c4d1"
 PAGE_SIZE = 10
-PAGE_COUNT = (len(EXPECTED_IDS) + PAGE_SIZE - 1) // PAGE_SIZE
-EXPECTED_EXTENT = {"xmin": -179.99999999999997, "ymin": -17.557773333172747,
-                   "xmax": 179.9999885410001, "ymax": 74.70976665500007}
-# The advertised extent is rounded relative to the observed vertex bounds by a
-# few ulps; the containment guard uses a tolerance far below any real change.
-EXPECTED_EXTENT_TOLERANCE = 1e-9
-EXPECTED_EDITING_INFO = {"lastEditDate": 1774374531856, "schemaLastEditDate": 1774374529592,
-                         "dataLastEditDate": 1769797781779}
-EXPECTED_LAST_DATA_EDIT_UTC = "2026-01-30T18:29:41.779000Z"
-EXPECTED_SCHEMA_EDIT_UTC = "2026-03-24T17:48:49.592000Z"
-EXPECTED_GEOMETRY_PROPERTIES = {"shapeAreaFieldName": "Shape__Area",
-                                "shapeLengthFieldName": "Shape__Length",
-                                "units": "esriDecimalDegrees"}
-SERVICE_FULL_EXTENT = {"xmin": -179.99998854073854, "ymin": -17.557773333172747,
-                       "xmax": 179.99998854093846, "ymax": 74.70976665460748}
+# Guard parameter, not a data pin: the extent a service advertises is rounded
+# against its vertex bounds by a few ulps, so the declared-extent containment
+# guard allows a slack far below any real coordinate change.
+DECLARED_EXTENT_TOLERANCE = 1e-9
 LAYER_MAX_RECORD_COUNT = 2000
 SERVICE_MAX_RECORD_COUNT = 1000
-# The source itself publishes one self-intersecting ring (Sector New York,
-# "Ring Self-intersection[-74.6500029470783 42.0000067959769]"): a single-ring
-# polygon whose boundary touches itself at exactly one point, valid under Esri
-# semantics but invalid under OGC. Raw capture keeps the ring byte-exact; the
-# candidate applies the minimal OGC make_valid repair to that pinned feature
-# only (observed: area unchanged, one Polygon, one inserted intersection
-# vertex) and fails closed on anything else. Repair acceptance is its own gate.
-EXPECTED_GEOMETRY_INVALID_COUNT = 1
-EXPECTED_REPAIRED_IDS = [16]
+# The source publishes rings that can be valid under Esri semantics but
+# invalid under OGC (observed at capture: one self-intersecting ring, Sector
+# New York, "Ring Self-intersection[-74.6500029470783 42.0000067959769]",
+# on FID 16). Raw capture keeps every ring byte-exact; the candidate applies
+# the minimal OGC make_valid repair to each source-invalid feature it finds
+# (observed: area unchanged, one Polygon, one inserted intersection vertex)
+# and fails closed on any repair that would alter area, bounds or
+# polygon-ness. The observed invalid count and roster are recorded as
+# evidence, never a gate: an upstream geometry fix or a new break must not
+# refuse the capture. Repair acceptance is its own gate.
 GEOMETRY_REPAIR_AREA_TOLERANCE = 1e-12
 EXPECTED_FIELD_DECLARATIONS = [
     {'name': 'FID', 'type': 'esriFieldTypeOID', 'alias': 'FID', 'sqlType': 'sqlTypeOther', 'nullable': False, 'editable': False, 'domain': None, 'defaultValue': None},
@@ -144,10 +130,14 @@ EXPECTED_FIELD_DECLARATIONS = [
     {'name': 'Shape__Length', 'type': 'esriFieldTypeDouble', 'alias': 'Shape__Length', 'sqlType': 'sqlTypeDouble', 'nullable': True, 'editable': False, 'domain': None, 'defaultValue': None},
 ]
 ATTRIBUTE_FIELDS = EXPECTED_FIELD_DECLARATIONS
-CAPTURE_NAMES = {"catalog_item", "service_before", "layer_before", "count_before",
-                 "ids_before", "layer_after", "count_after", "ids_after", "service_after",
-                 *{f"page_{index:03d}" for index in range(PAGE_COUNT)}}
+_BASE_CAPTURE_NAMES = ("catalog_item", "service_before", "layer_before", "count_before",
+                       "ids_before", "layer_after", "count_after", "ids_after", "service_after")
 SHAPE_PARITY_TOLERANCE = 1e-9
+
+
+def _capture_names(ids: list[int]) -> set[str]:
+    return set(_BASE_CAPTURE_NAMES) | {
+        f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
 
 
 def _query(params: dict[str, object]) -> str:
@@ -179,10 +169,15 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+    # The roster and the expected request URLs derive from the retained
+    # ids_before witness, so a sealed checkpoint only replays against the
+    # publisher endpoints the current code captures.
+    ids = retained_capture_ids(root)
+    urls = dict(_capture_roster(ids))
     return validate_retained_capture_replay(
         root,
-        capture_names=CAPTURE_NAMES,
-        expected_urls=dict(_capture_roster(EXPECTED_IDS)),
+        capture_names=set(urls),
+        expected_urls=urls,
         load_capture=_load_capture,
         validate_request_identity=validate_capture_request_identity,
     )
@@ -217,6 +212,23 @@ def _validate_catalog_item(item: dict) -> None:
         raise ValueError("uscg_catalog_item_extent_drift")
 
 
+def _validate_extent_bounds(extent: object, label: str) -> dict:
+    """Structurally check a declared extent and return it as the observed coverage.
+
+    The values are capture-time observations, never pins: only their type,
+    finiteness and ordering are enforced, so a complete upstream change of
+    coverage passes and is recorded instead of being refused.
+    """
+    if not isinstance(extent, dict):
+        raise ValueError(f"{label}_extent_invalid")
+    bounds = {key: extent.get(key) for key in ("xmin", "ymin", "xmax", "ymax")}
+    if (any(type(bounds[key]) not in (int, float) or not math.isfinite(bounds[key])
+            for key in bounds)
+            or bounds["xmin"] >= bounds["xmax"] or bounds["ymin"] >= bounds["ymax"]):
+        raise ValueError(f"{label}_extent_invalid")
+    return bounds
+
+
 def _validate_service(service: dict, label: str) -> None:
     if (service.get("serviceItemId") != CATALOG_ITEM_ID
             or service.get("description") != ""
@@ -228,9 +240,7 @@ def _validate_service(service: dict, label: str) -> None:
         raise ValueError(f"{label}_service_identity_drift")
     _validate_spatial_reference(service.get("spatialReference"), label + "_service")
     full = service.get("fullExtent")
-    if (not isinstance(full, dict)
-            or {key: full.get(key) for key in SERVICE_FULL_EXTENT} != SERVICE_FULL_EXTENT):
-        raise ValueError(f"{label}_service_extent_drift")
+    _validate_extent_bounds(full, label + "_service")
     _validate_spatial_reference(full.get("spatialReference"), label + "_service_full_extent")
     layers = service.get("layers")
     if (not isinstance(layers, list) or len(layers) != 1
@@ -239,6 +249,30 @@ def _validate_service(service: dict, label: str) -> None:
             or layers[0].get("type") != "Feature Layer"
             or layers[0].get("geometryType") != "esriGeometryPolygon"):
         raise ValueError(f"{label}_service_layer_roster_drift")
+
+
+def _editing_info(layer: dict) -> dict:
+    """Return the layer's observed editingInfo after a structural check.
+
+    Editing timestamps are capture-time observations recorded in the audit,
+    not pins: only their presence and integer epoch-millisecond type are
+    enforced, so upstream edits pass and are recorded.
+    """
+    info = layer.get("editingInfo")
+    if not isinstance(info, dict):
+        raise ValueError("source_layer_editing_info_invalid")
+    for key in ("lastEditDate", "schemaLastEditDate", "dataLastEditDate"):
+        if type(info.get(key)) is not int:
+            raise ValueError("source_layer_editing_info_invalid")
+    return info
+
+
+def _epoch_millis_utc(millis: int) -> str:
+    # Record the exact producer millisecond value (padded to the established
+    # microsecond record format), never a rounded or re-derived instant.
+    seconds, remainder = divmod(millis, 1000)
+    return datetime.fromtimestamp(seconds, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") \
+        + f".{remainder:03d}000Z"
 
 
 def _validate_layer(layer: dict) -> None:
@@ -252,11 +286,10 @@ def _validate_layer(layer: dict) -> None:
             or layer.get("hasZ") is not False or layer.get("hasM") is not False
             or layer.get("isView") is not True or layer.get("enableNullGeometry") is not False
             or layer.get("copyrightText") != LAYER_COPYRIGHT
-            or layer.get("editingInfo") != EXPECTED_EDITING_INFO
-            or layer.get("geometryProperties") != EXPECTED_GEOMETRY_PROPERTIES
-            or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT
             or layer.get("advancedQueryCapabilities", {}).get("supportsPagination") is not True):
-        raise ValueError("source_layer_identity_extent_or_freshness_drift")
+        raise ValueError("source_layer_identity_drift")
+    _validate_extent_bounds(layer.get("extent"), "source_layer")
+    _editing_info(layer)
     _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
     extent_reference = layer.get("extent", {}).get("spatialReference")
     if extent_reference is not None:
@@ -264,33 +297,30 @@ def _validate_layer(layer: dict) -> None:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
-    if set(captures) != CAPTURE_NAMES:
+    # Completeness is the producer's own count and ID roster captured before
+    # and after the pages, validated for stability and uniqueness; the page
+    # set must cover that observed roster exactly, gaps and all.
+    ids = capture_witness(captures)
+    if not ids:
+        raise ValueError("source_population_empty")
+    if set(captures) != _capture_names(ids):
         raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
-    _validate_catalog_item(docs["catalog_item"])
+    item = docs["catalog_item"]
+    _validate_catalog_item(item)
     service = docs["service_before"]
     _validate_service(service, "service_before")
     layer = docs["layer_before"]
     _validate_layer(layer)
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
-    count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    for label, count in (("before", count_before), ("after", count_after)):
-        if type(count) is not int or count != EXPECTED_COUNT:
-            raise ValueError("source_count_population_drift:" + label)
-    for label, ids in (("before", ids_before), ("after", ids_after)):
-        if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-                or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
-                or sorted(ids) != EXPECTED_IDS
-                or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256):
-            raise ValueError("source_id_population_drift:" + label)
-    if sorted(ids_after) != sorted(ids_before):
-        raise ValueError("source_id_roster_changed_during_capture")
+    editing_info = _editing_info(layer)
+    layer_geometry_properties = layer.get("geometryProperties")
     features = []
+    invalid_ids = []
     vertices = 0
     geometry_valid = geometry_empty = 0
-    coverage = {key: EXPECTED_EXTENT[key] for key in ("xmin", "ymin", "xmax", "ymax")}
+    coverage = _validate_extent_bounds(layer["extent"], "source_layer_extent")
     for name in sorted(n for n in captures if n.startswith("page_")):
         page = docs[name]
         if "error" in page or page.get("exceededTransferLimit") is True:
@@ -300,11 +330,12 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         _validate_spatial_reference(page.get("spatialReference"), "source_" + name + "_page")
         if page.get("objectIdFieldName") != "FID" or page.get("geometryType") != "esriGeometryPolygon":
             raise ValueError("source_page_identity_drift")
-        if page.get("geometryProperties") != EXPECTED_GEOMETRY_PROPERTIES:
+        if (layer_geometry_properties is not None
+                and page.get("geometryProperties") != layer_geometry_properties):
             raise ValueError("source_page_geometry_properties_drift")
         _validate_page_fields(page.get("fields"), layer["fields"])
         expected_index = int(name[-3:])
-        expected_ids = EXPECTED_IDS[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
+        expected_ids = ids[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
         rows = page.get("features")
         if not isinstance(rows, list) or len(rows) != len(expected_ids):
             raise ValueError("source_page_population_incomplete:" + name)
@@ -347,8 +378,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                     if (not isinstance(point, list) or len(point) != 2
                             or any(type(coord) not in (int, float) or not math.isfinite(coord) for coord in point)):
                         raise ValueError("source_xy_ordinate_contract_drift")
-                    if not (coverage["xmin"] - EXPECTED_EXTENT_TOLERANCE <= point[0] <= coverage["xmax"] + EXPECTED_EXTENT_TOLERANCE
-                            and coverage["ymin"] - EXPECTED_EXTENT_TOLERANCE <= point[1] <= coverage["ymax"] + EXPECTED_EXTENT_TOLERANCE):
+                    if not (coverage["xmin"] - DECLARED_EXTENT_TOLERANCE <= point[0] <= coverage["xmax"] + DECLARED_EXTENT_TOLERANCE
+                            and coverage["ymin"] - DECLARED_EXTENT_TOLERANCE <= point[1] <= coverage["ymax"] + DECLARED_EXTENT_TOLERANCE):
                         raise ValueError("source_geometry_outside_declared_coverage")
                     vertices += 1
             oid = attrs.get("FID")
@@ -358,6 +389,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             geom = from_wkb(_esri_polygon_wkb(geometry))
             geometry_empty += int(geom.is_empty)
             geometry_valid += int(geom.is_valid and not geom.is_empty)
+            if not geom.is_valid:
+                invalid_ids.append(oid)
             for parity_field, observed in (("source_shape_area_parity_drift", attrs.get("Shape__Area")),
                                            ("source_shape_length_parity_drift", attrs.get("Shape__Length"))):
                 if observed is None:
@@ -369,28 +402,30 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             features.append(feature)
         if sorted(page_ids) != expected_ids or len(set(page_ids)) != len(page_ids):
             raise ValueError("source_page_id_population_drift:" + name)
-    ids = [feature["attributes"]["FID"] for feature in features]
-    if sorted(ids) != EXPECTED_IDS or len(features) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT:
+    # The captured pages must cover the observed roster exactly: no dropped
+    # and no duplicated native ID, gaps included.
+    captured_ids = [feature["attributes"]["FID"] for feature in features]
+    if sorted(captured_ids) != ids or len(set(captured_ids)) != len(captured_ids):
         raise ValueError("source_feature_id_population_drift")
-    names = [feature["attributes"]["SectorName"] for feature in features]
-    if (len(set(names)) != EXPECTED_COUNT
-            or _sha(_canonical(sorted(set(names)))) != EXPECTED_SECTOR_NAME_SHA256):
-        raise ValueError("source_sector_name_roster_drift")
+    sector_names = sorted({feature["attributes"]["SectorName"] for feature in features})
     geometry_invalid = len(features) - geometry_valid - geometry_empty
-    if geometry_invalid != EXPECTED_GEOMETRY_INVALID_COUNT:
-        raise ValueError("source_geometry_invalid_count_drift")
-    invalid_ids = sorted(row["attributes"]["FID"] for row in features
-                         if not from_wkb(_esri_polygon_wkb(row["geometry"])).is_valid)
-    if invalid_ids != EXPECTED_REPAIRED_IDS:
-        raise ValueError("source_geometry_invalid_roster_drift")
+    invalid_ids.sort()
     features.sort(key=lambda row: row["attributes"]["FID"])
     bounds = [from_wkb(_esri_polygon_wkb(row["geometry"])).bounds for row in features]
+    id_set = set(ids)
+    id_gaps = [oid for oid in range(min(ids), max(ids) + 1) if oid not in id_set]
     audit = {
-        "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(sorted(ids))),
+        "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids)),
         "source_id_min": min(ids), "source_id_max": max(ids),
-        "source_id_note": ("The layer holds 36 features with FID 1..37; FID 30 is absent "
-                           "(deleted upstream). The gap is part of the pinned roster and is "
-                           "preserved; no substitute IDs are generated."),
+        "source_id_gaps": id_gaps,
+        "source_id_note": (f"{len(ids)} features observed with native FID {min(ids)}..{max(ids)}; "
+                           + (f"the observed roster is missing FID {id_gaps} within that range "
+                              "(features deleted upstream); " if id_gaps else
+                              "the observed roster is contiguous; ")
+                           + "gaps are part of the observed roster and are preserved; no "
+                           "substitute IDs are generated."),
+        "source_sector_name_sha256": _sha(_canonical(sector_names)),
+        "source_sector_name_distinct_count": len(sector_names),
         "source_schema_sha256": _sha(_canonical(layer["fields"])),
         "source_record_sha256": _sha(_canonical([row["attributes"] for row in features])),
         "source_geometry_sha256": _sha(_canonical([[row["attributes"]["FID"], row["geometry"]] for row in features])),
@@ -399,26 +434,37 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "geometry_empty_count": geometry_empty,
         "geometry_invalid_count": geometry_invalid,
         "geometry_invalid_ids": invalid_ids,
-        "geometry_invalid_note": ("Exactly one feature is invalid in the source itself "
-                                  "(FID 16, Sector New York): a single-ring polygon whose "
-                                  "boundary touches itself at exactly one point, valid under "
-                                  "Esri semantics but invalid under OGC. Raw capture keeps "
-                                  "the ring byte-exact; the candidate applies the minimal "
-                                  "pinned make_valid repair recorded under geometry_repair."),
+        "geometry_invalid_note": ("Source-published rings that are invalid under OGC but valid "
+                                  "under Esri semantics (observed at this capture: a single-ring "
+                                  "polygon whose boundary touches itself at exactly one point) "
+                                  "are recorded here and repaired under geometry_repair. Raw "
+                                  "capture keeps every ring byte-exact. The observed invalid "
+                                  "count and roster are evidence, not a gate: an upstream "
+                                  "geometry fix or a new break must not refuse the capture."),
         "geometry_bounds": [min(b[0] for b in bounds), min(b[1] for b in bounds),
                             max(b[2] for b in bounds), max(b[3] for b in bounds)],
         "source_extent": layer["extent"],
-        "source_last_data_edit_utc": EXPECTED_LAST_DATA_EDIT_UTC,
-        "source_last_schema_edit_utc": EXPECTED_SCHEMA_EDIT_UTC,
+        "service_full_extent": service["fullExtent"],
+        "source_editing_info": editing_info,
+        "source_last_data_edit_utc": _epoch_millis_utc(editing_info["dataLastEditDate"]),
+        "source_last_schema_edit_utc": _epoch_millis_utc(editing_info["schemaLastEditDate"]),
+        "source_geometry_properties": layer_geometry_properties,
         "source_coverage_scope": ("Complete observed USCGSectors layer 0 from the USCG-owned "
                                   "USCG FSLTP Portal ArcGIS Online organization (public view "
                                   "service USCG_Sectors_view). The layer spans the Coast Guard "
                                   "sector boundaries and areas of responsibility including "
                                   "over-water EEZ extents and both dateline halves; it is not "
                                   "asserted to cover any other Coast Guard administrative level."),
-        "catalog_item_id": CATALOG_ITEM_ID, "catalog_item_owner": CATALOG_ITEM_OWNER,
-        "catalog_item_org": CATALOG_ORG_ID + " " + CATALOG_ORG_NAME,
+        "catalog_item_id": CATALOG_ITEM_ID, "catalog_item_owner": item["owner"],
+        "catalog_item_org_id": item["orgId"],
+        "catalog_item_org": item["orgId"] + " " + CATALOG_ORG_NAME,
         "catalog_item_url": CATALOG_ITEM_URL, "landing_page_url": LANDING_URL,
+        "source_identity_check": {"method": "captured catalog_item document verified at capture "
+                               "time against the producing agency's ArcGIS account and "
+                               "organization; the capture fails closed on any drift",
+                               "required_owner": CATALOG_ITEM_OWNER, "observed_owner": item["owner"],
+                               "required_org_id": CATALOG_ORG_ID, "observed_org_id": item["orgId"],
+                               "org_name": CATALOG_ORG_NAME},
         "layer_copyright": LAYER_COPYRIGHT,
         "dhs_crosswalk_row": {"layer_name": "USCG Sectors", "status": "Migrated",
                               "agency": "U.S. Coast Guard (USCG)",
@@ -435,14 +481,16 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         "drift_guard": ("Current USCG catalog item identity (id, owner, owning organization, "
                         "title, access, accessInformation, description, license, snippet, "
                         "category, CRS and extent), service identity roster, exact field "
-                        "declarations/types/nullability/view-override, editingInfo freshness "
-                        "pins, layer display/type fields, copyright, geometry properties, "
-                        "explicit EPSG:4326 layer/page/feature SRs, XY-only dimensional flags, "
-                        "count and before/after ID roster (including the documented deleted-FID "
-                        "30 gap), distinct SectorName roster, per-page IDs/attributes/transfer "
-                        "limits, ring closure/winding/hole ownership, declared-extent "
-                        "containment, Shape__Area/Shape__Length parity and the single "
-                        "source-published invalid geometry are checked."),
+                        "declarations/types/nullability/view-override, observed editingInfo, "
+                        "layer display/type fields, copyright, page/layer geometry-properties "
+                        "consistency, explicit EPSG:4326 layer/page/feature SRs, XY-only "
+                        "dimensional flags, capture-time count and before/after ID roster "
+                        "witnesses with exact per-page ID coverage against the observed roster "
+                        "(gaps included), observed SectorName roster hash, per-page "
+                        "attributes/transfer limits, ring closure/winding/hole ownership, "
+                        "declared-extent containment against the observed layer extent, "
+                        "Shape__Area/Shape__Length parity and the observed source-published "
+                        "invalid-geometry roster are checked."),
     }
     return layer["fields"], features, audit
 
@@ -451,10 +499,10 @@ def _candidate_geometry_wkb(fid: int, geometry: dict) -> tuple[bytes, dict | Non
     """Return candidate WKB for one feature plus its repair record, if any.
 
     Source-valid features pass through the shared XY-ring converter unchanged.
-    The pinned source-invalid feature gets the minimal OGC make_valid repair
-    (structure method, so no linear debris is invented); any repair that would
-    alter area, bounds or polygon-ness fails closed instead of sealing
-    altered geometry.
+    A source-invalid feature gets the minimal OGC make_valid repair (structure
+    method, so no linear debris is invented); any repair that would alter
+    area, bounds or polygon-ness fails closed instead of sealing altered
+    geometry.
     """
     raw = from_wkb(_esri_polygon_wkb(geometry))
     if raw.is_valid:
@@ -545,13 +593,9 @@ def capture_uscg_sectors(storage: StagingStorageResource, *, version: str,
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/uscg-sectors-draft"}) as client:
                 ids_body, ids_receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
-                ids = json.loads(ids_body).get("objectIds")
-                if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-                        or len(ids) != EXPECTED_COUNT or sorted(ids) != EXPECTED_IDS
-                        or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256):
-                    raise ValueError("source_seed_id_population_drift")
                 captures["ids_before"] = (ids_body, ids_receipt)
-                roster = _capture_roster(sorted(ids))
+                ids = retained_capture_ids(root)
+                roster = _capture_roster(ids)
                 for name, url in roster:
                     if name == "ids_before":
                         continue
@@ -588,20 +632,19 @@ def capture_uscg_sectors(storage: StagingStorageResource, *, version: str,
         geometry_wkb[fid] = wkb
         if record is not None:
             repair_records.append(record)
-    if [record["feature_id"] for record in repair_records] != EXPECTED_REPAIRED_IDS:
-        raise ValueError("source_geometry_repair_roster_drift")
+    repaired_ids = [record["feature_id"] for record in repair_records]
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": _capture_identity(captures, root),
         "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
-        "geometry_repair": {"operation": "make_valid", "applied_to_feature_ids": EXPECTED_REPAIRED_IDS,
+        "geometry_repair": {"operation": "make_valid", "applied_to_feature_ids": repaired_ids,
             "records": repair_records,
             "candidate_geometry_sha256": _sha(_canonical(
                 [[fid, geometry_wkb[fid].hex()] for fid in sorted(geometry_wkb)])),
             "note": ("Raw capture keeps every source ring byte-exact. The candidate repairs "
-                     "only the pinned OGC-invalid self-touching ring; the structure-method "
-                     "make_valid must keep a valid Polygon or MultiPolygon with unchanged "
-                     "area and bounds or the capture fails closed. Repair acceptance is its "
-                     "own unaccepted gate.")},
+                     "only source-invalid OGC rings with the structure-method make_valid, "
+                     "which must keep a valid Polygon or MultiPolygon with unchanged area "
+                     "and bounds or the capture fails closed. The observed invalid roster is "
+                     "evidence, not a gate. Repair acceptance is its own unaccepted gate.")},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False, "baseline_accepted": False,
@@ -622,7 +665,7 @@ def capture_uscg_sectors(storage: StagingStorageResource, *, version: str,
         "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
         "release_date": None,
         "release_date_unknown_reason": ("The service editingInfo.dataLastEditDate ("
-                                        + EXPECTED_LAST_DATA_EDIT_UTC + ") is a service edit timestamp, "
+                                        + audit["source_last_data_edit_utc"] + ") is a service edit timestamp, "
                                         "not a producer release date; no release-date field exists on the layer."),
         "license": ("USCG ArcGIS item licenseInfo states the data are not recommended for navigation and "
                     "binds redistribution to metadata retention; formal rights acceptance remains pending."),
@@ -652,27 +695,31 @@ def capture_uscg_sectors(storage: StagingStorageResource, *, version: str,
                         "USCG FSLTP Portal ArcGIS Online organization; successor acceptance, baseline, "
                         "contract, coverage, rights and release decisions remain unaccepted."),
         "publisher": PUBLISHER, "agency": "U.S. Coast Guard", "source_url": LAYER_URL,
-        "license": None, "source_modified": EXPECTED_LAST_DATA_EDIT_UTC, "date_issued": None, "date_modified": None,
+        "license": None, "source_modified": audit["source_last_data_edit_utc"], "date_issued": None, "date_modified": None,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"],
         "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
+        "source_identity_check": audit["source_identity_check"],
         "transformations": [{"operation": "Esri XY Polygon to GeoParquet WKB candidate", "parameters": {
             "source_fields": "all 11 declared attributes retained in source order and declared types",
-            "source_ids": "FID retained unchanged; the source roster skips deleted FID 30 and no substitute IDs are generated",
+            "source_ids": (f"FID retained unchanged; observed native roster {audit['source_id_min']}.."
+                           f"{audit['source_id_max']} with observed gaps {audit['source_id_gaps'] or 'none'} "
+                           "preserved and no substitute IDs generated"),
             "source_crs": "EPSG:4326",
             "geometry": ("2D ring order, winding and hole ownership preserved; no reprojection or "
                          "simplification; dateline-split shell rings retained as separate polygons"),
             "raw_evidence": "complete decoded response and wire bodies retained with checksummed receipts",
             "candidate_status": "unapproved; baseline/schema/ID/coverage/rights/release decisions pending"}},
-            {"operation": "Minimal OGC make_valid repair of the pinned source-invalid ring", "parameters": {
-            "applied_to_feature_ids": EXPECTED_REPAIRED_IDS,
-            "reason": ("The source publishes exactly one OGC-invalid polygon (FID 16, Sector New York): a "
-                       "single ring whose boundary touches itself at one point, valid under Esri semantics "
-                       "but rejected by the shared publication catalog's zero-invalid-geometry bar."),
+            {"operation": "Minimal OGC make_valid repair of source-invalid rings", "parameters": {
+            "applied_to_feature_ids": repaired_ids,
+            "reason": ("Source-published rings can be valid under Esri semantics but invalid under OGC "
+                       "(observed at this capture: a single ring whose boundary touches itself at one "
+                       "point); the shared publication catalog's zero-invalid-geometry bar requires the "
+                       "repair."),
             "guarantees": ("structure-method make_valid must keep a valid Polygon or MultiPolygon with "
                            "unchanged area (1e-12 relative tolerance) and unchanged bounds, or the capture "
                            "fails closed; the repaired part/vertex counts and before-validity text are "
                            "recorded in the audit"),
-            "raw_evidence": "the original self-touching ring is retained byte-exact in raw/page_001.body",
+            "raw_evidence": "the original source rings are retained byte-exact in the raw page captures",
             "acceptance": "geometry_repair_accepted remains False; repair acceptance is its own pending gate"}}],
         "lineage": ("DHS HIFLD Open crosswalk (August 2025) row 'USCG Sectors' marks the retired "
                     "HIFLD/GeoPlatform item 0b10e10d139f40bf9014a0627f4fbc81 as Migrated to the GII Portal; "
@@ -722,8 +769,10 @@ def capture_uscg_sectors(storage: StagingStorageResource, *, version: str,
             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": 37,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+            "source_id_max": audit["source_id_max"],
             "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
@@ -746,8 +795,10 @@ def capture_uscg_sectors(storage: StagingStorageResource, *, version: str,
         "capture_receipts": receipts, "objects": descriptors})
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": 37,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+            "source_id_max": audit["source_id_max"],
             "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
             "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],

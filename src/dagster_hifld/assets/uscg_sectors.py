@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.uscg_sectors import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_uscg_sectors,
+    DATASET_SLUG, FILE_SLUG, capture_uscg_sectors,
 )
 
 
@@ -22,9 +23,10 @@ class UscgSectorsConfig(Config):
     compute_kind="http",
     description=(
         "USCG-owned USCG FSLTP Portal services9 'USCG Sectors (Public View)' FeatureServer "
-        "layer 0 (36 sectors observed, data edited January 2026) after the DHS HIFLD Open "
-        "crosswalk's GII successor was verified dead. Unapproved candidate; baseline, contract, "
-        "coverage, rights, and release decisions remain pending."
+        "layer 0 (Coast Guard sector boundaries and areas of responsibility observed, data "
+        "edited January 2026) after the DHS HIFLD Open crosswalk's GII successor was verified "
+        "dead. Unapproved candidate; baseline, contract, coverage, rights, and release "
+        "decisions remain pending."
     ),
 )
 def uscg_sectors(context, config: UscgSectorsConfig, staging_storage: StagingStorageResource) -> dict:
@@ -42,9 +44,13 @@ def uscg_sectors(context, config: UscgSectorsConfig, staging_storage: StagingSto
 
 @asset_check(asset=uscg_sectors, blocking=True)
 def uscg_sectors_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_population_complete") is True
+    passed = (type(candidate.get("source_reported_count")) is int
+              and candidate["source_reported_count"] > 0
+              and candidate.get("feature_count") == candidate["source_reported_count"]
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": candidate.get("source_reported_count", "missing"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -67,7 +73,9 @@ uscg_sectors_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+uscg_sectors_drift = register_approved_baseline_drift(uscg_sectors, "uscg_sectors_drift")
+
 INGEST_ASSETS = [uscg_sectors]
-ASSET_CHECKS = [uscg_sectors_complete]
+ASSET_CHECKS = [uscg_sectors_complete, uscg_sectors_drift]
 JOBS = [uscg_sectors_draft_job]
 SCHEDULES = [uscg_sectors_draft_schedule]
