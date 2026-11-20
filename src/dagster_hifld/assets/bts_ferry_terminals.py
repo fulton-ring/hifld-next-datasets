@@ -44,3 +44,9 @@ def bts_ferry_terminals_draft_refresh_schedule(context, staging_storage: Staging
     # Source-availability/integrity poll; BTS does not publish on a fixed monthly cadence.
     require_local(staging_storage)
     return RunRequest()
+
+
+INGEST_ASSETS = [bts_ferry_terminals]
+ASSET_CHECKS = []
+JOBS = [bts_ferry_terminals_draft_refresh_job]
+SCHEDULES = [bts_ferry_terminals_draft_refresh_schedule]

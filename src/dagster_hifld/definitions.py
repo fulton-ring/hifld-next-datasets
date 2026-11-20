@@ -16,7 +16,6 @@ from dagster import (
 
 from dagster_hifld.assets.discovery import discovered, unique
 from dagster_hifld.assets import hifld_dataset_assets
-from dagster_hifld.assets.bts_ferry_terminals import bts_ferry_terminals_draft_refresh_job, bts_ferry_terminals_draft_refresh_schedule
 from dagster_hifld.assets.census_elementary_districts import elsd_source_integrity_job, elsd_source_integrity_schedule
 from dagster_hifld.assets.epa_disaster_debris import (
     epa_disaster_debris_complete,
@@ -26,18 +25,8 @@ from dagster_hifld.assets.epa_disaster_debris import (
 )
 
 
-from dagster_hifld.assets.noaa import (
-    noaa_eez_draft_refresh_job,
-    noaa_eez_draft_weekly_schedule,
-    noaa_territorial_draft_refresh_job,
-    noaa_territorial_draft_weekly_schedule,
-)
 
 
-from dagster_hifld.assets.noaa_current_dart import (
-    noaa_dart_draft_refresh_job,
-    noaa_dart_draft_refresh_schedule,
-)
 
 
 
@@ -521,12 +510,8 @@ defs = Definitions(
     ),
     jobs=unique(
         [
-            bts_ferry_terminals_draft_refresh_job,
             elsd_source_integrity_job,
             epa_disaster_debris_draft_job,
-            noaa_eez_draft_refresh_job,
-            noaa_territorial_draft_refresh_job,
-            noaa_dart_draft_refresh_job,
             usace_obstruction_lines_draft_job,
             usace_administrative_areas_draft_job,
             usace_navigation_marks_areas_draft_job,
@@ -538,12 +523,8 @@ defs = Definitions(
     ),
     schedules=unique(
         [
-            bts_ferry_terminals_draft_refresh_schedule,
             elsd_source_integrity_schedule,
             epa_disaster_debris_draft_schedule,
-            noaa_eez_draft_weekly_schedule,
-            noaa_territorial_draft_weekly_schedule,
-            noaa_dart_draft_refresh_schedule,
             usace_obstruction_lines_draft_schedule,
             usace_administrative_areas_draft_schedule,
             usace_navigation_marks_areas_draft_schedule,

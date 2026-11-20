@@ -196,3 +196,8 @@ noaa_territorial_draft_weekly_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
     description="Stopped weekly Monday 06:00 America/New_York local-draft refresh; activation requires an explicit operator action.",
 )
+
+INGEST_ASSETS = [noaa_12nm_territorial_sea, noaa_200nm_eez_and_maritime_boundaries]
+ASSET_CHECKS = []
+JOBS = [noaa_eez_draft_refresh_job, noaa_territorial_draft_refresh_job]
+SCHEDULES = [noaa_eez_draft_weekly_schedule, noaa_territorial_draft_weekly_schedule]
