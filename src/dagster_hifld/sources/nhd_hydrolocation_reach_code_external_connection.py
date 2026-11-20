@@ -172,6 +172,19 @@ def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
             if key in field}
 
 
+# ArcGIS serves display-only rendering hints (for example
+# drawingInfo.authoringInfo.colorRamp) nondeterministically from the same
+# layer within minutes of each other, so the layer witness comparison covers
+# only the data-bearing contract fields; each is pinned individually above.
+LAYER_CONTRACT_KEYS = ("id", "name", "type", "geometryType", "hasZ", "hasM",
+                       "capabilities", "advancedQueryCapabilities",
+                       "sourceSpatialReference", "extent", "fields", "maxRecordCount")
+
+
+def _layer_contract_view(document: Mapping[str, object]) -> dict[str, object]:
+    return {key: document.get(key) for key in LAYER_CONTRACT_KEYS}
+
+
 def _profile_schema(layer: Mapping[str, object]) -> tuple[list[dict[str, object]], str]:
     fields = layer.get("fields")
     if not isinstance(fields, list) or any(not isinstance(x, dict) for x in fields):
@@ -845,13 +858,21 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     after_roster = _validate_roster(after_ids.get("objectIds"), "ids_after")
     if after_roster != roster:
         raise NhdHydrolocationReachCodeExternalConnectionError("source_id_population_drift:ids_after")
-    for name in ("layer_after", "service_after", "count_after"):
+    # ArcGIS serves display-only rendering hints (for example
+    # drawingInfo.authoringInfo.colorRamp) nondeterministically from the same
+    # layer within minutes of each other, so the layer witness comparison
+    # covers only the data-bearing contract fields; each is pinned
+    # individually above. The service and count documents are compared whole.
+    for name in ("service_after", "count_after"):
         body, _receipt = _read_capture(capture_root, name)
-        mirror = {"layer_after": "layer_before", "service_after": "service_before",
-                  "count_after": "count_before"}[name]
+        mirror = {"service_after": "service_before", "count_after": "count_before"}[name]
         if json.loads(body) != docs[mirror]:
             raise NhdHydrolocationReachCodeExternalConnectionError(
                 "source_metadata_or_count_changed_during_capture")
+    body, _receipt = _read_capture(capture_root, "layer_after")
+    if _layer_contract_view(json.loads(body)) != _layer_contract_view(docs["layer_before"]):
+        raise NhdHydrolocationReachCodeExternalConnectionError(
+            "source_metadata_or_count_changed_during_capture")
     after_fields = json.loads(_read_capture(capture_root, "layer_after")[0]).get("fields")
     if not isinstance(after_fields, list) or [_plain_field(x) for x in after_fields] != fields:
         raise NhdHydrolocationReachCodeExternalConnectionError("source_field_schema_changed_during_capture")

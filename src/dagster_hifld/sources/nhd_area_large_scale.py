@@ -435,6 +435,20 @@ def _parquet_bytes(fields: list[dict[str, object]], attributes: list[dict[str, o
     return sink.getvalue().to_pybytes()
 
 
+# ArcGIS serves display-only rendering hints (for example
+# drawingInfo.authoringInfo.colorRamp) nondeterministically from the same
+# layer within minutes of each other, so the before/after witness comparison
+# covers only the data-bearing contract fields; each is pinned individually
+# against the approved baseline above.
+LAYER_CONTRACT_KEYS = ("id", "name", "type", "geometryType", "hasZ", "hasM",
+                       "capabilities", "advancedQueryCapabilities",
+                       "sourceSpatialReference", "extent", "fields", "maxRecordCount")
+
+
+def _layer_contract_view(document: dict) -> dict:
+    return {key: document.get(key) for key in LAYER_CONTRACT_KEYS}
+
+
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     """Validate the complete capture against capture-time completeness witnesses."""
     doc_names = set(captures)

@@ -120,10 +120,11 @@ class JSONStream(httpx.SyncByteStream):
 
 def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
                    service=None, alias=None, layer=None, doc_page=None,
-                   refuse_counts=()) -> httpx.MockTransport:
+                   refuse_counts=(), layer_after_mutate=None) -> httpx.MockTransport:
     count = count if count is not None else len(rows)
     objectids = ids if ids is not None else list(FIXTURE_OBJECTIDS)
     layer_fields = layer_fields if layer_fields is not None else _fixture_layer_fields()
+    layer_doc_calls = [0]
 
     def layer_doc():
         if callable(layer):
@@ -148,7 +149,11 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
             return httpx.Response(200, stream=JSONStream(document),
                                   headers={"content-type": "application/json"})
         if path.rstrip("/").endswith(f"/{src.LAYER_ID}"):
-            return httpx.Response(200, stream=JSONStream(layer_doc()),
+            layer_doc_calls[0] += 1
+            document = layer_doc()
+            if layer_after_mutate is not None and layer_doc_calls[0] > 1:
+                document = layer_after_mutate(document)
+            return httpx.Response(200, stream=JSONStream(document),
                                   headers={"content-type": "application/json"})
         if query.get("returnCountOnly") == ["true"]:
             return httpx.Response(200, stream=JSONStream({"count": count}),
@@ -576,6 +581,60 @@ class NhdHydrolocationReachCodeExternalConnectionTests(unittest.TestCase):
             self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
             self.assertEqual(drift.metadata["comparison_status"].value,
                              "skipped_no_approved_baseline")
+
+    def test_display_only_layer_drift_between_witnesses_does_not_quarantine(self):
+        # ArcGIS serves drawingInfo color-ramp hints nondeterministically from
+        # the same layer within minutes; display-only drift must not fail the
+        # completeness witnesses (observed live 2026-11-20 on layer 60).
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+
+        def mutate(document):
+            document = dict(document)
+            document["drawingInfo"] = {"renderer": {"authoringInfo": {"colorRamp": {
+                "colorRamps": [{"fromColor": [229, 199, 252], "toColor": [252, 248, 212]}]}}}}
+            return document
+
+        transport = make_responder(rows, layer_after_mutate=mutate)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_hydrolocation_reach_code_external_connection(
+                    _staging(root), version="display-drift", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertFalse((root / "staging" / "_quarantine" / src.DATASET_SLUG).exists())
+
+    def test_layer_contract_drift_between_witnesses_is_quarantined(self):
+        cases = {"maxRecordCount": 2000, "geometryType": "esriGeometryPolyline",
+                 "hasZ": False}
+        for field, value in cases.items():
+            with self.subTest(field=field):
+                rows = _fixture_rows()
+                schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+
+                def mutate(document):
+                    document = dict(document)
+                    document[field] = value
+                    return document
+
+                transport = make_responder(rows, layer_after_mutate=mutate)
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    capture_root = root / "capture"
+                    with fixture_mode(schema_sha, transport):
+                        storage = _staging(root)
+                        with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                                    "source_metadata_or_count_changed_during_capture"):
+                            src.capture_nhd_hydrolocation_reach_code_external_connection(
+                                storage, version="contract-drift", capture_directory=str(capture_root))
+                    quarantined = sorted(
+                        (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+                    self.assertTrue(quarantined)
+                    failure = json.loads((quarantined[0] / "metadata" / "failure.json")
+                                         .read_bytes())
+                    self.assertEqual(failure["reason_code"],
+                                     "source_metadata_or_count_changed_during_capture")
 
 
 def _replace_retained_body(root: Path, name: str, body: bytes, *, retain_wire=False):

@@ -237,6 +237,38 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         self.assertEqual(drift.metadata["comparison_status"].value,
                          "skipped_no_approved_baseline")
 
+    def test_display_only_layer_drift_between_witnesses_is_not_capture_drift(self):
+        # ArcGIS serves drawingInfo color-ramp hints nondeterministically from
+        # the same layer within minutes; display-only drift must not fail the
+        # completeness witnesses (observed live 2026-11-20 on layer 60).
+        _, features, captures, schema, windows = _fixture()
+        layer_after = json.loads(captures["layer_after"][0])
+        layer_after["drawingInfo"] = {"renderer": {"authoringInfo": {"colorRamp": {
+            "colorRamps": [{"fromColor": [229, 199, 252], "toColor": [252, 248, 212]}]}}}}
+        captures["layer_after"] = (json.dumps(layer_after, separators=(",", ":")).encode(),
+                                   captures["layer_after"][1])
+        _, extracted = self._validated(features, captures, schema, windows)
+        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14])
+
+    def test_layer_contract_drift_between_witnesses_is_still_rejected(self):
+        cases = {
+            "maxRecordCount": 2000,
+            "geometryType": "esriGeometryPolyline",
+            "extent": {"xmin": -1.0, "ymin": -2.0, "xmax": 1.0, "ymax": 2.0,
+                       "spatialReference": {"wkid": 102100, "latestWkid": 3857}},
+            "hasZ": False,
+        }
+        for field, value in cases.items():
+            with self.subTest(field=field):
+                _, features, captures, schema, windows = _fixture()
+                layer_after = json.loads(captures["layer_after"][0])
+                layer_after[field] = value
+                captures["layer_after"] = (json.dumps(layer_after, separators=(",", ":")).encode(),
+                                           captures["layer_after"][1])
+                with self.assertRaisesRegex(ValueError,
+                                            "source_layer_metadata_changed_during_capture"):
+                    self._validated(features, captures, schema, windows)
+
     def test_blocking_check_uses_capture_reported_count(self):
         from dagster_hifld.assets.nhd_area_large_scale import nhd_area_large_scale_complete
         passed = nhd_area_large_scale_complete({"feature_count": 5, "source_reported_count": 5,
