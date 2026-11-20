@@ -295,6 +295,14 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                     with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_nonregular_path"):
                         src.fetch_us_landslide_regions_pages(root)
 
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / f"{src.FILE_SLUG}.parquet").write_bytes(b"x" * 31)
+            with patch.object(src, "MAX_CAPTURE_BYTES", 30), \
+                    patch.object(Path, "read_bytes", side_effect=AssertionError("payload read before preflight")):
+                with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_derived_output_budget_exceeded"):
+                    src.fetch_us_landslide_regions_pages(root)
+
     def test_refused_transfers_are_request_bound_and_wire_verified(self):
         cases = (("identity", 503, False), ("gzip", 503, False),
                  ("gzip", 200, True), ("deflate", 200, True),
@@ -408,7 +416,11 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                             transport=httpx.MockTransport(lambda request: (_ for _ in ()).throw(AssertionError("HTTP forbidden"))))):
                         with self.assertRaisesRegex(ValueError, "cached_candidate_object_integrity_failed"):
                             src.capture_us_landslide_regions(storage, version="corrupt", capture_directory=str(root / "fresh"))
-                    self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}, tampered)
+                    for key, original in tampered.items():
+                        self.assertEqual((storage.read_key(key), storage.object_snapshot(key)), original)
+                    diagnostics = set(storage.list_prefix("")) - set(tampered)
+                    self.assertTrue(diagnostics)
+                    self.assertTrue(all(key.startswith("_quarantine/") for key in diagnostics))
 
     def test_source_is_explicit_and_draft_only(self):
         self.assertEqual(src.DATASET_SLUG, "us-landslide-regions")

@@ -498,6 +498,8 @@ def _preflight_capture(capture_root: Path, *, names: Iterable[str] | None = None
         if not stat.S_ISREG(info.st_mode):
             raise UsLandslideRegionsError("retained_capture_nonregular_path:" + path.name)
         if path.name in {f"{FILE_SLUG}.parquet", f"{FILE_SLUG}.parquet.construction-tmp"}:
+            if info.st_size > MAX_CAPTURE_BYTES:
+                raise UsLandslideRegionsError("retained_derived_output_budget_exceeded")
             continue
         if info.st_size > MAX_BODY_BYTES:
             raise UsLandslideRegionsError("retained_capture_response_budget_exceeded")
