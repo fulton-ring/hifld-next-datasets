@@ -7,22 +7,4 @@ assets are derived automatically from this registry.
 
 from dagster_hifld.assets.discovery import discovered, unique
 
-from dagster_hifld.assets.national_transit_map_stops import national_transit_map_stops
-from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
-from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
-from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
-
-from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
-from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
-
-
-hifld_ingest_assets = [
-    national_transit_map_stops,
-    usace_administrative_areas_usace_ienc,
-    usace_navigation_marks_areas_usace_ienc,
-    usace_obstruction_lines_usace_ienc,
-    usace_crane_locations_ienc,
-    epa_frs_sic_powerplants,
-]
-
-hifld_ingest_assets = unique(hifld_ingest_assets, discovered("INGEST_ASSETS"))
+hifld_ingest_assets = unique(discovered("INGEST_ASSETS"))

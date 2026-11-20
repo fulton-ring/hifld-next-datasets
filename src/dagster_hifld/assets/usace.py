@@ -299,10 +299,14 @@ usace_nautical_publication_information_areas_usace_ienc_drift = register_approve
     "usace_nautical_publication_information_areas_usace_ienc_drift")
 
 INGEST_ASSETS = [
+    usace_administrative_areas_usace_ienc,
+    usace_navigation_marks_areas_usace_ienc,
     usace_nautical_publication_information_areas_usace_ienc,
     usace_obstruction_areas_usace_ienc_2,
 ]
 ASSET_CHECKS = [
+    usace_administrative_areas_complete,
+    usace_navigation_marks_areas_complete,
     usace_administrative_areas_usace_ienc_drift,
     usace_navigation_marks_areas_drift,
     usace_nautical_publication_information_areas_usace_ienc_drift,
@@ -310,10 +314,14 @@ ASSET_CHECKS = [
     usace_obstruction_areas_complete,
 ]
 JOBS = [
+    usace_administrative_areas_draft_job,
+    usace_navigation_marks_areas_draft_job,
     usace_nautical_publication_information_areas_draft_job,
     usace_obstruction_areas_draft_job,
 ]
 SCHEDULES = [
+    usace_administrative_areas_draft_schedule,
+    usace_navigation_marks_areas_draft_schedule,
     usace_nautical_publication_information_areas_draft_schedule,
     usace_obstruction_areas_draft_schedule,
 ]

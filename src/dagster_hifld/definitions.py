@@ -16,71 +16,6 @@ from dagster import (
 
 from dagster_hifld.assets.discovery import discovered, unique
 from dagster_hifld.assets import hifld_dataset_assets
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-from dagster_hifld.assets.usace_obstruction_lines import (
-    usace_obstruction_lines_complete,
-    usace_obstruction_lines_draft_job,
-    usace_obstruction_lines_draft_schedule,
-)
-
-
-
-
-
-
-
-from dagster_hifld.assets.epa_frs_sic_powerplants import (
-    epa_frs_sic_complete,
-    epa_frs_sic_draft_job,
-    epa_frs_sic_draft_schedule,
-    epa_frs_sic_published_membership_compatible,
-)
-
-
-
-
-
-
-
-
-from dagster_hifld.assets.usace import (
-    usace_administrative_areas_complete,
-    usace_administrative_areas_draft_job,
-    usace_administrative_areas_draft_schedule,
-    usace_navigation_marks_areas_complete,
-    usace_navigation_marks_areas_draft_job,
-    usace_navigation_marks_areas_draft_schedule,
-)
-
-
-
-
-
-
-
-
-
-
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
 from dagster_hifld.partitions import (
@@ -97,13 +32,6 @@ from dagster_hifld.source_formats import (
     CANONICAL_SOURCE_FORMAT_DIRS,
     discover_legacy_unknown_shapefile,
     discover_legacy_unknown_shapefile_keys,
-)
-from dagster_hifld.assets.usace_crane_locations import (
-    usace_crane_locations_complete,
-    usace_crane_locations_quality,
-    usace_crane_locations_release,
-    usace_crane_locations_draft_job,
-    usace_crane_locations_draft_schedule,
 )
 
 
@@ -482,40 +410,9 @@ def _configured_sensors():
 
 defs = Definitions(
     assets=hifld_dataset_assets,
-    asset_checks=unique(
-        [
-            *hifld_asset_checks,
-            usace_obstruction_lines_complete,
-            usace_administrative_areas_complete,
-            usace_navigation_marks_areas_complete,
-            usace_crane_locations_complete,
-            usace_crane_locations_quality,
-            usace_crane_locations_release,
-            epa_frs_sic_complete,
-            epa_frs_sic_published_membership_compatible,
-        ],
-        discovered("ASSET_CHECKS"),
-    ),
-    jobs=unique(
-        [
-            usace_obstruction_lines_draft_job,
-            usace_administrative_areas_draft_job,
-            usace_navigation_marks_areas_draft_job,
-            usace_crane_locations_draft_job,
-            epa_frs_sic_draft_job,
-        ],
-        discovered("JOBS"),
-    ),
-    schedules=unique(
-        [
-            usace_obstruction_lines_draft_schedule,
-            usace_administrative_areas_draft_schedule,
-            usace_navigation_marks_areas_draft_schedule,
-            usace_crane_locations_draft_schedule,
-            epa_frs_sic_draft_schedule,
-        ],
-        discovered("SCHEDULES"),
-    ),
+    asset_checks=unique(hifld_asset_checks, discovered("ASSET_CHECKS")),
+    jobs=unique(discovered("JOBS")),
+    schedules=unique(discovered("SCHEDULES")),
     sensors=_configured_sensors(),
     executor=_default_executor(),
     resources={

@@ -96,4 +96,12 @@ usace_crane_locations_draft_schedule = ScheduleDefinition(
 
 usace_crane_locations_drift = register_approved_baseline_drift(usace_crane_locations_ienc, "usace_crane_locations_drift")
 
-ASSET_CHECKS = [usace_crane_locations_complete, usace_crane_locations_drift]
+INGEST_ASSETS = [usace_crane_locations_ienc]
+ASSET_CHECKS = [
+    usace_crane_locations_complete,
+    usace_crane_locations_quality,
+    usace_crane_locations_release,
+    usace_crane_locations_drift,
+]
+JOBS = [usace_crane_locations_draft_job]
+SCHEDULES = [usace_crane_locations_draft_schedule]
