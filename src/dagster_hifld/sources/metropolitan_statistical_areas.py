@@ -453,7 +453,8 @@ def stage_msa_candidate(storage,*,archive_path=None,receipt_path=None):
                 'metadata/baseline_comparison.json':{'schema_version':1,'approved':False,'status':'blocked','reason_codes':['baseline_source_schema_id_geometry_mapping_not_approved']}}
             for name,value in payloads.items():
                 (temp/name).write_bytes(encode(value))
-            descriptors={str(p.relative_to(temp)):{'bytes':len(p.read_bytes()),'sha256':sha256_file(p)} for p in temp.rglob('*') if p.is_file()}
+            expected_outputs={str(p.relative_to(temp)):p.read_bytes() for p in temp.rglob('*') if p.is_file()}
+            descriptors={name:{'bytes':len(value),'sha256':digest(value)} for name,value in expected_outputs.items()}
             ready={'version':version,'approved':False,'source_sha256':archive_sha,'processing_fingerprint':fingerprint,
                 'source_record_sha256':source_record_sha256,'source_schema_sha256':source_schema_sha256,'objects':descriptors}
             (temp/'metadata/msa_candidate_ready.json').write_bytes(encode(ready))
