@@ -78,12 +78,20 @@ EXPECTED_FIELD_DECLARATIONS = [
      **({"length": 254} if kind == "esriFieldTypeString" else {})}
     for name, kind in EXPECTED_FIELDS
 ]
-EXPECTED_LAYER_EXTENT = {
+# The extent recorded for the previously accepted 2026-10-21 capture. Kept as
+# recorded evidence only: captures record the extent they observe and flag
+# drift from this value non-blockingly in the audit instead of being refused,
+# and the per-vertex containment guard is bounded by the observed extent.
+PREVIOUSLY_ACCEPTED_EXTENT = {
     "xmin": -96.41375809999994,
     "ymin": 29.698064000000045,
     "xmax": -79.47790829999997,
     "ymax": 45.05736820000004,
 }
+# Guard parameter, not a data pin: the extent a service advertises is rounded
+# against its vertex bounds by a few ulps, so the declared-extent containment
+# guard allows a slack far below any real coordinate change.
+DECLARED_EXTENT_TOLERANCE = 1e-9
 _LAYER_ID = 69
 _LAYER_NAME = "PYLONS_AREA"
 
@@ -153,6 +161,23 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     )
 
 
+def _validate_extent_bounds(extent: object, label: str) -> dict[str, float]:
+    """Structurally check a declared extent and return it as the observed coverage.
+
+    The values are capture-time observations, never pins: only their type,
+    finiteness and ordering are enforced, so an upstream change of coverage
+    passes and is recorded instead of being refused.
+    """
+    if not isinstance(extent, dict):
+        raise ValueError(f"{label}_extent_invalid")
+    bounds = {key: extent.get(key) for key in ("xmin", "ymin", "xmax", "ymax")}
+    if (any(type(bounds[key]) not in (int, float) or not math.isfinite(bounds[key])
+            for key in bounds)
+            or bounds["xmin"] >= bounds["xmax"] or bounds["ymin"] >= bounds["ymax"]):
+        raise ValueError(f"{label}_extent_invalid")
+    return bounds
+
+
 def _validate(captures: dict[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
     if not {"ids_seed", *[name for name, _url in _capture_roster(before)]} <= set(captures):
@@ -163,10 +188,12 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         raise ValueError("bts_ienc_item_identity_drift")
     item_description = " ".join(str(item.get(key, "")) for key in ("title", "description"))
     if ("Inland Electronic Navigational Charts" not in item_description
-            or "updated bi-monthly" not in item_description
             or SERVICE_DIRECTORY_URL.split("?")[0] not in item_description
             or "USACE_IENC_Master_Service_gdb.zip" not in item_description):
         raise ValueError("bts_ienc_official_distribution_link_drift")
+    # The update-cadence wording is prose in the catalog item, not a machine
+    # edition marker: record its presence as audit evidence, never a gate.
+    bts_cadence_wording_present = "updated bi-monthly" in item_description
     directory = docs["service_directory"]
     if not any(service.get("name") == f"IENC_Feature_Classes/{_LAYER_NAME}"
                and service.get("type") == "MapServer" for service in directory.get("services", [])):
@@ -192,8 +219,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     if (layer.get("spatialReference", {}).get("latestWkid") != 4326
             or layer.get("maxRecordCount") != 2000):
         raise ValueError("source_spatial_reference_or_page_limit_drift")
-    if {key: layer.get("extent", {}).get(key) for key in EXPECTED_LAYER_EXTENT} != EXPECTED_LAYER_EXTENT:
-        raise ValueError("source_coverage_extent_drift")
+    # The declared extent is a computed property of the current row set, not a
+    # published edition contract: witness it at capture time and record it.
+    observed_extent = _validate_extent_bounds(layer.get("extent"), "source_layer")
     _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
     extent = layer.get("extent", {})
     if "spatialReference" in extent:
@@ -251,8 +279,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
                 if (not isinstance(point, list) or len(point) < 2
                         or any(type(value) not in (int, float) or not math.isfinite(value) for value in point)):
                     raise ValueError("source_polygon_ordinate_contract_drift")
-                if not (EXPECTED_LAYER_EXTENT["xmin"] <= point[0] <= EXPECTED_LAYER_EXTENT["xmax"]
-                        and EXPECTED_LAYER_EXTENT["ymin"] <= point[1] <= EXPECTED_LAYER_EXTENT["ymax"]):
+                if not (observed_extent["xmin"] - DECLARED_EXTENT_TOLERANCE <= point[0]
+                        <= observed_extent["xmax"] + DECLARED_EXTENT_TOLERANCE
+                        and observed_extent["ymin"] - DECLARED_EXTENT_TOLERANCE <= point[1]
+                        <= observed_extent["ymax"] + DECLARED_EXTENT_TOLERANCE):
                     raise ValueError("source_geometry_outside_declared_coverage")
                 vertices += 1
         geometry = shapely.from_wkb(_esri_polygon(geom))
@@ -277,8 +307,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "source_vertex_count": vertices, "geometry_valid_count": geometry_valid,
         "geometry_empty_count": geometry_empty,
         "geometry_invalid_count": len(features) - geometry_valid - geometry_empty,
+        "source_extent": layer["extent"],
+        "source_extent_drift_from_prior_acceptance": observed_extent != PREVIOUSLY_ACCEPTED_EXTENT,
+        "bts_item_bi_monthly_wording_present": bts_cadence_wording_present,
         "source_coverage_scope": "Complete current official IENC PYLONS_AREA feature class; inland chart coverage only, not a claim of all pylon features nationwide.",
-        "drift_guard": "BTS " + BTS_ITEM_ID + " distribution/delegation link (the prior BTS item " + PRIOR_BTS_ITEM_ID + " returned anonymous-access denial during 2026-10-21 extraction and is recorded in docs, not validated here), official service-directory membership, service/layer identity, field names/types, CRS, pinned layer extent, page errors, and before/after exact ID roster are checked; duplicate Feature_ID values are preserved."}
+        "drift_guard": "BTS " + BTS_ITEM_ID + " delegation identity (item id, owner USDOT_BTS, official service-directory and master-geodatabase links; the bi-monthly update wording is recorded as audit evidence, not gated; the prior BTS item " + PRIOR_BTS_ITEM_ID + " returned anonymous-access denial during 2026-10-21 extraction and is recorded in docs, not validated here), official service-directory membership, service/layer identity, field names/types, CRS, observed layer extent recorded with drift from the previously accepted extent flagged non-blockingly, page errors, and before/after exact ID roster are checked; duplicate Feature_ID values are preserved."}
 
 
 def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
@@ -683,6 +716,8 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
             "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
             "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
+            "source_extent": audit["source_extent"],
+            "source_extent_drift_from_prior_acceptance": audit["source_extent_drift_from_prior_acceptance"],
             "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_release_accepted": False, "source_freshness_accepted": False,
@@ -700,6 +735,8 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
         "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
         "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
+        "source_extent": audit["source_extent"],
+        "source_extent_drift_from_prior_acceptance": audit["source_extent_drift_from_prior_acceptance"],
         "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json",
         "source_release_accepted": False, "source_freshness_accepted": False,

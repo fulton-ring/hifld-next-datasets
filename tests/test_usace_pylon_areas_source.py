@@ -23,10 +23,10 @@ from dagster_hifld.sources.usace_pylon_areas import (
     DATASET_SLUG,
     EXPECTED_FIELD_DECLARATIONS,
     EXPECTED_FIELDS,
-    EXPECTED_LAYER_EXTENT,
     FILE_SLUG,
     LAYER_URL,
     PAGE_SIZE,
+    PREVIOUSLY_ACCEPTED_EXTENT,
     _esri_polygon,
     _parquet_bytes,
     _validate,
@@ -48,7 +48,7 @@ def _ring(x: float, y: float, size: float = 0.001) -> list[list[float]]:
 def _features(ids: list[int]) -> list[dict]:
     features = []
     for index, oid in enumerate(ids):
-        x = EXPECTED_LAYER_EXTENT["xmin"] + (index % 1000) * 0.005
+        x = PREVIOUSLY_ACCEPTED_EXTENT["xmin"] + (index % 1000) * 0.005
         features.append({
             "attributes": {
                 "OBJECTID": oid,
@@ -62,7 +62,7 @@ def _features(ids: list[int]) -> list[dict]:
                 "Source_Dataset": "U37AG001.000",
                 "Feature_ID": f"U3 {oid:010d} 00011",
             },
-            "geometry": {"rings": [_ring(x, EXPECTED_LAYER_EXTENT["ymin"])]},
+            "geometry": {"rings": [_ring(x, PREVIOUSLY_ACCEPTED_EXTENT["ymin"])]},
         })
     return features
 
@@ -100,7 +100,7 @@ def _docs() -> dict[str, dict]:
         "name": "PYLONS_AREA",
         "geometryType": "esriGeometryPolygon",
         "spatialReference": {"wkid": 4326, "latestWkid": 4326},
-        "extent": {**EXPECTED_LAYER_EXTENT, "spatialReference": {"wkid": 4326, "latestWkid": 4326}},
+        "extent": {**PREVIOUSLY_ACCEPTED_EXTENT, "spatialReference": {"wkid": 4326, "latestWkid": 4326}},
         "maxRecordCount": 2000,
         "fields": copy.deepcopy(EXPECTED_FIELD_DECLARATIONS),
     }
@@ -166,9 +166,38 @@ class ValidateCompleteCapture(unittest.TestCase):
             ],
         )
 
+    def test_extent_growth_at_margin_passes_and_records_drift_warning(self):
+        docs = _docs()
+        grown = {**PREVIOUSLY_ACCEPTED_EXTENT, "xmax": -79.4}
+        for key in ("layer_before", "layer_after"):
+            docs[key]["extent"] = {**grown, "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
+        captures = {
+            name: (json.dumps(doc).encode("utf-8"), {"complete_body": True, "status": 200})
+            for name, doc in docs.items()
+        }
+        _fields, features, audit = _validate(captures)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_extent"], {**grown, "spatialReference": {"wkid": 4326, "latestWkid": 4326}})
+        self.assertIs(audit["source_extent_drift_from_prior_acceptance"], True)
+
+    def test_bts_item_without_bi_monthly_wording_still_passes(self):
+        docs = _docs()
+        docs["bts_item"]["description"] = docs["bts_item"]["description"].replace(
+            "is updated bi-monthly by", "is updated on a regular cadence by")
+        captures = {
+            name: (json.dumps(doc).encode("utf-8"), {"complete_body": True, "status": 200})
+            for name, doc in docs.items()
+        }
+        _fields, features, audit = _validate(captures)
+        self.assertEqual(len(features), COUNT)
+        self.assertIs(audit["bts_item_bi_monthly_wording_present"], False)
+        _base_fields, _base_features, baseline_audit = _validate(_captures())
+        self.assertIs(baseline_audit["bts_item_bi_monthly_wording_present"], True)
+
     def test_no_pinned_population(self):
         self.assertFalse(hasattr(source, "EXPECTED_COUNT"))
         self.assertFalse(hasattr(source, "EXPECTED_IDS"))
+        self.assertFalse(hasattr(source, "EXPECTED_LAYER_EXTENT"))
 
     def test_no_git_packaged_runtime_uses_verified_installed_code_fingerprint(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -279,13 +308,13 @@ class ValidateDriftRejections(unittest.TestCase):
         code = self._mutate("layer_before", mutate)
         self.assertEqual(str(code), "source_spatial_reference_or_page_limit_drift")
 
-    def test_extent_drift(self):
+    def test_structurally_invalid_extent_rejected(self):
         def mutate(docs):
             for key in ("layer_before", "layer_after"):
-                docs[key]["extent"] = {**EXPECTED_LAYER_EXTENT, "xmax": -70.0,
+                docs[key]["extent"] = {"xmin": -70.0, "ymin": 29.0, "xmax": -80.0, "ymax": 45.0,
                                        "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
         code = self._mutate("layer_before", mutate)
-        self.assertEqual(str(code), "source_coverage_extent_drift")
+        self.assertEqual(str(code), "source_layer_extent_invalid")
 
     def test_page_limit_drift(self):
         def mutate(docs):
@@ -380,6 +409,18 @@ class ValidateDriftRejections(unittest.TestCase):
         code = self._mutate("page_000", mutate)
         self.assertEqual(str(code), "source_geometry_outside_declared_coverage")
 
+    def test_geometry_outside_observed_extent_still_fails(self):
+        def mutate(docs):
+            grown = {**PREVIOUSLY_ACCEPTED_EXTENT, "ymax": 45.06}
+            for key in ("layer_before", "layer_after"):
+                docs[key]["extent"] = {**grown, "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
+            feature = docs["page_000"]["features"][0]
+            feature["geometry"]["rings"][0] = [
+                [-80.0, 45.07], [-80.0, 45.08], [-79.9, 45.08], [-79.9, 45.07], [-80.0, 45.07],
+            ]
+        code = self._mutate("page_000", mutate)
+        self.assertEqual(str(code), "source_geometry_outside_declared_coverage")
+
     def test_unclosed_ring_rejected(self):
         def mutate(docs):
             ring = docs["page_000"]["features"][0]["geometry"]["rings"][0]
@@ -443,10 +484,10 @@ class ParquetCandidateContract(unittest.TestCase):
         self.assertEqual(geometry.geom_type, "Polygon")
         self.assertTrue(geometry.is_valid)
         x, y = geometry.representative_point().x, geometry.representative_point().y
-        self.assertGreaterEqual(x, EXPECTED_LAYER_EXTENT["xmin"])
-        self.assertLessEqual(x, EXPECTED_LAYER_EXTENT["xmax"])
-        self.assertGreaterEqual(y, EXPECTED_LAYER_EXTENT["ymin"])
-        self.assertLessEqual(y, EXPECTED_LAYER_EXTENT["ymax"])
+        self.assertGreaterEqual(x, PREVIOUSLY_ACCEPTED_EXTENT["xmin"])
+        self.assertLessEqual(x, PREVIOUSLY_ACCEPTED_EXTENT["xmax"])
+        self.assertGreaterEqual(y, PREVIOUSLY_ACCEPTED_EXTENT["ymin"])
+        self.assertLessEqual(y, PREVIOUSLY_ACCEPTED_EXTENT["ymax"])
         self.assertEqual(
             shapely.from_wkb(_esri_polygon(first["geometry"])).wkb,
             table.column("geometry").to_pylist()[0],
