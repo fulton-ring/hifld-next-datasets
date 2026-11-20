@@ -69,4 +69,7 @@ usace_berths_areas_draft_schedule = ScheduleDefinition(
 
 usace_berths_areas_drift = register_approved_baseline_drift(usace_berths_areas_usace_ienc, "usace_berths_areas_drift")
 
+INGEST_ASSETS = [usace_berths_areas_usace_ienc]
 ASSET_CHECKS = [usace_berths_areas_complete, usace_berths_areas_drift]
+JOBS = [usace_berths_areas_draft_job]
+SCHEDULES = [usace_berths_areas_draft_schedule]

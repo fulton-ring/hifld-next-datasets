@@ -47,4 +47,7 @@ building_locations_draft_schedule = ScheduleDefinition(
 building_locations_drift = register_approved_baseline_drift(
     building_locations_usace_ienc, "building_locations_drift")
 
+INGEST_ASSETS = [building_locations_usace_ienc]
 ASSET_CHECKS = [building_locations_population_complete, building_locations_drift]
+JOBS = [building_locations_draft_job]
+SCHEDULES = [building_locations_draft_schedule]

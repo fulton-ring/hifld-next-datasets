@@ -71,4 +71,7 @@ usace_dry_docks_draft_schedule = ScheduleDefinition(
 
 usace_dry_docks_drift = register_approved_baseline_drift(usace_dry_docks_usace_ienc, "usace_dry_docks_drift")
 
+INGEST_ASSETS = [usace_dry_docks_usace_ienc]
 ASSET_CHECKS = [usace_dry_docks_complete, usace_dry_docks_drift]
+JOBS = [usace_dry_docks_draft_job]
+SCHEDULES = [usace_dry_docks_draft_schedule]
