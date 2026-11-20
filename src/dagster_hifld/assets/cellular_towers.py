@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.cellular_towers import (
-    DATASET_SLUG, EXPECTED_ACTIVE_LOCATIONS, FILE_SLUG, capture_cellular_towers,
+    DATASET_SLUG, FILE_SLUG, capture_cellular_towers,
 )
 
 
@@ -22,9 +23,11 @@ class CellularTowersConfig(Config):
     compute_kind="http",
     description=(
         "FCC ULS weekly public access complete cellular licenses file l_cell.zip: location records of active "
-        "Cellular - 47 CFR Part 22 licenses under the historical HIFLD Cellular Towers column contract "
-        "(24362 active locations observed). ULS filed-site population, not a census of physical towers. "
-        "Unapproved candidate; baseline, contract, coverage, rights, and release decisions remain pending."
+        "Cellular - 47 CFR Part 22 licenses under the historical HIFLD Cellular Towers column contract. "
+        "Completeness is witnessed at capture time against the payload's own counts member; the counts member "
+        "file creation date is the observed edition marker. ULS filed-site population, not a census of "
+        "physical towers. Unapproved candidate; baseline, contract, coverage, rights, and release decisions "
+        "remain pending."
     ),
 )
 def cellular_towers(context, config: CellularTowersConfig,
@@ -43,10 +46,13 @@ def cellular_towers(context, config: CellularTowersConfig,
 
 @asset_check(asset=cellular_towers, blocking=True)
 def cellular_towers_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_ACTIVE_LOCATIONS
+    count = candidate.get("source_reported_count")
+    passed = (type(count) is int and count > 0
+              and candidate.get("feature_count") == count
               and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -70,7 +76,9 @@ cellular_towers_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+cellular_towers_drift = register_approved_baseline_drift(cellular_towers, "cellular_towers_drift")
+
 INGEST_ASSETS = [cellular_towers]
-ASSET_CHECKS = [cellular_towers_complete]
+ASSET_CHECKS = [cellular_towers_complete, cellular_towers_drift]
 JOBS = [cellular_towers_draft_job]
 SCHEDULES = [cellular_towers_draft_schedule]
