@@ -826,6 +826,31 @@ def _school_release_from_receipt(receipt: dict, archive: bytes) -> census_latest
     return release
 
 
+def _construct_current_school(private, prefix, config, archive, receipt, receipt_bytes, replayed):
+    release = _school_release_from_receipt(receipt, archive)
+    config = replace(config, source_url=release.source_url, source_vintage=str(release.vintage))
+    result = _construct_school_capture(
+        private, "private", config, retained_archive=archive,
+        retained_receipt=receipt, retained_receipt_bytes=receipt_bytes)
+    manifest_key = prefix + "/metadata/source_manifest.json"
+    manifest = json.loads(private.read_key(manifest_key))
+    identity = manifest["processing_identity"]
+    manifest["source_release"] = release.as_receipt_evidence()
+    private.write_key(manifest_key, _json_bytes(manifest))
+    report_key = prefix + "/metadata/native_capture.json"
+    report = json.loads(private.read_key(report_key))
+    report["source_release"] = release.as_receipt_evidence()
+    report["plausible_feature_count_range"] = list(config.feature_count_range)
+    report["capture_replay"]["mode"] = "retained_transfer_replay" if replayed else "live_http_capture"
+    report["capture_replay"]["new_network_retrieval_performed"] = not replayed
+    private.write_key(report_key, _json_bytes(report))
+    schema_sha = _sha256(_json_bytes({
+        "source_url": release.source_url, "layer": config.layer_name,
+        "fields": report["source_schema"]}))
+    version = content_derived_version(result["records_sha256"], result["source_archive_sha256"], schema_sha, identity)
+    return {**result, "version": version}, identity, schema_sha
+
+
 def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *,
              retained_archive=None, retained_receipt=None, retained_receipt_bytes=None) -> dict:
     if not config.discover_current:
@@ -858,26 +883,9 @@ def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *
             release = _school_release_from_receipt(receipt, archive)
             if receipt_bytes is None or json.loads(receipt_bytes) != receipt:
                 raise ValueError("retained_capture_receipt_invalid")
-            config = replace(config, source_url=release.source_url, source_vintage=str(release.vintage))
-            result = _construct_school_capture(
-                private, "private", config, retained_archive=archive,
-                retained_receipt=receipt, retained_receipt_bytes=receipt_bytes)
-            manifest_key = prefix + "/metadata/source_manifest.json"
-            manifest = json.loads(private.read_key(manifest_key))
-            identity = manifest["processing_identity"]
-            manifest["source_release"] = release.as_receipt_evidence()
-            private.write_key(manifest_key, _json_bytes(manifest))
-            report_key = prefix + "/metadata/native_capture.json"
-            report = json.loads(private.read_key(report_key))
-            report["source_release"] = release.as_receipt_evidence()
-            report["plausible_feature_count_range"] = list(config.feature_count_range)
-            report["capture_replay"]["mode"] = "retained_transfer_replay" if replayed else "live_http_capture"
-            report["capture_replay"]["new_network_retrieval_performed"] = not replayed
-            private.write_key(report_key, _json_bytes(report))
-            schema_sha = _sha256(_json_bytes({
-                "source_url": release.source_url, "layer": config.layer_name,
-                "fields": report["source_schema"]}))
-            version = content_derived_version(result["records_sha256"], result["source_archive_sha256"], schema_sha, identity)
+            result, identity, schema_sha = _construct_current_school(
+                private, prefix, config, archive, receipt, receipt_bytes, replayed)
+            version = result["version"]
             target = f"{config.dataset_slug}/{config.file_slug}/{version}"
             state_root = f"_construction-state/{config.dataset_slug}/{version}"
             state_key = state_root + "/bundle.json"
@@ -889,9 +897,6 @@ def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *
             for path in sorted((root / "discovery").rglob("*")):
                 if path.is_file():
                     write_immutable(staging, observation + "/discovery/" + path.relative_to(root / "discovery").as_posix(), path.read_bytes())
-            objects = {name[len(prefix) + 1:]: {
-                "bytes": private.object_snapshot(name).size, "sha256": private.sha256_key(name)}
-                for name in private.list_prefix(prefix)}
             lock_key = f"_locks/{config.dataset_slug}.lock"
             write_immutable(staging, lock_key, b"")
             lock_path = Path(staging.local_dir) / staging.prefix / lock_key
@@ -904,6 +909,34 @@ def _capture(staging, version, config: SchoolDistrictLayerConfig, client=None, *
                     original = json.loads(load_first_construction(candidate_storage, state_key, version, fingerprint))
                     objects = original["payload"]["objects"]
                 else:
+                    attempt_key = f"_capture-observations/{config.dataset_slug}/construction/{version}.json"
+                    if candidate_storage.object_exists(attempt_key):
+                        attempt_body = candidate_storage.read_key(attempt_key)
+                        attempt = json.loads(attempt_body)
+                        if (not isinstance(attempt, dict) or set(attempt) != {"receipt_sha256", "replayed"}
+                                or type(attempt["replayed"]) is not bool
+                                or not isinstance(attempt["receipt_sha256"], str)
+                                or re.fullmatch(r"[0-9a-f]{64}", attempt["receipt_sha256"]) is None):
+                            raise ValueError("school_original_observation_invalid")
+                        write_immutable(candidate_storage, attempt_key, attempt_body)
+                        original_key = f'_capture-observations/{config.dataset_slug}/{attempt["receipt_sha256"]}/source_archive.receipt.json'
+                        if not candidate_storage.object_exists(original_key):
+                            raise ValueError("school_original_observation_invalid")
+                        original_bytes = candidate_storage.read_key(original_key)
+                        if _sha256(original_bytes) != attempt["receipt_sha256"]:
+                            raise ValueError("school_original_observation_invalid")
+                        if original_bytes != receipt_bytes or attempt["replayed"] != replayed:
+                            original_result, original_identity, original_schema = _construct_current_school(
+                                private, prefix, config, archive, json.loads(original_bytes),
+                                original_bytes, attempt["replayed"])
+                            if original_result != result or original_identity != identity or original_schema != schema_sha:
+                                raise ValueError("school_original_observation_identity_changed")
+                    else:
+                        write_immutable(candidate_storage, attempt_key, _json_bytes({
+                            "receipt_sha256": _sha256(receipt_bytes), "replayed": replayed}))
+                    objects = {name[len(prefix) + 1:]: {
+                        "bytes": private.object_snapshot(name).size, "sha256": private.sha256_key(name)}
+                        for name in private.list_prefix(prefix)}
                     existing = set(candidate_storage.list_prefix(target))
                     expected = {target + "/" + name for name in objects}
                     if existing - expected:

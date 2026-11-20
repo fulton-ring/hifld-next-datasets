@@ -414,3 +414,71 @@ class AdministrativeSchoolConstructionTests(unittest.TestCase):
         self.assertEqual(self.storage.read_key(corrupted[0]), b"injected damaged output")
         self.assertEqual(snapshot(scoped / "_construction-state"), history)
         self.assertEqual(snapshot(original_target), original)
+
+    def test_live_origin_mid_write_recovers_the_original_observation_and_mode(self):
+        self.storage = self.storage.model_copy(update={"prefix": "isolated"})
+        _, original_target, original, _ = self.first_capture()
+        scoped = self.root / "stage" / "isolated"
+        shared = source._shared
+        write = shared.write_immutable
+        candidate_root = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/"
+        for recovery in ("live", "retained"):
+            with self.subTest(recovery=recovery), patch.object(
+                    shared.pyogrio, "__gdal_version_string__", "live-origin-" + recovery):
+                history = snapshot(scoped / "_construction-state")
+                quarantine_root = scoped / "_quarantine" / source.DATASET_SLUG
+                previous_failures = set(quarantine_root.iterdir()) if quarantine_root.exists() else set()
+                observed = []
+
+                def fail_write(storage, key, body):
+                    if key.startswith(candidate_root):
+                        observed.append(key)
+                        if len(observed) == 3:
+                            raise OSError("injected live mid-write failure")
+                    return write(storage, key, body)
+
+                with patch.object(shared, "write_immutable", side_effect=fail_write):
+                    with self.assertRaisesRegex(OSError, "injected live"):
+                        source.capture(self.storage, client=self.client)
+                failure, = set(quarantine_root.iterdir()) - previous_failures
+                expected = snapshot(failure / "candidate" / candidate_root / "private")
+                receipt = expected["raw/source_archive.receipt.json"]
+                original_receipt = json.loads(receipt)
+                report = json.loads(expected["metadata/native_capture.json"])
+                self.assertEqual(report["capture_replay"]["mode"], "live_http_capture")
+                self.assertTrue(report["capture_replay"]["new_network_retrieval_performed"])
+                self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                version = observed[0].split("/")[2]
+                target = scoped / candidate_root / version
+                partial = snapshot(target)
+                attempt_path = scoped / "_capture-observations" / source.DATASET_SLUG / "construction" / (version + ".json")
+                attempt_bytes = attempt_path.read_bytes()
+                self.assertEqual(json.loads(attempt_bytes), {
+                    "receipt_sha256": source._sha256(receipt), "replayed": False})
+                self.responses[ROOT] += b"<!-- new live annual observation -->"
+                self.responses[DIRECTORY] += b"<!-- new live directory observation -->"
+                if recovery == "live":
+                    result = source.capture(self.storage, client=self.client)
+                    receipts = [json.loads(path.read_bytes()) for path in (
+                        scoped / "_capture-observations" / source.DATASET_SLUG).rglob("source_archive.receipt.json")]
+                    self.assertTrue(any(item["observed_at"] != original_receipt["observed_at"]
+                                        and item["source_release"]["listing_sha256"] == source._sha256(self.responses[DIRECTORY])
+                                        for item in receipts))
+                else:
+                    for invalid in ({"receipt_sha256": "0" * 64, "replayed": False},
+                                    {"receipt_sha256": source._sha256(receipt), "replayed": "live"}):
+                        attempt_path.write_bytes(source._json_bytes(invalid))
+                        with self.assertRaisesRegex(ValueError, "school_original_observation_invalid"):
+                            source.replay_retained_capture(self.storage, version, self.archive, receipt)
+                        self.assertEqual(snapshot(target), partial)
+                        self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                    attempt_path.write_bytes(attempt_bytes)
+                    with patch.object(shared.httpx, "Client", side_effect=AssertionError("replay used HTTP")):
+                        result = source.replay_retained_capture(self.storage, version, self.archive, receipt)
+                self.assertEqual(result["version"], version)
+                self.assertFalse(result["reused"])
+                self.assertEqual(snapshot(target), expected)
+                self.assertEqual({name: expected[name] for name in partial}, partial)
+                completed_history = snapshot(scoped / "_construction-state")
+                self.assertEqual({name: completed_history[name] for name in history}, history)
+                self.assertEqual(snapshot(original_target), original)
