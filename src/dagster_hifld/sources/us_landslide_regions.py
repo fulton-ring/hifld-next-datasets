@@ -545,8 +545,8 @@ def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    _preflight_capture(capture_root, names=(name,))
     _load_receipt(capture_root, name)
+    _preflight_capture(capture_root, names=(name,))
     try:
         return load_replay(capture_root, name)
     except ValueError as exc:
@@ -1363,8 +1363,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     }
     if storage.object_snapshot(state_key) is not None:
         parquet_body = Path(extracted["parquet_path"]).read_bytes()
-        return _verify_sealed_candidate(storage, prefix, state_key, version,
-                                        identity, audit, parquet_body)
+        result = _verify_sealed_candidate(storage, prefix, state_key, version,
+                                          identity, audit, parquet_body)
+        return {**result, "capture_directory": str(capture_root)}
     parquet_body = Path(extracted["parquet_path"]).read_bytes()
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body),

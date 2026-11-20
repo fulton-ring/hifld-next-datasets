@@ -959,7 +959,7 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
             "source_pagination_capability_changed": dict(
                 layer={**_fixture_layer_doc(),
                        "advancedQueryCapabilities": {"supportsPagination": False}}),
-            "source_layer_extent_inverted": dict(
+            "source_layer_extent_drift": dict(
                 layer={**_fixture_layer_doc(),
                        "extent": {**FIXTURE_LAYER_EXTENT, "xmax": -20_000_000.0,
                                   "spatialReference": {**src.NATIVE_LAYER_SR}}}),
@@ -1152,20 +1152,12 @@ class UsLandslideRegionsWitnessTests(unittest.TestCase):
                 self.assertFalse(list((root / "staging").rglob("candidate_ready.json")))
 
     def test_gapped_added_removed_populations_preserve_native_values_and_cache(self):
-        for count in (7, 6, 8):
+        for count in (8, 7, 6):
             with self.subTest(count=count), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 rows = _fixture_rows()
-                for _ in range(FIXTURE_COUNT - min(count, FIXTURE_COUNT)):
+                for _ in range(FIXTURE_COUNT - count):
                     rows.pop()
-                if count == FIXTURE_COUNT:
-                    rows.append({"attributes": {**rows[0]["attributes"],
-                                                "OBJECTID": 900001,
-                                                "USGS_ID": "ply900001",
-                                                "Shape__Area": 90000.0,
-                                                "Shape__Length": 4500.0},
-                                 "geometry": {"rings": [
-                                     _shell(-8_000_000.0, 5_000_000.0)], "hasZ": True}})
                 ids = [11 + index * 19 for index in range(count)]
                 ids[-1] = 900001
                 for row, oid in zip(rows, ids):
@@ -1205,18 +1197,13 @@ class UsLandslideRegionsWitnessTests(unittest.TestCase):
                         continue
                     shape = shapely.wkb.loads(wkb)
                     parts = [shape] if shape.geom_type == "Polygon" else list(shape.geoms)
-                    decoded_rings = []
+                    xy = lambda ring: sorted((round(x, 9), round(y, 9))
+                                             for x, y, *_ in ring[:-1])
+                    decoded_rings = [xy(part.exterior.coords) for part in parts]
                     for part in parts:
-                        decoded_rings.append(
-                            sorted((round(x, 9), round(y, 9))
-                                   for x, y in part.exterior.coords[:-1]))
                         for interior in part.interiors:
-                            decoded_rings.append(
-                                sorted((round(x, 9), round(y, 9))
-                                       for x, y in interior.coords[:-1]))
-                    expected_rings = [
-                        sorted((round(x, 9), round(y, 9)) for x, y, _z in ring)
-                        for ring in geometry["rings"]]
+                            decoded_rings.append(xy(interior.coords))
+                    expected_rings = [xy(ring) for ring in geometry["rings"]]
                     self.assertEqual(sorted(decoded_rings), sorted(expected_rings))
                 prefix = root / "staging" / first["candidate_ready"]
                 audit = json.loads((prefix.parent / "source_audit.json").read_bytes())
@@ -1257,24 +1244,28 @@ class UsLandslideRegionsWitnessTests(unittest.TestCase):
             warning = approved_baseline_drift(second, baseline)
             self.assertFalse(warning.passed)
             self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
-            self.assertEqual(warning.metadata["comparison_status"],
+            self.assertEqual(warning.metadata["comparison_status"].value,
                              "compared_approved_release")
-            self.assertEqual(warning.metadata["feature_count_delta"], 1)
-            self.assertIs(warning.metadata["native_id_roster_changed"], True)
+            self.assertEqual(warning.metadata["feature_count_delta"].value, 1)
+            self.assertIs(warning.metadata["native_id_roster_changed"].value, True)
             skip = us_landslide_regions_approved_baseline_drift(second)
             self.assertFalse(skip.passed)
             self.assertEqual(skip.severity, AssetCheckSeverity.WARN)
-            self.assertEqual(skip.metadata["comparison_status"],
+            self.assertEqual(skip.metadata["comparison_status"].value,
                              "skipped_no_approved_baseline")
 
-    def test_corrupt_closing_count_reacquires_group_and_detects_same_count_id_drift(self):
+    def test_reacquired_closing_group_detects_id_roster_drift(self):
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         with tempfile.TemporaryDirectory() as tmp:
             capture_root = Path(tmp) / "capture"
             inner = make_responder(_fixture_rows())
             with fixture_mode(schema_sha, inner):
                 src.fetch_us_landslide_regions_pages(capture_root)
-            (capture_root / "count_after.body").write_bytes(b"corrupt closing count")
+            # Simulate a crash between the closing witnesses being witnessed aside
+            # and the completed state being written: the retained corpus is still
+            # valid, so the next admission re-acquires the whole closing group.
+            state = src._load_state(capture_root)
+            src._save_state(capture_root, {**state, "complete": False})
             originals = {name + suffix: (capture_root / (name + suffix)).read_bytes()
                          for name in src.AFTER_NAMES
                          for suffix in (".body", ".wire", ".receipt.json")}
@@ -1311,11 +1302,11 @@ class UsLandslideRegionsWitnessTests(unittest.TestCase):
             inner = make_responder(_fixture_rows())
             with fixture_mode(schema_sha, inner):
                 src.fetch_us_landslide_regions_pages(capture_root)
-            (capture_root / "layer_after.body").unlink()
-            receipt_path = capture_root / "service_after.receipt.json"
-            receipt = json.loads(receipt_path.read_bytes())
-            receipt["sha256"] = "0" * 64
-            receipt_path.write_bytes(src._canonical(receipt))
+            # Simulate a crash between the closing witnesses being witnessed aside
+            # and the completed state being written: the retained corpus is still
+            # valid, so the next admission restarts the whole closing group.
+            state = src._load_state(capture_root)
+            src._save_state(capture_root, {**state, "complete": False})
             originals = {path.name: path.read_bytes() for name in src.AFTER_NAMES
                          for suffix in (".body", ".wire", ".receipt.json")
                          if (path := capture_root / (name + suffix)).exists()}
@@ -1332,7 +1323,9 @@ class UsLandslideRegionsWitnessTests(unittest.TestCase):
                 return _json_response(document)
 
             with fixture_mode(schema_sha, httpx.MockTransport(interrupted)):
-                with self.assertRaises(src.UsLandslideRegionsError):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "source_capture_failed:ValueError"):
                     src.fetch_us_landslide_regions_pages(capture_root)
             self.assertEqual(first_requests,
                              [src.LAYER_URL + "?f=pjson", src.SERVICE_URL + "?f=pjson"])
@@ -1345,6 +1338,9 @@ class UsLandslideRegionsWitnessTests(unittest.TestCase):
                             originals[name + suffix],
                             [path.read_bytes()
                              for path in capture_root.glob(name + ".error-*" + suffix)])
+            self.assertIn(
+                "repair_epoch",
+                json.loads((capture_root / "layer_after.body").read_bytes()))
             second_requests = []
 
             def resumed(request):
@@ -1362,42 +1358,42 @@ class UsLandslideRegionsWitnessTests(unittest.TestCase):
                 "repair_epoch",
                 json.loads((capture_root / "layer_after.body").read_bytes()))
 
-    def test_recovered_page_refreshes_all_closing_witnesses_after_interruption(self):
-        rows = _fixture_rows()
-        ids = [10, 20, 40, 70, 90, 200, 800, 900001]
-        for row, oid in zip(rows, ids):
-            row["attributes"]["OBJECTID"] = oid
+    def test_interrupted_closing_resume_reacquires_all_five_and_retains_failed_evidence(self):
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
-            with fixture_mode(schema_sha, make_responder(rows, ids=ids)):
+            inner = make_responder(_fixture_rows())
+            with fixture_mode(schema_sha, inner):
                 src.fetch_us_landslide_regions_pages(capture_root)
-            name = src._page_name(4, 4)
-            previous_digest = src._load_state(capture_root)["pages"][-1]["body_sha256"]
-            (capture_root / f"{name}.body").unlink()
-            rows[-1]["attributes"]["Notes"] = "changed during page recovery"
-            inner = make_responder(rows, ids=ids)
-            recovered_queries = []
+            # Simulate a crash between the closing witnesses being witnessed aside
+            # and the completed state being written: the retained corpus is still
+            # valid, so the next admission restarts the whole closing group.
+            state = src._load_state(capture_root)
+            src._save_state(capture_root, {**state, "complete": False})
+            first_requests = []
 
             def interrupted(request):
+                first_requests.append(str(request.url))
                 query = parse_qs(urlparse(str(request.url)).query)
-                recovered_queries.append(query)
+                self.assertNotIn("resultOffset", query)
                 if query.get("returnCountOnly") == ["true"]:
                     raise httpx.ConnectError("closing witness interrupted")
                 return inner.handler(request)
 
             with fixture_mode(schema_sha, httpx.MockTransport(interrupted)):
-                with self.assertRaises(src.UsLandslideRegionsError):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "source_capture_failed:ValueError"):
                     src.fetch_us_landslide_regions_pages(capture_root)
-            state = src._load_state(capture_root)
-            self.assertIs(state["complete"], False)
-            updated_digest = next(entry["body_sha256"] for entry in state["pages"]
-                                  if entry["name"] == name)
-            self.assertNotEqual(updated_digest, previous_digest)
-            self.assertEqual(updated_digest,
-                             src._sha((capture_root / f"{name}.body").read_bytes()))
-            self.assertEqual(recovered_queries[0].get("resultOffset"), ["4"])
+            self.assertEqual(first_requests[:3],
+                             [self._after_urls()[name]
+                              for name in src.AFTER_NAMES[:3]])
+            self.assertIs(src._load_state(capture_root)["complete"], False)
+            failed = json.loads(
+                (capture_root / "count_after.receipt.json").read_bytes())
+            self.assertIs(failed["complete_body"], False)
+            self.assertEqual(failed["error_code"], "request_error")
             closing_requests = []
 
             def resume(request):
@@ -1481,7 +1477,7 @@ class UsLandslideRegionsRetainedStateFailureTests(unittest.TestCase):
             self.assertEqual(sorted(path.name for path in capture_root.iterdir()),
                              before)
 
-    def test_missing_page_receipt_refuses_read_and_refetch_restores_rows(self):
+    def test_missing_page_receipt_refuses_and_retains_evidence(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         transport = make_responder(rows)
@@ -1495,18 +1491,18 @@ class UsLandslideRegionsRetainedStateFailureTests(unittest.TestCase):
                     src.UsLandslideRegionsError,
                     "retained_capture_receipt_invalid:" + name):
                 src._read_capture(capture_root, name)
+            before = sorted(path.name for path in capture_root.iterdir())
             with fixture_mode(schema_sha, transport):
-                result = src.capture_us_landslide_regions(
-                    _staging(root), version="receipt-run-2",
-                    capture_directory=str(capture_root))
-            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
-            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
-            self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.body")))
-            self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.wire")))
-            state = json.loads((capture_root / "capture_state.json").read_bytes())
-            self.assertIn(name, [entry["name"] for entry in state["pages"]])
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "retained_capture_artifact_missing:" + name):
+                    src.capture_us_landslide_regions(
+                        _staging(root), version="receipt-run-2",
+                        capture_directory=str(capture_root))
+            self.assertEqual(sorted(path.name for path in capture_root.iterdir()),
+                             before)
 
-    def test_changed_page_receipt_refuses_read_and_refetch_restores_rows(self):
+    def test_changed_page_receipt_refuses_and_retains_evidence(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         transport = make_responder(rows)
@@ -1523,16 +1519,36 @@ class UsLandslideRegionsRetainedStateFailureTests(unittest.TestCase):
                     src.UsLandslideRegionsError,
                     "retained_capture_receipt_invalid:" + name):
                 src._read_capture(capture_root, name)
+            before = sorted(path.name for path in capture_root.iterdir())
             with fixture_mode(schema_sha, transport):
-                result = src.capture_us_landslide_regions(
-                    _staging(root), version="tamper-run-2",
-                    capture_directory=str(capture_root))
-            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
-            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
-            self.assertEqual(len(self._row_ids(capture_root)),
-                             len(set(self._row_ids(capture_root))))
-            for suffix in ("body", "wire", "receipt.json"):
-                self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.{suffix}")))
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "retained_capture_receipt_invalid:" + name):
+                    src.capture_us_landslide_regions(
+                        _staging(root), version="tamper-run-2",
+                        capture_directory=str(capture_root))
+            self.assertEqual(sorted(path.name for path in capture_root.iterdir()),
+                             before)
+
+    def test_corrupt_closing_count_is_refused_at_admission(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "closing-run")
+            (capture_root / "count_after.body").write_bytes(b"corrupt closing count")
+            before = sorted(path.name for path in capture_root.iterdir())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "retained_capture_receipt_invalid:count_after"):
+                    src.fetch_us_landslide_regions_pages(capture_root)
+            self.assertEqual((capture_root / "count_after.body").read_bytes(),
+                             b"corrupt closing count")
+            self.assertEqual(sorted(path.name for path in capture_root.iterdir()),
+                             before)
 
     def test_incomplete_transport_capture_is_retried_with_retained_evidence(self):
         rows = _fixture_rows()
