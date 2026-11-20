@@ -30,12 +30,27 @@ from test_metropolitan_divisions_source import VINTAGE, URL, ANNUAL, LISTING, bu
 
 def _layer_table():
     geometry = shapely.to_wkb(shapely.MultiPolygon([shapely.Polygon([(0, 0), (1, 0), (0, 1), (0, 0)])]))
-    rows = []
-    for oid, csafp, memi, lsad in ((1, None, "1", "M1"), (2, "120", "1", "M1"), (3, "121", "2", "M2"), (4, None, "2", "M2")):
-        rows.append([oid, csafp, f"{oid:05d}", f"{oid:05d}", f"310M700US{oid:05d}", f"CBSA {oid}", f"Area {oid}",
-                     lsad, memi, "G3110", 100.0 + oid, 0.0, "+33.6457373", "-84.2948951", geometry])
+    specs = ((1, None, "1", "M1"), (2, "120", "1", "M1"), (3, "121", "2", "M2"), (4, None, "2", "M2"))
+    oids = [s[0] for s in specs]
+    props = {
+        "OBJECTID": oids,
+        "CSAFP": [s[1] for s in specs],
+        "CBSAFP": [f"{oid:05d}" for oid in oids],
+        "GEOID": [f"{oid:05d}" for oid in oids],
+        "GEOIDFQ": [f"310M700US{oid:05d}" for oid in oids],
+        "NAME": [f"CBSA {oid}" for oid in oids],
+        "NAMELSAD": [f"Area {oid}" for oid in oids],
+        "LSAD": [s[3] for s in specs],
+        "MEMI": [s[2] for s in specs],
+        "MTFCC": ["G3110"] * 4,
+        "ALAND": [100.0 + oid for oid in oids],
+        "AWATER": [0.0] * 4,
+        "INTPTLAT": ["+33.6457373"] * 4,
+        "INTPTLON": ["-84.2948951"] * 4,
+        "SHAPE": [geometry] * 4,
+    }
     schema = pa.schema([pa.field(name, typ) for name, typ in zip(source.FIELDS, source.TYPES)])
-    return pa.Table.from_pylist(rows, schema=schema)
+    return pa.Table.from_pydict(props, schema=schema)
 
 
 def _selection_table():
