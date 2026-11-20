@@ -362,7 +362,8 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
 
                 def respond(request):
                     response = inner.handler(request)
-                    body = response.content
+                    body = response.read()
+                    response.close()
                     wire = gzip.compress(body, mtime=0) if encoding == "gzip" else body
                     return httpx.Response(response.status_code,
                         headers={"Content-Encoding": encoding, "Content-Length": str(len(wire))},
