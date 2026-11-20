@@ -734,6 +734,90 @@ class NhdHydrolocationSinkSpringWaterbodyOutletWitnessTests(unittest.TestCase):
                         self.assertFalse(any(key not in inventory and not key.startswith("_quarantine/")
                                              for key in after))
 
+    def test_corrupt_closing_count_reacquires_group_and_detects_same_count_id_drift(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            capture_root = Path(tmp) / "capture"
+            inner = make_responder(_fixture_rows())
+            with fixture_mode(schema_sha, inner, real_provenance=True):
+                src.fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(capture_root)
+            (capture_root / "count_after.body").write_bytes(b"corrupt closing count")
+            originals = {name + suffix: (capture_root / (name + suffix)).read_bytes()
+                         for name in src.AFTER_NAMES for suffix in (".body", ".wire", ".receipt.json")}
+            requests = []
+
+            def changed(request):
+                requests.append(str(request.url))
+                query = parse_qs(urlparse(str(request.url)).query)
+                self.assertNotIn("resultOffset", query)
+                if query.get("returnIdsOnly") == ["true"]:
+                    return httpx.Response(200, stream=JSONStream({"objectIdFieldName": "OBJECTID",
+                        "objectIds": [*FIXTURE_OBJECTIDS[:-1], 99]}))
+                return inner.handler(request)
+
+            with fixture_mode(schema_sha, httpx.MockTransport(changed), real_provenance=True):
+                with self.assertRaisesRegex(src.NhdHydrolocationSinkSpringWaterbodyOutletError,
+                                            "source_id_population_drift:ids_after"):
+                    src.fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(capture_root)
+            self.assertEqual(requests, [src._document_urls()[name] for name in src.AFTER_NAMES])
+            self.assertIs(src._load_state(capture_root)["complete"], False)
+            for name in src.AFTER_NAMES:
+                for suffix in (".body", ".wire", ".receipt.json"):
+                    self.assertIn(originals[name + suffix],
+                                  [path.read_bytes() for path in capture_root.glob(name + ".error-*" + suffix)])
+
+    def test_interrupted_closing_group_repair_restarts_all_four_on_second_attempt(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            capture_root = Path(tmp) / "capture"
+            inner = make_responder(_fixture_rows())
+            with fixture_mode(schema_sha, inner, real_provenance=True):
+                src.fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(capture_root)
+            (capture_root / "layer_after.body").unlink()
+            receipt_path = capture_root / "service_after.receipt.json"
+            receipt = json.loads(receipt_path.read_bytes())
+            receipt["sha256"] = "0" * 64
+            receipt_path.write_bytes(src._canonical(receipt))
+            originals = {path.name: path.read_bytes() for name in src.AFTER_NAMES
+                         for suffix in (".body", ".wire", ".receipt.json")
+                         if (path := capture_root / (name + suffix)).exists()}
+            first_requests, pending_states = [], []
+
+            def interrupted(request):
+                first_requests.append(str(request.url))
+                pending_states.append(src._load_state(capture_root)["complete"])
+                if str(request.url) == src.SERVICE_URL + "?f=pjson":
+                    raise httpx.ConnectError("closing service interrupted")
+                response = inner.handler(request)
+                layer = json.loads(response.stream.body)
+                layer["repair_epoch"] = "first attempt"
+                return httpx.Response(200, stream=JSONStream(layer))
+
+            with fixture_mode(schema_sha, httpx.MockTransport(interrupted), real_provenance=True):
+                with self.assertRaises(src.NhdHydrolocationSinkSpringWaterbodyOutletError):
+                    src.fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(capture_root)
+            self.assertEqual(first_requests, [src.LAYER_URL + "?f=pjson", src.SERVICE_URL + "?f=pjson"])
+            self.assertEqual(pending_states, [False, False])
+            self.assertIs(src._load_state(capture_root)["complete"], False)
+            for name in src.AFTER_NAMES:
+                for suffix in (".body", ".wire", ".receipt.json"):
+                    if name + suffix in originals:
+                        self.assertIn(originals[name + suffix], [path.read_bytes()
+                            for path in capture_root.glob(name + ".error-*" + suffix)])
+            second_requests = []
+
+            def resumed(request):
+                second_requests.append(str(request.url))
+                self.assertIs(src._load_state(capture_root)["complete"], False)
+                return inner.handler(request)
+
+            with fixture_mode(schema_sha, httpx.MockTransport(resumed), real_provenance=True):
+                result = src.fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(capture_root)
+            self.assertEqual(second_requests, [src._document_urls()[name] for name in src.AFTER_NAMES])
+            self.assertTrue(result["complete"])
+            self.assertIs(src._load_state(capture_root)["complete"], True)
+            self.assertNotIn("repair_epoch", json.loads((capture_root / "layer_after.body").read_bytes()))
+
     def test_recovered_segment_refreshes_all_closing_witnesses_after_interruption(self):
         rows = _fixture_rows()
         ids = [10, 20, 40, 70, 90, 200, 800]

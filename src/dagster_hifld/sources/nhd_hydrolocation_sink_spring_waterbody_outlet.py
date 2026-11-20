@@ -593,15 +593,26 @@ def fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(
             raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_count_drift")
         refreshed = _fetch_segments(active, capture_root, roster, state)
         segments = list(state["segments"])
-        if refreshed or state.get("complete") is not True:
+        refresh_closing = refreshed or state.get("complete") is not True
+        if not refresh_closing:
+            for name in AFTER_NAMES:
+                try:
+                    body, _receipt = _read_capture(capture_root, name)
+                    document = json.loads(body)
+                    if not isinstance(document, dict) or "error" in document:
+                        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_page_error:" + name)
+                except (OSError, ValueError):
+                    refresh_closing = True
+                    break
+        if refresh_closing:
             state["complete"] = False
             _save_state(capture_root, state)
             for name in AFTER_NAMES:
                 _witness_aside(capture_root, name)
-        for name in AFTER_NAMES:
-            body, _receipt = _retained_or_fetch(active, capture_root, name, urls[name])
-            if _producer_error_doc(body):
-                raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_page_error:" + name)
+            for name in AFTER_NAMES:
+                body, _receipt = capture_get(active, urls[name], capture_root, name, max_bytes=MAX_BODY_BYTES)
+                if _producer_error_doc(body):
+                    raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_page_error:" + name)
         count_after = json.loads(_read_capture(capture_root, "count_after")[0])
         if type(count_after.get("count")) is not int or count_after["count"] != len(roster):
             raise NhdHydrolocationSinkSpringWaterbodyOutletError(
