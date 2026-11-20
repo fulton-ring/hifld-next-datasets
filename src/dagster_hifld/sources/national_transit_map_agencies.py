@@ -1,13 +1,13 @@
 """Lossless draft capture of the official BTS National Transit Map Agencies layer.
 
-The candidate pins the 2026-09-23 source compilation. It remains blocked from
-publication until the source/schema/ID contract and historical baseline have
-been accepted by a maintainer.
+Exact-ID JSON slices retain the producer fields and native XYZ geometry.
+Compilation statements are observations, not immutable editions or schedules.
+Source, rights, historical equivalence and release acceptance remain false.
 """
 from __future__ import annotations
 
-import hashlib
 import json
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,11 +23,14 @@ from shapely.geometry import Point
 
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.http_capture import validate_capture_roster
+from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.sources.arcgis_layer import layer_capture_roster, load_replay
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, content_derived_version, processing_identity,
+    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    validate_capture_request_identity,
     quarantine_incomplete_capture, verify_cached_candidate,
     write_immutable,
 )
@@ -41,40 +44,84 @@ OWNER = "USDOT_BTS"
 SERVICE_URL = "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_National_Transit_Map_Agencies/FeatureServer"
 LAYER_ID = 0
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-SOURCE_RELEASE = "2026-09-23"
-SOURCE_RELEASE_TEXT = "September 23, 2026"
 EXPECTED_SCHEMA_SHA256 = "a9f1aff709a051aaa6809b575c9f4c8c803a1e9c42f0dc135a0566220be888bc"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 16_000_000
+MAX_CAPTURE_BYTES = 256_000_000
+MAX_CAPTURE_RESPONSES = 1024
+MAX_RECEIPT_BYTES = 64_000
+MAX_MANIFEST_BYTES = 4_000_000
+METADATA_NAMES = {"ids_seed", "item", "service_before", "layer_before", "count_before",
+                  "ids_before", "layer_after", "service_after", "count_after", "ids_after"}
+LICENSE = "Creative Commons Attribution 3.0 United States (CC-BY-3.0)"
+
+
+
+def _capture_roster(seed: list[int]) -> list[tuple[str, str]]:
+    urls = layer_capture_roster(
+        seed, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(("item", ITEM_URL + "?f=json"),),
+        page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"},
+        after_order=("layer_after", "service_after", "count_after", "ids_after"),
+    )
+    return [("ids_seed", dict(urls)["ids_before"]), *urls]
+
+
+def _validate_seed(seed: object) -> list[int]:
+    if not isinstance(seed, list) or not seed:
+        raise ValueError("source_seed_population_drift")
+    validate_capture_witness(len(seed), seed, len(seed), seed)
+    if len(METADATA_NAMES) + (len(seed) + PAGE_SIZE - 1) // PAGE_SIZE > MAX_CAPTURE_RESPONSES:
+        raise ValueError("source_capture_request_limit")
+    return seed
+
+
+def _admit_capture_directory(root: Path) -> int:
+    if (".." in root.parts or any(path.is_symlink() for path in (root, *root.parents))
+            or not root.is_dir()):
+        raise ValueError("unsafe_or_missing_retained_capture")
+    names = set()
+    for path in root.iterdir():
+        names.add(path.name)
+        if len(names) > 3 * MAX_CAPTURE_RESPONSES + 1:
+            raise ValueError("source_capture_request_limit")
+        if path.name == "capture_manifest.json":
+            continue
+        match = re.fullmatch(r"([a-z][a-z0-9_]*)\.(body|wire|receipt\.json)", path.name)
+        if (match is None or match[1] not in METADATA_NAMES
+                and re.fullmatch(r"page_[0-9]{3,}", match[1]) is None):
+            raise ValueError("retained_capture_artifact_unexpected")
+    validate_capture_roster(root, names)
+    total = 0
+    for name in names:
+        size = (root / name).lstat().st_size
+        cap = (MAX_MANIFEST_BYTES if name == "capture_manifest.json" else
+               MAX_RECEIPT_BYTES if name.endswith(".receipt.json") else MAX_BODY_BYTES)
+        total += size
+        if size > cap or total > MAX_CAPTURE_BYTES:
+            raise ValueError("source_capture_budget_exceeded")
+    return total
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    wire, body = root / f"{name}.wire", root / f"{name}.body"
-    wire.unlink(missing_ok=True); body.unlink(missing_ok=True)
-    wh, bh = hashlib.sha256(), hashlib.sha256(); ws = bs = 0
-    def retain(path: Path, digest, data: bytes, kind: str) -> None:
-        nonlocal ws, bs
-        with path.open("ab") as out: out.write(data)
-        if kind == "wire": ws += len(data); wh.update(data)
-        else: bs += len(data); bh.update(data)
-    observed = datetime.now(timezone.utc).isoformat()
-    with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-        result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
-            max_decoded_bytes=MAX_BODY_BYTES, reserve=lambda _: None,
-            retain_wire=lambda b: retain(wire, wh, b, "wire"),
-            retain_decoded=lambda b: retain(body, bh, b, "body"))
-        final = str(response.url)
-    receipt = {"method":"GET","url":url,"final_url":final,"observed_at":observed,
-        "status":result.status_code,"complete_body":result.complete,"wire_bytes":result.wire_bytes_retained,
-        "wire_sha256":result.wire_sha256,"bytes":result.decoded_bytes_retained,"sha256":result.decoded_sha256,
-        "content_encoding":result.content_encoding,"content_length":result.content_length,"error_code":result.error_code}
-    (root/f"{name}.receipt.json").write_bytes(_canonical(receipt)+b"\n")
-    if (not result.complete or result.status_code != 200 or final != url or ws != receipt["wire_bytes"]
-        or bs != receipt["bytes"] or _sha(wire.read_bytes()) != receipt["wire_sha256"]
-        or _sha(body.read_bytes()) != receipt["sha256"]):
-        raise ValueError("incomplete_source_capture:"+name)
-    return body.read_bytes(), receipt
+    retained = _admit_capture_directory(root)
+    cap = min(MAX_BODY_BYTES, (MAX_CAPTURE_BYTES - retained - MAX_RECEIPT_BYTES) // 2)
+    if cap <= 0:
+        raise ValueError("source_capture_budget_exceeded")
+    if shutil.disk_usage(root).free < 256_000_000 + 2 * cap + MAX_RECEIPT_BYTES:
+        raise ValueError("disk_floor_before_acquisition")
+    return capture_get(client, url, root, name, max_bytes=cap, max_wire_block_bytes=cap)
 
+
+def _compilation_date(item: Mapping[str, object]) -> str | None:
+    match = re.search(r"\bcompiled on ([A-Za-z]+ [0-9]{1,2}, [0-9]{4})",
+                      str(item.get("description", "")), re.IGNORECASE)
+    if match is None:
+        return None
+    try:
+        return datetime.strptime(match[1], "%B %d, %Y").date().isoformat()
+    except ValueError:
+        return None
 
 def _field_profile(fields: object) -> tuple[list[dict[str, object]], str]:
     if not isinstance(fields, list) or any(not isinstance(f, dict) for f in fields):
@@ -85,14 +132,23 @@ def _field_profile(fields: object) -> tuple[list[dict[str, object]], str]:
 
 def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     docs = {n:json.loads(body) for n,(body,_) in captures.items()}
-    if set(docs) != {"item","service_before","layer_before","count_before","ids_before","ids_seed",
-        "count_after","ids_after","layer_after","service_after",*(f"page_{i:03}" for i in range(5))}:
+    if "ids_seed" not in docs:
+        raise ValueError("source_capture_roster_incomplete_or_unexpected")
+    seed = _validate_seed(docs["ids_seed"].get("objectIds"))
+    expected_urls = dict(_capture_roster(seed))
+    if set(docs) != set(expected_urls):
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
     item, service, layer = docs["item"], docs["service_before"], docs["layer_before"]
     if item.get("id") != ITEM_ID or item.get("owner") != OWNER or item.get("access") != "public" or item.get("url") != SERVICE_URL:
         raise ValueError("official_BTS_item_identity_drift")
-    if SOURCE_RELEASE_TEXT.casefold() not in str(item.get("description", "")).casefold():
-        raise ValueError("official_source_release_date_drift")
+    if (item.get("orgId") != "xOi1kZaI0eWDREZv"
+            or item.get("title") != "National Transit Map Agencies"
+            or item.get("type") != "Feature Service"):
+        raise ValueError("official_BTS_item_identity_drift")
+    if item.get("licenseInfo") != LICENSE or layer.get("copyrightText") != LICENSE:
+        raise ValueError("official_BTS_license_drift")
+    for name, (_body, receipt) in captures.items():
+        validate_capture_request_identity(name, receipt, expected_urls[name])
     if service.get("serviceItemId") != ITEM_ID or LAYER_ID not in [x.get("id") for x in service.get("layers",[]) if isinstance(x,dict)]:
         raise ValueError("official_BTS_service_identity_drift")
     if layer.get("id") != LAYER_ID or layer.get("name") != "National Transit Map Agencies" or layer.get("geometryType") != "esriGeometryPoint":
@@ -111,16 +167,21 @@ def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
     ids = validate_capture_witness(
         docs["count_before"].get("count"), docs["ids_before"].get("objectIds"),
         docs["count_after"].get("count"), docs["ids_after"].get("objectIds"))
-    seed = docs["ids_seed"].get("objectIds")
-    if not isinstance(seed,list) or sorted(seed) != ids:
+    if sorted(seed) != ids:
         raise ValueError("source_population_drift")
     features=[]
-    for name in sorted(n for n in docs if n.startswith("page_")):
+    page_names = [name for name in expected_urls if name.startswith("page_")]
+    for index, name in enumerate(page_names):
         page=docs[name]
         if page.get("error") or page.get("exceededTransferLimit") is True or page.get("spatialReference",{}).get("latestWkid") != 4326:
             raise ValueError("source_page_error_or_truncation")
         rows=page.get("features")
         if not isinstance(rows,list): raise ValueError("source_page_missing_features")
+        expected_ids = sorted(seed[index * PAGE_SIZE:(index + 1) * PAGE_SIZE])
+        actual_ids = [row.get("attributes", {}).get("OBJECTID") for row in rows
+                      if isinstance(row, dict)]
+        if (any(type(oid) is not int for oid in actual_ids) or actual_ids != expected_ids):
+            raise ValueError("source_page_id_slice_mismatch")
         features.extend(rows)
     names={f["name"] for f in fields}
     if len(features)!=len(ids) or sorted(f.get("attributes",{}).get("OBJECTID") for f in features)!=ids:
@@ -133,34 +194,46 @@ def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]
 
 
 def _load_retained_capture(directory: Path, destination: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
-    """Replay a previously retained complete capture without contacting BTS."""
-    root=Path(directory).absolute()
-    if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)) or not root.is_dir():
-        raise ValueError("unsafe_or_missing_retained_capture")
-    try: manifest=json.loads((root/"capture_manifest.json").read_bytes())
-    except (OSError,ValueError) as exc: raise ValueError("retained_capture_manifest_missing_or_invalid") from exc
-    source_count=manifest.get("source_feature_count",manifest.get("feature_count"))
-    if manifest.get("complete") is not True or type(source_count) is not int or source_count < 0:
+    """Replay the native complete manifest after bounded artifact admission."""
+    root = Path(directory).absolute()
+    _admit_capture_directory(root)
+    manifest = json.loads((root / "capture_manifest.json").read_bytes())
+    if not isinstance(manifest, dict):
+        raise ValueError("retained_capture_manifest_missing_or_invalid")
+    source_count = manifest.get("source_feature_count", manifest.get("feature_count"))
+    receipts = manifest.get("receipts")
+    if (manifest.get("complete") is not True or type(source_count) is not int or source_count <= 0
+            or not isinstance(receipts, dict) or not METADATA_NAMES <= set(receipts)
+            or len(receipts) > MAX_CAPTURE_RESPONSES
+            or any(not isinstance(name, str) or name not in METADATA_NAMES
+                   and re.fullmatch(r"page_[0-9]{3,}", name) is None for name in receipts)):
         raise ValueError("retained_capture_is_not_complete_population")
-    receipts=manifest.get("receipts")
-    if not isinstance(receipts,dict): raise ValueError("retained_capture_receipts_missing")
-    captures={}
-    for name,receipt in receipts.items():
-        if not isinstance(name,str) or not isinstance(receipt,dict): raise ValueError("retained_capture_receipt_invalid")
-        body_path=root/f"{name}.body"; wire_path=root/f"{name}.wire"; receipt_path=root/f"{name}.receipt.json"
-        try: body=body_path.read_bytes();wire=wire_path.read_bytes();receipt_body=receipt_path.read_bytes()
-        except OSError as exc: raise ValueError("retained_capture_object_missing:"+name) from exc
-        if (receipt.get("complete_body") is not True or receipt.get("status")!=200
-            or receipt.get("final_url")!=receipt.get("url") or receipt.get("bytes")!=len(body)
-            or receipt.get("sha256")!=_sha(body) or receipt.get("wire_bytes")!=len(wire)
-            or receipt.get("wire_sha256")!=_sha(wire) or receipt_body!=_canonical(receipt)+b"\n"):
-            raise ValueError("retained_capture_integrity_failed:"+name)
-        shutil.copyfile(wire_path,destination/f"{name}.wire")
-        captures[name]=(body,receipt)
-    if manifest.get("receipts")!={name:receipt for name,(_,receipt) in sorted(captures.items())}:
-        raise ValueError("retained_capture_receipt_roster_changed")
-    return captures
+    expected = {"capture_manifest.json"} | {
+        f"{name}.{suffix}" for name in receipts for suffix in ("body", "wire", "receipt.json")}
+    validate_capture_roster(root, expected)
 
+    def load(name: str, url: str) -> tuple[bytes, dict[str, object]]:
+        body, receipt = load_replay(root, name)
+        if (receipt != receipts[name]
+                or (root / f"{name}.receipt.json").read_bytes() != _canonical(receipt) + b"\n"):
+            raise ValueError("retained_capture_integrity_failed:" + name)
+        validate_capture_request_identity(name, receipt, url)
+        return body, receipt
+
+    seed_capture = load("ids_seed", dict(_capture_roster([]))["ids_seed"])
+    seed = _validate_seed(json.loads(seed_capture[0]).get("objectIds"))
+    urls = dict(_capture_roster(seed))
+    if set(receipts) != set(urls) or len(seed) != source_count:
+        raise ValueError("retained_capture_receipt_roster_changed")
+    captures = {"ids_seed": seed_capture}
+    for name, url in urls.items():
+        if name != "ids_seed":
+            captures[name] = load(name, url)
+    validate_captures(captures)
+    for name in captures:
+        for suffix in ("body", "wire", "receipt.json"):
+            shutil.copyfile(root / f"{name}.{suffix}", destination / f"{name}.{suffix}")
+    return captures
 
 def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
     t=field["type"]
@@ -191,27 +264,25 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     base.mkdir(parents=True,exist_ok=True)
     if shutil.disk_usage(base).free<256_000_000: raise ValueError("disk_floor_before_acquisition")
     root=(Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "167", "captures"))/f"{version}-{uuid4().hex}"
-    root=root.absolute();root.mkdir(parents=True,exist_ok=False)
-    captures={}
+    root = root.absolute()
+    if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError("unsafe_capture_directory")
+    root.mkdir(parents=True,exist_ok=False)
+    captures = (_load_retained_capture(Path(replay_capture_directory), root)
+                if replay_capture_directory else {})
     try:
-        if replay_capture_directory:
-            captures=_load_retained_capture(Path(replay_capture_directory),root)
-        else:
-          with httpx.Client(follow_redirects=False,timeout=60,headers={"User-Agent":"hifld-next-datasets/national-transit-map-agencies-draft"}) as client:
-            urls=[("item",ITEM_URL+"?f=json"),("service_before",SERVICE_URL+"?f=pjson"),("layer_before",LAYER_URL+"?f=pjson"),
-                ("count_before",LAYER_URL+"/query?"+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                ("ids_before",LAYER_URL+"/query?"+urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
-            b,r=_fetch(client,LAYER_URL+"/query?"+urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed");captures["ids_seed"]=(b,r)
-            ids=json.loads(b).get("objectIds")
-            if not isinstance(ids,list) or not ids: raise ValueError("source_seed_population_drift")
-            urls.extend((f"page_{i//PAGE_SIZE:03}",LAYER_URL+"/query?"+urlencode({"objectIds":",".join(map(str,ids[i:i+PAGE_SIZE])),"outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","outSR":"4326","orderByFields":"OBJECTID ASC","f":"json"})) for i in range(0,len(ids),PAGE_SIZE))
-            urls.extend([("layer_after",LAYER_URL+"?f=pjson"),("service_after",SERVICE_URL+"?f=pjson"),
-                ("count_after",LAYER_URL+"/query?"+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                ("ids_after",LAYER_URL+"/query?"+urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}))])
-            for name,url in urls:
-                b,r=_fetch(client,url,root,name);captures[name]=(b,r)
+        if not replay_capture_directory:
+            with httpx.Client(follow_redirects=False, timeout=60, headers={
+                    "User-Agent": "hifld-next-datasets/national-transit-map-agencies-draft"}) as client:
+                seed_url = dict(_capture_roster([]))["ids_seed"]
+                captures["ids_seed"] = _fetch(client, seed_url, root, "ids_seed")
+                seed = _validate_seed(json.loads(captures["ids_seed"][0]).get("objectIds"))
+                for name, url in _capture_roster(seed):
+                    if name != "ids_seed":
+                        captures[name] = _fetch(client, url, root, name)
         fields,features=validate_captures(captures)
     except Exception as exc:
+        _admit_capture_directory(root)
         retained=dict(captures)
         # Preserve a response whose stream failed before _fetch could return it.
         for receipt_path in root.glob("*.receipt.json"):
@@ -240,18 +311,27 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     source_objects={f"geoparquet/{DATASET_SLUG}.parquet":{"bytes":len(data),"sha256":_sha(data)}}
     receipts={n:dict(r) for n,(_,r) in sorted(captures.items())}
-    manifest={"schema_version":1,"approved":False,"title":"National Transit Map Agencies","description":"BTS National Transit Map Agencies compiled 2026-09-23; historical candidate comparison and release approvals pending.",
+    item = json.loads(captures["item"][0])
+    compilation_date = _compilation_date(item)
+    attribution = str(item.get("accessInformation") or
+                      "Acknowledgment of USDOT and BTS; constituent credits require review.")
+    manifest={"schema_version":1,"approved":False,"title":"National Transit Map Agencies","description":"Current BTS National Transit Map Agencies; compilation observations, historical comparison and release acceptance remain separate.",
         "publisher":"U.S. Department of Transportation, Bureau of Transportation Statistics (USDOT_BTS)","agency":"Bureau of Transportation Statistics","source_url":LAYER_URL,"license":"CC-BY-3.0; post-2023 FTA NTD GTFS inputs described as public domain; rights review pending",
-        "source_modified":None,"date_issued":SOURCE_RELEASE,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-        "inputs":[{"input_id":n,"producer":"Bureau of Transportation Statistics (USDOT_BTS)","host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":ITEM_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Creative Commons Attribution 3.0 United States (CC-BY-3.0)","attribution":"Acknowledgment of USDOT and BTS, as stated by the USDOT_BTS ArcGIS item; underlying GTFS source rights require review.","release_date":SOURCE_RELEASE,"item_modified_is_release_date":False} for n,r in receipts.items()],
-        "lineage":"USDOT_BTS ArcGIS item ad6b0823f7364cac86c5421834eaba84, exact National Transit Map Agencies layer 0. Description states compiled 2026-09-23. The separately observed portal modified timestamp is not treated as source release date. GCS v1.0.0 is compiled 2025-06-30 and differs (1,246 vs 1,239 records; candidate native formats also omit or alter physical fields); no historical continuation or source approval is assumed.",
+        "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
+        "inputs":[{"input_id":n,"producer":"Bureau of Transportation Statistics (USDOT_BTS)","host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":ITEM_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Creative Commons Attribution 3.0 United States (CC-BY-3.0)","attribution":attribution,"release_date":None,"release_date_unknown_reason":"A producer compilation statement is not a guaranteed immutable edition or publication date.","item_modified_is_release_date":False} for n,r in receipts.items()],
+        "lineage":"USDOT_BTS ArcGIS item ad6b0823f7364cac86c5421834eaba84, exact National Transit Map Agencies layer 0. The compilation statement is recorded from the retained item and is not an immutable edition or refresh schedule. Portal modification is not a source release date. Historical HIFLD equivalence and source approval are not assumed.",
         "transformations":[{"operation":"Esri JSON to native GeoParquet candidate","parameters":{"all_source_fields":"preserved in declared order and physical types","source_ids":"OBJECTID retained verbatim; other ID-like fields retained verbatim","geometry":"x,y,z point coordinates retained as WKB in EPSG:4326; no repair or reproject","release_status":"unapproved"}}],
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"One-to-one typed source fields and point coordinates retained; baseline and release approval pending.","objects":[{"path":f"geoparquet/{DATASET_SLUG}.parquet",**source_objects[f"geoparquet/{DATASET_SLUG}.parquet"]}]}}},
         "unsupported_output_formats":{"geopackage":"Historical candidate does not match the current source contract; explicit approved mapping pending.","shapefile_zip":"Historical candidate truncates field names and omits source OBJECTID.","pmtiles":"Display-only format; no publication transformation approved."}}
     validate_release_provenance(manifest)
-    audit={"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_record_sha256":record_sha,"source_geometry_sha256":geometry_sha,"source_schema_sha256":schema_sha,"source_fields":fields,"source_crs_epsg":4326,"geometry_type":"Point Z","null_geometry_count":0,"item_id":ITEM_ID,"item_owner":OWNER,"source_release":SOURCE_RELEASE,"portal_modified_is_not_release_date":True,
+    audit={"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_record_sha256":record_sha,"source_geometry_sha256":geometry_sha,"source_schema_sha256":schema_sha,"source_fields":fields,"source_crs_epsg":4326,"geometry_type":"Point Z","null_geometry_count":0,"item_id":ITEM_ID,"item_owner":OWNER,"producer_stated_compilation_date":compilation_date,"producer_compilation_description":item.get("description"),"publisher_attribution":attribution,"portal_modified_is_not_release_date":True,
         "historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    root.joinpath("capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"feature_count":feature_count,"receipts":receipts})+b"\n")
+    capture_manifest = _canonical({"captured_at":datetime.now(timezone.utc).isoformat(),
+        "complete":True,"feature_count":feature_count,"receipts":receipts}) + b"\n"
+    if (len(capture_manifest) > MAX_MANIFEST_BYTES
+            or _admit_capture_directory(root) + len(capture_manifest) > MAX_CAPTURE_BYTES):
+        raise ValueError("source_capture_budget_exceeded")
+    root.joinpath("capture_manifest.json").write_bytes(capture_manifest)
     state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs={f"geoparquet/{DATASET_SLUG}.parquet":data,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for n,(body,r) in captures.items():
@@ -260,9 +340,22 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     outputs["metadata/candidate_ready.json"]=_canonical(ready)+b"\n"
     fingerprint=_sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
-        descriptors={n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
-        verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,record_sha,schema_sha,descriptors,receipts)
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"reused":True,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+        bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
+        payload = bundle.get("payload")
+        if (not isinstance(payload, dict) or payload.get("processing_identity") != identity
+                or payload.get("source_record_sha256") != record_sha
+                or payload.get("source_schema_sha256") != schema_sha):
+            raise ValueError("cached_first_candidate_identity_or_source_changed")
+        descriptors = payload["objects"]
+        verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,
+                                fingerprint,identity,record_sha,schema_sha,descriptors,
+                                payload["capture_receipts"])
+        if descriptors.get(f"geoparquet/{DATASET_SLUG}.parquet") != {
+                "bytes":len(data), "sha256":_sha(data)}:
+            raise ValueError("cached_native_candidate_changed")
+        original_audit = json.loads(storage.read_key(prefix + "/metadata/source_audit.json"))
+        compilation_date = original_audit.get("producer_stated_compilation_date")
+        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_null_geometry_count":0,"producer_stated_compilation_date":compilation_date,"reused":True,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     for n,b in outputs.items(): write_immutable(storage,f"{prefix}/{n}",b)
     descriptors={n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
     for n,d in descriptors.items():
@@ -271,4 +364,4 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_null_geometry_count":0,"producer_stated_compilation_date":compilation_date,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}

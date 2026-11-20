@@ -23,8 +23,8 @@ class NationalTransitMapAgenciesConfig(Config):
     group_name="bts",
     compute_kind="http",
     description=(
-        "Official USDOT_BTS National Transit Map Agencies layer compiled "
-        "2026-09-23. Captures an immutable draft; acceptance and release remain blocked."
+        "Current USDOT_BTS National Transit Map Agencies layer. Captures an immutable "
+        "draft and records the observed compilation; acceptance and release remain blocked."
     ),
 )
 def bts_national_transit_map_agencies(context, config: NationalTransitMapAgenciesConfig,
@@ -52,7 +52,7 @@ def bts_national_transit_map_agencies_candidate_complete(candidate: dict) -> Ass
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_reported_count": count if count is not None else "missing",
-        "source_release": "2026-09-23",
+        "producer_stated_compilation_date": candidate.get("producer_stated_compilation_date"),
         "source_release_accepted": False,
         "historical_baseline_acceptance_pending": True,
         "schema_contract_accepted": False,
