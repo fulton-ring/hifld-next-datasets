@@ -82,3 +82,8 @@ epa_disaster_debris_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [epa_disaster_debris_recovery_data]
+ASSET_CHECKS = [epa_disaster_debris_complete]
+JOBS = [epa_disaster_debris_draft_job]
+SCHEDULES = [epa_disaster_debris_draft_schedule]

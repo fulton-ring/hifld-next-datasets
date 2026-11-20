@@ -16,13 +16,6 @@ from dagster import (
 
 from dagster_hifld.assets.discovery import discovered, unique
 from dagster_hifld.assets import hifld_dataset_assets
-from dagster_hifld.assets.census_elementary_districts import elsd_source_integrity_job, elsd_source_integrity_schedule
-from dagster_hifld.assets.epa_disaster_debris import (
-    epa_disaster_debris_complete,
-    epa_disaster_debris_draft_job,
-    epa_disaster_debris_draft_schedule,
-    epa_disaster_debris_recovery_data,
-)
 
 
 
@@ -87,10 +80,6 @@ from dagster_hifld.assets.usace import (
 
 
 
-from dagster_hifld.assets.ibc import (
-    ibc_boundary_draft_refresh_job,
-    ibc_boundary_draft_refresh_schedule,
-)
 
 from dagster_hifld.checks import hifld_asset_checks
 from dagster_hifld.native_geoparquet_catalog import discover_prebuilt_native
@@ -492,11 +481,10 @@ def _configured_sensors():
 
 
 defs = Definitions(
-    assets=[*hifld_dataset_assets, epa_disaster_debris_recovery_data],
+    assets=hifld_dataset_assets,
     asset_checks=unique(
         [
             *hifld_asset_checks,
-            epa_disaster_debris_complete,
             usace_obstruction_lines_complete,
             usace_administrative_areas_complete,
             usace_navigation_marks_areas_complete,
@@ -510,12 +498,9 @@ defs = Definitions(
     ),
     jobs=unique(
         [
-            elsd_source_integrity_job,
-            epa_disaster_debris_draft_job,
             usace_obstruction_lines_draft_job,
             usace_administrative_areas_draft_job,
             usace_navigation_marks_areas_draft_job,
-            ibc_boundary_draft_refresh_job,
             usace_crane_locations_draft_job,
             epa_frs_sic_draft_job,
         ],
@@ -523,12 +508,9 @@ defs = Definitions(
     ),
     schedules=unique(
         [
-            elsd_source_integrity_schedule,
-            epa_disaster_debris_draft_schedule,
             usace_obstruction_lines_draft_schedule,
             usace_administrative_areas_draft_schedule,
             usace_navigation_marks_areas_draft_schedule,
-            ibc_boundary_draft_refresh_schedule,
             usace_crane_locations_draft_schedule,
             epa_frs_sic_draft_schedule,
         ],

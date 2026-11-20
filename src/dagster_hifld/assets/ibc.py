@@ -26,3 +26,9 @@ def ibc_boundary_draft_refresh_schedule(context):
     # Proposed monthly availability/integrity poll, not a promise of monthly producer updates.
     require_local(context.resources.staging_storage)
     return RunRequest(run_config={'ops':{ibc_canada_us_border.op.name:{'config':{'capture_dir':''}}}})
+
+
+INGEST_ASSETS = [ibc_canada_us_border]
+ASSET_CHECKS = []
+JOBS = [ibc_boundary_draft_refresh_job]
+SCHEDULES = [ibc_boundary_draft_refresh_schedule]
