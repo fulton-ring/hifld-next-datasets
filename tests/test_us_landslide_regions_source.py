@@ -1,8 +1,12 @@
 """Focused tests for the USGS US Landslide Regions draft pipeline."""
+import gzip
 import json
+import os
 import struct
 import tempfile
 import unittest
+import zlib
+from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
@@ -235,6 +239,317 @@ def _staging(root: Path) -> StagingStorageResource:
 
 
 class UsLandslideRegionsSourceTests(unittest.TestCase):
+    def test_retained_page_reads_and_decodes_have_no_duplicate_corpus_passes(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        for initially_sealed in (True, False):
+            with self.subTest(initially_sealed=initially_sealed), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture_root = root / "capture"
+                decodes, reads = Counter(), Counter()
+                load, read_bytes = src.load_replay, Path.read_bytes
+
+                def load_page(directory, name):
+                    if src._PAGE_NAME_PATTERN.fullmatch(name): decodes[name] += 1
+                    return load(directory, name)
+
+                def read_page(path):
+                    if path.parent == capture_root and path.suffix in {".body", ".wire"}:
+                        name = path.name.removesuffix(path.suffix)
+                        if src._PAGE_NAME_PATTERN.fullmatch(name): reads[name, path.suffix] += 1
+                    return read_bytes(path)
+
+                with fixture_mode(schema_sha, make_responder(rows)), \
+                        patch.object(src, "load_replay", side_effect=load_page), \
+                        patch.object(Path, "read_bytes", autospec=True, side_effect=read_page):
+                    storage = _staging(root)
+                    if initially_sealed:
+                        src.capture_us_landslide_regions(storage, version="first", capture_directory=str(capture_root))
+                        self.assertEqual(set(decodes.values()), {3})
+                        self.assertEqual({count for (name, suffix), count in reads.items() if suffix == ".body"}, {4})
+                        self.assertEqual({count for (name, suffix), count in reads.items() if suffix == ".wire"}, {5})
+                    else:
+                        src.fetch_us_landslide_regions_pages(capture_root)
+                    decodes.clear(); reads.clear()
+                    with patch.object(src, "_PageStream", wraps=src._PageStream) as streams:
+                        result = src.capture_us_landslide_regions(storage, version="resume", capture_directory=str(capture_root))
+                    self.assertEqual(streams.call_count, 2)
+                    self.assertEqual(result["reused"], initially_sealed)
+                    self.assertEqual(len(decodes), 2)
+                    self.assertEqual(set(decodes.values()), {4 if initially_sealed else 5})
+                    self.assertEqual({count for (name, suffix), count in reads.items() if suffix == ".body"},
+                                     {4 if initially_sealed else 5})
+                    self.assertEqual({count for (name, suffix), count in reads.items() if suffix == ".wire"},
+                                     {4 if initially_sealed else 6})
+
+    def test_accepted_corruption_fails_before_network_write_or_quarantine(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                src.fetch_us_landslide_regions_pages(capture_root)
+                page = json.loads((capture_root / "capture_state.json").read_bytes())["pages"][0]["name"]
+                body = (capture_root / f"{page}.body").read_bytes().replace(b"Inventory A", b"Inventory X")
+                (capture_root / f"{page}.body").write_bytes(body)
+                receipt_path = capture_root / f"{page}.receipt.json"
+                receipt = json.loads(receipt_path.read_bytes())
+                receipt.update(bytes=len(body), sha256=src._sha(body))
+                receipt_path.write_bytes(json.dumps(receipt).encode())
+                before = {p.name: p.read_bytes() for p in capture_root.iterdir()}
+                with patch.object(src, "_default_client", side_effect=AssertionError("HTTP forbidden")), \
+                        patch.object(Path, "write_bytes", side_effect=AssertionError("write forbidden")), \
+                        patch.object(src, "_witness_aside", side_effect=AssertionError("rename forbidden")), \
+                        patch.object(src, "quarantine_incomplete_capture", side_effect=AssertionError("quarantine forbidden")):
+                    with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_wire_body_mismatch"):
+                        src.capture_us_landslide_regions(_staging(root), version="forged", capture_directory=str(capture_root))
+                self.assertEqual({p.name: p.read_bytes() for p in capture_root.iterdir()}, before)
+
+    def test_refused_custody_is_verified_once_at_admission_not_by_repeated_corpus_scans(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        for failure in ("producer_error", "truncated_gzip"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture_root = root / "capture"
+                inner = make_responder(_fixture_rows(), refuse_counts={4})
+
+                def respond(request):
+                    response = inner.handler(request)
+                    if failure == "producer_error": return response
+                    body = response.read(); response.close()
+                    wire = gzip.compress(body, mtime=0)
+                    if parse_qs(urlsplit(str(request.url)).query).get("resultRecordCount") == ["4"]:
+                        wire = wire[:-4]
+                    return httpx.Response(200, headers={"Content-Encoding": "gzip", "Content-Length": str(len(wire))},
+                                          stream=httpx.ByteStream(wire))
+
+                with fixture_mode(schema_sha, httpx.MockTransport(respond)), \
+                        patch.object(src, "_validate_retained_transport", wraps=src._validate_retained_transport) as verification:
+                    storage = _staging(root)
+                    src.capture_us_landslide_regions(storage, version="first", capture_directory=str(capture_root))
+                    admissions = [tuple(call.kwargs["names"]) for call in verification.call_args_list if call.kwargs.get("names") is not None]
+                    self.assertEqual(len(admissions), 6)
+                    self.assertEqual(len(set(admissions)), 6)
+                    self.assertEqual(len(verification.call_args_list), 6)
+                    originals = {key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}
+                    evidence = [key for key in originals if "/evidence/refused/" in key]
+                    self.assertEqual(len(evidence), 18)
+                    for key in evidence:
+                        self.assertEqual(storage.read_key(key), (capture_root / key.split("/evidence/refused/")[1]).read_bytes())
+                    verification.reset_mock()
+                    with patch.object(src, "_default_client", side_effect=lambda: httpx.Client(
+                            transport=httpx.MockTransport(lambda request: (_ for _ in ()).throw(AssertionError("HTTP forbidden"))))):
+                        result = src.capture_us_landslide_regions(storage, version="replay", capture_directory=str(capture_root))
+                    self.assertTrue(result["reused"])
+                    self.assertEqual(verification.call_count, 1)
+                    self.assertIsNone(verification.call_args.kwargs.get("names"))
+                    self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}, originals)
+
+    def test_refused_bytes_cannot_change_between_verification_and_admission(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            verify = src._validate_retained_transport
+
+            def change_after_verification(directory, *, names=None):
+                verify(directory, names=names)
+                if names:
+                    path = directory / f"{next(iter(names))}.wire"
+                    path.write_bytes(path.read_bytes() + b"changed")
+
+            with fixture_mode(schema_sha, make_responder(_fixture_rows(), refuse_counts={4})), \
+                    patch.object(src, "_validate_retained_transport", side_effect=change_after_verification):
+                storage = _staging(root)
+                with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_changed_during_admission"):
+                    src.capture_us_landslide_regions(storage, version="changed", capture_directory=str(capture_root))
+                self.assertFalse(storage.list_prefix("_construction-state/"))
+                self.assertFalse(any("/evidence/refused/" in key for key in storage.list_prefix("")))
+
+    def test_retained_capture_binds_identity_and_gzip_wire_to_body(self):
+        for encoding in ("identity", "gzip"):
+            with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                body = b'{"id":12}'
+                wire = gzip.compress(body, mtime=0) if encoding == "gzip" else body
+                receipt = {"method": "GET", "url": src.LAYER_URL + "?f=pjson",
+                           "final_url": src.LAYER_URL + "?f=pjson", "status": 200,
+                           "complete_body": True, "content_encoding": encoding,
+                           "bytes": len(body), "sha256": src._sha(body),
+                           "wire_bytes": len(wire), "wire_sha256": src._sha(wire)}
+                (root / "layer_before.body").write_bytes(body)
+                (root / "layer_before.wire").write_bytes(wire)
+                (root / "layer_before.receipt.json").write_bytes(json.dumps(receipt).encode())
+                self.assertEqual(src._read_capture(root, "layer_before")[0], body)
+                forged = b'{"id":13}'
+                (root / "layer_before.body").write_bytes(forged)
+                receipt.update(bytes=len(forged), sha256=src._sha(forged))
+                (root / "layer_before.receipt.json").write_bytes(json.dumps(receipt).encode())
+                before = {p.name: p.read_bytes() for p in root.iterdir()}
+                with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_wire_body_mismatch"):
+                    src._read_capture(root, "layer_before")
+                self.assertEqual({p.name: p.read_bytes() for p in root.iterdir()}, before)
+
+    def test_retained_files_are_preflighted_before_any_payload_read(self):
+        names = ("capture_state.json", "layer_before.receipt.json", "ids_seed.body",
+                 "page_000000_00004.wire", "page_000000_00004.attempt-01.body",
+                 "page_000000_00004.error-123.wire")
+        for name in names:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / name).write_bytes(b"x" * 21)
+                with patch.object(src, "MAX_BODY_BYTES", 20), \
+                        patch.object(src, "_default_client", side_effect=AssertionError("HTTP forbidden")), \
+                        patch.object(Path, "read_bytes", side_effect=AssertionError("payload read before preflight")):
+                    with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_response_budget_exceeded"):
+                        src.fetch_us_landslide_regions_pages(root)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "capture_state.json").write_bytes(b"x" * 20)
+            (root / "layer_before.body").write_bytes(b"x" * 20)
+            with patch.object(src, "MAX_CAPTURE_BYTES", 30), \
+                    patch.object(src, "_default_client", side_effect=AssertionError("HTTP forbidden")), \
+                    patch.object(Path, "read_bytes", side_effect=AssertionError("payload read before preflight")):
+                with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_total_budget_exceeded"):
+                    src.fetch_us_landslide_regions_pages(root)
+        for kind in ("directory", "symlink", "fifo"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                target = root / "layer_before.body"
+                if kind == "directory": target.mkdir()
+                elif kind == "symlink": target.symlink_to(root / "missing")
+                else: os.mkfifo(target)
+                with patch.object(Path, "read_bytes", side_effect=AssertionError("payload read before preflight")):
+                    with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_nonregular_path"):
+                        src.fetch_us_landslide_regions_pages(root)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / f"{src.FILE_SLUG}.parquet").write_bytes(b"x" * 31)
+            with patch.object(src, "MAX_CAPTURE_BYTES", 30), \
+                    patch.object(Path, "read_bytes", side_effect=AssertionError("payload read before preflight")):
+                with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_derived_output_budget_exceeded"):
+                    src.fetch_us_landslide_regions_pages(root)
+
+    def test_refused_transfers_are_request_bound_and_wire_verified(self):
+        cases = (("identity", 503, False), ("gzip", 503, False),
+                 ("gzip", 200, True), ("deflate", 200, True),
+                 ("gzip", 200, False), ("request_error", None, False))
+        for encoding, status, truncated in cases:
+            with self.subTest(encoding=encoding, status=status, truncated=truncated), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                url = src.LAYER_URL + "?f=pjson"
+                body = b'{"error":{"code":503,"message":"unavailable"}}'
+                wire = (gzip.compress(body, mtime=0) if encoding == "gzip"
+                        else zlib.compress(body) if encoding == "deflate" else body)
+                if truncated: wire = wire[:-4]
+
+                def respond(request):
+                    if encoding == "request_error":
+                        raise httpx.ConnectError("offline fixture", request=request)
+                    return httpx.Response(status, headers={"Content-Encoding": encoding,
+                        "Content-Length": str(len(wire))}, stream=httpx.ByteStream(wire))
+
+                with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+                    if status == 200 and not truncated:
+                        capture_common.capture_get(client, url, root, "layer_before", max_bytes=4096)
+                    else:
+                        with self.assertRaises(ValueError):
+                            capture_common.capture_get(client, url, root, "layer_before", max_bytes=4096)
+                name = "layer_before.attempt-01"
+                for suffix in ("body", "wire", "receipt.json"):
+                    (root / f"layer_before.{suffix}").rename(root / f"{name}.{suffix}")
+                src._validate_retained_transport(root)
+                receipt_path = root / f"{name}.receipt.json"
+                receipt = json.loads(receipt_path.read_bytes())
+                forged = b"x" * max(1, receipt["bytes"])
+                (root / f"{name}.body").write_bytes(forged)
+                receipt.update(bytes=len(forged), sha256=src._sha(forged))
+                receipt_path.write_bytes(json.dumps(receipt).encode())
+                before = {p.name: p.read_bytes() for p in root.iterdir()}
+                with self.assertRaises(src.UsLandslideRegionsError):
+                    src._validate_retained_transport(root)
+                self.assertEqual({p.name: p.read_bytes() for p in root.iterdir()}, before)
+
+    def test_refused_evidence_rejects_wrong_request_and_missing_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            name = "layer_before.attempt-01"
+            for suffix in ("body", "wire"):
+                (root / f"{name}.{suffix}").write_bytes(b"unavailable")
+            receipt = {"method": "GET", "url": "https://example.org/other", "final_url": "https://example.org/other",
+                       "complete_body": True, "status": 503, "content_encoding": "identity",
+                       "bytes": 11, "sha256": src._sha(b"unavailable"),
+                       "wire_bytes": 11, "wire_sha256": src._sha(b"unavailable")}
+            (root / f"{name}.receipt.json").write_bytes(json.dumps(receipt).encode())
+            with self.assertRaisesRegex(src.UsLandslideRegionsError, "source_capture_endpoint_drift"):
+                src._validate_retained_transport(root)
+            (root / f"{name}.wire").unlink()
+            with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_artifact_missing"):
+                src._validate_retained_transport(root)
+
+    def test_real_sealed_replay_and_fresh_capture_keep_immutable_originals(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        for encoding in ("identity", "gzip"):
+            with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                inner = make_responder(rows, refuse_counts={4})
+
+                def respond(request):
+                    response = inner.handler(request)
+                    body = response.read()
+                    response.close()
+                    wire = gzip.compress(body, mtime=0) if encoding == "gzip" else body
+                    return httpx.Response(response.status_code,
+                        headers={"Content-Encoding": encoding, "Content-Length": str(len(wire))},
+                        stream=httpx.ByteStream(wire))
+
+                transport = httpx.MockTransport(respond)
+                with fixture_mode(schema_sha, transport, mock_construction_validators=False):
+                    storage = _staging(root)
+                    capture_root = root / "capture"
+                    first = src.capture_us_landslide_regions(storage, version="first", capture_directory=str(capture_root))
+                    self.assertFalse(first["reused"])
+                    originals = {key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}
+                    evidence_keys = [key for key in originals if "/evidence/refused/" in key]
+                    self.assertTrue(evidence_keys)
+                    for key in evidence_keys:
+                        self.assertEqual(storage.read_key(key), (capture_root / key.split("/evidence/refused/")[1]).read_bytes())
+                    with patch.object(src, "_default_client", side_effect=lambda: httpx.Client(
+                            transport=httpx.MockTransport(lambda request: (_ for _ in ()).throw(AssertionError("HTTP forbidden"))))):
+                        second = src.capture_us_landslide_regions(storage, version="replay", capture_directory=str(capture_root))
+                    self.assertTrue(second["reused"])
+                    fresh = src.capture_us_landslide_regions(storage, version="fresh", capture_directory=str(root / "fresh"))
+                    self.assertTrue(fresh["reused"])
+                    self.assertEqual(fresh["version"], first["version"])
+                    self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}, originals)
+                    page = next(entry["name"] for entry in json.loads((capture_root / "capture_state.json").read_bytes())["pages"])
+                    body = (capture_root / f"{page}.body").read_bytes().replace(b"Inventory A", b"Inventory X")
+                    (capture_root / f"{page}.body").write_bytes(body)
+                    receipt_path = capture_root / f"{page}.receipt.json"
+                    receipt = json.loads(receipt_path.read_bytes())
+                    receipt.update(bytes=len(body), sha256=src._sha(body))
+                    receipt_path.write_bytes(json.dumps(receipt).encode())
+                    retained = {p.name: p.read_bytes() for p in capture_root.iterdir()}
+                    with patch.object(src, "_default_client", side_effect=AssertionError("HTTP forbidden")):
+                        with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_wire_body_mismatch"):
+                            src.capture_us_landslide_regions(storage, version="forged", capture_directory=str(capture_root))
+                    self.assertEqual({p.name: p.read_bytes() for p in capture_root.iterdir()}, retained)
+                    self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}, originals)
+                    parquet_key = next(key for key in originals if "/geoparquet/" in key)
+                    storage.write_key(parquet_key, b"corrupt parquet")
+                    tampered = {key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}
+                    with patch.object(src, "_default_client", side_effect=lambda: httpx.Client(
+                            transport=httpx.MockTransport(lambda request: (_ for _ in ()).throw(AssertionError("HTTP forbidden"))))):
+                        with self.assertRaisesRegex(ValueError, "cached_candidate_object_integrity_failed"):
+                            src.capture_us_landslide_regions(storage, version="corrupt", capture_directory=str(root / "fresh"))
+                    for key, original in tampered.items():
+                        self.assertEqual((storage.read_key(key), storage.object_snapshot(key)), original)
+                    diagnostics = set(storage.list_prefix("")) - set(tampered)
+                    self.assertTrue(diagnostics)
+                    self.assertTrue(all(key.startswith("_quarantine/") for key in diagnostics))
+
     def test_source_is_explicit_and_draft_only(self):
         self.assertEqual(src.DATASET_SLUG, "us-landslide-regions")
         self.assertEqual(src.SERVICE_URL,
@@ -384,11 +699,11 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
             for name in ("page_000000_00004", "page_000006_00002"):
                 body = json.dumps({"features": rows}).encode()
                 (capture_root / f"{name}.body").write_bytes(body)
-                (capture_root / f"{name}.wire").write_bytes(b"wire")
+                (capture_root / f"{name}.wire").write_bytes(body)
                 receipt = {"method": "GET", "url": "https://x/y", "final_url": "https://x/y",
                            "complete_body": True, "status": 200, "bytes": len(body),
-                           "sha256": src._sha(body), "wire_bytes": 4,
-                           "wire_sha256": src._sha(b"wire"), "observed_at": "t"}
+                           "sha256": src._sha(body), "wire_bytes": len(body),
+                           "wire_sha256": src._sha(body), "observed_at": "t"}
                 (capture_root / f"{name}.receipt.json").write_bytes(
                     json.dumps(receipt).encode())
             gaps = src._plan_page_gaps(capture_root, roster)

@@ -61,6 +61,7 @@ import hashlib
 import json
 import re
 import shutil
+import stat
 import time
 from array import array
 from collections import deque
@@ -81,6 +82,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import _validate_offset_replay_refusal, load_replay
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
@@ -484,6 +486,60 @@ def _validate_feature(feature: object, expected_objectid: int) \
     return objectid, geometry, rings, vertices
 
 
+def _preflight_capture(capture_root: Path, *, names: Iterable[str] | None = None) -> None:
+    if any(path.is_symlink() for path in (capture_root, *capture_root.parents)):
+        raise UsLandslideRegionsError("retained_capture_nonregular_path")
+    paths = list(capture_root.iterdir()) if names is None else [
+        capture_root / f"{name}.{suffix}" for name in names
+        for suffix in ("body", "wire", "receipt.json")]
+    retained_bytes = 0
+    for path in paths:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            raise UsLandslideRegionsError("retained_capture_nonregular_path:" + path.name)
+        if path.name in {f"{FILE_SLUG}.parquet", f"{FILE_SLUG}.parquet.construction-tmp"}:
+            if info.st_size > MAX_CAPTURE_BYTES:
+                raise UsLandslideRegionsError("retained_derived_output_budget_exceeded")
+            continue
+        if info.st_size > MAX_BODY_BYTES:
+            raise UsLandslideRegionsError("retained_capture_response_budget_exceeded")
+        retained_bytes += info.st_size
+    if retained_bytes > MAX_CAPTURE_BYTES:
+        raise UsLandslideRegionsError("retained_capture_total_budget_exceeded")
+
+
+def _validate_retained_transport(capture_root: Path, *, names: Iterable[str] | None = None) -> None:
+    stems = set(names) if names is not None else None
+    _preflight_capture(capture_root, names=stems)
+    if stems is None:
+        stems = {path.name.removesuffix(suffix) for path in capture_root.iterdir()
+                 for suffix in (".body", ".wire", ".receipt.json") if path.name.endswith(suffix)}
+    for name in sorted(stems):
+        match = re.fullmatch(r"(.+)\.(attempt-[0-9]{2}|error-[0-9]+)", name)
+        base = match[1] if match else name
+        if match and match[2].startswith("attempt-"):
+            attempts = (PAGE_PROBE_ATTEMPTS if _PAGE_NAME_PATTERN.fullmatch(base)
+                        and _parse_page_name(base)[1] > 1 else DOC_CAPTURE_ATTEMPTS)
+            if not 1 <= int(match[2].removeprefix("attempt-")) < attempts:
+                raise UsLandslideRegionsError("retained_capture_attempt_invalid:" + name)
+        paths = [capture_root / f"{name}.{suffix}" for suffix in ("body", "wire", "receipt.json")]
+        if any(not path.exists() for path in paths):
+            raise UsLandslideRegionsError("retained_capture_artifact_missing:" + name)
+        receipt = json.loads(paths[2].read_bytes())
+        if not isinstance(receipt, dict):
+            raise UsLandslideRegionsError("retained_capture_receipt_invalid:" + name)
+        _validate_request_scope(base, receipt)
+        try:
+            if (receipt.get("complete_body") is True and receipt.get("status") == 200
+                    and (not match or match[2].startswith("error-"))):
+                _read_capture(capture_root, name)
+            else:
+                _validate_offset_replay_refusal(capture_root, name, receipt["url"],
+                                              max_capture_bytes=MAX_BODY_BYTES)
+        except ValueError as exc:
+            raise UsLandslideRegionsError(str(exc)) from exc
+
+
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
     """Parse and structurally validate one retained receipt without page bytes."""
     try:
@@ -500,15 +556,12 @@ def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire)
-            or receipt.get("wire_sha256") != _sha(wire)):
-        raise UsLandslideRegionsError(
-            "retained_capture_receipt_invalid:" + name)
-    return body, receipt
+    _preflight_capture(capture_root, names=(name,))
+    _load_receipt(capture_root, name)
+    try:
+        return load_replay(capture_root, name)
+    except ValueError as exc:
+        raise UsLandslideRegionsError(str(exc)) from exc
 
 
 def _validate_request_scope(name: str, receipt: Mapping[str, object]) -> None:
@@ -815,6 +868,12 @@ def fetch_us_landslide_regions_pages(
     """
     capture_root = Path(capture_root).absolute()
     capture_root.mkdir(parents=True, exist_ok=True)
+    _validate_retained_transport(capture_root)
+    return _fetch_verified_capture(capture_root, client=client)
+
+
+def _fetch_verified_capture(capture_root: Path, *, client: httpx.Client | None = None) -> dict[str, object]:
+    capture_root.mkdir(parents=True, exist_ok=True)
     state = _load_state(capture_root)
     owner = client is None
     active = client or _default_client()
@@ -1047,6 +1106,7 @@ class _PageStream:
 def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[str, object]:
     """Re-verify every retained capture and optionally reconstruct the native geoparquet."""
     capture_root = Path(capture_root).absolute()
+    _preflight_capture(capture_root)
     docs = {name: json.loads(_read_capture(capture_root, name)[0])
             for name in METADATA_NAMES}
     _validate_item_document(docs["item_before"], "item_before")
@@ -1215,6 +1275,7 @@ class _RetainedCaptureViews(Mapping):
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_pages: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
+    _preflight_capture(capture_root)
     identity = _code_identity()
     version = content_derived_version(extracted["record_sha"], extracted["geometry_sha"],
                                       extracted["schema_sha"], identity)
@@ -1429,6 +1490,22 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             relative = f"raw/{name}.{suffix}"
             write_immutable(storage, f"{prefix}/{relative}", blob)
             descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
+    evidence = {path.name.removesuffix(suffix) for path in capture_root.iterdir()
+                for suffix in (".body", ".wire", ".receipt.json") if path.name.endswith(suffix)} - set(receipts)
+    for name in sorted(evidence):
+        paths = [capture_root / f"{name}.{suffix}" for suffix in ("body", "wire", "receipt.json")]
+        before = [path.stat() for path in paths]
+        _validate_retained_transport(capture_root, names=(name,))
+        blobs = [path.read_bytes() for path in paths]
+        after = [path.stat() for path in paths]
+        if any((a.st_dev, a.st_ino, a.st_size, a.st_mtime_ns, a.st_ctime_ns)
+               != (b.st_dev, b.st_ino, b.st_size, b.st_mtime_ns, b.st_ctime_ns)
+               for a, b in zip(before, after)):
+            raise UsLandslideRegionsError("retained_capture_changed_during_admission:" + name)
+        for suffix, blob in zip(("body", "wire", "receipt.json"), blobs):
+            relative = f"evidence/refused/{name}.{suffix}"
+            write_immutable(storage, f"{prefix}/{relative}", blob)
+            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
     fingerprint = _sha(_canonical(identity))
     payload = {"processing_identity": identity,
                "source_record_sha256": audit["source_record_sha256"],
@@ -1526,10 +1603,12 @@ def capture_us_landslide_regions(
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise UsLandslideRegionsError("unsafe_capture_directory")
+    if capture_root.exists():
+        _validate_retained_transport(capture_root)
     resumed_pages = len(_load_state(capture_root).get("pages", [])) \
         if (capture_root / "capture_state.json").exists() else 0
     try:
-        fetch_us_landslide_regions_pages(capture_root)
+        _fetch_verified_capture(capture_root)
         state = _load_state(capture_root)
         pages = [entry for entry in state["pages"] if isinstance(entry, dict)]
         captured = [str(entry.get("captured_at", "")) for entry in pages]
