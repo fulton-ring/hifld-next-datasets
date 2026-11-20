@@ -1,37 +1,9 @@
-"""Streaming, approval-gated capture of the USGS 3DHP_all HydroLocation points.
+"""Resumable, approval-gated capture of USGS 3DHP_all layer 20.
 
-The HIFLD Open inventory entry ``nhd/hydrolocation-sink-spring-waterbody-outlet``
-("HydroLocation - Sink, Spring, Waterbody Outlet", agency US Geological Survey)
-carries the description of the USGS 3D Hydrography Program (3DHP) ``3DHP_all``
-ArcGIS REST service verbatim; the DHS HIFLD Open crosswalk (DOI 10.3886/E241367V1)
-consolidates the NHD-family rows into one "3D Hydrography Program (3DHP) Layers"
-row whose Open REST Service is the USGS ``3dhp.nationalmap.gov`` ``usgs_3dhp_all``
-FeatureServer. Its layer 20 "HydroLocation - Sink, Spring, Waterbody Outlet" —
-exactly the three hydrolocation point categories named by the inventory title — is
-the maintained producer publication captured here (USGS retired the NHD as a
-maintained product on 2023-10-01; 3DHP is the successor). The layer held 177,424
-features on 2026-11-13, so this module streams the source: every roster segment is
-retained as raw evidence in a resumable capture directory before any candidate is
-sealed. The DataLumos project 240306 archive copy is identification context only
-and is never fetched.
-
-The producer serves the complete OBJECTID roster (``returnIdsOnly`` returned
-exactly the contiguous span 1..177424 on 2026-11-13), so the layer is captured
-as adaptively bisected segments of the sorted roster: each accepted segment
-must return exactly its expected id slice, the accepted segments must tile the
-complete roster without gaps or overlaps, and before/after count/roster/
-service/layer brackets prove that nothing was skipped, duplicated, or
-reordered. A single-record segment the producer still refuses ends the capture
-explicitly rather than guessing.
-
-The per-value and per-geometry baseline digests, geometry gate counts and
-observed bounds were computed by
-``build_nhd_hydrolocation_sink_spring_waterbody_outlet_baseline`` from the
-completed capture directory of the dated full extraction (89 roster segments,
-2026-11-13) and are pinned as module constants; every later capture is refused
-when its content drifts from these pins. Publication stays blocked pending the
-succession, freshness, schema/ID contract, rights and release decisions; all
-runtime approval flags are false and the draft refresh schedule is stopped.
+Capture-time count and native OBJECTID witnesses prove complete roster coverage.
+Adaptive offset segments retain all native attributes and publisher-served Point Z
+ordinates in EPSG:4326. Geometry gates are counted, not repaired. Publication
+remains unapproved and the draft refresh schedule stays stopped.
 """
 
 from __future__ import annotations
@@ -54,8 +26,10 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.http_capture import validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
@@ -63,7 +37,7 @@ from dagster_hifld.sources import arcgis_layer
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
-    write_immutable,
+    validate_capture_request_identity, write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
@@ -99,6 +73,7 @@ MAX_RECORD_COUNT = 2500
 SEGMENT_START_RECORDS = 2000
 MAX_BODY_BYTES = 96 * 1024 * 1024
 MAX_CAPTURE_BYTES = 20 * 1024 * 1024 * 1024
+MAX_RECEIPT_BYTES = 64 * 1024
 MIN_FREE_BYTES = 20_000_000_000
 DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
@@ -128,32 +103,10 @@ SPATIAL_METADATA_IDS = frozenset({90, 92, 94})
 SPATIAL_METADATA_NAMES = frozenset({"Spatial Metadata - DEM LimitationArea",
                                     "Spatial Metadata - EDH Workunit Area",
                                     "Spatial Metadata - Elevation Workunit Area"})
-EXPECTED_COUNT = 177_424
 EXPECTED_SCHEMA_SHA256 = "4c4ab8e34f34e4705dd04722bc2e4e0c7cacc210c7bf7e0a34741b86cbebf981"
-EXPECTED_IDS_SHA256 = "c395557ae10af89ba95f922fd1b2e8f061c5f39a317b862109598b54ce6107b1"
-# The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (see the module docstring):
-# 89 roster segments captured 2026-11-13T06:07:04Z..06:07:58Z, all 177,424
-# features digested with zero null/NaN/empty geometries.
-EXPECTED_RECORD_SHA256 = "4ab6be46b42767f711cc02b1a83030b95775471a6dca96e5ea59998fd211ecea"
-EXPECTED_GEOMETRY_SHA256 = "107d55b7fa7acd94e9e4745cac8ed9a59e3d2a55c55d747e6163adfb56e3ac6e"
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_NAN_GEOMETRY_COUNT = 0
-EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = {
-    "xmin": -166.97025846818832, "ymin": 13.277028344549862,
-    "xmax": 145.78612348522006, "ymax": 70.68186021264667}
-# Per-feature hydrolocation category contract observed via grouped counts on
-# 2026-11-13 (sum 177,424); every feature must carry one of these pairs.
-EXPECTED_FEATURETYPE_DISTRIBUTION = {3: 7_789, 7: 151_063, 8: 18_572}
 EXPECTED_FEATURETYPE_LABELS = {3: "Waterbody Outlet", 7: "Spring", 8: "Sink"}
 EXPECTED_LAYER_EXTENT = {"xmin": -18587044.1503, "ymin": 1491399.9107999988,
                          "xmax": 16228837.031099997, "ymax": 11294359.822499998}
-BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests, geometry gate counts and "
-    "observed bounds are pinned from the dated complete resumable capture of "
-    "2026-11-13 (89 roster segments, 06:07:04Z..06:07:58Z); drift against "
-    "these pins is refused and quarantined.")
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),
@@ -243,14 +196,11 @@ def _parse_segment_name(name: str) -> tuple[int, int]:
 
 
 def _validate_roster(roster: object, label: str) -> list[int]:
-    if not isinstance(roster, list) or len(roster) != EXPECTED_COUNT \
-            or any(type(value) is not int for value in roster) \
-            or len(set(roster)) != EXPECTED_COUNT:
+    if not isinstance(roster, list) or not roster \
+            or any(type(value) is not int or value <= 0 for value in roster) \
+            or len(set(roster)) != len(roster):
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_id_population_drift:" + label)
-    ids = sorted(roster)
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(ids)) != EXPECTED_IDS_SHA256:
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_id_roster_drift:" + label)
-    return ids
+    return sorted(roster)
 
 
 def _validate_service_document(service: object, label: str) -> None:
@@ -384,6 +334,8 @@ def _validate_feature(feature: object, expected_names: tuple[str, ...],
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_featuretype_outside_hydrolocation_population")
     if attrs["featuretypelabel"] != EXPECTED_FEATURETYPE_LABELS[featuretype]:
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_featuretype_label_drift")
+    for name, esri_type, nullable, _length in NATIVE_FIELDS:
+        _validate_value(name, esri_type, nullable, attrs[name])
     if geometry is not None:
         if not isinstance(geometry, dict) or set(geometry) != {"x", "y", "z"}:
             raise NhdHydrolocationSinkSpringWaterbodyOutletError("unexpected_source_geometry_members")
@@ -396,22 +348,68 @@ def _validate_feature(feature: object, expected_names: tuple[str, ...],
             raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_point_ordinate_not_finite")
         if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
             raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_coordinate_range_drift")
-    for name, esri_type, nullable, _length in NATIVE_FIELDS:
-        _validate_value(name, esri_type, nullable, attrs[name])
     return objectid, geometry
 
 
+def _preflight_capture(capture_root: Path) -> None:
+    if ".." in capture_root.parts or any(path.is_symlink() for path in (capture_root, *capture_root.parents)):
+        raise NhdHydrolocationSinkSpringWaterbodyOutletError("unsafe_capture_directory")
+    if not capture_root.exists():
+        return
+    entries = list(capture_root.iterdir())
+    try:
+        validate_capture_roster(capture_root, {path.name for path in entries})
+    except ValueError as exc:
+        raise NhdHydrolocationSinkSpringWaterbodyOutletError(str(exc)) from exc
+    total = 0
+    for path in entries:
+        size = path.stat().st_size
+        limit = MAX_RECEIPT_BYTES if path.name.endswith(".receipt.json") else MAX_BODY_BYTES
+        if path.suffix != ".parquet" and size > limit:
+            raise NhdHydrolocationSinkSpringWaterbodyOutletError("retained_capture_file_too_large:" + path.name)
+        total += size
+    if total > MAX_CAPTURE_BYTES:
+        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_capture_exceeds_scratch_budget")
+
+
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
+    path = capture_root / f"{name}.receipt.json"
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_RECEIPT_BYTES:
+        raise NhdHydrolocationSinkSpringWaterbodyOutletError("retained_capture_receipt_invalid:" + name)
     return arcgis_layer.load_receipt(capture_root, name,
                                    NhdHydrolocationSinkSpringWaterbodyOutletError)
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    return arcgis_layer.read_capture(capture_root, name,
-                                   NhdHydrolocationSinkSpringWaterbodyOutletError)
+    _load_receipt(capture_root, name)
+    for suffix in ("body", "wire"):
+        path = capture_root / f"{name}.{suffix}"
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_BODY_BYTES:
+            raise NhdHydrolocationSinkSpringWaterbodyOutletError("retained_capture_file_invalid:" + name)
+    try:
+        body, receipt = arcgis_layer.load_replay(capture_root, name)
+        if name in METADATA_NAMES + AFTER_NAMES:
+            url = {"service_doc": SERVICE_DOC_URL,
+                   "alias_service": ALIAS_SERVICE_URL + "?f=pjson",
+                   "service_before": SERVICE_URL + "?f=pjson",
+                   "service_after": SERVICE_URL + "?f=pjson",
+                   "layer_before": LAYER_URL + "?f=pjson",
+                   "layer_after": LAYER_URL + "?f=pjson",
+                   "count_before": _count_url(), "count_after": _count_url(),
+                   "ids_seed": _ids_url(), "ids_before": _ids_url(),
+                   "ids_after": _ids_url()}[name]
+            validate_capture_request_identity(name, receipt, url)
+        elif _SEGMENT_NAME_PATTERN.fullmatch(name):
+            validate_capture_request_identity(name, receipt, _segment_query(*_parse_segment_name(name)))
+        return body, receipt
+    except (OSError, ValueError) as exc:
+        raise NhdHydrolocationSinkSpringWaterbodyOutletError(str(exc)) from exc
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
+    path = capture_root / "capture_state.json"
+    if path.is_symlink() or (path.exists() and (not path.is_file() or path.stat().st_size > MAX_BODY_BYTES)):
+        raise NhdHydrolocationSinkSpringWaterbodyOutletError("capture_state_invalid")
     return arcgis_layer.load_state(capture_root, NhdHydrolocationSinkSpringWaterbodyOutletError)
 
 
@@ -433,8 +431,7 @@ def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int,
     the capture state; anything else is witnessed aside and refetched.
     """
     state = _load_state(capture_root)
-    accepted_names = {entry.get("name") for entry in state["segments"]
-                      if isinstance(entry, dict)}
+    accepted = {entry.get("name"): entry for entry in state["segments"] if isinstance(entry, dict)}
     retained: list[tuple[int, int]] = []
     for path in sorted(capture_root.glob("page_*.body")):
         name = path.name.removesuffix(".body")
@@ -448,30 +445,36 @@ def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int,
         except NhdHydrolocationSinkSpringWaterbodyOutletError:
             _witness_aside(capture_root, name)
             continue
-        if body.lstrip().startswith(b'{"error"') or name not in accepted_names:
+        if _producer_error_doc(body) or name not in accepted:
             _witness_aside(capture_root, name)
             continue
         offset, count = _parse_segment_name(name)
-        if offset + count > len(roster) or roster[offset:offset + count] != \
-                list(range(offset + 1, offset + count + 1)):
+        try:
+            rows = json.loads(body).get("features")
+            actual = [row.get("attributes", {}).get("OBJECTID") for row in rows]
+        except (ValueError, TypeError, AttributeError):
+            actual = None
+        if (count < 1 or offset + count > len(roster)
+                or actual != roster[offset:offset + count]
+                or accepted[name].get("body_sha256") != _sha(body)):
             _witness_aside(capture_root, name)
             continue
         retained.append((offset, count))
     gaps: list[tuple[int, int]] = []
-    covered = bytearray(EXPECTED_COUNT)
+    covered = bytearray(len(roster))
     for offset, count in sorted(retained):
-        if offset < 0 or count < 1 or offset + count > EXPECTED_COUNT \
+        if offset < 0 or count < 1 or offset + count > len(roster) \
                 or any(covered[offset:offset + count]):
             _witness_aside(capture_root, _segment_name(offset, count))
             continue
         covered[offset:offset + count] = b"\x01" * count
     cursor = 0
-    while cursor < EXPECTED_COUNT:
+    while cursor < len(roster):
         if covered[cursor]:
             cursor += 1
             continue
         start = cursor
-        while cursor < EXPECTED_COUNT and not covered[cursor]:
+        while cursor < len(roster) and not covered[cursor]:
             cursor += 1
         chunk_start = start
         while chunk_start < cursor:
@@ -482,7 +485,7 @@ def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int,
 
 
 def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
-                    state: dict[str, object]) -> None:
+                    state: dict[str, object]) -> bool:
     """Capture the complete layer as adaptively bisected roster segments.
 
     Segments start at SEGMENT_START_RECORDS. A segment the producer keeps
@@ -493,14 +496,15 @@ def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
     ends the capture explicitly.
     """
     segments = state.setdefault("segments", [])
-    accepted = {entry.get("name") for entry in segments if isinstance(entry, dict)}
     todo: deque[tuple[int, int]] = deque(_plan_segment_gaps(capture_root, roster))
+    refreshed = bool(todo)
+    if refreshed:
+        state["complete"] = False
+        if segments:
+            _save_state(capture_root, state)
     while todo:
         offset, count = todo.popleft()
         name = _segment_name(offset, count)
-        if name in accepted and (capture_root / f"{name}.body").exists() \
-                and not (capture_root / f"{name}.body").read_bytes().lstrip().startswith(b'{"error"'):
-            continue
         try:
             body, receipt = _capture_with_retry(
                 client, _segment_query(offset, count), capture_root, name,
@@ -542,12 +546,12 @@ def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
         if actual != expected:
             _witness_aside(capture_root, name)
             raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_page_id_slice_incomplete_or_reordered")
-        if name not in accepted:
-            segments.append({"name": name, "offset": offset, "count": count,
-                             "features": len(rows), "captured_at": receipt["observed_at"],
-                             "body_sha256": _sha(body)})
-            accepted.add(name)
-            _save_state(capture_root, state)
+        segments[:] = [entry for entry in segments if entry.get("name") != name]
+        segments.append({"name": name, "offset": offset, "count": count,
+                         "features": len(rows), "captured_at": receipt["observed_at"],
+                         "body_sha256": _sha(body)})
+        _save_state(capture_root, state)
+    return refreshed
 
 
 def fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(
@@ -559,6 +563,7 @@ def fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(
     and document.
     """
     capture_root = Path(capture_root).absolute()
+    _preflight_capture(capture_root)
     capture_root.mkdir(parents=True, exist_ok=True)
     state = _load_state(capture_root)
     owner_client = client is None
@@ -590,10 +595,15 @@ def fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(
         if sorted(roster) != ids:
             raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_id_population_drift:ids_seed_vs_before")
         count_before = json.loads(_read_capture(capture_root, "count_before")[0])
-        if count_before.get("count") != EXPECTED_COUNT:
+        if type(count_before.get("count")) is not int or count_before["count"] != len(roster):
             raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_count_drift")
-        _fetch_segments(active, capture_root, roster, state)
+        refreshed = _fetch_segments(active, capture_root, roster, state)
         segments = list(state["segments"])
+        if refreshed or state.get("complete") is not True:
+            state["complete"] = False
+            _save_state(capture_root, state)
+            for name in AFTER_NAMES:
+                _witness_aside(capture_root, name)
         for name in AFTER_NAMES:
             url = {"layer_after": LAYER_URL + "?f=pjson",
                    "service_after": SERVICE_URL + "?f=pjson",
@@ -603,7 +613,7 @@ def fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(
             if _producer_error_doc(body):
                 raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_page_error:" + name)
         count_after = json.loads(_read_capture(capture_root, "count_after")[0])
-        if count_after.get("count") != EXPECTED_COUNT:
+        if type(count_after.get("count")) is not int or count_after["count"] != len(roster):
             raise NhdHydrolocationSinkSpringWaterbodyOutletError(
                 "source_metadata_or_count_changed_during_capture")
         after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
@@ -626,16 +636,16 @@ def fetch_nhd_hydrolocation_sink_spring_waterbody_outlet_pages(
         active.close()
     if owner_doc:
         docs_active.close()
-    _save_state(capture_root, {"segments": segments, "complete": True})
     last_captured_at = max((str(entry.get("captured_at", "")) for entry in segments),
                            default=first_captured_at)
     extracted = _stream_validate(capture_root, parquet_sink=None)
+    _save_state(capture_root, {"segments": segments, "complete": True})
     (capture_root / "computed_baseline.json").write_bytes(_canonical({
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_ids_sha256": extracted["ids_sha"],
         "source_schema_sha256": extracted["schema_sha"],
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": extracted["feature_count"],
         "source_max_objectid": extracted["max_objectid"],
         "source_null_geometry_count": extracted["null_geometry_count"],
         "source_nan_geometry_count": extracted["nan_geometry_count"],
@@ -785,6 +795,7 @@ class _SegmentStream:
 def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[str, object]:
     """Re-verify every retained capture and optionally reconstruct the native geoparquet."""
     capture_root = Path(capture_root).absolute()
+    _preflight_capture(capture_root)
     docs = {name: json.loads(_read_capture(capture_root, name)[0])
             for name in METADATA_NAMES if name != "service_doc"}
     if b"3dhp.nationalmap.gov" not in _read_capture(capture_root, "service_doc")[0]:
@@ -798,16 +809,19 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_schema_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_schema_baseline_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT:
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_count_drift")
     seed = _validate_roster(docs["ids_seed"].get("objectIds"), "ids_seed")
     if docs["ids_before"].get("objectIdFieldName") != "OBJECTID":
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_id_field_changed")
     roster = _validate_roster(docs["ids_before"].get("objectIds"), "ids_before")
+    count_before = docs["count_before"].get("count")
+    if type(count_before) is not int or count_before != len(roster):
+        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_count_drift")
     if roster != seed:
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_id_population_drift:ids_seed_vs_before")
-    after_roster = _validate_roster(json.loads(
-        _read_capture(capture_root, "ids_after")[0]).get("objectIds"), "ids_after")
+    after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
+    if after_ids.get("objectIdFieldName") != "OBJECTID":
+        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_id_field_changed")
+    after_roster = _validate_roster(after_ids.get("objectIds"), "ids_after")
     if after_roster != roster:
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_id_population_drift:ids_after")
     for name in ("layer_after", "service_after", "count_after"):
@@ -831,44 +845,31 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         offset, count, name = entry.get("offset"), entry.get("count"), entry.get("name")
         if (type(offset) is not int or type(count) is not int or offset < 0 or count < 1
                 or name != _segment_name(offset, count) or offset != cursor
-                or offset + count > EXPECTED_COUNT or entry.get("features") != count):
+                or offset + count > len(roster) or entry.get("features") != count):
             raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_capture_roster_incomplete_or_unexpected")
+        body, _receipt = _read_capture(capture_root, name)
+        if entry.get("body_sha256") != _sha(body):
+            raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_checkpoint_body_mismatch:" + name)
         ordered.append((name, offset, count))
         cursor = offset + count
-    if cursor != EXPECTED_COUNT:
+    if cursor != len(roster):
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_capture_roster_incomplete_or_unexpected")
     stream = _SegmentStream(capture_root, fields, parquet_sink)
     try:
         for name, offset, count in ordered:
             stream.process(name, offset, count, roster)
+        count_after = json.loads(_read_capture(capture_root, "count_after")[0]).get("count")
+        try:
+            validate_capture_witness(count_before, roster, count_after, after_roster, list(stream.ids))
+        except ValueError as exc:
+            raise NhdHydrolocationSinkSpringWaterbodyOutletError(str(exc)) from exc
         summary = stream.finish(parquet_ok=True)
     except BaseException:
         stream.finish(parquet_ok=False)
         raise
-    if len(stream.ids) != EXPECTED_COUNT or summary["max_objectid"] <= 0:
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_page_population_incomplete")
     ids_sha = summary["ids_sha"]
-    if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_id_roster_drift")
-    if summary["featuretype_distribution"] != EXPECTED_FEATURETYPE_DISTRIBUTION:
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_featuretype_distribution_drift")
-    if EXPECTED_RECORD_SHA256 and summary["record_sha"] != EXPECTED_RECORD_SHA256:
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_value_or_geometry_baseline_drift")
-    if EXPECTED_GEOMETRY_SHA256 and summary["geometry_sha"] != EXPECTED_GEOMETRY_SHA256:
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_geometry_or_coverage_drift")
-    if (EXPECTED_NULL_GEOMETRY_COUNT is not None
-            and summary["null_geometry_count"] != EXPECTED_NULL_GEOMETRY_COUNT):
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_null_geometry_count_drift")
-    if (EXPECTED_NAN_GEOMETRY_COUNT is not None
-            and summary["nan_geometry_count"] != EXPECTED_NAN_GEOMETRY_COUNT):
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_nan_geometry_count_drift")
-    if (EXPECTED_EMPTY_GEOMETRY_COUNT is not None
-            and summary["empty_geometry_count"] != EXPECTED_EMPTY_GEOMETRY_COUNT):
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_empty_geometry_count_drift")
-    if (EXPECTED_OBSERVED_BOUNDS is not None
-            and summary["observed_bounds"] != EXPECTED_OBSERVED_BOUNDS):
-        raise NhdHydrolocationSinkSpringWaterbodyOutletError("source_observed_bounds_drift")
     return {"fields": fields, "schema_sha": schema_sha, "segments": len(ordered),
+            "feature_count": len(stream.ids), "source_reported_count": count_before,
             "record_sha": summary["record_sha"], "geometry_sha": summary["geometry_sha"],
             "ids_sha": ids_sha, "parquet_path": parquet_sink,
             "null_geometry_count": summary["null_geometry_count"],
@@ -914,15 +915,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                       extracted["schema_sha"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
-        parquet_body = Path(extracted["parquet_path"]).read_bytes()
-        return _verify_sealed_candidate(
-            storage, prefix, state_key, version, identity,
-            {"source_record_sha256": extracted["record_sha"],
-             "source_schema_sha256": extracted["schema_sha"]},
-            parquet_body)
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
+        "source_feature_count": extracted["feature_count"], "source_id_sha256": extracted["ids_sha"],
+        "source_reported_count": extracted["source_reported_count"],
+        "source_population_complete": True,
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_schema_sha256": extracted["schema_sha"], "source_crs_epsg": SOURCE_CRS_WKID,
@@ -933,7 +929,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "empty_geometry_count": extracted["empty_geometry_count"],
         "featuretype_distribution": extracted["featuretype_distribution"],
         "featuretype_labels": dict(sorted(EXPECTED_FEATURETYPE_LABELS.items())),
-        "unique_source_id_count": EXPECTED_COUNT,
+        "unique_source_id_count": extracted["feature_count"],
         "source_max_objectid": extracted["max_objectid"],
         "observed_bounds": extracted["observed_bounds"],
         "declared_layer_extent_3857": EXPECTED_LAYER_EXTENT,
@@ -944,9 +940,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "crosswalk_doi": "10.3886/E241367V1",
         "crosswalk_layer_row": "3D Hydrography Program (3DHP) Layers",
         "crosswalk_open_id": "650c07e542fa43b6a327c7f683681712",
-        "baseline_note": BASELINE_PENDING_NOTE,
-        "baseline_pinned_complete_capture": bool(
-            EXPECTED_RECORD_SHA256 and EXPECTED_GEOMETRY_SHA256),
+        "completeness_basis": "stable captured counts and unique native ID rosters, "
+                              "with exact ordered segment coverage",
+        "baseline_comparison": "skipped_no_approved_baseline",
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
@@ -960,8 +956,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "segments": extracted["segments"], "resumable": True,
                        "resumed_segments": resumed_segments,
                        "id_roster_enumeration_note":
-                           "returnIdsOnly enumerated the complete contiguous OBJECTID roster "
-                           "(1..177424 observed 2026-11-13). Segments start at 2000 records "
+                           "returnIdsOnly enumerated the complete native OBJECTID roster. "
+                           "Segments start at 2000 records "
                            "below the producer's 2500-record cap (sibling 3DHP_all layers "
                            "refused cap-sized pages with complete HTTP 200 Esri error "
                            "documents) and refused segments are bisected until served; "
@@ -975,6 +971,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "mapping_approved": False, "release_accepted": False,
     }
     parquet_body = Path(extracted["parquet_path"]).read_bytes()
+    if storage.object_snapshot(state_key) is not None:
+        result = _verify_sealed_candidate(storage, prefix, state_key, version, identity,
+                                           audit, parquet_body)
+        return {**result, "capture_directory": str(capture_root)}
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
     receipts = _load_receipt_map(capture_root)
@@ -1016,7 +1016,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                                           "roster captured as adaptively "
                                                           "bisected roster segments (full 3DHP "
                                                           "hydrolocation point population for "
-                                                          "the five named categories)",
+                                                          "the three named categories)",
                                             "source_fields": "all producer fields retained in "
                                                              "producer order and declared physical "
                                                              "types",
@@ -1104,19 +1104,27 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
+    return {**_candidate_result(audit, prefix, version, reused=False),
+            "capture_directory": str(capture_root)}
+
+
+def _candidate_result(audit: Mapping[str, object], prefix: str, version: str, *, reused: bool) -> dict:
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": extracted["null_geometry_count"],
-            "source_nan_geometry_count": extracted["nan_geometry_count"],
-            "source_empty_geometry_count": extracted["empty_geometry_count"],
-            "source_featuretype_distribution": extracted["featuretype_distribution"],
-            "source_id_sha256": extracted["ids_sha"],
-            "source_schema_sha256": extracted["schema_sha"],
-            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_reported_count"],
+            "source_population_complete": audit["source_population_complete"],
+            "source_null_geometry_count": audit["null_geometry_count"],
+            "source_nan_geometry_count": audit["nan_geometry_count"],
+            "source_empty_geometry_count": audit["empty_geometry_count"],
+            "source_featuretype_distribution": audit["featuretype_distribution"],
+            "observed_bounds": audit["observed_bounds"],
+            "source_id_sha256": audit["source_id_sha256"],
+            "source_schema_sha256": audit["source_schema_sha256"],
+            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": reused,
             "source_release_accepted": False, "source_freshness_accepted": False,
             "schema_contract_accepted": False, "id_contract_accepted": False,
             "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
-            "release_accepted": False, "capture_directory": str(capture_root)}
+            "release_accepted": False}
 
 
 def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
@@ -1142,16 +1150,7 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("cached_native_candidate_changed")
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
-            "source_id_sha256": audit.get("source_ids_sha256", ""),
-            "source_schema_sha256": audit["source_schema_sha256"],
-            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
-            "source_release_accepted": False, "source_freshness_accepted": False,
-            "schema_contract_accepted": False, "id_contract_accepted": False,
-            "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
-            "release_accepted": False}
+    return _candidate_result(audit, prefix, version, reused=True)
 
 
 def capture_nhd_hydrolocation_sink_spring_waterbody_outlet(storage: StagingStorageResource, *, version: str,
@@ -1176,6 +1175,7 @@ def capture_nhd_hydrolocation_sink_spring_waterbody_outlet(storage: StagingStora
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise NhdHydrolocationSinkSpringWaterbodyOutletError("unsafe_capture_directory")
+    _preflight_capture(capture_root)
     resumed_segments = len(_load_state(capture_root).get("segments", [])) \
         if (capture_root / "capture_state.json").exists() else 0
     try:
@@ -1210,13 +1210,13 @@ def capture_nhd_hydrolocation_sink_spring_waterbody_outlet(storage: StagingStora
 
 
 def build_nhd_hydrolocation_sink_spring_waterbody_outlet_baseline(capture_root: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
+    """Recompute observed audit facts from a complete retained capture."""
     extracted = _stream_validate(Path(capture_root).absolute(), parquet_sink=None)
     return {"source_record_sha256": extracted["record_sha"],
             "source_geometry_sha256": extracted["geometry_sha"],
             "source_ids_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
-            "source_feature_count": EXPECTED_COUNT,
+            "source_feature_count": extracted["feature_count"],
             "source_max_objectid": extracted["max_objectid"],
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_nan_geometry_count": extracted["nan_geometry_count"],
