@@ -4,7 +4,6 @@ import json
 import struct
 import tempfile
 import unittest
-from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -156,9 +155,10 @@ class JSONStream(httpx.SyncByteStream):
 
 def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=None,
                    layer=None, doc_page=None, geometry=None, max_served_size=None,
-                   refuse_geometry_oids=frozenset()):
+                   refuse_geometry_oids=frozenset(), layer_after_mutate=None):
     count = count if count is not None else len(rows)
     layer_fields = layer_fields if layer_fields is not None else _fixture_layer_fields()
+    layer_doc_calls = [0]
 
     def layer_doc():
         if callable(layer):
@@ -182,7 +182,11 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
             return httpx.Response(200, stream=JSONStream(service_doc),
                                   headers={"content-type": "application/json"})
         if path.rstrip("/").endswith(f"/{src.LAYER_ID}"):
-            return httpx.Response(200, stream=JSONStream(layer_doc()),
+            layer_doc_calls[0] += 1
+            document = layer_doc()
+            if layer_after_mutate is not None and layer_doc_calls[0] > 1:
+                document = layer_after_mutate(document)
+            return httpx.Response(200, stream=JSONStream(document),
                                   headers={"content-type": "application/json"})
         if query.get("returnCountOnly") == ["true"]:
             return httpx.Response(200, stream=JSONStream({"count": count}),
@@ -258,27 +262,9 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
 
 
 @contextmanager
-def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=None,
-                 count=FIXTURE_COUNT, max_objectid=max(FIXTURE_OBJECTIDS),
-                 refused_ids=None, null_geometry_count=None, distribution=None,
-                 degenerate_count=None, degenerate_ids=None):
-    import dagster_hifld.assets.nhd_waterbody as asset_module
-    rows = _fixture_rows()
-    if distribution is None:
-        distribution = dict(Counter(row["attributes"]["featuretype"] for row in rows))
+def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=None):
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", count),
-        patch.object(src, "EXPECTED_MAX_OBJECTID", max_objectid),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
-        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
-        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
-        patch.object(src, "EXPECTED_IDS_SHA256", ""),
-        patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", null_geometry_count),
-        patch.object(src, "EXPECTED_REFUSED_IDS", refused_ids),
-        patch.object(src, "EXPECTED_DEGENERATE_RING_COUNT", degenerate_count),
-        patch.object(src, "EXPECTED_DEGENERATE_RING_IDS", degenerate_ids),
-        patch.object(src, "EXPECTED_FEATURETYPE_DISTRIBUTION", distribution),
-        patch.object(asset_module, "EXPECTED_COUNT", count),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
@@ -340,31 +326,19 @@ class NhdWaterbodyTests(unittest.TestCase):
         self.assertEqual(src.LAYER_ID, 60)
         self.assertEqual(src.LAYER_NAME, "Waterbody")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPolygon")
-        self.assertEqual(src.EXPECTED_COUNT, 7_158_943)
-        self.assertEqual(src.EXPECTED_MAX_OBJECTID, 7_158_943)
         self.assertEqual(src.PAGE_SIZE, 2500)
         self.assertEqual(len(src.NATIVE_FIELDS), 12)
         self.assertEqual(src.MIN_FREE_BYTES, 55_000_000_000)
-        # Baselines pinned from the first complete capture (2026-11-13):
-        # digests non-empty, the refusal and degenerate-ring contracts are
-        # exact tuples, and any later drift fails closed.
-        self.assertRegex(src.EXPECTED_RECORD_SHA256, "^[0-9a-f]{64}$")
-        self.assertRegex(src.EXPECTED_GEOMETRY_SHA256, "^[0-9a-f]{64}$")
-        self.assertRegex(src.EXPECTED_IDS_SHA256, "^[0-9a-f]{64}$")
-        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 9)
-        self.assertEqual(src.EXPECTED_REFUSED_IDS,
-                         (1293173, 2520496, 4245000, 4694427, 7059540, 7059541,
-                          7098625, 7135496, 7157221))
-        self.assertEqual(src.EXPECTED_DEGENERATE_RING_COUNT, 13)
-        self.assertEqual(src.EXPECTED_DEGENERATE_RING_IDS,
-                         (279258, 2727549, 2954106, 3590176, 3601265, 4575241,
-                          5019081, 5144328, 5802262, 7072361, 7074673,
-                          7147977, 7151432))
-        self.assertEqual(src.EXPECTED_FEATURETYPE_DISTRIBUTION,
-                         {1: 85220, 2: 9235, 3: 7063520, 4: 968})
+        # Contract pins only: the producer-declared schema identity, featuretype
+        # labels, declared extent and service refresh statement. Population
+        # counts and per-capture digests are observed facts, not pinned.
+        self.assertRegex(src.EXPECTED_SCHEMA_SHA256, "^[0-9a-f]{64}$")
         self.assertEqual(src.EXPECTED_FEATURETYPE_LABELS,
                          {1: "River", 2: "Canal", 3: "Lake", 4: "Ocean or Great Lake"})
-        self.assertTrue(src.BASELINE_PENDING_NOTE)
+        self.assertIn("fields", src.LAYER_CONTRACT_KEYS)
+        self.assertIn("extent", src.LAYER_CONTRACT_KEYS)
+        self.assertNotIn("drawingInfo", src.LAYER_CONTRACT_KEYS)
+        self.assertIn("Data refreshed September 4, 2026", src.EXPECTED_COPYRIGHT_TEXT)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
                             for key in keys))
@@ -464,7 +438,7 @@ class NhdWaterbodyTests(unittest.TestCase):
                          [tuple(vertex) for vertex in _fixture_degenerate_spike()])
         self.assertLess(multipolygon.geoms[1].area, 1e-9)
 
-    def test_degenerate_pin_contract_fails_closed_after_transcription(self):
+    def test_degenerate_rings_are_reported_not_pinned(self):
         rows = _fixture_rows()
         rows[4]["geometry"]["rings"].append(_fixture_degenerate_spike())
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
@@ -477,7 +451,9 @@ class NhdWaterbodyTests(unittest.TestCase):
                 first = src.capture_nhd_waterbody(storage, version="degen-run",
                                                   capture_directory=str(capture_root))
                 self.assertFalse(first["reused"])
-                baseline = src.build_nhd_waterbody_baseline(str(capture_root))
+                self.assertEqual(first["feature_count"], FIXTURE_COUNT)
+                baseline = json.loads(
+                    (capture_root / "computed_baseline.json").read_bytes())
                 self.assertEqual(baseline["source_degenerate_ring_count"], 1)
                 self.assertEqual(baseline["source_degenerate_ring_ids"], [8])
                 audit = json.loads((root / "staging" / src.DATASET_SLUG / src.FILE_SLUG
@@ -485,24 +461,16 @@ class NhdWaterbodyTests(unittest.TestCase):
                                     / "source_audit.json").read_bytes())
                 self.assertEqual(audit["source_degenerate_ring_count"], 1)
                 self.assertEqual(audit["source_degenerate_ring_ids"], [8])
-                self.assertTrue(audit["baseline_pending_complete_capture"])
+                self.assertNotIn("baseline_pending_complete_capture", audit)
                 self.assertIn("coverage-neutral", audit["producer_degenerate_ring_note"])
                 table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
                 self.assertEqual(table.num_rows, FIXTURE_COUNT)
-            with fixture_mode(schema_sha, transport, degenerate_count=1,
-                              degenerate_ids=(8,)):
+                # An unchanged re-capture reuses the sealed candidate: no pin
+                # has to be transcribed for the witness to stay green.
                 second = src.capture_nhd_waterbody(storage, version="degen-run-2",
                                                    capture_directory=str(capture_root))
                 self.assertEqual(second["version"], first["version"])
                 self.assertTrue(second["reused"])
-            with fixture_mode(schema_sha, transport, degenerate_ids=(9,)):
-                with self.assertRaisesRegex(src.NhdWaterbodyError,
-                                            "source_degenerate_ring_ids_drift"):
-                    src.build_nhd_waterbody_baseline(str(capture_root))
-            with fixture_mode(schema_sha, transport, degenerate_count=2):
-                with self.assertRaisesRegex(src.NhdWaterbodyError,
-                                            "source_degenerate_ring_count_drift"):
-                    src.build_nhd_waterbody_baseline(str(capture_root))
 
     def test_disk_floor_refuses_before_any_fetch(self):
         rows = _fixture_rows()
@@ -564,6 +532,8 @@ class NhdWaterbodyTests(unittest.TestCase):
                                                   capture_directory=str(capture_root))
                 self.assertFalse(first["reused"])
                 self.assertEqual(first["feature_count"], FIXTURE_COUNT)
+                self.assertEqual(first["source_reported_count"], FIXTURE_COUNT)
+                self.assertTrue(first["source_population_complete"])
                 self.assertFalse(first["release_accepted"])
                 self.assertFalse(first["source_release_accepted"])
                 second = src.capture_nhd_waterbody(storage, version="fixture-run-2",
@@ -573,7 +543,8 @@ class NhdWaterbodyTests(unittest.TestCase):
             # A reused candidate must report the same validated source digests
             # the fresh seal reported, so the blocking check keeps its ID
             # evidence on the repeat run too.
-            for key in ("version", "feature_count", "source_id_sha256",
+            for key in ("version", "feature_count", "source_reported_count",
+                        "source_population_complete", "source_id_sha256",
                         "source_schema_sha256"):
                 self.assertEqual(second[key], first[key], f"fresh/reused {key} mismatch")
             self.assertTrue((capture_root / "computed_baseline.json").exists())
@@ -633,7 +604,12 @@ class NhdWaterbodyTests(unittest.TestCase):
             sealed = json.loads((root / "staging" / prefix / "metadata"
                                  / "source_audit.json").read_bytes())
             self.assertEqual(sealed["source_feature_count"], FIXTURE_COUNT)
-            self.assertTrue(sealed["baseline_pending_complete_capture"])
+            self.assertEqual(sealed["source_reported_count"], FIXTURE_COUNT)
+            self.assertEqual(sealed["source_min_objectid"], FIXTURE_OBJECTIDS[0])
+            self.assertEqual(sealed["source_max_objectid"], FIXTURE_OBJECTIDS[-1])
+            self.assertNotIn("baseline_pending_note", sealed)
+            self.assertNotIn("baseline_pending_complete_capture", sealed)
+            self.assertNotIn("pages", sealed["pagination"])
             self.assertEqual(sealed["pagination"]["mode"],
                              "objectid_keyset_asc_with_bisection")
             self.assertTrue(sealed["pagination"]["resumable"])
@@ -772,35 +748,25 @@ class NhdWaterbodyTests(unittest.TestCase):
                 self.assertEqual(parquet.column("OBJECTID").to_pylist(),
                                  list(FIXTURE_OBJECTIDS))
                 self.assertEqual(parquet.column("geometry").to_pylist()[3], None)
-                # Pin the refusal set and the null count from the baseline: the
-                # capture then re-verifies the pinned refusal evidence, and the
-                # reused candidate reports the same ID digest as the fresh seal.
-                with patch.object(src, "EXPECTED_REFUSED_IDS", (5,)), \
-                        patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 1):
-                    pinned = src.capture_nhd_waterbody(storage, version="refused-pin",
-                                                       capture_directory=str(capture_root))
-                    self.assertTrue(pinned["reused"])
-                    for key in ("version", "feature_count", "source_id_sha256",
-                                "source_schema_sha256", "source_null_geometry_count"):
-                        self.assertEqual(pinned[key], result[key],
-                                         f"fresh/reused {key} mismatch")
-                with patch.object(src, "EXPECTED_REFUSED_IDS", (6,)):
-                    with self.assertRaisesRegex(src.NhdWaterbodyError,
-                                                "source_refused_ids_drift"):
-                        src.capture_nhd_waterbody(storage, version="refused-drift",
-                                                  capture_directory=str(capture_root))
-                with patch.object(src, "EXPECTED_REFUSED_IDS", (5,)), \
-                        patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0):
-                    with self.assertRaisesRegex(src.NhdWaterbodyError,
-                                                "source_null_geometry_count_drift"):
-                        src.capture_nhd_waterbody(storage, version="refused-null-drift",
-                                                  capture_directory=str(capture_root))
-                quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
-                                     .glob("*"))
-                self.assertTrue(quarantined)
-                failure = json.loads((quarantined[-1] / "metadata" / "failure.json").read_bytes())
-                self.assertIn(failure["reason_code"],
-                              ("source_refused_ids_drift", "source_null_geometry_count_drift"))
+                # The refusal set and the null count are observed facts: an
+                # unchanged re-capture re-verifies the retained refusal
+                # evidence and reuses the candidate without any pin, reporting
+                # the same ID digest as the fresh seal.
+                pinned = src.capture_nhd_waterbody(storage, version="refused-pin",
+                                                   capture_directory=str(capture_root))
+                self.assertTrue(pinned["reused"])
+                for key in ("version", "feature_count", "source_id_sha256",
+                            "source_schema_sha256", "source_null_geometry_count"):
+                    self.assertEqual(pinned[key], result[key],
+                                     f"fresh/reused {key} mismatch")
+                audit = json.loads((root / "staging" / src.DATASET_SLUG / src.FILE_SLUG
+                                    / result["version"] / "metadata"
+                                    / "source_audit.json").read_bytes())
+                self.assertEqual(audit["source_refused_ids"], [5])
+                self.assertEqual(audit["null_geometry_count"], 1)
+                self.assertIn("source_refused_ids", audit["producer_refusal_note"])
+                self.assertFalse(
+                    sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*")))
 
     def test_alias_host_rescue_keeps_record_as_served_page(self):
         rows = _fixture_rows()
@@ -1036,65 +1002,58 @@ class NhdWaterbodyTests(unittest.TestCase):
                     src.fetch_nhd_waterbody_pages(capture_root)
                 self.assertTrue((capture_root / "page_tail.body").exists())
 
-    def test_pinned_baseline_drift_is_refused_and_quarantined(self):
+    def test_witness_drift_is_refused_and_quarantined(self):
         rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # The producer's count witness and the walk re-derived from the
+            # served pages must agree; a count that names more records than the
+            # walk reconstructs fails the capture-time witness (not a pin) and
+            # quarantines the attempt.
+            transport = make_responder(rows, count=FIXTURE_COUNT + 1)
+            with fixture_mode(schema_sha, transport, page_size=2):
+                with self.assertRaisesRegex(src.NhdWaterbodyError,
+                                            "source_count_or_id_roster_drift"):
+                    src.capture_nhd_waterbody(_staging(root), version="witness-run",
+                                              capture_directory=str(root / "capture"))
+            quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
+                                 .glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[-1] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "source_count_or_id_roster_drift")
+
+    def test_null_geometry_count_is_reported_not_pinned(self):
+        rows = [{**row, "geometry": None} for row in _fixture_rows()]
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         transport = make_responder(rows)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
             with fixture_mode(schema_sha, transport, page_size=2):
-                storage = _staging(root)
-                src.capture_nhd_waterbody(storage, version="pin-run",
-                                          capture_directory=str(capture_root))
-                baseline = json.loads((capture_root / "computed_baseline.json").read_bytes())
-                with patch.object(src, "EXPECTED_RECORD_SHA256",
-                                  baseline["source_record_sha256"]), \
-                        patch.object(src, "EXPECTED_GEOMETRY_SHA256",
-                                     baseline["source_geometry_sha256"]), \
-                        patch.object(src, "EXPECTED_IDS_SHA256",
-                                     baseline["source_ids_sha256"]):
-                    again = src.capture_nhd_waterbody(storage, version="pin-run-verify",
-                                                      capture_directory=str(capture_root))
-                    self.assertTrue(again["reused"])
-                    self.assertEqual(again["source_id_sha256"],
-                                     baseline["source_ids_sha256"])
-                with patch.object(src, "EXPECTED_IDS_SHA256", "0" * 64):
-                    with self.assertRaisesRegex(src.NhdWaterbodyError,
-                                                "source_id_roster_drift"):
-                        src.capture_nhd_waterbody(storage, version="pin-run-drift",
-                                                  capture_directory=str(capture_root))
-                quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
-                                     .glob("*"))
-                self.assertTrue(quarantined)
-                failure = json.loads((quarantined[-1] / "metadata" / "failure.json").read_bytes())
-                self.assertEqual(failure["reason_code"], "source_id_roster_drift")
-
-    def test_null_geometry_contract_is_enforced(self):
-        rows = [{**row, "geometry": None} for row in _fixture_rows()]
-        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            with fixture_mode(schema_sha, transport, page_size=2):
-                with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0):
-                    with self.assertRaisesRegex(src.NhdWaterbodyError,
-                                                "source_null_geometry_count_drift"):
-                        src.capture_nhd_waterbody(_staging(root), version="null-geometry-run",
-                                                  capture_directory=str(root / "capture"))
-                # When the served null count matches its pin the capture passes.
-                with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", FIXTURE_COUNT):
-                    pinned = src.capture_nhd_waterbody(
-                        _staging(root), version="null-geometry-pinned",
-                        capture_directory=str(root / "capture"))
-                self.assertEqual(pinned["feature_count"], FIXTURE_COUNT)
+                pinned = src.capture_nhd_waterbody(
+                    _staging(root), version="null-geometry-pinned",
+                    capture_directory=str(capture_root))
+            self.assertEqual(pinned["feature_count"], FIXTURE_COUNT)
+            self.assertEqual(pinned["source_null_geometry_count"], FIXTURE_COUNT)
+            audit = json.loads((root / "staging" / src.DATASET_SLUG / src.FILE_SLUG
+                                / pinned["version"] / "metadata"
+                                / "source_audit.json").read_bytes())
+            self.assertEqual(audit["null_geometry_count"], FIXTURE_COUNT)
 
 
     def test_drift_and_provenance_failures_are_quarantined(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        def layer_after_maxrecordcount(document):
+            document = dict(document)
+            document["maxRecordCount"] = 2000
+            return document
+
         cases = {
-            "source_count_drift": dict(count=FIXTURE_COUNT + 1),
+            "source_count_or_id_roster_drift": dict(count=FIXTURE_COUNT + 1),
+            "source_layer_metadata_changed_during_capture": dict(
+                layer_after_mutate=layer_after_maxrecordcount),
             "source_schema_drift": dict(layer_fields=_fixture_layer_fields()
                                         + [{"name": "EXTRA", "type": "esriFieldTypeString",
                                             "alias": "EXTRA", "nullable": True, "length": 4,
@@ -1215,9 +1174,53 @@ class NhdWaterbodyTests(unittest.TestCase):
             root = Path(tmp)
             with fixture_mode(schema_sha, transport, page_size=2):
                 with self.assertRaisesRegex(src.NhdWaterbodyError,
-                                            "source_page_population_incomplete"):
+                                            "source_count_or_id_roster_drift"):
                     src.capture_nhd_waterbody(_staging(root), version="short-run",
                                               capture_directory=str(root / "capture"))
+
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        # Acceptance: an upstream edit that adds one feature must pass the
+        # capture-time completeness witness (the count answers and the walk
+        # both move together) and surface as an approved-baseline drift
+        # warning, never as a capture failure.
+        rows = _fixture_rows() + [{
+            "attributes": {
+                "OBJECTID": 9, "id3dhp": "00000A", "featuredate": 1695340800000 + 5,
+                "mainstemid": "https://geoconnex.us/usgs/mainstems/9",
+                "gnisid": 694904, "gnisidlabel": "Fixture Lake", "featuretype": 1,
+                "featuretypelabel": "River", "areasqkm": 0.24430194 + 5,
+                "workunitid": "19050401",
+                "Shape__Length": 61.22714663080581 + 5,
+                "Shape__Area": 13819.496815191216 + 5,
+            },
+            "geometry": {"hasZ": True, "rings": [_exterior(9.0)]},
+        }]
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            storage = _staging(root)
+            with fixture_mode(schema_sha, transport, page_size=2):
+                result = src.capture_nhd_waterbody(storage, version="added-run",
+                                                   capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT + 1)
+            self.assertEqual(result["source_reported_count"], FIXTURE_COUNT + 1)
+            self.assertTrue(result["source_population_complete"])
+            table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+            self.assertEqual(table.column("OBJECTID").to_pylist(),
+                             [*FIXTURE_OBJECTIDS, 9])
+            from dagster import AssetCheckSeverity
+            from dagster_hifld.assets.nhd_waterbody import nhd_waterbody_drift
+            candidate = {"dataset_slug": src.DATASET_SLUG, "file_slug": src.FILE_SLUG,
+                         "feature_count": FIXTURE_COUNT + 1,
+                         "source_id_sha256": result["source_id_sha256"],
+                         "release_accepted": False}
+            drift = nhd_waterbody_drift(candidate)
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(drift.metadata["comparison_status"].value,
+                             "skipped_no_approved_baseline")
 
 
 if __name__ == "__main__":

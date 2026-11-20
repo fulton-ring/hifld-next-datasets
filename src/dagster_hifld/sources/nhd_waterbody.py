@@ -17,14 +17,17 @@ and is never fetched.
 The layer held 7,158,943 features on 2026-11-13, so this module streams the
 source the way the 3DHP Flowline capture does: each keyset page is retained as
 raw evidence in a resumable capture directory before any candidate is sealed.
-Completeness is established without the producer's ``returnIdsOnly`` roster:
-that request fails server-side with an error document for this population
-(observed 2026-11-13), so the pinned feature count, the pinned minimum and
-maximum OBJECTIDs, the strict ascending OBJECTID keyset walk, the per-page
+Completeness is established at capture time without the producer's
+``returnIdsOnly`` roster: that request fails server-side with an error document
+for this population (observed 2026-11-13), so the witnesses are the producer's
+own count channel before and after the walk, the strict ascending OBJECTID
+keyset walk re-derived from the retained pages, the per-page
 ``exceededTransferLimit`` consistency, the page-count ceiling and the empty
-tail-page witness together prove the captured population (a strict ascending
-walk of ``EXPECTED_COUNT`` unique positive OBJECTIDs that starts at 1 and ends
-at ``EXPECTED_MAX_OBJECTID`` is exactly the contiguous roster).
+tail-page witness. The walk's ID sequence must consist of unique positive
+OBJECTIDs whose length equals both count answers, and the two count answers
+must agree (``capture_completeness.validate_capture_witness``). An upstream
+edit between captures changes the reported population and is witnessed by the
+approved-baseline drift check, not by a code pin.
 
 Scale and density notes (observed 2026-11-13): the roster head carries
 exceptionally dense main-stem polygons (single features with tens of thousands
@@ -38,12 +41,11 @@ requested record count is bisected down to single records. A single record
 that still refuses after bounded retries on both producer hosts is captured
 through the producer's working attributes-only channel and staged verbatim
 with explicitly gated null candidate geometry; its id joins the capture's
-refusal set, which is re-verified against the pin by every later capture. The
-per-value, per-geometry and ID-roster baseline digests, the null-geometry
-count, the refusal set and the degenerate-ring contract were computed by the
-first complete capture (2026-11-13, reported by
-``build_nhd_waterbody_baseline``) and are pinned as module constants; every
-later capture that disagrees fails closed. Publication stays blocked pending
+refusal set, which is re-derived from the retained evidence by every later
+capture. The per-value, per-geometry and ID-roster digests, the null-geometry
+count, the refusal set and the degenerate-ring census are computed from the
+retained pages of every capture and reported in the candidate audit rather
+than pinned. Publication stays blocked pending
 the succession, freshness, schema/ID contract, rights and release decisions;
 all runtime approval flags are false and the draft refresh schedule is
 stopped.
@@ -68,12 +70,12 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -147,50 +149,25 @@ SPATIAL_METADATA_NAMES = frozenset({"Spatial Metadata - DEM LimitationArea",
                                     "Spatial Metadata - EDH Workunit Area",
                                     "Spatial Metadata - Elevation Workunit Area"})
 CORE_SERVICE_LAYERS = EXPECTED_SERVICE_LAYERS[:-len(SPATIAL_METADATA_IDS)]
-EXPECTED_COUNT = 7_158_943
-EXPECTED_MAX_OBJECTID = 7_158_943
+# Schema contract pin: the 3DHP_all Waterbody field roster is the producer's
+# current service contract, not a snapshot of the population (the population
+# itself is witnessed at capture time, see the module docstring).
 EXPECTED_SCHEMA_SHA256 = "51f11bd107670196d396c0908b3c68a4dce0f37466d3dd179c3df149fd4a04d3"
-# The per-value, per-geometry and ID-roster baselines cannot be computed
-# without a complete capture of the 7,158,943-feature population; they are
-# pinned here as empty (checked only when non-empty) and recorded by the first
-# complete capture for the maintainer to pin.
-# Per-value, per-geometry and ID-roster baseline digests computed by the first
-# complete capture (3,037 retained pages over the full 7,158,943-feature
-# population, captured 2026-11-13 07:24-11:23Z; computed_baseline.json
-# 2026-11-13T19:51Z). Any later capture that disagrees fails closed.
-EXPECTED_RECORD_SHA256 = "5a484e15ecf90b9fbe749e167220a0699acef61d02b9aeddaf59e9859bf8dd25"
-EXPECTED_GEOMETRY_SHA256 = "8ffcff7a516ec6925e4d6b2960c9ca37b8484e64ff7304aff15342133c729baa"
-EXPECTED_IDS_SHA256 = "1e32ac2f6f5f5142de8648257d716009208d40f72cb457e295acc94f82dc2d66"
-# Null geometry: the nine producer-refused records (below) are the only null
-# candidate geometries; every served record carried geometry.
-EXPECTED_NULL_GEOMETRY_COUNT: int | None = 9
-EXPECTED_REFUSED_IDS: tuple[int, ...] | None = (
-    1293173, 2520496, 4245000, 4694427, 7059540, 7059541, 7098625, 7135496, 7157221)
-# Producer-served zero-area rings are retained verbatim (see
-# zero-area-ring pins): 13 rings over 13 features in the complete 2026-11-13
-# capture. The count and the feature-id set are pinned from
-# ``build_nhd_waterbody_baseline``; any change fails closed.
-EXPECTED_DEGENERATE_RING_COUNT: int | None = 13
-EXPECTED_DEGENERATE_RING_IDS: tuple[int, ...] | None = (
-    279258, 2727549, 2954106, 3590176, 3601265, 4575241, 5019081, 5144328,
-    5802262, 7072361, 7074673, 7147977, 7151432)
-# Feature-type population observed 2026-11-13 through the producer's own
-# statistics channel; the total agrees with the pinned count and both producer
-# hosts answer it identically.
-EXPECTED_FEATURETYPE_DISTRIBUTION = {1: 85220, 2: 9235, 3: 7063520, 4: 968}
+# Feature-type labels are the producer's domain contract; the per-type
+# population counts are observed facts reported in the audit, not pinned.
 EXPECTED_FEATURETYPE_LABELS = {1: "River", 2: "Canal", 3: "Lake", 4: "Ocean or Great Lake"}
 EXPECTED_LAYER_EXTENT = {"xmin": -19951755.6817, "ymin": -1622985.3665999994,
                          "xmax": 20021551.747199997, "ymax": 11575301.958199998}
-BASELINE_PENDING_NOTE = (
-    "The record, geometry and ID-roster baseline digests, the null-geometry "
-    "count, the producer-refusal id set and the producer-served degenerate "
-    "(zero-area) ring count/id set were unpinned when this draft was "
-    "implemented (the 7,158,943-feature population cannot be captured inside "
-    "one session, so no complete capture existed on 2026-11-13 when the draft "
-    "was written). They were computed by the first complete capture "
-    "(3,037 retained pages, fetch window 2026-11-13 07:24-11:23Z, "
-    "computed_baseline 19:51Z) and are now pinned as module constants; any "
-    "later capture that disagrees fails closed.")
+# The producer serves volatile display-only metadata (drawingInfo) in the
+# layer document; the before/after witness comparison covers only the
+# data-bearing contract fields, each pinned individually above.
+LAYER_CONTRACT_KEYS = ("id", "name", "type", "geometryType", "hasZ", "hasM",
+                       "capabilities", "advancedQueryCapabilities",
+                       "sourceSpatialReference", "extent", "fields", "maxRecordCount")
+
+
+def _layer_contract_view(document: dict) -> dict:
+    return {key: document.get(key) for key in LAYER_CONTRACT_KEYS}
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),
@@ -211,7 +188,7 @@ METADATA_NAMES = ("service_doc", "alias_service", "service_before", "layer_befor
 
 
 class NhdWaterbodyError(ValueError):
-    """The source snapshot cannot be represented as the pinned Waterbody candidate."""
+    """The source cannot be represented as the approved-contract Waterbody candidate."""
 
     def __init__(self, code: str):
         self.code = code
@@ -302,11 +279,12 @@ _GEOMETRY_COLUMN = "geometry"
 def _validate_polygon_geometry(geometry: object) -> list:
     """Structural contract for one served polygon geometry (no assembly).
 
-    Esri JSON (verified on the pinned captures of this producer's Waterbody
+    Esri JSON (verified on the complete captures of this producer's Waterbody
     layer): rings are explicitly closed Z triples in the source lon/lat
     domain. Ordinate shape, type, finiteness and coordinate range are checked
     here so structurally invalid source geometry refuses the capture with the
-    pinned codes. The real population also serves closed zero-area rings (13
+    module's structural error codes. The real population also serves closed
+    zero-area rings (13
     rings over 13 features observed in the complete 2026-11-13 capture:
     four-vertex spikes whose float64 shoelace area collapses to exactly 0.0);
     they are the producer's own coordinates and stay retained through the
@@ -709,7 +687,7 @@ def _close_owned(owner_client: bool, owner_doc: bool, owner_alias: bool,
 def fetch_nhd_waterbody_pages(capture_root: Path, *, client: httpx.Client | None = None,
                               doc_client: httpx.Client | None = None,
                               alias_client: httpx.Client | None = None) -> dict[str, object]:
-    """Retain every raw response for the pinned layer, resuming earlier progress.
+    """Retain every raw response for the approved-contract layer, resuming earlier progress.
 
     Pure-local when the capture directory already holds every required page.
     The walk keeps one accepted page per walk position: each position starts at
@@ -718,9 +696,9 @@ def fetch_nhd_waterbody_pages(capture_root: Path, *, client: httpx.Client | None
     down to a single record before refusing it. An empty page or a short page
     without ``exceededTransferLimit`` ends the population; the canonical empty
     tail page (same walk position, producer page size) is then retained as the
-    completeness witness. Bisection is completeness-neutral: the pinned
-    count/roster contract and the strict ascending walk prove the population,
-    and page boundaries are never part of any pin.
+    completeness witness. Bisection is completeness-neutral: the capture-time
+    count witness and the strict ascending walk prove the population, and page
+    boundaries are never part of any contract.
     """
     capture_root = Path(capture_root).absolute()
     capture_root.mkdir(parents=True, exist_ok=True)
@@ -755,7 +733,7 @@ def fetch_nhd_waterbody_pages(capture_root: Path, *, client: httpx.Client | None
             if name != "service_doc":
                 _reject_error_response(capture_root, name, retained[name][0])
         count_before = json.loads(retained["count_before"][0]).get("count")
-        if count_before != EXPECTED_COUNT:
+        if type(count_before) is not int or count_before <= 0:
             raise NhdWaterbodyError("source_count_drift")
         last_objectid = pages[-1]["last_objectid"] if pages else 0
         while not (capture_root / "page_tail.body").exists():
@@ -826,8 +804,8 @@ def fetch_nhd_waterbody_pages(capture_root: Path, *, client: httpx.Client | None
                               "body_sha256": _sha(body)})
                 last_objectid = cursor
                 persist()
-                if len(pages) > EXPECTED_COUNT:
-                    raise NhdWaterbodyError("source_page_count_exceeds_pinned_population")
+                if len(pages) > count_before:
+                    raise NhdWaterbodyError("source_page_count_exceeds_reported_count")
                 if len(features) < size and more is not True:
                     # The accepted short page is the final data page: retain the
                     # canonical empty tail witness at the producer page size.
@@ -874,7 +852,8 @@ def fetch_nhd_waterbody_pages(capture_root: Path, *, client: httpx.Client | None
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_ids_sha256": extracted["ids_sha"],
         "source_schema_sha256": extracted["schema_sha"],
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": extracted["feature_count"],
+        "source_min_objectid": extracted["min_objectid"],
         "source_max_objectid": extracted["max_objectid"],
         "source_null_geometry_count": extracted["null_geometry_count"],
         "source_refused_null_geometry_count": extracted["refused_null_count"],
@@ -1013,13 +992,19 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise NhdWaterbodyError("source_schema_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise NhdWaterbodyError("source_schema_baseline_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT:
+    count_before = docs["count_before"].get("count")
+    if type(count_before) is not int or count_before <= 0:
         raise NhdWaterbodyError("source_count_drift")
-    for name in ("layer_after", "service_after", "count_after"):
+    count_after = json.loads(_read_capture(capture_root, "count_after")[0]).get("count")
+    if type(count_after) is not int or count_after != count_before:
+        raise NhdWaterbodyError("source_metadata_or_count_changed_during_capture")
+    for name in ("layer_after", "service_after"):
         body, _receipt = _read_capture(capture_root, name)
-        mirror = {"layer_after": "layer_before", "service_after": "service_before",
-                  "count_after": "count_before"}[name]
-        if json.loads(body) != docs[mirror]:
+        document = json.loads(body)
+        if name == "layer_after":
+            if _layer_contract_view(document) != _layer_contract_view(docs["layer_before"]):
+                raise NhdWaterbodyError("source_layer_metadata_changed_during_capture")
+        elif document != docs["service_before"]:
             raise NhdWaterbodyError("source_metadata_or_count_changed_during_capture")
     after_fields = json.loads(_read_capture(capture_root, "layer_after")[0]).get("fields")
     if not isinstance(after_fields, list) or [_plain_field(x) for x in after_fields] != fields:
@@ -1055,9 +1040,6 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     if not state_pages:
         raise NhdWaterbodyError("capture_state_page_entries_invalid")
     refused_oids = sorted(int(key) for key in state_refused)
-    if EXPECTED_REFUSED_IDS is not None and tuple(refused_oids) != tuple(
-            sorted(EXPECTED_REFUSED_IDS)):
-        raise NhdWaterbodyError("source_refused_ids_drift")
 
     ids = array("q")
     record_hash, geometry_hash = hashlib.sha256(), hashlib.sha256()
@@ -1149,8 +1131,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
                 # Ring orientation and hole assignment are GDAL's through the
                 # shared native Esri polygon conversion; a conversion failure
                 # refuses the capture. Zero-area producer rings stay retained
-                # (their indexes are pinned), and OGC-invalid converted
-                # geometry is counted by reason, never repaired.
+                # and are reported in the candidate audit, and OGC-invalid
+                # converted geometry is counted by reason, never repaired.
                 wkb = to_wkb(geometry, GEOMETRY_TYPE, has_z=True, has_m=False)
                 feature_degenerate = zero_area_rings(rings)
                 if feature_degenerate:
@@ -1185,28 +1167,17 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         if writer is not None:
             writer.close()
             writer = None
-        if (len(ids) != EXPECTED_COUNT or not len(ids) or ids[0] != 1
-                or emitted_last != EXPECTED_MAX_OBJECTID):
-            raise NhdWaterbodyError("source_page_population_incomplete")
-        ids_sha = _sha(_canonical(list(ids)))
+        # The producer cannot enumerate this population (returnIdsOnly fails
+        # server-side, observed 2026-11-13), so the walk re-derived from the
+        # retained pages is the ID roster witness: its length must equal both
+        # count answers and consist of unique positive OBJECTIDs.
+        walk_ids = list(ids)
+        try:
+            validate_capture_witness(count_before, walk_ids, count_after, walk_ids)
+        except ValueError as exc:
+            raise NhdWaterbodyError("source_count_or_id_roster_drift") from exc
+        ids_sha = _sha(_canonical(walk_ids))
         record_sha, geometry_sha = record_hash.hexdigest(), geometry_hash.hexdigest()
-        if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-            raise NhdWaterbodyError("source_value_or_geometry_baseline_drift")
-        if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-            raise NhdWaterbodyError("source_geometry_or_coverage_drift")
-        if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
-            raise NhdWaterbodyError("source_id_roster_drift")
-        if EXPECTED_NULL_GEOMETRY_COUNT is not None \
-                and null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
-            raise NhdWaterbodyError("source_null_geometry_count_drift")
-        if EXPECTED_DEGENERATE_RING_COUNT is not None \
-                and degenerate_ring_count != EXPECTED_DEGENERATE_RING_COUNT:
-            raise NhdWaterbodyError("source_degenerate_ring_count_drift")
-        if EXPECTED_DEGENERATE_RING_IDS is not None and tuple(
-                sorted(degenerate_feature_ids)) != tuple(sorted(EXPECTED_DEGENERATE_RING_IDS)):
-            raise NhdWaterbodyError("source_degenerate_ring_ids_drift")
-        if featuretype_distribution != EXPECTED_FEATURETYPE_DISTRIBUTION:
-            raise NhdWaterbodyError("source_featuretype_distribution_drift")
         if tmp_path is not None:
             tmp_path.replace(sink_path)
     finally:
@@ -1229,8 +1200,10 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "observed_bounds": (None if bounds is None else
                                 {"xmin": bounds[0], "ymin": bounds[1],
                                  "xmax": bounds[2], "ymax": bounds[3]}),
-            "max_objectid": emitted_last,
-            "id3dhp_distinct_count": len(id3dhp_seen)}
+             "feature_count": len(ids),
+             "min_objectid": ids[0],
+             "max_objectid": emitted_last,
+             "id3dhp_distinct_count": len(id3dhp_seen)}
 
 
 def _retained_input_names(capture_root: Path) -> list[str]:
@@ -1285,13 +1258,17 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
              "source_schema_sha256": extracted["schema_sha"],
-             "source_ids_sha256": extracted["ids_sha"]},
+             "source_ids_sha256": extracted["ids_sha"],
+             "feature_count": extracted["feature_count"],
+             "source_null_geometry_count": extracted["null_geometry_count"]},
             parquet_body)
     refused_oids = sorted(int(key) for key in
                           dict(_load_state(capture_root).get("refused", {})))
     null_geometry_count = int(extracted["null_geometry_count"])
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
+        "source_feature_count": extracted["feature_count"],
+        "source_reported_count": extracted["feature_count"],
+        "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_schema_sha256": extracted["schema_sha"], "source_crs_epsg": SOURCE_CRS_WKID,
@@ -1302,18 +1279,18 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "source_refused_ids": refused_oids,
         "source_refused_count": len(refused_oids),
         "producer_refusal_note":
-            ("Records listed in source_refused_ids are part of the pinned population "
-             "(they appear inside the pinned count and contiguous OBJECTID roster) but the "
+            ("Records listed in source_refused_ids are part of the captured population "
+             "(they appear inside the reported count and the ascending OBJECTID walk) but the "
              "producer's own REST publication persistently refuses to serve their geometry "
              "(HTTP 200 Esri error document code 500 'Error performing query operation' on "
              "both 3dhp.nationalmap.gov and the same-org alias hydro.nationalmap.gov/3DHP_all, "
              "single-record and windowed, retried with backoff, attempt evidence retained in "
              "the capture). Their attributes are served normally through the attributes-only "
              "channel and are staged verbatim with explicitly gated null candidate geometry; "
-             "publication stays blocked pending the maintainer completeness/coverage decision "
-             "for these records." if refused_oids else
-             "Every record in the pinned population was served with its geometry by the "
-             "producer's own REST publication."),
+              "publication stays blocked pending the maintainer completeness/coverage decision "
+              "for these records." if refused_oids else
+              "Every record in the captured population was served with its geometry by the "
+              "producer's own REST publication."),
         "source_degenerate_ring_count": int(extracted["degenerate_ring_count"]),
         "source_degenerate_ring_ids": list(extracted["degenerate_ring_ids"]),
         "producer_degenerate_ring_note":
@@ -1325,11 +1302,12 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "covering exterior as an additional coverage-neutral hole ring, and a zero-area "
              "ring covered by no exterior of its feature - or a feature whose only rings are "
              "degenerate - is retained as its own zero-area shell polygon. No coordinate was "
-             "dropped, added or reordered; the pinned baseline digests already include these "
-             "rings."),
-        "unique_source_id_count": EXPECTED_COUNT,
+             "dropped, added or reordered; the candidate digests recorded in this audit "
+             "include these rings."),
+        "unique_source_id_count": extracted["feature_count"],
         "source_ring_count": extracted["ring_count"],
         "source_vertex_count": extracted["vertex_count"],
+        "source_min_objectid": extracted["min_objectid"],
         "source_max_objectid": extracted["max_objectid"],
         "source_featuretype_distribution": extracted["featuretype_distribution"],
         "observed_bounds": extracted["observed_bounds"],
@@ -1342,12 +1320,6 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "crosswalk_doi": "10.3886/E241367V1",
         "crosswalk_layer_row": "3D Hydrography Program (3DHP) Layers",
         "crosswalk_open_id": "650c07e542fa43b6a327c7f683681712",
-        "baseline_pending_note": BASELINE_PENDING_NOTE,
-        "baseline_pending_complete_capture": bool(
-            not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256
-            or not EXPECTED_IDS_SHA256 or EXPECTED_NULL_GEOMETRY_COUNT is None
-            or EXPECTED_REFUSED_IDS is None or EXPECTED_DEGENERATE_RING_COUNT is None
-            or EXPECTED_DEGENERATE_RING_IDS is None),
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
@@ -1357,22 +1329,23 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             "date. Quarterly service updates and annual staged products are documented by "
             "USGS.",
         "pagination": {"mode": "objectid_keyset_asc_with_bisection",
-                       "page_size": PAGE_SIZE,
-                       "pages": (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE,
-                       "tail_witness_page": True, "resumable": True,
-                       "resumed_pages": resumed_pages,
-                       "bisection_note":
-                           "The producer refuses uniformly sized pages over the dense roster "
-                           "head with its complete HTTP 200 error document (observed "
-                           "2026-11-13), so each walk position starts at maxRecordCount and "
-                           "bisects the requested record count on that deterministic answer; "
-                           "page boundaries are completeness-neutral and are pinned nowhere.",
-                       "id_roster_enumeration_note":
-                           "returnIdsOnly over the full population fails server-side "
-                           "(error 500 observed 2026-11-13), so completeness uses the pinned "
-                           "count, the pinned minimum/maximum OBJECTIDs, the strict ascending "
-                           "OBJECTID walk, the page-count ceiling and the empty tail-page "
-                           "witness instead of an enumerated roster."},
+                        "page_size": PAGE_SIZE,
+                        "tail_witness_page": True, "resumable": True,
+                        "resumed_pages": resumed_pages,
+                        "bisection_note":
+                            "The producer refuses uniformly sized pages over the dense roster "
+                            "head with its complete HTTP 200 error document (observed "
+                            "2026-11-13), so each walk position starts at maxRecordCount and "
+                            "bisects the requested record count on that deterministic answer; "
+                            "page boundaries are completeness-neutral and are part of no "
+                            "contract.",
+                        "id_roster_enumeration_note":
+                            "returnIdsOnly over the full population fails server-side "
+                            "(error 500 observed 2026-11-13), so the completeness witness "
+                            "uses the capture-time count answers plus the strict ascending "
+                            "OBJECTID walk re-derived from the retained pages (the walk "
+                            "itself is the ID roster), the page-count ceiling and the empty "
+                            "tail-page witness instead of an enumerated roster."},
         "capture_window_utc": {"first_page": first_captured_at, "last_page": last_captured_at},
         "freshness_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
@@ -1448,8 +1421,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "publication as the maintained successor named by the HIFLD Open "
                        "inventory entry nhd/waterbody (River, Canal, Lake, Ocean or Great "
                        "Lake). Complete source attributes and Z-aware EPSG:4326 polygon "
-                       "geometry are represented in the candidate, except any pinned "
-                       "producer-refused records (source_refused_ids in the audit): their "
+                        "geometry are represented in the candidate, except any "
+                        "producer-refused records (source_refused_ids in the audit): their "
                        "attributes are captured verbatim through the producer's working "
                        "attributes-only channel and their candidate geometry is explicitly "
                        "gated to null because the producer itself refuses to serve it. "
@@ -1483,9 +1456,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                                          "the producer's verified Esri ring semantics "
                                                          "(closed rings; clockwise exteriors, "
                                                          "counter-clockwise holes); no vertex "
-                                                         "dropped, added or reordered; null source "
-                                                         "geometry retained as null; pinned "
-                                                         "producer-refused records keep their "
+                                                          "dropped, added or reordered; null source "
+                                                          "geometry retained as null; "
+                                                          "producer-refused records keep their "
                                                          "captured attributes with explicitly "
                                                          "gated null candidate geometry; "
                                                          "producer-served zero-area (degenerate) "
@@ -1570,7 +1543,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
+            "feature_count": extracted["feature_count"],
+            "source_reported_count": extracted["feature_count"],
+            "source_population_complete": True,
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_id_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
@@ -1604,8 +1579,10 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
+            "feature_count": audit["feature_count"],
+            "source_reported_count": audit["feature_count"],
+            "source_population_complete": True,
+            "source_null_geometry_count": audit["source_null_geometry_count"],
             "source_id_sha256": audit["source_ids_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
@@ -1665,30 +1642,7 @@ def capture_nhd_waterbody(storage: StagingStorageResource, *, version: str,
             valid_names.append(name)
         if valid_names:
             quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          _RetainedCaptureViews(capture_root, valid_names),
-                                          getattr(exc, "code", type(exc).__name__)
-                                          or type(exc).__name__)
+                                           _RetainedCaptureViews(capture_root, valid_names),
+                                           getattr(exc, "code", type(exc).__name__)
+                                           or type(exc).__name__)
         raise
-
-
-def build_nhd_waterbody_baseline(capture_root: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
-    extracted = _stream_validate(Path(capture_root).absolute(), parquet_sink=None)
-    return {"source_record_sha256": extracted["record_sha"],
-            "source_geometry_sha256": extracted["geometry_sha"],
-            "source_ids_sha256": extracted["ids_sha"],
-            "source_schema_sha256": extracted["schema_sha"],
-            "source_feature_count": EXPECTED_COUNT,
-            "source_max_objectid": extracted["max_objectid"],
-            "source_null_geometry_count": extracted["null_geometry_count"],
-            "source_refused_null_geometry_count": extracted["refused_null_count"],
-            "source_refused_ids": sorted(int(key) for key in
-                                         dict(_load_state(Path(capture_root).absolute())
-                                              .get("refused", {}))),
-            "source_degenerate_ring_count": extracted["degenerate_ring_count"],
-            "source_degenerate_ring_ids": extracted["degenerate_ring_ids"],
-            "source_ring_count": extracted["ring_count"],
-            "source_vertex_count": extracted["vertex_count"],
-            "source_featuretype_distribution": extracted["featuretype_distribution"],
-            "observed_bounds": extracted["observed_bounds"],
-            "id3dhp_distinct_count": extracted["id3dhp_distinct_count"]}
