@@ -23,16 +23,19 @@ agency's own hosted publication of the data release's polygon feature class
 the HIFLD Next PEDP repackaging are identification context only and are never
 fetched.
 
-The producer serves the complete OBJECTID roster (returnIdsOnly returned
-exactly 680,497 ids spanning 1..680497 contiguously, distinct count verified
-680,497 on 2026-11-14), matching the 680,497 features of the published HIFLD
-copy, so the layer is captured as adaptively bisected ``resultOffset``
-segments of the sorted roster: each accepted page must return exactly its
-expected id slice, the accepted pages must tile the complete roster without
-gaps or overlaps, and before/after item/service/layer/count/roster brackets
-prove that nothing was skipped, duplicated, or reordered. A single-record
-page the producer still refuses ends the capture explicitly rather than
-guessing.
+The service is maintained by USGS (the producer states the inventory
+"will continue to be updated" and the service metadata carries
+maintenanceUpdateFrequency Annually), so completeness comes from the
+source's own capture-time witnesses rather than a population pinned in
+code: the count and the complete OBJECTID roster are observed before and
+after the capture and must agree with each other (native ID gaps are
+tolerated, duplicates are not), and the layer is captured as
+adaptively bisected ``resultOffset`` segments of the sorted roster: each
+accepted page must return exactly its expected id slice, the accepted
+pages must tile the complete roster without gaps or overlaps, and a
+recovered or resumed segment forces a fresh closing witness. A
+single-record page the producer still refuses ends the capture explicitly
+rather than guessing.
 
 Geometry is the layer's native Z-aware polygon: every feature geometry is
 ``{"rings", "hasZ"}`` in the page CRS (EPSG:3857) and, when ``returnZ`` is
@@ -47,13 +50,15 @@ is GDAL's containment assembly) and stored verbatim as Polygon Z / MultiPolygon
 Z WKB: no rounding, reordering, winding repair, reprojection or geometry
 repair is applied, and topology validity is counted, never silently enforced.
 
-The per-value and per-geometry baseline digests, gate counts and observed
-bounds are computed and reported by ``build_us_landslide_regions_baseline``
-from a completed capture directory and pinned as constants for later drift
-refusal; pins left empty (or ``None``) are checked only once pinned.
-Publication stays blocked pending the succession, freshness, schema/ID
-contract, rights and release decisions; all runtime approval flags are false
-and the draft refresh schedule is stopped.
+The per-value and per-geometry digests, geometry gate counts and observed
+bounds are computed from a completed capture directory and recorded as
+observations in the candidate audit and ``computed_baseline.json``; they
+are never exact-equality gates, and count/ID drift against an
+independently approved release is reported by the non-blocking
+approved-baseline drift check, not refused at capture time. Publication
+stays blocked pending the succession, freshness, schema/ID contract,
+rights and release decisions; all runtime approval flags are false and
+the draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
@@ -77,6 +82,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -129,35 +135,9 @@ PAGE_PROBE_BASE_DELAY_SECONDS = 5.0
 EXPECTED_SERVICE_DESCRIPTION = "USGS US Landslide version 3 polygons"
 EXPECTED_COPYRIGHT_TEXT = ""
 EXPECTED_SERVICE_LAYERS = [(LAYER_ID, LAYER_NAME, GEOMETRY_TYPE)]
-EXPECTED_COUNT = 680_497
-EXPECTED_LAYER_EXTENT = {"xmin": -17337802.24197813, "ymin": 2031850.1690669723,
-                         "xmax": -7339708.080696905, "ymax": 9269118.005589234}
-EXPECTED_IDS_SHA256 = "4ec0f351ecbd95ceb9115aff02a1360a65c77afb8682ad308aa99d475a97521d"
+# Schema contract pin: the producer's declared field roster, not a population
+# snapshot.
 EXPECTED_SCHEMA_SHA256 = "f137264736def9130497b117d8618a98ef972b7355e9701c0340dddf6a9873de"
-# Pinned 2026-11-15T01:26Z from the completed 681-page / 680,497-feature capture
-# (capture window 2026-11-14T17:05:03Z..2026-11-15T01:13:14Z, capture_state.json
-# complete:true) via computed_baseline.json written by
-# fetch_us_landslide_regions_pages; one topology-invalid polygon is counted,
-# never repaired.
-EXPECTED_RECORD_SHA256 = "acb037ae21cac8bb922081ed378ad4b489b793075d81f40e98f47dd099013ec8"
-EXPECTED_GEOMETRY_SHA256 = "19c7067f9b0a6e349e1486e7035479042596efdaaf38f6b2286278d737fb2995"
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-EXPECTED_INVALID_GEOMETRY_COUNT = 1
-EXPECTED_TOTAL_VERTEX_COUNT = 52_132_718
-EXPECTED_RINGS_PER_FEATURE_DISTRIBUTION = {
-    1: 671_269, 2: 6_560, 3: 1_312, 4: 510, 5: 243, 6: 154, 7: 99, 8: 50, 9: 46,
-    10: 40, 11: 34, 12: 21, 13: 13, 14: 11, 15: 12, 16: 10, 17: 12, 18: 7, 19: 6,
-    20: 7, 21: 4, 22: 4, 23: 7, 24: 8, 25: 7, 26: 4, 27: 3, 28: 2, 29: 6, 31: 1,
-    32: 3, 33: 2, 34: 3, 36: 1, 37: 3, 38: 2, 39: 4, 40: 1, 41: 1, 43: 1, 45: 1,
-    47: 1, 49: 1, 52: 2, 53: 2, 58: 2, 74: 1, 75: 1, 83: 1, 119: 1, 193: 1}
-EXPECTED_OBSERVED_BOUNDS = {"xmin": -17337802.2419781, "ymin": 2031850.16906697,
-                            "xmax": -7339708.08069691, "ymax": 9269118.00558923}
-BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests, geometry gate counts and "
-    "observed bounds are pinned from a completed resumable capture directory "
-    "by build_us_landslide_regions_baseline; unpinned values are checked only "
-    "once pinned.")
 AGOL_ITEM_OWNER = "esjones@usgs.gov_USGS"
 AGOL_ITEM_ORGID = "v01gqwM5QqNysAAi"
 AGOL_ITEM_TITLE = "US_Landslide_poly_v3"
@@ -271,16 +251,18 @@ def _parse_page_name(name: str) -> tuple[int, int]:
 
 
 def _validate_roster(roster: object, label: str) -> list[int]:
-    if not isinstance(roster, list) or len(roster) != EXPECTED_COUNT \
-            or any(type(value) is not int for value in roster) \
-            or len(set(roster)) != EXPECTED_COUNT:
+    """Require a nonempty roster of unique positive native IDs.
+
+    Completeness is not pinned here: the captured population is whatever the
+    source's own count and roster witnesses report. ID gaps are tolerated,
+    duplicates and non-native types are not.
+    """
+    if not isinstance(roster, list) or not roster \
+            or any(type(value) is not int or value <= 0 for value in roster) \
+            or len(set(roster)) != len(roster):
         raise UsLandslideRegionsError(
             "source_id_population_drift:" + label)
-    ids = sorted(roster)
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(ids)) != EXPECTED_IDS_SHA256:
-        raise UsLandslideRegionsError(
-            "source_id_roster_drift:" + label)
-    return ids
+    return sorted(roster)
 
 
 def _validate_spatial_reference(value: object, label: str) -> None:
@@ -328,7 +310,8 @@ def _validate_service_document(service: object, label: str) -> None:
     _validate_spatial_reference(service.get("spatialReference"), label)
 
 
-def _validate_layer_document(layer: object) -> tuple[list[dict[str, object]], str]:
+def _validate_layer_document(layer: object) \
+        -> tuple[list[dict[str, object]], str, dict[str, float]]:
     if not isinstance(layer, dict):
         raise UsLandslideRegionsError(
             "source_service_or_layer_document_invalid")
@@ -350,7 +333,13 @@ def _validate_layer_document(layer: object) -> tuple[list[dict[str, object]], st
     if not isinstance(extent, dict):
         raise UsLandslideRegionsError("source_layer_extent_missing")
     _validate_spatial_reference(extent.get("spatialReference"), "layer_extent")
-    if {key: extent.get(key) for key in EXPECTED_LAYER_EXTENT} != EXPECTED_LAYER_EXTENT:
+    observed_extent = {key: extent.get(key)
+                       for key in ("xmin", "ymin", "xmax", "ymax")}
+    if (any(type(value) not in (int, float)
+            or not (value == value and -1e308 < value < 1e308)
+            for value in observed_extent.values())
+            or observed_extent["xmin"] > observed_extent["xmax"]
+            or observed_extent["ymin"] > observed_extent["ymax"]):
         raise UsLandslideRegionsError("source_layer_extent_drift")
     plain, schema_sha = _profile_schema(layer)
     attributes = [field for field in plain
@@ -363,7 +352,7 @@ def _validate_layer_document(layer: object) -> tuple[list[dict[str, object]], st
         if field["type"] not in _ARROW_TYPES:
             raise UsLandslideRegionsError(
                 "unsupported_source_physical_type:" + str(field["type"]))
-    return attributes, schema_sha
+    return attributes, schema_sha, observed_extent
 
 
 def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
@@ -618,7 +607,7 @@ def _validate_request_scope(name: str, receipt: Mapping[str, object]) -> None:
                 "source_capture_request_scope_drift:" + name)
     elif _PAGE_NAME_PATTERN.fullmatch(name):
         offset, count = _parse_page_name(name)
-        if offset + count > EXPECTED_COUNT:
+        if offset < 0 or count < 1:
             raise UsLandslideRegionsError(
                 "source_capture_request_scope_drift:" + name)
         if hostname != "services.arcgis.com" \
@@ -802,7 +791,7 @@ def _page_matches_slice(body: bytes, offset: int, count: int,
 
 
 def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
-                 state: dict[str, object]) -> None:
+                 state: dict[str, object]) -> bool:
     """Capture the complete layer as adaptively bisected roster pages.
 
     Pages start at PAGE_START_RECORDS. A page the producer keeps refusing is
@@ -810,10 +799,11 @@ def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
     persistent error document or a persistent incomplete transport capture;
     the refused page's final body and receipts stay on disk as evidence under
     witnessed names. A single-record page that still fails ends the capture
-    explicitly.
+    explicitly. Returns whether this run accepted at least one new page.
     """
     pages = state.setdefault("pages", [])
     accepted = {entry.get("name") for entry in pages if isinstance(entry, dict)}
+    refreshed = False
     todo: deque[tuple[int, int]] = deque(_plan_page_gaps(capture_root, roster))
     while todo:
         offset, count = todo.popleft()
@@ -855,7 +845,9 @@ def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
                           "features": count, "captured_at": receipt["observed_at"],
                           "body_sha256": _sha(body)})
             accepted.add(name)
+            refreshed = True
             _save_state(capture_root, state)
+    return refreshed
 
 
 def fetch_us_landslide_regions_pages(
@@ -881,14 +873,20 @@ def _fetch_verified_capture(capture_root: Path, *, client: httpx.Client | None =
     first_captured_at = (pages[0]["captured_at"] if pages
                          else datetime.now(timezone.utc).isoformat())
     try:
+        metadata_urls = {"item_before": AGOL_ITEM_URL,
+                         "service_before": SERVICE_URL + "?f=pjson",
+                         "layer_before": LAYER_URL + "?f=pjson",
+                         "count_before": _count_url(),
+                         "ids_seed": _ids_url(),
+                         "ids_before": _ids_url()}
+        after_urls = {"layer_after": LAYER_URL + "?f=pjson",
+                      "service_after": SERVICE_URL + "?f=pjson",
+                      "count_after": _count_url(),
+                      "ids_after": _ids_url(),
+                      "item_after": AGOL_ITEM_URL}
         for name in METADATA_NAMES:
-            url = {"item_before": AGOL_ITEM_URL,
-                   "service_before": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url(),
-                   "ids_seed": _ids_url(),
-                   "ids_before": _ids_url()}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
+            body, _receipt = _retained_or_fetch(active, capture_root, name,
+                                                metadata_urls[name])
             if _producer_error_doc(body):
                 raise UsLandslideRegionsError(
                     "source_page_error:" + name)
@@ -902,22 +900,38 @@ def _fetch_verified_capture(capture_root: Path, *, client: httpx.Client | None =
             raise UsLandslideRegionsError(
                 "source_id_population_drift:ids_seed_vs_before")
         count_before = json.loads(_read_capture(capture_root, "count_before")[0])
-        if count_before.get("count") != EXPECTED_COUNT:
+        if type(count_before.get("count")) is not int \
+                or count_before["count"] != len(roster):
             raise UsLandslideRegionsError("source_count_drift")
-        _fetch_pages(active, capture_root, roster, state)
+        refreshed = _fetch_pages(active, capture_root, roster, state)
         pages = list(state["pages"])
-        for name in AFTER_NAMES:
-            url = {"layer_after": LAYER_URL + "?f=pjson",
-                   "service_after": SERVICE_URL + "?f=pjson",
-                   "count_after": _count_url(),
-                   "ids_after": _ids_url(),
-                   "item_after": AGOL_ITEM_URL}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            if _producer_error_doc(body):
-                raise UsLandslideRegionsError(
-                    "source_page_error:" + name)
+        # A recovered or resumed segment means the retained closing witnesses
+        # no longer bound this capture, so all of them are witnessed aside and
+        # refetched; otherwise the retained closing bracket is reused as-is.
+        refresh_closing = refreshed or state.get("complete") is not True
+        if not refresh_closing:
+            for name in AFTER_NAMES:
+                try:
+                    body, _receipt = _read_capture(capture_root, name)
+                    document = json.loads(body)
+                    if not isinstance(document, dict) or "error" in document:
+                        raise UsLandslideRegionsError("source_page_error:" + name)
+                except (OSError, ValueError):
+                    refresh_closing = True
+                    break
+        if refresh_closing:
+            state["complete"] = False
+            _save_state(capture_root, state)
+            for name in AFTER_NAMES:
+                _witness_aside(capture_root, name)
+            for name in AFTER_NAMES:
+                body, _receipt = capture_get(active, after_urls[name], capture_root,
+                                             name, max_bytes=MAX_BODY_BYTES)
+                if _producer_error_doc(body):
+                    raise UsLandslideRegionsError("source_page_error:" + name)
         count_after = json.loads(_read_capture(capture_root, "count_after")[0])
-        if count_after.get("count") != EXPECTED_COUNT:
+        if type(count_after.get("count")) is not int \
+                or count_after["count"] != len(roster):
             raise UsLandslideRegionsError(
                 "source_metadata_or_count_changed_during_capture")
         after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
@@ -945,7 +959,8 @@ def _fetch_verified_capture(capture_root: Path, *, client: httpx.Client | None =
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_ids_sha256": extracted["ids_sha"],
         "source_schema_sha256": extracted["schema_sha"],
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": extracted["feature_count"],
+        "source_reported_count": extracted["source_reported_count"],
         "source_total_vertex_count": extracted["total_vertex_count"],
         "source_max_objectid": extracted["max_objectid"],
         "source_null_geometry_count": extracted["null_geometry_count"],
@@ -1111,7 +1126,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             for name in METADATA_NAMES}
     _validate_item_document(docs["item_before"], "item_before")
     _validate_service_document(docs["service_before"], "service_before")
-    fields, schema_sha = _validate_layer_document(docs["layer_before"])
+    fields, schema_sha, observed_layer_extent = _validate_layer_document(
+        docs["layer_before"])
     declared = {name: (esri_type, length)
                 for name, esri_type, length in NATIVE_FIELDS}
     if declared != {field["name"]: (field["type"], field.get("length"))
@@ -1119,17 +1135,20 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise UsLandslideRegionsError("source_schema_drift")
     if EXPECTED_SCHEMA_SHA256 and schema_sha != EXPECTED_SCHEMA_SHA256:
         raise UsLandslideRegionsError("source_schema_baseline_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT:
-        raise UsLandslideRegionsError("source_count_drift")
     seed = _validate_roster(docs["ids_seed"].get("objectIds"), "ids_seed")
     if docs["ids_before"].get("objectIdFieldName") != "OBJECTID":
         raise UsLandslideRegionsError("source_id_field_changed")
     roster = _validate_roster(docs["ids_before"].get("objectIds"), "ids_before")
+    count_before = docs["count_before"].get("count")
+    if type(count_before) is not int or count_before != len(roster):
+        raise UsLandslideRegionsError("source_count_drift")
     if roster != seed:
         raise UsLandslideRegionsError(
             "source_id_population_drift:ids_seed_vs_before")
-    after_roster = _validate_roster(json.loads(
-        _read_capture(capture_root, "ids_after")[0]).get("objectIds"), "ids_after")
+    after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
+    if after_ids.get("objectIdFieldName") != "OBJECTID":
+        raise UsLandslideRegionsError("source_id_field_changed")
+    after_roster = _validate_roster(after_ids.get("objectIds"), "ids_after")
     if after_roster != roster:
         raise UsLandslideRegionsError(
             "source_id_population_drift:ids_after")
@@ -1164,16 +1183,16 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     cursor = 0
     ordered: list[tuple[str, int, int]] = []
     for entry in sorted(pages, key=lambda item: (item.get("offset", -1),
-                                                 item.get("count", -1))):
+                                                  item.get("count", -1))):
         offset, count, name = entry.get("offset"), entry.get("count"), entry.get("name")
         if (type(offset) is not int or type(count) is not int or offset < 0 or count < 1
                 or name != _page_name(offset, count) or offset != cursor
-                or offset + count > EXPECTED_COUNT or entry.get("features") != count):
+                or offset + count > len(roster) or entry.get("features") != count):
             raise UsLandslideRegionsError(
                 "source_capture_roster_incomplete_or_unexpected")
         ordered.append((name, offset, count))
         cursor = offset + count
-    if cursor != EXPECTED_COUNT:
+    if cursor != len(roster):
         raise UsLandslideRegionsError(
             "source_capture_roster_incomplete_or_unexpected")
     for name in [*METADATA_NAMES, *AFTER_NAMES, *(item[0] for item in ordered)]:
@@ -1182,47 +1201,21 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     try:
         for name, offset, count in ordered:
             stream.process(name, offset, count, roster)
+        count_after = json.loads(
+            _read_capture(capture_root, "count_after")[0]).get("count")
+        try:
+            validate_capture_witness(count_before, roster, count_after, after_roster,
+                                     list(stream.ids))
+        except ValueError as exc:
+            raise UsLandslideRegionsError(str(exc)) from exc
         summary = stream.finish(parquet_ok=True)
     except BaseException:
         stream.finish(parquet_ok=False)
         raise
-    if len(stream.ids) != EXPECTED_COUNT or summary["max_objectid"] <= 0:
-        raise UsLandslideRegionsError("source_page_population_incomplete")
     ids_sha = summary["ids_sha"]
-    if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
-        raise UsLandslideRegionsError("source_id_roster_drift")
-    if (EXPECTED_RECORD_SHA256 and summary["record_sha"] != EXPECTED_RECORD_SHA256):
-        raise UsLandslideRegionsError(
-            "source_value_or_geometry_baseline_drift")
-    if (EXPECTED_GEOMETRY_SHA256
-            and summary["geometry_sha"] != EXPECTED_GEOMETRY_SHA256):
-        raise UsLandslideRegionsError(
-            "source_geometry_or_coverage_drift")
-    if (EXPECTED_NULL_GEOMETRY_COUNT is not None
-            and summary["null_geometry_count"] != EXPECTED_NULL_GEOMETRY_COUNT):
-        raise UsLandslideRegionsError(
-            "source_null_geometry_count_drift")
-    if (EXPECTED_EMPTY_GEOMETRY_COUNT is not None
-            and summary["empty_geometry_count"] != EXPECTED_EMPTY_GEOMETRY_COUNT):
-        raise UsLandslideRegionsError(
-            "source_empty_geometry_count_drift")
-    if (EXPECTED_INVALID_GEOMETRY_COUNT is not None
-            and summary["invalid_geometry_count"] != EXPECTED_INVALID_GEOMETRY_COUNT):
-        raise UsLandslideRegionsError(
-            "source_invalid_geometry_count_drift")
-    if (EXPECTED_TOTAL_VERTEX_COUNT is not None
-            and summary["total_vertex_count"] != EXPECTED_TOTAL_VERTEX_COUNT):
-        raise UsLandslideRegionsError(
-            "source_total_vertex_count_drift")
-    if (EXPECTED_RINGS_PER_FEATURE_DISTRIBUTION is not None
-            and summary["rings_per_feature_distribution"]
-            != EXPECTED_RINGS_PER_FEATURE_DISTRIBUTION):
-        raise UsLandslideRegionsError(
-            "source_rings_per_feature_distribution_drift")
-    if (EXPECTED_OBSERVED_BOUNDS is not None
-            and summary["observed_bounds"] != EXPECTED_OBSERVED_BOUNDS):
-        raise UsLandslideRegionsError("source_observed_bounds_drift")
     return {"fields": fields, "schema_sha": schema_sha, "pages": len(ordered),
+            "feature_count": len(stream.ids),
+            "source_reported_count": count_before,
             "record_sha": summary["record_sha"], "geometry_sha": summary["geometry_sha"],
             "ids_sha": ids_sha, "parquet_path": parquet_sink,
             "null_geometry_count": summary["null_geometry_count"],
@@ -1232,7 +1225,8 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "rings_per_feature_distribution":
                 summary["rings_per_feature_distribution"],
             "max_objectid": summary["max_objectid"],
-            "observed_bounds": summary["observed_bounds"]}
+            "observed_bounds": summary["observed_bounds"],
+            "declared_layer_extent_3857": observed_layer_extent}
 
 
 def _code_identity() -> dict[str, object]:
@@ -1272,6 +1266,29 @@ class _RetainedCaptureViews(Mapping):
         return len(self._names)
 
 
+def _candidate_result(audit: Mapping[str, object], prefix: str, version: str, *,
+                      reused: bool) -> dict[str, object]:
+    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_reported_count"],
+            "source_population_complete": audit["source_population_complete"],
+            "source_null_geometry_count": audit["null_geometry_count"],
+            "source_empty_geometry_count": audit["empty_geometry_count"],
+            "source_invalid_geometry_count": audit["invalid_geometry_count"],
+            "source_total_vertex_count": audit["total_vertex_count"],
+            "source_rings_per_feature_distribution":
+                audit["rings_per_feature_distribution"],
+            "observed_bounds": audit["observed_bounds"],
+            "source_id_sha256": audit["source_id_sha256"],
+            "source_schema_sha256": audit["source_schema_sha256"],
+            "candidate_ready": prefix + "/metadata/candidate_ready.json",
+            "reused": reused,
+            "source_release_accepted": False, "source_freshness_accepted": False,
+            "schema_contract_accepted": False, "id_contract_accepted": False,
+            "coverage_accepted": False, "rights_accepted": False,
+            "mapping_approved": False, "release_accepted": False}
+
+
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_pages: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
@@ -1281,18 +1298,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                       extracted["schema_sha"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
-        parquet_body = Path(extracted["parquet_path"]).read_bytes()
-        return _verify_sealed_candidate(
-            storage, prefix, state_key, version, identity,
-            {"source_record_sha256": extracted["record_sha"],
-             "source_schema_sha256": extracted["schema_sha"],
-             "source_ids_sha256": extracted["ids_sha"],
-             "source_null_geometry_count": extracted["null_geometry_count"],
-             "source_invalid_geometry_count": extracted["invalid_geometry_count"]},
-            parquet_body)
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
+        "source_feature_count": extracted["feature_count"],
+        "source_id_sha256": extracted["ids_sha"],
+        "source_reported_count": extracted["source_reported_count"],
+        "source_population_complete": True,
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_schema_sha256": extracted["schema_sha"], "source_crs_epsg": SOURCE_CRS_WKID,
@@ -1304,10 +1314,12 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "total_vertex_count": extracted["total_vertex_count"],
         "rings_per_feature_distribution":
             extracted["rings_per_feature_distribution"],
-        "unique_source_id_count": EXPECTED_COUNT,
+        "unique_source_id_count": extracted["feature_count"],
         "source_max_objectid": extracted["max_objectid"],
         "observed_bounds": extracted["observed_bounds"],
-        "declared_layer_extent_3857": EXPECTED_LAYER_EXTENT,
+        "declared_layer_extent_3857": extracted["declared_layer_extent_3857"],
+        "completeness_basis": "stable captured counts and unique native ID rosters, "
+                              "with exact ordered page coverage",
         "source_fields": extracted["fields"],
         "official_layer_name": LAYER_NAME, "layer_id": LAYER_ID,
         "service_url": SERVICE_URL,
@@ -1322,9 +1334,6 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                 "byte-identical public copy sha256 " + CROSSWALK_COPY_SHA256
                                 + "); the producer identity anchors above were used.",
         "crosswalk_public_copy_sha256": CROSSWALK_COPY_SHA256,
-        "baseline_pending_note": BASELINE_PENDING_NOTE,
-        "baseline_pending_complete_capture": bool(
-            not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256),
         "producer_service_refresh_statement": EXPECTED_SERVICE_DESCRIPTION,
         "source_release_date": "2025-02-03",
         "source_release_date_note": "ScienceBase lists lastRevision 2025-02-03 and "
@@ -1337,23 +1346,25 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "producer_max_record_count": MAX_RECORD_COUNT,
                        "pages": extracted["pages"], "resumable": True,
                        "resumed_pages": resumed_pages,
-                       "id_roster_enumeration_note":
-                           "returnIdsOnly enumerated the complete OBJECTID roster "
-                           "(680,497 ids spanning 1..680497 contiguously, distinct "
-                           "count 680,497, observed 2026-11-14). Segments request "
-                           "consecutive roster windows by resultOffset/"
-                           "resultRecordCount starting at 1000 rows below the "
-                           "producer's 2000-record cap and refused segments are "
-                           "bisected until served; accepted segments must tile the "
-                           "sorted roster exactly and before/after item/service/"
-                           "layer/count/roster brackets prove nothing was skipped, "
-                           "duplicated or reordered."},
+                        "id_roster_enumeration_note":
+                            "returnIdsOnly enumerated the complete native OBJECTID "
+                            "roster at capture time. Pages request consecutive "
+                            "roster windows by resultOffset/resultRecordCount "
+                            "starting at 1000 rows below the producer's 2000-record "
+                            "cap and refused pages are bisected until served; "
+                            "accepted pages must tile the sorted roster exactly "
+                            "and before/after count/roster witnesses prove nothing "
+                            "was skipped, duplicated or reordered."},
         "capture_window_utc": {"first_page": first_captured_at,
                                "last_page": last_captured_at},
         "freshness_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
     }
+    if storage.object_snapshot(state_key) is not None:
+        parquet_body = Path(extracted["parquet_path"]).read_bytes()
+        return _verify_sealed_candidate(storage, prefix, state_key, version,
+                                        identity, audit, parquet_body)
     parquet_body = Path(extracted["parquet_path"]).read_bytes()
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body),
@@ -1517,21 +1528,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     # branch would reject as construction_invalid_commit after a valid seal.
     validate_construction_code_identity(REPO_ROOT, identity["code_commit"],
                                         identity["files"], identity=identity)
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": extracted["null_geometry_count"],
-            "source_invalid_geometry_count": extracted["invalid_geometry_count"],
-            "source_total_vertex_count": extracted["total_vertex_count"],
-            "source_rings_per_feature_distribution":
-                extracted["rings_per_feature_distribution"],
-            "source_id_sha256": extracted["ids_sha"],
-            "source_schema_sha256": extracted["schema_sha"],
-            "candidate_ready": prefix + "/metadata/candidate_ready.json",
-            "reused": False,
-            "source_release_accepted": False, "source_freshness_accepted": False,
-            "schema_contract_accepted": False, "id_contract_accepted": False,
-            "coverage_accepted": False, "rights_accepted": False,
-            "mapping_approved": False, "release_accepted": False,
+    return {**_candidate_result(audit, prefix, version, reused=False),
             "capture_directory": str(capture_root)}
 
 
@@ -1563,19 +1560,7 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str,
             "cached_native_candidate_changed")
     validate_construction_code_identity(REPO_ROOT, identity["code_commit"],
                                         identity["files"], identity=identity)
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": audit.get("source_null_geometry_count",
-                                                     EXPECTED_NULL_GEOMETRY_COUNT),
-            "source_invalid_geometry_count": audit.get("source_invalid_geometry_count",
-                                                       EXPECTED_INVALID_GEOMETRY_COUNT),
-            "source_id_sha256": audit.get("source_ids_sha256", ""),
-            "source_schema_sha256": audit["source_schema_sha256"],
-            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
-            "source_release_accepted": False, "source_freshness_accepted": False,
-            "schema_contract_accepted": False, "id_contract_accepted": False,
-            "coverage_accepted": False, "rights_accepted": False,
-            "mapping_approved": False, "release_accepted": False}
+    return _candidate_result(audit, prefix, version, reused=True)
 
 
 def capture_us_landslide_regions(
@@ -1639,13 +1624,14 @@ def capture_us_landslide_regions(
 
 def build_us_landslide_regions_baseline(
         capture_root: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
+    """Recompute observed audit facts from a complete retained capture."""
     extracted = _stream_validate(Path(capture_root).absolute(), parquet_sink=None)
     return {"source_record_sha256": extracted["record_sha"],
             "source_geometry_sha256": extracted["geometry_sha"],
             "source_ids_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
-            "source_feature_count": EXPECTED_COUNT,
+            "source_feature_count": extracted["feature_count"],
+            "source_reported_count": extracted["source_reported_count"],
             "source_total_vertex_count": extracted["total_vertex_count"],
             "source_max_objectid": extracted["max_objectid"],
             "source_null_geometry_count": extracted["null_geometry_count"],

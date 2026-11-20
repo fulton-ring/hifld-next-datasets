@@ -12,14 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.us_landslide_regions import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_INVALID_GEOMETRY_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_us_landslide_regions,
 )
@@ -35,13 +33,13 @@ class UsLandslideRegionsConfig(Config):
     compute_kind="http",
     description=(
         "USGS ArcGIS Online FeatureServer US_Landslide_poly_v2/FeatureServer layer 12 "
-        "'US_Landslide_v3poly' (680,497 source polygon features, the polygon feature "
-        "class of USGS data release 'Landslide Inventories across the United States "
-        "(ver. 3.0, February 2025)', DOI 10.5066/P14AJF8I) as the maintained producer "
-        "publication of the HIFLD Open inventory entry us-landslide-regions. "
-        "Unapproved faithful candidate; baselines pinned from the dated complete "
-        "capture. Succession, freshness, schema/ID contract, rights and release "
-        "decisions remain pending."
+        "'US_Landslide_v3poly' (the polygon feature class of USGS data release "
+        "'Landslide Inventories across the United States (ver. 3.0, February 2025)', "
+        "DOI 10.5066/P14AJF8I) as the maintained producer publication of the HIFLD "
+        "Open inventory entry us-landslide-regions. Resumable roster-segmented "
+        "complete capture with capture-time count/ID witnesses; unapproved "
+        "faithful candidate. Succession, freshness, schema/ID contract, rights "
+        "and release decisions remain pending."
     ),
 )
 def us_landslide_regions(
@@ -65,17 +63,19 @@ def us_landslide_regions(
 @asset_check(asset=us_landslide_regions, blocking=True)
 def us_landslide_regions_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and (EXPECTED_NULL_GEOMETRY_COUNT is None
-             or candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT)
-        and (EXPECTED_INVALID_GEOMETRY_COUNT is None
-             or candidate.get("source_invalid_geometry_count")
-             == EXPECTED_INVALID_GEOMETRY_COUNT)
+        candidate.get("source_population_complete") is True
+        and type(candidate.get("feature_count")) is int
+        and type(candidate.get("source_reported_count")) is int
+        and candidate["feature_count"] > 0
+        and candidate["feature_count"] == candidate.get("source_reported_count")
+        and bool(candidate.get("source_id_sha256"))
+        and bool(candidate.get("source_schema_sha256"))
     )
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": candidate.get("source_reported_count", 0),
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
             "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_release_accepted": False,
@@ -91,6 +91,12 @@ def us_landslide_regions_complete(candidate: dict) -> AssetCheckResult:
     )
 
 
+us_landslide_regions_approved_baseline_drift = register_approved_baseline_drift(
+    us_landslide_regions,
+    "us_landslide_regions_approved_baseline_drift",
+)
+
+
 us_landslide_regions_draft_job = define_asset_job(
     "us_landslide_regions_draft_refresh",
     selection=AssetSelection.assets(us_landslide_regions),
@@ -104,6 +110,7 @@ us_landslide_regions_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [us_landslide_regions]
-ASSET_CHECKS = [us_landslide_regions_complete]
+ASSET_CHECKS = [us_landslide_regions_complete,
+                us_landslide_regions_approved_baseline_drift]
 JOBS = [us_landslide_regions_draft_job]
 SCHEDULES = [us_landslide_regions_draft_schedule]
