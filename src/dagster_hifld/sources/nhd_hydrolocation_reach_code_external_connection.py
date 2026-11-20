@@ -1,62 +1,37 @@
-"""Streaming, approval-gated capture of the USGS 3DHP_all HydroLocation points.
+"""Resumable, approval-gated capture of USGS 3DHP_all layer 40.
 
-The HIFLD Open inventory entry ``nhd/hydrolocation-reach-code-external-connection``
-("HydroLocation - Reach Code, External Connection", agency US Geological Survey)
-carries the description of the USGS 3D Hydrography Program (3DHP) ``3DHP_all``
-ArcGIS REST service verbatim; the DHS HIFLD Open crosswalk (DOI 10.3886/E241367V1)
-consolidates the NHD-family rows into one "3D Hydrography Program (3DHP) Layers"
-row whose Open REST Service is the USGS ``3dhp.nationalmap.gov``
-``usgs_3dhp_all`` FeatureServer. The entry's title names the External Connection
-and Reach Code hydrolocation point categories, and the producer serves that
-grouping as ``3DHP_all`` layer 40: its hydrolocation category enumeration is
-External Connection (9), Reachcode Start (10) and Reachcode End (11), USGS's own
-hydrogeofetch client calls this layer grouping "hydrolocation - reach code,
-external connection", and the alias ``hydro.nationalmap.gov`` 3DHP_all
-publication historically carried the layer name "HydroLocation - Reach Code,
-External Connection" verbatim (the producer's current FeatureServer and
-MapServer layer name on both hosts is "HydroLocation - External Connection",
-verified 2026-11-15). Layers 20 and 30 cover the remaining hydrolocation
-categories named by the sibling HIFLD entries, so layer 40 is the maintained
-producer publication captured here (USGS retired the NHD as a maintained product
-on 2023-10-01; 3DHP is the successor). The layer held 25 features on
-2026-11-15 — all External Connection (featuretype 9); the Reachcode Start/End
-categories are enumerated by the producer for this layer but currently carry
-zero features (featuretype IN (10,11) counts 0 on both hosts and
-universalreferenceid is null for every feature) — so this module retains every
-roster segment as raw evidence in a resumable capture directory before any
-candidate is sealed. The DataLumos project 240692 archive copy is
-identification context only and is never fetched.
+The HIFLD Open inventory entry
+``nhd/hydrolocation-reach-code-external-connection`` ("HydroLocation - Reach
+Code, External Connection", agency US Geological Survey) names the producer
+layer grouping ``3DHP_all`` layer 40 "HydroLocation - External Connection":
+its hydrolocation category enumeration is External Connection (9), Reachcode
+Start (10) and Reachcode End (11), USGS's own hydrogeofetch client calls this
+grouping "hydrolocation - reach code, external connection", and the alias
+``hydro.nationalmap.gov`` 3DHP_all publication historically carried the
+grouping's inventory name verbatim. USGS retired the NHD as a maintained
+product on 2023-10-01; the DHS HIFLD Open crosswalk (DOI 10.3886/E241367V1)
+consolidates the NHD-family layers into the USGS ``3dhp.nationalmap.gov``
+``usgs_3dhp_all`` FeatureServer captured here. The DataLumos project 240692
+archive copy is identification context only and is never fetched.
 
-The producer serves the complete OBJECTID roster (``returnIdsOnly`` returned
-exactly the contiguous span 1..25 on 2026-11-15), so the layer is captured
-as adaptively bisected segments of the sorted roster: each accepted segment
-must return exactly its expected id slice, the accepted segments must tile the
-complete roster without gaps or overlaps, and before/after count/roster/
-service/layer brackets prove that nothing was skipped, duplicated, or
-reordered. A single-record segment the producer still refuses ends the capture
-explicitly rather than guessing.
-
-The per-value and per-geometry baseline digests, geometry gate counts and
-observed bounds were computed by
-``build_nhd_hydrolocation_reach_code_external_connection_baseline`` from the
-completed capture directory of the dated full extraction (1 roster segment,
-2026-11-15) and are pinned as module constants; every later capture is refused
-when its content drifts from these pins. Publication stays blocked pending the
-succession, freshness, schema/ID contract, rights and release decisions; all
-runtime approval flags are false and the draft refresh schedule is stopped.
+Capture-time count and native OBJECTID witnesses prove complete roster
+coverage. Adaptive offset segments retain all native attributes and
+publisher-served Point Z ordinates in EPSG:4326. Geometry gates are counted,
+not repaired. Publication remains unapproved and the draft refresh schedule
+stays stopped.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 import re
 import shutil
-import time
 from array import array
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping
+from typing import Mapping
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -66,17 +41,27 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.http_capture import validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources import arcgis_layer
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
-    write_immutable,
+    validate_capture_request_identity, write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import (
+    RetainedCaptureViews as _RetainedCaptureViews,
+    capture_with_retry as _capture_with_retry,
+    producer_error_doc as _producer_error_doc,
+    save_state as _save_state,
+    witness_aside as _witness_aside,
+)
 
 DATASET_SLUG = "nhd-hydrolocation-reach-code-external-connection"
 FILE_SLUG = DATASET_SLUG
@@ -106,6 +91,7 @@ MAX_RECORD_COUNT = 2500
 SEGMENT_START_RECORDS = 2000
 MAX_BODY_BYTES = 96 * 1024 * 1024
 MAX_CAPTURE_BYTES = 20 * 1024 * 1024 * 1024
+MAX_RECEIPT_BYTES = 64 * 1024
 MIN_FREE_BYTES = 20_000_000_000
 DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
@@ -127,42 +113,18 @@ EXPECTED_SERVICE_LAYERS = [
     (94, "Spatial Metadata - DEM LimitationArea"),
 ]
 # The producer's two same-org endpoints (3dhp.nationalmap.gov and its
-# hydro.nationalmap.gov alias) were observed on 2026-11-13 carrying the three
-# "Spatial Metadata" layer names on permuted ids (90/92/94) while the core
-# hydrography roster matched exactly; the pin therefore fixes the core rows and
-# only requires the Spatial Metadata names to stay a permutation of these ids.
+# hydro.nationalmap.gov alias) were observed carrying the three "Spatial
+# Metadata" layer names on permuted ids (90/92/94) while the core hydrography
+# roster matched exactly; the pin therefore fixes the core rows and only
+# requires the Spatial Metadata names to stay a permutation of these ids.
 SPATIAL_METADATA_IDS = frozenset({90, 92, 94})
 SPATIAL_METADATA_NAMES = frozenset({"Spatial Metadata - DEM LimitationArea",
                                     "Spatial Metadata - EDH Workunit Area",
                                     "Spatial Metadata - Elevation Workunit Area"})
-EXPECTED_COUNT = 25
 EXPECTED_SCHEMA_SHA256 = "4c4ab8e34f34e4705dd04722bc2e4e0c7cacc210c7bf7e0a34741b86cbebf981"
-EXPECTED_IDS_SHA256 = "282ce608cc55dd02654d6cf277afd460172b08417143a1518e8ad991eb0265ea"
-# The per-value and per-geometry baselines, geometry gate counts and observed
-# bounds are pinned from the dated complete capture (1 roster segment,
-# 2026-11-15 03:56:02Z..03:56:04Z UTC, both producer hosts agreeing;
-# /workspace/captures403 in the task sandbox).
-EXPECTED_RECORD_SHA256 = "7ac018fdc534b84d7c9ca824c347821e5cb2d3fe7ac60574c3271352c1b73feb"
-EXPECTED_GEOMETRY_SHA256 = "6c10edb88892d8450c0f05ac142cc8beb982abfeadc0971ec65f6838749cbfed"
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_NAN_GEOMETRY_COUNT = 0
-EXPECTED_EMPTY_GEOMETRY_COUNT = 0
-EXPECTED_OBSERVED_BOUNDS: dict[str, float] | None = {
-    "xmin": -153.89018467406726, "ymin": 35.95984026105721,
-    "xmax": -72.77152786517681, "ymax": 66.9304234402229}
-# Per-feature hydrolocation category contract observed via grouped counts on
-# 2026-11-15 (sum 25; the producer's enumeration for this layer also defines
-# Reachcode Start (10) and Reachcode End (11), currently with zero features on
-# both hosts); every feature must carry one of these pairs.
-EXPECTED_FEATURETYPE_DISTRIBUTION = {9: 25}
 EXPECTED_FEATURETYPE_LABELS = {9: "External Connection"}
 EXPECTED_LAYER_EXTENT = {"xmin": -17130976.996, "ymin": 4295096.859999999,
                          "xmax": -8100889.426200001, "ymax": 10136264.621600002}
-BASELINE_PENDING_NOTE = (
-    "The record and geometry baseline digests, geometry gate counts and "
-    "observed bounds are pinned from the dated complete resumable capture of "
-    "2026-11-15 (1 roster segment, 03:56:02Z..03:56:04Z, both producer hosts "
-    "agreeing); drift against these pins is refused and quarantined.")
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),
@@ -237,6 +199,15 @@ def _segment_query(offset: int, count: int) -> str:
                    "resultRecordCount": str(count), "f": "json"})
 
 
+def _document_urls() -> dict[str, str]:
+    return {"service_doc": SERVICE_DOC_URL,
+            "alias_service": ALIAS_SERVICE_URL + "?f=pjson",
+            "service_before": SERVICE_URL + "?f=pjson", "service_after": SERVICE_URL + "?f=pjson",
+            "layer_before": LAYER_URL + "?f=pjson", "layer_after": LAYER_URL + "?f=pjson",
+            "count_before": _count_url(), "count_after": _count_url(),
+            "ids_seed": _ids_url(), "ids_before": _ids_url(), "ids_after": _ids_url()}
+
+
 _SEGMENT_NAME_PATTERN = re.compile(r"page_([0-9]{6})_([0-9]{5})$")
 
 
@@ -252,14 +223,11 @@ def _parse_segment_name(name: str) -> tuple[int, int]:
 
 
 def _validate_roster(roster: object, label: str) -> list[int]:
-    if not isinstance(roster, list) or len(roster) != EXPECTED_COUNT \
-            or any(type(value) is not int for value in roster) \
-            or len(set(roster)) != EXPECTED_COUNT:
+    if not isinstance(roster, list) or not roster \
+            or any(type(value) is not int or value <= 0 for value in roster) \
+            or len(set(roster)) != len(roster):
         raise NhdHydrolocationReachCodeExternalConnectionError("source_id_population_drift:" + label)
-    ids = sorted(roster)
-    if EXPECTED_IDS_SHA256 and _sha(_canonical(ids)) != EXPECTED_IDS_SHA256:
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_id_roster_drift:" + label)
-    return ids
+    return sorted(roster)
 
 
 def _validate_service_document(service: object, label: str) -> None:
@@ -393,6 +361,8 @@ def _validate_feature(feature: object, expected_names: tuple[str, ...],
         raise NhdHydrolocationReachCodeExternalConnectionError("source_featuretype_outside_hydrolocation_population")
     if attrs["featuretypelabel"] != EXPECTED_FEATURETYPE_LABELS[featuretype]:
         raise NhdHydrolocationReachCodeExternalConnectionError("source_featuretype_label_drift")
+    for name, esri_type, nullable, _length in NATIVE_FIELDS:
+        _validate_value(name, esri_type, nullable, attrs[name])
     if geometry is not None:
         if not isinstance(geometry, dict) or set(geometry) != {"x", "y", "z"}:
             raise NhdHydrolocationReachCodeExternalConnectionError("unexpected_source_geometry_members")
@@ -405,66 +375,60 @@ def _validate_feature(feature: object, expected_names: tuple[str, ...],
             raise NhdHydrolocationReachCodeExternalConnectionError("source_point_ordinate_not_finite")
         if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
             raise NhdHydrolocationReachCodeExternalConnectionError("source_coordinate_range_drift")
-    for name, esri_type, nullable, _length in NATIVE_FIELDS:
-        _validate_value(name, esri_type, nullable, attrs[name])
     return objectid, geometry
 
 
-def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
-    """Parse and structurally validate one retained receipt without page bytes."""
+def _preflight_capture(capture_root: Path) -> None:
+    if ".." in capture_root.parts or any(path.is_symlink() for path in (capture_root, *capture_root.parents)):
+        raise NhdHydrolocationReachCodeExternalConnectionError("unsafe_capture_directory")
+    if not capture_root.exists():
+        return
+    entries = list(capture_root.iterdir())
     try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise NhdHydrolocationReachCodeExternalConnectionError("retained_capture_receipt_invalid:" + name) from exc
-    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
-            or receipt.get("url") != receipt.get("final_url")
-            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
+        validate_capture_roster(capture_root, {path.name for path in entries})
+    except ValueError as exc:
+        raise NhdHydrolocationReachCodeExternalConnectionError(str(exc)) from exc
+    total = 0
+    for path in entries:
+        size = path.stat().st_size
+        limit = MAX_RECEIPT_BYTES if path.name.endswith(".receipt.json") else MAX_BODY_BYTES
+        if path.suffix != ".parquet" and size > limit:
+            raise NhdHydrolocationReachCodeExternalConnectionError("retained_capture_file_too_large:" + path.name)
+        total += size
+    if total > MAX_CAPTURE_BYTES:
+        raise NhdHydrolocationReachCodeExternalConnectionError("source_capture_exceeds_scratch_budget")
+
+
+def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
+    path = capture_root / f"{name}.receipt.json"
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_RECEIPT_BYTES:
         raise NhdHydrolocationReachCodeExternalConnectionError("retained_capture_receipt_invalid:" + name)
-    return receipt
+    return arcgis_layer.load_receipt(capture_root, name,
+                                    NhdHydrolocationReachCodeExternalConnectionError)
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise NhdHydrolocationReachCodeExternalConnectionError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
+    _load_receipt(capture_root, name)
+    for suffix in ("body", "wire"):
+        path = capture_root / f"{name}.{suffix}"
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_BODY_BYTES:
+            raise NhdHydrolocationReachCodeExternalConnectionError("retained_capture_file_invalid:" + name)
+    try:
+        body, receipt = arcgis_layer.load_replay(capture_root, name)
+        if name in METADATA_NAMES + AFTER_NAMES:
+            validate_capture_request_identity(name, receipt, _document_urls()[name])
+        elif _SEGMENT_NAME_PATTERN.fullmatch(name):
+            validate_capture_request_identity(name, receipt, _segment_query(*_parse_segment_name(name)))
+        return body, receipt
+    except (OSError, ValueError) as exc:
+        raise NhdHydrolocationReachCodeExternalConnectionError(str(exc)) from exc
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
     path = capture_root / "capture_state.json"
-    if not path.exists():
-        return {"segments": [], "complete": False}
-    try:
-        state = json.loads(path.read_bytes())
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise NhdHydrolocationReachCodeExternalConnectionError("capture_state_invalid") from exc
-    if not isinstance(state, dict) or not isinstance(state.get("segments"), list):
+    if path.is_symlink() or (path.exists() and (not path.is_file() or path.stat().st_size > MAX_BODY_BYTES)):
         raise NhdHydrolocationReachCodeExternalConnectionError("capture_state_invalid")
-    return state
-
-
-def _save_state(capture_root: Path, state: Mapping[str, object]) -> None:
-    tmp = capture_root / "capture_state.json.tmp"
-    tmp.write_bytes(_canonical(dict(state)) + b"\n")
-    tmp.replace(capture_root / "capture_state.json")
-
-
-def _witness_aside(capture_root: Path, name: str) -> None:
-    """Move a retained refused/torn response aside so the slot can be refetched.
-
-    A complete HTTP 200 error body carries a self-consistent receipt, so
-    without this witness step a resumed capture would replay the same refusal
-    forever; the witnessed evidence stays on disk next to the capture.
-    """
-    from time import time_ns
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = capture_root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
+    return arcgis_layer.load_state(capture_root, NhdHydrolocationReachCodeExternalConnectionError)
 
 
 def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
@@ -474,66 +438,20 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
             return _read_capture(capture_root, name)
         except NhdHydrolocationReachCodeExternalConnectionError:
             _witness_aside(capture_root, name)
-    return _capture_with_retry(client, url, capture_root, name,
-                               attempts=DOC_CAPTURE_ATTEMPTS,
-                               base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(document, dict) and "error" in document
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents
-    and incomplete transport captures (connection resets, truncation); failed
-    attempts are preserved on disk under ``<name>.attempt-NN`` evidence names
-    and never enter the capture roster. The final attempt's body is always
-    returned as captured, so a persistent producer failure surfaces to the
-    caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
+    return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
 
 
 def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
     """Plan the roster gaps that still need a capture this session.
 
     A retained segment counts as accepted only when its receipt and body
-    verify, its body is not a producer error document, and it already sits in
-    the capture state; anything else is witnessed aside and refetched.
+    verify, its body is not a producer error document, its retained digest
+    still matches the checkpoint, its rows still serve exactly the roster
+    slice the segment name requests, and it already sits in the capture
+    state; anything else is witnessed aside and refetched.
     """
     state = _load_state(capture_root)
-    accepted_names = {entry.get("name") for entry in state["segments"]
-                      if isinstance(entry, dict)}
+    accepted = {entry.get("name"): entry for entry in state["segments"] if isinstance(entry, dict)}
     retained: list[tuple[int, int]] = []
     for path in sorted(capture_root.glob("page_*.body")):
         name = path.name.removesuffix(".body")
@@ -547,30 +465,36 @@ def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int,
         except NhdHydrolocationReachCodeExternalConnectionError:
             _witness_aside(capture_root, name)
             continue
-        if body.lstrip().startswith(b'{"error"') or name not in accepted_names:
+        if _producer_error_doc(body) or name not in accepted:
             _witness_aside(capture_root, name)
             continue
         offset, count = _parse_segment_name(name)
-        if offset + count > len(roster) or roster[offset:offset + count] != \
-                list(range(offset + 1, offset + count + 1)):
+        try:
+            rows = json.loads(body).get("features")
+            actual = [row.get("attributes", {}).get("OBJECTID") for row in rows]
+        except (ValueError, TypeError, AttributeError):
+            actual = None
+        if (count < 1 or offset + count > len(roster)
+                or actual != roster[offset:offset + count]
+                or accepted[name].get("body_sha256") != _sha(body)):
             _witness_aside(capture_root, name)
             continue
         retained.append((offset, count))
     gaps: list[tuple[int, int]] = []
-    covered = bytearray(EXPECTED_COUNT)
+    covered = bytearray(len(roster))
     for offset, count in sorted(retained):
-        if offset < 0 or count < 1 or offset + count > EXPECTED_COUNT \
+        if offset < 0 or count < 1 or offset + count > len(roster) \
                 or any(covered[offset:offset + count]):
             _witness_aside(capture_root, _segment_name(offset, count))
             continue
         covered[offset:offset + count] = b"\x01" * count
     cursor = 0
-    while cursor < EXPECTED_COUNT:
+    while cursor < len(roster):
         if covered[cursor]:
             cursor += 1
             continue
         start = cursor
-        while cursor < EXPECTED_COUNT and not covered[cursor]:
+        while cursor < len(roster) and not covered[cursor]:
             cursor += 1
         chunk_start = start
         while chunk_start < cursor:
@@ -581,7 +505,7 @@ def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int,
 
 
 def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
-                    state: dict[str, object]) -> None:
+                    state: dict[str, object]) -> bool:
     """Capture the complete layer as adaptively bisected roster segments.
 
     Segments start at SEGMENT_START_RECORDS. A segment the producer keeps
@@ -592,20 +516,22 @@ def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
     ends the capture explicitly.
     """
     segments = state.setdefault("segments", [])
-    accepted = {entry.get("name") for entry in segments if isinstance(entry, dict)}
     todo: deque[tuple[int, int]] = deque(_plan_segment_gaps(capture_root, roster))
+    refreshed = bool(todo)
+    if refreshed:
+        state["complete"] = False
+        if segments:
+            _save_state(capture_root, state)
     while todo:
         offset, count = todo.popleft()
         name = _segment_name(offset, count)
-        if name in accepted and (capture_root / f"{name}.body").exists() \
-                and not (capture_root / f"{name}.body").read_bytes().lstrip().startswith(b'{"error"'):
-            continue
         try:
             body, receipt = _capture_with_retry(
                 client, _segment_query(offset, count), capture_root, name,
                 attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
                 base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS)
+                else DOC_CAPTURE_BASE_DELAY_SECONDS,
+                max_bytes=MAX_BODY_BYTES)
         except ValueError as exc:
             # The producer cap can also manifest as truncation/connection reset
             # instead of a clean error document; a multi-record segment whose
@@ -640,12 +566,12 @@ def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
         if actual != expected:
             _witness_aside(capture_root, name)
             raise NhdHydrolocationReachCodeExternalConnectionError("source_page_id_slice_incomplete_or_reordered")
-        if name not in accepted:
-            segments.append({"name": name, "offset": offset, "count": count,
-                             "features": len(rows), "captured_at": receipt["observed_at"],
-                             "body_sha256": _sha(body)})
-            accepted.add(name)
-            _save_state(capture_root, state)
+        segments[:] = [entry for entry in segments if entry.get("name") != name]
+        segments.append({"name": name, "offset": offset, "count": count,
+                         "features": len(rows), "captured_at": receipt["observed_at"],
+                         "body_sha256": _sha(body)})
+        _save_state(capture_root, state)
+    return refreshed
 
 
 def fetch_nhd_hydrolocation_reach_code_external_connection_pages(
@@ -657,6 +583,7 @@ def fetch_nhd_hydrolocation_reach_code_external_connection_pages(
     and document.
     """
     capture_root = Path(capture_root).absolute()
+    _preflight_capture(capture_root)
     capture_root.mkdir(parents=True, exist_ok=True)
     state = _load_state(capture_root)
     owner_client = client is None
@@ -666,17 +593,11 @@ def fetch_nhd_hydrolocation_reach_code_external_connection_pages(
     segments: list[dict[str, object]] = list(state.get("segments", []))
     first_captured_at = (segments[0]["captured_at"] if segments
                          else datetime.now(timezone.utc).isoformat())
+    urls = _document_urls()
     try:
         for name in METADATA_NAMES:
-            url = {"service_doc": SERVICE_DOC_URL,
-                   "alias_service": ALIAS_SERVICE_URL + "?f=pjson",
-                   "service_before": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url(),
-                   "ids_seed": _ids_url(),
-                   "ids_before": _ids_url()}[name]
             active_client = docs_active if name == "service_doc" else active
-            body, _receipt = _retained_or_fetch(active_client, capture_root, name, url)
+            body, _receipt = _retained_or_fetch(active_client, capture_root, name, urls[name])
             if name != "service_doc" and _producer_error_doc(body):
                 raise NhdHydrolocationReachCodeExternalConnectionError("source_page_error:" + name)
         seed = json.loads(_read_capture(capture_root, "ids_seed")[0]).get("objectIds")
@@ -688,20 +609,32 @@ def fetch_nhd_hydrolocation_reach_code_external_connection_pages(
         if sorted(roster) != ids:
             raise NhdHydrolocationReachCodeExternalConnectionError("source_id_population_drift:ids_seed_vs_before")
         count_before = json.loads(_read_capture(capture_root, "count_before")[0])
-        if count_before.get("count") != EXPECTED_COUNT:
+        if type(count_before.get("count")) is not int or count_before["count"] != len(roster):
             raise NhdHydrolocationReachCodeExternalConnectionError("source_count_drift")
-        _fetch_segments(active, capture_root, roster, state)
+        refreshed = _fetch_segments(active, capture_root, roster, state)
         segments = list(state["segments"])
-        for name in AFTER_NAMES:
-            url = {"layer_after": LAYER_URL + "?f=pjson",
-                   "service_after": SERVICE_URL + "?f=pjson",
-                   "count_after": _count_url(),
-                   "ids_after": _ids_url()}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            if _producer_error_doc(body):
-                raise NhdHydrolocationReachCodeExternalConnectionError("source_page_error:" + name)
+        refresh_closing = refreshed or state.get("complete") is not True
+        if not refresh_closing:
+            for name in AFTER_NAMES:
+                try:
+                    body, _receipt = _read_capture(capture_root, name)
+                    document = json.loads(body)
+                    if not isinstance(document, dict) or "error" in document:
+                        raise NhdHydrolocationReachCodeExternalConnectionError("source_page_error:" + name)
+                except (OSError, ValueError):
+                    refresh_closing = True
+                    break
+        if refresh_closing:
+            state["complete"] = False
+            _save_state(capture_root, state)
+            for name in AFTER_NAMES:
+                _witness_aside(capture_root, name)
+            for name in AFTER_NAMES:
+                body, _receipt = capture_get(active, urls[name], capture_root, name, max_bytes=MAX_BODY_BYTES)
+                if _producer_error_doc(body):
+                    raise NhdHydrolocationReachCodeExternalConnectionError("source_page_error:" + name)
         count_after = json.loads(_read_capture(capture_root, "count_after")[0])
-        if count_after.get("count") != EXPECTED_COUNT:
+        if type(count_after.get("count")) is not int or count_after["count"] != len(roster):
             raise NhdHydrolocationReachCodeExternalConnectionError(
                 "source_metadata_or_count_changed_during_capture")
         after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
@@ -724,16 +657,16 @@ def fetch_nhd_hydrolocation_reach_code_external_connection_pages(
         active.close()
     if owner_doc:
         docs_active.close()
-    _save_state(capture_root, {"segments": segments, "complete": True})
     last_captured_at = max((str(entry.get("captured_at", "")) for entry in segments),
                            default=first_captured_at)
     extracted = _stream_validate(capture_root, parquet_sink=None)
+    _save_state(capture_root, {"segments": segments, "complete": True})
     (capture_root / "computed_baseline.json").write_bytes(_canonical({
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_ids_sha256": extracted["ids_sha"],
         "source_schema_sha256": extracted["schema_sha"],
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": extracted["feature_count"],
         "source_max_objectid": extracted["max_objectid"],
         "source_null_geometry_count": extracted["null_geometry_count"],
         "source_nan_geometry_count": extracted["nan_geometry_count"],
@@ -807,12 +740,11 @@ class _SegmentStream:
             raise NhdHydrolocationReachCodeExternalConnectionError("source_page_spatial_reference_drift:" + page_name)
         if page.get("objectIdFieldName") != "OBJECTID":
             raise NhdHydrolocationReachCodeExternalConnectionError("source_id_field_changed:" + page_name)
-        if page.get("hasZ") is not True:
-            raise NhdHydrolocationReachCodeExternalConnectionError("source_page_z_flag_missing:" + page_name)
-        # The layer's point pages carry hasZ=true and omit hasM entirely
-        # (observed 2026-11-13); a present hasM must still be false.
-        if "hasM" in page and page.get("hasM") is not False:
-            raise NhdHydrolocationReachCodeExternalConnectionError("source_page_m_flag_drift:" + page_name)
+        # Layer 40 pages were observed carrying hasZ true with no hasM member;
+        # the layer document pins the Z-aware/no-M contract, and a page that
+        # explicitly declares M data is refused.
+        if page.get("hasZ") is not True or bool(page.get("hasM")):
+            raise NhdHydrolocationReachCodeExternalConnectionError("source_page_z_or_m_flag_missing:" + page_name)
         features = page.get("features")
         if not isinstance(features, list) or len(features) != count:
             raise NhdHydrolocationReachCodeExternalConnectionError("source_page_row_count_incomplete:" + page_name)
@@ -884,6 +816,7 @@ class _SegmentStream:
 def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[str, object]:
     """Re-verify every retained capture and optionally reconstruct the native geoparquet."""
     capture_root = Path(capture_root).absolute()
+    _preflight_capture(capture_root)
     docs = {name: json.loads(_read_capture(capture_root, name)[0])
             for name in METADATA_NAMES if name != "service_doc"}
     if b"3dhp.nationalmap.gov" not in _read_capture(capture_root, "service_doc")[0]:
@@ -897,16 +830,19 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise NhdHydrolocationReachCodeExternalConnectionError("source_schema_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise NhdHydrolocationReachCodeExternalConnectionError("source_schema_baseline_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT:
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_count_drift")
     seed = _validate_roster(docs["ids_seed"].get("objectIds"), "ids_seed")
     if docs["ids_before"].get("objectIdFieldName") != "OBJECTID":
         raise NhdHydrolocationReachCodeExternalConnectionError("source_id_field_changed")
     roster = _validate_roster(docs["ids_before"].get("objectIds"), "ids_before")
+    count_before = docs["count_before"].get("count")
+    if type(count_before) is not int or count_before != len(roster):
+        raise NhdHydrolocationReachCodeExternalConnectionError("source_count_drift")
     if roster != seed:
         raise NhdHydrolocationReachCodeExternalConnectionError("source_id_population_drift:ids_seed_vs_before")
-    after_roster = _validate_roster(json.loads(
-        _read_capture(capture_root, "ids_after")[0]).get("objectIds"), "ids_after")
+    after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
+    if after_ids.get("objectIdFieldName") != "OBJECTID":
+        raise NhdHydrolocationReachCodeExternalConnectionError("source_id_field_changed")
+    after_roster = _validate_roster(after_ids.get("objectIds"), "ids_after")
     if after_roster != roster:
         raise NhdHydrolocationReachCodeExternalConnectionError("source_id_population_drift:ids_after")
     for name in ("layer_after", "service_after", "count_after"):
@@ -930,44 +866,31 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         offset, count, name = entry.get("offset"), entry.get("count"), entry.get("name")
         if (type(offset) is not int or type(count) is not int or offset < 0 or count < 1
                 or name != _segment_name(offset, count) or offset != cursor
-                or offset + count > EXPECTED_COUNT or entry.get("features") != count):
+                or offset + count > len(roster) or entry.get("features") != count):
             raise NhdHydrolocationReachCodeExternalConnectionError("source_capture_roster_incomplete_or_unexpected")
+        body, _receipt = _read_capture(capture_root, name)
+        if entry.get("body_sha256") != _sha(body):
+            raise NhdHydrolocationReachCodeExternalConnectionError("source_checkpoint_body_mismatch:" + name)
         ordered.append((name, offset, count))
         cursor = offset + count
-    if cursor != EXPECTED_COUNT:
+    if cursor != len(roster):
         raise NhdHydrolocationReachCodeExternalConnectionError("source_capture_roster_incomplete_or_unexpected")
     stream = _SegmentStream(capture_root, fields, parquet_sink)
     try:
         for name, offset, count in ordered:
             stream.process(name, offset, count, roster)
+        count_after = json.loads(_read_capture(capture_root, "count_after")[0]).get("count")
+        try:
+            validate_capture_witness(count_before, roster, count_after, after_roster, list(stream.ids))
+        except ValueError as exc:
+            raise NhdHydrolocationReachCodeExternalConnectionError(str(exc)) from exc
         summary = stream.finish(parquet_ok=True)
     except BaseException:
         stream.finish(parquet_ok=False)
         raise
-    if len(stream.ids) != EXPECTED_COUNT or summary["max_objectid"] <= 0:
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_page_population_incomplete")
     ids_sha = summary["ids_sha"]
-    if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_id_roster_drift")
-    if summary["featuretype_distribution"] != EXPECTED_FEATURETYPE_DISTRIBUTION:
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_featuretype_distribution_drift")
-    if EXPECTED_RECORD_SHA256 and summary["record_sha"] != EXPECTED_RECORD_SHA256:
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_value_or_geometry_baseline_drift")
-    if EXPECTED_GEOMETRY_SHA256 and summary["geometry_sha"] != EXPECTED_GEOMETRY_SHA256:
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_geometry_or_coverage_drift")
-    if (EXPECTED_NULL_GEOMETRY_COUNT is not None
-            and summary["null_geometry_count"] != EXPECTED_NULL_GEOMETRY_COUNT):
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_null_geometry_count_drift")
-    if (EXPECTED_NAN_GEOMETRY_COUNT is not None
-            and summary["nan_geometry_count"] != EXPECTED_NAN_GEOMETRY_COUNT):
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_nan_geometry_count_drift")
-    if (EXPECTED_EMPTY_GEOMETRY_COUNT is not None
-            and summary["empty_geometry_count"] != EXPECTED_EMPTY_GEOMETRY_COUNT):
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_empty_geometry_count_drift")
-    if (EXPECTED_OBSERVED_BOUNDS is not None
-            and summary["observed_bounds"] != EXPECTED_OBSERVED_BOUNDS):
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_observed_bounds_drift")
     return {"fields": fields, "schema_sha": schema_sha, "segments": len(ordered),
+            "feature_count": len(stream.ids), "source_reported_count": count_before,
             "record_sha": summary["record_sha"], "geometry_sha": summary["geometry_sha"],
             "ids_sha": ids_sha, "parquet_path": parquet_sink,
             "null_geometry_count": summary["null_geometry_count"],
@@ -1005,23 +928,6 @@ def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
     return {name: _load_receipt(capture_root, name) for name in names}
 
 
-class _RetainedCaptureViews(Mapping):
-    """Lazily materialize one capture view per access so quarantine stays bounded."""
-
-    def __init__(self, capture_root: Path, names: Iterable[str]):
-        self._capture_root = Path(capture_root)
-        self._names = tuple(names)
-
-    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
-        return _read_capture(self._capture_root, name)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._names)
-
-    def __len__(self) -> int:
-        return len(self._names)
-
-
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_segments: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
@@ -1030,15 +936,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                       extracted["schema_sha"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
-        parquet_body = Path(extracted["parquet_path"]).read_bytes()
-        return _verify_sealed_candidate(
-            storage, prefix, state_key, version, identity,
-            {"source_record_sha256": extracted["record_sha"],
-             "source_schema_sha256": extracted["schema_sha"]},
-            parquet_body)
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
+        "source_feature_count": extracted["feature_count"], "source_id_sha256": extracted["ids_sha"],
+        "source_reported_count": extracted["source_reported_count"],
+        "source_population_complete": True,
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_schema_sha256": extracted["schema_sha"], "source_crs_epsg": SOURCE_CRS_WKID,
@@ -1049,7 +950,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "empty_geometry_count": extracted["empty_geometry_count"],
         "featuretype_distribution": extracted["featuretype_distribution"],
         "featuretype_labels": dict(sorted(EXPECTED_FEATURETYPE_LABELS.items())),
-        "unique_source_id_count": EXPECTED_COUNT,
+        "unique_source_id_count": extracted["feature_count"],
         "source_max_objectid": extracted["max_objectid"],
         "observed_bounds": extracted["observed_bounds"],
         "declared_layer_extent_3857": EXPECTED_LAYER_EXTENT,
@@ -1060,9 +961,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "crosswalk_doi": "10.3886/E241367V1",
         "crosswalk_layer_row": "3D Hydrography Program (3DHP) Layers",
         "crosswalk_open_id": "650c07e542fa43b6a327c7f683681712",
-        "baseline_pending_note": BASELINE_PENDING_NOTE,
-        "baseline_pending_complete_capture": bool(
-            not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256),
+        "completeness_basis": "stable captured counts and unique native ID rosters, "
+                              "with exact ordered segment coverage",
+        "baseline_comparison": "skipped_no_approved_baseline",
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
@@ -1076,8 +977,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "segments": extracted["segments"], "resumable": True,
                        "resumed_segments": resumed_segments,
                        "id_roster_enumeration_note":
-                            "returnIdsOnly enumerated the complete contiguous OBJECTID roster "
-                            "(1..25 observed 2026-11-15). Segments start at 2000 records "
+                           "returnIdsOnly enumerated the complete native OBJECTID roster. "
+                           "Segments start at 2000 records "
                            "below the producer's 2500-record cap (sibling 3DHP_all layers "
                            "refused cap-sized pages with complete HTTP 200 Esri error "
                            "documents) and refused segments are bisected until served; "
@@ -1091,6 +992,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "mapping_approved": False, "release_accepted": False,
     }
     parquet_body = Path(extracted["parquet_path"]).read_bytes()
+    if storage.object_snapshot(state_key) is not None:
+        result = _verify_sealed_candidate(storage, prefix, state_key, version, identity,
+                                          audit, parquet_body)
+        return {**result, "capture_directory": str(capture_root)}
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
     receipts = _load_receipt_map(capture_root)
@@ -1101,11 +1006,12 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                        "'HydroLocation - External Connection' (the producer layer grouping "
                        "covering the External Connection and Reach Code hydrolocation point "
                        "categories named by the HIFLD Open inventory entry "
-                       "nhd/hydrolocation-reach-code-external-connection), captured completely "
-                       "from the producer's own REST publication. Complete source attributes "
-                       "and EPSG:4326 Z-aware point geometry are represented in the candidate. "
-                       "Succession, freshness, schema/ID contract, coverage, rights and release "
-                       "acceptance remain unresolved and unapproved.",
+                       "nhd/hydrolocation-reach-code-external-connection), captured "
+                       "completely from the producer's own REST publication. Complete "
+                       "source attributes and EPSG:4326 Z-aware point geometry are "
+                       "represented in the candidate. Succession, freshness, schema/ID "
+                       "contract, coverage, rights and release acceptance remain "
+                       "unresolved and unapproved.",
         "publisher": PUBLISHER, "agency": "U.S. Geological Survey", "source_url": LAYER_URL,
         "license": "Public domain (U.S. Government work); producer service states no access or "
                    "use constraints. Rights acceptance pending.",
@@ -1129,15 +1035,14 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                    for name, receipt in sorted(receipts.items())],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
-                                             "population": "the complete enumerated OBJECTID "
-                                                           "roster captured as adaptively "
-                                                           "bisected roster segments (full 3DHP "
-                                                           "hydrolocation point population for "
-                                                           "this layer: External Connection "
-                                                           "features; the producer's "
-                                                           "Reachcode Start/End categories for "
-                                                           "this layer are currently "
-                                                           "unpopulated)",
+                                            "population": "the complete enumerated OBJECTID "
+                                                          "roster captured as adaptively "
+                                                          "bisected roster segments (the "
+                                                          "producer layer grouping for the "
+                                                          "External Connection and Reach "
+                                                          "Code hydrolocation categories "
+                                                          "named by the HIFLD inventory "
+                                                          "entry)",
                                             "source_fields": "all producer fields retained in "
                                                              "producer order and declared physical "
                                                              "types",
@@ -1175,20 +1080,15 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                    "hydro.nationalmap.gov 3DHP_all publication historically carried the "
                    "layer name 'HydroLocation - Reach Code, External Connection' verbatim; "
                    "the producer's current FeatureServer and MapServer layer name on both "
-                   "hosts is 'HydroLocation - External Connection', verified 2026-11-15); "
-                   "the same-org hydro.nationalmap.gov 3DHP_all service "
-                   "is captured as the producer's alias publication. The 3DHP hydrolocation "
-                   "point schema (10 fields, non-persistent base-36 id3dhp) replaces the "
-                   "legacy NHD point-event schema wholesale, so legacy attributes beyond "
-                   "these fields have no successor equivalents and that succession/coverage "
-                   "contract change remains an unaccepted maintainer decision. The current "
-                   "population (2026-11-15, both hosts) is 25 External Connection features; "
-                   "Reachcode Start/End carry zero features and universalreferenceid is null "
-                   "for every feature, so the reach-code population named by the inventory "
-                   "title is currently unpopulated at the producer and that coverage state "
-                   "is recorded rather than substituted. The DataLumos "
-                   "project 240692 archive copy (archive modification 2025-04-08) is "
-                   "identification and comparison context only and is never fetched.",
+                   "hosts is 'HydroLocation - External Connection'); the same-org "
+                   "hydro.nationalmap.gov 3DHP_all service is captured as the producer's "
+                   "alias publication. The 3DHP hydrolocation point schema (10 fields, "
+                   "non-persistent base-36 id3dhp) replaces the legacy NHD point-event "
+                   "schema wholesale, so legacy attributes beyond these fields have no "
+                   "successor equivalents and that succession/coverage contract change "
+                   "remains an unaccepted maintainer decision. The DataLumos project 240692 "
+                   "archive copy (archive modification 2025-04-08) is identification and "
+                   "comparison context only and is never fetched.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "Complete native source fields, IDs, values, physical nulls and "
                       "Z-aware point geometry retained in the producer page CRS; all "
@@ -1242,19 +1142,27 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     # branch would reject as construction_invalid_commit after a valid seal.
     validate_construction_code_identity(REPO_ROOT, identity["code_commit"],
                                         identity["files"], identity=identity)
+    return {**_candidate_result(audit, prefix, version, reused=False),
+            "capture_directory": str(capture_root)}
+
+
+def _candidate_result(audit: Mapping[str, object], prefix: str, version: str, *, reused: bool) -> dict:
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": extracted["null_geometry_count"],
-            "source_nan_geometry_count": extracted["nan_geometry_count"],
-            "source_empty_geometry_count": extracted["empty_geometry_count"],
-            "source_featuretype_distribution": extracted["featuretype_distribution"],
-            "source_id_sha256": extracted["ids_sha"],
-            "source_schema_sha256": extracted["schema_sha"],
-            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_reported_count"],
+            "source_population_complete": audit["source_population_complete"],
+            "source_null_geometry_count": audit["null_geometry_count"],
+            "source_nan_geometry_count": audit["nan_geometry_count"],
+            "source_empty_geometry_count": audit["empty_geometry_count"],
+            "source_featuretype_distribution": audit["featuretype_distribution"],
+            "observed_bounds": audit["observed_bounds"],
+            "source_id_sha256": audit["source_id_sha256"],
+            "source_schema_sha256": audit["source_schema_sha256"],
+            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": reused,
             "source_release_accepted": False, "source_freshness_accepted": False,
             "schema_contract_accepted": False, "id_contract_accepted": False,
             "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
-            "release_accepted": False, "capture_directory": str(capture_root)}
+            "release_accepted": False}
 
 
 def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
@@ -1280,20 +1188,11 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
         raise NhdHydrolocationReachCodeExternalConnectionError("cached_native_candidate_changed")
     validate_construction_code_identity(REPO_ROOT, identity["code_commit"],
                                         identity["files"], identity=identity)
-    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
-            "source_id_sha256": audit.get("source_ids_sha256", ""),
-            "source_schema_sha256": audit["source_schema_sha256"],
-            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
-            "source_release_accepted": False, "source_freshness_accepted": False,
-            "schema_contract_accepted": False, "id_contract_accepted": False,
-            "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
-            "release_accepted": False}
+    return _candidate_result(audit, prefix, version, reused=True)
 
 
 def capture_nhd_hydrolocation_reach_code_external_connection(storage: StagingStorageResource, *, version: str,
-                                     capture_directory: str | None = None) \
+                                       capture_directory: str | None = None) \
         -> dict[str, object]:
     """Fetch (resumable), validate, and stage one complete unapproved source candidate."""
     if not isinstance(storage, StagingStorageResource) \
@@ -1314,6 +1213,7 @@ def capture_nhd_hydrolocation_reach_code_external_connection(storage: StagingSto
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise NhdHydrolocationReachCodeExternalConnectionError("unsafe_capture_directory")
+    _preflight_capture(capture_root)
     resumed_segments = len(_load_state(capture_root).get("segments", [])) \
         if (capture_root / "capture_state.json").exists() else 0
     try:
@@ -1339,20 +1239,22 @@ def capture_nhd_hydrolocation_reach_code_external_connection(storage: StagingSto
             valid_names.append(name)
         if valid_names:
             quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          _RetainedCaptureViews(capture_root, valid_names),
+                                          _RetainedCaptureViews(
+                                              capture_root, valid_names,
+                                              NhdHydrolocationReachCodeExternalConnectionError),
                                           getattr(exc, "code", type(exc).__name__)
                                           or type(exc).__name__)
         raise
 
 
 def build_nhd_hydrolocation_reach_code_external_connection_baseline(capture_root: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
+    """Recompute observed audit facts from a complete retained capture."""
     extracted = _stream_validate(Path(capture_root).absolute(), parquet_sink=None)
     return {"source_record_sha256": extracted["record_sha"],
             "source_geometry_sha256": extracted["geometry_sha"],
             "source_ids_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
-            "source_feature_count": EXPECTED_COUNT,
+            "source_feature_count": extracted["feature_count"],
             "source_max_objectid": extracted["max_objectid"],
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_nan_geometry_count": extracted["nan_geometry_count"],
